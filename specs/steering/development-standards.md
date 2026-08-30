@@ -31,7 +31,11 @@ Specifications that describe **what** to build: architecture, formats, interface
 
 Work breakdowns that describe **how** to implement: phased task lists, specific code changes, file modifications, and verification steps. A plan document answers "what steps do I follow to build this?" Plans reference the design they implement.
 
-**Never cite a plan from anywhere else.** Code comments, workflows, the `justfile`, design documents and ADRs must cite an ADR or a design document, never `specs/plans/`. A plan records intent at a single moment and is not maintained afterwards, so it is not a stable reference target. Rationale that something else needs to point at belongs in `specs/adrs/` or `specs/design/`.
+**A plan is branch-local.** It is committed as the first commit on a feature branch so it can be reviewed as a file diff, and deleted from that branch before merge. Because the repository squash-merges, the add and the delete cancel within the squashed commit, so no plan content reaches `main`. The plan stays viewable on the pull request.
+
+Plans are the one document type in `specs/` that is not durable. Anything worth keeping — a decision, a constraint, a piece of rationale — belongs in `specs/adrs/` or `specs/design/` and must land there in the same pull request.
+
+**Never cite a plan from anywhere else.** Code comments, workflows, the `justfile`, design documents and ADRs must cite an ADR or a design document, never `specs/plans/`. A plan is deleted before its own pull request merges, so a reference to one is either already dead or about to be. `just plan-citations` enforces this and runs as part of `just`.
 
 ### `specs/steering/` — AI Steering Files
 
@@ -43,10 +47,10 @@ Guidance for AI assistants working with the codebase (conventions, patterns, wor
 |----------|----------|
 | Why did we choose approach X over Y? | `specs/adrs/` |
 | What should the container format look like? | `specs/design/` |
-| What are the steps to implement the container format? | `specs/plans/` |
+| What are the steps to implement the container format? | `specs/plans/` (deleted before merge) |
 | How should AI assistants name tests? | `specs/steering/` |
 
-When a document contains both design and plan content, split it into two files. The design file goes in `specs/design/` and the plan file goes in `specs/plans/`. The reference is one-way: the plan cites the design it implements, and the design never cites the plan.
+When a document contains both design and plan content, split it into two files. The design file goes in `specs/design/` and the plan file goes in `specs/plans/`. The reference is one-way: the plan cites the design it implements, and the design never cites the plan — the design outlives the plan.
 
 **Important**: Plan and design documents must **never** be placed in `docs/`. The `docs/` directory is exclusively for the public Sphinx documentation website. All internal technical documents (plans, designs, ADRs, steering files) belong in `specs/`.
 
@@ -82,7 +86,17 @@ See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the fu
 
 ### Planning Requirement
 
-All non-trivial features and changes **must** begin with an implementation plan committed to `specs/plans/` before code changes start. The plan is the first deliverable — commit it to the feature branch before writing any implementation code.
+All non-trivial features and changes **must** begin with an implementation plan. The plan is a branch-local artifact: it is reviewed as a file diff, then deleted before merge.
+
+1. Write the plan to `specs/plans/YYYY-MM-DD-short-description.md` and commit it as the **first commit on the branch** — before any implementation code. This is what makes it reviewable as a file diff.
+2. Implement, following the plan.
+3. Any decision worth keeping lands as an ADR or a `specs/design/` update **in the same pull request**.
+4. **Anything the plan describes that the pull request does not deliver becomes a tracked issue** before the plan file is removed. A code comment saying "follow-up slice" is not tracking — the plan is about to be deleted, so an untracked deferral disappears with it.
+5. `git rm` the plan file before merge.
+
+**Work that spans more than one pull request must have an issue.** The issue is the durable record across the series: it holds the slice breakdown, stays open until every slice has landed, and is where a slice's undelivered work goes. Each pull request commits only its own slice's plan, and each plan references the issue.
+
+A single self-contained pull request does not need an issue. The plan is reviewed, the work lands, and the plan goes — nothing is left to track.
 
 A plan document should include:
 
