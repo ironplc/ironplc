@@ -82,7 +82,11 @@ Rules:
 
 Each requirement **must** have a corresponding conformance test annotated with `#[spec_test(REQ_<AREA>_<crate_slug>_NNN)]` in the owning crate. The build system enforces this bidirectionally: removing a requirement from the spec causes a compile error; adding a requirement without a test causes that crate's completeness meta-test to fail.
 
-See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the full enforcement mechanism.
+The completeness half is weaker than it reads. A requirement counts as tested when its marker appears anywhere in the crate, so an empty or `#[ignore]`d body satisfies it without asserting anything. Write a real assertion; a marker on an empty test is worse than no marker, because it reports the requirement as covered.
+
+**Fix divergence opportunistically.** When a design document and the code disagree, reconcile that section as part of whatever work brought you there, rather than scheduling an audit of everything. `/project:reconcile-spec` does one section at a time.
+
+See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the full enforcement mechanism, and [ADR-0043](../adrs/0043-spec-conformance-tests-over-a-workflow-framework.md) for why this mechanism rather than a spec-driven-development framework.
 
 ### Planning Requirement
 
