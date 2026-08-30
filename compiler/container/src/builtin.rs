@@ -1,353 +1,397 @@
 //! Built-in function IDs used with the BUILTIN opcode.
 
-/// EXPT for 32-bit integers: pops exponent (b) and base (a), pushes a ** b.
-/// Traps on negative exponent.
-pub const EXPT_I32: u16 = 0x0340;
+/// Declares the built-in functions: one row per built-in, giving its name, the
+/// function ID that the `BUILTIN` opcode's operand carries, and how many
+/// arguments it pops.
+///
+/// A row is the only declaration of a built-in. The ID constant, the name a
+/// disassembler shows, and the argument count codegen and the verifier read
+/// all come from it, so a built-in cannot exist while being nameless or
+/// unsized -- the states that previously left `BUILTIN` rows rendering as bare
+/// hex.
+macro_rules! declare_builtins {
+    ($(
+        $(#[$meta:meta])*
+        $name:ident = $id:literal, args $args:literal;
+    )*) => {
+        $(
+            $(#[$meta])*
+            pub const $name: u16 = $id;
+        )*
+
+        /// The name of the built-in `func_id` calls, or `None` when no
+        /// built-in has that ID.
+        ///
+        /// MUX is not here: its IDs are ranges rather than single values, so
+        /// they are recognised by [`mux_info`] and named by [`mux_type_name`].
+        pub fn name(func_id: u16) -> Option<&'static str> {
+            match func_id {
+                $($name => Some(stringify!($name)),)*
+                _ => None,
+            }
+        }
+
+        /// The number of arguments `func_id` pops, for the built-ins whose ID
+        /// is a single value. [`arg_count_opt`] adds the MUX ranges.
+        fn declared_arg_count(func_id: u16) -> Option<u16> {
+            match func_id {
+                $($name => Some($args),)*
+                _ => None,
+            }
+        }
+    };
+}
+
+declare_builtins! {
+    /// EXPT for 32-bit integers: pops exponent (b) and base (a), pushes a ** b.
+    /// Traps on negative exponent.
+    EXPT_I32 = 0x0340, args 2;
+
+    /// EXPT for 32-bit floats: pops exponent (b) and base (a), pushes a.powf(b).
+    EXPT_F32 = 0x0341, args 2;
+
+    /// EXPT for 64-bit floats: pops exponent (b) and base (a), pushes a.powf(b).
+    EXPT_F64 = 0x0342, args 2;
 
-/// EXPT for 32-bit floats: pops exponent (b) and base (a), pushes a.powf(b).
-pub const EXPT_F32: u16 = 0x0341;
+    /// ABS for 32-bit integers: pops one value, pushes its absolute value (wrapping).
+    ABS_I32 = 0x0343, args 1;
 
-/// EXPT for 64-bit floats: pops exponent (b) and base (a), pushes a.powf(b).
-pub const EXPT_F64: u16 = 0x0342;
+    /// MIN for 32-bit integers: pops two values (b then a), pushes min(a, b).
+    MIN_I32 = 0x0344, args 2;
 
-/// ABS for 32-bit integers: pops one value, pushes its absolute value (wrapping).
-pub const ABS_I32: u16 = 0x0343;
+    /// MAX for 32-bit integers: pops two values (b then a), pushes max(a, b).
+    MAX_I32 = 0x0345, args 2;
 
-/// MIN for 32-bit integers: pops two values (b then a), pushes min(a, b).
-pub const MIN_I32: u16 = 0x0344;
+    /// LIMIT for 32-bit integers: pops mx, in, mn, pushes clamp(in, mn, mx).
+    LIMIT_I32 = 0x0346, args 3;
 
-/// MAX for 32-bit integers: pops two values (b then a), pushes max(a, b).
-pub const MAX_I32: u16 = 0x0345;
+    /// SEL for 32-bit integers: pops in1, in0, g, pushes in0 if g==0 else in1.
+    SEL_I32 = 0x0347, args 3;
 
-/// LIMIT for 32-bit integers: pops mx, in, mn, pushes clamp(in, mn, mx).
-pub const LIMIT_I32: u16 = 0x0346;
+    /// SHL for 32-bit: pops shift count (n) and value (a), pushes a << n.
+    SHL_I32 = 0x0348, args 2;
 
-/// SEL for 32-bit integers: pops in1, in0, g, pushes in0 if g==0 else in1.
-pub const SEL_I32: u16 = 0x0347;
+    /// SHL for 64-bit: pops shift count (n) and value (a), pushes a << n.
+    SHL_I64 = 0x0349, args 2;
 
-/// SHL for 32-bit: pops shift count (n) and value (a), pushes a << n.
-pub const SHL_I32: u16 = 0x0348;
+    /// SHR for 32-bit: pops shift count (n) and value (a), pushes a >> n (logical).
+    SHR_I32 = 0x034A, args 2;
 
-/// SHL for 64-bit: pops shift count (n) and value (a), pushes a << n.
-pub const SHL_I64: u16 = 0x0349;
+    /// SHR for 64-bit: pops shift count (n) and value (a), pushes a >> n (logical).
+    SHR_I64 = 0x034B, args 2;
 
-/// SHR for 32-bit: pops shift count (n) and value (a), pushes a >> n (logical).
-pub const SHR_I32: u16 = 0x034A;
+    /// ROL for 32-bit: pops shift count (n) and value (a), pushes a.rotate_left(n).
+    ROL_I32 = 0x034C, args 2;
 
-/// SHR for 64-bit: pops shift count (n) and value (a), pushes a >> n (logical).
-pub const SHR_I64: u16 = 0x034B;
+    /// ROL for 64-bit: pops shift count (n) and value (a), pushes a.rotate_left(n).
+    ROL_I64 = 0x034D, args 2;
 
-/// ROL for 32-bit: pops shift count (n) and value (a), pushes a.rotate_left(n).
-pub const ROL_I32: u16 = 0x034C;
+    /// ROR for 32-bit: pops shift count (n) and value (a), pushes a.rotate_right(n).
+    ROR_I32 = 0x034E, args 2;
 
-/// ROL for 64-bit: pops shift count (n) and value (a), pushes a.rotate_left(n).
-pub const ROL_I64: u16 = 0x034D;
+    /// ROR for 64-bit: pops shift count (n) and value (a), pushes a.rotate_right(n).
+    ROR_I64 = 0x034F, args 2;
 
-/// ROR for 32-bit: pops shift count (n) and value (a), pushes a.rotate_right(n).
-pub const ROR_I32: u16 = 0x034E;
+    /// ROL for 8-bit (BYTE): narrow rotate within 8 bits.
+    ROL_U8 = 0x0350, args 2;
 
-/// ROR for 64-bit: pops shift count (n) and value (a), pushes a.rotate_right(n).
-pub const ROR_I64: u16 = 0x034F;
+    /// ROL for 16-bit (WORD): narrow rotate within 16 bits.
+    ROL_U16 = 0x0351, args 2;
 
-/// ROL for 8-bit (BYTE): narrow rotate within 8 bits.
-pub const ROL_U8: u16 = 0x0350;
+    /// ROR for 8-bit (BYTE): narrow rotate within 8 bits.
+    ROR_U8 = 0x0352, args 2;
 
-/// ROL for 16-bit (WORD): narrow rotate within 16 bits.
-pub const ROL_U16: u16 = 0x0351;
+    /// ROR for 16-bit (WORD): narrow rotate within 16 bits.
+    ROR_U16 = 0x0353, args 2;
 
-/// ROR for 8-bit (BYTE): narrow rotate within 8 bits.
-pub const ROR_U8: u16 = 0x0352;
+    /// ABS for 32-bit floats: pops one value, pushes its absolute value.
+    ABS_F32 = 0x0354, args 1;
 
-/// ROR for 16-bit (WORD): narrow rotate within 16 bits.
-pub const ROR_U16: u16 = 0x0353;
+    /// ABS for 64-bit floats: pops one value, pushes its absolute value.
+    ABS_F64 = 0x0355, args 1;
 
-/// ABS for 32-bit floats: pops one value, pushes its absolute value.
-pub const ABS_F32: u16 = 0x0354;
+    /// MIN for 32-bit floats: pops two values (b then a), pushes min(a, b).
+    MIN_F32 = 0x0356, args 2;
 
-/// ABS for 64-bit floats: pops one value, pushes its absolute value.
-pub const ABS_F64: u16 = 0x0355;
+    /// MIN for 64-bit floats: pops two values (b then a), pushes min(a, b).
+    MIN_F64 = 0x0357, args 2;
 
-/// MIN for 32-bit floats: pops two values (b then a), pushes min(a, b).
-pub const MIN_F32: u16 = 0x0356;
+    /// MAX for 32-bit floats: pops two values (b then a), pushes max(a, b).
+    MAX_F32 = 0x0358, args 2;
 
-/// MIN for 64-bit floats: pops two values (b then a), pushes min(a, b).
-pub const MIN_F64: u16 = 0x0357;
+    /// MAX for 64-bit floats: pops two values (b then a), pushes max(a, b).
+    MAX_F64 = 0x0359, args 2;
 
-/// MAX for 32-bit floats: pops two values (b then a), pushes max(a, b).
-pub const MAX_F32: u16 = 0x0358;
+    /// LIMIT for 32-bit floats: pops mx, in, mn, pushes clamp(in, mn, mx).
+    LIMIT_F32 = 0x035A, args 3;
 
-/// MAX for 64-bit floats: pops two values (b then a), pushes max(a, b).
-pub const MAX_F64: u16 = 0x0359;
+    /// LIMIT for 64-bit floats: pops mx, in, mn, pushes clamp(in, mn, mx).
+    LIMIT_F64 = 0x035B, args 3;
 
-/// LIMIT for 32-bit floats: pops mx, in, mn, pushes clamp(in, mn, mx).
-pub const LIMIT_F32: u16 = 0x035A;
+    /// SEL for 32-bit floats: pops in1, in0 (f32), g (i32), pushes in0 if g==0 else in1.
+    SEL_F32 = 0x035C, args 3;
 
-/// LIMIT for 64-bit floats: pops mx, in, mn, pushes clamp(in, mn, mx).
-pub const LIMIT_F64: u16 = 0x035B;
+    /// SEL for 64-bit floats: pops in1, in0 (f64), g (i32), pushes in0 if g==0 else in1.
+    SEL_F64 = 0x035D, args 3;
 
-/// SEL for 32-bit floats: pops in1, in0 (f32), g (i32), pushes in0 if g==0 else in1.
-pub const SEL_F32: u16 = 0x035C;
+    /// SQRT for 32-bit floats: pops one value, pushes its square root.
+    SQRT_F32 = 0x035E, args 1;
 
-/// SEL for 64-bit floats: pops in1, in0 (f64), g (i32), pushes in0 if g==0 else in1.
-pub const SEL_F64: u16 = 0x035D;
+    /// SQRT for 64-bit floats: pops one value, pushes its square root.
+    SQRT_F64 = 0x035F, args 1;
 
-/// SQRT for 32-bit floats: pops one value, pushes its square root.
-pub const SQRT_F32: u16 = 0x035E;
+    /// EXPT for 64-bit integers: pops exponent (b) and base (a), pushes a ** b.
+    /// Traps on negative exponent.
+    EXPT_I64 = 0x0360, args 2;
 
-/// SQRT for 64-bit floats: pops one value, pushes its square root.
-pub const SQRT_F64: u16 = 0x035F;
+    /// ABS for 64-bit integers: pops one value, pushes its absolute value (wrapping).
+    ABS_I64 = 0x0361, args 1;
 
-/// EXPT for 64-bit integers: pops exponent (b) and base (a), pushes a ** b.
-/// Traps on negative exponent.
-pub const EXPT_I64: u16 = 0x0360;
+    /// MIN for 64-bit signed integers: pops two values (b then a), pushes min(a, b).
+    MIN_I64 = 0x0362, args 2;
 
-/// ABS for 64-bit integers: pops one value, pushes its absolute value (wrapping).
-pub const ABS_I64: u16 = 0x0361;
+    /// MAX for 64-bit signed integers: pops two values (b then a), pushes max(a, b).
+    MAX_I64 = 0x0363, args 2;
 
-/// MIN for 64-bit signed integers: pops two values (b then a), pushes min(a, b).
-pub const MIN_I64: u16 = 0x0362;
+    /// LIMIT for 64-bit signed integers: pops mx, in, mn, pushes clamp(in, mn, mx).
+    LIMIT_I64 = 0x0364, args 3;
 
-/// MAX for 64-bit signed integers: pops two values (b then a), pushes max(a, b).
-pub const MAX_I64: u16 = 0x0363;
+    /// SEL for 64-bit values: pops in1, in0 (i64), g (i32), pushes in0 if g==0 else in1.
+    SEL_I64 = 0x0365, args 3;
 
-/// LIMIT for 64-bit signed integers: pops mx, in, mn, pushes clamp(in, mn, mx).
-pub const LIMIT_I64: u16 = 0x0364;
+    /// MIN for 32-bit unsigned integers: pops two values (b then a), pushes unsigned min.
+    MIN_U32 = 0x0366, args 2;
 
-/// SEL for 64-bit values: pops in1, in0 (i64), g (i32), pushes in0 if g==0 else in1.
-pub const SEL_I64: u16 = 0x0365;
+    /// MAX for 32-bit unsigned integers: pops two values (b then a), pushes unsigned max.
+    MAX_U32 = 0x0367, args 2;
 
-/// MIN for 32-bit unsigned integers: pops two values (b then a), pushes unsigned min.
-pub const MIN_U32: u16 = 0x0366;
+    /// LIMIT for 32-bit unsigned integers: pops mx, in, mn, pushes unsigned clamp.
+    LIMIT_U32 = 0x0368, args 3;
 
-/// MAX for 32-bit unsigned integers: pops two values (b then a), pushes unsigned max.
-pub const MAX_U32: u16 = 0x0367;
+    /// MIN for 64-bit unsigned integers: pops two values (b then a), pushes unsigned min.
+    MIN_U64 = 0x0369, args 2;
 
-/// LIMIT for 32-bit unsigned integers: pops mx, in, mn, pushes unsigned clamp.
-pub const LIMIT_U32: u16 = 0x0368;
+    /// MAX for 64-bit unsigned integers: pops two values (b then a), pushes unsigned max.
+    MAX_U64 = 0x036A, args 2;
 
-/// MIN for 64-bit unsigned integers: pops two values (b then a), pushes unsigned min.
-pub const MIN_U64: u16 = 0x0369;
+    /// LIMIT for 64-bit unsigned integers: pops mx, in, mn, pushes unsigned clamp.
+    LIMIT_U64 = 0x036B, args 3;
 
-/// MAX for 64-bit unsigned integers: pops two values (b then a), pushes unsigned max.
-pub const MAX_U64: u16 = 0x036A;
+    /// LN for 32-bit floats: pops one value, pushes its natural logarithm.
+    LN_F32 = 0x036C, args 1;
 
-/// LIMIT for 64-bit unsigned integers: pops mx, in, mn, pushes unsigned clamp.
-pub const LIMIT_U64: u16 = 0x036B;
+    /// LN for 64-bit floats: pops one value, pushes its natural logarithm.
+    LN_F64 = 0x036D, args 1;
 
-/// LN for 32-bit floats: pops one value, pushes its natural logarithm.
-pub const LN_F32: u16 = 0x036C;
+    /// LOG for 32-bit floats: pops one value, pushes its base-10 logarithm.
+    LOG_F32 = 0x036E, args 1;
 
-/// LN for 64-bit floats: pops one value, pushes its natural logarithm.
-pub const LN_F64: u16 = 0x036D;
+    /// LOG for 64-bit floats: pops one value, pushes its base-10 logarithm.
+    LOG_F64 = 0x036F, args 1;
 
-/// LOG for 32-bit floats: pops one value, pushes its base-10 logarithm.
-pub const LOG_F32: u16 = 0x036E;
+    /// EXP for 32-bit floats: pops one value, pushes e raised to that power.
+    EXP_F32 = 0x0370, args 1;
 
-/// LOG for 64-bit floats: pops one value, pushes its base-10 logarithm.
-pub const LOG_F64: u16 = 0x036F;
+    /// EXP for 64-bit floats: pops one value, pushes e raised to that power.
+    EXP_F64 = 0x0371, args 1;
 
-/// EXP for 32-bit floats: pops one value, pushes e raised to that power.
-pub const EXP_F32: u16 = 0x0370;
+    /// SIN for 32-bit floats: pops one value (radians), pushes its sine.
+    SIN_F32 = 0x0372, args 1;
 
-/// EXP for 64-bit floats: pops one value, pushes e raised to that power.
-pub const EXP_F64: u16 = 0x0371;
+    /// SIN for 64-bit floats: pops one value (radians), pushes its sine.
+    SIN_F64 = 0x0373, args 1;
 
-/// SIN for 32-bit floats: pops one value (radians), pushes its sine.
-pub const SIN_F32: u16 = 0x0372;
+    /// COS for 32-bit floats: pops one value (radians), pushes its cosine.
+    COS_F32 = 0x0374, args 1;
 
-/// SIN for 64-bit floats: pops one value (radians), pushes its sine.
-pub const SIN_F64: u16 = 0x0373;
+    /// COS for 64-bit floats: pops one value (radians), pushes its cosine.
+    COS_F64 = 0x0375, args 1;
 
-/// COS for 32-bit floats: pops one value (radians), pushes its cosine.
-pub const COS_F32: u16 = 0x0374;
+    /// TAN for 32-bit floats: pops one value (radians), pushes its tangent.
+    TAN_F32 = 0x0376, args 1;
 
-/// COS for 64-bit floats: pops one value (radians), pushes its cosine.
-pub const COS_F64: u16 = 0x0375;
+    /// TAN for 64-bit floats: pops one value (radians), pushes its tangent.
+    TAN_F64 = 0x0377, args 1;
 
-/// TAN for 32-bit floats: pops one value (radians), pushes its tangent.
-pub const TAN_F32: u16 = 0x0376;
+    /// ASIN for 32-bit floats: pops one value, pushes its arc sine (radians).
+    ASIN_F32 = 0x0378, args 1;
 
-/// TAN for 64-bit floats: pops one value (radians), pushes its tangent.
-pub const TAN_F64: u16 = 0x0377;
+    /// ASIN for 64-bit floats: pops one value, pushes its arc sine (radians).
+    ASIN_F64 = 0x0379, args 1;
 
-/// ASIN for 32-bit floats: pops one value, pushes its arc sine (radians).
-pub const ASIN_F32: u16 = 0x0378;
+    /// ACOS for 32-bit floats: pops one value, pushes its arc cosine (radians).
+    ACOS_F32 = 0x037A, args 1;
 
-/// ASIN for 64-bit floats: pops one value, pushes its arc sine (radians).
-pub const ASIN_F64: u16 = 0x0379;
+    /// ACOS for 64-bit floats: pops one value, pushes its arc cosine (radians).
+    ACOS_F64 = 0x037B, args 1;
 
-/// ACOS for 32-bit floats: pops one value, pushes its arc cosine (radians).
-pub const ACOS_F32: u16 = 0x037A;
+    /// ATAN for 32-bit floats: pops one value, pushes its arc tangent (radians).
+    ATAN_F32 = 0x037C, args 1;
 
-/// ACOS for 64-bit floats: pops one value, pushes its arc cosine (radians).
-pub const ACOS_F64: u16 = 0x037B;
+    /// ATAN for 64-bit floats: pops one value, pushes its arc tangent (radians).
+    ATAN_F64 = 0x037D, args 1;
 
-/// ATAN for 32-bit floats: pops one value, pushes its arc tangent (radians).
-pub const ATAN_F32: u16 = 0x037C;
+    // --- Type conversion opcodes ---
 
-/// ATAN for 64-bit floats: pops one value, pushes its arc tangent (radians).
-pub const ATAN_F64: u16 = 0x037D;
+    /// Convert signed 32-bit integer to 32-bit float.
+    CONV_I32_TO_F32 = 0x037E, args 1;
 
-// --- Type conversion opcodes ---
+    /// Convert signed 32-bit integer to 64-bit float.
+    CONV_I32_TO_F64 = 0x037F, args 1;
 
-/// Convert signed 32-bit integer to 32-bit float.
-pub const CONV_I32_TO_F32: u16 = 0x037E;
+    /// Convert signed 64-bit integer to 32-bit float.
+    CONV_I64_TO_F32 = 0x0380, args 1;
 
-/// Convert signed 32-bit integer to 64-bit float.
-pub const CONV_I32_TO_F64: u16 = 0x037F;
+    /// Convert signed 64-bit integer to 64-bit float.
+    CONV_I64_TO_F64 = 0x0381, args 1;
 
-/// Convert signed 64-bit integer to 32-bit float.
-pub const CONV_I64_TO_F32: u16 = 0x0380;
+    /// Convert unsigned 32-bit integer to 32-bit float.
+    CONV_U32_TO_F32 = 0x0382, args 1;
 
-/// Convert signed 64-bit integer to 64-bit float.
-pub const CONV_I64_TO_F64: u16 = 0x0381;
+    /// Convert unsigned 32-bit integer to 64-bit float.
+    CONV_U32_TO_F64 = 0x0383, args 1;
 
-/// Convert unsigned 32-bit integer to 32-bit float.
-pub const CONV_U32_TO_F32: u16 = 0x0382;
+    /// Convert unsigned 64-bit integer to 32-bit float.
+    CONV_U64_TO_F32 = 0x0384, args 1;
 
-/// Convert unsigned 32-bit integer to 64-bit float.
-pub const CONV_U32_TO_F64: u16 = 0x0383;
+    /// Convert unsigned 64-bit integer to 64-bit float.
+    CONV_U64_TO_F64 = 0x0385, args 1;
 
-/// Convert unsigned 64-bit integer to 32-bit float.
-pub const CONV_U64_TO_F32: u16 = 0x0384;
+    /// Convert 32-bit float to signed 32-bit integer (truncating).
+    CONV_F32_TO_I32 = 0x0386, args 1;
 
-/// Convert unsigned 64-bit integer to 64-bit float.
-pub const CONV_U64_TO_F64: u16 = 0x0385;
+    /// Convert 32-bit float to signed 64-bit integer (truncating).
+    CONV_F32_TO_I64 = 0x0387, args 1;
 
-/// Convert 32-bit float to signed 32-bit integer (truncating).
-pub const CONV_F32_TO_I32: u16 = 0x0386;
+    /// Convert 64-bit float to signed 32-bit integer (truncating).
+    CONV_F64_TO_I32 = 0x0388, args 1;
 
-/// Convert 32-bit float to signed 64-bit integer (truncating).
-pub const CONV_F32_TO_I64: u16 = 0x0387;
+    /// Convert 64-bit float to signed 64-bit integer (truncating).
+    CONV_F64_TO_I64 = 0x0389, args 1;
 
-/// Convert 64-bit float to signed 32-bit integer (truncating).
-pub const CONV_F64_TO_I32: u16 = 0x0388;
+    /// Convert 32-bit float to unsigned 32-bit integer (truncating).
+    CONV_F32_TO_U32 = 0x038A, args 1;
 
-/// Convert 64-bit float to signed 64-bit integer (truncating).
-pub const CONV_F64_TO_I64: u16 = 0x0389;
+    /// Convert 32-bit float to unsigned 64-bit integer (truncating).
+    CONV_F32_TO_U64 = 0x038B, args 1;
 
-/// Convert 32-bit float to unsigned 32-bit integer (truncating).
-pub const CONV_F32_TO_U32: u16 = 0x038A;
+    /// Convert 64-bit float to unsigned 32-bit integer (truncating).
+    CONV_F64_TO_U32 = 0x038C, args 1;
 
-/// Convert 32-bit float to unsigned 64-bit integer (truncating).
-pub const CONV_F32_TO_U64: u16 = 0x038B;
+    /// Convert 64-bit float to unsigned 64-bit integer (truncating).
+    CONV_F64_TO_U64 = 0x038D, args 1;
 
-/// Convert 64-bit float to unsigned 32-bit integer (truncating).
-pub const CONV_F64_TO_U32: u16 = 0x038C;
+    /// Widen 32-bit float to 64-bit float.
+    CONV_F32_TO_F64 = 0x038E, args 1;
 
-/// Convert 64-bit float to unsigned 64-bit integer (truncating).
-pub const CONV_F64_TO_U64: u16 = 0x038D;
+    /// Narrow 64-bit float to 32-bit float.
+    CONV_F64_TO_F32 = 0x038F, args 1;
 
-/// Widen 32-bit float to 64-bit float.
-pub const CONV_F32_TO_F64: u16 = 0x038E;
+    /// Zero-extend unsigned 32-bit integer to 64-bit integer.
+    CONV_U32_TO_I64 = 0x0390, args 1;
 
-/// Narrow 64-bit float to 32-bit float.
-pub const CONV_F64_TO_F32: u16 = 0x038F;
+    // --- BCD conversion opcodes ---
 
-/// Zero-extend unsigned 32-bit integer to 64-bit integer.
-pub const CONV_U32_TO_I64: u16 = 0x0390;
+    /// BCD_TO_INT for 8-bit (BYTE → USINT): decode 2 BCD digits.
+    BCD_TO_INT_8 = 0x0391, args 1;
 
-// --- BCD conversion opcodes ---
+    /// BCD_TO_INT for 16-bit (WORD → UINT): decode 4 BCD digits.
+    BCD_TO_INT_16 = 0x0392, args 1;
 
-/// BCD_TO_INT for 8-bit (BYTE → USINT): decode 2 BCD digits.
-pub const BCD_TO_INT_8: u16 = 0x0391;
+    /// BCD_TO_INT for 32-bit (DWORD → UDINT): decode 8 BCD digits.
+    BCD_TO_INT_32 = 0x0393, args 1;
 
-/// BCD_TO_INT for 16-bit (WORD → UINT): decode 4 BCD digits.
-pub const BCD_TO_INT_16: u16 = 0x0392;
+    /// BCD_TO_INT for 64-bit (LWORD → ULINT): decode 16 BCD digits.
+    BCD_TO_INT_64 = 0x0394, args 1;
 
-/// BCD_TO_INT for 32-bit (DWORD → UDINT): decode 8 BCD digits.
-pub const BCD_TO_INT_32: u16 = 0x0393;
+    /// INT_TO_BCD for 8-bit (USINT → BYTE): encode 2 BCD digits.
+    INT_TO_BCD_8 = 0x0395, args 1;
 
-/// BCD_TO_INT for 64-bit (LWORD → ULINT): decode 16 BCD digits.
-pub const BCD_TO_INT_64: u16 = 0x0394;
+    /// INT_TO_BCD for 16-bit (UINT → WORD): encode 4 BCD digits.
+    INT_TO_BCD_16 = 0x0396, args 1;
 
-/// INT_TO_BCD for 8-bit (USINT → BYTE): encode 2 BCD digits.
-pub const INT_TO_BCD_8: u16 = 0x0395;
+    /// INT_TO_BCD for 32-bit (UDINT → DWORD): encode 8 BCD digits.
+    INT_TO_BCD_32 = 0x0397, args 1;
 
-/// INT_TO_BCD for 16-bit (UINT → WORD): encode 4 BCD digits.
-pub const INT_TO_BCD_16: u16 = 0x0396;
+    /// INT_TO_BCD for 64-bit (ULINT → LWORD): encode 16 BCD digits.
+    INT_TO_BCD_64 = 0x0398, args 1;
 
-/// INT_TO_BCD for 32-bit (UDINT → DWORD): encode 8 BCD digits.
-pub const INT_TO_BCD_32: u16 = 0x0397;
+    // --- Integer to boolean conversion opcodes ---
 
-/// INT_TO_BCD for 64-bit (ULINT → LWORD): encode 16 BCD digits.
-pub const INT_TO_BCD_64: u16 = 0x0398;
+    /// Convert 32-bit integer to boolean: 0 → FALSE (0), non-zero → TRUE (1).
+    CONV_I32_TO_BOOL = 0x0399, args 1;
 
-// --- Integer to boolean conversion opcodes ---
+    /// Convert 64-bit integer to boolean: 0 → FALSE (0), non-zero → TRUE (1).
+    CONV_I64_TO_BOOL = 0x039A, args 1;
 
-/// Convert 32-bit integer to boolean: 0 → FALSE (0), non-zero → TRUE (1).
-pub const CONV_I32_TO_BOOL: u16 = 0x0399;
+    // --- Two-argument trigonometric opcodes ---
 
-/// Convert 64-bit integer to boolean: 0 → FALSE (0), non-zero → TRUE (1).
-pub const CONV_I64_TO_BOOL: u16 = 0x039A;
+    /// ATAN2 for 32-bit floats: pops two values (b=IN2=X, a=IN1=Y), pushes atan2(Y, X).
+    ATAN2_F32 = 0x039B, args 2;
 
-// --- Two-argument trigonometric opcodes ---
+    /// ATAN2 for 64-bit floats: pops two values (b=IN2=X, a=IN1=Y), pushes atan2(Y, X).
+    ATAN2_F64 = 0x039C, args 2;
 
-/// ATAN2 for 32-bit floats: pops two values (b=IN2=X, a=IN1=Y), pushes atan2(Y, X).
-pub const ATAN2_F32: u16 = 0x039B;
+    // =========================================================================
+    // Numeric ↔ STRING conversion builtins
+    //
+    // These are dispatched inline in the VM main loop (not via
+    // builtin::dispatch) because they need access to temp buffers and
+    // the data region.
+    // =========================================================================
 
-/// ATAN2 for 64-bit floats: pops two values (b=IN2=X, a=IN1=Y), pushes atan2(Y, X).
-pub const ATAN2_F64: u16 = 0x039C;
+    /// Convert signed 32-bit integer to decimal string.
+    /// Stack: pop i32, push buf_idx (temp buffer with result).
+    CONV_I32_TO_STR = 0x039D, args 1;
 
-// =========================================================================
-// Numeric ↔ STRING conversion builtins
-//
-// These are dispatched inline in the VM main loop (not via
-// builtin::dispatch) because they need access to temp buffers and
-// the data region.
-// =========================================================================
+    /// Convert unsigned 32-bit integer to decimal string.
+    /// Stack: pop i32 (treated as u32), push buf_idx.
+    CONV_U32_TO_STR = 0x039E, args 1;
 
-/// Convert signed 32-bit integer to decimal string.
-/// Stack: pop i32, push buf_idx (temp buffer with result).
-pub const CONV_I32_TO_STR: u16 = 0x039D;
+    /// Parse decimal string to signed 32-bit integer.
+    /// Stack: pop data_offset (i32), push parsed i32 (0 on failure).
+    CONV_STR_TO_I32 = 0x039F, args 1;
 
-/// Convert unsigned 32-bit integer to decimal string.
-/// Stack: pop i32 (treated as u32), push buf_idx.
-pub const CONV_U32_TO_STR: u16 = 0x039E;
+    /// Convert 32-bit float to decimal string.
+    /// Stack: pop f32, push buf_idx (temp buffer with result).
+    CONV_F32_TO_STR = 0x03A0, args 1;
 
-/// Parse decimal string to signed 32-bit integer.
-/// Stack: pop data_offset (i32), push parsed i32 (0 on failure).
-pub const CONV_STR_TO_I32: u16 = 0x039F;
+    /// Parse decimal string to 32-bit float.
+    /// Stack: pop data_offset (i32), push parsed f32 (0.0 on failure).
+    CONV_STR_TO_F32 = 0x03A1, args 1;
 
-/// Convert 32-bit float to decimal string.
-/// Stack: pop f32, push buf_idx (temp buffer with result).
-pub const CONV_F32_TO_STR: u16 = 0x03A0;
+    /// Three-way lexicographic string comparison.
+    /// Pops right_data_offset (i32) then left_data_offset (i32).
+    /// Pushes -1 (left < right), 0 (equal), or +1 (left > right) as i32.
+    CMP_STR = 0x03A2, args 2;
 
-/// Parse decimal string to 32-bit float.
-/// Stack: pop data_offset (i32), push parsed f32 (0.0 on failure).
-pub const CONV_STR_TO_F32: u16 = 0x03A1;
+    // =========================================================================
+    // Real truncation / floating-modulo builtins
+    //
+    // These implement real-number semantics that IEC 61131-3 source cannot
+    // express (ADR-0042): truncation that stays in the real type, and a
+    // floating modulo. They are the lowering targets of the `__TRUNC` /
+    // `__MOD` compiler intrinsics (ANY_REAL, width selects the variant).
+    // =========================================================================
 
-/// Three-way lexicographic string comparison.
-/// Pops right_data_offset (i32) then left_data_offset (i32).
-/// Pushes -1 (left < right), 0 (equal), or +1 (left > right) as i32.
-pub const CMP_STR: u16 = 0x03A2;
+    /// LREAL-preserving truncation toward zero (`f64::trunc`): pops one f64,
+    /// pushes its integer part as f64. The result stays f64, so values beyond
+    /// any integer range are preserved exactly rather than clamped.
+    TRUNC_F64 = 0x03A3, args 1;
 
-// =========================================================================
-// Real truncation / floating-modulo builtins
-//
-// These implement real-number semantics that IEC 61131-3 source cannot
-// express (ADR-0042): truncation that stays in the real type, and a
-// floating modulo. They are the lowering targets of the `__TRUNC` /
-// `__MOD` compiler intrinsics (ANY_REAL, width selects the variant).
-// =========================================================================
+    /// Floating-point modulo with the sign of the dividend (Rust `%` on f64,
+    /// i.e. fmod; `x % 0.0` is NaN, not a trap): pops divisor then dividend,
+    /// pushes the remainder.
+    MOD_F64 = 0x03A4, args 2;
 
-/// LREAL-preserving truncation toward zero (`f64::trunc`): pops one f64,
-/// pushes its integer part as f64. The result stays f64, so values beyond
-/// any integer range are preserved exactly rather than clamped.
-pub const TRUNC_F64: u16 = 0x03A3;
+    /// REAL-preserving truncation toward zero (`f32::trunc`): the f32 variant
+    /// of [`TRUNC_F64`].
+    TRUNC_F32 = 0x03A5, args 1;
 
-/// Floating-point modulo with the sign of the dividend (Rust `%` on f64,
-/// i.e. fmod; `x % 0.0` is NaN, not a trap): pops divisor then dividend,
-/// pushes the remainder.
-pub const MOD_F64: u16 = 0x03A4;
-
-/// REAL-preserving truncation toward zero (`f32::trunc`): the f32 variant
-/// of [`TRUNC_F64`].
-pub const TRUNC_F32: u16 = 0x03A5;
-
-/// Floating-point modulo with the sign of the dividend on f32: the f32
-/// variant of [`MOD_F64`] (`x % 0.0` is NaN, not a trap).
-pub const MOD_F32: u16 = 0x03A6;
+    /// Floating-point modulo with the sign of the dividend on f32: the f32
+    /// variant of [`MOD_F64`] (`x % 0.0` is NaN, not a trap).
+    MOD_F32 = 0x03A6, args 2;
+}
 
 // =========================================================================
 // MUX (multiplexer) range-based opcodes
@@ -376,6 +420,25 @@ pub const MUX_MAX_INPUTS: u16 = 16;
 /// Returns true if the given func_id is a MUX opcode.
 pub fn is_mux(func_id: u16) -> bool {
     mux_info(func_id).is_some()
+}
+
+/// Names the value type a MUX opcode selects between (`"I32"`, `"I64"`,
+/// `"F32"` or `"F64"`), or `None` if `func_id` is not a MUX opcode.
+///
+/// MUX has no single ID to put in the table -- the arity is encoded in the ID
+/// -- so a caller that renders built-in names pairs this with [`mux_info`]
+/// instead of [`name`].
+pub fn mux_type_name(func_id: u16) -> Option<&'static str> {
+    mux_info(func_id)?;
+    Some(if func_id >= MUX_F64_BASE {
+        "F64"
+    } else if func_id >= MUX_F32_BASE {
+        "F32"
+    } else if func_id >= MUX_I64_BASE {
+        "I64"
+    } else {
+        "I32"
+    })
 }
 
 /// Returns the number of IN arguments for a MUX opcode, or None if not a MUX opcode.
@@ -411,30 +474,64 @@ pub fn arg_count(func_id: u16) -> u16 {
 /// The non-panicking form of [`arg_count`], used by the bytecode
 /// verifier, which must report a malformed operand rather than abort.
 pub fn arg_count_opt(func_id: u16) -> Option<u16> {
-    Some(match func_id {
-        ABS_I32 | ABS_F32 | ABS_F64 | ABS_I64 | SQRT_F32 | SQRT_F64 | LN_F32 | LN_F64 | LOG_F32
-        | LOG_F64 | EXP_F32 | EXP_F64 | SIN_F32 | SIN_F64 | COS_F32 | COS_F64 | TAN_F32
-        | TAN_F64 | ASIN_F32 | ASIN_F64 | ACOS_F32 | ACOS_F64 | ATAN_F32 | ATAN_F64
-        | CONV_I32_TO_F32 | CONV_I32_TO_F64 | CONV_I64_TO_F32 | CONV_I64_TO_F64
-        | CONV_U32_TO_F32 | CONV_U32_TO_F64 | CONV_U64_TO_F32 | CONV_U64_TO_F64
-        | CONV_F32_TO_I32 | CONV_F32_TO_I64 | CONV_F64_TO_I32 | CONV_F64_TO_I64
-        | CONV_F32_TO_U32 | CONV_F32_TO_U64 | CONV_F64_TO_U32 | CONV_F64_TO_U64
-        | CONV_F32_TO_F64 | CONV_F64_TO_F32 | CONV_U32_TO_I64 | BCD_TO_INT_8 | BCD_TO_INT_16
-        | BCD_TO_INT_32 | BCD_TO_INT_64 | INT_TO_BCD_8 | INT_TO_BCD_16 | INT_TO_BCD_32
-        | INT_TO_BCD_64 | CONV_I32_TO_BOOL | CONV_I64_TO_BOOL | CONV_I32_TO_STR
-        | CONV_U32_TO_STR | CONV_STR_TO_I32 | CONV_F32_TO_STR | CONV_STR_TO_F32 | TRUNC_F64
-        | TRUNC_F32 => 1,
-        EXPT_I32 | EXPT_F32 | EXPT_F64 | EXPT_I64 | MIN_I32 | MIN_F32 | MIN_F64 | MIN_I64
-        | MIN_U32 | MIN_U64 | MAX_I32 | MAX_F32 | MAX_F64 | MAX_I64 | MAX_U32 | MAX_U64
-        | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64
-        | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 | ATAN2_F32 | ATAN2_F64 | CMP_STR | MOD_F64
-        | MOD_F32 => 2,
-        LIMIT_I32 | LIMIT_F32 | LIMIT_F64 | LIMIT_I64 | LIMIT_U32 | LIMIT_U64 | SEL_I32
-        | SEL_F32 | SEL_F64 | SEL_I64 => 3,
-        id if is_mux(id) => {
-            // MUX pops n IN values + 1 K selector
-            mux_info(id)? + 1
+    // MUX pops n IN values + 1 K selector, and its IDs are a range per type
+    // rather than one value, so they are not rows in the table.
+    declared_arg_count(func_id).or_else(|| Some(mux_info(func_id)? + 1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn name_when_declared_builtin_then_returns_its_name() {
+        assert_eq!(name(EXPT_I32), Some("EXPT_I32"));
+        // Named by virtue of being in the table, not by a second list: this
+        // one had no name in the container viewer before the table existed.
+        assert_eq!(name(CONV_F32_TO_F64), Some("CONV_F32_TO_F64"));
+    }
+
+    #[test]
+    fn name_when_id_is_not_a_builtin_then_returns_none() {
+        assert_eq!(name(0x00FF), None);
+    }
+
+    #[test]
+    fn name_when_mux_id_then_returns_none_because_mux_is_a_range() {
+        // MUX encodes its arity in the ID, so it has no single row to name.
+        assert_eq!(name(MUX_I32_BASE + 3), None);
+        assert_eq!(mux_type_name(MUX_I32_BASE + 3), Some("I32"));
+    }
+
+    #[test]
+    fn name_when_builtin_declared_then_arg_count_is_declared_too() {
+        // Both come from the same row, so no built-in can be nameless or
+        // unsized -- the two states that let a BUILTIN operand render as
+        // bare hex or panic the emitter.
+        for func_id in 0..=u16::MAX {
+            assert_eq!(
+                name(func_id).is_some(),
+                declared_arg_count(func_id).is_some(),
+                "builtin 0x{func_id:04X}"
+            );
         }
-        _ => return None,
-    })
+    }
+
+    #[test]
+    fn mux_type_name_when_each_base_then_names_its_type() {
+        assert_eq!(mux_type_name(MUX_I32_BASE + 2), Some("I32"));
+        assert_eq!(mux_type_name(MUX_I64_BASE + 2), Some("I64"));
+        assert_eq!(mux_type_name(MUX_F32_BASE + 2), Some("F32"));
+        assert_eq!(mux_type_name(MUX_F64_BASE + 2), Some("F64"));
+    }
+
+    #[test]
+    fn mux_type_name_when_not_a_mux_id_then_returns_none() {
+        assert_eq!(mux_type_name(EXPT_I32), None);
+    }
+
+    #[test]
+    fn arg_count_opt_when_mux_id_then_counts_inputs_plus_selector() {
+        assert_eq!(arg_count_opt(MUX_F64_BASE + 5), Some(6));
+    }
 }
