@@ -203,7 +203,3 @@ export const CLIENT_STATE_RUNNING = 2;
 | `src/test/functional/suite/extension.test.ts` | Add TwinCAT language detection tests |
 | `package.json` | Add `test:unit` script; add `c8` devDependency |
 | `justfile` | Add `check-invariants`, `test-unit` targets; update `ci` target |
-
-## Implementation Plan
-
-See [Implementation Plan: Extension Testing](../plans/extension-testing-impl.md) for the phased implementation steps.
