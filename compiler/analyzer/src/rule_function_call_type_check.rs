@@ -1493,8 +1493,10 @@ END_PROGRAM"
     /// on, and asserts the expected outcome; each row still runs as an
     /// individually-named test.
     #[rstest]
-    // Verified permissive against real TcXaeShell despite equal width -- see
-    // twincat-status.md, "Resolved: UDINT -> DWORD implicit conversion".
+    // UDINT -> DWORD is allowed even though the two are the same width, so it
+    // is a reinterpretation rather than a widening. Real TcXaeShell accepts it,
+    // which is why the rule is permissive here; ADR-0031 sets the cross-family
+    // policy but does not speak to the equal-width case.
     #[case::dword_target_assigned_udint_var_ok(
         "
 PROGRAM main

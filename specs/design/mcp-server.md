@@ -1,6 +1,4 @@
-**REQ-TOL-mcp-049** A task that declares no `INTERVAL` is freewheeling: it has no cycle rate of its own, so under simulated time there is nothing to advance the clock by. The `run` tool does not choose one on the caller's behalf — a scan time is a property of the hardware the program would run on, and a trace built on a rate the caller never chose reads as fact. A container with a freewheeling task therefore requires `freewheeling_interval_ms`; without it the run returns `ok: false` and a diagnostic naming the task and what to supply, before the VM starts. A supplied value must be finite, greater than zero, and no greater than 3,600,000 (one hour); a value outside that range is rejected the same way. The value applies only to tasks that declare no `INTERVAL` — a task that declares one always runs at the declared rate, and supplying `freewheeling_interval_ms` for a container with no freewheeling task changes nothing. The response always reports the cycle time the run executed at as `summary.interval_ms` — the declared `INTERVAL` or the supplied one, whichever applied — so that a trace is self-describing without the caller having to work out which it was. (The VM schedules a single task today; a container with several tasks at different rates would need this reported per task.) The `compile` tool reports such a task with `kind: "freewheeling"` (see REQ-TOL-mcp-032), which is how a caller knows the value is required.
-
-The debugger takes the same input but not the same rule: a launch that refuses to start is a poor answer to a missing setting, so it assumes a documented default and reports it on the debug console. See `specs/design/debugger-support.md`.# MCP Server Design
+# MCP Server Design
 
 ## Overview
 
@@ -56,7 +54,7 @@ The agent is the sole owner of project state. It holds the files (in its own con
 
 **REQ-STL-mcp-003** The server holds no per-client state across tool calls other than the process-level container cache (see Container Cache under Architecture). Two successive calls from the same MCP client that supply identical `sources` and `options` produce identical responses up to non-determinism in wall-clock fields such as log timestamps.
 
-**REQ-STL-mcp-004** File identity inside a single call is carried by the `name` field of each `sources` entry. Names must be valid UTF-8, non-empty, at most 256 bytes, and must not contain NUL, `/`, or `\`. Duplicate names within a single `sources` array are rejected with a diagnostic before any analysis runs. The server does not interpret names as filesystem paths and never touches the filesystem with them; they exist so that diagnostics can cite a file identifier the agent already recognizes in its own context.
+**REQ-STL-mcp-004** File identity inside a single call is carried by the `name` field of each `sources` entry. Names must be valid UTF-8, non-empty, at most 256 bytes, and consist only of printable ASCII (`0x20`-`0x7E`). The allowlist excludes NUL, tabs and control characters; it admits `/` and `\`, which are meaningless to the server -- a name is an opaque key, never a filesystem path. Duplicate names within a single `sources` array are rejected with a diagnostic before any analysis runs. The server does not interpret names as filesystem paths and never touches the filesystem with them; they exist so that diagnostics can cite a file identifier the agent already recognizes in its own context.
 
 **REQ-STL-mcp-005** Every tool response includes a top-level `ok: boolean` field. `ok` is `true` when the tool produced its primary result (for analysis tools, a diagnostics array with no `error`-severity entries; for `compile`, a non-null `container_id`; for `run`, a completed trace) and `false` when it did not. The `ok` field never replaces a tool's specific result fields; it exists as a single uniform success predicate so that agent code handling many tools can share one success check.
 
@@ -238,7 +236,7 @@ This tool lets an agent discover what flags exist without memorizing them and wi
 
 ### `explain_diagnostic`
 
-Returns the human-readable explanation for a compiler problem code (e.g. `P0001`). This is the same text published under `docs/compiler/problems/P####.rst` and is already maintained as part of the project.
+Returns the human-readable explanation for a compiler problem code (e.g. `P0001`). This is the same text published under `docs/reference/compiler/problems/P####.rst` and is already maintained as part of the project.
 
 The self-healing loop depends on this: without it, an agent sees `P0042` in a diagnostic and has no way to understand why the compiler flagged the code, leading to guessed or destructive fixes.
 
@@ -249,7 +247,7 @@ The self-healing loop depends on this: without it, an agent sees `P0042` in a di
 
 **REQ-TOL-mcp-071** The `explain_diagnostic` tool returns `ok: false`, `found: false`, and a populated `diagnostics` array when the code is unknown, rather than raising an MCP-level error.
 
-**REQ-TOL-mcp-072** The text returned by `explain_diagnostic` is embedded in the server binary at build time via `include_str!` from the same problem-code documentation published under `docs/compiler/problems/`. The tool handler performs no filesystem I/O.
+**REQ-TOL-mcp-072** The text returned by `explain_diagnostic` is embedded in the server binary at build time via `include_str!` from the same problem-code documentation published under `docs/reference/compiler/problems/`. The tool handler performs no filesystem I/O.
 
 **Output:**
 ```json
@@ -475,7 +473,7 @@ This enables the agent to verify logical correctness, not just syntactic validit
 - `container_id: string` — the handle returned by `compile` (preferred)
 - `container_base64: string` — inline `.iplc` bytes; exactly one of `container_id` and `container_base64` must be present
 - `duration_ms: number` — simulated time to run in milliseconds
-- `freewheeling_interval_ms: number` — optional; the cycle time to assume for tasks that declare no `INTERVAL`, defaulting to 100 ms. Ignored by containers whose tasks all declare an `INTERVAL`
+- `freewheeling_interval_ms: number` — the cycle time for tasks that declare no `INTERVAL`. Required when the container has such a task; there is no default (see REQ-TOL-mcp-049). Ignored by containers whose tasks all declare an `INTERVAL`
 - `variables: [string]` — list of fully-qualified variable names to include in the trace (see Variable Naming in Architecture). May be empty when combined with `trace_outputs: true`.
 - `trace_outputs: boolean` — optional (default `false`); when `true`, the server expands the trace set to include every externally observable variable in the container (same set as `project_io.outputs`), in addition to any explicit `variables`. The combined set is still subject to `max_variables_per_run`.
 - `stimuli: [Stimulus]` — optional time-ordered schedule of writes applied to externally-drivable variables; an empty or omitted schedule runs the program with declared initial values only
@@ -530,7 +528,7 @@ A `TraceOptions` object has these fields (all optional):
 
 **REQ-TOL-mcp-048** The `run` tool's response always includes a `summary` object with at least: `final_values` (a map of every variable in the effective trace set to its value at the last simulated instant, regardless of `trace.mode`), `completed_cycles` (a map from task name to the number of cycles that completed for that task), and `terminated_reason`. `summary` is populated even when the trace is empty because of `"final_only"` mode or because `"on_change"` never fired.
 
-**REQ-TOL-mcp-049** A task that declares no `INTERVAL` is freewheeling: it has no cycle rate of its own, so under simulated time there is nothing to advance the clock by. The `run` tool executes such a task at an assumed cycle time, taken from the optional `freewheeling_interval_ms` input and defaulting to 100 ms when it is omitted. A supplied value must be finite, greater than zero, and no greater than 3,600,000 (one hour); a value outside that range is rejected with a diagnostic before the VM starts. The assumption applies only to tasks that declare no `INTERVAL` — a task that declares one always runs at the declared rate, and supplying `freewheeling_interval_ms` for a container with no freewheeling task changes nothing. The response always reports the cycle time the run executed at as `summary.interval_ms` — the declared `INTERVAL` or the assumed one, whichever applied — so that a trace is self-describing without the caller having to work out which it was. (The VM schedules a single task today; a container with several tasks at different rates would need this reported per task.) The `compile` tool reports such a task with `kind: "freewheeling"` (see REQ-TOL-mcp-032), which is how a caller knows the assumption will be used.
+**REQ-TOL-mcp-049** A task that declares no `INTERVAL` is freewheeling: it has no cycle rate of its own, so under simulated time there is nothing to advance the clock by. The `run` tool does not choose one on the caller's behalf — a scan time is a property of the hardware the program would run on, and a trace built on a rate the caller never chose reads as fact. A container with a freewheeling task therefore requires `freewheeling_interval_ms`; without it the run returns `ok: false` and a diagnostic naming the task and what to supply, before the VM starts. A supplied value must be finite, greater than zero, and no greater than 3,600,000 (one hour); a value outside that range is rejected the same way. The value applies only to tasks that declare no `INTERVAL` — a task that declares one always runs at the declared rate, and supplying `freewheeling_interval_ms` for a container with no freewheeling task changes nothing. The response always reports the cycle time the run executed at as `summary.interval_ms` — the declared `INTERVAL` or the supplied one, whichever applied — so that a trace is self-describing without the caller having to work out which it was. (The VM schedules a single task today; a container with several tasks at different rates would need this reported per task.) The `compile` tool reports such a task with `kind: "freewheeling"` (see REQ-TOL-mcp-032), which is how a caller knows the value is required. The debugger takes the same input but not the same rule: a launch that refuses to start is a poor answer to a missing setting, so it assumes a documented default and reports it on the debug console. See `specs/design/debugger-support.md`.
 
 **Output:**
 ```json
@@ -664,9 +662,9 @@ Because the server holds no session state, the "unit of observation" is a single
 
 ### Diagnostic Mapping
 
-The existing `Diagnostic` type (from `ironplc-dsl`) carries file ID, source span (byte offsets), problem code, and message. The MCP server converts byte offsets to line/column numbers using the source text supplied in the same call, before serializing to JSON. This is the same conversion the LSP server already performs, and once both servers mature they should share a single implementation (see Future Work).
+The existing `Diagnostic` type (from `ironplc-dsl`) carries file ID, source span (byte offsets), problem code, and message. The MCP server serializes those byte offsets directly, as REQ-TOL-mcp-023 requires; it performs no line/column conversion. The caller holds the source text it supplied and can convert if it wants line and column.
 
-Line numbers in the serialized diagnostic are 1-indexed. Columns are 1-indexed and count Unicode scalar values — not bytes, not UTF-16 code units — so that a diagnostic's span is identical regardless of how the agent's MCP client encodes strings internally. A tab counts as one column; the server does not interpret tab stops. `end_line`/`end_col` refer to the character immediately after the last character of the span, so an empty span has `start == end`. These are the same semantics as REQ-TOL-mcp-023.
+This deliberately differs from the LSP server, which converts to 0-indexed UTF-16 columns for the editor protocol. An agent does not need editor coordinates, and byte offsets index the exact source text the caller just supplied, so they cannot disagree with it.
 
 ### Error Handling
 
@@ -728,4 +726,3 @@ These items are intentionally out of scope for this design. They are listed here
 - **Streaming traces.** Long `run` calls currently return the complete trace in a single response. A future revision may offer incremental trace delivery via MCP's streaming facilities, which would let the agent react to intermediate values without extending `duration_ms` conservatively.
 - **On-disk workspace management.** The server never touches disk in this design. An agent that wants to persist an edit writes it through its own filesystem tools. A future companion tool or MCP client helper could formalize the "write these sources back to a project directory" workflow, but it deliberately lives outside the MCP boundary — the server itself stays stateless and file-system-free.
 - **IEC 61131-3 Edition 3 dialect semantics.** The `dialect` preset exists but the precise set of Ed. 3 features supported by the MCP server should be documented once the compiler's Ed. 3 support is complete. A future revision of this doc should link directly to a compatibility matrix.
-- **LSP parity for the byte-offset-to-line-column conversion.** The LSP server already converts byte offsets to line/column diagnostics (see Diagnostic Mapping). The MCP server borrows that code; once both mature, they should share a single implementation so that a diagnostic seen in an editor and a diagnostic seen by an agent are byte-identical.

@@ -64,7 +64,10 @@ below to configure IronPLC with equivalent behavior:
           TIME := __SYSTEM_UP_TIME;
        END_FUNCTION
 
-#. Configure IronPLC to use the Codesys dialect. See :doc:`/explanation/enabling-dialects-and-features`
+#. Configure IronPLC to use the Codesys dialect, and additionally enable
+   ``--allow-system-uptime-global``. The Codesys dialect does not enable it on
+   its own, because ``__SYSTEM_UP_TIME`` is an IronPLC runtime convention
+   rather than a Codesys feature. See :doc:`/explanation/enabling-dialects-and-features`
    for how to configure the dialect.
 
 .. rubric:: RuSTy

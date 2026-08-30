@@ -30,7 +30,7 @@ This spec therefore commits to converting the VM to a **non-recursive (iterative
 - **Hosted (LSP, vm-cli, playground):** `Vec<Frame>` of length `header.max_call_depth`.
 - **`no_std` / Arduino-class:** `heapless::Vec<Frame, N>` or a fixed `[MaybeUninit<Frame>; N]` where `N` is a const upper bound chosen at firmware build time. A program whose `header.max_call_depth` exceeds the embedder's `N` is rejected at load with a clear error, the same way the operand stack and variable table already are.
 
-This preserves the no-heap, no-`alloc` execution profile that the existing VM already supports (see `2026-04-XX-no-std-vm-impl.md`). The debugger adds no new allocation requirement.
+This preserves the no-heap, no-`alloc` execution profile that the existing VM already supports (see [no-std-vm.md](no-std-vm.md)). The debugger adds no new allocation requirement.
 
 This is the largest change in the plan. It must land before any breakpoint, step, or pause feature can work; Phase 2 cannot be skipped or reduced. The alternative — a "scan-boundary-only" debugger — is explicitly rejected because it cannot offer breakpoints in the middle of a function body, which is the headline debugger feature.
 
@@ -1303,12 +1303,12 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 | `container` | `debug_section.rs` | Tag registry reconciled with the implemented code: Tag 4 = STRING_LAYOUT, Tag 6 = SOURCE_FILE, Tag 9 = ENUM_DEF. Tag 5 (FB_FIELD_NAME) is in development. No on-disk format change. |
 | `container` | `builder.rs` | Existing builder API; verify it accepts a fully populated `DebugSection`. |
 | `container` | `header.rs` | Write `debug_section_offset` and `debug_section_size` when debug section present; set flags bit 1 |
-| `codegen` | `emit.rs` | `set_current_span` per-statement (per `2026-04-07-debug-source-map-and-hook.md`); deduplicate consecutive identical spans |
+| `codegen` | `emit.rs` | `set_current_span` per-statement; deduplicate consecutive identical spans |
 | `codegen` | `compile.rs` | Build `LineOffsetTable` from source; collect `VarNameEntry` + `FuncNameEntry` during compilation; pass `DebugSection` to the container builder |
 | `codegen` | `optimize.rs` | `optimize_with_source_map` — remap line-map offsets through the optimizer's old→new offset table; "snap forward" entries for removed instructions; **invariant test** that every line-map offset lands on an instruction boundary in the optimized stream |
 | `plc2x` | `disassemble.rs` | Render line maps and variable names alongside disassembly |
 
-**Tests** (in addition to the optimizer property tests in `2026-04-07-debug-source-map-and-hook.md`):
+**Tests** (in addition to the optimizer property tests required by the line-map contract below):
 - Codegen: compile, verify line-map entries map to expected lines and columns
 - Codegen: verify `VarNameEntry` carries the right `function_id`, `var_section`, `iec_type_tag`, and `type_name`
 - Codegen: verify `FuncNameEntry` for the program's entry function
@@ -1462,7 +1462,7 @@ These enhancements build on the v1 debugger. Several were dropped from v1 (see �
 
 The bytecode optimizer (`compiler/codegen/src/optimize.rs`) removes instructions and shifts jump targets. Source-level debugging requires a stable contract between the optimizer and debug info:
 
-1. **Line map remapping is mandatory.** Any pass that changes the bytecode must rewrite the line map through its old→new offset table. `optimize_with_source_map` (per `2026-04-07-debug-source-map-and-hook.md`) is the only legal way to invoke optimization when debug info is enabled.
+1. **Line map remapping is mandatory.** Any pass that changes the bytecode must rewrite the line map through its old→new offset table. `optimize_with_source_map` is the only legal way to invoke optimization when debug info is enabled.
 2. **Snap-forward for removed instructions.** When the offset that an entry references is removed, the entry's offset advances to the *next surviving instruction*; consecutive duplicate entries collapse.
 3. **Instruction-boundary invariant.** Every line-map offset in the optimized stream must land on the first byte of an instruction. A property test in `compiler/codegen/tests/` enforces this on a corpus of programs.
 4. **Breakpoint resolution is post-optimization.** The DAP server resolves source lines against the line map *as emitted* (already remapped). It then reports the resolved line back to the client in the `Breakpoint` response so the editor highlights the actual stop line. Breakpoints requested on lines whose statements were entirely optimized away resolve to the next surviving line in the same function; if no such line exists, the breakpoint is reported `verified: false` with `message: "line eliminated by optimizer"`.
