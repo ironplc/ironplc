@@ -1,0 +1,864 @@
+//! End-to-end tests for a *top-level* `ARRAY OF <struct>` variable — an array
+//! whose element type is a user-defined structure and which is not reached
+//! through an enclosing structure. See issue #1383 and
+//! `specs/plans/2026-08-22-top-level-array-of-struct.md`.
+//!
+//! Field access through an array-of-struct *field* (`h.items[i].a`) is covered
+//! by `end_to_end_struct.rs`; these tests own the case where the variable
+//! itself is the array.
+//!
+//! Assertion indices are variable-table slots, assigned in declaration order
+//! starting at 0. Each test notes its mapping.
+
+use crate::common::try_parse_and_compile;
+use ironplc_parser::options::CompilerOptions;
+
+// --- Nominal read and write ---
+
+// arr 0, result 1.
+e2e_i32!(
+    end_to_end_when_top_level_array_of_struct_written_with_literal_index_then_reads_back,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    result : DINT;
+  END_VAR
+  arr[2].b := 42;
+  result := arr[2].b;
+END_PROGRAM
+",
+    &[(1, 42)],
+);
+
+// The reported repro: a BOOL field written through a literal index. Exercises
+// the narrow-width truncation path on store.
+//
+// Arr 0, result 1.
+e2e_i32!(
+    end_to_end_when_top_level_array_of_struct_bool_field_written_then_reads_back,
+    "
+TYPE Item : STRUCT
+  Flag : BOOL;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    Arr : ARRAY[1..6] OF Item;
+    result : DINT;
+  END_VAR
+  Arr[1].Flag := TRUE;
+  result := BOOL_TO_DINT(Arr[1].Flag);
+END_PROGRAM
+",
+    &[(1, 1)],
+);
+
+// Writing one element must not disturb its neighbours -- this is what a wrong
+// element stride would break.
+//
+// arr 0, r1 1, r2 2, r3 3.
+e2e_i32!(
+    end_to_end_when_top_level_array_of_struct_elements_written_then_each_element_distinct,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    r1 : DINT;
+    r2 : DINT;
+    r3 : DINT;
+  END_VAR
+  arr[1].a := 11;
+  arr[2].a := 22;
+  arr[3].a := 33;
+  r1 := arr[1].a;
+  r2 := arr[2].a;
+  r3 := arr[3].a;
+END_PROGRAM
+",
+    &[(1, 11), (2, 22), (3, 33)],
+);
+
+// Distinct fields within one element must not alias -- this is what a wrong
+// leaf offset would break.
+//
+// arr 0, ra 1, rb 2.
+e2e_i32!(
+    end_to_end_when_top_level_array_of_struct_sibling_fields_written_then_do_not_alias,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    ra : DINT;
+    rb : DINT;
+  END_VAR
+  arr[2].a := 7;
+  arr[2].b := 9;
+  ra := arr[2].a;
+  rb := arr[2].b;
+END_PROGRAM
+",
+    &[(1, 7), (2, 9)],
+);
+
+// Variable subscript exercises the runtime flat-index path rather than the
+// compile-time constant-folded one.
+//
+// arr 0, i 1, result 2.
+e2e_i32!(
+    end_to_end_when_top_level_array_of_struct_indexed_by_variable_then_correct_element,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    i : INT;
+    result : DINT;
+  END_VAR
+  i := 3;
+  arr[i].b := 55;
+  result := arr[i].b;
+END_PROGRAM
+",
+    &[(2, 55)],
+);
+
+// A FOR loop over the array, the shape the issue's users actually write.
+//
+// arr 0, i 1, total 2. total = 1 + 2 + 3.
+e2e_i32!(
+    end_to_end_when_top_level_array_of_struct_written_in_for_loop_then_all_elements_set,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    i : INT;
+    total : DINT;
+  END_VAR
+  FOR i := 1 TO 3 DO
+    arr[i].a := i;
+  END_FOR;
+  total := arr[1].a + arr[2].a + arr[3].a;
+END_PROGRAM
+",
+    &[(2, 6)],
+);
+
+// Several element reads combined in one expression.
+//
+// arr 0, total 1. total = 1 + 2 + 3.
+e2e_i32!(
+    end_to_end_when_top_level_array_of_struct_elements_summed_then_correct_total,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    total : DINT;
+  END_VAR
+  arr[1].a := 1;
+  arr[2].a := 2;
+  arr[3].a := 3;
+  total := arr[1].a + arr[2].a + arr[3].a;
+END_PROGRAM
+",
+    &[(1, 6)],
+);
+
+// Unwritten elements read as zero: the data region starts zeroed and nothing
+// else is allowed to land on top of the array.
+//
+// arr 0, r1 1, r2 2.
+e2e_i32!(
+    end_to_end_when_top_level_array_of_struct_not_written_then_fields_read_zero,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    r1 : DINT;
+    r2 : DINT;
+  END_VAR
+  arr[1].a := 5;
+  r1 := arr[2].a;
+  r2 := arr[3].b;
+END_PROGRAM
+",
+    &[(1, 0), (2, 0)],
+);
+
+// --- Bounds shapes ---
+
+// A zero lower bound: the subtracted lower bound is 0 so the emitted index is
+// the subscript itself.
+//
+// arr 0, r1 1, r2 2.
+e2e_i32!(
+    end_to_end_when_top_level_array_of_struct_zero_based_then_correct_element,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[0..2] OF Item;
+    r1 : DINT;
+    r2 : DINT;
+  END_VAR
+  arr[0].a := 4;
+  arr[2].a := 6;
+  r1 := arr[0].a;
+  r2 := arr[2].a;
+END_PROGRAM
+",
+    &[(1, 4), (2, 6)],
+);
+
+// A negative lower bound must be subtracted, not ignored. The constant and
+// variable subscript paths both have to do it, so this uses one of each.
+//
+// arr 0, i 1, r1 2, r2 3.
+e2e_i32!(
+    end_to_end_when_top_level_array_of_struct_negative_lower_bound_then_correct_element,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[-1..1] OF Item;
+    i : INT;
+    r1 : DINT;
+    r2 : DINT;
+  END_VAR
+  i := 1;
+  arr[-1].a := 8;
+  arr[i].a := 9;
+  r1 := arr[-1].a;
+  r2 := arr[1].a;
+END_PROGRAM
+",
+    &[(2, 8), (3, 9)],
+);
+
+// Two-dimensional: both strides must be scaled by the element slot count.
+//
+// arr 0, r1 1, r2 2.
+e2e_i32!(
+    end_to_end_when_two_dimensional_top_level_array_of_struct_then_correct_element,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..2, 1..3] OF Item;
+    r1 : DINT;
+    r2 : DINT;
+  END_VAR
+  arr[1,1].a := 1;
+  arr[2,3].a := 6;
+  r1 := arr[1,1].a;
+  r2 := arr[2,3].a;
+END_PROGRAM
+",
+    &[(1, 1), (2, 6)],
+);
+
+// The descriptor spans `total_elements * element_slots`, so an out-of-range
+// subscript still trips the VM's array bounds check rather than reading a
+// neighbouring variable's region.
+#[test]
+fn end_to_end_when_top_level_array_of_struct_index_out_of_range_then_traps() {
+    let source = "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    i : INT;
+    r : DINT;
+  END_VAR
+  i := 9;
+  r := arr[i].a;
+END_PROGRAM
+";
+    let result = crate::common::parse_and_try_run(source, &CompilerOptions::default());
+    assert!(
+        result.is_err(),
+        "expected a trap for an out-of-bounds element"
+    );
+}
+
+// --- Element shapes ---
+
+// A structure with a nested structure: the element stride is the *total* slot
+// count (3 slots per Item), so a wrong count here shifts every element after
+// the first.
+//
+// arr 0, r1 1, r2 2.
+e2e_i32!(
+    end_to_end_when_top_level_array_of_nested_struct_then_element_stride_correct,
+    "
+TYPE Inner : STRUCT
+  x : DINT;
+  y : DINT;
+END_STRUCT;
+END_TYPE
+
+TYPE Item : STRUCT
+  lead : DINT;
+  inner : Inner;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    r1 : DINT;
+    r2 : DINT;
+  END_VAR
+  arr[1].lead := 1;
+  arr[2].lead := 2;
+  r1 := arr[1].lead;
+  r2 := arr[2].lead;
+END_PROGRAM
+",
+    &[(1, 1), (2, 2)],
+);
+
+// A LINT field is a 64-bit leaf, so the load and store must be emitted at W64
+// rather than the default width. 4294967296 does not fit in 32 bits.
+//
+// arr 0, result 1.
+e2e_i64!(
+    end_to_end_when_top_level_array_of_struct_lint_field_then_full_width_preserved,
+    "
+TYPE Item : STRUCT
+  big : LINT;
+  small : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..2] OF Item;
+    result : LINT;
+  END_VAR
+  arr[2].big := 4294967296;
+  result := arr[2].big;
+END_PROGRAM
+",
+    &[(1, 4294967296)],
+);
+
+// --- Array field inside the element ---
+//
+// `a[i].values[j]` needs both indices in one flat-index computation: the
+// element index scaled by the element's slot count, then the field's own
+// index at stride 1. The field's offset within the element stays the
+// compile-time part.
+
+// a 0, r1 1, r2 2, r3 3.
+e2e_i32!(
+    end_to_end_when_array_of_struct_element_has_array_field_then_reads_back,
+    "
+TYPE Item : STRUCT
+  values : ARRAY[1..4] OF DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    a : ARRAY[1..3] OF Item;
+    r1 : DINT;
+    r2 : DINT;
+    r3 : DINT;
+  END_VAR
+  a[1].values[1] := 11;
+  a[1].values[4] := 14;
+  a[3].values[2] := 32;
+  r1 := a[1].values[1];
+  r2 := a[1].values[4];
+  r3 := a[3].values[2];
+END_PROGRAM
+",
+    &[(1, 11), (2, 14), (3, 32)],
+);
+
+// Both subscripts variable, so the whole index is computed at runtime rather
+// than folded to a constant.
+//
+// a 0, i 1, j 2, r 3.
+e2e_i32!(
+    end_to_end_when_array_of_struct_array_field_indexed_by_variables_then_correct_element,
+    "
+TYPE Item : STRUCT
+  values : ARRAY[1..4] OF DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    a : ARRAY[1..3] OF Item;
+    i : INT;
+    j : INT;
+    r : DINT;
+  END_VAR
+  i := 2;
+  j := 3;
+  a[i].values[j] := 55;
+  r := a[i].values[j];
+END_PROGRAM
+",
+    &[(3, 55)],
+);
+
+// A scalar ahead of the array field, so the field's own offset has to be added
+// on top of the element stride. A wrong offset would alias `lead` with
+// `values[1]`.
+//
+// a 0, rl 1, rv 2.
+e2e_i32!(
+    end_to_end_when_array_of_struct_array_field_preceded_by_scalar_then_no_alias,
+    "
+TYPE Item : STRUCT
+  lead : DINT;
+  values : ARRAY[1..3] OF DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    a : ARRAY[1..3] OF Item;
+    rl : DINT;
+    rv : DINT;
+  END_VAR
+  a[2].lead := 9;
+  a[2].values[1] := 21;
+  rl := a[2].lead;
+  rv := a[2].values[1];
+END_PROGRAM
+",
+    &[(1, 9), (2, 21)],
+);
+
+// Nested FOR loops over both indices, the shape that would expose a wrong
+// stride on either axis. a[3].values[2] is 3 * 10 + 2.
+//
+// a 0, i 1, j 2, r 3.
+e2e_i32!(
+    end_to_end_when_array_of_struct_array_field_written_in_nested_loops_then_all_set,
+    "
+TYPE Item : STRUCT
+  values : ARRAY[1..2] OF DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    a : ARRAY[1..3] OF Item;
+    i : INT;
+    j : INT;
+    r : DINT;
+  END_VAR
+  FOR i := 1 TO 3 DO
+    FOR j := 1 TO 2 DO
+      a[i].values[j] := i * 10 + j;
+    END_FOR;
+  END_FOR;
+  r := a[3].values[2];
+END_PROGRAM
+",
+    &[(3, 32)],
+);
+
+// The same shape reached through a struct field rather than a top-level
+// variable: `h.items[i].values[j]`.
+//
+// h 0, r 1.
+e2e_i32!(
+    end_to_end_when_struct_field_array_of_struct_has_array_field_then_reads_back,
+    "
+TYPE Item : STRUCT
+  values : ARRAY[1..3] OF DINT;
+END_STRUCT;
+END_TYPE
+
+TYPE Holder : STRUCT
+  items : ARRAY[1..2] OF Item;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    h : Holder;
+    r : DINT;
+  END_VAR
+  h.items[2].values[3] := 77;
+  r := h.items[2].values[3];
+END_PROGRAM
+",
+    &[(1, 77)],
+);
+
+// --- Named array type ---
+
+// `arr : Items` where `Items` is a named ARRAY OF <struct> type, rather than
+// an inline array specification on the declaration.
+//
+// arr 0, result 1.
+e2e_i32!(
+    end_to_end_when_top_level_named_array_of_struct_type_then_reads_back,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+TYPE Items : ARRAY[1..3] OF Item; END_TYPE
+
+PROGRAM main
+  VAR
+    arr : Items;
+    result : DINT;
+  END_VAR
+  arr[3].a := 21;
+  result := arr[3].a;
+END_PROGRAM
+",
+    &[(1, 21)],
+);
+
+// --- Neighbouring variables ---
+
+// A second array-of-struct and a plain array declared alongside must each get
+// their own data region run.
+//
+// first 0, second 1, plain 2, r1 3, r2 4, r3 5.
+e2e_i32!(
+    end_to_end_when_two_top_level_arrays_of_struct_then_regions_do_not_overlap,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    first : ARRAY[1..2] OF Item;
+    second : ARRAY[1..2] OF Item;
+    plain : ARRAY[1..2] OF DINT;
+    r1 : DINT;
+    r2 : DINT;
+    r3 : DINT;
+  END_VAR
+  first[1].a := 1;
+  second[1].a := 2;
+  plain[1] := 3;
+  r1 := first[1].a;
+  r2 := second[1].a;
+  r3 := plain[1];
+END_PROGRAM
+",
+    &[(3, 1), (4, 2), (5, 3)],
+);
+
+// --- Global declaration ---
+
+// A global array-of-struct is registered before program locals and aliased
+// into the program through VAR_EXTERNAL.
+//
+// devices 0 (global), result 1. result = 100 + 200.
+e2e_i32!(
+    end_to_end_when_global_array_of_struct_then_external_can_read_and_write,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+CONFIGURATION config
+  VAR_GLOBAL
+    devices : ARRAY[1..3] OF Item;
+  END_VAR
+  RESOURCE resource1 ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    devices : ARRAY[1..3] OF Item;
+  END_VAR
+  VAR
+    result : DINT;
+  END_VAR
+  devices[1].a := 100;
+  devices[3].b := 200;
+  result := devices[1].a + devices[3].b;
+END_PROGRAM
+",
+    &[(1, 300)],
+);
+
+// A function body sees the global through the re-inserted global metadata;
+// without it the array resolves as a plain scalar and the field access fails.
+// Functions reach globals by name (VAR_EXTERNAL is a POU-level construct the
+// parser accepts only on programs and function blocks).
+//
+// devices 0 (global), result 1.
+e2e_i32!(
+    end_to_end_when_function_reads_global_array_of_struct_then_correct_value,
+    "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+CONFIGURATION config
+  VAR_GLOBAL
+    devices : ARRAY[1..3] OF Item;
+  END_VAR
+  RESOURCE resource1 ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+FUNCTION second_a : DINT
+  second_a := devices[2].a;
+END_FUNCTION
+
+PROGRAM main
+  VAR_EXTERNAL
+    devices : ARRAY[1..3] OF Item;
+  END_VAR
+  VAR
+    result : DINT;
+  END_VAR
+  devices[2].a := 17;
+  result := second_a();
+END_PROGRAM
+",
+    &[(1, 17)],
+);
+
+// --- Rejected shapes ---
+//
+// Each of these is accepted by `ironplcc check` and rejected by codegen, so
+// the assertion is on the compile result rather than on run values.
+
+/// Compiles `source` with default options and asserts codegen rejects it
+/// with the not-implemented problem code (P9999) -- a capability we intend to
+/// support but have not built yet.
+fn assert_codegen_rejects(source: &str, what: &str) {
+    assert_codegen_rejects_with(source, what, "P9999");
+}
+
+/// Compiles `source` with default options and asserts codegen rejects it with
+/// `expected_code`.
+fn assert_codegen_rejects_with(source: &str, what: &str, expected_code: &str) {
+    let result = try_parse_and_compile(source, &CompilerOptions::default());
+    assert!(result.is_err(), "expected compilation to fail for {}", what);
+    assert_eq!(result.unwrap_err().code, expected_code, "for {}", what);
+}
+
+// A fixed limit of the bytecode format, not a missing feature, so it reports
+// P9997 (NotSupported) rather than P9999 (NotImplemented) -- P9999 promises
+// "not yet", and this limit is not going to be lifted by a later release.
+//
+// This is the example in docs/reference/compiler/problems/P9997.rst; keep the
+// two in step.
+#[test]
+fn compile_when_top_level_array_of_struct_exceeds_slot_limit_then_not_supported() {
+    assert_codegen_rejects_with(
+        "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    readings : ARRAY[1..40000] OF Item;
+  END_VAR
+END_PROGRAM
+",
+        "an array of structures over the slot limit",
+        "P9997",
+    );
+}
+
+#[test]
+fn compile_when_top_level_array_of_struct_element_assigned_whole_then_not_implemented() {
+    assert_codegen_rejects(
+        "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    one : Item;
+  END_VAR
+  arr[1] := one;
+END_PROGRAM
+",
+        "a whole-element assignment",
+    );
+}
+
+#[test]
+fn compile_when_top_level_array_of_struct_has_initial_values_then_not_implemented() {
+    // Element fields are left zeroed, so an explicit initializer must be
+    // rejected rather than silently dropped.
+    assert_codegen_rejects(
+        "
+TYPE Item : STRUCT
+  a : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..2] OF Item := [1, 2];
+    result : DINT;
+  END_VAR
+  result := arr[1].a;
+END_PROGRAM
+",
+        "an array-of-struct with initial values",
+    );
+}
+
+#[test]
+fn compile_when_top_level_array_of_struct_string_field_read_then_not_implemented() {
+    assert_codegen_rejects(
+        "
+TYPE Item : STRUCT
+  name : STRING[8];
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    result : STRING[8];
+  END_VAR
+  result := arr[1].name;
+END_PROGRAM
+",
+        "a STRING field of an element",
+    );
+}
+
+#[test]
+fn compile_when_top_level_array_of_struct_composite_field_read_then_not_implemented() {
+    assert_codegen_rejects(
+        "
+TYPE Inner : STRUCT
+  x : DINT;
+END_STRUCT;
+END_TYPE
+
+TYPE Item : STRUCT
+  inner : Inner;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    result : DINT;
+  END_VAR
+  result := arr[1].inner.x;
+END_PROGRAM
+",
+        "a composite field of an element",
+    );
+}
+
+#[test]
+fn compile_when_top_level_array_of_struct_unknown_field_then_not_implemented() {
+    assert_codegen_rejects(
+        "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    result : DINT;
+  END_VAR
+  result := arr[1].missing;
+END_PROGRAM
+",
+        "an unknown field of an element",
+    );
+}
