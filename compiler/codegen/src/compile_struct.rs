@@ -381,8 +381,15 @@ fn emit_default_for_field(
 
 /// Compiles an explicit initial value for a structure field.
 ///
-/// Handles constant expressions (integer/real/boolean literals) from
-/// `StructInitialValueAssignmentKind`. Returns an error for unsupported kinds.
+/// Handles constant expressions (integer/real/boolean literals) and
+/// enumerated values from `StructInitialValueAssignmentKind`.
+///
+/// Note the `Array`/`Structure` arm returns `Ok(())` without pushing a value.
+/// For a well-typed program that arm is unreachable -- `op_type` is `None` for
+/// a struct- or array-typed field, so those go through the recursion in
+/// `initialize_struct_fields` instead. It is reached only when the initializer
+/// does not match the field's type, where pushing nothing leaves the caller's
+/// unconditional store unbalanced.
 fn compile_struct_field_init(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -402,7 +409,9 @@ fn compile_struct_field_init(
         }
         StructInitialValueAssignmentKind::Array(_)
         | StructInitialValueAssignmentKind::Structure(_) => {
-            // Nested structures and arrays in struct init are not yet supported.
+            // Unreachable for a well-typed program: see the note on this
+            // function. Nested structures are handled by the recursion in
+            // `initialize_struct_fields`, not here.
             Ok(())
         }
         StructInitialValueAssignmentKind::Expression(expr) => {
