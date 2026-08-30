@@ -767,6 +767,16 @@ parser! {
     // expression like a dereference-then-member-access chain falls through
     // to the `expression()` alternative instead of matching only its first
     // identifier and leaving `^.Delta` unconsumed.
+    //
+    // The lookahead cannot separate a bare identifier that names a variable
+    // from one that names an enumeration value: both are the same single
+    // token in the same position, and both satisfy the lookahead, so
+    // `enumerated_value()` always wins and `(x := g)` parses as an
+    // enumeration value even when `g` is a variable. That is not a hole this
+    // grammar can close -- no type or variable declaration is in scope yet.
+    // `xform_resolve_late_bound_expr_kind` reclassifies the ones that name a
+    // variable once declarations are known, which is also what makes them
+    // reach the `--allow-struct-initializer-expressions` gate.
     rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)} / ex:expression() { StructInitialValueAssignmentKind::Expression(Expr::new(ex)) }) {
       StructureElementInit {
         name,

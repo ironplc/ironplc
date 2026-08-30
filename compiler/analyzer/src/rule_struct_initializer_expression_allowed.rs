@@ -138,4 +138,73 @@ VAR
 END_VAR
 END_PROGRAM"
     );
+
+    // A bare identifier naming a variable in scope is a runtime value, and
+    // the gate must see it. The parser cannot tell it from an enumeration
+    // value -- `xform_resolve_late_bound_expr_kind` is what decides, once
+    // declarations are known.
+    const BARE_VARIABLE_SOURCE: &str = "
+TYPE MyStruct :
+STRUCT
+    x : INT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+VAR
+    g : INT;
+    s : MyStruct := (x := g);
+END_VAR
+END_PROGRAM";
+
+    rule_err1!(
+        apply_when_struct_init_is_bare_variable_and_flag_disabled_then_error,
+        BARE_VARIABLE_SOURCE,
+        Problem::StructInitializerExpressionNotAllowed
+    );
+
+    rule_ok_with!(
+        apply_when_struct_init_is_bare_variable_and_flag_enabled_then_ok,
+        CompilerOptions {
+            allow_struct_initializer_expressions: true,
+            ..CompilerOptions::default()
+        },
+        BARE_VARIABLE_SOURCE
+    );
+
+    // A bare identifier naming an enumeration value is standard syntax and
+    // must never be flagged -- the reclassification keys on whether the name
+    // resolves to a variable, not on its shape.
+    rule_ok!(
+        apply_when_struct_init_is_enumerated_value_then_never_flagged,
+        "
+TYPE Color : (RED, GREEN); END_TYPE
+
+TYPE MyStruct :
+STRUCT
+    c : Color;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+VAR
+    s : MyStruct := (c := RED);
+END_VAR
+END_PROGRAM"
+    );
+
+    // A function block instance's member initializer goes through the same
+    // gate: the declaration is rewritten to an FB instance before this rule
+    // runs, and the rule must still reach the member values.
+    rule_err1!(
+        apply_when_fb_instance_member_init_is_expression_then_error,
+        "
+FUNCTION_BLOCK FB_Example
+VAR
+    delta : TIME;
+    tonDelta : TON := (PT := delta);
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::StructInitializerExpressionNotAllowed
+    );
 }
