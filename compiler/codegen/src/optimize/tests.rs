@@ -106,7 +106,7 @@ fn str_init(data_offset: u32, max_length: u16) -> Vec<u8> {
 
 #[test]
 fn optimize_when_empty_bytecode_then_returns_empty() {
-    let (result, _) = optimize(&[], &[]);
+    let (result, _) = optimize(&[], &mut vec![]);
     assert!(result.is_empty());
 }
 
@@ -118,8 +118,8 @@ fn optimize_when_no_patterns_then_bytecode_unchanged() {
     bytecode.push(opcode::ADD_I32);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::I32(10), PoolConstant::I32(20)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::I32(10), PoolConstant::I32(20)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, bytecode);
 }
 
@@ -132,7 +132,7 @@ fn optimize_when_load_store_same_var_i32_then_removes_both() {
     bytecode.extend_from_slice(&store_var_i32(5));
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -143,7 +143,7 @@ fn optimize_when_load_store_same_var_i64_then_removes_both() {
     bytecode.extend_from_slice(&store_var_i64(3));
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -154,7 +154,7 @@ fn optimize_when_load_store_different_var_then_no_change() {
     bytecode.extend_from_slice(&store_var_i32(6));
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
     assert_eq!(result, bytecode);
 }
 
@@ -165,7 +165,7 @@ fn optimize_when_load_store_different_type_then_no_change() {
     bytecode.extend_from_slice(&store_var_i64(5));
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
     assert_eq!(result, bytecode);
 }
 
@@ -178,8 +178,8 @@ fn optimize_when_load_const_zero_add_i32_then_removes_both() {
     bytecode.push(opcode::ADD_I32);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::I32(0)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::I32(0)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -190,8 +190,8 @@ fn optimize_when_load_const_zero_sub_i32_then_removes_both() {
     bytecode.push(opcode::SUB_I32);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::I32(0)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::I32(0)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -202,8 +202,8 @@ fn optimize_when_load_const_zero_add_i64_then_removes_both() {
     bytecode.push(opcode::ADD_I64);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::I64(0)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::I64(0)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -214,8 +214,8 @@ fn optimize_when_load_const_zero_add_f32_then_removes_both() {
     bytecode.push(opcode::ADD_F32);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::F32(0.0)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::F32(0.0)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -226,8 +226,8 @@ fn optimize_when_load_const_zero_add_f64_then_removes_both() {
     bytecode.push(opcode::ADD_F64);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::F64(0.0)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::F64(0.0)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -238,8 +238,8 @@ fn optimize_when_load_const_nonzero_add_i32_then_no_change() {
     bytecode.push(opcode::ADD_I32);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::I32(42)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::I32(42)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, bytecode);
 }
 
@@ -252,8 +252,8 @@ fn optimize_when_load_const_one_mul_i32_then_removes_both() {
     bytecode.push(opcode::MUL_I32);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::I32(1)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::I32(1)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -264,8 +264,8 @@ fn optimize_when_load_const_one_div_i32_then_removes_both() {
     bytecode.push(opcode::DIV_I32);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::I32(1)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::I32(1)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -276,8 +276,8 @@ fn optimize_when_load_const_one_mul_i64_then_removes_both() {
     bytecode.push(opcode::MUL_I64);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::I64(1)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::I64(1)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -288,8 +288,8 @@ fn optimize_when_load_const_one_mul_f32_then_removes_both() {
     bytecode.push(opcode::MUL_F32);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::F32(1.0)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::F32(1.0)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -300,8 +300,8 @@ fn optimize_when_load_const_one_mul_f64_then_removes_both() {
     bytecode.push(opcode::MUL_F64);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::F64(1.0)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::F64(1.0)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -312,8 +312,8 @@ fn optimize_when_load_const_nonone_mul_i32_then_no_change() {
     bytecode.push(opcode::MUL_I32);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::I32(5)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::I32(5)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, bytecode);
 }
 
@@ -329,7 +329,7 @@ fn optimize_when_jump_target_then_skips_optimization() {
     bytecode.extend_from_slice(&store_var_i32(5));
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
     assert_eq!(result, bytecode);
 }
 
@@ -348,7 +348,7 @@ fn optimize_when_jump_over_removed_instructions_then_adjusts_offset() {
     bytecode.push(opcode::LOAD_TRUE);
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
 
     // After removing 6 bytes, new layout:
     //   [0] JMP +1
@@ -381,7 +381,7 @@ fn optimize_when_cmp_br_over_removed_instructions_then_adjusts_offset() {
     bytecode.push(opcode::LOAD_TRUE);
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
 
     // After removing 6 bytes, the branch must still land on RET_VOID:
     //   [0] CMP_BR_I32 +1
@@ -413,7 +413,7 @@ fn optimize_when_cmp_br_targets_removable_pair_then_pair_is_kept() {
     bytecode.extend_from_slice(&store_var_i32(5));
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
 
     assert_eq!(result, bytecode, "branch target must not be removed");
 }
@@ -436,7 +436,7 @@ fn optimize_when_cmp_br_branches_backward_then_adjusts_offset() {
     bytecode.extend_from_slice(&cmp_br_i32(1, 2, -15));
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
 
     //   [0] LOAD_TRUE
     //   [1] CMP_BR_I32 -9
@@ -458,8 +458,8 @@ fn optimize_when_multiple_patterns_then_removes_all() {
     bytecode.push(opcode::ADD_I32);
     bytecode.push(opcode::RET_VOID);
 
-    let constants = vec![PoolConstant::I32(0)];
-    let (result, _) = optimize(&bytecode, &constants);
+    let mut constants = vec![PoolConstant::I32(0)];
+    let (result, _) = optimize(&bytecode, &mut constants);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
@@ -477,7 +477,7 @@ fn optimize_when_str_load_var_before_jump_then_no_panic() {
     bytecode.push(opcode::POP);
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
     assert_eq!(result, bytecode);
 }
 
@@ -492,7 +492,7 @@ fn optimize_when_find_str_before_jump_then_no_panic() {
     bytecode.push(opcode::POP);
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
     assert_eq!(result, bytecode);
 }
 
@@ -506,7 +506,7 @@ fn optimize_when_str_init_before_jump_then_no_panic() {
     bytecode.push(opcode::POP);
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
     assert_eq!(result, bytecode);
 }
 
@@ -519,7 +519,7 @@ fn optimize_when_load_const_out_of_bounds_add_i32_then_keeps_instructions() {
     bytecode.push(opcode::ADD_I32);
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
     assert_eq!(result, bytecode);
 }
 
@@ -531,7 +531,7 @@ fn optimize_when_load_const_out_of_bounds_mul_i32_then_keeps_instructions() {
     bytecode.push(opcode::MUL_I32);
     bytecode.push(opcode::RET_VOID);
 
-    let (result, _) = optimize(&bytecode, &[]);
+    let (result, _) = optimize(&bytecode, &mut vec![]);
     assert_eq!(result, bytecode);
 }
 
@@ -564,7 +564,7 @@ fn two_pass_bytecode() -> Vec<u8> {
 
 #[test]
 fn optimize_when_jump_spans_removals_from_two_passes_then_adjusts_offset() {
-    let (result, _) = optimize(&two_pass_bytecode(), &[PoolConstant::I32(0)]);
+    let (result, _) = optimize(&two_pass_bytecode(), &mut vec![PoolConstant::I32(0)]);
 
     // Ten bytes removed across the two passes, so the target moves from
     // 14 to 4:
@@ -582,7 +582,7 @@ fn optimize_when_jump_spans_removals_from_two_passes_then_adjusts_offset() {
 #[test]
 fn remap_line_map_when_entry_removed_by_first_pass_then_snaps_past_second_pass() {
     let bytecode = two_pass_bytecode();
-    let (result, offset_map) = optimize(&bytecode, &[PoolConstant::I32(0)]);
+    let (result, offset_map) = optimize(&bytecode, &mut vec![PoolConstant::I32(0)]);
 
     // Offset 3 is the LOAD_VAR the first pass removes; offset 14 is the
     // RET_VOID that survives both passes.
@@ -607,7 +607,7 @@ fn remap_line_map_when_entry_is_not_an_instruction_boundary_then_internal_error(
     // is a compiler defect rather than anything the program being compiled
     // can cause, so it is reported instead of dropped.
     let bytecode = two_pass_bytecode();
-    let (result, offset_map) = optimize(&bytecode, &[PoolConstant::I32(0)]);
+    let (result, offset_map) = optimize(&bytecode, &mut vec![PoolConstant::I32(0)]);
 
     let raw = vec![line_entry(4, 10)];
     let diagnostic = remap_line_map(raw, &offset_map, result.len() as u16).unwrap_err();

@@ -9,7 +9,7 @@
 
 use ironplc_container::opcode;
 
-use super::rewrite::{apply_peephole, Instruction};
+use super::rewrite::{apply_peephole, Action, Instruction};
 use super::OffsetMap;
 use crate::compile::PoolConstant;
 
@@ -61,9 +61,13 @@ fn multiplicative_ops_for_const(const_op: u8) -> Option<(u8, u8)> {
     }
 }
 
-fn is_identity(a: &Instruction, b: &Instruction, constants: &[PoolConstant]) -> bool {
+fn is_identity(
+    a: &Instruction,
+    b: &Instruction,
+    constants: &[PoolConstant],
+) -> Option<[Action; 2]> {
     if a.bytes.len() != 3 {
-        return false;
+        return None;
     }
     let a_op = a.opcode();
     let b_op = b.opcode();
@@ -71,15 +75,15 @@ fn is_identity(a: &Instruction, b: &Instruction, constants: &[PoolConstant]) -> 
 
     if let Some((add_op, sub_op)) = additive_ops_for_const(a_op) {
         if (b_op == add_op || b_op == sub_op) && is_zero_constant(constants, pool_idx) {
-            return true;
+            return Some([Action::Remove, Action::Remove]);
         }
     }
 
     if let Some((mul_op, div_op)) = multiplicative_ops_for_const(a_op) {
         if (b_op == mul_op || b_op == div_op) && is_one_constant(constants, pool_idx) {
-            return true;
+            return Some([Action::Remove, Action::Remove]);
         }
     }
 
-    false
+    None
 }
