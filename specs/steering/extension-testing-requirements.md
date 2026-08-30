@@ -34,7 +34,7 @@ These are checks that verify the extension's declared capabilities (languages, c
 
 `package.json` declares languages under `contributes.languages`. Each language with a file extension must have a functional test that opens a file with that extension and verifies the `languageId` is set correctly.
 
-**Current state**: Only `61131-3-st` (`.st`) is tested. `twincat-pou` (`.TcPOU`), `twincat-gvl` (`.TcGVL`), `twincat-dut` (`.TcDUT`) are not tested. `plcopen-xml` uses `firstLine` detection (no extension), which is harder to test but should still have a test.
+**Current state**: Only `61131-3-st` (`.st`) is tested. `twincat-pou` (`.TcPOU`), `twincat-gvl` (`.TcGVL`), `twincat-dut` (`.TcDUT`) are not tested. `plcopen-xml` uses `firstLine` detection (no extension), so the invariant does not apply to it; it is covered by grammar snapshot tests, but a detection test would still be valuable.
 
 **Enforcement**: A CI script reads `contributes.languages` from `package.json`, extracts language IDs that have file extensions, and checks that each language ID appears in at least one test file (`extension.test.ts`). If a language ID is declared but not tested, the build fails.
 

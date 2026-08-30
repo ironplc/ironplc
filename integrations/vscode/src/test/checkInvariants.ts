@@ -5,9 +5,8 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 
 
 // Exceptions: capabilities that are intentionally not tested, with justification.
 // Each key is the capability ID; the value is the reason it is excluded.
-const EXCEPTIONS = new Map<string, string>([
-  ['plcopen-xml', 'Uses firstLine detection (no file extension); requires XML content matching which is not reliably testable via openTextDocument'],
-]);
+// Currently empty: no declared capability is exempt from the invariants below.
+const EXCEPTIONS = new Map<string, string>();
 
 // Collect all test file contents
 const testFiles = findTestFiles(path.join(__dirname));

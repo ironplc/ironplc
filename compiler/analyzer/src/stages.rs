@@ -145,10 +145,10 @@ pub fn resolve_types(
     // which codegen uses to skip unused functions.
     let (mut library, reachable) = xform_toposort_declarations::apply(library)?;
 
-    // Hard failure: declaration ordering and type-environment population is
-    // required for all subsequent transforms, and a failure here reflects a
-    // fundamentally broken declaration (not an unrelated one), so reverting
-    // the whole library on error is correct.
+    // Recoverable: a failure is collected as a diagnostic and analysis
+    // continues. A failure here reflects a fundamentally broken declaration
+    // (not an unrelated one), so reverting the whole library to its
+    // pre-transform state on error is correct.
     let fallback = library.clone();
     match xform_resolve_type_decl_environment::apply(library, &mut type_environment) {
         Ok(result) => library = result,
