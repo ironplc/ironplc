@@ -700,9 +700,14 @@ pub enum CompareOp {
     GtEq,
 }
 
-impl fmt::Display for CompareOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let symbol = match self {
+impl CompareOp {
+    /// The operator's source spelling.
+    ///
+    /// This is the single definition of how a `CompareOp` is written: both
+    /// [`fmt::Display`] and the `plc2plc` renderer read it, so an operator
+    /// added to this enum is spelled once.
+    pub fn as_str(&self) -> &'static str {
+        match self {
             CompareOp::Or => "OR",
             CompareOp::Xor => "XOR",
             CompareOp::And => "AND",
@@ -713,8 +718,13 @@ impl fmt::Display for CompareOp {
             CompareOp::Gt => ">",
             CompareOp::LtEq => "<=",
             CompareOp::GtEq => ">=",
-        };
-        write!(f, "{symbol}")
+        }
+    }
+}
+
+impl fmt::Display for CompareOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
