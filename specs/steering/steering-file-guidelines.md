@@ -489,6 +489,6 @@ If you're unsure whether something should be in a steering file:
 - **Is it API documentation?** → No, code comments
 - **Is it a trade-off decision (why X over Y)?** → ADR (`specs/adrs/`)
 - **Is it describing what to build (architecture, formats, interfaces)?** → Design doc (`specs/design/`)
-- **Is it describing how to implement (phased tasks, code changes)?** → Implementation plan (`specs/plans/`)
+- **Is it describing how to implement (phased tasks, code changes)?** → Implementation plan (`specs/plans/`), which is reviewed on the branch and deleted before merge
 - **Is it explaining a design decision for users?** → Maybe, consider `docs/explanation/`
 - **Is it a common mistake AI makes?** → Yes, steering file (`specs/steering/`)
