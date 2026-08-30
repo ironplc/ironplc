@@ -93,7 +93,9 @@ impl Dialect {
 
 impl fmt::Display for Dialect {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.cli_name())
+        // `pad` rather than `write_str`: the latter bypasses the formatter's
+        // width, so a `{:<20}` in a caller would silently do nothing.
+        f.pad(self.cli_name())
     }
 }
 
