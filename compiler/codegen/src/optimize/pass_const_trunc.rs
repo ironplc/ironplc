@@ -21,14 +21,22 @@
 //! `emit_truncation` already emits nothing. A `DUP` left by the emitter's
 //! consecutive-load peephole is not matched, so that `TRUNC_*` survives.
 
+use std::collections::HashSet;
+
 use ironplc_container::opcode;
 
 use super::rewrite::{apply_peephole, Action, Instruction};
 use super::OffsetMap;
 use crate::compile::{intern_i32_constant, PoolConstant};
 
-pub(super) fn apply(bytecode: &[u8], constants: &mut Vec<PoolConstant>) -> (Vec<u8>, OffsetMap) {
-    apply_peephole(bytecode, |a, b| match_const_trunc(a, b, constants))
+pub(super) fn apply(
+    bytecode: &[u8],
+    protected: &HashSet<usize>,
+    constants: &mut Vec<PoolConstant>,
+) -> (Vec<u8>, OffsetMap) {
+    apply_peephole(bytecode, protected, |a, b| {
+        match_const_trunc(a, b, constants)
+    })
 }
 
 /// Applies a `TRUNC_*` opcode to `value`, or `None` if `op` is not one.
@@ -91,7 +99,11 @@ mod tests {
     #[test]
     fn apply_when_constant_in_range_then_removes_trunc_and_keeps_load() {
         let mut constants = vec![PoolConstant::I32(42)];
-        let (result, _) = apply(&const_then_trunc(opcode::TRUNC_I8), &mut constants);
+        let (result, _) = apply(
+            &const_then_trunc(opcode::TRUNC_I8),
+            &HashSet::new(),
+            &mut constants,
+        );
 
         let mut expected = load_const_i32(0);
         expected.push(opcode::RET_VOID);
@@ -104,7 +116,11 @@ mod tests {
         // 300 does not fit u8; the truncated value 44 is appended to the pool
         // and the load rewritten to point at it.
         let mut constants = vec![PoolConstant::I32(300)];
-        let (result, _) = apply(&const_then_trunc(opcode::TRUNC_U8), &mut constants);
+        let (result, _) = apply(
+            &const_then_trunc(opcode::TRUNC_U8),
+            &HashSet::new(),
+            &mut constants,
+        );
 
         let mut expected = load_const_i32(1);
         expected.push(opcode::RET_VOID);
@@ -122,7 +138,7 @@ mod tests {
         bytecode.push(opcode::TRUNC_U8);
         bytecode.push(opcode::RET_VOID);
 
-        let (result, _) = apply(&bytecode, &mut constants);
+        let (result, _) = apply(&bytecode, &HashSet::new(), &mut constants);
 
         let mut expected = load_const_i32(0);
         expected.push(opcode::RET_VOID);
@@ -138,7 +154,7 @@ mod tests {
     fn apply_when_pool_entry_is_not_i32_then_no_change() {
         let mut constants = vec![PoolConstant::I64(42)];
         let bytecode = const_then_trunc(opcode::TRUNC_I8);
-        let (result, _) = apply(&bytecode, &mut constants);
+        let (result, _) = apply(&bytecode, &HashSet::new(), &mut constants);
 
         assert_eq!(result, bytecode);
     }
@@ -147,7 +163,7 @@ mod tests {
     fn apply_when_pool_index_out_of_bounds_then_no_change() {
         let mut constants = Vec::new();
         let bytecode = const_then_trunc(opcode::TRUNC_I8);
-        let (result, _) = apply(&bytecode, &mut constants);
+        let (result, _) = apply(&bytecode, &HashSet::new(), &mut constants);
 
         assert_eq!(result, bytecode);
     }
@@ -163,7 +179,7 @@ mod tests {
         bytecode.push(opcode::TRUNC_U8);
         bytecode.push(opcode::RET_VOID);
 
-        let (result, _) = apply(&bytecode, &mut constants);
+        let (result, _) = apply(&bytecode, &HashSet::new(), &mut constants);
 
         assert_eq!(result, bytecode);
     }
@@ -175,7 +191,7 @@ mod tests {
         bytecode.push(opcode::NEG_I32);
         bytecode.push(opcode::RET_VOID);
 
-        let (result, _) = apply(&bytecode, &mut constants);
+        let (result, _) = apply(&bytecode, &HashSet::new(), &mut constants);
 
         assert_eq!(result, bytecode);
     }
@@ -228,7 +244,7 @@ mod tests {
             let expected = trunc_fold_value(trunc_op, value).unwrap();
 
             let mut constants = vec![PoolConstant::I32(value)];
-            let (result, _) = apply(&const_then_trunc(trunc_op), &mut constants);
+            let (result, _) = apply(&const_then_trunc(trunc_op), &HashSet::new(), &mut constants);
 
             prop_assert_eq!(result[0], opcode::LOAD_CONST_I32);
             prop_assert!(!result.contains(&trunc_op));

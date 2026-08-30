@@ -4,13 +4,15 @@
 //! at the same width, leaving the variable table unchanged. Both instructions
 //! are removed.
 
+use std::collections::HashSet;
+
 use ironplc_container::opcode;
 
 use super::rewrite::{apply_peephole, Action, Instruction};
 use super::OffsetMap;
 
-pub(super) fn apply(bytecode: &[u8]) -> (Vec<u8>, OffsetMap) {
-    apply_peephole(bytecode, is_self_assignment)
+pub(super) fn apply(bytecode: &[u8], protected: &HashSet<usize>) -> (Vec<u8>, OffsetMap) {
+    apply_peephole(bytecode, protected, is_self_assignment)
 }
 
 /// Returns the matching STORE opcode for a given LOAD_VAR opcode, or None.
