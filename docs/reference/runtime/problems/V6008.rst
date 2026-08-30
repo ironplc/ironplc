@@ -4,13 +4,91 @@ V6008
 
 .. problem-summary:: V6008
 
-The Debug Adapter Protocol ``launch`` request did not include a ``program``
-path, so the debugger has no bytecode container to load and run.
+An argument in the Debug Adapter Protocol ``launch`` request is missing or
+outside the range the debug server accepts, so the debug session does not
+start. The message names the argument and what was expected of it, for
+example:
+
+.. code-block:: text
+
+   V6008 - launch argument 'program' is required: the path to a compiled .iplc container
+   V6008 - launch argument 'scanLimit' must be a whole number of at least 1, but was 0; omit it to run without a bound
+
+Every bad launch argument reports this one code. The code says the launch
+configuration is at fault; the message says which setting and how to correct
+it. Problems with the *program* rather than the configuration report their own
+codes --- a container built without debug information is
+:doc:`V6009`, and one declaring several program instances is :doc:`V6010`.
+
+Launch Arguments
+----------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Argument
+     - Accepted values
+   * - ``program``
+     - **Required.** A path to a compiled ``.iplc`` container.
+   * - ``stopOnEntry``
+     - ``true`` or ``false``. Defaults to ``false``.
+   * - ``scanLimit``
+     - A whole number of at least ``1``. Omit the argument to run without a
+       bound.
+   * - ``freewheelingIntervalMs``
+     - A cycle time in milliseconds, for a program whose task declares no
+       ``INTERVAL``. Defaults to ``100``.
+
+Why ``scanLimit`` Has No "Unlimited" Value
+------------------------------------------
+
+An unbounded run is requested by leaving ``scanLimit`` out of the
+configuration. There is no value that means unlimited.
+
+``0`` and ``-1`` are both conventional ways to spell "no limit" in other
+tools, so it is tempting to write one of them here. Neither works, and they
+are rejected rather than quietly reinterpreted. Read literally, a limit of
+zero asks the debugger to run no scan cycles at all, which it cannot do: the
+bound is tested after a cycle completes, so the shortest run it can produce is
+one cycle. A negative count of scan cycles has no reading at all.
+
+Example
+-------
+
+The following launch configuration produces error V6008:
+
+.. code-block:: json
+   :caption: .vscode/launch.json
+
+   {
+     "type": "ironplc",
+     "request": "launch",
+     "name": "IronPLC: Debug Active File",
+     "program": "${file}",
+     "scanLimit": 0
+   }
+
+Deleting the ``scanLimit`` line fixes it, and is how an unbounded run is
+requested: the session then scans until you stop it or a breakpoint pauses it.
+
+To stop after a fixed number of cycles instead, give the count you want:
+
+.. code-block:: json
+
+   "scanLimit": 1
 
 Solutions
 ---------
 
-1. Ensure the launch configuration sets ``program`` to a compiled ``.iplc`` container
-2. In VS Code, check the ``program`` field of the IronPLC debug configuration in ``launch.json``
-3. Confirm the path is a string and is not empty after variable substitution
-4. Recompile the source program if the ``.iplc`` container has not been produced yet
+1. Read the error message for the name of the argument that was rejected and the values it accepts
+2. Set ``program`` to a compiled ``.iplc`` container, checking the path survives variable substitution
+3. Remove ``scanLimit`` to run until you stop the session, or set it to ``1`` or more
+4. Set a breakpoint instead of a scan bound when you want the session to stop at a particular line
+
+See Also
+--------
+
+- :doc:`/reference/runtime/ironplcvmd` --- the ``launch`` request arguments the debug server accepts
+- :doc:`/reference/editor/debugging` --- the launch configuration in Visual Studio Code
+- :doc:`/how-to-guides/getting-started/debug-a-program` --- debugging a program step by step

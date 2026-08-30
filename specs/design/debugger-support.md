@@ -1068,6 +1068,33 @@ ironplcvmd
 
 `ironplcvmd` is always in DAP mode: it reads Content-Length-framed JSON on stdin and writes responses and events on stdout. It takes no arguments — the container to debug arrives in the `launch` request.
 
+#### Launch argument validation
+
+`launch` arguments are validated before the VM is built, so an unusable
+configuration fails the `launch` request itself rather than starting a session
+that cannot do what was asked.
+
+**One problem code covers every bad argument.** A missing `program` and an
+out-of-range `scanLimit` both report `V6008`; the message names the argument
+and what was expected of it (`launch argument 'scanLimit' must be a whole
+number of at least 1, but was 0; omit it to run without a bound`). A code per
+argument would grow the documented problem-code namespace — a public surface
+where each code owes a reference page — every time the `launch` request gains
+an option, for pages differing only in one noun. The code identifies the
+category so a reader reaches the right page; the message carries the specifics.
+
+`V6009` (no debug info) and `V6010` (multi-instance) stay distinct because they
+are not argument problems: the arguments were fine and the container cannot be
+debugged as built, which is a different fix — rebuild the program, rather than
+edit the launch configuration.
+
+**`scanLimit` has no "unlimited" value.** An unbounded run is requested by
+omitting the argument. `0` and `-1` are rejected rather than reinterpreted as
+sentinels: the bound is tested after a scan completes, so a limit of zero asks
+for something the loop cannot produce, and absence already spells "no bound".
+`scanLimit` is parsed as a signed integer purely so a negative value survives
+deserialization far enough to be reported against the right argument.
+
 ### DAP Request Mapping
 
 The "Legal in" column lists the VM `Phase` values in which each request is accepted; requests in any other state return DAP error `requestNotApplicable`.

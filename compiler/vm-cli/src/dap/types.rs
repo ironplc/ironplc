@@ -18,7 +18,7 @@
 
 use ironplc_container::{SourceColumn, SourceLine};
 use serde::{Deserialize, Serialize};
-use serde_json::{Number, Value};
+use serde_json::Value;
 
 /// Serde glue between DAP's JSON numbers and the container's source-coordinate
 /// newtypes.
@@ -211,12 +211,12 @@ pub struct LaunchRequestArguments {
     /// single-threaded loop has no interactive `pause`). Absent means no
     /// bound; there is no sentinel value that spells "unlimited".
     ///
-    /// Held as the raw JSON number the client sent so `launch::check_scan_limit`
-    /// can report what is wrong with it. Deserializing straight into an integer
-    /// would fail the *whole* argument parse on a negative or fractional value,
-    /// which the server can only report as a missing `program`.
+    /// Signed so a negative value parses and can be rejected by name in
+    /// `launch::check_scan_limit`. Deserializing straight into an unsigned
+    /// count would fail the *whole* argument parse on `-1`, which the server
+    /// can only report as the missing-`program` case.
     #[serde(default)]
-    pub scan_limit: Option<Number>,
+    pub scan_limit: Option<i64>,
     /// Cycle time to assume for a program whose task declares no `INTERVAL`,
     /// in milliseconds. Defaults to 100 ms. A freewheeling task has no rate of
     /// its own, so the debugger has nothing to advance program time by; the
@@ -541,10 +541,7 @@ mod tests {
         let args: LaunchRequestArguments =
             serde_json::from_value(json!({ "program": "demo.iplc", "scanLimit": -1 })).unwrap();
         assert_eq!(args.program, "demo.iplc");
-        assert_eq!(
-            args.scan_limit.map(|n| n.to_string()).as_deref(),
-            Some("-1")
-        );
+        assert_eq!(args.scan_limit, Some(-1));
     }
 
     #[test]

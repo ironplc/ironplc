@@ -164,14 +164,16 @@ pub fn serve<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> io::Result
 fn load_and_check(
     request: &Request,
 ) -> Result<(Container, LaunchRequestArguments, Option<NonZeroU64>), String> {
+    // A value no argument's type can hold (a fractional `scanLimit`, say)
+    // fails the whole parse and lands here too. The VS Code schema types
+    // `scanLimit` as an integer, so the editor flags that before launch.
     let args: LaunchRequestArguments = request
         .arguments
         .as_ref()
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .ok_or_else(|| launch::LaunchError::ProgramArgMissing.to_string())?;
 
-    let scan_limit =
-        launch::check_scan_limit(args.scan_limit.as_ref()).map_err(|e| e.to_string())?;
+    let scan_limit = launch::check_scan_limit(args.scan_limit).map_err(|e| e.to_string())?;
     let container = launch::load_container(Path::new(&args.program)).map_err(|e| e.to_string())?;
     launch::check_preconditions(&container).map_err(|e| e.to_string())?;
     Ok((container, args, scan_limit))
@@ -1002,16 +1004,19 @@ mod tests {
         assert_eq!(launch["command"], "launch");
         assert_eq!(launch["success"], false);
         let message = launch["message"].as_str().unwrap();
-        assert!(message.starts_with("V6011 - "));
-        assert!(message.contains("omit scanLimit"));
+        // The same code as a missing `program`: one code for a bad argument,
+        // with the message naming which one.
+        assert!(message.starts_with("V6008 - "));
+        assert!(message.contains("'scanLimit'"));
+        assert!(message.contains("omit it"));
         // The launch never reached the VM, so there is no terminated event.
         assert!(events(&out, "terminated").is_empty());
     }
 
     #[test]
     fn serve_when_launch_scan_limit_negative_then_scan_limit_error_not_missing_program() {
-        // `-1` fails to deserialize as a count; the response must still name
-        // the argument that is actually wrong rather than `program`.
+        // `-1` is signed-parsed precisely so the response names the argument
+        // that is actually wrong rather than `program`.
         let (_file, path) = single_instance_debug_container_file();
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
@@ -1020,7 +1025,9 @@ mod tests {
         ]);
         let launch = out.last().unwrap();
         assert_eq!(launch["success"], false);
-        assert!(launch["message"].as_str().unwrap().starts_with("V6011 - "));
+        let message = launch["message"].as_str().unwrap();
+        assert!(message.starts_with("V6008 - "));
+        assert!(message.contains("'scanLimit'"));
     }
 
     #[test]

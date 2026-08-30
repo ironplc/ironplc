@@ -136,7 +136,7 @@ Set ``scanLimit`` to end the session after a fixed number of scan cycles:
 
 Leave ``scanLimit`` out of the configuration to run without a bound --- there
 is no value that means unlimited. ``0`` and ``-1`` are rejected before the
-session starts (see :doc:`/reference/runtime/problems/V6011`) rather than
+session starts (see :doc:`/reference/runtime/problems/V6008`) rather than
 treated as either extreme.
 
 Breakpoints
