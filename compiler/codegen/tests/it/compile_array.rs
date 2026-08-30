@@ -249,8 +249,9 @@ fn compile_when_array_sint_store_then_emits_truncation() {
 PROGRAM main
   VAR
     arr : ARRAY[1..3] OF SINT;
+    n : SINT;
   END_VAR
-  arr[1] := 42;
+  arr[1] := n + 1;
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
@@ -259,7 +260,9 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    // Should contain TRUNC_I8 (0x1C) before STORE_ARRAY (0xAC)
+    // Should contain TRUNC_I8 (0x1C) before STORE_ARRAY (0xAC). The value is
+    // computed at run time; a constant would be truncated at compile time
+    // instead (see compile_const_trunc.rs).
     let trunc_pos = bytecode
         .iter()
         .position(|&b| b == opcode::TRUNC_I8)

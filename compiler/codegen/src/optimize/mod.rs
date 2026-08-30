@@ -15,12 +15,15 @@
 //! 1. [`pass_self_assign`] — `LOAD_VAR x; STORE_VAR x` (same var, same type).
 //! 2. [`pass_arith_identity`] — `LOAD_CONST 0; ADD|SUB` and
 //!    `LOAD_CONST 1; MUL|DIV` (matching width).
+//! 3. [`pass_const_trunc`] — `LOAD_CONST_I32; TRUNC_*`, where the truncation
+//!    is resolved at compile time instead of at every scan.
 //!
 //! Instructions that are the target of a jump are never removed; this
 //! preserves basic-block boundaries and guarantees jump targets always
 //! map to a valid new offset.
 
 mod pass_arith_identity;
+mod pass_const_trunc;
 mod pass_self_assign;
 mod rewrite;
 
@@ -133,7 +136,7 @@ impl Pipeline {
 /// (or just past) the original bytecode. If no patterns are found, the
 /// output bytes equal the input and the map is the identity over instruction
 /// boundaries.
-pub(crate) fn optimize(bytecode: &[u8], constants: &[PoolConstant]) -> (Vec<u8>, OffsetMap) {
+pub(crate) fn optimize(bytecode: &[u8], constants: &mut Vec<PoolConstant>) -> (Vec<u8>, OffsetMap) {
     if bytecode.is_empty() {
         return (Vec::new(), OffsetMap::new());
     }
@@ -150,6 +153,9 @@ pub(crate) fn optimize(bytecode: &[u8], constants: &[PoolConstant]) -> (Vec<u8>,
     // one today.
     pipeline.run(pass_self_assign::apply);
     pipeline.run(|bytecode| pass_arith_identity::apply(bytecode, constants));
+    // Runs last of the three: it is the only pass that appends to the constant
+    // pool, so nothing after it can be reading a stale pool.
+    pipeline.run(|bytecode| pass_const_trunc::apply(bytecode, constants));
 
     (
         pipeline.bytecode,

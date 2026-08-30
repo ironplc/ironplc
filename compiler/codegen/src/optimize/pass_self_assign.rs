@@ -6,7 +6,7 @@
 
 use ironplc_container::opcode;
 
-use super::rewrite::{apply_peephole, Instruction};
+use super::rewrite::{apply_peephole, Action, Instruction};
 use super::OffsetMap;
 
 pub(super) fn apply(bytecode: &[u8]) -> (Vec<u8>, OffsetMap) {
@@ -24,12 +24,11 @@ fn matching_store_for_load(load_op: u8) -> Option<u8> {
     }
 }
 
-fn is_self_assignment(a: &Instruction, b: &Instruction) -> bool {
-    let Some(expected_store) = matching_store_for_load(a.opcode()) else {
-        return false;
-    };
-    b.opcode() == expected_store
+fn is_self_assignment(a: &Instruction, b: &Instruction) -> Option<[Action; 2]> {
+    let expected_store = matching_store_for_load(a.opcode())?;
+    let is_pair = b.opcode() == expected_store
         && a.bytes.len() == 3
         && b.bytes.len() == 3
-        && a.u16_operand() == b.u16_operand()
+        && a.u16_operand() == b.u16_operand();
+    is_pair.then_some([Action::Remove, Action::Remove])
 }

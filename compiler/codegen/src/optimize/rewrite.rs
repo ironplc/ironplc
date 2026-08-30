@@ -27,6 +27,18 @@ impl Instruction {
     }
 }
 
+/// What [`apply_peephole`] does with one instruction of a matched pair.
+pub(super) enum Action {
+    /// Leave the instruction exactly as it is.
+    Keep,
+    /// Drop the instruction from the output.
+    Remove,
+    /// Keep the instruction but replace its `u16` operand. Only valid for a
+    /// 3-byte opcode-plus-`u16` instruction, so the encoded size is unchanged
+    /// and offsets are unaffected.
+    RewriteOperand(u16),
+}
+
 /// Encoded size of a `CMP_BR_*` instruction: opcode + u8 + u16 + u16 + i16.
 /// The branch offset occupies the trailing `i16` and is relative to the end
 /// of the instruction.
@@ -75,10 +87,12 @@ fn decode(bytecode: &[u8]) -> (Vec<Instruction>, HashSet<usize>) {
 
 /// Runs one peephole pass over `bytecode`.
 ///
-/// `matches` is asked about each adjacent instruction pair in turn; returning
-/// true removes both. Instructions that are the target of a jump are never
-/// offered to `matches` and so are never removed; this preserves basic-block
-/// boundaries and guarantees jump targets always map to a valid new offset.
+/// `matches` is asked about each adjacent instruction pair in turn. Returning
+/// `Some` applies one [`Action`] to each instruction of the pair; returning
+/// `None` leaves both alone. Instructions that are the target of a jump are
+/// never offered to `matches` and so are never rewritten; this preserves
+/// basic-block boundaries and guarantees jump targets always map to a valid
+/// new offset.
 ///
 /// Returns the rewritten bytes along with an old→new offset map. The map
 /// covers every instruction's start offset plus the one-past-the-end position,
@@ -87,12 +101,12 @@ fn decode(bytecode: &[u8]) -> (Vec<Instruction>, HashSet<usize>) {
 /// occupies, so a span that lands on one snaps forward rather than dangling.
 pub(super) fn apply_peephole(
     bytecode: &[u8],
-    mut matches: impl FnMut(&Instruction, &Instruction) -> bool,
+    mut matches: impl FnMut(&Instruction, &Instruction) -> Option<[Action; 2]>,
 ) -> (Vec<u8>, OffsetMap) {
     let (instructions, jump_targets) = decode(bytecode);
 
-    // First pass: mark instructions that are part of a removable pair.
-    let mut removed = vec![false; instructions.len()];
+    // First pass: decide what happens to each instruction of a matched pair.
+    let mut actions: Vec<Action> = instructions.iter().map(|_| Action::Keep).collect();
     let mut i = 0;
     while i + 1 < instructions.len() {
         let a = &instructions[i];
@@ -104,9 +118,9 @@ pub(super) fn apply_peephole(
             continue;
         }
 
-        if matches(a, b) {
-            removed[i] = true;
-            removed[i + 1] = true;
+        if let Some([first, second]) = matches(a, b) {
+            actions[i] = first;
+            actions[i + 1] = second;
             i += 2;
         } else {
             i += 1;
@@ -120,7 +134,9 @@ pub(super) fn apply_peephole(
     let mut new_offset = 0usize;
     for (idx, instr) in instructions.iter().enumerate() {
         offset_map.insert(instr.offset, new_offset);
-        if !removed[idx] {
+        // `RewriteOperand` preserves the encoded size, so only `Remove`
+        // changes where the following instructions land.
+        if !matches!(actions[idx], Action::Remove) {
             new_offset += instr.bytes.len();
         }
     }
@@ -129,10 +145,21 @@ pub(super) fn apply_peephole(
     // Second pass: rebuild bytecode, rewriting jump offsets.
     let mut output = Vec::with_capacity(bytecode.len());
     for (idx, instr) in instructions.iter().enumerate() {
-        if removed[idx] {
-            continue;
-        }
         let op = instr.opcode();
+        match actions[idx] {
+            Action::Remove => continue,
+            Action::RewriteOperand(operand) => {
+                debug_assert_eq!(
+                    instr.bytes.len(),
+                    3,
+                    "RewriteOperand requires an opcode plus u16 operand"
+                );
+                output.push(op);
+                output.extend_from_slice(&operand.to_le_bytes());
+                continue;
+            }
+            Action::Keep => {}
+        }
         if (op == opcode::JMP || op == opcode::JMP_IF_NOT) && instr.bytes.len() == 3 {
             let old_rel = i16::from_le_bytes([instr.bytes[1], instr.bytes[2]]);
             let old_target = (instr.offset as isize + 3 + old_rel as isize) as usize;

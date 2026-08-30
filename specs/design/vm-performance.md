@@ -317,7 +317,13 @@ The basic verifier tracks stack depth (an integer) and validates static indices.
   - Integer overflow cannot occur for specific operations (value ranges fit)
   - MUX selector `K` is in-range (eliminating the `min/max` clamp)
 
-  **Status (partial):** a narrow, local form of this has shipped in codegen rather than the verifier. `for_loop_trunc_can_be_elided` (`codegen/src/compile_stmt.rs`) checks the interval spanned by a FOR loop's constant `from`/`to`/`step` bounds and elides the per-iteration `TRUNC` when every visible value of the control variable — including the post-final increment — stays inside the declared narrow type's range. It is deliberately conservative: any non-constant bound, or any boundary that could wrap, keeps the `TRUNC`. The scope is the loop's own init and increment only; narrow stores in the loop body (`total := total + i` where `total : INT`) still truncate, since that needs range tracking across arbitrary expressions rather than a single loop header.
+  **Status (partial):** two narrow, local forms of this have shipped in codegen rather than the verifier.
+
+  `for_loop_trunc_can_be_elided` (`codegen/src/compile_stmt.rs`) checks the interval spanned by a FOR loop's constant `from`/`to`/`step` bounds and elides the per-iteration `TRUNC` when every visible value of the control variable — including the post-final increment — stays inside the declared narrow type's range. It is deliberately conservative: any non-constant bound, or any boundary that could wrap, keeps the `TRUNC`. The scope is the loop's own init and increment only.
+
+  `pass_const_trunc` (`codegen/src/optimize/`) covers the constant-valued case everywhere else. Where a `TRUNC_*` follows a `LOAD_CONST_I32`, the truncation is resolved during code generation: the `TRUNC_*` is dropped when the constant already fits the narrow type, and otherwise the truncated value is interned and the load's pool operand rewritten. This reaches every narrow store whose value is a constant — scalar assignment, array element, structure field, initializers, structure field defaults — because it matches on the emitted instruction stream rather than on any one syntactic form. Measured on a representative program, 16 of 17 `TRUNC_*` instructions were preceded by a constant load, all of them already in range.
+
+  What still truncates at run time is a narrow store of a *computed* value (`total := total + i` where `total : INT`), which needs range tracking across arbitrary expressions rather than a single instruction pair.
 - **Type-state tracking**: Track which variables have been initialized, which string slots have valid headers. This eliminates the `cur_length <= max_length` defensive clamps.
 - **Control-flow abstract interpretation**: Walk all paths through the bytecode, merging abstract states at join points. This is what the JVM verifier and WASM validator do.
 
