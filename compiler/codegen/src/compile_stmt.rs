@@ -791,7 +791,7 @@ fn compile_case(
 ///
 /// - `SignedInteger`: `selector == value`
 /// - `Subrange`: `(selector >= start) AND (selector <= end)`
-/// - `EnumeratedValue`: not yet supported (returns todo diagnostic)
+/// - `EnumeratedValue`: `selector == ordinal` (REQ-EN-codegen-040)
 /// - `BitStringLiteral`: `selector == value` (same shape as `SignedInteger`)
 fn compile_case_selector(
     emitter: &mut Emitter,
