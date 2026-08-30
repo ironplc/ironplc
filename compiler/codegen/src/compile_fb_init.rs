@@ -5,15 +5,21 @@
 //! drop the instance handle — wrapped in a field lookup that resolves the
 //! field's name to its slot index and operand type.
 //!
-//! It lives here rather than inline in the one statement that emits it
-//! today (`timer.PT := T#100MS;`) because the sequence belongs to the
-//! function block instance, not to assignment: anything that sets a member
-//! of an instance emits exactly these instructions, and they are only
-//! observably the same thing at runtime if there is one copy of them.
+//! It lives here rather than inline in either caller because the sequence
+//! belongs to the function block instance, not to what happens to be
+//! setting the member. Two spellings set one:
+//!
+//! * an assignment statement (`timer.PT := T#100MS;`), and
+//! * a declaration's member initializer (`timer : TON := (PT := T#100MS);`),
+//!   emitted once as part of the setup block.
+//!
+//! One copy of the sequence is what makes those two observably the same
+//! thing at runtime.
 
+use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::Expr;
+use ironplc_dsl::textual::{Expr, ExprKind};
 
 use super::compile::{CompileContext, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE};
 use super::compile_expr::compile_expr;
@@ -85,4 +91,44 @@ pub(crate) fn compile_fb_field_store(
     emitter.emit_fb_store_param(field_idx);
     emitter.emit_pop();
     Ok(true)
+}
+
+/// Emits the member initializers of a function block instance declaration
+/// (`timer : TON := (PT := T#100MS);`).
+///
+/// Each member is stored exactly as the equivalent assignment statement
+/// would store it, so the instance is already initialized before the first
+/// scan invokes it.
+pub(crate) fn emit_fb_instance_member_initializers(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    instance_name: &Id,
+    init: &[StructureElementInit],
+) -> Result<(), Diagnostic> {
+    for element in init {
+        let value = match &element.init {
+            StructInitialValueAssignmentKind::Constant(constant) => {
+                Expr::new(ExprKind::Const(constant.clone()))
+            }
+            StructInitialValueAssignmentKind::EnumeratedValue(value) => {
+                Expr::new(ExprKind::EnumeratedValue(value.clone()))
+            }
+            StructInitialValueAssignmentKind::Expression(expr) => expr.clone(),
+            // An array or nested structure value initializes several slots
+            // at once, which the single-slot FB_STORE_PARAM path cannot
+            // express. Refuse rather than silently leave the member zeroed.
+            StructInitialValueAssignmentKind::Array(_)
+            | StructInitialValueAssignmentKind::Structure(_) => {
+                return Err(Diagnostic::not_implemented(Label::span(
+                    element.name.span(),
+                    format!(
+                        "Array or structure value initializing field '{}' of function block instance '{instance_name}'",
+                        element.name
+                    ),
+                )))
+            }
+        };
+        compile_fb_field_store(emitter, ctx, instance_name, &element.name, &value)?;
+    }
+    Ok(())
 }
