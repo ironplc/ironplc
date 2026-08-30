@@ -26,7 +26,10 @@ These types route through existing I32 signed handlers and produce correct resul
 | LIMIT    | SINT, INT, USINT, UINT          |
 
 USINT (0-255) and UINT (0-65535) are correct with signed comparison because
-their values always fall in i32's positive range.
+their values always fall in i32's positive range. UDINT and ULINT do not:
+a UDINT at or above 2^31 reinterprets as a negative i32, so a signed `MIN`
+returns the larger value. That is what the U32 and U64 variants below exist
+to prevent.
 
 ## New Opcodes Needed
 
@@ -34,7 +37,7 @@ their values always fall in i32's positive range.
 
 | Opcode     | Function | Behavior |
 |------------|----------|----------|
-| EXPT_I64   | EXPT     | a.wrapping_pow(b as u64), trap on b < 0 |
+| EXPT_I64   | EXPT     | a.wrapping_pow(b as u32), trap on b < 0 |
 | ABS_I64    | ABS      | a.wrapping_abs() |
 | MIN_I64    | MIN      | a.min(b) signed |
 | MAX_I64    | MAX      | a.max(b) signed |
@@ -56,9 +59,8 @@ their values always fall in i32's positive range.
 | MIN_U64    | MIN      | (a as u64).min(b as u64) |
 | MAX_U64    | MAX      | (a as u64).max(b as u64) |
 | LIMIT_U64  | LIMIT    | (in_val as u64).clamp(mn as u64, mx as u64) |
-| SEL_U64    | SEL      | if g==0 { in0 } else { in1 } |
 
-Total: 16 new opcodes.
+Total: 12 new opcodes.
 
 Note: SEL does not need U32 because SEL_I32 works correctly for UDINT (no
 comparison, just selection). SEL does need a U64/I64 variant because ULINT/LINT
@@ -71,7 +73,11 @@ not defined for unsigned types in the standard).
 ## Changes Per Layer
 
 ### container/src/opcode.rs
-- Add 16 new `pub const` entries in the `builtin` module (0x0360-0x036F)
+- Add 12 new `pub const` entries in the `builtin` module (0x0360-0x036B).
+  `0x036C` onward is already allocated to the math builtins (`LN_F32`
+  through the trigonometric functions) -- see
+  [bytecode-instruction-set.md](bytecode-instruction-set.md). func_ids are
+  wire format, so a collision here is permanent.
 - Extend `arg_count()` match arms
 
 ### codegen/src/compile.rs
@@ -81,7 +87,7 @@ not defined for unsigned types in the standard).
 - Add routing for W64+Unsigned → U64 variants
 
 ### vm/src/builtin.rs
-- Add 16 new match arms in `dispatch()`
+- Add 12 new match arms in `dispatch()`
 - I64 handlers use `as_i64()`/`from_i64()`
 - U32 handlers cast via `as_i32() as u32` then back
 - U64 handlers cast via `as_i64() as u64` then back
