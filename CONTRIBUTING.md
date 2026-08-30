@@ -73,22 +73,21 @@ environment.
 
 ## Planning Non-Trivial Changes
 
-**Non-trivial changes must start with an issue and a plan.** The plan is
-committed so it can be reviewed as a file diff, then deleted before merge. The
-issue is what survives.
+**Non-trivial changes must start with a plan.** The plan is committed so it can
+be reviewed as a file diff, then deleted before merge.
 
 Workflow:
 
-1. Open an issue describing the work.
 1. Create a feature branch from `main`. Do not commit directly to `main`.
-1. Write an implementation plan referencing the issue and save it under
-   `specs/plans/` (follow the naming convention used by existing files there).
+1. Write an implementation plan and save it under `specs/plans/` (follow the
+   naming convention used by existing files there).
 1. Commit the plan to the feature branch before the implementation code.
 1. Implement the changes following the plan.
 1. Land any decision worth keeping as an ADR (`specs/adrs/`) or a design
    document (`specs/design/`) in the same pull request.
 1. Open an issue for anything the plan describes that this pull request does
-   not deliver — a comment saying "follow-up" is not tracking.
+   not deliver — a comment saying "follow-up" is not tracking, and the plan
+   that recorded it is about to be deleted.
 1. `git rm` the plan file. Because the repository squash-merges, the add and
    the delete cancel, so no plan content reaches `main`; the plan stays
    viewable on the pull request.
@@ -99,6 +98,12 @@ Do not reference `specs/plans/` from code, comments, workflows, the `justfile`,
 design documents or ADRs. A plan is deleted before its pull request merges, so
 it is never a stable link target — cite an ADR or a design document instead.
 `just plan-citations` fails the build on a violation.
+
+**Work that spans more than one pull request must have an issue.** It holds the
+slice breakdown, stays open until every slice lands, and is where each slice's
+undelivered work goes. Every plan in the series references it. A single
+self-contained pull request needs no issue — the plan is reviewed, the work
+lands, and nothing is left to track.
 
 You SHOULD **skip the plan** for mechanical changes: typo fixes, formatting,
 dependency bumps, single-line bug fixes, or documentation-only edits.

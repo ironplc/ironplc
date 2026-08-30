@@ -86,17 +86,17 @@ See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the fu
 
 ### Planning Requirement
 
-All non-trivial features and changes **must** begin with a GitHub issue and an implementation plan. The issue is the durable record; the plan is a branch-local artifact that is reviewed and then deleted.
+All non-trivial features and changes **must** begin with an implementation plan. The plan is a branch-local artifact: it is reviewed as a file diff, then deleted before merge.
 
-1. Open an issue describing the work.
-2. Write the plan to `specs/plans/YYYY-MM-DD-short-description.md`, referencing the issue, and commit it as the **first commit on the branch** — before any implementation code. This is what makes it reviewable as a file diff.
-3. Implement, following the plan.
-4. Any decision worth keeping lands as an ADR or a `specs/design/` update **in the same pull request**.
-5. **Anything the plan describes that the pull request does not deliver becomes a tracked issue** before the plan file is removed. A code comment saying "follow-up slice" is not tracking.
-6. `git rm` the plan file before merge.
-7. Close the issue only when nothing is outstanding.
+1. Write the plan to `specs/plans/YYYY-MM-DD-short-description.md` and commit it as the **first commit on the branch** — before any implementation code. This is what makes it reviewable as a file diff.
+2. Implement, following the plan.
+3. Any decision worth keeping lands as an ADR or a `specs/design/` update **in the same pull request**.
+4. **Anything the plan describes that the pull request does not deliver becomes a tracked issue** before the plan file is removed. A code comment saying "follow-up slice" is not tracking — the plan is about to be deleted, so an untracked deferral disappears with it.
+5. `git rm` the plan file before merge.
 
-For work spanning several pull requests, the issue holds the slice breakdown and stays open across the series; each pull request commits only its own slice's plan.
+**Work that spans more than one pull request must have an issue.** The issue is the durable record across the series: it holds the slice breakdown, stays open until every slice has landed, and is where a slice's undelivered work goes. Each pull request commits only its own slice's plan, and each plan references the issue.
+
+A single self-contained pull request does not need an issue. The plan is reviewed, the work lands, and the plan goes — nothing is left to track.
 
 A plan document should include:
 
@@ -110,8 +110,6 @@ A plan document should include:
 - **Tasks** — ordered steps with checkboxes (`- [ ]`) for tracking progress
 
 Name plan files with a date prefix: `YYYY-MM-DD-short-description.md` (e.g., `2026-04-01-planning-requirement.md`).
-
-**Why plans are not kept.** Plans were committed permanently until 2026-08. At that point `specs/plans/` held 237 files, of which 228 had been touched by exactly one commit; 42,837 lines had been added and 95 deleted across all history; and 1,074 task checkboxes stood unticked against 458 ticked. A merged plan's checkbox state does not describe what shipped, and 92 references had accumulated pointing at plans from code, workflows and design documents — several of which described the system inaccurately. Review is what makes a plan valuable, and review happens before merge.
 
 **When a plan may be skipped:** Changes that are clearly mechanical and self-contained — typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits — do not require a plan.
 
