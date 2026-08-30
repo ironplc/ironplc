@@ -46,6 +46,7 @@ use ironplc_dsl::{
     common::*,
     core::{Id, Located},
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::*,
     visitor::Visitor,
 };
@@ -185,28 +186,24 @@ impl RuleAggregateAssignment<'_> {
 impl Visitor<Diagnostic> for RuleAggregateAssignment<'_> {
     type Value = ();
 
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Diagnostic> {
-        self.declarations.enter();
-        let ret = node.recurse_visit(self);
-        self.declarations.exit();
-        ret
+    /// Opens a declaration's scope.
+    ///
+    /// Every kind contributes the same thing -- a frame its own
+    /// declarations go into -- but the match stays exhaustive so that a
+    /// new kind of scope has to say so rather than silently sharing the
+    /// enclosing declaration's frame.
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
+        match node {
+            ScopeNode::Function(_)
+            | ScopeNode::FunctionBlock(_)
+            | ScopeNode::Program(_)
+            | ScopeNode::Method(_) => self.declarations.enter(),
+        }
+        Ok(())
     }
 
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<(), Diagnostic> {
-        self.declarations.enter();
-        let ret = node.recurse_visit(self);
+    fn exit_scope(&mut self) {
         self.declarations.exit();
-        ret
-    }
-
-    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Diagnostic> {
-        self.declarations.enter();
-        let ret = node.recurse_visit(self);
-        self.declarations.exit();
-        ret
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
@@ -228,6 +225,7 @@ mod tests {
     use crate::stages::analyze;
     use ironplc_dsl::core::FileId;
     use ironplc_parser::{options::CompilerOptions, parse_program};
+    use ironplc_problems::Problem;
 
     /// Analyzes `program`, returning the problem codes it reported.
     fn problem_codes(program: &str) -> Vec<String> {
@@ -619,6 +617,68 @@ END_PROGRAM
         assert!(
             !codes.contains(&"P2037".to_string()),
             "element writes are out of scope, got {codes:?}"
+        );
+    }
+
+    /// Analyzes `program` with methods enabled, returning the problem
+    /// codes it reported.
+    fn problem_codes_with_methods(program: &str) -> Vec<String> {
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let library = parse_program(program, &FileId::default(), &options).unwrap();
+        match analyze(&[&library], &options) {
+            Ok((_, context)) => context
+                .diagnostics()
+                .iter()
+                .map(|d| d.code.clone())
+                .collect(),
+            Err(diagnostics) => diagnostics.iter().map(|d| d.code.clone()).collect(),
+        }
+    }
+
+    /// A method's local belongs to the method. Before the traversal
+    /// opened a scope for a method, every method's declarations landed in
+    /// the enclosing function block's frame, so a method local overwrote
+    /// a field of the same name for every method compiled after it --
+    /// and the mismatch it hid was accepted.
+    #[test]
+    fn apply_when_method_local_shadows_field_then_sibling_method_uses_field_type() {
+        let codes = problem_codes_with_methods(
+            "
+TYPE
+    Pt : STRUCT
+        x : INT;
+        y : INT;
+    END_STRUCT;
+    Other : STRUCT
+        a : INT;
+    END_STRUCT;
+END_TYPE
+FUNCTION_BLOCK FB_Motor
+VAR
+    v : Pt;
+    src : Other;
+END_VAR
+METHOD A
+VAR
+    v : Other;
+END_VAR
+    v := src;
+END_METHOD
+METHOD B
+    v := src;
+END_METHOD
+END_FUNCTION_BLOCK
+",
+        );
+
+        assert!(
+            codes
+                .iter()
+                .any(|c| c == Problem::AggregateAssignmentTypeMismatch.code()),
+            "expected an aggregate assignment mismatch on the function block's field, got {codes:?}"
         );
     }
 }

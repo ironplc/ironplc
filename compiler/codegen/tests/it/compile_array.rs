@@ -432,3 +432,144 @@ END_PROGRAM
     assert_eq!(desc.total_elements, 3);
     assert_eq!(desc.element_extra, 10);
 }
+
+// --- Top-level ARRAY OF <struct> (issue #1383) ---
+
+#[test]
+fn compile_when_var_top_level_array_of_struct_then_descriptor_covers_all_slots() {
+    // FieldType::Slot = 10 per container/src/type_section.rs. A structure
+    // occupies a contiguous run of slots, so the descriptor spans
+    // total_elements * element_slots rather than one entry per element.
+    let source = "
+TYPE Item : STRUCT a : DINT; b : DINT; END_STRUCT; END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..4] OF Item;
+  END_VAR
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let type_section = container.type_section.as_ref().unwrap();
+    let desc = type_section
+        .array_descriptors
+        .iter()
+        .find(|d| d.element_type == 10)
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a slot-typed descriptor, got: {:?}",
+                type_section.array_descriptors
+            )
+        });
+    // 4 elements * 2 slots each.
+    assert_eq!(desc.total_elements, 8);
+    assert_eq!(desc.element_extra, 0);
+}
+
+#[test]
+fn compile_when_top_level_array_of_struct_field_stored_then_index_is_element_stride_plus_leaf() {
+    // `arr[3].b` addresses slot (3 - 1) * 2 + 1 of the array's region: the
+    // element index is folded to a constant scaled by the element slot count,
+    // then the leaf field's offset is added.
+    let source = "
+TYPE Item : STRUCT a : DINT; b : DINT; END_STRUCT; END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..4] OF Item;
+  END_VAR
+  arr[3].b := 42;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+    let store_pos = bytecode
+        .iter()
+        .position(|&b| b == opcode::STORE_ARRAY)
+        .unwrap();
+
+    // ... LOAD_CONST_I32 <flat index> LOAD_CONST_I64 <leaf offset> ADD_I64 STORE_ARRAY
+    let add_pos = store_pos - 1;
+    assert_eq!(bytecode[add_pos], opcode::ADD_I64);
+    assert_eq!(bytecode[add_pos - 3], opcode::LOAD_CONST_I64);
+    let leaf_const = u16::from_le_bytes([bytecode[add_pos - 2], bytecode[add_pos - 1]]);
+    assert_eq!(
+        container
+            .constant_pool
+            .get_i64(ironplc_container::ConstantIndex::new(leaf_const))
+            .unwrap(),
+        1,
+        "leaf field 'b' sits one slot into the element"
+    );
+    assert_eq!(bytecode[add_pos - 6], opcode::LOAD_CONST_I32);
+    let index_const = u16::from_le_bytes([bytecode[add_pos - 5], bytecode[add_pos - 4]]);
+    assert_eq!(
+        container
+            .constant_pool
+            .get_i32(ironplc_container::ConstantIndex::new(index_const))
+            .unwrap(),
+        4,
+        "element 3 of a 2-slot element type starts at slot 4"
+    );
+}
+
+#[test]
+fn compile_when_top_level_array_of_struct_then_data_offset_stored_in_variable_slot() {
+    // The variable slot holds the data region byte offset, the same protocol a
+    // structure variable uses. Without it every element access addresses
+    // offset 0.
+    let source = "
+TYPE Item : STRUCT a : DINT; END_STRUCT; END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..4] OF Item;
+  END_VAR
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(0))
+        .unwrap();
+    assert!(
+        bytecode.contains(&opcode::STORE_VAR_I32),
+        "init function must store the array's data offset into its variable slot"
+    );
+}
+
+#[test]
+fn compile_when_top_level_array_of_ref_to_struct_then_stays_on_reference_path() {
+    // `ARRAY[..] OF REF_TO <struct>` elements are one-slot references, so the
+    // array keeps the ordinary (U64) descriptor rather than the slot-typed one.
+    // FieldType::U64 = 3 per container/src/type_section.rs.
+    let source = "
+TYPE Item : STRUCT a : DINT; END_STRUCT; END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..4] OF REF_TO Item;
+  END_VAR
+END_PROGRAM
+";
+    let options = CompilerOptions {
+        allow_ref_to: true,
+        ..CompilerOptions::default()
+    };
+    let container = try_parse_and_compile(source, &options).unwrap();
+    let type_section = container.type_section.as_ref().unwrap();
+    let desc = type_section
+        .array_descriptors
+        .iter()
+        .find(|d| d.total_elements == 4)
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a 4-element descriptor, got: {:?}",
+                type_section.array_descriptors
+            )
+        });
+    assert_eq!(desc.element_type, 3);
+}

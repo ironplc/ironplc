@@ -70,6 +70,10 @@ fn create_problems() -> Result<(), Box<dyn Error>> {
     // `Diagnostic::problem(Problem::NotImplemented, …)` fails to compile.
     let compiler_located: &[(&str, &str)] = &[
         (
+            "NotSupported",
+            "construct via Diagnostic::not_supported so the compiler file/line is recorded for the P9xxx dashboards",
+        ),
+        (
             "NotImplemented",
             "construct via Diagnostic::not_implemented (or todo*) so the compiler file/line is recorded for the P9xxx dashboards",
         ),
