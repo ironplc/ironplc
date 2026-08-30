@@ -17,10 +17,6 @@ requires adding support for the elements to the IronPLC compiler.
 Reporting the program
 ---------------------
 
-The set of unsupported elements changes with every release, so this page does
-not list them. If your program is valid IEC 61131-3 and produces this error,
-report it — that is how the gap gets closed.
-
 We can only add support for an unsupported capability once we can see the
 program that needs it. Sending us the program gives the best results, so please
 do — there are two ways, and no GitHub account is required:
