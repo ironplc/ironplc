@@ -234,7 +234,7 @@ fn compile_user_method(
         method_emitter.emit_ret_void();
     }
 
-    let finalized = finalize_function(&mut method_emitter, ctx);
+    let finalized = finalize_function(&mut method_emitter, ctx)?;
 
     Ok(CompiledFunction {
         function_id,

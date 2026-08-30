@@ -29,6 +29,9 @@ mod tests;
 
 use std::collections::HashMap;
 
+use ironplc_dsl::core::FileId;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
+
 use crate::compile::PoolConstant;
 
 /// Maps every old (pre-optimization) byte offset to its new offset in the
@@ -41,26 +44,44 @@ pub(crate) type OffsetMap = HashMap<usize, usize>;
 /// For each entry the old `bytecode_offset` is looked up in `offset_map`,
 /// which by construction maps every instruction boundary — including
 /// removed instructions — to the position the next surviving instruction
-/// occupies in the optimized stream ("snap forward"). Entries whose
-/// remapped offset lands past the new end-of-function (`new_bytecode_len`)
-/// are dropped, and entries that map to the same remapped offset as the
-/// previous kept entry are deduplicated (the optimizer can collapse two
-/// pre-optimization positions onto one post-optimization position).
+/// occupies in the optimized stream ("snap forward").
 ///
-/// Entries whose old offset is not in the map are dropped silently; the
-/// emitter only records entries immediately before pushing an opcode,
-/// so this should never happen in practice. If it does, the resulting
-/// debug info would be wrong anyway, so silently dropping is safer than
-/// keeping a bad offset.
+/// Two kinds of entry are dropped, both of them legitimate outcomes rather
+/// than errors:
+///
+/// - An entry whose remapped offset lands at or past the new end of the
+///   function. Every instruction it could have pointed at was removed, so
+///   there is no longer an instruction to attribute the source position to
+///   and nothing to record.
+/// - An entry that lands on the same offset as the previous kept entry. The
+///   optimizer collapses several pre-optimization positions onto one
+///   surviving instruction — the emitter's store-load peephole does this
+///   routinely — and a line map holds one position per offset.
+///
+/// An entry whose old offset is *not in the map at all* is a different
+/// matter. The map covers every instruction boundary plus one-past-the-end,
+/// and the emitter only records an entry immediately before pushing an
+/// opcode, so a miss means an entry sits at an offset that is not an
+/// instruction start. That is a defect in the compiler, not a property of the
+/// program being compiled, so it is reported as [`Problem::InternalError`]
+/// rather than dropped.
+///
+/// [`Problem::InternalError`]: ironplc_problems::Problem::InternalError
 pub(crate) fn remap_line_map(
     raw: Vec<crate::emit::EmittedLineMapEntry>,
     offset_map: &OffsetMap,
     new_bytecode_len: u16,
-) -> Vec<crate::emit::EmittedLineMapEntry> {
+) -> Result<Vec<crate::emit::EmittedLineMapEntry>, Diagnostic> {
     let mut out: Vec<crate::emit::EmittedLineMapEntry> = Vec::with_capacity(raw.len());
     for entry in raw {
         let Some(&new_offset) = offset_map.get(&(entry.bytecode_offset as usize)) else {
-            continue;
+            return Err(Diagnostic::internal_error_at(Label::file(
+                FileId::default(),
+                format!(
+                    "line map entry at bytecode offset {} is not an instruction boundary",
+                    entry.bytecode_offset
+                ),
+            )));
         };
         if new_offset >= new_bytecode_len as usize {
             continue;
@@ -74,7 +95,7 @@ pub(crate) fn remap_line_map(
             ..entry
         });
     }
-    out
+    Ok(out)
 }
 
 /// Threads bytecode through the pass sequence, accumulating one old→new

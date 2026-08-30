@@ -494,17 +494,20 @@ pub(crate) struct FinalizedFunction {
 ///
 /// `emitter.bytecode()` must be called before `max_stack_depth()` because the
 /// peephole optimizer (run inside `bytecode()`) may increase max_stack_depth.
-pub(crate) fn finalize_function(emitter: &mut Emitter, ctx: &CompileContext) -> FinalizedFunction {
+pub(crate) fn finalize_function(
+    emitter: &mut Emitter,
+    ctx: &CompileContext,
+) -> Result<FinalizedFunction, Diagnostic> {
     let raw_line_map = emitter.take_line_map();
     let (bytecode, offset_map) = crate::optimize::optimize(emitter.bytecode(), &ctx.constants);
     let max_stack_depth = emitter.max_stack_depth();
     let line_map =
-        crate::optimize::remap_line_map(raw_line_map, &offset_map, bytecode.len() as u16);
-    FinalizedFunction {
+        crate::optimize::remap_line_map(raw_line_map, &offset_map, bytecode.len() as u16)?;
+    Ok(FinalizedFunction {
         bytecode,
         max_stack_depth,
         line_map,
-    }
+    })
 }
 
 /// The AST inputs that [`compile_program_with_functions`] operates on,
@@ -830,7 +833,7 @@ fn compile_program_with_functions(
         .unwrap_or(0);
 
     // Function 0: init, Function 1: scan
-    let init = finalize_function(&mut init_emitter, &ctx);
+    let init = finalize_function(&mut init_emitter, &ctx)?;
     builder = builder.add_function(
         FunctionId::INIT,
         &init.bytecode,
@@ -840,7 +843,7 @@ fn compile_program_with_functions(
     );
     builder = add_line_map_entries(builder, FunctionId::INIT, &init.line_map);
 
-    let scan = finalize_function(&mut scan_emitter, &ctx);
+    let scan = finalize_function(&mut scan_emitter, &ctx)?;
     builder = builder.add_function(
         FunctionId::SCAN,
         &scan.bytecode,

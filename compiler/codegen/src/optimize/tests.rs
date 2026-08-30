@@ -587,7 +587,8 @@ fn remap_line_map_when_entry_removed_by_first_pass_then_snaps_past_second_pass()
     // Offset 3 is the LOAD_VAR the first pass removes; offset 14 is the
     // RET_VOID that survives both passes.
     let raw = vec![line_entry(3, 10), line_entry(14, 20)];
-    let remapped = remap_line_map(raw, &offset_map, result.len() as u16);
+    let remapped = remap_line_map(raw, &offset_map, result.len() as u16)
+        .expect("every entry sits on an instruction boundary");
 
     // The entry on the removed instruction snaps forward past the second
     // pass's removal onto LOAD_TRUE at offset 3, and the surviving
@@ -597,4 +598,23 @@ fn remap_line_map_when_entry_removed_by_first_pass_then_snaps_past_second_pass()
         vec![line_entry(3, 10), line_entry(4, 20)],
         "composed map must snap forward through both passes"
     );
+}
+
+#[test]
+fn remap_line_map_when_entry_is_not_an_instruction_boundary_then_internal_error() {
+    // The offset map covers every instruction boundary, so an entry that
+    // misses it means the emitter recorded a position mid-instruction. That
+    // is a compiler defect rather than anything the program being compiled
+    // can cause, so it is reported instead of dropped.
+    let bytecode = two_pass_bytecode();
+    let (result, offset_map) = optimize(&bytecode, &[PoolConstant::I32(0)]);
+
+    let raw = vec![line_entry(4, 10)];
+    let diagnostic = remap_line_map(raw, &offset_map, result.len() as u16).unwrap_err();
+
+    assert_eq!(diagnostic.code, "P9998");
+    assert!(diagnostic
+        .primary
+        .message
+        .contains("not an instruction boundary"));
 }
