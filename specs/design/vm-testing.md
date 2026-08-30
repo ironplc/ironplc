@@ -64,7 +64,7 @@ Total: **15 codegen tests**.
 
 The current tests cover the "happy path" steel-thread scenario well but have significant gaps:
 
-**Instruction-level coverage**: Only `LOAD_CONST_I32`, `LOAD_VAR_I32`, `STORE_VAR_I32`, `ADD_I32`, and `RET_VOID` are tested (the only 5 opcodes that exist). As the instruction set grows per the [bytecode instruction set plan](../plans/bytecode-instruction-set.md), each new opcode needs systematic testing.
+**Instruction-level coverage**: Only `LOAD_CONST_I32`, `LOAD_VAR_I32`, `STORE_VAR_I32`, `ADD_I32`, and `RET_VOID` are tested (the only 5 opcodes that exist). As the instruction set grows per the [bytecode instruction set](bytecode-instruction-set.md), each new opcode needs systematic testing.
 
 **Error path coverage**: The `execute()` function has 5 `Trap` variants that can fire during execution, but only `InvalidInstruction` is tested through the VM. `StackOverflow`, `StackUnderflow`, `InvalidConstantIndex`, and `InvalidVariableIndex` are tested at the component level (stack, variable table) but not through the full `execute()` path.
 

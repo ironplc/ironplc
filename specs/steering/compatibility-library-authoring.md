@@ -105,7 +105,8 @@ Never feed to an AI tool, paste, or transliterate:
 
 ## Enforcement: automated vs. review
 
-- **Automated (a conformance test — see the implementation plan).** Every
+- **Automated (a conformance test — `sources_spec_req_cl_007_*` in
+  `compiler/sources/src/spec_conformance.rs`).** Every
   manifest is well-formed and records a non-empty `references` list. The test
   verifies the record *exists and is well-formed* — it makes no legal judgment.
 - **Review-only (cannot be tested).** That the declared provenance is *true* —

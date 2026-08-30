@@ -11,12 +11,9 @@
 //! effectively unmaintained, and used by nothing mainstream; the established
 //! Rust DAP implementations (Helix, Lapce, probe-rs) all define their own
 //! types. Our v1 surface is a handful of small `serde` structs — trivial to own
-//! and not worth an alpha dependency on the public build. See the plan's
-//! "DAP types: hand-rolled" section for the full rationale.
+//! and not worth an alpha dependency on the public build.
 //!
-//! The types are consumed by the request-dispatch loop that lands in a later
-//! commit (Phase 4.4); for this commit they are exercised only by the wire
-//! round-trip unit tests below.
+//! The types are consumed by the request-dispatch loop in [`super::server`].
 #![allow(dead_code)]
 
 use ironplc_container::{SourceColumn, SourceLine};
