@@ -217,9 +217,8 @@ is small and falls into four categories. Anything outside them is expressible
 Borderline case worth recording: numeric-to-string *formatting* with runtime
 precision (`LREAL_TO_FMTSTR`) is expressible in principle (integer math plus
 the string stdlib) but numerically-faithful float formatting is subtle enough
-that neither medium is chosen yet — the plan lands it declare-only, and the
-follow-up decides ST versus a formatting builtin on fidelity grounds, not
-convenience.
+that neither medium is chosen yet — it lands declare-only, and the follow-up
+decides ST versus a formatting builtin on fidelity grounds, not convenience.
 
 ### Related decisions
 

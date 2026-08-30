@@ -104,8 +104,8 @@ pub fn load_container(path: &Path) -> Result<Container, LaunchError> {
 
 /// Checks the two v1 launch preconditions against a loaded container.
 ///
-/// Debug info is checked first (per the plan), then the single-instance limit,
-/// so a container that is both missing debug info and multi-instance reports
+/// Debug info is checked first, then the single-instance limit, so a
+/// container that is both missing debug info and multi-instance reports
 /// [`LaunchError::NoDebugInfo`].
 pub fn check_preconditions(container: &Container) -> Result<(), LaunchError> {
     if container.debug_section.is_none() {

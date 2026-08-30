@@ -1390,7 +1390,7 @@ This supersedes the original decision to feature-gate DAP behind `--features dap
 | `vm-cli` | `Cargo.toml` | Second `[[bin]]` target, `ironplcvmd`, built unconditionally |
 | `vm-cli` | new `dap_main.rs` | Entry point for `ironplcvmd`; speaks DAP on stdin/stdout and takes no arguments (the program under debug arrives in the `launch` request). `main.rs`/`ironplcvm` is untouched. |
 | `vm-cli` | new `dap/framing.rs` | Content-Length framing reader/writer |
-| `vm-cli` | new `dap/types.rs` | DAP protocol types (Request, Response, Event, Capabilities). Prefer the `dap-types` crate if it's a fit; otherwise hand-rolled with `serde`. |
+| `vm-cli` | new `dap/types.rs` | DAP protocol types (Request, Response, Event, Capabilities). Hand-rolled with `serde`: the `dap` crate is alpha and effectively unmaintained, and the established Rust DAP implementations (Helix, Lapce, probe-rs) all define their own types. |
 | `vm-cli` | new `dap/server.rs` | **Single-threaded** event loop: alternate between draining queued DAP requests at natural stop points and running the VM under `run_round_debug` (see §Single-threaded DAP loop). No I/O thread, no `Send`/`Sync`, no `Arc`, no `AtomicBool`. |
 | `vm-cli` | new `dap/state.rs` | `Phase` mirror plus per-state legality checks (returns `requestNotApplicable` for illegal requests, including `pause` and `setVariable` which are unsupported in v1) |
 | `vm-cli` | new `dap/launch.rs` | `launch` precondition: reject containers with multiple program instances (`MultiInstanceUnsupported`); reject containers without a debug section (`NoDebugInfo`) — see §Launch errors. |

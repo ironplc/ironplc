@@ -15,7 +15,11 @@ Implement all 90 numeric type conversion functions defined in IEC 61131-3 Sectio
 | Real → Int | 16 | REAL_TO_INT, LREAL_TO_UDINT |
 | Real → Real | 2 | REAL_TO_LREAL, LREAL_TO_REAL |
 
-**Out of scope**: Boolean conversions (not in analyzer), string conversions (no string runtime).
+**Out of scope when this document was written**: Boolean conversions (not in
+analyzer) and string conversions (no string runtime). Both have since landed;
+the opcodes are assigned in
+[bytecode-instruction-set.md](bytecode-instruction-set.md)
+(`CONV_I32_TO_BOOL` onward, and the `*_TO_STR` family).
 
 ## Architecture
 
