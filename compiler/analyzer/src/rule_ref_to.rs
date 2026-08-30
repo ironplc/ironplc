@@ -268,7 +268,11 @@ impl RuleRefTo<'_> {
                     Label::span(span, "Ordering comparison on reference types"),
                 ));
             }
-            CompareOp::Or | CompareOp::Xor | CompareOp::And | CompareOp::AndThen => {}
+            CompareOp::Or
+            | CompareOp::Xor
+            | CompareOp::And
+            | CompareOp::AndThen
+            | CompareOp::OrElse => {}
         }
     }
 

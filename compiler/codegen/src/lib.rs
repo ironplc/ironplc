@@ -39,6 +39,7 @@ mod compile_expr;
 mod compile_fn;
 mod compile_method;
 mod compile_setup;
+mod compile_short_circuit;
 mod compile_stmt;
 mod compile_string;
 mod compile_struct;
