@@ -83,7 +83,7 @@ check-invariants:
 
 ### Adding Exceptions
 
-Some capabilities may be intentionally untested (e.g., a language that uses `firstLine` detection and is genuinely difficult to test in an automated way). The script should support an exceptions list in a comment or config, but each exception must include a justification.
+The script has no exceptions list, and every capability the invariants apply to is tested. If a capability ever turns out to be genuinely untestable in an automated way, add the list back then — with a justification for each entry, and only for an entry that actually suppresses a failure. An exception that suppresses nothing is dead code that misrepresents the state of the tests.
 
 ## CI Pipeline Order
 
