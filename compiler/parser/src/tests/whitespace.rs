@@ -284,6 +284,10 @@ fn parse_when_gap_filled_then_same_ast(
 /// apply and a gap must stay a parse error. Issue #1437 lists them explicitly
 /// as adjacencies a whitespace fix must *not* widen; a row that starts passing
 /// is the signal that one did.
+///
+/// `REF=` is deliberately not a row here. It is a single token, so #1437 could
+/// not have widened it, and `tests/reference_to.rs` already owns that
+/// assertion -- a row here would only duplicate it.
 #[rstest]
 #[case::typed_integer("v := INT·#·16;", in_program, CompilerOptions::default)]
 #[case::typed_real("v := REAL·#·1.5;", in_program, CompilerOptions::default)]
