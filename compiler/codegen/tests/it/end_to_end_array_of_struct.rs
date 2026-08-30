@@ -1,7 +1,6 @@
 //! End-to-end tests for a *top-level* `ARRAY OF <struct>` variable — an array
 //! whose element type is a user-defined structure and which is not reached
-//! through an enclosing structure. See issue #1383 and
-//! `specs/plans/2026-08-22-top-level-array-of-struct.md`.
+//! through an enclosing structure. See issue #1383.
 //!
 //! Field access through an array-of-struct *field* (`h.items[i].a`) is covered
 //! by `end_to_end_struct.rs`; these tests own the case where the variable
