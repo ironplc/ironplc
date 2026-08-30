@@ -1744,6 +1744,7 @@ parser! {
     pub rule expression() -> ExprKind = precedence!{
       // or_expression
       x:(@) _ tok(TokenType::Or) _ y:@ { ExprKind::compare(CompareOp::Or, x, y) }
+      x:(@) _ tok(TokenType::OrElse) _ y:@ { ExprKind::compare(CompareOp::OrElse, x, y) }
       --
       // xor_expression
       x:(@) _ tok(TokenType::Xor) _ y:@ { ExprKind::compare(CompareOp::Xor, x, y) }

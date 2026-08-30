@@ -164,7 +164,7 @@ pub(crate) fn extract_case(library: &Library) -> Case {
 }
 
 // -----------------------------------------------------------------
-// AND_THEN short-circuit boolean operator.
+// AND_THEN / OR_ELSE short-circuit boolean operators.
 // See specs/design/beckhoff-twincat-dialect.md §3.4.
 // -----------------------------------------------------------------
 
