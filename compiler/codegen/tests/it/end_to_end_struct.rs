@@ -621,7 +621,7 @@ END_PROGRAM
 }
 
 // --- Field access on array-of-struct elements ---
-// `s.arr[i].field`. See specs/plans/2026-08-16-array-of-struct-field-codegen.md.
+// `s.arr[i].field`.
 
 // h is var 0, result is var 1.
 e2e_i32!(

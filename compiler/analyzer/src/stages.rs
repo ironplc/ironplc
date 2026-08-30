@@ -160,7 +160,6 @@ pub fn resolve_types(
 
     // Recoverable: an unresolvable declaration is diagnosed but does not
     // discard the rest of the library's successfully resolved declarations.
-    // See specs/plans/2026-08-02-partial-resolution-revert-on-unrelated-error.md.
     let recoverable_xforms: Vec<
         fn(Library, &mut TypeEnvironment) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>,
     > = vec![
@@ -480,7 +479,6 @@ END_FUNCTION";
     // ---------------------------------------------------------------------
     // Don't revert a whole library's type resolution because one unrelated
     // declaration failed to resolve.
-    // See specs/plans/2026-08-02-partial-resolution-revert-on-unrelated-error.md.
     // ---------------------------------------------------------------------
 
     #[test]
@@ -574,7 +572,6 @@ END_FUNCTION_BLOCK";
 
     // ---------------------------------------------------------------------
     // FB-instance call-style initializer (distinct node).
-    // See specs/plans/2026-08-01-fb-call-style-initializer-distinct-node.md.
     // ---------------------------------------------------------------------
 
     #[test]
