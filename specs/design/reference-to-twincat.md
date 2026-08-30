@@ -15,7 +15,7 @@ variable-table index — but with different usage models:
 | Bind    | `r := REF(x);` | `r REF= x;` |
 | Read    | `y := r^;` (explicit `^`) | `y := r;` (implicit dereference) |
 | Write   | `r^ := 5;` (explicit `^`) | `r := 5;` (implicit dereference) |
-| Validity| `r = NULL` | `__ISVALIDREF(r)` / `r = 0` |
+| Validity| `r = NULL` | `__ISVALIDREF(r)` |
 
 The reference **backend is reused wholesale**: references are type-erased to
 `u64` variable-table indices, codegen emits `LOAD_INDIRECT`/`STORE_INDIRECT`,
@@ -58,8 +58,9 @@ productions never fire when the keyword is demoted.
 `REF_TO` and `REFERENCE TO` are **not** made mutually exclusive. Per
 [ADR-0038](../adrs/0038-no-restrictions-on-flag-combinations.md), the compiler
 does not restrict `--allow-*` flag combinations; preference is expressed through
-dialect presets. Only the CODESYS dialect bundles `REFERENCE TO`, and no dialect
-bundles both. Coexistence stays well-defined because each declaration carries a
+dialect presets. The CODESYS and TwinCAT dialects bundle `REFERENCE TO`; CODESYS
+bundles `REF_TO` as well, so a real dialect does enable both. Coexistence stays
+well-defined because each declaration carries a
 `RefSyntax` tag (`RefTo` vs `ReferenceTo`); the PR-2 implicit-dereference
 transform keys on `RefSyntax::ReferenceTo`, so `REF_TO` variables are never
 implicitly dereferenced even when both flags are set.

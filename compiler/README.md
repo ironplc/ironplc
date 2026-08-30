@@ -6,4 +6,4 @@ generate code.
 
 ## Contributing
 
-Contributions are very welcome. See [CONTRIBUTING.md](contributing.md) for details.
+Contributions are very welcome. See [CONTRIBUTING.md](../CONTRIBUTING.md) for details.

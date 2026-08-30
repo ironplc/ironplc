@@ -6,6 +6,10 @@ This document explains how to create and maintain steering files for the IronPLC
 
 IronPLC uses a **pointer pattern** for steering files to maximize compatibility across different AI systems:
 
+Together, the files in `specs/steering/` are the project's constitution: the
+standing principles and standards every change is held to. A tool that offers
+its own constitution mechanism does not need a second one — point it here.
+
 ### Core Principle: Single Source of Truth
 
 All detailed steering documentation lives in **`specs/steering/`**. Different AI tools reference this documentation through their own pointer mechanisms:
