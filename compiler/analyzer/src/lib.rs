@@ -96,7 +96,9 @@ pub use intermediates::enumeration::resolve_ordinal_values;
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use type_attributes::TypeAttributes;
 pub use type_category::TypeCategory;
-pub use type_environment::{TypeEnvironment, TypeEnvironmentBuilder, UsageContext};
+pub use type_environment::{
+    elementary_type, TypeEnvironment, TypeEnvironmentBuilder, UsageContext,
+};
 
 #[cfg(test)]
 mod test_helpers;
