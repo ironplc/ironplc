@@ -176,7 +176,8 @@ struct FileArgs {
     #[arg(long)]
     allow_pragmas: bool,
 
-    /// Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension).
+    /// Allow the AND_THEN and OR_ELSE short-circuit boolean operators
+    /// (Beckhoff/CODESYS extension).
     /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_short_circuit_operators: bool,

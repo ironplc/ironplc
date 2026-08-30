@@ -692,6 +692,8 @@ pub enum CompareOp {
     /// short-circuit vs. eager evaluation distinction is real and
     /// externally-visible in TwinCAT/CODESYS itself.
     AndThen,
+    /// CODESYS/TwinCAT short-circuit `OR`, the dual of [`CompareOp::AndThen`].
+    OrElse,
     Eq,
     Ne,
     Lt,
@@ -712,6 +714,7 @@ impl CompareOp {
             CompareOp::Xor => "XOR",
             CompareOp::And => "AND",
             CompareOp::AndThen => "AND_THEN",
+            CompareOp::OrElse => "OR_ELSE",
             CompareOp::Eq => "=",
             CompareOp::Ne => "<>",
             CompareOp::Lt => "<",

@@ -206,11 +206,11 @@ Options
    not interpreted.
 
 ``--allow-short-circuit-operators``
-   Allow the ``AND_THEN`` short-circuit boolean operator, a Beckhoff/CODESYS
-   extension that only evaluates its right operand when the left operand is
-   ``TRUE``. ``ironplcc check`` fully supports it; codegen
-   (``ironplcc compile``) does not yet implement short-circuit evaluation and
-   refuses to compile it.
+   Allow the ``AND_THEN`` and ``OR_ELSE`` short-circuit boolean operators, a
+   Beckhoff/CODESYS extension. ``AND_THEN`` evaluates its right operand only
+   when the left operand is ``TRUE``; ``OR_ELSE`` only when the left operand
+   is ``FALSE``. Bit-string operands have nothing to short-circuit on and
+   evaluate both operands, matching ``AND`` and ``OR``.
 
 ``--allow-mixed-located-var-declarations``
    Allow an ``AT``-located variable (e.g. ``AT %I*``) inside an otherwise

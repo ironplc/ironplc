@@ -23,6 +23,7 @@ use super::compile::{
 };
 use super::compile_call::compile_function_call;
 use super::compile_setup::resolve_type_name;
+use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
 use super::compile_string::compile_string_compare;
 use crate::emit::Emitter;
 
@@ -70,6 +71,14 @@ pub(crate) fn concrete_op_type_from_expr(expr: &Expr) -> Option<OpType> {
     Some((info.op_width, info.signedness))
 }
 
+/// Returns `true` if the expression's resolved type is BOOL.
+pub(crate) fn expr_is_bool(expr: &Expr) -> bool {
+    expr.resolved_type
+        .as_ref()
+        .and_then(|t| ElementaryTypeName::try_from(&t.name).ok())
+        .is_some_and(|e| matches!(e, ElementaryTypeName::BOOL))
+}
+
 /// Returns `true` if the expression's resolved type is STRING.
 pub(crate) fn expr_is_string(expr: &Expr) -> bool {
     expr.resolved_type
@@ -102,9 +111,11 @@ pub(crate) fn storage_bits(expr: &Expr) -> Result<u8, Diagnostic> {
 pub(crate) fn condition_op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
     match &expr.kind {
         ExprKind::Compare(compare) => match compare.op {
-            CompareOp::And | CompareOp::Or | CompareOp::Xor | CompareOp::AndThen => {
-                condition_op_type(&compare.left)
-            }
+            CompareOp::And
+            | CompareOp::Or
+            | CompareOp::Xor
+            | CompareOp::AndThen
+            | CompareOp::OrElse => condition_op_type(&compare.left),
             _ => {
                 // String comparisons take a dedicated path in compile_expr
                 // that emits an i32 boolean; the operand op_type is unused.
@@ -218,6 +229,13 @@ fn compile_compare(
     compare: &CompareExpr,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
+    // AND_THEN and OR_ELSE must not evaluate their right operand when the
+    // left one already decides the answer, so they branch instead of
+    // evaluating both operands into an eager bitwise op.
+    if let Some(short_circuit) = ShortCircuitOp::for_expr(compare) {
+        return compile_short_circuit(emitter, ctx, compare, short_circuit);
+    }
+
     // String comparisons need a completely different code path because
     // strings live in the data region, not on the operand stack.
     if expr_is_string(&compare.left) {
@@ -247,19 +265,11 @@ fn compile_compare(
         CompareOp::And => emit_and(emitter, operand_op_type),
         CompareOp::Or => emit_or(emitter, operand_op_type),
         CompareOp::Xor => emit_xor(emitter, operand_op_type),
-        CompareOp::AndThen => {
-            // AND_THEN requires short-circuit (conditional-branch)
-            // codegen -- emitting eager bytecode here would be
-            // silently wrong (exactly the null-deref crash
-            // AND_THEN exists to prevent), so refuse explicitly
-            // rather than miscompile. `ironplcc check` already
-            // fully supports AND_THEN; only `ironplcc compile`
-            // hits this.
-            return Err(Diagnostic::not_implemented(Label::span(
-                ironplc_dsl::core::SourceSpan::join(&compare.left.span(), &compare.right.span()),
-                "AND_THEN short-circuit evaluation is not yet supported in codegen",
-            )));
-        }
+        // Only reached for non-BOOL operands, where there is no boolean to
+        // short-circuit on and the operator degenerates to its eager
+        // counterpart. See `ShortCircuitOp::for_expr`.
+        CompareOp::AndThen => emit_and(emitter, operand_op_type),
+        CompareOp::OrElse => emit_or(emitter, operand_op_type),
     }
     Ok(())
 }
@@ -1731,7 +1741,11 @@ fn compare_op_to_cmp_op(op: &CompareOp) -> Option<u8> {
         CompareOp::LtEq => Some(opcode::cmp_op::LE_S),
         CompareOp::Gt => Some(opcode::cmp_op::GT_S),
         CompareOp::GtEq => Some(opcode::cmp_op::GE_S),
-        CompareOp::And | CompareOp::Or | CompareOp::Xor | CompareOp::AndThen => None,
+        CompareOp::And
+        | CompareOp::Or
+        | CompareOp::Xor
+        | CompareOp::AndThen
+        | CompareOp::OrElse => None,
     }
 }
 

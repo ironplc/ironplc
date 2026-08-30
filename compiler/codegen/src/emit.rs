@@ -910,6 +910,30 @@ impl Emitter {
         self.max_stack_depth
     }
 
+    /// Returns the operand-stack depth the emitter is currently tracking.
+    ///
+    /// Pair with [`Self::reset_stack_depth`] around the arms of a branch.
+    pub fn stack_depth(&self) -> u16 {
+        self.current_stack_depth
+    }
+
+    /// Restores the tracked operand-stack depth to `depth`.
+    ///
+    /// The emitter counts depth in *emission* order, so it sums the arms of a
+    /// branch as if they ran back to back. That is harmless for statement
+    /// bodies, which are stack-neutral, but an expression arm leaves a value
+    /// behind: without this, every conditionally-evaluated expression would
+    /// inflate `max_stack_depth` by a slot. Record the depth before the first
+    /// arm and reset to it before emitting the second, so the depth after the
+    /// merge is the depth one arm actually delivers.
+    ///
+    /// This only corrects the emitter's own bookkeeping. What ships is checked
+    /// against the real control-flow graph by
+    /// [`ironplc_container::verify_stack_balance`].
+    pub fn reset_stack_depth(&mut self, depth: u16) {
+        self.current_stack_depth = depth;
+    }
+
     /// Resolves all pending jump patches by computing relative offsets.
     fn patch_jumps(&mut self) {
         for patch in self.patches.drain(..) {

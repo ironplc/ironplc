@@ -319,7 +319,7 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_pragmas,
 
-    "Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension)",
+    "Allow the AND_THEN and OR_ELSE short-circuit boolean operators (Beckhoff/CODESYS extension)",
     "--allow-short-circuit-operators",
     [Rusty, Codesys, TwinCat],
     allow_short_circuit_operators,
