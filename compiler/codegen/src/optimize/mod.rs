@@ -2,8 +2,13 @@
 //!
 //! Runs an ordered sequence of passes over the raw bytecode buffer produced by
 //! the emitter. Each pass matches adjacent instruction pairs against one family
-//! of identity/no-op patterns and removes them; jump offsets are adjusted to
-//! account for removed bytes.
+//! of identity/no-op patterns and removes them.
+//!
+//! The buffer arrives before the emitter has patched its jumps, so no pass
+//! sees an encoded branch offset and none needs to adjust one. What the
+//! optimizer is given instead is the set of offsets the jumps target; it
+//! returns an old→new offset map, and the emitter resolves every jump
+//! against the new positions afterwards.
 //!
 //! These passes run after the emitter's own in-line peephole optimizations
 //! (consecutive load -> DUP, store-load -> DUP+STORE) and complement them by
@@ -30,12 +35,13 @@ mod rewrite;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
 use crate::compile::PoolConstant;
+use crate::emit::UnpatchedCode;
 
 /// Maps every old (pre-optimization) byte offset to its new offset in the
 /// optimized bytecode. Includes one-past-the-end so spans that touch the end
@@ -105,15 +111,22 @@ pub(crate) fn remap_line_map(
 /// offset map that covers the whole pipeline.
 struct Pipeline {
     bytecode: Vec<u8>,
+    /// Offsets in `bytecode` no pass may remove or rewrite — the positions
+    /// the function's jumps land on. Remapped after every pass so it always
+    /// describes the current bytes.
+    protected: HashSet<usize>,
     /// Maps original offsets to offsets in `bytecode`. `None` until the first
     /// pass has run, after which it is that pass's own map.
     map: Option<OffsetMap>,
 }
 
 impl Pipeline {
-    fn run(&mut self, pass: impl FnOnce(&[u8]) -> (Vec<u8>, OffsetMap)) {
-        let (bytecode, map) = pass(&self.bytecode);
+    fn run(&mut self, pass: impl FnOnce(&[u8], &HashSet<usize>) -> (Vec<u8>, OffsetMap)) {
+        let (bytecode, map) = pass(&self.bytecode, &self.protected);
         self.bytecode = bytecode;
+        // A protected offset is an instruction boundary that no pass may
+        // remove, so the map carries it to the boundary it now occupies.
+        self.protected = self.protected.iter().map(|offset| map[offset]).collect();
         // Composition is total: every value in the accumulated map is an
         // offset this pass's input had an instruction boundary at (or its
         // length), because both are accumulated from surviving instruction
@@ -128,21 +141,27 @@ impl Pipeline {
     }
 }
 
-/// Runs the peephole optimizer on `bytecode`.
+/// Runs the peephole optimizer on un-patched emitter output.
 ///
 /// Returns the optimized byte vector along with an old→new offset map. The
 /// offset map covers every original instruction's start offset plus the
 /// one-past-the-end position, so callers can remap any span that points into
-/// (or just past) the original bytecode. If no patterns are found, the
-/// output bytes equal the input and the map is the identity over instruction
-/// boundaries.
-pub(crate) fn optimize(bytecode: &[u8], constants: &mut Vec<PoolConstant>) -> (Vec<u8>, OffsetMap) {
-    if bytecode.is_empty() {
-        return (Vec::new(), OffsetMap::new());
+/// (or just past) the original bytecode — including the emitter's own labels
+/// and pending jump patches. If no patterns are found, the output bytes equal
+/// the input and the map is the identity over instruction boundaries.
+pub(crate) fn optimize(
+    code: UnpatchedCode<'_>,
+    constants: &mut Vec<PoolConstant>,
+) -> (Vec<u8>, OffsetMap) {
+    if code.bytecode.is_empty() {
+        // Still map the one-past-the-end position, which for empty bytecode
+        // is 0: a label may be bound there even when nothing was emitted.
+        return (Vec::new(), OffsetMap::from([(0, 0)]));
     }
 
     let mut pipeline = Pipeline {
-        bytecode: bytecode.to_vec(),
+        bytecode: code.bytecode.to_vec(),
+        protected: code.jump_targets,
         map: None,
     };
 
@@ -152,10 +171,10 @@ pub(crate) fn optimize(bytecode: &[u8], constants: &mut Vec<PoolConstant>) -> (V
     // place to add a fixed-point loop, if one is ever needed. Nothing needs
     // one today.
     pipeline.run(pass_self_assign::apply);
-    pipeline.run(|bytecode| pass_arith_identity::apply(bytecode, constants));
+    pipeline.run(|bytecode, protected| pass_arith_identity::apply(bytecode, protected, constants));
     // Runs last of the three: it is the only pass that appends to the constant
     // pool, so nothing after it can be reading a stale pool.
-    pipeline.run(|bytecode| pass_const_trunc::apply(bytecode, constants));
+    pipeline.run(|bytecode, protected| pass_const_trunc::apply(bytecode, protected, constants));
 
     (
         pipeline.bytecode,

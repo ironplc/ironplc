@@ -61,6 +61,8 @@ END_VAR
     (* Operators *)
     myBool := (input1 = input2) OR (input1 <> 0);
     myBool := myBool AND NOT FALSE;
+    myBool := (input1 <> 0) AND_THEN (input2 = 0);
+    myBool := (input1 = 0) OR_ELSE (input2 <> 0);
     myBool := input1 < input2;
     myBool := input1 >= input2;
 
