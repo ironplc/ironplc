@@ -677,7 +677,7 @@ END_FUNCTION_BLOCK
         assert!(
             codes
                 .iter()
-                .any(|c| c == &Problem::AggregateAssignmentTypeMismatch.code()),
+                .any(|c| c == Problem::AggregateAssignmentTypeMismatch.code()),
             "expected an aggregate assignment mismatch on the function block's field, got {codes:?}"
         );
     }
