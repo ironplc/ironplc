@@ -59,7 +59,7 @@ variable's table index stored as a `u64` (`ExprKind::Ref` pushes the
 
 ## Delivery
 
-The feature is delivered in phases, mirroring the plan:
+The feature is delivered in phases:
 
 - **Phase 1 — `POINTER TO` declarations (this document's requirements
   `0xx`–`3xx` and `6xx`).** The `allow_pointer_to` flag, the `POINTER`

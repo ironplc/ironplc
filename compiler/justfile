@@ -58,11 +58,19 @@ plan-citations:
   # Matches both the repo-relative form (specs/plans/...) and relative links
   # such as ../plans/foo.md or ../../plans/foo.md, which markdown cross-links
   # inside specs/ use and which a literal "specs/plans" search misses entirely.
+  common_excludes=(':!specs/plans'
+    ':!CLAUDE.md' ':!CURSOR.md' ':!CONTRIBUTING.md'
+    ':!.cursor' ':!specs/steering'
+    ':!compiler/justfile')
   hits=$(git grep -nE "specs/plans|\.\./plans/|\.\./\.\./plans/" -- . \
-    ':!specs/plans' \
-    ':!CLAUDE.md' ':!CURSOR.md' ':!CONTRIBUTING.md' \
-    ':!.cursor' ':!specs/steering' \
-    ':!compiler/justfile' || true)
+    "${common_excludes[@]}" || true)
+  # A citation need not carry a path: "see the plan's X section" dangles just
+  # as badly once the plan is gone, and the reader cannot even tell which file
+  # was meant. Prose form is checked outside markdown only -- a design document
+  # saying "the plan" is referring to itself.
+  prose=$(git grep -nE "[Tt]he plan'?s?\b" -- . \
+    "${common_excludes[@]}" ':!*.md' || true)
+  hits=$(printf '%s\n%s' "$hits" "$prose" | grep -v '^$' || true)
   if [ -n "$hits" ]; then
     echo "error: specs/plans/ is cited outside specs/plans/ itself." >&2
     echo "A plan is deleted before its PR merges and is not a stable reference" >&2

@@ -151,8 +151,8 @@ fn parse_when_instance_method_call_then_instance_receiver() {
 }
 
 /// Whitespace between the keyword and its caret is accepted: nothing in
-/// the grammar joins them into a single token. See the plan's
-/// "whitespace question" section.
+/// the grammar joins them into a single token. See `tests/whitespace.rs`
+/// for the general free-format invariance tables.
 #[rstest]
 #[case::no_space("    THIS^.count := 1;")]
 #[case::space("    THIS ^.count := 1;")]
