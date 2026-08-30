@@ -262,6 +262,25 @@ impl Diagnostic {
             .with_source(caller.file(), caller.line())
     }
 
+    /// Creates a P9997 (NotSupported) diagnostic that automatically records
+    /// the compiler `file#Lline` of the call site as its source location.
+    ///
+    /// Use this — rather than [`Diagnostic::not_implemented`] — for a capability
+    /// the compiler deliberately does not offer: a fixed limit of the bytecode
+    /// format, or a construct that is not planned. P9999 promises "not yet";
+    /// P9997 does not, so a program that hits it needs to change rather than
+    /// wait for a later release.
+    ///
+    /// The location is captured via `#[track_caller]`, so no `file!()`/`line!()`
+    /// need to be passed.
+    #[track_caller]
+    #[allow(deprecated)]
+    pub fn not_supported(primary: Label) -> Self {
+        let caller = std::panic::Location::caller();
+        Diagnostic::problem(Problem::NotSupported, primary)
+            .with_source(caller.file(), caller.line())
+    }
+
     /// Creates an "internal error" diagnostic associated with a file and line in the Rust
     /// source code.
     ///
