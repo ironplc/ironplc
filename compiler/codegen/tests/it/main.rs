@@ -36,6 +36,7 @@ mod end_to_end_adr;
 mod end_to_end_aggregate_copy;
 mod end_to_end_any_int_literals;
 mod end_to_end_array;
+mod end_to_end_array_of_struct;
 mod end_to_end_array_ref_to;
 mod end_to_end_array_string;
 mod end_to_end_atan2;
