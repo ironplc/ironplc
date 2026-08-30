@@ -405,7 +405,7 @@ pub(crate) fn compile_user_function(
     }
     func_emitter.emit_ret();
 
-    let finalized = finalize_function(&mut func_emitter, ctx);
+    let finalized = finalize_function(&mut func_emitter, ctx)?;
 
     // Record function metadata for use at call sites.
     let func_name = func_decl.name.lower_case();
@@ -660,7 +660,7 @@ pub(crate) fn compile_user_function_block(
 
     ctx.current_function_id = saved_current_fn;
 
-    let finalized = finalize_function(&mut fb_emitter, ctx);
+    let finalized = finalize_function(&mut fb_emitter, ctx)?;
 
     // Note: `ctx`'s variable mappings are intentionally NOT restored
     // here (unlike `compile_user_function`). This type's METHODs (OOP
