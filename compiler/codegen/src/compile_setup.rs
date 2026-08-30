@@ -779,8 +779,9 @@ pub(crate) fn emit_function_local_prologue(
                     emit_store_var(emitter, var_index, op_type);
                 }
                 _ => {
-                    // Other initializer kinds (FunctionBlock, etc.)
-                    // are not expected in function locals; zero-fill as default.
+                    // Other initializer kinds; zero-fill as default.
+                    // `Structure` and `Array` reach this arm, and zero-filling
+                    // discards their declared field values.
                     emit_zero_const(emitter, ctx, op_type);
                     emit_store_var(emitter, var_index, op_type);
                 }

@@ -33,7 +33,7 @@ Work breakdowns that describe **how** to implement: phased task lists, specific 
 
 **A plan is branch-local.** It is committed as the first commit on a feature branch so it can be reviewed as a file diff, and deleted from that branch before merge. Because the repository squash-merges, the add and the delete cancel within the squashed commit, so no plan content reaches `main`. The plan stays viewable on the pull request.
 
-Plans are the one document type in `specs/` that is not durable. Anything worth keeping — a decision, a constraint, a piece of rationale — belongs in `specs/adrs/` or `specs/design/` and must land there in the same pull request.
+Plans are the one document type in `specs/` that is not durable. Anything worth keeping — a decision, a constraint, a piece of rationale — must land somewhere durable in the same pull request: `specs/adrs/`, `specs/design/`, or a code doc comment where the reasoning is local to the code (see [Choosing the Right Location](#choosing-the-right-location)).
 
 **Never cite a plan from anywhere else.** Code comments, workflows, the `justfile`, design documents and ADRs must cite an ADR or a design document, never `specs/plans/`. A plan is deleted before its own pull request merges, so a reference to one is either already dead or about to be. `just plan-citations` enforces this and runs as part of `just`.
 
@@ -47,8 +47,19 @@ Guidance for AI assistants working with the codebase (conventions, patterns, wor
 |----------|----------|
 | Why did we choose approach X over Y? | `specs/adrs/` |
 | What should the container format look like? | `specs/design/` |
+| Why is *this function* written this way? | a doc comment on it |
 | What are the steps to implement the container format? | `specs/plans/` (deleted before merge) |
 | How should AI assistants name tests? | `specs/steering/` |
+
+**A decision may live in a code comment.** Rationale whose reader is the next
+person editing that function or file belongs next to the code, not in `specs/`
+— a deliberate divergence from the obvious implementation, why a branch exists,
+why a simpler shape was not used. Moving it to a design document makes it worse:
+further from the code it constrains, and easier to leave behind when the code
+moves.
+
+Reserve `specs/` for what a code comment cannot hold: a decision that constrains
+a subsystem, spans crates, or picks between alternatives someone will re-litigate.
 
 When a document contains both design and plan content, split it into two files. The design file goes in `specs/design/` and the plan file goes in `specs/plans/`. The reference is one-way: the plan cites the design it implements, and the design never cites the plan — the design outlives the plan.
 
@@ -516,6 +527,11 @@ The project has multiple README files that must stay synchronized:
 - Use Rust doc comments (`///`) for public functions and types
 - Include examples in documentation when helpful
 - Document complex algorithms or IEC 61131-3 specific behavior
+- A comment carrying a decision states what was chosen and why, not only what
+  the code does — the next reader's question is whether they may change it
+- Nothing checks that a comment is still true. A comment asserting behaviour is
+  as capable of going stale as a design document, and is read more often; when
+  you change behaviour, re-read the comments around it
 
 ### Example Synchronization
 **Important**: Examples in documentation should also exist as tests in the Rust compiler to ensure documentation accuracy. Follow the existing naming conventions for test examples.
