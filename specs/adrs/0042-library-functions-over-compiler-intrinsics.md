@@ -1,6 +1,6 @@
 # Library Functions Over Compiler Intrinsics
 
-status: proposed
+status: accepted
 date: 2026-08-08
 
 ## Context and Problem Statement
@@ -86,14 +86,16 @@ The rule, in order of application to a proposed function name:
 3. **Native implementations require inexpressibility.** Only when the
    semantics cannot be expressed in IEC 61131-3 source — IEEE-754 operations
    with no source-level equivalent, hardware access, compile-time knowledge —
-   may the implementation be native. For a *vendor* name, the native
-   implementation is an **unnamed VM builtin** reached exclusively through the
-   library's manifest binding (see
-   [Compatibility Library Format](../design/compatibility-library-format.md));
-   the builtin adds no name to any scope, so the library remains the only way
-   to call it. For a *standard* name, the compiler seeds the name and lowers
-   to the builtin directly — this is the only case that adds to the compiler's
-   function tables.
+   may the implementation be native. For a *standard* name, the compiler seeds
+   the name and lowers to the builtin directly. For a *vendor* name, the vendor
+   spelling stays an ST body in the library; the native capability it needs is
+   reached by calling a **compiler intrinsic in the reserved `__` namespace**
+   (`__TRUNC`, `__MOD`), which the library body invokes like any other function
+   — `Tc2_Math`'s `LTRUNC` is `LTRUNC := __TRUNC(IN);`. `__` names are seeded
+   unconditionally (library bodies are analyzed under the *user's* options, so a
+   flag gate would break every library that uses them), are visibly
+   non-portable, and collide with no IEC 61131-3 or vendor name. Both cases add
+   to the compiler's function tables; no vendor spelling ever does.
 4. **Function-like operators are the dialect axis, not functions.** Constructs
    that parse as calls but require compiler cooperation no function could have
    (`SIZEOF`'s compile-time type knowledge, `ADR`'s address-of) are syntax
@@ -138,8 +140,9 @@ For each new callable name in a PR, review confirms:
    `--allow-*` flag.
 2. ST-expressible → the body is ST; no new func_id exists for it.
 3. Native → the PR demonstrates inexpressibility (what IEC 61131-3 construct
-   is missing), and for vendor names the func_id is reachable only via a
-   manifest binding (no compiler-seeded name resolves to it).
+   is missing), and for vendor names the vendor spelling is still an ST body in
+   the library. The native capability enters through a `__`-prefixed intrinsic,
+   never through the vendor spelling and never behind an `--allow-*` flag.
 
 ## Pros and Cons of the Options
 
@@ -219,6 +222,35 @@ precision (`LREAL_TO_FMTSTR`) is expressible in principle (integer math plus
 the string stdlib) but numerically-faithful float formatting is subtle enough
 that neither medium is chosen yet — it lands declare-only, and the follow-up
 decides ST versus a formatting builtin on fidelity grounds, not convenience.
+
+### Rejected: manifest-bound unnamed builtins
+
+An earlier form of rule 3 above required a vendor name's native implementation to
+be an *unnamed* VM builtin, reached exclusively through a binding declared in the
+library's manifest — the builtin would add no name to any scope, so the library
+would be the only way to call it. It reads well, and it is what this ADR
+originally specified.
+
+Review rejected it on security grounds, and it was never built. A manifest
+binding makes an on-disk data file an input to code *emission*: the compiler
+would emit a `BUILTIN` opcode for a func_id named by a file it does not own, and
+nothing structurally guarantees the library's declared signature matches that
+builtin's stack behaviour. A mismatched binding — through error or through a
+tampered manifest — would corrupt the operand stack.
+
+The `__`-namespace intrinsic in rule 3 closes that class outright. Every
+`BUILTIN` emission originates from a compiler-owned table, manifests stay pure
+metadata, and the intrinsic's signature is type-checked by the analyzer like any
+other stdlib function, so the mismatch cannot exist. The cost is that the
+compiler's name table grows by one entry per inexpressible capability rather than
+zero — accepted, because `__` names are not part of the callable surface any
+portable program would use, and there are two of them.
+
+The trade-off this gives up is real: an unnamed builtin adds nothing to any
+scope, whereas `__TRUNC` and `__MOD` are resolvable from user code under any
+dialect. That is the price of keeping code emission compiler-owned. The rationale
+also lives next to the code, on `get_compiler_intrinsic_functions()` in
+`analyzer/src/intermediates/stdlib_function.rs`.
 
 ### Related decisions
 
