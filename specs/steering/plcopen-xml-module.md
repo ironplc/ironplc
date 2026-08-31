@@ -23,6 +23,14 @@ mix both formats and references resolve across them: an XML POU can call an ST
 POU and an ST POU can use a type declared in XML. Everything downstream of the
 transform is format-blind.
 
+## Editor Language Detection
+
+The VS Code extension detects PLCopen XML by a `firstLine` pattern, not by
+registering the `.xml` extension. Claiming `.xml` would hijack every XML file
+in a user's workspace -- most of which are not PLCopen. The cost is that
+detection cannot be tested through `openTextDocument`, which is why
+`checkInvariants.ts` carries an exception for it.
+
 ## Module Structure
 
 ### `schema.rs`

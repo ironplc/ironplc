@@ -1,3 +1,8 @@
+---
+inclusion: fileMatch
+fileMatchPattern: "compiler/sources/resources/compat-libraries/**"
+---
+
 # Compatibility Library Authoring Policy
 
 See [specs/steering/compatibility-library-authoring.md](../../specs/steering/compatibility-library-authoring.md) for the full policy.

@@ -285,7 +285,11 @@ parser! {
     rule pragma() -> () = tok(TokenType::Pragma) ()
     rule _ = (whitespace() / comment() / pragma())*
 
-    // Lists of separated items with required ending separator
+    // Lists of separated items. The `periodsep`/`semisep` forms consume a
+    // trailing separator; the `_no_trailing` variants and `commasep_oneplus`
+    // do not, because IEC 61131-3 forbids a trailing comma in the lists that
+    // use them. `commasep_oneplus` once required one, which silently made a
+    // trailing comma legal everywhere it was used.
     rule periodsep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) _ period() {v}
     rule periodsep_oneplus_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ period() _)) {v}
     rule periodsep_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) {v}
@@ -973,6 +977,14 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
+    //
+    // Do not add a rule here that decides at parse time that a bare type name
+    // names a function block. One existed (`fb_name_decl`) and was removed: it
+    // cannot be sound, because whether an identifier is a function-block type
+    // is not knowable until declarations are resolved. That is precisely why
+    // the `LateResolvedType` placeholder and
+    // `xform_resolve_late_bound_type_initializer` exist -- the ambiguity is
+    // deferred to the analyzer on purpose.
     rule var_init_decl() -> Vec<UntypedVarDecl> = located_var1_init_decl() / structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() / fb_call_style_var_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
     // Extension: a located variable (complete or
     // incomplete/wildcard address) declared inside an otherwise plain

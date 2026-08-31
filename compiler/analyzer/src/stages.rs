@@ -160,6 +160,14 @@ pub fn resolve_types(
 
     // Recoverable: an unresolvable declaration is diagnosed but does not
     // discard the rest of the library's successfully resolved declarations.
+    //
+    // The reason this distinction exists is not one failing test. Corpus
+    // testing showed what looked like merge-order or file-pairing
+    // sensitivity: a source that analyzed cleanly alone failed once merged
+    // with unrelated code. The cause was never ordering -- a transform that
+    // accumulates diagnostics and then discards its whole result throws away
+    // every unrelated resolution it had already completed. A new transform
+    // that returns `Err` after a user-level diagnostic reintroduces that.
     let recoverable_xforms: Vec<
         fn(Library, &mut TypeEnvironment) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>,
     > = vec![
