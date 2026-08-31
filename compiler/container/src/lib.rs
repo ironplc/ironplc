@@ -16,6 +16,7 @@ mod header;
 pub mod id_types;
 mod instruction;
 pub mod opcode;
+mod string_layout;
 mod task_type;
 
 // Only available with std
@@ -43,14 +44,13 @@ pub use char_width::CharWidth;
 pub use const_type::ConstType;
 pub use container_ref::{ContainerRef, ProgramEntryRef, TaskEntryRef};
 pub use error::ContainerError;
-pub use header::{
-    FileHeader, FLAG_HAS_SYSTEM_UPTIME, FORMAT_VERSION, HEADER_SIZE, MAGIC, STRING_HEADER_BYTES,
-};
+pub use header::{FileHeader, FLAG_HAS_SYSTEM_UPTIME, FORMAT_VERSION, HEADER_SIZE, MAGIC};
 pub use id_types::{
     ConstantIndex, FbTypeId, FunctionId, InstanceId, SlotIndex, SourceColumn, SourceFileId,
     SourceLine, TaskId, VarIndex,
 };
 pub use opcode::Opcode;
+pub use string_layout::{string_region_size, DEFAULT_STRING_MAX_LENGTH, STRING_HEADER_BYTES};
 pub use task_type::TaskType;
 
 // std-only re-exports

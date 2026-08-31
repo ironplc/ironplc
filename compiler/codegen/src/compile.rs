@@ -46,8 +46,12 @@ use ironplc_container::debug_section::{
 };
 use ironplc_container::{
     CharWidth, Container, ContainerBuilder, FbTypeId, FunctionId, TaskType, UserFbDescriptor,
-    VarIndex, STRING_HEADER_BYTES,
+    VarIndex,
 };
+// The string data-region layout lives in `ironplc-container` so the analyzer
+// and codegen size strings the same way. Re-exported here because the rest of
+// codegen reaches for these through `compile`.
+pub(crate) use ironplc_container::{string_region_size, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, Library,
     LibraryElementKind, ProgramDeclaration, StringType, VarDecl, VariableType,
@@ -121,9 +125,6 @@ pub(crate) enum PoolConstant {
     WStr(Vec<u8>),
 }
 
-/// The IEC 61131-3 default maximum length for STRING (254 characters).
-pub(crate) const DEFAULT_STRING_MAX_LENGTH_U16: u16 = 254;
-
 /// Metadata for a STRING/WSTRING variable allocated in the data region.
 #[derive(Clone)]
 pub(crate) struct StringVarInfo {
@@ -147,13 +148,6 @@ pub(crate) fn char_width_for_string_type(width: &StringType) -> CharWidth {
         StringType::String => NARROW_CHAR_WIDTH,
         StringType::WString => WIDE_CHAR_WIDTH,
     }
-}
-
-/// Total bytes needed in the data region for a STRING/WSTRING value with the
-/// given maximum length (in code units) and `char_width`: header plus
-/// `max_length * char_width` payload bytes.
-pub(crate) fn string_region_size(max_length: u16, char_width: CharWidth) -> u32 {
-    STRING_HEADER_BYTES as u32 + (max_length as u32) * (char_width.byte_width() as u32)
 }
 
 /// Encode a character-string literal into bytes for the constant pool.
