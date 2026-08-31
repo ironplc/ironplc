@@ -143,7 +143,9 @@ pub(crate) fn build_struct_fields(
         let name = field.name.to_string().to_lowercase();
         let op_type = resolve_field_op_type(&field.field_type);
         let string_max_length = match &field.field_type {
-            IntermediateType::String { max_len, .. } => Some(max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16),
+            IntermediateType::String { max_len, .. } => {
+                Some(max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16)
+            }
             _ => None,
         };
 
