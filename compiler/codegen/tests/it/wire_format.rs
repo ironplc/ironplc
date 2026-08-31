@@ -424,6 +424,39 @@ fn encoding_when_consolidated_op_class_then_type_tag_selects_member() {
 }
 
 #[test]
+fn encoding_when_op_class_census_taken_then_one_slot_free() {
+    // The op-class field is 6 bits: 64 slots, and `encode_opcode` shifts
+    // the class left by two, so a 65th class would alias another class's
+    // bytes rather than fail. ADR-0033 planned on 23 free slots and the
+    // family consolidations that would have bought them; only BOOL_OP and
+    // STACK_OP were folded, so the real budget is one slot.
+    //
+    // This test is the tripwire that keeps the budget honest: spending
+    // 0x3F fails here, and a 65th class fails to compile against the
+    // assertion in `encode_opcode`.
+    let mut classes: Vec<u8> = (0u8..=255)
+        .filter(|&b| opcode::is_assigned(b))
+        .map(|b| b >> 2)
+        .collect();
+    classes.sort_unstable();
+    classes.dedup();
+
+    let highest = *classes.last().expect("at least one op class is assigned");
+    assert!(
+        highest <= opcode::MAX_OP_CLASS,
+        "op class 0x{highest:02X} does not fit the 6-bit field"
+    );
+    assert_eq!(classes.len(), 63, "op classes in use");
+    assert_eq!(highest, 0x3E, "highest op class in use");
+    assert_eq!(
+        64 - classes.len(),
+        1,
+        "free op-class slots -- consolidate a family behind sub-opcode \
+         dispatch before claiming another top-level operation"
+    );
+}
+
+#[test]
 fn encoding_when_decode_opcode_then_round_trips() {
     // The decode/encode helpers are part of the wire-format contract:
     // they let consumers (verifier, disassembler) interpret the byte
