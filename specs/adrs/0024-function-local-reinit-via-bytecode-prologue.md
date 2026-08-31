@@ -1,4 +1,4 @@
-# Function Local Re-initialization via Init Template Section
+# Function Local Re-initialization via Bytecode Prologue
 
 status: accepted
 date: 2026-03-15
@@ -65,6 +65,42 @@ Store pre-computed initial `Slot` values (u64 LE) for each function's non-parame
 * Bad, because requires a new container section (init_template) with its own directory and data blob
 * Bad, because codegen must evaluate constants to raw Slot values at compile time, duplicating some logic from `compile_constant()` and `emit_truncation()`
 
+#### Container Format Changes This Would Require
+
+The 256-byte file header has 38 reserved bytes at positions 218-255. This option
+would carve 8 bytes from them:
+
+```
+bytes 218-221: init_template_offset  (u32 LE)
+bytes 222-225: init_template_size    (u32 LE)
+bytes 226-255: reserved             (30 bytes, shrunk from 38)
+```
+
+with the section itself laid out as:
+
+```
+┌────────────────────────────────────────────────┐
+│ Directory (num_functions × 8 bytes)            │
+│   template_offset: u32, template_size: u32     │
+├────────────────────────────────────────────────┤
+│ Data blob (concatenated u64 LE Slot values)    │
+└────────────────────────────────────────────────┘
+```
+
+None of this was built. Option B was chosen, so the header is unchanged:
+`container/src/header.rs` still declares `reserved: [u8; 38]` and asserts it is
+all zeros, and REQ-CF-container-006 still specifies 38 reserved bytes.
+
+#### Divergence Risk This Would Carry
+
+The main risk with this option is that `compute_initial_slot_value()` must
+produce the same bit patterns as `compile_constant()` + `emit_truncation()`.
+Mitigating it would mean extracting the truncation mask logic into a shared
+helper used by both code paths, and adding end-to-end tests that verify a
+function called twice with non-zero initial values produces identical results
+both times. Avoiding this risk entirely — one constant-evaluation path rather
+than two — is the reason Option B was chosen.
+
 ### Option B: Bytecode Prologue
 
 Emit `LOAD_CONST` + `TRUNC` (if narrow) + `STORE_VAR` instructions at the start of each function's bytecode, before the function body. The existing `emit_initial_values()` codegen helper can be reused directly.
@@ -88,34 +124,6 @@ The CALL handler unconditionally zeroes all non-parameter local slots (sets them
 
 ## More Information
 
-### Container Format Changes
-
-The 256-byte file header has 38 reserved bytes at positions 218-255. This change carves 8 bytes:
-
-```
-bytes 218-221: init_template_offset  (u32 LE)
-bytes 222-225: init_template_size    (u32 LE)
-bytes 226-255: reserved             (30 bytes, shrunk from 38)
-```
-
-The init template section layout:
-
-```
-┌────────────────────────────────────────────────┐
-│ Directory (num_functions × 8 bytes)            │
-│   template_offset: u32, template_size: u32     │
-├────────────────────────────────────────────────┤
-│ Data blob (concatenated u64 LE Slot values)    │
-└────────────────────────────────────────────────┘
-```
-
-### Mitigating the Divergence Risk
-
-The main risk with Option A is that `compute_initial_slot_value()` must produce the same bit patterns as `compile_constant()` + `emit_truncation()`. To mitigate this:
-
-1. Extract truncation mask logic into a shared helper used by both code paths
-2. Add end-to-end tests that verify a function called twice with non-zero initial values produces identical results both times
-
 ### Relationship to ADR-0014
 
-ADR-0014 established the separate init function for program-level variable initialization (run once at startup). This ADR addresses a different problem: per-call re-initialization of function locals. The two mechanisms coexist — the init function handles program variables, and the init template handles function locals.
+ADR-0014 established the separate init function for program-level variable initialization (run once at startup). This ADR addresses a different problem: per-call re-initialization of function locals. The two mechanisms coexist — the init function handles program variables, and the per-function bytecode prologue handles function locals.
