@@ -13,6 +13,10 @@ VAR
 END_VAR
 
 VAR
+   s : STRING [ 20 ];
+END_VAR
+
+VAR
    n : DINT;
 END_VAR
 
@@ -20,6 +24,8 @@ VAR
    eq : BOOL;
 END_VAR
 c := a ;
+c := "baz" ;
+s := 'baz' ;
 c := CONCAT ( a , b ) ;
 n := LEN ( a ) ;
 eq := ( a = b ) ;
