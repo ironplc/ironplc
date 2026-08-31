@@ -669,6 +669,11 @@ pub(crate) fn compile_variable_read(
             // live in `ctx.fb_instances` rather than `ctx.struct_vars`, and
             // their fields are stored in the data region addressed via
             // FB_LOAD_PARAM.
+            //
+            // Handled here rather than inside `walk_struct_chain` on purpose:
+            // that function's contract is "walk a `struct_vars`-rooted chain",
+            // and folding a second storage region into it would contaminate the
+            // STRING and array branches that depend on its current return shape.
             if let SymbolicVariableKind::Named(named) = structured.record.as_ref() {
                 if let Some(fb_info) = ctx.fb_instances.get(&named.name) {
                     let field_name = structured.field.to_string().to_lowercase();

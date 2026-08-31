@@ -84,6 +84,10 @@ pub(crate) fn make_real_constant(value: f64) -> ConstantKind {
 /// exception, `Pow` with a negative exponent, is handled by the caller
 /// before this is invoked, since it isn't an error, just out of scope for
 /// integer exponentiation).
+///
+/// Folding works in `i128` headroom and does not range-check the result
+/// against the declared type; codegen does that, two stages later, and is
+/// what emits `P2026`.
 pub(crate) fn fold_integer_binary(
     op: &Operator,
     left: i128,
