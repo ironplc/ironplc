@@ -221,11 +221,13 @@ The verifier builds an instruction boundary map in the first pass and checks all
 
 ### Rule R0401: Return Path Completeness
 
-Every code path through a function must end in RET, RET_VOID, or an unconditional backward jump (loop). A path that falls off the end of the bytecode without a return instruction is rejected.
+Every code path through a function must end in RET, RET_VOID, an unconditional backward jump (loop), or the end of the body — which is an implicit RET_VOID ([ADR-0044](../adrs/0044-implicit-ret-void-at-end-of-function-body.md)). Falling off the end is therefore *not* rejected on its own.
 
-The verifier tracks reachability: after processing all instructions, every reachable instruction must either be a terminator (RET, RET_VOID) or have a successor instruction that is also reachable.
+What is rejected is falling off the end with the wrong operand-stack depth. The verifier treats the offset one past the last instruction as a reachable program point and checks it as a return site, holding it to the same depth an explicit RET_VOID requires. A body that reaches it with anything left on the stack is an unbalanced return.
 
-**Error**: `R0401(function_id, offset)` — the offset is the last reachable instruction that has no successor and is not a return.
+**Error**: `R0401(function_id, offset)` — the offset is one past the end of the body.
+
+> This rule originally required an explicit terminator on every path, matching ADR-0011. ADR-0044 superseded that: the end of a body is a return site, not a missing one.
 
 ### Rule R0402: Call Depth Bound
 
@@ -382,7 +384,7 @@ Multiple errors may be reported in a single verification pass (the verifier does
 | R0302 | Field Access Type Correctness | Stack type correctness |
 | R0303 | Reference Type Consistency | Stack type correctness |
 | R0400 | Jump Target Validity | Control flow |
-| R0401 | Return Path Completeness | Control flow |
+| R0401 | Return Path Completeness (end of body is an implicit RET_VOID) | Control flow |
 | R0402 | Call Depth Exceeded | Control flow |
 | R0403 | Recursive Call Detected | Control flow |
 | R0404 | No Unreachable Code | Control flow |
