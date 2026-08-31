@@ -1,10 +1,10 @@
 pub(crate) use dsl::common::{
-    next_block_id, ArrayElementType, ConstantKind, DataTypeDeclarationKind, DeclarationQualifier,
-    EnumeratedSpecificationInit, EnumerationDeclaration, FunctionBlockBodyKind,
-    FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType, InitialValueAssignmentKind,
-    Library, LibraryElementKind, ProgramDeclaration, RealLiteral, ReferenceTarget,
-    SimpleInitializer, SpecificationKind, TypeName, TypeReference, VarDecl, VariableIdentifier,
-    VariableType,
+    next_block_id, ArrayElementType, CharacterStringLiteral, ConstantKind, DataTypeDeclarationKind,
+    DeclarationQualifier, EnumeratedSpecificationInit, EnumerationDeclaration,
+    FunctionBlockBodyKind, FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType,
+    InitialValueAssignmentKind, Library, LibraryElementKind, ProgramDeclaration, RealLiteral,
+    ReferenceTarget, SimpleInitializer, SpecificationKind, StringType, TypeName, TypeReference,
+    VarDecl, VariableIdentifier, VariableType,
 };
 pub(crate) use dsl::configuration::{
     ConfigurationDeclaration, DataSourceKind, ProgramConfiguration, ResourceDeclaration,

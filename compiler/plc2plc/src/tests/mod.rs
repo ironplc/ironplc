@@ -18,6 +18,7 @@ mod partial_access;
 mod pointer_to;
 mod reference_to;
 mod short_circuit;
+mod string_literals;
 mod struct_init_expressions;
 mod tc2_math_calls;
 mod tc2_utilities_calls;
