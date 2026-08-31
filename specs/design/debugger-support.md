@@ -98,6 +98,18 @@ The DAP server is its own binary, `ironplcvmd`, built from `dap_main.rs` in the 
 
 `ironplcvmd` takes **no command-line arguments**. It speaks DAP on stdin/stdout, and the program under debug arrives in the `launch` request's `arguments.program` field as a path to a compiled `.iplc` container.
 
+### Why `ironplcvmd` and not `ironplcdap`
+
+The binary was named `ironplcdap` until 2026-08-22. `ironplcdap` names the Debug
+Adapter Protocol, but the protocol is an implementation detail of how the
+extension talks to the server; the program itself is the VM running under a
+debugger. `ironplcvmd` sits beside `ironplcvm` the way a daemon sits beside its
+command, and it survives a change of protocol.
+
+The rename carried no compatibility shim: the setting that named the binary
+shipped in v0.235.0-v0.239.0 and nobody had set it, so there were no upgraders
+to carry forward.
+
 ## Layer 1: Debug Info
 
 ### Gap Analysis
