@@ -1051,6 +1051,18 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
 /// - `__MOD(IN1, IN2: ANY_REAL): ANY_REAL` — IEEE-754 floating remainder
 ///   with the sign of the dividend (unlike `MOD`, which is integer-only);
 ///   `__MOD(x, 0.0)` is NaN, never a runtime error.
+///
+/// **Why named intrinsics rather than a manifest binding.** The alternative
+/// was to let a library manifest bind a vendor name straight to an unnamed
+/// VM builtin, which is what [ADR-0042](../../../../specs/adrs/0042-library-functions-over-compiler-intrinsics.md)
+/// rule 3 still describes. It was rejected on security grounds: it makes an
+/// on-disk data file an input to code *emission*, and nothing structurally
+/// guarantees a library's declared signature matches the builtin's stack
+/// behaviour — a mismatched binding would corrupt the operand stack. With
+/// `__TRUNC`/`__MOD` as ordinary typed intrinsics, every `BUILTIN` emission
+/// originates from a compiler-owned table, manifests stay pure metadata, and
+/// the signature is type-checked like any other stdlib function, so that
+/// mismatch cannot exist. No manifest binding mechanism was ever built.
 pub fn get_compiler_intrinsic_functions() -> Vec<FunctionSignature> {
     vec![
         FunctionSignature::stdlib(

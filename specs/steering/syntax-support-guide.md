@@ -243,7 +243,7 @@ pub fn insert_keyword_statement_terminators(
 
 ## Non-Standard Syntax Gating (`--allow-x` Flags)
 
-**Rule**: Anything not in the IEC 61131-3 standard **must** be gated behind an `--allow-x` flag. Using `--dialect=rusty` enables the broadest set of extensions.
+**Rule**: Anything not in IEC 61131-3 Edition 2 **must** be gated behind an `--allow-x` flag. That includes Edition 3 syntax, which is gated the same way.
 
 ### Before Creating a New Flag
 
@@ -268,13 +268,14 @@ your syntax.
 
 Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags can override on top.
 
-| Dialect | `--dialect` value | Edition 3 types | REF_TO | Extensions |
-|---------|-------------------|----------------|--------|-------------------|
-| IEC 61131-3 Ed 2 (default) | `iec61131-3-ed2` | OFF | OFF | all OFF |
-| IEC 61131-3 Ed 3 | `iec61131-3-ed3` | ON | ON | all OFF except `allow_partial_access_syntax` and `allow_fb_inheritance` — those two gate Edition 3 *standard* syntax (partial access, object orientation), not vendor extensions |
-| RuSTy | `rusty` | OFF | ON | all ON |
-| CODESYS | `codesys` | OFF | ON | all ON except `allow_system_uptime_global` |
-| TwinCAT | `twincat` | OFF | OFF | CODESYS set minus the whole `REF_TO` family (`allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`, `allow_ref_type_punning`), plus `allow_reference_to`, `allow_pointer_to`, and `allow_adr` — TwinCAT spells references `REFERENCE TO` (bound with `REF=`) and pointers `POINTER TO` (bound with `ADR()`) |
+The dialects are `iec61131-3-ed2` (the default), `iec61131-3-ed3`, `rusty`,
+`codesys` and `twincat`.
+
+Which flags each one enables is **not** listed here, for the same reason the
+flags themselves are not: a mirrored table drifts. Run `ironplcc dialects`, or
+read the per-dialect `**Enables:**` lists in
+[`docs/explanation/enabling-dialects-and-features.rst`](../../docs/explanation/enabling-dialects-and-features.rst),
+which a build-time check keeps in step with `options.rs`.
 
 ### Grouping Guidance
 
@@ -348,7 +349,7 @@ fn compiler_options(&self) -> CompilerOptions {
 }
 ```
 
-**Also add the flag to relevant dialect presets** in `CompilerOptions::from_dialect()` (in `parser/src/options.rs`). If the extension should be on for the RuSTy dialect, add it to the `Dialect::Rusty` arm.
+**Also add the flag to the relevant dialects** by listing them in the flag's own entry in `define_compiler_options!` (in `parser/src/options.rs`), e.g. `[Codesys, TwinCat]`. `from_dialect()` is generated from those tags — there are no per-dialect arms to edit.
 
 #### 3. LSP extraction (`plc2x/src/lsp.rs`)
 
@@ -576,7 +577,7 @@ Keyword demotions are added as a `match` arm in `xform_demote_keywords::apply()`
 
 ## Common Mistakes
 
-- **Forgetting dialect presets**: Every new `--allow-x` flag must be added to the relevant dialect presets in `CompilerOptions::from_dialect()`. Without this, the RuSTy dialect (or future dialects) silently ignores the new feature.
+- **Forgetting dialect presets**: Every new `--allow-x` flag must list the dialects that enable it in its `define_compiler_options!` entry. Without this, every dialect silently ignores the new feature.
 - **Missing LSP wiring**: The flag works on the CLI but not in VS Code because `extract_compiler_options()` in `plc2x/src/lsp.rs` was not updated. Always add LSP extraction for new flags.
 - **No round-trip test**: The feature parses but the renderer in `plc2plc` cannot write it back. Always add the round-trip test.
 - **No execution test**: The feature parses and analyzes but was never proven to execute correctly. Always add at least one end-to-end test.
