@@ -55,6 +55,9 @@ Examples:
 
 ### Test Organization
 - Group related tests in the same module
+- Use `rstest` to group related tests and eliminate boilerplate — parameterize
+  cases with `#[case(...)]` and share setup with fixtures instead of copying a
+  test body per input
 - Use descriptive test function names that explain the scenario and expected outcome
 - Include both positive and negative test cases
 - Test edge cases and boundary conditions
@@ -65,9 +68,10 @@ and [syntax-support-guide.md](syntax-support-guide.md).
 
 ## Error Handling
 
-Every user-facing error message **must** have a unique `P####` problem code. The
-full lifecycle — choosing a code, the CSV registry, the documentation template,
-and the diagnostic-construction patterns — lives in
+Every user-facing error message **must** have a unique problem code: `P####`
+for the compiler and `V####` for the runtime. The full lifecycle — choosing a
+code, the CSV registry, the documentation template, and the
+diagnostic-construction patterns — lives in
 [problem-code-management.md](problem-code-management.md). Do not restate that
 material here.
 
@@ -76,6 +80,10 @@ When writing compiler code:
 - Collect multiple diagnostics rather than failing on the first, where practical
 - Provide clear, actionable error messages: include what was expected vs. found
 - Use `Diagnostic::problem()` with an appropriate `Label::span()` for source location
+- Use the `internal_error` and `not_supported` helpers for the special cases they
+  name — a compiler invariant that was violated (a bug) and a construct that is
+  valid IEC 61131-3 but not yet implemented — rather than inventing a new
+  problem code for either
 - Match IEC 61131-3 terminology in messages
 
 ## Code Documentation
@@ -105,7 +113,9 @@ When writing compiler code:
 
 ### Rust Best Practices
 - Do not suppress clippy warnings with `#[allow(...)]` — fix the underlying code instead. The only acceptable exception is `#[allow(dead_code)]` or `#[allow(unused_*)]` for in-progress code that is not yet wired up; remove these suppressions once the code is complete
-- Prefer `Result<T, E>` for error handling over panics
+- Never use `panic!`, `unwrap`, `expect`, `todo!`, `unreachable!`, or similar
+  panicking constructs. Return `Result<T, E>` and propagate; for a violated
+  compiler invariant use `Diagnostic::internal_error()` instead of panicking
 - Use appropriate visibility modifiers (`pub`, `pub(crate)`, etc.)
 - Follow Rust naming conventions and idioms
 
@@ -113,7 +123,11 @@ When writing compiler code:
 - Leverage Rust's safety guarantees
 - **`unsafe` code is rejected at compile time.** The workspace sets `unsafe_code = "deny"` in `[workspace.lints.rust]` (root `compiler/Cargo.toml`), and every member crate inherits it via `[lints] workspace = true`. Any `unsafe` block, function, trait, or impl in IronPLC code fails the build
 - **Do not bypass the check with `#[allow(unsafe_code)]`.** The standards already forbid `#[allow(...)]` suppressions (see [Rust Best Practices](#rust-best-practices)); `unsafe_code` is no exception. `deny` (rather than `forbid`) is the chosen level only so that proc-macros which wrap unsafe internally — e.g. `ctor::ctor`, whose expansion includes `#[allow(unsafe_code)]` — keep working. If a feature appears to require `unsafe`, raise it for discussion
-- Use strong typing to prevent logic errors (e.g., `TypeName` vs `String`)
+- Use strong typing to prevent logic errors: wrap primitives in newtypes so the
+  compiler rejects mixing them up. Prefer a domain type over a bare `String`
+  (e.g., `TypeName` vs `String`) or a bare integer — wrap a `u16` element count
+  as `struct ElementCount(u16)` and a `u16` address as `struct Address(u16)` so
+  one cannot be passed where the other is expected
 
 ### Dependencies
 - Keep dependencies minimal and well-justified

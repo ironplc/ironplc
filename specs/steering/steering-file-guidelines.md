@@ -441,36 +441,23 @@ For AI-assisted development patterns, see `specs/steering/`.
 
 ### Pattern to Follow
 
-The `.kiro/steering/` pointer's frontmatter is the authoritative inclusion
-setting; the scopes below are a snapshot for orientation.
+Each topic lives once and is reached from every tool. Rather than enumerate the
+current files and their scopes here — a list that would drift out of date — the
+pattern is:
 
 ```
-specs/steering/                        # Single source of truth (full docs)
-  # always — cross-cutting process / vocabulary:
-  development-standards.md             # always
-  common-tasks.md                      # always
-  glossary.md                          # always
-  # fileMatch — load only for the relevant path:
-  compiler-standards.md                # compiler/**
-  compiler-architecture.md             # compiler/**
-  syntax-support-guide.md              # **/parser|analyzer|codegen|plc2plc**
-  iec-61131-3-compliance.md            # **/analyzer/**
-  problem-code-management.md           # compiler/problems/*
-  plcopen-xml-module.md                # compiler/sources/src/xml/**
-  compatibility-library-authoring.md   # compiler/sources/resources/compat-libraries/**
-  doc-standards.md                     # docs/**
-  coming-from-guide-authoring.md       # docs/how-to-guides/**
-  extension-standards.md               # integrations/vscode/**
-  extension-testing-requirements.md    # integrations/vscode/**
-  steering-file-guidelines.md          # specs/steering/**, .kiro/steering/**
-
-.kiro/steering/<name>.md               # One pointer per file above; the
-                                       # pointer's frontmatter sets inclusion.
-.claude/commands/*.md                  # Slash commands (skill pointers)
-CLAUDE.md / CURSOR.md                  # Entry points: steering links (with
-                                       # "especially relevant for <path>"
-                                       # hints) + skills list.
+specs/steering/<name>.md    # Single source of truth (full, tool-agnostic doc)
+.kiro/steering/<name>.md    # One pointer per doc; its frontmatter is the
+                            #   authoritative inclusion setting (always /
+                            #   fileMatch <path> / manual)
+.claude/commands/*.md       # Slash commands (skill pointers)
+CLAUDE.md / CURSOR.md       # Entry points: steering links (with "especially
+                            #   relevant for <path>" hints) + skills list
 ```
+
+For the current set of docs and the paths each is scoped to, read the
+`.kiro/steering/` pointers' frontmatter — that is where scope is defined and
+kept current.
 
 ## AI Assistant Instructions
 

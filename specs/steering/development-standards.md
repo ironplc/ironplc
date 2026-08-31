@@ -119,7 +119,7 @@ A person is accountable for all changes. We use a custom process for all non-tri
 2. AI creates a **plan branch**, writes the plan to `specs/plans/YYYY-MM-DD-short-description.md`, and creates a PR for the plan.
 3. A person reviews and provides feedback on the plan until the plan is approved. This PR is never merged.
 
-**Preparation**
+**Prefactoring**
 4. AI creates one or more **prefactor branches**, implements any pre-factoring, and creates PRs for prefactors.
 5. A person reviews, provides feedback and merges the prefactor PRs.
 
