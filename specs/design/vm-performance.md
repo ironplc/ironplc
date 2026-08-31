@@ -48,7 +48,11 @@ The verifier is the trust boundary, not per-instruction checks. Defense-in-depth
 *Category 1: Structurally verifiable at load time (eliminate entirely)*
 
 - `data_offset + STRING_HEADER_BYTES > data_region.len()` — verifier checks all data_offsets
-- `data_offset + STRING_HEADER_BYTES + max_length > data_region.len()` — same
+- `data_offset + STRING_HEADER_BYTES + max_length * char_width > data_region.len()` — same.
+  Per ADR-0035 `max_length` counts code units, so the payload of a WSTRING
+  is twice that of a STRING of the same declared length; a bound written
+  without `char_width` would accept bytecode whose WSTRING variables run
+  past the end of the data region
 - `buf_end > temp_buf.len()` — verifier tracks temp buffer allocation per function
 - `max_temp_buf_bytes == 0` — verifier checks string functions have allocated temp buffers
 - Stack overflow/underflow on every `push()?` / `pop()?` — verifier tracks depth on all control-flow paths
@@ -85,7 +89,9 @@ Multiple string opcodes (`STR_STORE_VAR`, `STR_LOAD_VAR`, `REPLACE_STR`, `INSERT
 
 Current:
 ```rust
-for i in 0..copy_len {
+// copy_len counts code units; the byte span scales by char_width.
+let copy_bytes = copy_len * char_width.as_usize();
+for i in 0..copy_bytes {
     data_region[data_offset + STRING_HEADER_BYTES + i] =
         temp_buf[buf_start + STRING_HEADER_BYTES + i];
 }
@@ -93,8 +99,8 @@ for i in 0..copy_len {
 
 Should be:
 ```rust
-data_region[dest_start..dest_start + copy_len]
-    .copy_from_slice(&temp_buf[src_start..src_start + copy_len]);
+data_region[dest_start..dest_start + copy_bytes]
+    .copy_from_slice(&temp_buf[src_start..src_start + copy_bytes]);
 ```
 
 `copy_from_slice` compiles to `memcpy` which uses SIMD/word-aligned copies. This is a straightforward fix that could be 4-16x faster for string operations depending on string length.

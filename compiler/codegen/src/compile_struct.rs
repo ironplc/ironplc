@@ -18,7 +18,9 @@ use ironplc_container::FieldType;
 use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit, TypeName};
 
-use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
+use super::compile::{
+    CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_STRING_MAX_LENGTH,
+};
 use super::compile_expr::{compile_constant, emit_truncation};
 use super::compile_setup::emit_zero_const;
 use crate::emit::Emitter;
@@ -141,7 +143,9 @@ pub(crate) fn build_struct_fields(
         let name = field.name.to_string().to_lowercase();
         let op_type = resolve_field_op_type(&field.field_type);
         let string_max_length = match &field.field_type {
-            IntermediateType::String { max_len, .. } => Some(max_len.unwrap_or(254) as u16),
+            IntermediateType::String { max_len, .. } => {
+                Some(max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16)
+            }
             _ => None,
         };
 
@@ -533,7 +537,7 @@ pub(crate) fn initialize_struct_fields(
             } = element_type.as_ref()
             {
                 // STRING/WSTRING array field — initialize headers for each string element.
-                let max_length = max_len.unwrap_or(254) as u16;
+                let max_length = max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16;
                 let total_elements = array_dims
                     .iter()
                     .fold(1u32, |acc, d| acc * (d.upper - d.lower + 1) as u32);
@@ -646,7 +650,7 @@ pub(crate) fn allocate_struct_variable(
                 char_width,
             } = element_type.as_ref()
             {
-                let max_str_len = max_len.unwrap_or(254) as u16;
+                let max_str_len = max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16;
                 let total_elements = array_dims
                     .iter()
                     .try_fold(1u32, |acc, d| {
