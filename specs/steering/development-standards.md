@@ -53,6 +53,14 @@ date: 2026-08-31
 | `rejected` | The decision was written up and then not taken. |
 | `superseded by ADR-NNNN` | A later ADR decided otherwise. Add `supersedes: ADR-NNNN` to the front matter of the ADR doing the superseding. |
 
+An in-place correction adds an `amended:` line recording when and why, so a reader can tell the original text from the fix:
+
+```markdown
+status: accepted
+date: 2026-03-15
+amended: 2026-08-31 (title named the rejected option)
+```
+
 **The pull request that lands the work flips `proposed` to `accepted`.** It is part of the change, like updating the design document — not follow-up hygiene. An ADR whose work has shipped but still reads `proposed` tells a reader the decision is speculative when the compiler already enforces it.
 
 An ADR may stay `proposed` indefinitely and that is not a defect, as long as it is *true* — the decision is made, the work is not done. Where a Confirmation criterion was never wired up, record what actually landed and what did not; do not flip the status to make the ADR look finished.
@@ -61,8 +69,8 @@ An ADR may stay `proposed` indefinitely and that is not a defect, as long as it 
 
 | Situation | What to do |
 |---|---|
-| The title, filename, status, or a cross-reference misrepresents the decision | Correct it in place. |
-| A section describes a rejected option as if it had been adopted | Move it under that option in *Pros and Cons* and put it in the conditional voice. |
+| The title, filename, status, or a cross-reference misrepresents the decision | Correct it in place; add an `amended:` line. |
+| A section describes a rejected option as if it had been adopted | Move it under that option in *Pros and Cons* and put it in the conditional voice; add an `amended:` line. |
 | What was decided has changed | Write a new ADR and mark the old one `superseded by ADR-NNNN`. Never edit the original outcome. |
 | A motivating premise in *Context* has since become false | Append a dated postscript under *More Information* saying what changed and whether the decision still holds. Leave the original *Context* as written — it is the record of what was known at the time. |
 

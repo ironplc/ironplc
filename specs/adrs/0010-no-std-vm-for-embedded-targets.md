@@ -2,6 +2,7 @@
 
 status: proposed
 date: 2026-02-25
+amended: 2026-08-31 (Implementation Status added; status unchanged)
 
 ## Context and Problem Statement
 

@@ -2,6 +2,7 @@
 
 status: accepted
 date: 2026-03-15
+amended: 2026-08-31 (title named Option A, the rejected option; Option A material moved under Pros and Cons)
 
 ## Context and Problem Statement
 

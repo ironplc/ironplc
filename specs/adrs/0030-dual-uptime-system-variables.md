@@ -2,6 +2,7 @@
 
 status: accepted
 date: 2026-08-24
+amended: 2026-08-31 (converted to the front-matter format; accepted)
 
 ## Context and Problem Statement
 

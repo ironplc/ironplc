@@ -2,6 +2,7 @@
 
 status: superseded by ADR-0044
 date: 2026-02-26
+amended: 2026-08-31 (superseded by ADR-0044; never implemented)
 
 ## Context and Problem Statement
 

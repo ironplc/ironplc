@@ -77,9 +77,10 @@ are rejected at load time rather than trapped mid-scan. Rejecting bad bytecode
 before it runs is strictly better for a PLC than trapping partway through a scan
 that has already actuated outputs.
 
-Truncation specifically is caught earlier still, by the container's integrity
-check ([ADR-0007](0007-dual-signature-integrity-model.md)) — a truncated body does
-not reach the verifier, let alone the VM.
+Truncation specifically is caught earlier still, when the container is parsed: the
+header and the function directory declare every section's size, so a short file
+fails to load with `SectionSizeMismatch` (or an unexpected end of input) rather
+than producing a body that runs off its end.
 
 The residual gap is a container executed without verification. That is a narrower
 hole than ADR-0011 assumed, and closing it with a runtime trap would mean the VM

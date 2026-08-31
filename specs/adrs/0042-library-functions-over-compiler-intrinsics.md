@@ -2,6 +2,7 @@
 
 status: accepted
 date: 2026-08-08
+amended: 2026-08-31 (rule 3 corrected to the mechanism that was built; accepted)
 
 ## Context and Problem Statement
 

@@ -2,6 +2,7 @@
 
 status: accepted
 date: 2026-07-21
+amended: 2026-08-31 (accepted; postscript on a premise that aged)
 
 ## Context and Problem Statement
 
