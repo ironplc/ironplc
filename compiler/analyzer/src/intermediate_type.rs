@@ -82,10 +82,12 @@ pub enum IntermediateType {
     /// Stored as unsigned seconds since 1970-01-01.
     Date { size: ByteSized },
     /// Time-of-day type (TIME_OF_DAY/TOD is 32-bit, LTOD is 64-bit).
-    /// TOD: unsigned milliseconds since midnight. LTOD: unsigned nanoseconds.
+    /// Both store unsigned milliseconds since midnight; LTOD is the wider
+    /// variant, not a higher-resolution one (ADR-0025 amendment).
     TimeOfDay { size: ByteSized },
     /// Combined date-and-time type (DATE_AND_TIME/DT is 32-bit, LDT is 64-bit).
-    /// DT: unsigned seconds since 1970-01-01. LDT: unsigned nanoseconds since 1970-01-01.
+    /// Both store unsigned seconds since 1970-01-01; LDT is the wider
+    /// variant, not a higher-resolution one (ADR-0025 amendment).
     DateAndTime { size: ByteSized },
 
     /// Variable-length string with an optional maximum length and a

@@ -61,9 +61,16 @@ pub const T_F64: u8 = 3;
 
 // --- Op-class values (high 6 bits of the opcode byte) ---
 //
-// All 41 op classes are defined here even though some are not yet used
-// to derive opcode bytes (incremental wave migration). Future waves
-// reference these constants without redefining them.
+// 63 of the 64 op-class slots are assigned; 0x3F is the only one left.
+// The budget is a hard cap, not a guideline: `encode_opcode` shifts the
+// class left by two bits, so a 65th class would wrap into another
+// class's opcode bytes. `encode_opcode` asserts the cap, and because
+// every opcode constant is derived through it in a const context, an
+// over-range class is a compile error rather than a silent collision.
+//
+// Adding a top-level operation once 0x3F is spent means consolidating a
+// family behind sub-opcode dispatch first (see ADR-0033 and its
+// amendment).
 
 /// Op class: load a constant from the constant pool. Type tag selects width.
 pub const OP_CLASS_LOAD_CONST: u8 = 0x00;
@@ -205,9 +212,27 @@ pub const fn decode_opcode(op: Opcode) -> (u8, u8) {
     (op >> 2, op & 0x03)
 }
 
+/// The largest op class the `[op_class:6][type:2]` encoding can hold.
+///
+/// The 6-bit field gives 64 slots, 0x00 through 0x3F.
+pub const MAX_OP_CLASS: u8 = 0x3F;
+
 /// Compose `(op_class, type_tag)` into a primary opcode byte.
+///
+/// # Panics
+///
+/// When `op_class` exceeds [`MAX_OP_CLASS`]. The shift would otherwise
+/// drop the high bits and alias another class -- class 64 lands on the
+/// same bytes as class 0. Every opcode constant is derived through this
+/// function in a const context, so the panic is a compile error for the
+/// pull request that adds the 65th op class.
 #[inline]
 pub const fn encode_opcode(op_class: u8, type_tag: u8) -> Opcode {
+    assert!(
+        op_class <= MAX_OP_CLASS,
+        "op_class does not fit the 6-bit field; consolidate a family behind \
+         sub-opcode dispatch instead of claiming a 65th op class"
+    );
     (op_class << 2) | (type_tag & 0x03)
 }
 
