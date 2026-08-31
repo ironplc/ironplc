@@ -6,6 +6,11 @@ use ironplc_dsl::core::Located;
 
 /// Maps an IEC 61131-3 `StringType` to its per-code-unit byte width per
 /// ADR-0016: STRING is Latin-1 (1 byte), WSTRING is UTF-16LE (2 bytes).
+///
+/// Duplicated in codegen rather than hosted on `StringType` itself because
+/// `ironplc-dsl` must not depend on `ironplc-container`: the wire format is a
+/// lower layer than the syntax tree. Do not collapse these two copies by
+/// adding that dependency.
 fn char_width_for(width: &StringType) -> CharWidth {
     match width {
         StringType::String => CharWidth::Narrow,

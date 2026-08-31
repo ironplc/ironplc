@@ -763,6 +763,11 @@ Operands marked `data_offset` are u32 byte offsets into the data region, fixed a
 | 0xE0 | MID_STR | in: u32 | [L, P] → [buf_idx] | L characters of IN starting at position P (MID); P is popped first |
 | 0xE4 | CONCAT_STR | in1: u32, in2: u32 | [] → [buf_idx] | Concatenate IN1 and IN2 |
 
+Every position `P` and length `L` above is in **code units, not bytes** — the
+same unit the string header's lengths use. A 1-based code-unit position `P`
+maps to byte offset `(P - 1) * char_width`, so for a WSTRING the byte offsets
+are double the positions the program supplies.
+
 String *arrays* have their own opcodes, because the element's `data_offset` is computed at runtime from the flat index. All three take the array's variable index and an array descriptor index, and bounds-check like `LOAD_ARRAY`.
 
 | Byte | Opcode | Operands | Stack effect | Description |

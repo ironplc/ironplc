@@ -78,9 +78,10 @@ impl TempBufAllocator {
     /// Allocate the next temp buffer slot for a string of the given
     /// `encoding`.
     ///
-    /// Returns a [`TempBufferSlot`] with the slot index, byte offset, max
-    /// data length (in code units, so `capacity / char_width`), and the
-    /// recorded encoding. The internal counter is advanced automatically.
+    /// Returns a [`TempBufferSlot`] with the slot index, byte offset, and max
+    /// data length (in code units, so `capacity / char_width`). `encoding`
+    /// sizes that length; it is not stored on the slot — see
+    /// [`TempBufferSlot`]. The internal counter is advanced automatically.
     pub fn alloc(
         &mut self,
         temp_buf_len: usize,

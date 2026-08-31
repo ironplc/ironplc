@@ -143,6 +143,11 @@ pub(crate) const WIDE_CHAR_WIDTH: CharWidth = CharWidth::Wide;
 
 /// Returns the per-code-unit byte width for an IEC string type:
 /// `Narrow` for STRING, `Wide` for WSTRING (ADR-0016).
+///
+/// Duplicated in the analyzer rather than hosted on `StringType` itself
+/// because `ironplc-dsl` must not depend on `ironplc-container`: the wire
+/// format is a lower layer than the syntax tree. Do not collapse these two
+/// copies by adding that dependency.
 pub(crate) fn char_width_for_string_type(width: &StringType) -> CharWidth {
     match width {
         StringType::String => NARROW_CHAR_WIDTH,

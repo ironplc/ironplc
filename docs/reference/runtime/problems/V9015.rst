@@ -12,7 +12,7 @@ string value) whose value was neither ``1`` (``STRING`` / Latin-1) nor
 
 1. each string variable's data-region header
 2. each constant-pool string entry
-3. each temp-buffer slot
+3. each temp buffer's string header
 
 A valid ``.iplc`` file always carries a recognized encoding at every one
 of these sites. This trap fires when a byte read from any of them — or
