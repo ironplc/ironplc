@@ -105,8 +105,8 @@ fn format_narrow_literal(bytes: &[u8]) -> String {
 fn format_wide_literal(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() + 2);
     out.push('"');
-    for pair in bytes.chunks_exact(2) {
-        let unit = u16::from_le_bytes([pair[0], pair[1]]);
+    for pair in bytes.as_chunks::<2>().0 {
+        let unit = u16::from_le_bytes(*pair);
         match unit {
             0x24 => out.push_str("$$"),
             0x22 => out.push_str("$\""),
