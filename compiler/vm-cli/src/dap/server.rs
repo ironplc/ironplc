@@ -19,6 +19,7 @@
 //! surfacing a `stopped{reason:"exception"}`.
 
 use std::io::{self, BufRead, Write};
+use std::num::NonZeroU64;
 use std::path::Path;
 use std::time::Duration;
 
@@ -118,11 +119,11 @@ pub fn serve<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> io::Result
             }
             Some(Command::Launch) if legal_here => {
                 match load_and_check(&request) {
-                    Ok((container, args)) => {
+                    Ok((container, args, scan_limit)) => {
                         // Preconditions hold: own the container and run the
                         // rest of the session against a live VM.
                         return launched_session(
-                            reader, writer, &mut seq, container, args, &request,
+                            reader, writer, &mut seq, container, args, scan_limit, &request,
                         );
                     }
                     Err(message) => {
@@ -153,18 +154,29 @@ pub fn serve<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> io::Result
 }
 
 /// Parses the `launch` arguments, loads the container, and checks the launch
-/// preconditions. Returns the loaded container and the parsed arguments (run
-/// bounds) on success, or the DAP error message to report on failure.
-fn load_and_check(request: &Request) -> Result<(Container, LaunchRequestArguments), String> {
+/// preconditions. Returns the loaded container, the parsed arguments, and the
+/// validated scan bound on success, or the DAP error message to report on
+/// failure.
+///
+/// The scan bound is validated here rather than in the session so an
+/// unsatisfiable `scanLimit` fails the `launch` request itself, before the VM
+/// starts and before any event is sent.
+fn load_and_check(
+    request: &Request,
+) -> Result<(Container, LaunchRequestArguments, Option<NonZeroU64>), String> {
+    // A value no argument's type can hold (a fractional `scanLimit`, say)
+    // fails the whole parse and lands here too. The VS Code schema types
+    // `scanLimit` as an integer, so the editor flags that before launch.
     let args: LaunchRequestArguments = request
         .arguments
         .as_ref()
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .ok_or_else(|| launch::LaunchError::ProgramArgMissing.to_string())?;
 
+    let scan_limit = launch::check_scan_limit(args.scan_limit).map_err(|e| e.to_string())?;
     let container = launch::load_container(Path::new(&args.program)).map_err(|e| e.to_string())?;
     launch::check_preconditions(&container).map_err(|e| e.to_string())?;
-    Ok((container, args))
+    Ok((container, args, scan_limit))
 }
 
 /// Owns the loaded `container`, starts the VM, answers the `launch` request,
@@ -184,9 +196,10 @@ fn load_and_check(request: &Request) -> Result<(Container, LaunchRequestArgument
 ///
 /// The loop keeps scanning: on `RoundOutcome::Completed` it runs the next scan
 /// (so breakpoints re-fire every cycle and variables evolve across cycles)
-/// rather than terminating after one scan. `scanLimit` bounds a runaway program
-/// — the session terminates once `scan_count` reaches it — and `stopOnEntry`
-/// pauses before the first instruction of the first scan.
+/// rather than terminating after one scan. `scan_limit` bounds a runaway
+/// program — the session terminates once `scan_count` reaches it, and `None`
+/// (the client sent no `scanLimit`) means no bound — and `stopOnEntry` pauses
+/// before the first instruction of the first scan.
 ///
 /// Execution control is `continue`, single-stepping (`next`/`stepIn`/
 /// `stepOut`), and scan stepping (`ironplc/stepScan`); a step is armed on the
@@ -205,6 +218,7 @@ fn launched_session<R: BufRead, W: Write>(
     seq: &mut i64,
     mut container: Container,
     args: LaunchRequestArguments,
+    scan_limit: Option<NonZeroU64>,
     launch_request: &Request,
 ) -> io::Result<()> {
     // How far program time moves per scan. `run_round_debug` bypasses the
@@ -263,9 +277,6 @@ fn launched_session<R: BufRead, W: Write>(
     // Set after a breakpoint pause so the next resume skips that one location
     // instead of re-triggering in place.
     let mut suppress_bp = false;
-    // Upper bound on scan cycles (runaway prevention); `None` runs until the
-    // client disconnects.
-    let scan_limit = args.scan_limit;
     // Armed once, before the first scan, when the launch requested `stopOnEntry`.
     let mut pending_stop_on_entry = args.stop_on_entry;
     // Set by a `next`/`stepIn`/`stepOut`/`ironplc/stepScan` request; armed on
@@ -533,8 +544,8 @@ fn console_output(seq: i64, text: &str) -> Event {
 
 /// Whether the launch's `scanLimit` bound (if any) has been reached, so the
 /// session should terminate rather than start another cycle.
-fn scan_limit_reached(scan_limit: Option<u64>, running: &VmRunning) -> bool {
-    scan_limit.is_some_and(|limit| running.scan_count() >= limit)
+fn scan_limit_reached(scan_limit: Option<NonZeroU64>, running: &VmRunning) -> bool {
+    scan_limit.is_some_and(|limit| running.scan_count() >= limit.get())
 }
 
 /// Builds the `stopped` event for `reason`, scoped to the single thread.
@@ -976,6 +987,63 @@ mod tests {
         let message = launch["message"].as_str().unwrap();
         assert!(message.starts_with("V6008 - "));
         assert!(message.contains("'program'"));
+    }
+
+    #[test]
+    fn serve_when_launch_scan_limit_zero_then_error_instead_of_one_scan_session() {
+        // Zero used to bound the run at the first completed scan -- the most
+        // restrictive setting reachable, and the one the docs called unlimited
+        // (#1515). It is now rejected before the VM starts, so no session runs.
+        let (_file, path) = single_instance_debug_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 0}}),
+        ]);
+        let launch = out.last().unwrap();
+        assert_eq!(launch["command"], "launch");
+        assert_eq!(launch["success"], false);
+        let message = launch["message"].as_str().unwrap();
+        // The same code as a missing `program`: one code for a bad argument,
+        // with the message naming which one.
+        assert!(message.starts_with("V6008 - "));
+        assert!(message.contains("'scanLimit'"));
+        assert!(message.contains("omit it"));
+        // The launch never reached the VM, so there is no terminated event.
+        assert!(events(&out, "terminated").is_empty());
+    }
+
+    #[test]
+    fn serve_when_launch_scan_limit_negative_then_scan_limit_error_not_missing_program() {
+        // `-1` is signed-parsed precisely so the response names the argument
+        // that is actually wrong rather than `program`.
+        let (_file, path) = single_instance_debug_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": -1}}),
+        ]);
+        let launch = out.last().unwrap();
+        assert_eq!(launch["success"], false);
+        let message = launch["message"].as_str().unwrap();
+        assert!(message.starts_with("V6008 - "));
+        assert!(message.contains("'scanLimit'"));
+    }
+
+    #[test]
+    fn serve_when_launch_omits_scan_limit_then_runs_unbounded_until_disconnect() {
+        // Absence is the only spelling of "no bound": the session keeps
+        // scanning and ends on the client's disconnect, not on its own.
+        let (_file, path) = single_instance_debug_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path}}),
+            json!({"seq": 3, "type": "request", "command": "disconnect"}),
+        ]);
+        assert_eq!(responses(&out, "launch")[0]["success"], true);
+        assert!(events(&out, "terminated").is_empty());
+        assert_eq!(responses(&out, "disconnect")[0]["success"], true);
     }
 
     #[test]

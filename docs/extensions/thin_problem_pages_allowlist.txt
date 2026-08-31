@@ -59,7 +59,6 @@ reference/runtime/problems/V6004
 reference/runtime/problems/V6005
 reference/runtime/problems/V6006
 reference/runtime/problems/V6007
-reference/runtime/problems/V6008
 reference/runtime/problems/V6009
 reference/runtime/problems/V6010
 reference/runtime/problems/V9001
