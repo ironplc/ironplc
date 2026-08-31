@@ -34,7 +34,7 @@ These are checks that verify the extension's declared capabilities (languages, c
 
 `package.json` declares languages under `contributes.languages`. Each language with a file extension must have a functional test that opens a file with that extension and verifies the `languageId` is set correctly.
 
-**Current state**: Only `61131-3-st` (`.st`) is tested. `twincat-pou` (`.TcPOU`), `twincat-gvl` (`.TcGVL`), `twincat-dut` (`.TcDUT`) are not tested. `plcopen-xml` uses `firstLine` detection (no extension), which is harder to test but should still have a test.
+**Current state**: Only `61131-3-st` (`.st`) is tested. `twincat-pou` (`.TcPOU`), `twincat-gvl` (`.TcGVL`), `twincat-dut` (`.TcDUT`) are not tested. `plcopen-xml` uses `firstLine` detection (no extension), so the invariant does not apply to it; it is covered by grammar snapshot tests, but a detection test would still be valuable.
 
 **Enforcement**: A CI script reads `contributes.languages` from `package.json`, extracts language IDs that have file extensions, and checks that each language ID appears in at least one test file (`extension.test.ts`). If a language ID is declared but not tested, the build fails.
 
@@ -83,7 +83,7 @@ check-invariants:
 
 ### Adding Exceptions
 
-Some capabilities may be intentionally untested (e.g., a language that uses `firstLine` detection and is genuinely difficult to test in an automated way). The script should support an exceptions list in a comment or config, but each exception must include a justification.
+The script has no exceptions list, and every capability the invariants apply to is tested. If a capability ever turns out to be genuinely untestable in an automated way, add the list back then — with a justification for each entry, and only for an entry that actually suppresses a failure. An exception that suppresses nothing is dead code that misrepresents the state of the tests.
 
 ## CI Pipeline Order
 

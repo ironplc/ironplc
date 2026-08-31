@@ -820,9 +820,13 @@ mod test {
     }
 
     #[test]
-    fn analyze_when_not_valid_then_err() {
+    fn semantic_when_source_is_not_valid_then_returns_diagnostics() {
         let mut project = FileBackedProject::default();
         project.change_text_document(&FileId::default(), "AAA".to_owned());
+
+        let result = project.semantic();
+
+        assert!(!result.is_empty());
     }
 
     #[test]
