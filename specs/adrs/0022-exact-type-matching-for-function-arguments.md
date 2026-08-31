@@ -1,6 +1,6 @@
 # Exact Type Matching for Function Arguments
 
-status: proposed
+status: superseded by ADR-0029, ADR-0031
 date: 2026-03-12
 
 ## Context and Problem Statement
@@ -30,3 +30,23 @@ Chosen option: "Exact type matching", because it aligns with the project's safet
 * Good, because all type conversions are visible in the source code
 * Bad, because users must write explicit conversion calls even for safe widenings — but IEC 61131-3 programmers are accustomed to explicit conversions
 * Neutral, because implicit widening can be added later as an opt-in relaxation without breaking existing programs
+
+## More Information
+
+### Superseded by ADR-0029 and ADR-0031
+
+The exact-matching rule this ADR chose is no longer what the compiler enforces.
+[ADR-0029](0029-implicit-integer-widening.md) replaced it for integer types
+(SINT → INT → DINT → LINT and the unsigned equivalents), and
+[ADR-0031](0031-expanded-implicit-type-widening.md) extended implicit widening to
+lossless integer → real and to bit-string widening, with cross-family widening
+behind `--allow-cross-family-widening`. Both ADRs record the supersession from
+their side; this note records it here, so reading this ADR directly no longer
+yields a rule the compiler dropped. `analyzer/src/rule_function_call_type_check.rs`
+implements the current rule (`can_widen_to`, `allow_cross_family_widening`) and
+applies it to stdlib calls as well as user-defined functions.
+
+What survives is the boundary rather than the rule: narrowing and lossy
+conversions are still rejected and still require an explicit conversion function,
+which is the safety-first reasoning above applied to the cases ADR-0029 and
+ADR-0031 deliberately left out.

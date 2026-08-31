@@ -1,6 +1,6 @@
 # ADR-0038: Feature Flags Are Freely Composable; Dialects Express Preferred Combinations
 
-status: proposed
+status: accepted
 date: 2026-07-21
 
 ## Context and Problem Statement
@@ -105,3 +105,21 @@ statement about what IronPLC *ships and endorses*, expressed through the dialect
 presets — not a mandate to add compiler errors that police user-supplied flag
 combinations. This ADR is consistent: mixing is discouraged by *not bundling* the
 extensions into a shared dialect, not by rejecting the combination at compile time.
+
+### Postscript, 2026-08-31: a real dialect now enables both
+
+The *Context* above motivates the question with "no single real dialect enables
+both" `REF_TO` and `REFERENCE TO`, and the *Decision Outcome* records that "no
+dialect bundles both." That is no longer true. `Dialect::Codesys` enables
+`allow_ref_to` and `allow_reference_to` together — CODESYS V3 does support both
+spellings — while `Dialect::TwinCat`, added later, enables only
+`allow_reference_to`, since TwinCAT rejects `REF_TO` code.
+
+The decision is unaffected, and is if anything better supported: the coexistence
+corollary is now exercised by a shipped dialect rather than only by a
+hand-assembled flag set, and the `RefSyntax` tag keeps the two forms unambiguous
+in one program. The conformance test
+`options_spec_req_rto_003_reference_to_and_ref_to_coexist` pins it.
+
+Only the premise aged. The original *Context* is left as written, per the
+[ADR amendment rules](../steering/development-standards.md#amending-an-adr).
