@@ -1,3 +1,8 @@
+---
+inclusion: fileMatch
+fileMatchPattern: "compiler/**"
+---
+
 # Compiler Architecture
 
 See [specs/steering/compiler-architecture.md](../../specs/steering/compiler-architecture.md) for the full compiler architecture guidance.
