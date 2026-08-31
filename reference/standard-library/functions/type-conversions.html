@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.240.0">
+<meta name="ironplc-version" content="0.241.0">
 </head>
   <body>
     
@@ -511,6 +511,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2034.html">P2034</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2035.html">P2035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2036.html">P2036</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2037.html">P2037</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4003.html">P4003</a></li>
@@ -575,6 +576,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9002.html">P9002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9003.html">P9003</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9997.html">P9997</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9998.html">P9999</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9999.html">P9999</a></li>
 </ul>
@@ -618,6 +620,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9015.html">V9015</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9016.html">V9016</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9017.html">V9017</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9018.html">V9018</a></li>
 </ul>
 </li>
 </ul>
@@ -1125,8 +1128,8 @@ integers, real types, and bit string types are supported.</p>
 <h3>Time-of-Day Conversions<a class="headerlink" href="#time-of-day-conversions" title="Link to this heading">¶</a></h3>
 <p>Conversions between time-of-day types (<code class="docutils literal notranslate"><span class="pre">TOD</span></code>/<code class="docutils literal notranslate"><span class="pre">TIME_OF_DAY</span></code>,
 <code class="docutils literal notranslate"><span class="pre">LTOD</span></code>/<code class="docutils literal notranslate"><span class="pre">LTIME_OF_DAY</span></code>) and numeric or bit string types. The
-underlying value is milliseconds since midnight (<code class="docutils literal notranslate"><span class="pre">TOD</span></code>) or
-nanoseconds since midnight (<code class="docutils literal notranslate"><span class="pre">LTOD</span></code>).</p>
+underlying value is milliseconds since midnight for both <code class="docutils literal notranslate"><span class="pre">TOD</span></code> and
+<code class="docutils literal notranslate"><span class="pre">LTOD</span></code>; <code class="docutils literal notranslate"><span class="pre">LTOD</span></code> is the wider type, not the higher-resolution one.</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
@@ -1163,8 +1166,8 @@ types are supported.</p>
 <h3>Date-and-Time Conversions<a class="headerlink" href="#date-and-time-conversions" title="Link to this heading">¶</a></h3>
 <p>Conversions between date-and-time types (<code class="docutils literal notranslate"><span class="pre">DT</span></code>/<code class="docutils literal notranslate"><span class="pre">DATE_AND_TIME</span></code>,
 <code class="docutils literal notranslate"><span class="pre">LDT</span></code>/<code class="docutils literal notranslate"><span class="pre">LDATE_AND_TIME</span></code>) and numeric or bit string types. The
-underlying value is seconds since 1970-01-01 (<code class="docutils literal notranslate"><span class="pre">DT</span></code>) or nanoseconds
-since 1970-01-01 (<code class="docutils literal notranslate"><span class="pre">LDT</span></code>).</p>
+underlying value is seconds since 1970-01-01 for both <code class="docutils literal notranslate"><span class="pre">DT</span></code> and
+<code class="docutils literal notranslate"><span class="pre">LDT</span></code>; <code class="docutils literal notranslate"><span class="pre">LDT</span></code> is the wider type, not the higher-resolution one.</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>

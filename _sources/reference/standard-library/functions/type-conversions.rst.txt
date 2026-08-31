@@ -297,8 +297,8 @@ Time-of-Day Conversions
 
 Conversions between time-of-day types (``TOD``/``TIME_OF_DAY``,
 ``LTOD``/``LTIME_OF_DAY``) and numeric or bit string types. The
-underlying value is milliseconds since midnight (``TOD``) or
-nanoseconds since midnight (``LTOD``).
+underlying value is milliseconds since midnight for both ``TOD`` and
+``LTOD``; ``LTOD`` is the wider type, not the higher-resolution one.
 
 .. list-table::
    :header-rows: 1
@@ -325,8 +325,8 @@ Date-and-Time Conversions
 
 Conversions between date-and-time types (``DT``/``DATE_AND_TIME``,
 ``LDT``/``LDATE_AND_TIME``) and numeric or bit string types. The
-underlying value is seconds since 1970-01-01 (``DT``) or nanoseconds
-since 1970-01-01 (``LDT``).
+underlying value is seconds since 1970-01-01 for both ``DT`` and
+``LDT``; ``LDT`` is the wider type, not the higher-resolution one.
 
 .. list-table::
    :header-rows: 1

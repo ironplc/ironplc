@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/compiler/problems/P0011.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Code, P0011,, Message, Empty variable block requires –allow-empty-var-blocks flag,. This error occurs when a variable block ( VAR, VAR_INPUT, VAR_OUTPUT, VAR_IN_OUT, VAR_EXTERNAL, VAR_GLOBAL, etc.)..." />
-<meta name="description" content="Code, P0011,, Message, Empty variable block requires –allow-empty-var-blocks flag,. This error occurs when a variable block ( VAR, VAR_INPUT, VAR_OUTPUT, VAR_IN_OUT, VAR_EXTERNAL, VAR_GLOBAL, etc.)..." />
+<meta property="og:description" content="Code, P0011,, Message, Empty variable block requires choosing a dialect or –allow-empty-var-blocks flag,. This error occurs when a variable block ( VAR, VAR_INPUT, VAR_OUTPUT, VAR_IN_OUT, VAR_EXTER..." />
+<meta name="description" content="Code, P0011,, Message, Empty variable block requires choosing a dialect or –allow-empty-var-blocks flag,. This error occurs when a variable block ( VAR, VAR_INPUT, VAR_OUTPUT, VAR_IN_OUT, VAR_EXTER..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P2001" href="P2001.html"><link rel="prev" title="P0010" href="P0010.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/compiler/problems/P0011.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.240.0">
+<meta name="ironplc-version" content="0.241.0">
 </head>
   <body>
     
@@ -511,6 +511,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P2034.html">P2034</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2035.html">P2035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2036.html">P2036</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P2037.html">P2037</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4003.html">P4003</a></li>
@@ -575,6 +576,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9002.html">P9002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9003.html">P9003</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P9997.html">P9997</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9998.html">P9999</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9999.html">P9999</a></li>
 </ul>
@@ -618,6 +620,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9015.html">V9015</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9016.html">V9016</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9017.html">V9017</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9018.html">V9018</a></li>
 </ul>
 </li>
 </ul>
@@ -696,7 +699,7 @@
 <dl class="simple">
 <dt><strong>Code</strong></dt><dd><p>P0011</p>
 </dd>
-<dt><strong>Message</strong></dt><dd><p>Empty variable block requires –allow-empty-var-blocks flag</p>
+<dt><strong>Message</strong></dt><dd><p>Empty variable block requires choosing a dialect or –allow-empty-var-blocks flag</p>
 </dd>
 </dl>
 <p>This error occurs when a variable block (<code class="docutils literal notranslate"><span class="pre">VAR</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_EXTERNAL</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code>, etc.) contains no declarations. The IEC 61131-3 standard requires at least one variable declaration within each variable block.</p>

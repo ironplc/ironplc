@@ -2,7 +2,7 @@
 Enabling Dialects and Features
 ==============================
 
-IronPLC aims to let you take code from another PLC environment and use it
+IronPLC lets you take code from another PLC environment and use it
 without changes. To support this, IronPLC uses **dialects** — named presets
 that select the IEC 61131-3 edition and a default set of extensions.
 Individual ``--allow-*`` flags provide fine-grained control on top of the
@@ -90,8 +90,8 @@ Supported Dialects
    (:doc:`LTIME </reference/language/data-types/elementary/ltime>`,
    :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>`, etc.)
    along with the extensions TwinCAT shares with CODESYS,
-   such as curly-brace pragmas, C-style comments, and the ``AND_THEN``
-   short-circuit operator. Unlike ``codesys``, it does **not** enable the
+   such as curly-brace pragmas, C-style comments, and the ``AND_THEN`` /
+   ``OR_ELSE`` short-circuit operators. Unlike ``codesys``, it does **not** enable the
    ``REF_TO`` / ``REF()`` / ``NULL`` reference extensions: TwinCAT spells
    references ``REFERENCE TO`` (bound with ``REF=``) and pointers
    ``POINTER TO`` (bound with ``ADR()``), which this dialect enables instead
@@ -306,19 +306,23 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    error.
 
 ``--allow-short-circuit-operators``
-   Allow the ``AND_THEN`` short-circuit boolean operator, a
-   Beckhoff/CODESYS extension. Unlike plain ``AND`` (which always
-   evaluates both operands), ``AND_THEN`` only evaluates its right
-   operand when the left operand is ``TRUE`` — commonly used to guard a
-   dereference (``ptr <> 0 AND_THEN ptr^ = 99``). ``ironplcc check``
-   fully supports ``AND_THEN`` (parsing, type-checking, and
-   round-tripping through plc2plc with its spelling preserved — it is
-   *not* normalized to ``AND``, since the short-circuit behavior is a
-   real, externally-visible difference in TwinCAT/CODESYS). Codegen
-   (``ironplcc compile``) does not yet implement the short-circuit
-   evaluation this operator requires and refuses to compile it
-   (problem :doc:`P9999 </reference/compiler/problems/P9999>`) rather
-   than silently emitting eager (behaviorally incorrect) bytecode.
+   Allow the ``AND_THEN`` and ``OR_ELSE`` short-circuit boolean
+   operators, a Beckhoff/CODESYS extension. Unlike plain ``AND`` and
+   ``OR`` (which always evaluate both operands), ``AND_THEN`` only
+   evaluates its right operand when the left operand is ``TRUE``, and
+   ``OR_ELSE`` only when the left operand is ``FALSE`` — commonly used
+   to guard a dereference (``ptr <> 0 AND_THEN ptr^ = 99``). The
+   spelling is preserved end to end: the operators are *not* normalized
+   to ``AND``/``OR``, since the short-circuit behavior is a real,
+   externally-visible difference in TwinCAT/CODESYS. Compiled code
+   branches around the right operand, so the guarded expression above
+   never dereferences a null pointer.
+
+   Short-circuiting applies to ``BOOL`` operands. ``AND`` and ``OR`` are
+   also the bit-string operators, and skipping an operand has no meaning
+   for a bit-string result, so ``AND_THEN``/``OR_ELSE`` on bit-string
+   operands evaluate both operands and produce the same value ``AND``
+   and ``OR`` produce.
 
 ``--allow-mixed-located-var-declarations``
    Allow an ``AT``-located variable (complete address like ``AT %IX0.0``,

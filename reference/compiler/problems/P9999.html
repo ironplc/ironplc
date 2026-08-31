@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.240.0">
+<meta name="ironplc-version" content="0.241.0">
 </head>
   <body>
     
@@ -511,6 +511,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P2034.html">P2034</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2035.html">P2035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2036.html">P2036</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P2037.html">P2037</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4003.html">P4003</a></li>
@@ -575,6 +576,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9002.html">P9002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9003.html">P9003</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P9997.html">P9997</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9998.html">P9999</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">P9999</a></li>
 </ul>
@@ -618,6 +620,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9015.html">V9015</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9016.html">V9016</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9017.html">V9017</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9018.html">V9018</a></li>
 </ul>
 </li>
 </ul>
@@ -726,21 +729,6 @@ reproduce the problem.</p></li>
 IronPLC team and <strong>may become public</strong> — for example in a GitHub issue.
 Do not submit anything confidential.</p>
 </div>
-</section>
-<section id="known-limitations">
-<h2>Known Limitations<a class="headerlink" href="#known-limitations" title="Link to this heading">¶</a></h2>
-<p>The following features are not yet supported in code generation and will
-produce this error:</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">ARRAY</span></code> element access</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">STRUCT</span></code> member access</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code> with SFC bodies</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">STRING</span></code> pass-by-reference (<code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code>)</p></li>
-<li><p>Direct variables (hardware-mapped I/O such as <code class="docutils literal notranslate"><span class="pre">%IX0.0</span></code>)</p></li>
-<li><p>Enumerated values in expressions and <code class="docutils literal notranslate"><span class="pre">CASE</span></code> selectors</p></li>
-<li><p><a class="reference internal" href="../../language/object-orientation/index.html"><span class="doc">Object-oriented programming</span></a>
-constructs (<code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code>, <code class="docutils literal notranslate"><span class="pre">IMPLEMENTS</span></code>, <code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code>, <code class="docutils literal notranslate"><span class="pre">INTERFACE</span></code>)</p></li>
-</ul>
 <div class="tip admonition">
 <p class="admonition-title">Think IronPLC is wrong about this?</p>
 <p>If you believe this diagnostic is incorrect, <a class="reference external" href="https://github.com/ironplc/ironplc/issues/new?template=compatibility_gap.md&amp;title=Diagnostic%20P9999%20appears%20incorrect&amp;labels=problem-code-feedback">open an issue on GitHub</a>
@@ -814,7 +802,6 @@ with a small sample that demonstrates the problem.</p>
             <ul>
 <li><a class="reference internal" href="#">P9999</a><ul>
 <li><a class="reference internal" href="#reporting-the-program">Reporting the program</a></li>
-<li><a class="reference internal" href="#known-limitations">Known Limitations</a></li>
 </ul>
 </li>
 </ul>

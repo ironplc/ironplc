@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.240.0">
+<meta name="ironplc-version" content="0.241.0">
 </head>
   <body>
     
@@ -511,6 +511,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2034.html">P2034</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2035.html">P2035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2036.html">P2036</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2037.html">P2037</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4003.html">P4003</a></li>
@@ -575,6 +576,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9002.html">P9002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9003.html">P9003</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9997.html">P9997</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9998.html">P9999</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9999.html">P9999</a></li>
 </ul>
@@ -618,6 +620,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9015.html">V9015</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9016.html">V9016</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9017.html">V9017</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9018.html">V9018</a></li>
 </ul>
 </li>
 </ul>
@@ -726,11 +729,11 @@ when the flag is not enabled.</p>
 <td><p>Edition 3 (object-oriented programming)</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Parsed and analyzed: a declaration is checked, and a call is
-resolved against the declared type of the instance, walking the
-<code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code> chain to find the method. Calls are not yet compiled or
-executed (<a class="reference internal" href="../../compiler/problems/P9999.html"><span class="doc">P9999</span></a>), and a
-return value cannot be produced or consumed yet (see
+<td><p>Parsed, analyzed, compiled and executed: a declaration is checked,
+and a call is resolved against the declared type of the instance,
+walking the <code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code> chain to find the method. A method body
+sets its return value by assigning the method’s own name; that
+value cannot be consumed at the call site yet (see
 <a class="reference internal" href="#method-limitations"><span class="std std-ref">Current limitations</span></a>). Enable with <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>;
 see <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a>.</p></td>
 </tr>
@@ -797,13 +800,13 @@ the chain.</p>
 </section>
 <section id="current-limitations">
 <span id="method-limitations"></span><h2>Current limitations<a class="headerlink" href="#current-limitations" title="Link to this heading">¶</a></h2>
-<p>A return type is accepted on a declaration, but nothing can be done with it
-yet. A method body cannot assign to the method’s own name the way a
-<a class="reference internal" href="../pous/function.html"><span class="doc">function</span></a> body does — that reports
-<a class="reference internal" href="../../compiler/problems/P4007.html"><span class="doc">P4007</span></a> — and a call is a
-statement, not an expression, so <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">:=</span> <span class="pre">instance.Method()</span></code> is a syntax
-error. Write methods without a return type until return values are
-supported.</p>
+<p>A method body sets its return value by assigning the method’s own name,
+the same way a <a class="reference internal" href="../pous/function.html"><span class="doc">function</span></a> body
+does. What is missing is the other half: a call is a statement, not an
+expression, so <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">:=</span> <span class="pre">instance.Method()</span></code> is a syntax error and the
+return value is discarded at the call site. Until that is supported, a
+method with a return type is useful only for what its body does — write
+the result to a field of the function block and read that field.</p>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>

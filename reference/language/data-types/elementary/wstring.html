@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/language/data-types/elementary/wstring.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Double-byte (wide) character string with a maximum length.,, Size, Variable (default max 254 characters),, Default,&quot;&quot;(empty string),, IEC 61131-3, Section 2.3.1,, Support, Not yet support..." />
-<meta name="description" content="Double-byte (wide) character string with a maximum length.,, Size, Variable (default max 254 characters),, Default,&quot;&quot;(empty string),, IEC 61131-3, Section 2.3.1,, Support, Not yet support..." />
+<meta property="og:description" content="Double-byte (wide) character string with a maximum length.,, Size, Variable (default max 254 characters),, Default,&quot;&quot;(empty string),, IEC 61131-3, Section 2.3.1,, Support, Supported,, Enc..." />
+<meta name="description" content="Double-byte (wide) character string with a maximum length.,, Size, Variable (default max 254 characters),, Default,&quot;&quot;(empty string),, IEC 61131-3, Section 2.3.1,, Support, Supported,, Enc..." />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="TIME" href="time.html"><link rel="prev" title="STRING" href="string.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/data-types/elementary/wstring.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.240.0">
+<meta name="ironplc-version" content="0.241.0">
 </head>
   <body>
     
@@ -511,6 +511,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2034.html">P2034</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2035.html">P2035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2036.html">P2036</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2037.html">P2037</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4003.html">P4003</a></li>
@@ -575,6 +576,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P9002.html">P9002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P9003.html">P9003</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P9997.html">P9997</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P9998.html">P9999</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P9999.html">P9999</a></li>
 </ul>
@@ -618,6 +620,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V9015.html">V9015</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V9016.html">V9016</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V9017.html">V9017</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V9018.html">V9018</a></li>
 </ul>
 </li>
 </ul>
@@ -711,7 +714,10 @@
 <td><p>Section 2.3.1</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Encoding</strong></p></td>
+<td><p>UTF-16LE, Basic Multilingual Plane only</p></td>
 </tr>
 </tbody>
 </table>
@@ -730,6 +736,17 @@
 <span class="n">END_VAR</span>
 </pre></div>
 </div>
+</section>
+<section id="encoding">
+<h2>Encoding<a class="headerlink" href="#encoding" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">WSTRING</span></code> stores UTF-16LE code units. Only the Basic Multilingual Plane is
+supported: a code point above U+FFFF has no representation, so surrogate pairs
+are not formed. Lengths — the declared maximum, and the value <code class="docutils literal notranslate"><span class="pre">LEN</span></code> returns —
+count code units, not bytes and not user-perceived characters.</p>
+<p>The maximum declared length is 65,535 code units.</p>
+<p><code class="docutils literal notranslate"><span class="pre">STRING</span></code> and <code class="docutils literal notranslate"><span class="pre">WSTRING</span></code> cannot be mixed. Assigning one to the other is a
+compile error (<a class="reference internal" href="../../../compiler/problems/P4034.html"><span class="doc">P4034</span></a>); the runtime also
+traps a mixed operation that reaches it.</p>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
@@ -804,6 +821,7 @@
             <ul>
 <li><a class="reference internal" href="#">WSTRING</a><ul>
 <li><a class="reference internal" href="#literals">Literals</a></li>
+<li><a class="reference internal" href="#encoding">Encoding</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>

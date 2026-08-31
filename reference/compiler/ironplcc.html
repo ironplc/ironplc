@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.240.0">
+<meta name="ironplc-version" content="0.241.0">
 </head>
   <body>
     
@@ -511,6 +511,7 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/P2034.html">P2034</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P2035.html">P2035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P2036.html">P2036</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P2037.html">P2037</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4003.html">P4003</a></li>
@@ -575,6 +576,7 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P9002.html">P9002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P9003.html">P9003</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P9997.html">P9997</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P9998.html">P9999</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P9999.html">P9999</a></li>
 </ul>
@@ -618,6 +620,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V9015.html">V9015</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V9016.html">V9016</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V9017.html">V9017</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V9018.html">V9018</a></li>
 </ul>
 </li>
 </ul>
@@ -871,11 +874,11 @@ is CODESYS-core syntax, inherited by TwinCAT and other CODESYS-based
 IDEs. A pragma is parsed and discarded like a comment; its contents are
 not interpreted.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-short-circuit-operators</span></code></dt><dd><p>Allow the <code class="docutils literal notranslate"><span class="pre">AND_THEN</span></code> short-circuit boolean operator, a Beckhoff/CODESYS
-extension that only evaluates its right operand when the left operand is
-<code class="docutils literal notranslate"><span class="pre">TRUE</span></code>. <code class="docutils literal notranslate"><span class="pre">ironplcc</span> <span class="pre">check</span></code> fully supports it; codegen
-(<code class="docutils literal notranslate"><span class="pre">ironplcc</span> <span class="pre">compile</span></code>) does not yet implement short-circuit evaluation and
-refuses to compile it.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-short-circuit-operators</span></code></dt><dd><p>Allow the <code class="docutils literal notranslate"><span class="pre">AND_THEN</span></code> and <code class="docutils literal notranslate"><span class="pre">OR_ELSE</span></code> short-circuit boolean operators, a
+Beckhoff/CODESYS extension. <code class="docutils literal notranslate"><span class="pre">AND_THEN</span></code> evaluates its right operand only
+when the left operand is <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>; <code class="docutils literal notranslate"><span class="pre">OR_ELSE</span></code> only when the left operand
+is <code class="docutils literal notranslate"><span class="pre">FALSE</span></code>. Bit-string operands have nothing to short-circuit on and
+evaluate both operands, matching <code class="docutils literal notranslate"><span class="pre">AND</span></code> and <code class="docutils literal notranslate"><span class="pre">OR</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-mixed-located-var-declarations</span></code></dt><dd><p>Allow an <code class="docutils literal notranslate"><span class="pre">AT</span></code>-located variable (e.g. <code class="docutils literal notranslate"><span class="pre">AT</span> <span class="pre">%I*</span></code>) inside an otherwise
 plain <code class="docutils literal notranslate"><span class="pre">VAR</span></code>/<code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code>/<code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code> block, instead of requiring

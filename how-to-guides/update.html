@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.240.0">
+<meta name="ironplc-version" content="0.241.0">
 </head>
   <body>
     
@@ -511,6 +511,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2034.html">P2034</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2035.html">P2035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2036.html">P2036</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2037.html">P2037</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4003.html">P4003</a></li>
@@ -575,6 +576,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P9002.html">P9002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P9003.html">P9003</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P9997.html">P9997</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P9998.html">P9999</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P9999.html">P9999</a></li>
 </ul>
@@ -618,6 +620,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9015.html">V9015</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9016.html">V9016</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9017.html">V9017</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9018.html">V9018</a></li>
 </ul>
 </li>
 </ul>
@@ -707,18 +710,28 @@ automatic mechanism to distribute updates.</p>
 <li><p>Right-click (or press and hold) on <span class="guilabel">IronPLC</span> and select <span class="guilabel">Uninstall/Change</span>. Then follow the directions on the screen.</p></li>
 <li><p>Download the latest IronPLC installer from <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>:</p>
 <ul class="simple">
-<li><p>x64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.240.0/ironplcc-x86_64-windows.exe">ironplcc-x86_64-windows.exe</a></p></li>
-<li><p>Arm64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.240.0/ironplcc-aarch64-windows.exe">ironplcc-aarch64-windows.exe</a></p></li>
+<li><p>x64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.241.0/ironplcc-x86_64-windows.exe">ironplcc-x86_64-windows.exe</a></p></li>
+<li><p>Arm64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.241.0/ironplcc-aarch64-windows.exe">ironplcc-aarch64-windows.exe</a></p></li>
 </ul>
 </li>
 <li><p>Run the installer and follow the prompts to complete
 installation of the CLI.</p></li>
 </ol>
 <p class="rubric">Update IronPLC Extension</p>
-<ol class="arabic simple">
-<li><p>Download the latest IronPLC extension
-<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.240.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a> from
-<a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>.</p></li>
+<ol class="arabic">
+<li><p>Download the VSIX that matches your development environment from
+<a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>:</p>
+<ul class="simple">
+<li><p>Visual Studio Code —
+<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.241.0/ironplc-vscode-extension-marketplace.vsix">ironplc-vscode-extension-marketplace.vsix</a></p></li>
+<li><p>Cursor, Kiro, Devin, VSCodium, and other environments that install from
+Open VSX — <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.241.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a></p></li>
+</ul>
+<p>Each registry uses a different extension ID, so the two VSIX files are not
+interchangeable. Visual Studio Code updates an extension from the
+Marketplace listing that matches its ID, so a VS Code installation of the
+Open VSX VSIX never receives updates.</p>
+</li>
 </ol>
 <p>Run your development environment, then:</p>
 <ol class="arabic simple">
@@ -726,7 +739,7 @@ installation of the CLI.</p></li>
 <span class="guilabel">Activity Bar</span> on the side of the window or using the
 View: Extensions command (<kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">X</kbd>).</p></li>
 <li><p>In the Extensions view, select <span class="menuselection">… (View and More Actions) ‣ Install from VSIX…</span> button.</p></li>
-<li><p>In the <span class="guilabel">Install from VISX</span> dialog, select the VISX file you downloaded earlier.</p></li>
+<li><p>In the <span class="guilabel">Install from VSIX</span> dialog, select the VSIX file you downloaded earlier.</p></li>
 </ol>
 </div>
 <input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">macOS</label><div class="tab-content docutils">
@@ -742,10 +755,20 @@ and re-run the script to install the latest version:</p>
 </pre></div>
 </div>
 <p class="rubric">Update IronPLC Extension</p>
-<ol class="arabic simple">
-<li><p>Download the latest IronPLC extension
-<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.240.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a> from
-<a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>.</p></li>
+<ol class="arabic">
+<li><p>Download the VSIX that matches your development environment from
+<a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>:</p>
+<ul class="simple">
+<li><p>Visual Studio Code —
+<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.241.0/ironplc-vscode-extension-marketplace.vsix">ironplc-vscode-extension-marketplace.vsix</a></p></li>
+<li><p>Cursor, Kiro, Devin, VSCodium, and other environments that install from
+Open VSX — <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.241.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a></p></li>
+</ul>
+<p>Each registry uses a different extension ID, so the two VSIX files are not
+interchangeable. Visual Studio Code updates an extension from the
+Marketplace listing that matches its ID, so a VS Code installation of the
+Open VSX VSIX never receives updates.</p>
+</li>
 </ol>
 <p>Run your development environment, then:</p>
 <ol class="arabic simple">
@@ -753,7 +776,7 @@ and re-run the script to install the latest version:</p>
 <span class="guilabel">Activity Bar</span> on the side of the window or using the
 View: Extensions command (<kbd class="kbd docutils literal notranslate">⌘</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">X</kbd>).</p></li>
 <li><p>In the Extensions view, select <span class="menuselection">… (View and More Actions) ‣ Install from VSIX…</span> button.</p></li>
-<li><p>In the dialog, select the VISX file you downloaded earlier.</p></li>
+<li><p>In the dialog, select the VSIX file you downloaded earlier.</p></li>
 </ol>
 </div>
 <input class="tab-input" id="tab-set--0-input--3" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--3">Linux</label><div class="tab-content docutils">
@@ -764,10 +787,20 @@ version:</p>
 </pre></div>
 </div>
 <p class="rubric">Update IronPLC Extension</p>
-<ol class="arabic simple">
-<li><p>Download the latest IronPLC extension
-<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.240.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a> from
-<a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>.</p></li>
+<ol class="arabic">
+<li><p>Download the VSIX that matches your development environment from
+<a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>:</p>
+<ul class="simple">
+<li><p>Visual Studio Code —
+<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.241.0/ironplc-vscode-extension-marketplace.vsix">ironplc-vscode-extension-marketplace.vsix</a></p></li>
+<li><p>Cursor, Kiro, Devin, VSCodium, and other environments that install from
+Open VSX — <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.241.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a></p></li>
+</ul>
+<p>Each registry uses a different extension ID, so the two VSIX files are not
+interchangeable. Visual Studio Code updates an extension from the
+Marketplace listing that matches its ID, so a VS Code installation of the
+Open VSX VSIX never receives updates.</p>
+</li>
 </ol>
 <p>Run your development environment, then:</p>
 <ol class="arabic simple">
@@ -775,7 +808,7 @@ version:</p>
 <span class="guilabel">Activity Bar</span> on the side of the window or using the
 View: Extensions command (<kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">X</kbd>).</p></li>
 <li><p>In the Extensions view, select <span class="menuselection">… (View and More Actions) ‣ Install from VSIX…</span> button.</p></li>
-<li><p>In the dialog, select the VISX file you downloaded earlier.</p></li>
+<li><p>In the dialog, select the VSIX file you downloaded earlier.</p></li>
 </ol>
 </div>
 </div>

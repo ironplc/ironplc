@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/runtime/problems/V6008.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Code, V6008,, Message, Launch request did not specify a program container path,. The Debug Adapter Protocol launch request did not include a program path, so the debugger has no bytecode container ..." />
-<meta name="description" content="Code, V6008,, Message, Launch request did not specify a program container path,. The Debug Adapter Protocol launch request did not include a program path, so the debugger has no bytecode container ..." />
+<meta property="og:description" content="Code, V6008,, Message, Launch request argument is missing or out of range,. An argument in the Debug Adapter Protocol launch request is missing or outside the range the debug server accepts, so the..." />
+<meta name="description" content="Code, V6008,, Message, Launch request argument is missing or out of range,. An argument in the Debug Adapter Protocol launch request is missing or outside the range the debug server accepts, so the..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="V6009" href="V6009.html"><link rel="prev" title="V6007" href="V6007.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/runtime/problems/V6008.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.240.0">
+<meta name="ironplc-version" content="0.241.0">
 </head>
   <body>
     
@@ -511,6 +511,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2034.html">P2034</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2035.html">P2035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2036.html">P2036</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2037.html">P2037</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4003.html">P4003</a></li>
@@ -575,6 +576,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9002.html">P9002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9003.html">P9003</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9997.html">P9997</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9998.html">P9999</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9999.html">P9999</a></li>
 </ul>
@@ -618,6 +620,7 @@
 <li class="toctree-l4"><a class="reference internal" href="V9015.html">V9015</a></li>
 <li class="toctree-l4"><a class="reference internal" href="V9016.html">V9016</a></li>
 <li class="toctree-l4"><a class="reference internal" href="V9017.html">V9017</a></li>
+<li class="toctree-l4"><a class="reference internal" href="V9018.html">V9018</a></li>
 </ul>
 </li>
 </ul>
@@ -696,19 +699,92 @@
 <dl class="simple">
 <dt><strong>Code</strong></dt><dd><p>V6008</p>
 </dd>
-<dt><strong>Message</strong></dt><dd><p>Launch request did not specify a program container path</p>
+<dt><strong>Message</strong></dt><dd><p>Launch request argument is missing or out of range</p>
 </dd>
 </dl>
-<p>The Debug Adapter Protocol <code class="docutils literal notranslate"><span class="pre">launch</span></code> request did not include a <code class="docutils literal notranslate"><span class="pre">program</span></code>
-path, so the debugger has no bytecode container to load and run.</p>
+<p>An argument in the Debug Adapter Protocol <code class="docutils literal notranslate"><span class="pre">launch</span></code> request is missing or
+outside the range the debug server accepts, so the debug session does not
+start. The message names the argument and what was expected of it, for
+example:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>V6008 - launch argument 'program' is required: the path to a compiled .iplc container
+V6008 - launch argument 'scanLimit' must be a whole number of at least 1, but was 0; omit it to run without a bound
+</pre></div>
+</div>
+<p>Every bad launch argument reports this one code. A container that cannot be
+debugged as built reports its own: <a class="reference internal" href="V6009.html"><span class="doc">V6009</span></a> when it carries no debug
+information, <a class="reference internal" href="V6010.html"><span class="doc">V6010</span></a> when it declares several program instances.</p>
+<section id="launch-arguments">
+<h2>Launch Arguments<a class="headerlink" href="#launch-arguments" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 75.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Argument</p></th>
+<th class="head"><p>Accepted values</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">program</span></code></p></td>
+<td><p><strong>Required.</strong> A path to a compiled <code class="docutils literal notranslate"><span class="pre">.iplc</span></code> container.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">stopOnEntry</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code> or <code class="docutils literal notranslate"><span class="pre">false</span></code>. Defaults to <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">scanLimit</span></code></p></td>
+<td><p>A whole number of at least <code class="docutils literal notranslate"><span class="pre">1</span></code>. Omit the argument to run without a
+bound.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">freewheelingIntervalMs</span></code></p></td>
+<td><p>A cycle time in milliseconds, for a program whose task declares no
+<code class="docutils literal notranslate"><span class="pre">INTERVAL</span></code>. Defaults to <code class="docutils literal notranslate"><span class="pre">100</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">scanLimit</span></code> has no value that means unlimited. The debug server rejects both
+<code class="docutils literal notranslate"><span class="pre">0</span></code> and <code class="docutils literal notranslate"><span class="pre">-1</span></code>. Omit the argument instead.</p>
+</section>
+<section id="example">
+<h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
+<p>The following launch configuration produces error V6008:</p>
+<div class="literal-block-wrapper docutils container" id="id1">
+<div class="code-block-caption"><span class="caption-text">.vscode/launch.json</span><a class="headerlink" href="#id1" title="Link to this code">¶</a></div>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ironplc"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"request"</span><span class="p">:</span><span class="w"> </span><span class="s2">"launch"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"IronPLC: Debug Active File"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"program"</span><span class="p">:</span><span class="w"> </span><span class="s2">"${file}"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"scanLimit"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div>
+<p>Deleting the <code class="docutils literal notranslate"><span class="pre">scanLimit</span></code> line fixes it. The session then scans until you
+stop it or a breakpoint pauses it.</p>
+<p>To stop after a fixed number of cycles instead, give the count you want:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">"scanLimit"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+</pre></div>
+</div>
+</section>
 <section id="solutions">
 <h2>Solutions<a class="headerlink" href="#solutions" title="Link to this heading">¶</a></h2>
 <ol class="arabic simple">
-<li><p>Ensure the launch configuration sets <code class="docutils literal notranslate"><span class="pre">program</span></code> to a compiled <code class="docutils literal notranslate"><span class="pre">.iplc</span></code> container</p></li>
-<li><p>In VS Code, check the <code class="docutils literal notranslate"><span class="pre">program</span></code> field of the IronPLC debug configuration in <code class="docutils literal notranslate"><span class="pre">launch.json</span></code></p></li>
-<li><p>Confirm the path is a string and is not empty after variable substitution</p></li>
-<li><p>Recompile the source program if the <code class="docutils literal notranslate"><span class="pre">.iplc</span></code> container has not been produced yet</p></li>
+<li><p>Read the error message for the name of the argument that was rejected and the values it accepts</p></li>
+<li><p>Set <code class="docutils literal notranslate"><span class="pre">program</span></code> to a compiled <code class="docutils literal notranslate"><span class="pre">.iplc</span></code> container, checking the path survives variable substitution</p></li>
+<li><p>Remove <code class="docutils literal notranslate"><span class="pre">scanLimit</span></code> to run until you stop the session, or set it to <code class="docutils literal notranslate"><span class="pre">1</span></code> or more</p></li>
+<li><p>Set a breakpoint instead of a scan bound when you want the session to stop at a particular line</p></li>
 </ol>
+</section>
+<section id="see-also">
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="../ironplcvmd.html"><span class="doc">ironplcvmd</span></a> — the <code class="docutils literal notranslate"><span class="pre">launch</span></code> request arguments the debug server accepts</p></li>
+<li><p><a class="reference internal" href="../../editor/debugging.html"><span class="doc">Debugging</span></a> — the launch configuration in Visual Studio Code</p></li>
+<li><p><a class="reference internal" href="../../../how-to-guides/getting-started/debug-a-program.html"><span class="doc">Debug a Program</span></a> — debugging a program step by step</p></li>
+</ul>
 <div class="tip admonition">
 <p class="admonition-title">Think IronPLC is wrong about this?</p>
 <p>If you believe this diagnostic is incorrect, <a class="reference external" href="https://github.com/ironplc/ironplc/issues/new?template=compatibility_gap.md&amp;title=Diagnostic%20V6008%20appears%20incorrect&amp;labels=problem-code-feedback">open an issue on GitHub</a>
@@ -781,7 +857,10 @@ with a small sample that demonstrates the problem.</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">V6008</a><ul>
+<li><a class="reference internal" href="#launch-arguments">Launch Arguments</a></li>
+<li><a class="reference internal" href="#example">Example</a></li>
 <li><a class="reference internal" href="#solutions">Solutions</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>
 </ul>
