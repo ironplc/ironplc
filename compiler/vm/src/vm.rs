@@ -1142,7 +1142,10 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
         if pc >= bytecode.len() {
             // Fell off the end of a function body without an explicit
-            // RET — treat as RET_VOID.
+            // RET — treat as RET_VOID (ADR-0044). `verify_stack_balance`
+            // checks this point as a return site, and codegen runs it over
+            // every container it emits, so an emitted body cannot reach here
+            // with a non-empty operand stack.
             handle_frame_return(
                 &mut temp_alloc,
                 &mut frame_stack,

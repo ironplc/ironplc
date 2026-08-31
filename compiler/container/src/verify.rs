@@ -324,7 +324,8 @@ fn verify_function(
         let depth = depth_at[pc].expect("queued offsets always carry a depth");
 
         if pc == len {
-            // Fell off the end of the body; the VM treats this as RET_VOID.
+            // Fell off the end of the body; the VM treats this as RET_VOID
+            // (ADR-0044), so hold it to the same operand-stack contract.
             return_check(function_id, pc, RET_VOID_DEPTH, depth)?;
             continue;
         }
