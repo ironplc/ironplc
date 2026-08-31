@@ -40,6 +40,29 @@ Commands
       with no recorded name is reported as ``var[N]``. Variables are dumped on
       both normal shutdown and after a runtime error.
 
+      Each value is written as the IEC 61131-3 literal for its declared type,
+      the same rendering the debugger and the playground show:
+
+      .. code-block:: text
+
+         msg: 'hello'
+         wide: "hello"
+         flag: TRUE
+         n: 42
+         ratio: 1.5
+         mask: 16#ABCD
+         span: T#1500ms
+         day: D#2024-01-15
+         clock: TOD#14:30:00
+         stamp: DT#2024-01-15-14:30:00
+         shade: GREEN (1)
+
+      Durations are written in milliseconds (``T#1500ms``, not ``T#1.5s``) so
+      the value is exact and reparses as the same literal. A value that cannot
+      be read — a string whose container carries no layout for it, or one whose
+      layout does not fit the program's data — is written as ``<unavailable>``
+      or ``<invalid>`` rather than as a number that would read like a value.
+
    ``--scans`` *N*
       Run exactly *N* scheduling rounds then stop. Without this option, the
       runtime runs continuously until interrupted with :kbd:`Ctrl+C`.
