@@ -340,7 +340,7 @@ parser! {
     rule constant() -> ConstantKind =
         real:real_literal() { ConstantKind::RealLiteral(real) }
         / integer:integer_literal() { ConstantKind::IntegerLiteral(integer) }
-        / c:character_string() { ConstantKind::CharacterString(CharacterStringLiteral::new(c)) }
+        / c:character_string_literal() { ConstantKind::CharacterString(c) }
         / duration:duration() { ConstantKind::Duration(duration) }
         / t:time_of_day() { ConstantKind::TimeOfDay(t) }
         / d:date() { ConstantKind::Date(d) }
@@ -409,6 +409,12 @@ parser! {
 
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = single_byte_character_string() / double_byte_character_string()
+    // The literal keeps which of the two spellings the source used. A
+    // declaration does not need this because its own STRING/WSTRING keyword
+    // says the width, but a literal in a statement body has no such keyword.
+    rule character_string_literal() -> CharacterStringLiteral =
+      c:single_byte_character_string() { CharacterStringLiteral::new(c) }
+      / c:double_byte_character_string() { CharacterStringLiteral::new_wide(c) }
     rule single_byte_character_string() -> Vec<char>  = (tok(TokenType::String) tok(TokenType::Hash))? t:tok(TokenType::SingleByteString) {
       // The token includes the surrounding single quotes, so remove those when generating the literal
       let mut chars = t.text.chars();
