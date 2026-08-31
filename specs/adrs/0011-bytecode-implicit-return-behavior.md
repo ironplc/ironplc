@@ -1,6 +1,6 @@
 # Trap on Missing RET_VOID at End of Bytecode
 
-status: proposed
+status: superseded by ADR-0044
 date: 2026-02-26
 
 ## Context and Problem Statement
@@ -88,3 +88,13 @@ The verifier rejects bytecode without `RET_VOID`, but the VM allows implicit ret
 - **Lua**: The compiler always emits `OP_RETURN`; the interpreter does not check for end-of-bytecode
 
 Most VMs handle this at the compiler/verifier level and trust the invariant at runtime. The explicit trap option is more conservative (defense-in-depth), which is appropriate for a PLC runtime where silent misbehavior can have physical consequences.
+
+## More Information
+
+### Superseded by ADR-0044
+
+This decision was never implemented. `Trap::MissingReturn` was never added, and
+the VM treats falling off the end of a function body as an implicit `RET_VOID`.
+[ADR-0044](0044-implicit-ret-void-at-end-of-function-body.md) records that
+behaviour as the decision, with the operand-stack contract at the fall-off point
+enforced by the bytecode verifier rather than by a runtime trap.
