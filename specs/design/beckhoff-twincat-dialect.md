@@ -71,9 +71,15 @@ In the TwinCAT XML format, methods are separate XML elements within the POU:
 </POU>
 ```
 
-The `twincat_parser.rs` module needs to iterate over `Method` child elements and parse each one, then attach the parsed methods to the parent FB in the AST.
+Shipped. `twincat_parser.rs` iterates the `Method` child elements, reconstructs
+each as `METHOD ... END_METHOD`, and appends them to the parent FB's body before
+`END_FUNCTION_BLOCK` (`append_methods`). A method on a `PROGRAM`, a `FUNCTION`
+or an interface is still dropped: `method_declaration` is reachable only from
+`function_block_declaration`, so there is nowhere in the grammar to put it.
 
-**AST representation:** New `MethodDeclaration` variant within function block declarations, containing the method name, return type, variable sections, and body.
+**AST representation:** `MethodDeclaration`, held by
+`FunctionBlockDeclaration.methods`, carrying the method name, return type,
+variable sections and body.
 
 #### 1.2 `PROPERTY` / `END_PROPERTY` with `Get`/`Set`
 
