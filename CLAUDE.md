@@ -7,8 +7,11 @@ This file provides entry points for Claude Code when working on the IronPLC proj
 Before making changes, read the relevant steering files in `specs/steering/`:
 
 - **[Glossary](specs/steering/glossary.md)** - Authoritative definitions of core vocabulary (dialect, vendor, extension, edition); resolve terminology questions here before coining a new term
-- **[Development Standards](specs/steering/development-standards.md)** - Core project conventions, prefactoring, testing patterns, error handling, and documentation standards
-- **[Compiler Architecture](specs/steering/compiler-architecture.md)** - Patterns for implementing language features, module organization, and semantic analysis
+- **[Development Standards](specs/steering/development-standards.md)** - Cross-component process and conventions that apply to all work: specs directory structure, planning, prefactoring, and duplication rules
+- **[Compiler Standards](specs/steering/compiler-standards.md)** - Rust coding standards: module structure, testing, error handling, performance, `unsafe`/clippy rules (especially relevant for `compiler/**` files)
+- **[Documentation Standards](specs/steering/doc-standards.md)** - Documentation website standards: quadrants, writing style, RST roles, playground directives (especially relevant for `docs/**` files)
+- **[Extension Standards](specs/steering/extension-standards.md)** - VS Code extension coding standards: README sync, testing gates, `E####` error codes (especially relevant for `integrations/vscode/**` files)
+- **[Compiler Architecture](specs/steering/compiler-architecture.md)** - Patterns for implementing language features, module organization, and semantic analysis (especially relevant for `compiler/**` files)
 - **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules (especially relevant for `**/analyzer/**` files)
 - **[PLCopen XML Module](specs/steering/plcopen-xml-module.md)** - Architecture and patterns for the PLCopen XML parsing module (especially relevant for `compiler/sources/src/xml/` files)
 - **[Syntax Support Guide](specs/steering/syntax-support-guide.md)** - Checklist and patterns for adding new syntax support, including `--allow-x` flags, plc2plc round-trip tests, and end-to-end execution tests (especially relevant for `**/parser/**`, `**/codegen/**`, `**/plc2plc/**` files)

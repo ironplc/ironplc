@@ -19,6 +19,24 @@ All detailed steering documentation lives in **`specs/steering/`**. Different AI
 - **Cursor**: Uses `CURSOR.md` at the repository root (full entry point, same content pattern as `CLAUDE.md`) plus `.cursor/rules/ironplc-steering.mdc` with `alwaysApply: true` so the agent always sees a short pointer to `specs/steering/`
 - **Other AI tools**: Can reference `specs/steering/` files directly or through custom entry points
 
+### Core Principle: Scope to the Narrowest Path
+
+Every steering file declares the **narrowest** `fileMatch` that fits its
+subject, so it loads only when work actually touches that area. Reserve
+`inclusion: always` for genuinely cross-cutting process that applies to *all*
+work (the specs directory, planning, prefactoring, the glossary). A file about
+one component (`compiler/`, `docs/`, `integrations/vscode/`) or one subsystem
+(`**/analyzer/**`, `compiler/problems/*`) is `fileMatch`-scoped to that path.
+
+Keeping the always-loaded set small is a feature, not an accident: context that
+is loaded but irrelevant costs tokens and dilutes attention. A file that
+restates a rule another file owns forces that rule into every context the copy
+appears in — prefer a cross-reference so the rule travels only with its owner.
+
+For Claude, the equivalent of `fileMatch` is the "especially relevant for
+`<path>`" hint on the file's bullet in `CLAUDE.md`. Add one whenever a steering
+file is component- or subsystem-specific.
+
 ### 1. Detailed Documentation (in `specs/steering/`)
 
 **Purpose**: Complete guidance that works standalone for any AI system
@@ -28,11 +46,10 @@ All detailed steering documentation lives in **`specs/steering/`**. Different AI
 **Format**: Full markdown documentation with all details
 
 **Key characteristics**:
-- Self-contained (doesn't rely on any specific AI tool's features)
+- Self-contained *on its own topic* — tool-agnostic prose that works when copied into any AI chat. This means not relying on a specific AI tool's features; it does **not** mean restating rules another file owns. Cross-reference those instead (see [Scope to the Narrowest Path](#core-principle-scope-to-the-narrowest-path))
 - Can be referenced by any AI system through their pointer mechanism
-- Works when copied/pasted into any AI chat
-- Contains all the actual guidance content
-- Single source of truth for all AI tools
+- Contains all the guidance for its own subject, and links out for the rest
+- Single source of truth for its topic across all AI tools
 
 ### 2. AI Tool-Specific Pointers
 
@@ -410,7 +427,7 @@ For AI-assisted development patterns, see `specs/steering/`.
 
 ### Good: development-standards.md
 
-- **Detailed**: `specs/steering/development-standards.md` (400+ lines)
+- **Detailed**: `specs/steering/development-standards.md` (cross-cutting process; component specifics split into `compiler-standards.md`, `doc-standards.md`, `extension-standards.md`)
 - **Kiro pointer**: `.kiro/steering/development-standards.md` (3 lines)
 - **Claude reference**: Listed in `CLAUDE.md`
 - **Why it works**: Single source of truth, multiple access methods
@@ -424,37 +441,35 @@ For AI-assisted development patterns, see `specs/steering/`.
 
 ### Pattern to Follow
 
+The `.kiro/steering/` pointer's frontmatter is the authoritative inclusion
+setting; the scopes below are a snapshot for orientation.
+
 ```
-specs/steering/                          # Single source of truth
-├── development-standards.md             # Steering doc (context)
-├── compiler-architecture.md             # Steering doc (context)
-├── iec-61131-3-compliance.md           # Steering doc (context)
-├── plcopen-xml-module.md               # Steering doc (context)
-├── common-tasks.md                      # Skill source (actionable)
-├── problem-code-management.md          # Skill source (actionable)
-├── extension-testing-requirements.md   # Skill source (actionable)
-└── steering-file-guidelines.md         # Skill source (actionable)
+specs/steering/                        # Single source of truth (full docs)
+  # always — cross-cutting process / vocabulary:
+  development-standards.md             # always
+  common-tasks.md                      # always
+  glossary.md                          # always
+  # fileMatch — load only for the relevant path:
+  compiler-standards.md                # compiler/**
+  compiler-architecture.md             # compiler/**
+  syntax-support-guide.md              # **/parser|analyzer|codegen|plc2plc**
+  iec-61131-3-compliance.md            # **/analyzer/**
+  problem-code-management.md           # compiler/problems/*
+  plcopen-xml-module.md                # compiler/sources/src/xml/**
+  compatibility-library-authoring.md   # compiler/sources/resources/compat-libraries/**
+  doc-standards.md                     # docs/**
+  coming-from-guide-authoring.md       # docs/how-to-guides/**
+  extension-standards.md               # integrations/vscode/**
+  extension-testing-requirements.md    # integrations/vscode/**
+  steering-file-guidelines.md          # specs/steering/**, .kiro/steering/**
 
-.kiro/steering/                          # Kiro-specific pointers
-├── common-tasks.md                      # Pointer (always)
-├── compiler-architecture.md             # Pointer (always)
-├── development-standards.md             # Pointer (always)
-├── iec-61131-3-compliance.md           # Pointer (fileMatch)
-├── problem-code-management.md          # Pointer (fileMatch)
-├── extension-testing-requirements.md   # Pointer (fileMatch)
-├── plcopen-xml-module.md               # Pointer (fileMatch)
-└── steering-file-guidelines.md         # Pointer (always)
-
-.claude/                                 # Claude Code configuration
-├── settings.json                        # SessionStart hook (installs just)
-└── commands/                            # Slash commands (skill pointers)
-    ├── build.md                         # /project:build
-    ├── test.md                          # /project:test
-    ├── ci.md                            # /project:ci
-    └── format.md                        # /project:format
-
-CLAUDE.md                                # Claude entry point
-                                         # Steering docs + skills list
+.kiro/steering/<name>.md               # One pointer per file above; the
+                                       # pointer's frontmatter sets inclusion.
+.claude/commands/*.md                  # Slash commands (skill pointers)
+CLAUDE.md / CURSOR.md                  # Entry points: steering links (with
+                                       # "especially relevant for <path>"
+                                       # hints) + skills list.
 ```
 
 ## AI Assistant Instructions
