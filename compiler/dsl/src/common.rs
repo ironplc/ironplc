@@ -2253,7 +2253,6 @@ impl VariableIdentifier {
         VariableIdentifier::Direct(DirectVariableIdentifier {
             name,
             address_assignment: location,
-            span: SourceSpan::default(),
         })
     }
 
@@ -2295,12 +2294,27 @@ impl Display for VariableIdentifier {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse, Located)]
+#[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct DirectVariableIdentifier {
     pub name: Option<Id>,
     pub address_assignment: AddressAssignment,
-    #[located(position)]
-    pub span: SourceSpan,
+}
+
+impl Located for DirectVariableIdentifier {
+    /// The span of the symbolic name, or of the address when the declaration
+    /// has no name (`VAR AT %IX0.0 : BOOL; END_VAR`).
+    ///
+    /// Deriving this from the parts rather than storing a span of its own is
+    /// deliberate: a stored span is one every construction site has to
+    /// remember to fill in, and none of them did -- every located variable
+    /// reported position 0, so `P4036` put its caret on the first character
+    /// of the file instead of on the variable.
+    fn span(&self) -> SourceSpan {
+        match &self.name {
+            Some(name) => name.span(),
+            None => self.address_assignment.position.clone(),
+        }
+    }
 }
 
 /// Qualifier types for definitions.
@@ -2335,6 +2349,18 @@ pub struct AddressAssignment {
     #[recurse(ignore)]
     pub address: Vec<u32>,
     pub position: SourceSpan,
+}
+
+impl AddressAssignment {
+    /// Returns this address with `position` as its source position.
+    ///
+    /// [`AddressAssignment::try_from`] parses the address out of the token
+    /// text alone, which carries no position, so the caller puts the token's
+    /// span back.
+    pub fn with_position(mut self, position: SourceSpan) -> Self {
+        self.position = position;
+        self
+    }
 }
 
 lazy_static! {
@@ -3002,7 +3028,6 @@ mod tests {
                     address: vec![0],
                     position: SourceSpan::default(),
                 },
-                span: SourceSpan::default(),
             }),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
@@ -3015,6 +3040,34 @@ mod tests {
         let mut decl = VarDecl::simple(name, "INT");
         decl.block = block;
         decl
+    }
+
+    #[test]
+    fn span_when_direct_variable_identifier_has_name_then_is_name_span() {
+        let identifier = VariableIdentifier::new_direct(
+            Some(Id::from("tempSensor").with_position(SourceSpan::range(37, 47))),
+            AddressAssignment::try_from("%I*")
+                .unwrap()
+                .with_position(SourceSpan::range(50, 53)),
+        );
+
+        let span = identifier.span();
+        assert_eq!(span.start, 37);
+        assert_eq!(span.end, 47);
+    }
+
+    #[test]
+    fn span_when_direct_variable_identifier_has_no_name_then_is_address_span() {
+        let identifier = VariableIdentifier::new_direct(
+            None,
+            AddressAssignment::try_from("%IX0.0")
+                .unwrap()
+                .with_position(SourceSpan::range(50, 56)),
+        );
+
+        let span = identifier.span();
+        assert_eq!(span.start, 50);
+        assert_eq!(span.end, 56);
     }
 
     #[test]

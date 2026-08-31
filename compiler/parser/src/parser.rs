@@ -934,7 +934,7 @@ parser! {
     // There is no location_prefix or size_prefix rule because it would be ambiguous when the % prefix normally
     // resolved ambiguity. Therefore, the lexer matches the entire direct variable.
     pub rule direct_variable() -> AddressAssignment = t:tok(TokenType::DirectAddress) {?
-      AddressAssignment::try_from(t.text.as_str())
+      AddressAssignment::try_from(t.text.as_str()).map(|address| address.with_position(t.span.clone()))
     }
     // B.1.4.2 Multi-element variables
     // TODO support these
@@ -1303,7 +1303,7 @@ parser! {
       }
     }
     rule incompl_location() -> AddressAssignment = tok(TokenType::At) _ t:tok(TokenType::DirectAddressIncomplete) {?
-      AddressAssignment::try_from(t.text.as_str())
+      AddressAssignment::try_from(t.text.as_str()).map(|address| address.with_position(t.span.clone()))
     }
     rule var_spec() -> VariableSpecificationKind =
       sr:subrange_specification__with_range() { VariableSpecificationKind::Subrange(sr) }

@@ -14,8 +14,8 @@
 //!
 //! Two families, differing only in how the semantic context is built:
 //!
-//! * `rule_ok!` / `rule_err!` / `rule_err_code!` / `rule_err1!` (+ `_with`
-//!   options variants) — the "fresh context" scaffold
+//! * `rule_ok!` / `rule_err!` / `rule_err_code!` / `rule_err1!` /
+//!   `rule_err1_at!` (+ `_with` options variants) — the "fresh context" scaffold
 //!   ([`resolve_fresh_with`](crate::test_helpers::resolve_fresh_with)): the
 //!   resolved context is discarded and a fresh empty one is used. The same
 //!   options value is threaded into both resolution and `apply`.
@@ -134,6 +134,42 @@ macro_rules! rule_err1 {
             ironplc_parser::options::CompilerOptions::default(),
             $program, $problem
         );
+    };
+}
+
+/// A rule test that expects exactly one diagnostic, with `$problem`'s code,
+/// whose primary label points exactly at `$at` -- the first occurrence of that
+/// text in `$program`.
+///
+/// Use this instead of `rule_err1!` for a rule whose diagnostic is only
+/// actionable if it names *where* the offending construct is. The `is_err`
+/// assertions above hold just as well when the label carries a default
+/// `SourceSpan` -- `range(0, 0)`, which renders as a caret on the first
+/// character of the file -- so they cannot catch a span that was never
+/// filled in.
+macro_rules! rule_err1_at {
+    ($(#[$m:meta])* $name:ident, $program:expr, $problem:expr, $at:expr $(,)?) => {
+        $(#[$m])*
+        #[test]
+        fn $name() {
+            let opts = ironplc_parser::options::CompilerOptions::default();
+            let (library, context) = $crate::test_helpers::resolve_fresh_with($program, &opts);
+            let errors = super::apply(&library, &context, &opts).unwrap_err();
+            assert_eq!(errors.len(), 1, "expected exactly one diagnostic, got {:?}", errors);
+            assert_eq!(errors[0].code, $problem.code());
+
+            let start = $program
+                .find($at)
+                .expect("the expected text does not occur in the program");
+            let location = &errors[0].primary.location;
+            assert_eq!(
+                (location.start, location.end),
+                (start, start + $at.len()),
+                "expected the label to point at {:?}, but it points at {:?}",
+                $at,
+                $program.get(location.start..location.end),
+            );
+        }
     };
 }
 
