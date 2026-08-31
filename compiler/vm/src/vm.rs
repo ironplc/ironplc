@@ -746,6 +746,7 @@ impl<'a> VmRunning<'a> {
     pub fn stop(self) -> VmStopped<'a> {
         VmStopped {
             variables: self.variables,
+            data_region: self.data_region,
             scan_count: self.scan_count,
             #[cfg(feature = "profiling")]
             profile: self.profile,
@@ -759,15 +760,80 @@ impl<'a> VmRunning<'a> {
             task_id: ctx.task_id,
             instance_id: ctx.instance_id,
             variables: self.variables,
+            data_region: self.data_region,
             #[cfg(feature = "profiling")]
             profile: self.profile,
         }
     }
 }
 
+/// Read access to the variable state of a VM, whichever lifecycle state it is
+/// in.
+///
+/// [`VmRunning`], [`VmStopped`] and [`VmFaulted`] all answer the same three
+/// questions a value-display surface asks — how many variables are there, what
+/// is in slot `i`, and where is the data region that backs STRING content.
+/// Without the trait every such surface needs one snapshot function per VM
+/// state with an otherwise identical body, which is how the `--dump-vars` and
+/// LSP paths came to have two copies each.
+pub trait VariableView {
+    /// The number of variable slots in the loaded container.
+    fn num_variables(&self) -> u16;
+
+    /// Reads a variable's raw 64-bit slot value.
+    fn read_variable_raw(&self, index: VarIndex) -> Result<u64, Trap>;
+
+    /// The data region, which backs STRING and WSTRING values (their variable
+    /// table slot is unused).
+    fn data_region(&self) -> &[u8];
+}
+
+impl VariableView for VmRunning<'_> {
+    fn num_variables(&self) -> u16 {
+        VmRunning::num_variables(self)
+    }
+
+    fn read_variable_raw(&self, index: VarIndex) -> Result<u64, Trap> {
+        VmRunning::read_variable_raw(self, index)
+    }
+
+    fn data_region(&self) -> &[u8] {
+        VmRunning::data_region(self)
+    }
+}
+
+impl VariableView for VmStopped<'_> {
+    fn num_variables(&self) -> u16 {
+        VmStopped::num_variables(self)
+    }
+
+    fn read_variable_raw(&self, index: VarIndex) -> Result<u64, Trap> {
+        VmStopped::read_variable_raw(self, index)
+    }
+
+    fn data_region(&self) -> &[u8] {
+        VmStopped::data_region(self)
+    }
+}
+
+impl VariableView for VmFaulted<'_> {
+    fn num_variables(&self) -> u16 {
+        VmFaulted::num_variables(self)
+    }
+
+    fn read_variable_raw(&self, index: VarIndex) -> Result<u64, Trap> {
+        VmFaulted::read_variable_raw(self, index)
+    }
+
+    fn data_region(&self) -> &[u8] {
+        VmFaulted::data_region(self)
+    }
+}
+
 /// A VM that has been cleanly stopped.
 pub struct VmStopped<'a> {
     variables: VariableTable<'a>,
+    data_region: &'a [u8],
     scan_count: u64,
     #[cfg(feature = "profiling")]
     profile: InstructionProfile,
@@ -791,6 +857,15 @@ impl<'a> VmStopped<'a> {
         self.variables.len()
     }
 
+    /// Returns a reference to the data region as it stood when the VM stopped.
+    ///
+    /// STRING and WSTRING values live here rather than in the variable table,
+    /// so a caller dumping variable values after a clean stop needs it to read
+    /// their content.
+    pub fn data_region(&self) -> &[u8] {
+        self.data_region
+    }
+
     /// Returns the total number of completed scheduling rounds.
     pub fn scan_count(&self) -> u64 {
         self.scan_count
@@ -809,6 +884,7 @@ pub struct VmFaulted<'a> {
     task_id: TaskId,
     instance_id: InstanceId,
     variables: VariableTable<'a>,
+    data_region: &'a [u8],
     #[cfg(feature = "profiling")]
     profile: InstructionProfile,
 }
@@ -844,6 +920,16 @@ impl<'a> VmFaulted<'a> {
     /// Returns the number of variable slots.
     pub fn num_variables(&self) -> u16 {
         self.variables.len()
+    }
+
+    /// Returns a reference to the data region as it stood when the trap
+    /// occurred.
+    ///
+    /// STRING and WSTRING values live here rather than in the variable table,
+    /// so a caller dumping the pre-fault variable state needs it to read their
+    /// content.
+    pub fn data_region(&self) -> &[u8] {
+        self.data_region
     }
 
     /// Returns a reference to the instruction profile.

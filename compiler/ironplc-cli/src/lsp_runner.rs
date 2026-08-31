@@ -15,7 +15,7 @@ use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_sources::{parse_source, FileType};
-use ironplc_vm::{Slot, Vm, VmBuffers};
+use ironplc_vm::{Slot, VariableView, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
 
 /// A variable value read from the VM after execution.
@@ -178,7 +178,7 @@ fn run_step_scans(
             let total_scans = running.scan_count();
             let faulted = running.fault(ctx);
             let debug_map = build_var_debug_map(container);
-            let variables = read_all_variables_faulted(&faulted, &debug_map);
+            let variables = read_all_variables(&faulted, &debug_map);
             return RunResult {
                 ok: false,
                 variables,
@@ -194,8 +194,7 @@ fn run_step_scans(
     }
 
     let debug_map = build_var_debug_map(container);
-    let num_vars = running.num_variables();
-    let variables = read_all_variables_running(&running, num_vars, &debug_map);
+    let variables = read_all_variables(&running, &debug_map);
     let total_scans = running.scan_count();
     running.stop();
 
@@ -274,42 +273,15 @@ fn compile_to_bytes(source: &str, options: &CompilerOptions) -> Result<Vec<u8>, 
     Ok(buf)
 }
 
-fn read_all_variables_running(
-    vm: &ironplc_vm::VmRunning,
-    num_vars: u16,
+/// Snapshots every variable slot with its debug name, type and formatted value.
+///
+/// Takes the VM as a [`VariableView`] so a running and a faulted VM share one
+/// body: the caller's lifecycle state does not change how a value is read.
+fn read_all_variables(
+    vm: &dyn VariableView,
     debug_map: &HashMap<u16, VarDebugInfo>,
 ) -> Vec<VariableInfo> {
-    (0..num_vars)
-        .filter_map(|i| {
-            vm.read_variable_raw(ironplc_container::VarIndex::new(i))
-                .ok()
-                .map(|raw| {
-                    let (name, type_name, value) = if let Some(info) = debug_map.get(&i) {
-                        (
-                            info.name.clone(),
-                            info.type_name.clone(),
-                            format_variable_value(raw, info.iec_type_tag),
-                        )
-                    } else {
-                        (String::new(), String::new(), format!("{}", raw as i32))
-                    };
-                    VariableInfo {
-                        index: i,
-                        value,
-                        name,
-                        type_name,
-                    }
-                })
-        })
-        .collect()
-}
-
-fn read_all_variables_faulted(
-    vm: &ironplc_vm::VmFaulted,
-    debug_map: &HashMap<u16, VarDebugInfo>,
-) -> Vec<VariableInfo> {
-    let num_vars = vm.num_variables();
-    (0..num_vars)
+    (0..vm.num_variables())
         .filter_map(|i| {
             vm.read_variable_raw(ironplc_container::VarIndex::new(i))
                 .ok()

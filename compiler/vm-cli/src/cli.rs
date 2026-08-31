@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use ironplc_container::debug_format::{build_var_debug_map, format_variable_value, VarDebugInfo};
 use ironplc_container::Container;
-use ironplc_vm::{Vm, VmBuffers};
+use ironplc_vm::{VariableView, Vm, VmBuffers};
 use serde_json::json;
 
 use crate::error::{self, VmError};
@@ -75,7 +75,7 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
             let faulted = running.fault(ctx);
             let err = VmError::from_trap(faulted.trap(), faulted.task_id(), faulted.instance_id());
             if let Some(dump_path) = dump_vars {
-                dump_variables_faulted(&faulted, &container, dump_path)?;
+                dump_variables(&faulted, &container, dump_path)?;
             }
             return Err(err);
         }
@@ -95,7 +95,7 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
     let stopped = running.stop();
 
     if let Some(dump_path) = dump_vars {
-        dump_variables_stopped(&stopped, &container, dump_path)?;
+        dump_variables(&stopped, &container, dump_path)?;
     }
 
     Ok(())
@@ -274,35 +274,20 @@ fn open_dump_output(dump_path: &Path) -> Result<Box<dyn Write>, VmError> {
     }
 }
 
-fn dump_variables_stopped(
-    stopped: &ironplc_vm::VmStopped,
+/// Writes every variable slot to the dump destination.
+///
+/// Takes the VM as a [`VariableView`] so the clean-stop and post-trap dumps
+/// share one body: the two differ only in which state the VM ended in.
+fn dump_variables(
+    vm: &dyn VariableView,
     container: &Container,
     dump_path: &Path,
 ) -> Result<(), VmError> {
     let debug_map = build_var_debug_map(container);
-    let num_vars = stopped.num_variables();
+    let num_vars = vm.num_variables();
     let mut out = open_dump_output(dump_path)?;
     for i in 0..num_vars {
-        let raw = stopped
-            .read_variable_raw(ironplc_container::VarIndex::new(i))
-            .map_err(|e| {
-                VmError::io(error::VAR_READ, format!("Unable to read variable {i}: {e}"))
-            })?;
-        write_variable_line(&mut *out, i, raw, &debug_map)?;
-    }
-    Ok(())
-}
-
-fn dump_variables_faulted(
-    faulted: &ironplc_vm::VmFaulted,
-    container: &Container,
-    dump_path: &Path,
-) -> Result<(), VmError> {
-    let debug_map = build_var_debug_map(container);
-    let num_vars = faulted.num_variables();
-    let mut out = open_dump_output(dump_path)?;
-    for i in 0..num_vars {
-        let raw = faulted
+        let raw = vm
             .read_variable_raw(ironplc_container::VarIndex::new(i))
             .map_err(|e| {
                 VmError::io(error::VAR_READ, format!("Unable to read variable {i}: {e}"))
