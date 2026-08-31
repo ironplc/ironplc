@@ -386,7 +386,7 @@ pub(crate) fn array_spec_from_inline(
                 .length
                 .as_ref()
                 .and_then(|l| l.as_integer().map(|i| i.value as u16))
-                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
+                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH);
             (Some(len), Some(CharWidth::Narrow))
         }
         ironplc_dsl::common::ArrayElementType::WString(spec) => {
@@ -394,7 +394,7 @@ pub(crate) fn array_spec_from_inline(
                 .length
                 .as_ref()
                 .and_then(|l| l.as_integer().map(|i| i.value as u16))
-                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
+                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH);
             (Some(len), Some(CharWidth::Wide))
         }
         _ => (None, None),
@@ -469,7 +469,7 @@ pub(crate) fn array_spec_from_named(
         } => {
             let len = max_len
                 .map(|v| v as u16)
-                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
+                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH);
             (Some(len), Some(*char_width))
         }
         _ => (None, None),

@@ -12,7 +12,7 @@ use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, Par
 
 use super::compile::{
     encode_string_literal, string_region_size, CompileContext, DEFAULT_OP_TYPE,
-    DEFAULT_STRING_MAX_LENGTH_U16, NARROW_CHAR_WIDTH,
+    DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
 };
 use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
@@ -117,7 +117,7 @@ pub(crate) fn resolve_string_arg(
             }
             // Complex variable (e.g., struct field array subscript): fall
             // through to the general expression path below.
-            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
+            let max_length = DEFAULT_STRING_MAX_LENGTH;
             let data_offset = ctx.data_region_offset;
             let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
             ctx.data_region_offset = ctx
@@ -140,7 +140,7 @@ pub(crate) fn resolve_string_arg(
         ExprKind::Const(ConstantKind::CharacterString(lit)) => {
             // Allocate space in the data region for this string literal.
             let bytes = encode_string_literal(&lit.value, NARROW_CHAR_WIDTH);
-            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
+            let max_length = DEFAULT_STRING_MAX_LENGTH;
             let data_offset = ctx.data_region_offset;
             let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
             ctx.data_region_offset = ctx
@@ -166,7 +166,7 @@ pub(crate) fn resolve_string_arg(
             // General expression (e.g., nested function call like MID(...)).
             // Compile the expression (pushes buf_idx), then store into a
             // temporary data region slot so the caller gets a data_offset.
-            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
+            let max_length = DEFAULT_STRING_MAX_LENGTH;
             let data_offset = ctx.data_region_offset;
             let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
             ctx.data_region_offset = ctx

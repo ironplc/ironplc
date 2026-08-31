@@ -18,7 +18,7 @@ use ironplc_problems::Problem;
 
 use super::compile::{
     emit_string_literal_load, CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness,
-    VarTypeInfo, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH_U16,
+    VarTypeInfo, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_expr::{
     compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
@@ -916,7 +916,7 @@ pub(crate) fn resolve_string_max_length(
     string_init: &StringInitializer,
 ) -> Result<u16, Diagnostic> {
     match &string_init.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH_U16),
+        None => Ok(DEFAULT_STRING_MAX_LENGTH),
         Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
         Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
     }
@@ -929,7 +929,7 @@ pub(crate) fn resolve_string_spec_max_length(
     spec: &StringSpecification,
 ) -> Result<u16, Diagnostic> {
     match &spec.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH_U16),
+        None => Ok(DEFAULT_STRING_MAX_LENGTH),
         Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
         Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
     }
