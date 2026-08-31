@@ -188,6 +188,8 @@ main {
   background: var(--surface);
   border-right: 1px solid var(--border);
   text-align: right;
+  /* `pre` here and `wrap="off"` on the textarea keep one source line to one
+     visual line in both, which is what makes the numbers line up. */
   white-space: pre;
   overflow: hidden;
   user-select: none;

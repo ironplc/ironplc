@@ -51,6 +51,9 @@
       </div>
       <div class="editor-wrapper">
         <div class="editor-gutter" id="editor-gutter" aria-hidden="true"></div>
+        <!-- wrap="off" is load-bearing: it disables soft-wrap so each \n is exactly
+             one visual line, which is what keeps the line-number gutter aligned.
+             Turning it on misaligns every number below the first long line. -->
         <textarea id="editor" spellcheck="false" wrap="off" data-testid="editor">PROGRAM main
   VAR
     count : INT;
