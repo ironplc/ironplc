@@ -155,7 +155,7 @@ library provides some mix of:
 
 - **Constants** — e.g. `PI`, `e`, expressed as ordinary
   `VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979;`. This folds at compile
-  time and satisfies [ADR-0024](../adrs/0024-function-local-reinit-via-init-template.md)
+  time and satisfies [ADR-0024](../adrs/0024-function-local-reinit-via-bytecode-prologue.md)
   (initializers must constant-fold) with no new keyword and no codegen change.
 - **Function signatures** — e.g. TwinCAT `FLOOR` declared with an `LREAL`
   parameter (matching Beckhoff, which differs from the base IEC signature).
@@ -498,7 +498,7 @@ Implications for this design:
   and [one with a pinned `LibraryReference`](https://github.com/hiroMTB/n5TC/blob/master/sample/PTP/PTP/TwinCAT_NC_Sample_PTP_Move/TwinCAT_NC_Sample_PTP_Move.plcproj)
   — grounding for the appendix.
 - [Beckhoff InfoSys: PLC libraries and placeholders](https://infosys.beckhoff.com/content/1033/tc3_plc_intro/41891384434359666059.html)
-- [ADR-0024: Function-local re-init via init template](../adrs/0024-function-local-reinit-via-init-template.md)
+- [ADR-0024: Function-local re-init via bytecode prologue](../adrs/0024-function-local-reinit-via-bytecode-prologue.md)
   — initializers must constant-fold; `PI`-as-constant complies.
 - [ADR-0036: No IronPLC dialect](../adrs/0036-no-ironplc-dialect.md)
 - [ADR-0038: No restrictions on flag combinations](../adrs/0038-no-restrictions-on-flag-combinations.md)
