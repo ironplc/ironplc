@@ -134,10 +134,9 @@ Set ``scanLimit`` to end the session after a fixed number of scan cycles:
      "scanLimit": 1
    }
 
-Leave ``scanLimit`` out of the configuration to run without a bound --- there
-is no value that means unlimited. ``0`` and ``-1`` are rejected before the
-session starts (see :doc:`/reference/runtime/problems/V6008`) rather than
-treated as either extreme.
+Leave ``scanLimit`` out of the configuration to run without a bound. There is
+no value that means unlimited: the debug server rejects ``0`` and ``-1`` before
+the session starts (see :doc:`/reference/runtime/problems/V6008`).
 
 Breakpoints
 ===========

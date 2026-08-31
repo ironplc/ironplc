@@ -14,11 +14,9 @@ example:
    V6008 - launch argument 'program' is required: the path to a compiled .iplc container
    V6008 - launch argument 'scanLimit' must be a whole number of at least 1, but was 0; omit it to run without a bound
 
-Every bad launch argument reports this one code. The code says the launch
-configuration is at fault; the message says which setting and how to correct
-it. Problems with the *program* rather than the configuration report their own
-codes --- a container built without debug information is
-:doc:`V6009`, and one declaring several program instances is :doc:`V6010`.
+Every bad launch argument reports this one code. A container that cannot be
+debugged as built reports its own: :doc:`V6009` when it carries no debug
+information, :doc:`V6010` when it declares several program instances.
 
 Launch Arguments
 ----------------
@@ -40,18 +38,8 @@ Launch Arguments
      - A cycle time in milliseconds, for a program whose task declares no
        ``INTERVAL``. Defaults to ``100``.
 
-Why ``scanLimit`` Has No "Unlimited" Value
-------------------------------------------
-
-An unbounded run is requested by leaving ``scanLimit`` out of the
-configuration. There is no value that means unlimited.
-
-``0`` and ``-1`` are both conventional ways to spell "no limit" in other
-tools, so it is tempting to write one of them here. Neither works, and they
-are rejected rather than quietly reinterpreted. Read literally, a limit of
-zero asks the debugger to run no scan cycles at all, which it cannot do: the
-bound is tested after a cycle completes, so the shortest run it can produce is
-one cycle. A negative count of scan cycles has no reading at all.
+``scanLimit`` has no value that means unlimited. The debug server rejects both
+``0`` and ``-1``. Omit the argument instead.
 
 Example
 -------
@@ -69,8 +57,8 @@ The following launch configuration produces error V6008:
      "scanLimit": 0
    }
 
-Deleting the ``scanLimit`` line fixes it, and is how an unbounded run is
-requested: the session then scans until you stop it or a breakpoint pauses it.
+Deleting the ``scanLimit`` line fixes it. The session then scans until you
+stop it or a breakpoint pauses it.
 
 To stop after a fixed number of cycles instead, give the count you want:
 
