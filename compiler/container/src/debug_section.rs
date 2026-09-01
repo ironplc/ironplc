@@ -56,6 +56,19 @@ pub mod iec_type_tag {
     pub const LTOD: u8 = 22;
     pub const DATE_AND_TIME: u8 = 23;
     pub const LDT: u8 = 24;
+    /// A structure variable. Its slot holds the value's byte offset into the
+    /// data region, not the value, so a renderer must not display the slot.
+    pub const STRUCT: u8 = 25;
+    /// An array variable, including an array of structures. As for
+    /// [`STRUCT`], the slot holds a data-region offset.
+    pub const ARRAY: u8 = 26;
+    /// A function-block instance. As for [`STRUCT`], the slot holds a
+    /// data-region offset.
+    pub const FB_INSTANCE: u8 = 27;
+    /// Anything else. The slot may or may not hold the value; `type_name`
+    /// carries whatever the compiler knew. Named subrange types land here and
+    /// *do* hold their value, which is why the aggregate tags above are
+    /// distinct rather than folded into this one.
     pub const OTHER: u8 = 255;
 }
 

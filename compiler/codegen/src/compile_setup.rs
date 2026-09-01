@@ -57,7 +57,7 @@ pub(crate) fn assign_variables(
                             &decl.identifier.span(),
                         )?;
                         let type_name_str = simple.type_name.to_string().to_uppercase();
-                        (iec_type_tag::OTHER, type_name_str)
+                        (iec_type_tag::STRUCT, type_name_str)
                     } else if let Some(subrange_type) =
                         types.resolve_subrange_type(&simple.type_name)
                     {
@@ -168,7 +168,7 @@ pub(crate) fn assign_variables(
                             },
                         );
                     }
-                    (iec_type_tag::OTHER, fb_name)
+                    (iec_type_tag::FB_INSTANCE, fb_name)
                 }
                 InitialValueAssignmentKind::Array(array_init) => {
                     // An array whose elements are structures is laid out as
@@ -233,7 +233,7 @@ pub(crate) fn assign_variables(
                         &decl.identifier.span(),
                     )?;
                     let type_name_str = struct_init.type_name.to_string().to_uppercase();
-                    (iec_type_tag::OTHER, type_name_str)
+                    (iec_type_tag::STRUCT, type_name_str)
                 }
                 InitialValueAssignmentKind::EnumeratedType(enum_init) => {
                     // Enum variables use DINT (W32/Signed/32-bit) per REQ-EN-codegen-010.
@@ -363,6 +363,16 @@ pub(crate) fn debug_type_for_decl(decl: &VarDecl) -> (u8, String) {
             }
         }
         InitialValueAssignmentKind::Reference(_) => (iec_type_tag::OTHER, "REF_TO".into()),
+        // A local aggregate keeps its contents in the data region and its slot
+        // holds their offset, exactly as a program-level one does.
+        InitialValueAssignmentKind::Structure(struct_init) => (
+            iec_type_tag::STRUCT,
+            struct_init.type_name.to_string().to_uppercase(),
+        ),
+        InitialValueAssignmentKind::FunctionBlock(fb_init) => (
+            iec_type_tag::FB_INSTANCE,
+            fb_init.type_name.to_string().to_uppercase(),
+        ),
         InitialValueAssignmentKind::EnumeratedType(enum_init) => (
             iec_type_tag::DINT,
             enum_init.type_name.to_string().to_uppercase(),
