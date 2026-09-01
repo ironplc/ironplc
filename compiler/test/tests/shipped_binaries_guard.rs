@@ -104,7 +104,7 @@ fn bin_names(cargo_toml: &str) -> Vec<String> {
 /// Both packaging lists have this shape — the justfile's `binaries := "a b c"`
 /// and the install script's `BINARIES="a b c"` — so one parser reads both. The
 /// assignment operator has to follow the name, so a longer identifier that ends
-/// in it (`LEGACY_OPTIONAL_BINARIES`) is not mistaken for it.
+/// in it is not mistaken for it.
 fn whitespace_list_assignment(text: &str, name: &str) -> Vec<String> {
     for line in text.lines() {
         if is_comment(line, "#") {
@@ -132,13 +132,6 @@ fn just_binaries(justfile: &str) -> Vec<String> {
 /// The `BINARIES="…"` install list from `install.sh`.
 fn install_sh_binaries(install_sh: &str) -> Vec<String> {
     whitespace_list_assignment(install_sh, "BINARIES")
-}
-
-/// The `LEGACY_OPTIONAL_BINARIES="…"` list from `install.sh`: the binaries a
-/// published release is allowed to predate, whose absence from the downloaded
-/// archive warns instead of failing the install.
-fn install_sh_legacy_optional_binaries(install_sh: &str) -> Vec<String> {
-    whitespace_list_assignment(install_sh, "LEGACY_OPTIONAL_BINARIES")
 }
 
 /// The name a `${VAR}` reference points at, if `token` contains exactly one.
@@ -313,20 +306,6 @@ fn every_built_binary_is_shipped_by_every_installer() {
         &curl_sh,
     ));
 
-    // A legacy-optional name is one `install.sh` tolerates being absent from an
-    // older release's archive. It only reaches the install loop if `BINARIES`
-    // also names it, so one that does not is dead configuration that silently
-    // grants nothing.
-    let legacy: BTreeSet<String> = install_sh_legacy_optional_binaries(&install_sh)
-        .into_iter()
-        .collect();
-    let stray: Vec<&String> = legacy.difference(&curl_sh).collect();
-    if !stray.is_empty() {
-        problems.push(format!(
-            "install.sh `LEGACY_OPTIONAL_BINARIES` names binaries absent from `BINARIES`: {stray:?}"
-        ));
-    }
-
     assert!(
         problems.is_empty(),
         "shipped-binaries guard failed (built: {built:?}):\n  {}",
@@ -454,21 +433,12 @@ fn install_sh_binaries_when_assignment_present_then_splits_on_whitespace() {
 }
 
 #[test]
-fn install_sh_binaries_when_legacy_list_precedes_it_then_reads_the_right_one() {
-    // `LEGACY_OPTIONAL_BINARIES` ends in `BINARIES`; a prefix match that did not
-    // require the `=` to follow the name would read the legacy list as the
-    // install list, and the guard would pass on a script that installs nothing.
-    let script = "LEGACY_OPTIONAL_BINARIES=\"ironplcvmd\"\nBINARIES=\"ironplcc ironplcvmd\"\n";
+fn install_sh_binaries_when_name_is_a_suffix_of_another_then_reads_the_right_one() {
+    // A prefix match that did not require the assignment to follow the name
+    // would read the first line as the install list, and the guard would pass
+    // on a script that installs nothing it names.
+    let script = "OTHER_BINARIES=\"decoy\"\nBINARIES=\"ironplcc ironplcvmd\"\n";
     assert_eq!(install_sh_binaries(script), vec!["ironplcc", "ironplcvmd"]);
-    assert_eq!(
-        install_sh_legacy_optional_binaries(script),
-        vec!["ironplcvmd"]
-    );
-}
-
-#[test]
-fn install_sh_legacy_optional_binaries_when_absent_then_empty() {
-    assert!(install_sh_legacy_optional_binaries("BINARIES=\"ironplcc\"\n").is_empty());
 }
 
 #[test]
