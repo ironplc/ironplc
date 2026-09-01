@@ -353,7 +353,7 @@ pub(crate) fn compile_user_function(
 
     // Emit initialization prologue: IEC 61131-3 functions are stateless, so
     // local variables must be re-initialized on every call. The flat variable
-    // table (ADR-0021) retains stale values between calls, so the prologue
+    // table (ADR-0046) retains stale values between calls, so the prologue
     // resets non-parameter locals to their declared initial values (or zero).
     emit_function_local_prologue(
         &mut func_emitter,

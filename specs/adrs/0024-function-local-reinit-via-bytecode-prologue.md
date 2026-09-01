@@ -6,7 +6,7 @@ amended: 2026-08-31 (title named Option A, the rejected option; Option A materia
 
 ## Context and Problem Statement
 
-IEC 61131-3 functions are stateless — local variables (VAR, return variable) must be re-initialized to their declared initial values (or type defaults) on every call. The VM currently does not re-initialize function locals between calls. Because functions use a flat variable table (ADR-0021), local variable slots retain stale values from the previous invocation.
+IEC 61131-3 functions are stateless — local variables (VAR, return variable) must be re-initialized to their declared initial values (or type defaults) on every call. The VM currently does not re-initialize function locals between calls. Because functions use a flat variable table (ADR-0046), local variable slots retain stale values from the previous invocation.
 
 ```
 FUNCTION accumulate : DINT
@@ -31,7 +31,7 @@ How should the VM ensure function locals are re-initialized on each call?
 * **Performance** — function calls occur frequently in scan cycle code and must be fast
 * **VM simplicity** — the VM targets embedded (no_std) environments; avoid dynamic allocation and complex logic
 * **Container format impact** — prefer minimal, backward-compatible changes to the binary format
-* **Codegen/VM consistency** — the mechanism for computing initial values at compile time must produce identical results to the runtime initialization used for program variables (ADR-0014)
+* **Codegen/VM consistency** — the mechanism for computing initial values at compile time must produce identical results to the runtime initialization used for program variables (ADR-0045)
 
 ## Considered Options
 
@@ -125,6 +125,6 @@ The CALL handler unconditionally zeroes all non-parameter local slots (sets them
 
 ## More Information
 
-### Relationship to ADR-0014
+### Relationship to ADR-0045
 
-ADR-0014 established the separate init function for program-level variable initialization (run once at startup). This ADR addresses a different problem: per-call re-initialization of function locals. The two mechanisms coexist — the init function handles program variables, and the per-function bytecode prologue handles function locals.
+ADR-0045 established the separate init function for program-level variable initialization (run once at startup). This ADR addresses a different problem: per-call re-initialization of function locals. The two mechanisms coexist — the init function handles program variables, and the per-function bytecode prologue handles function locals.
