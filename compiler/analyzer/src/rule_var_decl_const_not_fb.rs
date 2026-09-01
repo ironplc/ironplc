@@ -24,6 +24,7 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -55,10 +56,10 @@ impl DiagnosticVisitor for RuleVarDeclConstIsNotFunctionBlock {
     }
 }
 
-impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
+impl Visitor<Infallible> for RuleVarDeclConstIsNotFunctionBlock {
     type Value = ();
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
         if node.qualifier == DeclarationQualifier::Constant {
             if let InitialValueAssignmentKind::FunctionBlock(fb) = &node.initializer {
                 self.diagnostics.push(

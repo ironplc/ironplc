@@ -696,7 +696,7 @@ pub(crate) fn register_array_variable(
         },
     );
 
-    let type_tag = ironplc_container::debug_section::iec_type_tag::OTHER;
+    let type_tag = ironplc_container::debug_section::iec_type_tag::ARRAY;
     let type_name_str = if spec.ref_to {
         format!(
             "ARRAY OF REF_TO {}",

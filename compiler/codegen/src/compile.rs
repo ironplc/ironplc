@@ -1168,7 +1168,13 @@ pub(crate) struct CompileContext {
     /// True when any WSTRING (wide) string is declared. Temp buffers are then
     /// sized in wide bytes so an intermediate wide value fits (ADR-0035).
     pub(crate) has_wide_string: bool,
-    /// Number of temp buffers needed (one per string load in the init function).
+    /// Number of temp buffers needed: one per string-operation call site,
+    /// counted across every function, not just the init function.
+    ///
+    /// This is a count of *static* sites, but the VM rewinds its allocator only
+    /// on function return, so a site inside a loop consumes one buffer per
+    /// iteration. A loop over a string operation therefore exhausts the pool
+    /// and traps `V9009`.
     pub(crate) num_temp_bufs: u16,
     /// Debug info: variable name entries collected during assign_variables.
     pub(crate) debug_var_names: Vec<VarNameEntry>,

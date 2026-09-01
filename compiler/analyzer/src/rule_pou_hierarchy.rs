@@ -33,6 +33,7 @@
 //! ```
 
 use std::collections::HashMap;
+use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::{FunctionBlockDeclaration, FunctionDeclaration, Library, ProgramDeclaration},
@@ -87,13 +88,13 @@ impl DiagnosticVisitor for HierarchyVisitor {
     }
 }
 
-impl Visitor<Diagnostic> for HierarchyVisitor {
+impl Visitor<Infallible> for HierarchyVisitor {
     type Value = ();
 
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         if let Some(existing) = self
             .pou_types
             .insert(node.name.clone(), (PouKind::Function, node.name.span()))
@@ -114,7 +115,7 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         if let Some(existing) = self.pou_types.insert(
             node.name.name.clone(),
             (PouKind::FunctionBlock, node.name.span()),
@@ -135,7 +136,7 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         if let Some(existing) = self
             .pou_types
             .insert(node.name.clone(), (PouKind::Program, node.name.span()))
@@ -156,7 +157,7 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
     fn visit_configuration_declaration(
         &mut self,
         node: &ironplc_dsl::configuration::ConfigurationDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         if let Some(existing) = self
             .pou_types
             .insert(node.name.clone(), (PouKind::Config, node.name.span()))

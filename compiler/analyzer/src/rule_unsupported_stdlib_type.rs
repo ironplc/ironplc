@@ -24,6 +24,7 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -50,13 +51,13 @@ struct RuleUnsupportedStdLibType {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl Visitor<Diagnostic> for RuleUnsupportedStdLibType {
+impl Visitor<Infallible> for RuleUnsupportedStdLibType {
     type Value = ();
 
     fn visit_function_block_initial_value_assignment(
         &mut self,
         node: &FunctionBlockInitialValueAssignment,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         if is_unsupported_standard_type(&node.type_name) {
             self.diagnostics.push(Diagnostic::problem(
                 Problem::UnsupportedStdLibType,

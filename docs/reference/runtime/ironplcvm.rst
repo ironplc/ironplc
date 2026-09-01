@@ -63,6 +63,16 @@ Commands
       layout does not fit the program's data — is written as ``<unavailable>``
       or ``<invalid>`` rather than as a number that would read like a value.
 
+      Structures, arrays and function block instances are named by their type
+      rather than shown, because the runtime does not yet record enough layout
+      information to read their contents back:
+
+      .. code-block:: text
+
+         origin: <POINT>
+         counts: <ARRAY OF DINT>
+         timer: <TON>
+
    ``--scans`` *N*
       Run exactly *N* scheduling rounds then stop. Without this option, the
       runtime runs continuously until interrupted with :kbd:`Ctrl+C`.

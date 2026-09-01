@@ -41,6 +41,10 @@ pub const VALUE_UNAVAILABLE: &str = "<unavailable>";
 /// region — a corrupt or mismatched container.
 pub const VALUE_INVALID: &str = "<invalid>";
 
+/// Shown for an aggregate whose declared type name is not recorded, so not
+/// even `<TYPE_NAME>` can be produced.
+pub const VALUE_AGGREGATE: &str = "<aggregate>";
+
 /// Debug metadata for a single variable, extracted from the container's
 /// debug section.
 pub struct VarDebugInfo {
@@ -163,6 +167,9 @@ impl VariableRenderer {
 
         match info.iec_type_tag {
             iec_type_tag::STRING | iec_type_tag::WSTRING => self.render_string(index, data_region),
+            iec_type_tag::STRUCT | iec_type_tag::ARRAY | iec_type_tag::FB_INSTANCE => {
+                render_aggregate(&info.type_name)
+            }
             tag => match self.enum_value_name(&info.type_name, raw) {
                 Some(text) => RenderedValue::value(text),
                 None => RenderedValue::value(format_slot_value(raw, tag)),
@@ -202,6 +209,28 @@ impl VariableRenderer {
         let ordinal = raw as i32;
         let value_name = self.enum_values.get(&(type_name.to_string(), ordinal))?;
         Some(format!("{value_name} ({ordinal})"))
+    }
+}
+
+/// Names an aggregate whose contents this renderer cannot reach.
+///
+/// A structure, array or function-block instance keeps its contents in the
+/// data region and its slot holds the byte offset of them. Rendering that slot
+/// publishes an internal layout detail as if it were program data — and a
+/// convincing one, since the offset moves when an unrelated declaration
+/// changes size. So the value is reported as absent, named by its declared
+/// type, and marked invalid so a surface that styles values shows it as the
+/// placeholder it is.
+///
+/// Rendering the contents themselves needs a debug sub-table describing field
+/// and element layout, which the container does not yet carry.
+fn render_aggregate(type_name: &str) -> RenderedValue {
+    if type_name.is_empty() {
+        return RenderedValue::placeholder(VALUE_AGGREGATE);
+    }
+    RenderedValue {
+        text: format!("<{type_name}>"),
+        valid: false,
     }
 }
 
@@ -521,6 +550,44 @@ mod tests {
 
     fn tagged_rendered(tag: u8, raw: u64) -> RenderedValue {
         renderer_for(vec![var(0, tag, "v", "")]).render(0, raw, &[])
+    }
+
+    /// REQ-VR-container-043: an aggregate names its type instead of showing
+    /// the data-region offset its slot holds. The raw values below are real
+    /// offsets, and each would otherwise print as a convincing integer.
+    #[spec_test(REQ_VR_container_043)]
+    fn render_when_aggregate_then_type_name_placeholder() {
+        let struct_var = renderer_for(vec![var(0, iec_type_tag::STRUCT, "origin", "POINT")]);
+        assert_eq!(struct_var.render(0, 0, &[]).text, "<POINT>");
+        assert!(!struct_var.render(0, 0, &[]).valid);
+
+        let array_var = renderer_for(vec![var(0, iec_type_tag::ARRAY, "counts", "ARRAY OF DINT")]);
+        assert_eq!(array_var.render(0, 16, &[]).text, "<ARRAY OF DINT>");
+        assert!(!array_var.render(0, 16, &[]).valid);
+
+        let fb_var = renderer_for(vec![var(0, iec_type_tag::FB_INSTANCE, "timer", "TON")]);
+        assert_eq!(fb_var.render(0, 56, &[]).text, "<TON>");
+        assert!(!fb_var.render(0, 56, &[]).valid);
+    }
+
+    /// REQ-VR-container-043: with no type name recorded there is still no
+    /// value to show, so a generic placeholder stands in.
+    #[spec_test(REQ_VR_container_043)]
+    fn render_when_aggregate_without_type_name_then_generic_placeholder() {
+        let renderer = renderer_for(vec![var(0, iec_type_tag::STRUCT, "anon", "")]);
+        let rendered = renderer.render(0, 8, &[]);
+        assert_eq!(rendered.text, VALUE_AGGREGATE);
+        assert!(!rendered.valid);
+    }
+
+    /// The aggregate tags are distinct from `OTHER` precisely so that a named
+    /// subrange, which does hold its value in the slot, keeps rendering it.
+    #[test]
+    fn render_when_other_tag_with_type_name_then_still_shows_the_value() {
+        let renderer = renderer_for(vec![var(0, iec_type_tag::OTHER, "lvl", "LEVEL")]);
+        let rendered = renderer.render(0, 75, &[]);
+        assert_eq!(rendered.text, "75");
+        assert!(rendered.valid);
     }
 
     /// A renderer over one enumeration variable of type `COLOR`.

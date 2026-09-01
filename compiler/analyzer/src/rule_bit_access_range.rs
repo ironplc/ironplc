@@ -36,6 +36,7 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 use std::collections::HashMap;
+use std::convert::Infallible;
 
 use crate::{
     intermediate_type::IntermediateType,
@@ -275,10 +276,10 @@ fn find_struct_field_type(
         .map(|f| f.field_type.clone())
 }
 
-impl Visitor<Diagnostic> for RuleBitAccessRange<'_> {
+impl Visitor<Infallible> for RuleBitAccessRange<'_> {
     type Value = ();
 
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Diagnostic> {
+    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Infallible> {
         self.var_initializers.clear();
         self.collect_var_types(&node.variables);
         let ret = node.recurse_visit(self);
@@ -289,7 +290,7 @@ impl Visitor<Diagnostic> for RuleBitAccessRange<'_> {
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         self.var_initializers.clear();
         self.collect_var_types(&node.variables);
         let ret = node.recurse_visit(self);
@@ -297,7 +298,7 @@ impl Visitor<Diagnostic> for RuleBitAccessRange<'_> {
         ret
     }
 
-    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Diagnostic> {
+    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Infallible> {
         self.var_initializers.clear();
         self.collect_var_types(&node.variables);
         let ret = node.recurse_visit(self);
@@ -305,7 +306,7 @@ impl Visitor<Diagnostic> for RuleBitAccessRange<'_> {
         ret
     }
 
-    fn visit_self_ref_variable(&mut self, node: &SelfRefVariable) -> Result<(), Diagnostic> {
+    fn visit_self_ref_variable(&mut self, node: &SelfRefVariable) -> Result<(), Infallible> {
         // Report rather than skip: a bit access through THIS^/SUPER^ cannot
         // be range-checked until member resolution exists, and staying
         // silent here would keep this rule quietly passing such a program
@@ -320,7 +321,7 @@ impl Visitor<Diagnostic> for RuleBitAccessRange<'_> {
         Ok(())
     }
 
-    fn visit_bit_access_variable(&mut self, node: &BitAccessVariable) -> Result<(), Diagnostic> {
+    fn visit_bit_access_variable(&mut self, node: &BitAccessVariable) -> Result<(), Infallible> {
         self.check_bit_access(node);
         node.recurse_visit(self)
     }
@@ -328,7 +329,7 @@ impl Visitor<Diagnostic> for RuleBitAccessRange<'_> {
     fn visit_partial_access_variable(
         &mut self,
         node: &PartialAccessVariable,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         self.check_partial_access(node);
         node.recurse_visit(self)
     }

@@ -24,6 +24,7 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -55,10 +56,10 @@ impl DiagnosticVisitor for RuleDeclSubrangeLimits {
     }
 }
 
-impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
+impl Visitor<Infallible> for RuleDeclSubrangeLimits {
     type Value = ();
 
-    fn visit_subrange(&mut self, node: &Subrange) -> Result<(), Diagnostic> {
+    fn visit_subrange(&mut self, node: &Subrange) -> Result<(), Infallible> {
         let start = match node.start.as_signed_integer() {
             Some(si) => si,
             None => return Ok(()),
