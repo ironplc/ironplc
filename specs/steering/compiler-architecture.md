@@ -72,6 +72,19 @@ Use consistent patterns for AST transformations:
 - Collect multiple errors when possible
 - Use appropriate problem codes from the shared system
 
+**A semantic rule cannot fail.** A rule's visitor implements
+`DiagnosticVisitor` (`compiler/analyzer/src/rule_support.rs`), whose error type
+is `Infallible`, and `rule_support::run_rule` drives the walk. Report a problem
+by pushing onto the visitor's `diagnostics` field, which `into_diagnostics`
+surrenders; there is no `Err` to return. A rule that meets a node it cannot
+analyse records a diagnostic and stops descending into *that node*, never the
+walk --- otherwise every problem after it goes unreported. See
+[ADR-0048](../adrs/0048-semantic-rules-cannot-fail.md).
+
+This does not apply to the `xform_*` passes, which must produce a `Library` and
+may legitimately abort; `stages::resolve_types` reverts to a pre-pass clone
+when one does.
+
 ## Testing Architecture
 
 ### Test Organization

@@ -35,6 +35,7 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     intermediate_type::IntermediateType,
@@ -70,10 +71,10 @@ impl DiagnosticVisitor for RuleConstantVarsInitialized<'_> {
     }
 }
 
-impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
+impl<'a> Visitor<Infallible> for RuleConstantVarsInitialized<'a> {
     type Value = ();
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
         if node.var_type == VariableType::External {
             // If the variable type is external, than it must be initialized
             // somewhere else and therefore we do not need to check here.
@@ -82,8 +83,12 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
 
         match node.qualifier {
             DeclarationQualifier::Constant => match &node.initializer {
+                // A CONSTANT declaration with no initializer at all is not
+                // handled yet. Record that and move on to the next
+                // declaration, so the rest of the library is still checked.
                 InitialValueAssignmentKind::None(sp) => {
-                    return Err(Diagnostic::todo_with_span(sp.clone()))
+                    self.diagnostics
+                        .push(Diagnostic::todo_with_span(sp.clone()));
                 }
                 InitialValueAssignmentKind::Simple(si) => match si.initial_value {
                     Some(_) => {}
@@ -138,7 +143,13 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                     // Function blocks cannot be CONSTANT - this is handled by
                     // rule_var_decl_const_not_fb, so skip initialization checking here.
                 }
-                InitialValueAssignmentKind::Subrange(_) => return Err(Diagnostic::internal_error()),
+                // Subrange and late-resolved initializers are both resolved to
+                // a concrete kind before semantic rules run, so reaching either
+                // here is a compiler bug. Report it against this declaration
+                // and keep checking the others.
+                InitialValueAssignmentKind::Subrange(_) => {
+                    self.diagnostics.push(Diagnostic::internal_error());
+                }
                 InitialValueAssignmentKind::Structure(struct_init) => {
                     // For const structures, verify that all fields without defaults
                     // are explicitly initialized in the variable declaration.
@@ -167,7 +178,7 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                     }
                 }
                 InitialValueAssignmentKind::LateResolvedType(_) => {
-                    return Err(Diagnostic::internal_error())
+                    self.diagnostics.push(Diagnostic::internal_error());
                 }
                 InitialValueAssignmentKind::SimpleExpr(_) => {
                     // A constant-expression initializer — normalized to

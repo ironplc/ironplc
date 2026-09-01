@@ -672,9 +672,13 @@ parser! {
     rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ ref_to:ref_to_keyword()? _ type_name:array_element_type() {
       SpecificationKind::Inline(ArraySubranges { ranges, type_name, ref_to } )
     }
+    // The length delimiter comes from string_length_spec() so that the array
+    // element type accepts the same spellings as every other string position
+    // -- standard `STRING[n]` brackets and the `STRING(n)` parenthesis
+    // extension, the latter gated by rule_token_no_paren_string_length.
     rule array_element_type() -> ArrayElementType =
-      tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() _ tok(TokenType::RightBracket) { l })? { ArrayElementType::String(StringSpecification { width: StringType::String, length, keyword_span: tok.span.clone() }) }
-      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() _ tok(TokenType::RightBracket) { l })? { ArrayElementType::WString(StringSpecification { width: StringType::WString, length, keyword_span: tok.span.clone() }) }
+      tok:tok(TokenType::String) length:(_ l:string_length_spec() { l })? { ArrayElementType::String(StringSpecification { width: StringType::String, length, keyword_span: tok.span.clone() }) }
+      / tok:tok(TokenType::WString) length:(_ l:string_length_spec() { l })? { ArrayElementType::WString(StringSpecification { width: StringType::WString, length, keyword_span: tok.span.clone() }) }
       / tn:non_generic_type_name() { ArrayElementType::Named(tn) }
     rule array_initialization() -> Vec<ArrayInitialElementKind> = tok(TokenType::LeftBracket) _ init:array_initial_elements() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) { init }
     rule array_initial_elements() -> ArrayInitialElementKind = size:integer() _ tok(TokenType::LeftParen) _ ai:array_initial_element()? _ tok(TokenType::RightParen) { ArrayInitialElementKind::repeated(size, ai) } / array_initial_element()
@@ -940,7 +944,7 @@ parser! {
     // There is no location_prefix or size_prefix rule because it would be ambiguous when the % prefix normally
     // resolved ambiguity. Therefore, the lexer matches the entire direct variable.
     pub rule direct_variable() -> AddressAssignment = t:tok(TokenType::DirectAddress) {?
-      AddressAssignment::try_from(t.text.as_str())
+      AddressAssignment::try_from(t.text.as_str()).map(|address| address.with_position(t.span.clone()))
     }
     // B.1.4.2 Multi-element variables
     // TODO support these
@@ -1309,7 +1313,7 @@ parser! {
       }
     }
     rule incompl_location() -> AddressAssignment = tok(TokenType::At) _ t:tok(TokenType::DirectAddressIncomplete) {?
-      AddressAssignment::try_from(t.text.as_str())
+      AddressAssignment::try_from(t.text.as_str()).map(|address| address.with_position(t.span.clone()))
     }
     rule var_spec() -> VariableSpecificationKind =
       sr:subrange_specification__with_range() { VariableSpecificationKind::Subrange(sr) }

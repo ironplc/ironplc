@@ -87,7 +87,7 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 
 ### Critical Rules
 1. **NEVER push directly to `main`** - Always use a feature branch and pull request
-2. **Plan first, then delete it** - Non-trivial changes start with a plan in `specs/plans/`, committed before implementation code and removed before merge; work spanning more than one PR must also have an issue; never cite a plan from code, docs or workflows (`just plan-citations` enforces this)
+2. **Plan first, then delete it** - Non-trivial changes start with a plan in `specs/plans/`, committed before implementation code and removed before merge; work spanning more than one PR must also have an issue; never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
 3. **Prefactor before adding** - Every change looks for a simplification to make first; the plan says what it is, or why none is needed
 4. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
 5. **BDD-style test names**: `function_when_condition_then_result`

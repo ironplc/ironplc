@@ -97,7 +97,7 @@ Workflow:
 Do not reference `specs/plans/` from code, comments, workflows, the `justfile`,
 design documents or ADRs. A plan is deleted before its pull request merges, so
 it is never a stable link target — cite an ADR or a design document instead.
-`just plan-citations` fails the build on a violation.
+`cd specs && just` fails the build on a violation.
 
 **Work that spans more than one pull request must have an issue.** It holds the
 slice breakdown, stays open until every slice lands, and is where each slice's

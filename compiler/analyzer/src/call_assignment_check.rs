@@ -83,13 +83,19 @@ pub(crate) struct AssignmentCheckLabels<'a> {
 ///
 /// `owner_span` is the callee declaration's span, used for the secondary
 /// label on a missing-input diagnostic.
+///
+/// Returns every problem found, not the first: a call that names three inputs
+/// the callee does not declare is three diagnostics. The one exception is a
+/// call that mixes named and positional inputs, which returns alone --- with
+/// the call's shape itself in doubt, the per-parameter checks below would
+/// report noise derived from a misreading of the arguments.
 pub(crate) fn check_assignments(
     owner: &dyn HasVariables,
     owner_span: SourceSpan,
     call_span: SourceSpan,
     params: &[ParamAssignmentKind],
     labels: &AssignmentCheckLabels,
-) -> Result<(), Diagnostic> {
+) -> Vec<Diagnostic> {
     // Sort the inputs as either named, positional, and outputs
     let mut formal = Vec::new();
     let mut non_formal = Vec::new();
@@ -106,12 +112,14 @@ pub(crate) fn check_assignments(
     // Don't allow a mixture so assert that either named is empty or
     // positional is empty
     if !formal.is_empty() && !non_formal.is_empty() {
-        return Err(Diagnostic::problem(
+        return vec![Diagnostic::problem(
             Problem::FunctionCallMixedArgTypes,
             Label::span(call_span.clone(), labels.call_label),
         )
-        .with_context(labels.context_key, &labels.owner_name.to_string()));
+        .with_context(labels.context_key, &labels.owner_name.to_string())];
     }
+
+    let mut diagnostics = Vec::new();
 
     // Check that the names and types match. Unassigned values are
     // permitted so we use the assignments as the set to iterate
@@ -119,13 +127,15 @@ pub(crate) fn check_assignments(
         // TODO check the types.
         for name in &formal {
             if find_input_type(owner, &name.name).is_none() {
-                return Err(Diagnostic::problem(
-                    Problem::FunctionInvocationMissingInput,
-                    Label::span(call_span.clone(), labels.call_label),
-                )
-                .with_context(labels.context_key, &labels.owner_name.to_string())
-                .with_context_id("undefined input", &name.name)
-                .with_secondary(Label::span(owner_span.clone(), labels.decl_label)));
+                diagnostics.push(
+                    Diagnostic::problem(
+                        Problem::FunctionInvocationMissingInput,
+                        Label::span(call_span.clone(), labels.call_label),
+                    )
+                    .with_context(labels.context_key, &labels.owner_name.to_string())
+                    .with_context_id("undefined input", &name.name)
+                    .with_secondary(Label::span(owner_span.clone(), labels.decl_label)),
+                );
             }
         }
     }
@@ -135,13 +145,15 @@ pub(crate) fn check_assignments(
     if !non_formal.is_empty() {
         let num_required_inputs = count_input_type(owner);
         if non_formal.len() != num_required_inputs {
-            return Err(Diagnostic::problem(
-                Problem::FunctionInvocationRequiresFormal,
-                Label::span(call_span.clone(), labels.call_label),
-            )
-            .with_context(labels.context_key, &labels.owner_name.to_string())
-            .with_context("required", &format!("{num_required_inputs}"))
-            .with_context("actual", &format!("{}", non_formal.len())));
+            diagnostics.push(
+                Diagnostic::problem(
+                    Problem::FunctionInvocationRequiresFormal,
+                    Label::span(call_span.clone(), labels.call_label),
+                )
+                .with_context(labels.context_key, &labels.owner_name.to_string())
+                .with_context("required", &format!("{num_required_inputs}"))
+                .with_context("actual", &format!("{}", non_formal.len())),
+            );
         }
     }
 
@@ -149,15 +161,17 @@ pub(crate) fn check_assignments(
     // output parameter names
     for output in outputs {
         if find_output_type(owner, &output.src).is_none() {
-            return Err(Diagnostic::problem(
-                Problem::FunctionInvocationUndefinedOutput,
-                Label::span(call_span.clone(), labels.call_label),
-            )
-            .with_context(labels.context_key, &labels.owner_name.to_string())
-            .with_context_id("source", &output.src)
-            .with_context("target", &output.tgt.to_string()));
+            diagnostics.push(
+                Diagnostic::problem(
+                    Problem::FunctionInvocationUndefinedOutput,
+                    Label::span(call_span.clone(), labels.call_label),
+                )
+                .with_context(labels.context_key, &labels.owner_name.to_string())
+                .with_context_id("source", &output.src)
+                .with_context("target", &output.tgt.to_string()),
+            );
         }
     }
 
-    Ok(())
+    diagnostics
 }

@@ -176,7 +176,7 @@ TIME and LTIME literals are ordinary integer constants: `LOAD_CONST_I32` for TIM
 
 #### Variables
 
-Variable instructions use a 16-bit index into the flat variable table ([ADR-0021 — flat variable table](../adrs/0021-flat-variable-table-for-function-calls.md)). The compiler resolves variable names to indices at compile time. Each access is bounds- and scope-checked; a violation traps `V9005 InvalidVariableIndex`.
+Variable instructions use a 16-bit index into the flat variable table ([ADR-0046 — flat variable table](../adrs/0046-flat-variable-table-for-function-calls.md)). The compiler resolves variable names to indices at compile time. Each access is bounds- and scope-checked; a violation traps `V9005 InvalidVariableIndex`.
 
 | Byte | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
@@ -375,7 +375,7 @@ There is no `JMP_IF` (branch-if-true) opcode: the compiler inverts the predicate
 
 #### Calling convention
 
-`CALL` carries both the callee's `function_id` and its `var_offset` — the base of the callee's window in the flat variable table (ADR-0021 — flat variable table). The VM pops `num_params` arguments (declared in the callee's function descriptor) into `var_offset .. var_offset + num_params` in reverse order, so the leftmost argument lands in the lowest slot, then pushes a call frame. The frame stack is bounded by the container's declared worst-case call depth, computed by codegen from the static call graph; exceeding it traps `V9012 CallStackOverflow`, and a container declaring zero depth is rejected at start with `ZeroCallDepth`.
+`CALL` carries both the callee's `function_id` and its `var_offset` — the base of the callee's window in the flat variable table (ADR-0046 — flat variable table). The VM pops `num_params` arguments (declared in the callee's function descriptor) into `var_offset .. var_offset + num_params` in reverse order, so the leftmost argument lands in the lowest slot, then pushes a call frame. The frame stack is bounded by the container's declared worst-case call depth, computed by codegen from the static call graph; exceeding it traps `V9012 CallStackOverflow`, and a container declaring zero depth is rejected at start with `ZeroCallDepth`.
 
 Falling off the end of a function body behaves as `RET_VOID` ([ADR-0044](../adrs/0044-implicit-ret-void-at-end-of-function-body.md), superseding ADR-0011). `verify_stack_balance` checks that point as a return site, and codegen runs it over every container it emits, so an emitted body cannot fall off the end with a non-empty operand stack.
 
@@ -737,6 +737,14 @@ Two storage areas hold strings:
 
 - **Data region** — string *variables* (and string array elements) live in the unified data region (ADR-0017), addressed by a compile-time-constant `data_offset`. `char_width` is written once at initialization and never changes.
 - **Temp buffer pool** — a pre-allocated pool of fixed-size buffers holding intermediate results. A buffer is addressed by a small `buf_idx`, which is what string-producing operations push onto the stack. The container header declares `num_temp_bufs` and `max_temp_buf_bytes`; codegen sizes them from the program's string expressions. Exhausting the pool traps `V9009 TempBufferExhausted`.
+
+Codegen sizes the pool by counting string-operation *call sites* statically,
+and the VM rewinds the allocator only on function return. A string operation
+inside a loop therefore allocates a fresh buffer on every iteration while
+having been counted once, and a loop that runs more than a couple of times
+traps `V9009`. This is why the bundled `Tc2_Utilities` `LREAL_TO_FMTSTR`
+renders digits as unrolled per-weight blocks rather than a loop: rewriting it
+as a loop would trap.
 
 Because `buf_idx` is a small integer, `DUP` and `SWAP` copy only the index — never buffer contents. Real copies happen at `STR_STORE_VAR` and inside the string operation handlers.
 

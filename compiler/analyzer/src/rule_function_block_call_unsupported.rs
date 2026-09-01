@@ -28,6 +28,7 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -59,13 +60,13 @@ impl DiagnosticVisitor for RuleFunctionBlockCallUnsupported {
     }
 }
 
-impl Visitor<Diagnostic> for RuleFunctionBlockCallUnsupported {
+impl Visitor<Infallible> for RuleFunctionBlockCallUnsupported {
     type Value = ();
 
     fn visit_function_block_call_initializer(
         &mut self,
         node: &FunctionBlockCallInitializer,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         self.diagnostics
             .push(Diagnostic::not_implemented(Label::span(
                 node.type_name.span(),
