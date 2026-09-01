@@ -46,9 +46,9 @@ each.
 The number is the decision's identity: prose and code comments cite decisions as
 a bare `ADR-NNNN`, and that form cannot resolve if the number is ambiguous. Check
 the directory for the current maximum immediately before you name the file, and
-again after rebasing onto `main`. `just adr-numbers` enforces uniqueness and runs
-as part of `just`; when it fails, renumber the later ADR (the one whose `date:` is
-later) and update the citations that meant it.
+again after rebasing onto `main`. `cd specs && just` enforces uniqueness and runs
+in CI; when it fails, renumber the later ADR (the one whose `date:` is later) and
+update the citations that meant it.
 
 #### Status
 

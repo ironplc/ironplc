@@ -1,0 +1,27 @@
+set windows-shell := ["powershell.exe", "-c"]
+
+alias ci := default
+default: adr-numbers
+
+# Fail if one ADR number names more than one decision. The four-digit prefix of
+# a file in specs/adrs/ is that decision's identity: prose and code comments cite
+# decisions as a bare "ADR-NNNN", a form that cannot resolve when the number is
+# ambiguous. A new ADR takes the next unused number.
+adr-numbers:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd {{justfile_directory()}}
+  numbers=$(git ls-files 'adrs/*.md' | sed -n 's#^adrs/\([0-9][0-9][0-9][0-9]\)-.*#\1#p')
+  dupes=$(printf '%s\n' "$numbers" | sort | uniq -d)
+  if [ -n "$dupes" ]; then
+    echo "error: an ADR number names more than one decision." >&2
+    echo "A bare \"ADR-NNNN\" citation cannot resolve to a duplicated number." >&2
+    echo "Give the later ADR the next unused number and update the citations" >&2
+    echo "that meant it." >&2
+    echo >&2
+    for number in $dupes; do
+      git ls-files "adrs/$number-*.md" >&2
+    done
+    exit 1
+  fi
+  echo "ADR numbers: all unique. Check passed."
