@@ -738,6 +738,14 @@ Two storage areas hold strings:
 - **Data region** — string *variables* (and string array elements) live in the unified data region (ADR-0017), addressed by a compile-time-constant `data_offset`. `char_width` is written once at initialization and never changes.
 - **Temp buffer pool** — a pre-allocated pool of fixed-size buffers holding intermediate results. A buffer is addressed by a small `buf_idx`, which is what string-producing operations push onto the stack. The container header declares `num_temp_bufs` and `max_temp_buf_bytes`; codegen sizes them from the program's string expressions. Exhausting the pool traps `V9009 TempBufferExhausted`.
 
+Codegen sizes the pool by counting string-operation *call sites* statically,
+and the VM rewinds the allocator only on function return. A string operation
+inside a loop therefore allocates a fresh buffer on every iteration while
+having been counted once, and a loop that runs more than a couple of times
+traps `V9009`. This is why the bundled `Tc2_Utilities` `LREAL_TO_FMTSTR`
+renders digits as unrolled per-weight blocks rather than a loop: rewriting it
+as a loop would trap.
+
 Because `buf_idx` is a small integer, `DUP` and `SWAP` copy only the index — never buffer contents. Real copies happen at `STR_STORE_VAR` and inside the string operation handlers.
 
 #### STRING/WSTRING distinction

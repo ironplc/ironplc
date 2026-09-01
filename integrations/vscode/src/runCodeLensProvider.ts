@@ -29,6 +29,9 @@ const PROGRAM_RE = /^\s*PROGRAM\s+(\w+)/i;
  * stop lenses take no arguments; the run lens carries the program name so
  * it can be surfaced to the run command.
  */
+// Two lenses at the same range are not a layout accident: VS Code renders
+// multiple CodeLens objects sharing a range as " | "-separated links, which
+// is what puts pause and stop side by side above the PROGRAM line.
 export function findProgramLenses(
   text: string,
   state: RunState = 'idle',
