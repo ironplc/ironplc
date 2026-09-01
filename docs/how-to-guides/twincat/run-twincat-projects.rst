@@ -14,15 +14,16 @@ Compile the Solution
 -------------------------------------------
 
 Compile your solution into a bytecode container: point
-:program:`ironplcc` at the solution directory and select the ``twincat``
-dialect:
+:program:`ironplcc` at the directory that holds your :file:`.sln` file and
+select the ``twincat`` dialect:
 
 .. code-block:: shell
 
    ironplcc compile --dialect twincat path/to/my-solution --output main.iplc
 
-IronPLC discovers the sources through the :file:`.plcproj` project files,
-activates any referenced Beckhoff libraries (see
+IronPLC reads the :file:`.sln`, follows it through the :file:`.tsproj`
+files to each :file:`.plcproj` project, and takes the sources from there.
+It activates any referenced Beckhoff libraries (see
 :doc:`use-beckhoff-libraries`), and on success creates :file:`main.iplc` —
 the compiled bytecode that the IronPLC virtual machine executes.
 
@@ -54,7 +55,8 @@ Run in a CI/CD Pipeline
 -------------------------------------------
 
 Both tools return a non-zero exit code on failure, so the same commands
-work as a pipeline gate:
+work as a pipeline gate. Run them from the directory that holds your
+:file:`.sln` file:
 
 .. code-block:: shell
 
