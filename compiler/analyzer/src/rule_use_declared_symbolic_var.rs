@@ -52,6 +52,7 @@ use ironplc_problems::Problem;
 use crate::{
     intermediates::inherited_fields::collect_inherited_fields,
     result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
     scoped_table::{self, Key, ScopedTable, Value},
     semantic_context::SemanticContext,
     string_similarity::find_closest_match,
@@ -66,6 +67,7 @@ pub fn apply(
     let mut checker = SymbolScopeChecker {
         table: scoped_table::ScopedTable::new(),
         inherited_fields: collect_inherited_fields(lib),
+        diagnostics: Vec::new(),
     };
 
     // Seed implicit system globals so direct references don't trigger P4007.
@@ -78,7 +80,7 @@ pub fn apply(
             .add(&Id::from("__SYSTEM_UP_LTIME"), DummyNode {});
     }
 
-    checker.walk(lib).map_err(|e| vec![e])
+    run_rule(checker, lib)
 }
 
 #[derive(Debug)]
@@ -95,6 +97,13 @@ impl Key for TypeName {}
 struct SymbolScopeChecker<'a> {
     table: ScopedTable<'a, Id, DummyNode>,
     inherited_fields: HashMap<TypeName, Vec<VarDecl>>,
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl DiagnosticVisitor for SymbolScopeChecker<'_> {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 impl Visitor<Diagnostic> for SymbolScopeChecker<'_> {
@@ -165,27 +174,25 @@ impl Visitor<Diagnostic> for SymbolScopeChecker<'_> {
         &mut self,
         node: &ironplc_dsl::textual::NamedVariable,
     ) -> Result<(), Diagnostic> {
-        match self.table.find(&node.name) {
-            Some(_) => {
-                // We found the variable being referred to
-                Ok(())
-            }
-            None => {
-                let suggestion = find_closest_match(
-                    node.name.original(),
-                    self.table.keys().iter().map(|k| k.original().as_str()),
-                );
-                let mut diagnostic = Diagnostic::problem(
-                    Problem::VariableUndefined,
-                    Label::span(node.name.span(), "Undefined variable"),
-                )
-                .with_context_id("variable", &node.name);
-                if let Some(suggestion) = suggestion {
-                    diagnostic = diagnostic.with_context("did you mean", &suggestion);
-                }
-                Err(diagnostic)
-            }
+        if self.table.find(&node.name).is_some() {
+            // We found the variable being referred to
+            return Ok(());
         }
+
+        let suggestion = find_closest_match(
+            node.name.original(),
+            self.table.keys().iter().map(|k| k.original().as_str()),
+        );
+        let mut diagnostic = Diagnostic::problem(
+            Problem::VariableUndefined,
+            Label::span(node.name.span(), "Undefined variable"),
+        )
+        .with_context_id("variable", &node.name);
+        if let Some(suggestion) = suggestion {
+            diagnostic = diagnostic.with_context("did you mean", &suggestion);
+        }
+        self.diagnostics.push(diagnostic);
+        Ok(())
     }
 }
 
@@ -637,5 +644,67 @@ END_FUNCTION_BLOCK";
         let result = apply(&library, &context, &opts_with_fb_inheritance());
 
         assert!(result.is_ok(), "unexpected errors: {result:?}");
+    }
+
+    /// Reproduces issue #1566: the rule used to abort at the first undefined
+    /// variable, so a program with two of them reported one.
+    #[test]
+    fn apply_when_two_undefined_variables_then_reports_both() {
+        let program = "
+PROGRAM prog_two
+VAR
+  x : INT;
+END_VAR
+  x := UNDECLARED_ONE;
+  x := UNDECLARED_TWO;
+END_PROGRAM";
+
+        let library = parse_and_resolve_types(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let diagnostics = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
+
+        let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
+        assert!(
+            reported.iter().any(|d| d.as_str() == "variable=UNDECLARED_ONE"),
+            "expected UNDECLARED_ONE, got {reported:?}"
+        );
+        assert!(
+            reported.iter().any(|d| d.as_str() == "variable=UNDECLARED_TWO"),
+            "expected UNDECLARED_TWO, got {reported:?}"
+        );
+    }
+
+    /// The other half of issue #1566: a second POU must not displace the
+    /// first POU's diagnostics.
+    #[test]
+    fn apply_when_undefined_variables_in_two_pous_then_reports_both() {
+        let program = "
+PROGRAM a
+VAR
+  x : INT;
+END_VAR
+  x := AAA_ONE;
+END_PROGRAM
+
+PROGRAM b
+VAR
+  y : INT;
+END_VAR
+  y := BBB_ONE;
+END_PROGRAM";
+
+        let library = parse_and_resolve_types(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let diagnostics = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
+
+        let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
+        assert!(
+            reported.iter().any(|d| d.as_str() == "variable=AAA_ONE"),
+            "expected AAA_ONE, got {reported:?}"
+        );
+        assert!(
+            reported.iter().any(|d| d.as_str() == "variable=BBB_ONE"),
+            "expected BBB_ONE, got {reported:?}"
+        );
     }
 }
