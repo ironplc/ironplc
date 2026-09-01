@@ -307,7 +307,11 @@ fn every_built_binary_is_shipped_by_every_installer() {
     problems.extend(compare("setup.nsi (Windows installer)", &built, &windows));
     problems.extend(compare("Homebrew libexec.install", &built, &brew_install));
     problems.extend(compare("Homebrew bin.install_symlink", &built, &brew_path));
-    problems.extend(compare("install.sh `BINARIES` (curl | sh)", &built, &curl_sh));
+    problems.extend(compare(
+        "install.sh `BINARIES` (curl | sh)",
+        &built,
+        &curl_sh,
+    ));
 
     // A legacy-optional name is one `install.sh` tolerates being absent from an
     // older release's archive. It only reaches the install loop if `BINARIES`
