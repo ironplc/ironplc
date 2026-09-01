@@ -1,5 +1,17 @@
-//! Semantic rule that checks bit access and partial access indices are
-//! within the valid range for the variable's declared type.
+//! Semantic rule that a bit or partial access selects a part of a variable
+//! that exists.
+//!
+//! A variable's declared type fixes what parts it has: a `BYTE` has eight
+//! bits and one byte, a `WORD` sixteen bits and two bytes. An index past the
+//! last part names storage the variable does not have, and a slice wider than
+//! the variable cannot be taken from it at all.
+//!
+//! Both spellings of bit access are checked -- `x.3` and the IEC
+//! 61131-3:2013 form `x.%X3` -- along with the byte, word, dword and lword
+//! slices (`x.%B1`). The `%` forms require `--allow-partial-access-syntax`.
+//!
+//! This bounds an *index into* a variable. What values that variable can
+//! hold is a different question, and not this rule's.
 //!
 //! See section B.1.4.2.
 //!
@@ -10,9 +22,11 @@
 //!    VAR
 //!       myWord : WORD;
 //!       myBool : BOOL;
+//!       myByte : BYTE;
 //!    END_VAR
-//!    myBool := myWord.0;
-//!    myBool := myWord.15;
+//!    myBool := myWord.0;     (* first of 16 bits *)
+//!    myBool := myWord.15;    (* last of 16 bits *)
+//!    myByte := myWord.%B1;   (* second of 2 bytes *)
 //! END_FUNCTION_BLOCK
 //! ```
 //!
@@ -23,8 +37,11 @@
 //!    VAR
 //!       myByte : BYTE;
 //!       myBool : BOOL;
+//!       myWord : WORD;
 //!    END_VAR
-//!    myBool := myByte.8;
+//!    myBool := myByte.8;     (* a BYTE has bits 0..7 *)
+//!    myWord := myByte.%W0;   (* a WORD does not fit in a BYTE *)
+//!    myByte := myWord.%B2;   (* a WORD has bytes 0..1 *)
 //! END_FUNCTION_BLOCK
 //! ```
 use ironplc_dsl::{
@@ -51,7 +68,7 @@ pub fn apply(
     _options: &CompilerOptions,
 ) -> SemanticResult {
     run_rule(
-        RuleBitAccessRange {
+        RuleBitAndPartialAccessRange {
             type_environment: context.types(),
             declarations: DeclaredVariables::new(),
             diagnostics: Vec::new(),
@@ -60,20 +77,20 @@ pub fn apply(
     )
 }
 
-struct RuleBitAccessRange<'a> {
+struct RuleBitAndPartialAccessRange<'a> {
     type_environment: &'a crate::type_environment::TypeEnvironment,
     /// The variable declarations visible in the POU being visited.
     declarations: DeclaredVariables,
     diagnostics: Vec<Diagnostic>,
 }
 
-impl DiagnosticVisitor for RuleBitAccessRange<'_> {
+impl DiagnosticVisitor for RuleBitAndPartialAccessRange<'_> {
     fn into_diagnostics(self) -> Vec<Diagnostic> {
         self.diagnostics
     }
 }
 
-impl RuleBitAccessRange<'_> {
+impl RuleBitAndPartialAccessRange<'_> {
     fn check_partial_access(&mut self, node: &PartialAccessVariable) {
         let resolved_type =
             match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
@@ -167,7 +184,7 @@ impl RuleBitAccessRange<'_> {
     }
 }
 
-impl Visitor<Infallible> for RuleBitAccessRange<'_> {
+impl Visitor<Infallible> for RuleBitAndPartialAccessRange<'_> {
     type Value = ();
 
     fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Infallible> {
@@ -495,6 +512,80 @@ END_VAR
     result := FOO(A := 5);
 END_PROGRAM",
         );
+    }
+
+    // --- Partial access: byte, word, dword and lword slices ---
+    //
+    // The `%` selectors need `allow_partial_access_syntax`, so these build
+    // their own options rather than using the helpers above.
+
+    /// Analyzes `program` with partial-access syntax enabled, returning
+    /// whether this rule reported the access as out of range. Naming the
+    /// problem keeps a diagnostic from some other rule from passing for one
+    /// of ours.
+    fn reports_out_of_range_with_partial_access(program: &str) -> bool {
+        let opts = CompilerOptions {
+            allow_partial_access_syntax: true,
+            ..CompilerOptions::default()
+        };
+        let library = parse_program(program, &FileId::default(), &opts).unwrap();
+        let (_library, context) = analyze(&[&library], &opts).unwrap();
+        context
+            .diagnostics()
+            .iter()
+            .any(|d| d.code == Problem::BitAccessOutOfRange.code())
+    }
+
+    fn partial_access_program(declared_type: &str, target_type: &str, selector: &str) -> String {
+        format!(
+            "FUNCTION_BLOCK FB1
+VAR
+    x : {declared_type};
+    y : {target_type};
+END_VAR
+    y := x.{selector};
+END_FUNCTION_BLOCK"
+        )
+    }
+
+    #[rstest]
+    // A WORD holds two bytes, so byte 0 and byte 1 exist and byte 2 does not.
+    #[case::word_byte_0("WORD", "BYTE", "%B0", true)]
+    #[case::word_byte_1("WORD", "BYTE", "%B1", true)]
+    #[case::word_byte_2("WORD", "BYTE", "%B2", false)]
+    // A DWORD holds four bytes and two words.
+    #[case::dword_byte_3("DWORD", "BYTE", "%B3", true)]
+    #[case::dword_byte_4("DWORD", "BYTE", "%B4", false)]
+    #[case::dword_word_1("DWORD", "WORD", "%W1", true)]
+    #[case::dword_word_2("DWORD", "WORD", "%W2", false)]
+    fn apply_when_partial_access_index_at_boundary_then_ok_or_err(
+        #[case] declared_type: &str,
+        #[case] target_type: &str,
+        #[case] selector: &str,
+        #[case] expected_ok: bool,
+    ) {
+        let program = partial_access_program(declared_type, target_type, selector);
+
+        assert_eq!(
+            !reports_out_of_range_with_partial_access(&program),
+            expected_ok
+        );
+    }
+
+    #[rstest]
+    // A slice wider than the variable cannot be taken from it, whatever the
+    // index -- a distinct failure from an index past the last slice.
+    #[case::word_from_byte("BYTE", "WORD", "%W0")]
+    #[case::dword_from_word("WORD", "DWORD", "%D0")]
+    #[case::lword_from_dword("DWORD", "LWORD", "%L0")]
+    fn apply_when_partial_access_wider_than_variable_then_err(
+        #[case] declared_type: &str,
+        #[case] target_type: &str,
+        #[case] selector: &str,
+    ) {
+        let program = partial_access_program(declared_type, target_type, selector);
+
+        assert!(reports_out_of_range_with_partial_access(&program));
     }
 
     // ---------------------------------------------------------------------

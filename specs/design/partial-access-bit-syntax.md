@@ -57,7 +57,7 @@ with the same `index` value. No new AST variant is introduced.
 
 ## Semantic Analysis
 
-**REQ-PAB-030** The existing `rule_bit_access_range` analyzer rule applies to
+**REQ-PAB-030** The existing `rule_bit_and_partial_access_range` analyzer rule applies to
 `.%Xn` identically to `.n`. A bit index outside the base type's bit width
 produces the same `BitAccessOutOfRange` (`P4025`) diagnostic. For example,
 `b.%X8` on a `BYTE` is rejected.
@@ -111,7 +111,7 @@ Each REQ above is tied to one primary test. Test names follow
 | REQ-PAB-011  | `parser_spec_req_pab_011_dot_percent_x_accepted_after_array_subscript`          | `compiler/parser/src/tests/`                                    | parser      |
 | REQ-PAB-012  | `parser_spec_req_pab_012_dot_percent_x_accepted_after_struct_field`             | `compiler/parser/src/tests/`                                    | parser      |
 | REQ-PAB-020  | `parser_spec_req_pab_020_dot_percent_x_and_dot_n_produce_equal_ast`             | `compiler/parser/src/tests/`                                    | AST         |
-| REQ-PAB-030  | `analyzer_spec_req_pab_030_dot_percent_x_bit_out_of_range_is_rejected`          | `compiler/analyzer/src/rule_bit_access_range.rs` (tests mod)      | analyzer    |
+| REQ-PAB-030  | `analyzer_spec_req_pab_030_dot_percent_x_bit_out_of_range_is_rejected`          | `compiler/analyzer/src/rule_bit_and_partial_access_range.rs` (tests mod)      | analyzer    |
 | REQ-PAB-040  | `codegen_spec_req_pab_040_read_percent_x_on_byte_returns_bit`                   | `compiler/codegen/tests/end_to_end_bit_access.rs`                 | e2e         |
 | REQ-PAB-041  | `codegen_spec_req_pab_041_read_percent_x_on_byte_array_element_returns_bit`    | `compiler/codegen/tests/end_to_end_bit_access.rs`                 | e2e (user's case) |
 | REQ-PAB-042  | `codegen_spec_req_pab_042_write_percent_x_on_byte_array_preserves_other_bits`  | `compiler/codegen/tests/end_to_end_bit_access.rs`                 | e2e         |
