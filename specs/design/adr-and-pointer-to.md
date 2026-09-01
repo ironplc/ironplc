@@ -36,7 +36,7 @@ and dereferenced with the postfix `^` operator.
 
 IronPLC's VM has no byte addresses for variables
 ([ADR-0017](../adrs/0017-unified-data-region.md),
-[ADR-0021](../adrs/0021-flat-variable-table-for-function-calls.md)): a
+[ADR-0046](../adrs/0046-flat-variable-table-for-function-calls.md)): a
 variable is a slot in a flat 64-bit slot table, indexed by `VarIndex`. The
 existing reference backend already models "the address of a variable" as the
 variable's table index stored as a `u64` (`ExprKind::Ref` pushes the

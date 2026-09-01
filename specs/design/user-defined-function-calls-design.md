@@ -31,13 +31,13 @@ Enable compilation and execution of user-defined IEC 61131-3 functions. A user-d
 
 IEC 61131-3 prohibits recursive function calls. This means each function has exactly one activation at a time, so function locals can be statically allocated in the shared variable table. No stack frame save/restore is needed. The VM's existing `VariableScope` mechanism provides scoped access to a region of the variable table.
 
-See [ADR-0021](../../specs/adrs/0021-flat-variable-table-for-function-calls.md).
+See [ADR-0046](../../specs/adrs/0046-flat-variable-table-for-function-calls.md).
 
 ### Exact type matching for arguments
 
 The type-checking rule requires exact type matches between arguments and parameters. `INT` argument for `INT` parameter passes; `INT` argument for `DINT` parameter fails. Users must use explicit conversion functions (e.g., `INT_TO_DINT`). This avoids implicit conversion complexity and matches the project's safety-first design principle.
 
-See [ADR-0022](../../specs/adrs/0022-exact-type-matching-for-function-arguments.md).
+See [ADR-0047](../../specs/adrs/0047-exact-type-matching-for-function-arguments.md).
 
 ### CALL opcode (not inlining)
 
