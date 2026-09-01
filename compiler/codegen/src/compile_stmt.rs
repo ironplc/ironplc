@@ -194,10 +194,12 @@ fn compile_statement(
                         &structured.field,
                         0,
                     )?;
-                if matches!(
-                    &field_type,
-                    ironplc_analyzer::intermediate_type::IntermediateType::String { .. }
-                ) {
+                if let ironplc_analyzer::intermediate_type::IntermediateType::String {
+                    char_width,
+                    ..
+                } = &field_type
+                {
+                    let char_width = *char_width;
                     let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
                         Diagnostic::not_implemented(Label::span(
                             structured.span(),
@@ -205,7 +207,9 @@ fn compile_statement(
                         ))
                     })?;
                     let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
-                    compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+                    // Produce the RHS at the field's declared encoding, the
+                    // same as any other string destination (ADR-0034).
+                    compile_string_value(emitter, ctx, &assignment.value, char_width)?;
                     emitter.emit_str_store_var(byte_offset);
                     return Ok(());
                 }

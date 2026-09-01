@@ -11,11 +11,10 @@ use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, Par
 
 use super::compile::{
     string_region_size, CompileContext, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
-    NARROW_CHAR_WIDTH,
 };
 use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
-use crate::string_width::compile_string_value;
+use crate::string_width::{compile_string_value, encoding_mismatch, resolve_operand_char_width};
 
 /// Compiles the LEN standard function call.
 ///
@@ -67,9 +66,13 @@ pub(crate) fn compile_string_compare(
     ctx: &mut CompileContext,
     compare: &CompareExpr,
 ) -> Result<(), Diagnostic> {
-    let span = SourceSpan::default();
-    let left_offset = resolve_string_arg(emitter, ctx, &compare.left, &span, NARROW_CHAR_WIDTH)?;
-    let right_offset = resolve_string_arg(emitter, ctx, &compare.right, &span, NARROW_CHAR_WIDTH)?;
+    let span = compare.left.span();
+    // Both operands are addressed as data-region slots and CMP_STR requires
+    // them to agree on an encoding, so the pair resolves one width and any
+    // literal among them is interned at it.
+    let char_width = resolve_operand_char_width(ctx, &[&compare.left, &compare.right], &span)?;
+    let left_offset = resolve_string_arg(emitter, ctx, &compare.left, &span, char_width)?;
+    let right_offset = resolve_string_arg(emitter, ctx, &compare.right, &span, char_width)?;
 
     // Push data_offsets as stack values.
     let left_pool = ctx.add_i32_constant(left_offset as i32);
@@ -147,9 +150,20 @@ pub(crate) fn resolve_string_arg(
     char_width: CharWidth,
 ) -> Result<u32, Diagnostic> {
     // Fast path: a named string variable already owns a data-region slot.
+    // Its declared encoding is fixed, so a caller that needs a different one
+    // (STRING_TO_INT, which parses Latin-1, is the case that can reach here)
+    // has no bytecode to emit rather than a slot to reuse.
     if let ExprKind::Variable(variable) = &arg.kind {
         if let Some(var_name) = resolve_variable_name(variable) {
             if let Some(info) = ctx.string_vars.get(var_name) {
+                if info.char_width != char_width {
+                    return Err(encoding_mismatch(
+                        char_width,
+                        info.char_width,
+                        &arg.span(),
+                        func_span,
+                    ));
+                }
                 return Ok(info.data_offset);
             }
         }
@@ -192,10 +206,10 @@ pub(crate) fn compile_find(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in1_offset =
-        resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
-    let in2_offset =
-        resolve_string_arg(emitter, ctx, args[1], &func.name.span(), NARROW_CHAR_WIDTH)?;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0], args[1]], &span)?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &span, char_width)?;
 
     emitter.emit_find_str(in1_offset, in2_offset);
     Ok(())
@@ -218,10 +232,10 @@ pub(crate) fn compile_replace(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in1_offset =
-        resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
-    let in2_offset =
-        resolve_string_arg(emitter, ctx, args[1], &func.name.span(), NARROW_CHAR_WIDTH)?;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0], args[1]], &span)?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &span, char_width)?;
 
     // Compile L and P integer expressions onto the stack.
     let op_type = DEFAULT_OP_TYPE;
@@ -251,10 +265,10 @@ pub(crate) fn compile_insert(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in1_offset =
-        resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
-    let in2_offset =
-        resolve_string_arg(emitter, ctx, args[1], &func.name.span(), NARROW_CHAR_WIDTH)?;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0], args[1]], &span)?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &span, char_width)?;
 
     // Compile P integer expression onto the stack.
     let op_type = DEFAULT_OP_TYPE;
@@ -284,8 +298,9 @@ fn compile_string_2arg(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in_offset =
-        resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0]], &span)?;
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
 
     let op_type = DEFAULT_OP_TYPE;
     compile_expr(emitter, ctx, args[1], op_type)?;
@@ -313,8 +328,9 @@ fn compile_string_3arg(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in_offset =
-        resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0]], &span)?;
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
 
     let op_type = DEFAULT_OP_TYPE;
     compile_expr(emitter, ctx, args[1], op_type)?;
@@ -391,10 +407,10 @@ pub(crate) fn compile_concat(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in1_offset =
-        resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
-    let in2_offset =
-        resolve_string_arg(emitter, ctx, args[1], &func.name.span(), NARROW_CHAR_WIDTH)?;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0], args[1]], &span)?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &span, char_width)?;
 
     // Account for the temp buffer needed for the result.
     ctx.num_temp_bufs += 1;
