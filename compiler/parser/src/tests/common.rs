@@ -75,13 +75,18 @@ pub(crate) fn parse_text_reference_to(source: &str) -> Library {
     result.unwrap()
 }
 
-/// Parse with `allow_paren_string_length` enabled (the STRING(n)/WSTRING(n)
+/// Options enabling `allow_paren_string_length` (the STRING(n)/WSTRING(n)
 /// dialect delimiter). The default (strict IEC 61131-3) dialect rejects it.
-pub(crate) fn parse_text_paren_string_length(source: &str) -> Library {
-    let options = CompilerOptions {
+pub(crate) fn opts_with_paren_string_length() -> CompilerOptions {
+    CompilerOptions {
         allow_paren_string_length: true,
         ..CompilerOptions::default()
-    };
+    }
+}
+
+/// Parse with `allow_paren_string_length` enabled.
+pub(crate) fn parse_text_paren_string_length(source: &str) -> Library {
+    let options = opts_with_paren_string_length();
     let result = parse_program(source, &FileId::default(), &options);
     assert!(result.is_ok(), "Parse failed: {:?}", result.err());
     result.unwrap()
