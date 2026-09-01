@@ -102,12 +102,12 @@ pub(crate) fn compile_string_compare(
 /// Allocates a scratch string slot in the data region and emits its header.
 ///
 /// Every string operand that is not already a named string variable needs a
-/// slot of its own to be addressed by: a literal, a nested call's result, a
-/// struct field or array element reached through a general expression. The
-/// three of them differ only in what they store into the slot, so the
-/// allocation — reserving the region, growing the temp-buffer capacity, and
-/// emitting `STR_INIT` — lives here, stated once, at the `char_width` the
-/// caller resolved.
+/// slot of its own to be addressed by — a literal, a nested call's result, a
+/// struct field or array element reached through a general expression — and
+/// they differ only in what they store into it. The allocation itself
+/// (reserving the region, growing the temp-buffer capacity, emitting
+/// `STR_INIT`) is stated once, here, at the `char_width` the caller
+/// resolved.
 fn alloc_string_scratch(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -134,9 +134,10 @@ fn alloc_string_scratch(
 
 /// Resolves a string argument to its data_offset in the data region.
 ///
-/// Handles both variable references (looked up in `string_vars`) and
-/// string literals (allocated inline in the data region with initialization
-/// code emitted at the point of use).
+/// A named string variable is already a slot and is used where it lies.
+/// Anything else — a literal, a nested call, a struct field, an array element
+/// — is compiled into a scratch slot allocated here, so that the caller has a
+/// data offset to name.
 ///
 /// `char_width` is the encoding the operation this argument belongs to has
 /// settled on — see [`crate::string_width`]. Anything this function allocates
@@ -157,12 +158,7 @@ pub(crate) fn resolve_string_arg(
         if let Some(var_name) = resolve_variable_name(variable) {
             if let Some(info) = ctx.string_vars.get(var_name) {
                 if info.char_width != char_width {
-                    return Err(encoding_mismatch(
-                        char_width,
-                        info.char_width,
-                        &arg.span(),
-                        func_span,
-                    ));
+                    return Err(encoding_mismatch(char_width, info.char_width, func_span));
                 }
                 return Ok(info.data_offset);
             }

@@ -233,7 +233,11 @@ pub(crate) fn resolve_operand_char_width(
         match operand_width(ctx, operand) {
             OperandWidth::Declared(width) => match declared {
                 Some(existing) if existing != width => {
-                    return Err(encoding_mismatch(existing, width, &operand.span(), span));
+                    return Err(encoding_mismatch(
+                        existing,
+                        width,
+                        &operand_span(operand, span),
+                    ));
                 }
                 Some(_) => {}
                 None => declared = Some(width),
@@ -274,12 +278,7 @@ pub(crate) fn compile_string_value(
 
     if let OperandWidth::Declared(width) = operand_width(ctx, expr) {
         if width != char_width {
-            return Err(encoding_mismatch(
-                char_width,
-                width,
-                &expr.span(),
-                &expr.span(),
-            ));
+            return Err(encoding_mismatch(char_width, width, &expr.span()));
         }
     }
 
@@ -289,23 +288,29 @@ pub(crate) fn compile_string_value(
     result
 }
 
+/// The span to blame an operand's encoding on: its own when it has one, and
+/// the enclosing operation's otherwise. Not every expression position carries
+/// a span, and an unplaced diagnostic is worse than one placed on the
+/// operation the operand belongs to.
+fn operand_span(operand: &Expr, operation: &SourceSpan) -> SourceSpan {
+    let span = operand.span();
+    if span == SourceSpan::default() {
+        operation.clone()
+    } else {
+        span
+    }
+}
+
 /// Builds the P4034 diagnostic for two string encodings that cannot be
-/// reconciled, pointing at the operand that disagrees.
+/// reconciled.
 pub(crate) fn encoding_mismatch(
     expected: CharWidth,
     actual: CharWidth,
-    operand_span: &SourceSpan,
-    fallback_span: &SourceSpan,
+    span: &SourceSpan,
 ) -> Diagnostic {
-    let span = if operand_span == &SourceSpan::default() {
-        fallback_span.clone()
-    } else {
-        operand_span.clone()
-    };
-
     Diagnostic::problem(
         Problem::StringEncodingMismatch,
-        Label::span(span, "String operand"),
+        Label::span(span.clone(), "String operand"),
     )
     .with_context("expected", &type_name_for(expected).to_string())
     .with_context("found", &type_name_for(actual).to_string())
