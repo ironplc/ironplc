@@ -94,19 +94,35 @@ fn bin_names(cargo_toml: &str) -> Vec<String> {
     out
 }
 
-/// The `binaries := "…"` packaging list from the justfile.
-fn just_binaries(justfile: &str) -> Vec<String> {
-    for line in justfile.lines() {
+/// The whitespace-separated names inside the quoted value assigned to `name` on
+/// the first non-comment line that assigns it.
+///
+/// Both packaging lists have this shape — the justfile's `binaries := "a b c"`
+/// and the install script's `BINARIES="a b c"` — so one parser reads both. The
+/// assignment operator has to follow the name, so a longer identifier that ends
+/// in it (`LEGACY_OPTIONAL_BINARIES`) is not mistaken for it.
+fn whitespace_list_assignment(text: &str, name: &str) -> Vec<String> {
+    for line in text.lines() {
         if is_comment(line, "#") {
             continue;
         }
-        if line.trim_start().starts_with("binaries") && line.contains(":=") {
-            if let Some(list) = quoted_strings(line).into_iter().next() {
-                return list.split_whitespace().map(str::to_string).collect();
-            }
+        let Some(after_name) = line.trim_start().strip_prefix(name) else {
+            continue;
+        };
+        let operator = after_name.trim_start();
+        if !operator.starts_with(":=") && !operator.starts_with('=') {
+            continue;
+        }
+        if let Some(list) = quoted_strings(line).into_iter().next() {
+            return list.split_whitespace().map(str::to_string).collect();
         }
     }
     Vec::new()
+}
+
+/// The `binaries := "…"` packaging list from the justfile.
+fn just_binaries(justfile: &str) -> Vec<String> {
+    whitespace_list_assignment(justfile, "binaries")
 }
 
 /// The name a `${VAR}` reference points at, if `token` contains exactly one.
