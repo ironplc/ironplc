@@ -47,6 +47,7 @@ mod emit;
 mod optimize;
 mod source_lookup;
 mod stack_balance;
+mod string_encoding;
 mod string_width;
 
 pub use compile::{compile, CodegenOptions};

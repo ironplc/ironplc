@@ -38,6 +38,8 @@ pub mod task_table;
 mod type_section;
 #[cfg(feature = "std")]
 pub mod verify;
+#[cfg(feature = "std")]
+pub mod verify_string;
 
 // Always-available re-exports
 pub use char_width::CharWidth;
@@ -79,6 +81,8 @@ pub use type_section::{
 };
 #[cfg(feature = "std")]
 pub use verify::{verify_stack_balance, StackImbalance};
+#[cfg(feature = "std")]
+pub use verify_string::{verify_string_encoding, StringEncodingViolation};
 
 // Spec conformance testing infrastructure (test-only)
 #[cfg(test)]

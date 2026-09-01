@@ -46,9 +46,23 @@ count code units, not bytes and not user-perceived characters.
 
 The maximum declared length is 65,535 code units.
 
-``STRING`` and ``WSTRING`` cannot be mixed. Assigning one to the other is a
-compile error (:doc:`/reference/compiler/problems/P4034`); the runtime also
-traps a mixed operation that reaches it.
+``STRING`` and ``WSTRING`` cannot be mixed. Assigning one to the other, or
+comparing or combining them in one operation, is a compile error
+(:doc:`/reference/compiler/problems/P4034`); the runtime also traps a mixed
+operation that reaches it.
+
+A string literal is not itself narrow or wide. It takes the encoding of
+whatever it is used with, so a literal compares against, concatenates with, and
+initializes a ``WSTRING`` whichever way it is spelled:
+
+.. code-block::
+
+   VAR
+       w : WSTRING[10] := "abc";
+   END_VAR
+       IF w = "abc" THEN     (* the literal is encoded as WSTRING *)
+           w := CONCAT(w, 'd');
+       END_IF;
 
 See Also
 --------

@@ -544,3 +544,22 @@ END_PROGRAM
         crate::common::try_parse_and_compile(source, &CompilerOptions::default()).unwrap_err();
     assert_eq!(diagnostic.code, Problem::StringEncodingMismatch.code());
 }
+
+#[test]
+fn wstring_when_concat_with_narrow_spelled_literal_then_appends_wide() {
+    // The example in docs/reference/language/data-types/elementary/wstring.rst.
+    let source = "
+PROGRAM main
+  VAR
+    w : WSTRING[10] := \"abc\";
+  END_VAR
+  IF w = \"abc\" THEN
+    w := CONCAT(w, 'd');
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
+    assert_eq!(read_wstring(&bufs.data_region, 0), "abcd");
+}

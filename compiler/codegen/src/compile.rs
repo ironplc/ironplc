@@ -1000,10 +1000,12 @@ fn compile_program_with_functions(
 
     let container = builder.build();
 
-    // Verify operand-stack discipline before the container escapes codegen.
-    // See `crate::stack_balance` for why this is a hard error and
-    // `specs/design/bytecode-verifier-rules.md` for the rules it enforces.
+    // Verify operand-stack discipline and string-encoding agreement before
+    // the container escapes codegen. See `crate::stack_balance` and
+    // `crate::string_encoding` for why these are hard errors, and
+    // `specs/design/bytecode-verifier-rules.md` for the rules they enforce.
     crate::stack_balance::verify_container(&container)?;
+    crate::string_encoding::verify_container(&container)?;
 
     Ok(container)
 }
