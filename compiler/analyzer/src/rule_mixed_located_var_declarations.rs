@@ -119,7 +119,7 @@ mod tests {
         }
     }
 
-    rule_err!(
+    rule_err1_at!(
         apply_when_mixed_block_and_flag_disabled_then_error,
         "
 FUNCTION_BLOCK FB_Example
@@ -127,7 +127,50 @@ VAR
     tempSensor AT%I*: INT;
     fbComm     : BOOL;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::MixedLocatedVarDeclarationNotAllowed,
+        "tempSensor",
+    );
+
+    rule_err1_at!(
+        /// The located variable is in the third of four blocks, so a label
+        /// that named the declaration only by its enclosing POU -- or one
+        /// carrying a default span -- would leave the reader to find it.
+        apply_when_mixed_block_follows_other_blocks_then_error_points_at_located_variable,
+        "
+FUNCTION_BLOCK FB_Example
+VAR_INPUT
+    enable : BOOL;
+END_VAR
+VAR_OUTPUT
+    ready : BOOL;
+END_VAR
+VAR
+    counter    : INT;
+    tempSensor AT%I*: INT;
+END_VAR
+VAR
+    scratch : INT;
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::MixedLocatedVarDeclarationNotAllowed,
+        "tempSensor",
+    );
+
+    rule_err1_at!(
+        /// A complete address (`AT %IX0.0`) reaches the rule through a
+        /// different parser rule than the incomplete `AT %I*` above, so it
+        /// needs its own span assertion.
+        apply_when_mixed_block_has_complete_address_then_error_points_at_located_variable,
+        "
+FUNCTION_BLOCK FB_Example
+VAR
+    fbComm     : BOOL;
+    tempSensor AT %IX0.0 : BOOL;
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::MixedLocatedVarDeclarationNotAllowed,
+        "tempSensor",
     );
 
     #[test]

@@ -4,11 +4,7 @@
 //! This representation is only relevant in the parser where we need to
 //! have lists of all variable types.
 //!
-use dsl::{
-    common::*,
-    configuration::AccessDeclaration,
-    core::{Id, SourceSpan},
-};
+use dsl::{common::*, configuration::AccessDeclaration, core::Id};
 
 /// Defines VarDecl type without the type information (e.g. input, output).
 /// Useful only as an intermediate step in the parser where we do not know
@@ -92,7 +88,6 @@ impl From<IncomplVarDecl> for VarDecl {
             identifier: VariableIdentifier::Direct(DirectVariableIdentifier {
                 name: Some(val.name),
                 address_assignment: val.loc,
-                span: SourceSpan::default(),
             }),
             var_type: VariableType::Var,
             qualifier: val.qualifier,
@@ -108,7 +103,6 @@ impl UntypedVarDecl {
             Some(loc) => VariableIdentifier::Direct(DirectVariableIdentifier {
                 name: Some(self.name),
                 address_assignment: loc,
-                span: SourceSpan::default(),
             }),
             None => VariableIdentifier::Symbol(self.name),
         };
