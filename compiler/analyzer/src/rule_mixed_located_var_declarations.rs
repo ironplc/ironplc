@@ -32,7 +32,11 @@ use ironplc_dsl::{
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 
 pub fn apply(
     lib: &Library,
@@ -43,19 +47,22 @@ pub fn apply(
         return Ok(());
     }
 
-    let mut visitor = RuleMixedLocatedVarDeclarations {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleMixedLocatedVarDeclarations {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleMixedLocatedVarDeclarations {
     diagnostics: Vec<Diagnostic>,
+}
+
+impl DiagnosticVisitor for RuleMixedLocatedVarDeclarations {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 impl RuleMixedLocatedVarDeclarations {
