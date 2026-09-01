@@ -201,6 +201,16 @@ END_CONFIGURATION"
     CompilerOptions::default
 )]
 #[case::string_length("TYPE S : STRING·[·10·]; END_TYPE", verbatim, CompilerOptions::default)]
+#[case::array_element_string_length(
+    "TYPE A : ARRAY[0..3] OF STRING·[·10·]; END_TYPE",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::array_element_string_paren_length(
+    "TYPE A : ARRAY[0..3] OF STRING·(·10·); END_TYPE",
+    verbatim,
+    opts_with_paren_string_length
+)]
 #[case::enumeration_values(
     "TYPE E : (·RED·,·GREEN·); END_TYPE",
     verbatim,

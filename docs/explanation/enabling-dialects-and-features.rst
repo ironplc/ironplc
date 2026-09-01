@@ -367,7 +367,10 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    :doc:`P4042 </reference/compiler/problems/P4042>`. The bracket form is
    standard syntax and is always allowed, and the delimiters must match
    (``STRING[255)`` is always a syntax error). The renderer normalizes the
-   parenthesis form to brackets.
+   parenthesis form to brackets. The flag applies in every position a string
+   type can appear, including as an array element type
+   (``ARRAY[1..10] OF STRING(255)``), a function return type, and a
+   ``TYPE`` alias.
 
 ``--allow-struct-initializer-expressions``
    Allow a general (non-constant) expression — such as a pointer
