@@ -35,6 +35,21 @@ Trade-off analyses that capture **why** a particular approach was chosen over al
 
 That immutability covers the *decision*. It does not cover the *record* of it: a title that names the losing option, a status that never advanced past `proposed`, or a section describing a rejected option as though it had been built are all defects in the record, and leaving them in place is how an ADR comes to mislead the reader it exists to inform.
 
+#### Numbering
+
+A new ADR takes the **next unused number** — one higher than the highest already
+in `specs/adrs/`, not one higher than the highest your branch happens to know
+about. Two branches open at the same time will otherwise both reach for the same
+number, which is exactly how 0014, 0021, and 0022 came to name two decisions
+each.
+
+The number is the decision's identity: prose and code comments cite decisions as
+a bare `ADR-NNNN`, and that form cannot resolve if the number is ambiguous. Check
+the directory for the current maximum immediately before you name the file, and
+again after rebasing onto `main`. `just adr-numbers` enforces uniqueness and runs
+as part of `just`; when it fails, renumber the later ADR (the one whose `date:` is
+later) and update the citations that meant it.
+
 #### Status
 
 Every ADR carries front matter — `status:` and `date:` — directly under the H1:
