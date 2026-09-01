@@ -223,30 +223,62 @@ _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"
   exit 1
 
-# Install script smoke test - Unix only.
+# Install script smoke test against a published release - Unix only.
 #
 # Runs compiler/install.sh against a real GitHub release, verifies that the
 # installed binaries run, then re-runs the installer (without clearing state)
-# to confirm idempotency.
+# to confirm idempotency. This is the deployment-time check: it proves the
+# published script installs the release that was just published.
+#
+# For pull requests use `install-script-smoke-local`, which installs the
+# tarball built from the working tree. install.sh requires every binary in the
+# archive, so a release that predates one of them is not installable and this
+# recipe cannot stand in for testing the current revision.
 #
 # compiler-version: empty to use the latest release; otherwise a bare version
 #                   like "0.201.0" (without the leading "v").
 [unix]
 install-script-smoke compiler-version="":
   @just _install-script-smoke-clean
-  @just _install-script-smoke-run "{{compiler-version}}"
+  @just _install-script-smoke-run "{{compiler-version}}" ""
   @just _install-script-smoke-verify
-  @just _install-script-smoke-run "{{compiler-version}}"
+  @just _install-script-smoke-run "{{compiler-version}}" ""
   @just _install-script-smoke-verify
+
+# Install script smoke test against this revision's own tarball - Unix only.
+#
+# Installs from a local directory laid out like the GitHub release download
+# tree (<release-dir>/v<version>/<artifact>, beside its .sha256) rather than
+# from a published release, so the script is exercised against the artifacts
+# this revision produces. Checksum verification is unchanged -- install.sh
+# reads the .sha256 from the same directory and still refuses a mismatch.
+#
+# release-dir: directory holding v<version>/<artifact>; may be relative.
+# compiler-version: the bare version those artifacts were packaged with.
+[unix]
+install-script-smoke-local release-dir compiler-version:
+  #!/usr/bin/env sh
+  set -eu
+  # install.sh joins this onto "/v<version>/<artifact>", so it has to be an
+  # absolute file:// URL however the caller spelled the directory.
+  _url="file://$(cd "{{release-dir}}" && pwd)"
+  just _install-script-smoke-clean
+  just _install-script-smoke-run "{{compiler-version}}" "$_url"
+  just _install-script-smoke-verify
+  just _install-script-smoke-run "{{compiler-version}}" "$_url"
+  just _install-script-smoke-verify
 
 [unix]
 _install-script-smoke-clean:
   rm -rf "$HOME/.ironplc"
 
 [unix]
-_install-script-smoke-run compiler-version:
+_install-script-smoke-run compiler-version release-url:
   #!/usr/bin/env sh
   set -eu
+  export IRONPLC_RELEASE_URL="{{release-url}}"
+  # An empty override means "use the script's own default".
+  [ -n "$IRONPLC_RELEASE_URL" ] || unset IRONPLC_RELEASE_URL
   if [ -n "{{compiler-version}}" ]; then
     IRONPLC_VERSION="v{{compiler-version}}" sh ./compiler/install.sh --no-modify-path
   else

@@ -17,7 +17,12 @@
 set -eu
 
 REPO="ironplc/ironplc"
-RELEASE_URL="https://github.com/${REPO}/releases/download"
+# Where release archives are fetched from. IRONPLC_RELEASE_URL exists so the
+# packaging tests can point the script at a tarball built from the working tree
+# (`just install-script-smoke-local`) instead of a published release; it is not
+# something a user needs to set. The archive and its `.sha256` are both read
+# from here, so an override moves the checksum's origin with the file it checks.
+RELEASE_URL="${IRONPLC_RELEASE_URL:-https://github.com/${REPO}/releases/download}"
 LATEST_API="https://api.github.com/repos/${REPO}/releases/latest"
 LATEST_REDIRECT="https://github.com/${REPO}/releases/latest"
 ISSUES_URL="https://github.com/${REPO}/issues"

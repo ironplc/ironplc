@@ -5,7 +5,12 @@ on:
       compiler-version:
         required: true
         type: string
-        description: 'The version number to test with (without the "v" prefix). Empty string uses the latest release.'
+        description: 'The version number to test with (without the "v" prefix). Empty string uses the latest release; ignored unless from-build-artifacts is false.'
+      from-build-artifacts:
+        required: false
+        default: false
+        type: boolean
+        description: 'Install the tarball this run built (downloaded from the run''s build artifacts) instead of a published release. Requires the caller to depend on the job that uploads them, and that job to have packaged with version 0.0.0.'
 
 permissions:
   contents: read
@@ -16,7 +21,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # `artifact` is the tarball install.sh asks for on that runner, derived
+        # from uname the same way the script's detect_platform does; it is only
+        # used in the from-build-artifacts path. macos-latest is arm64.
+        include:
+          - os: ubuntu-latest
+            artifact: ironplcc-x86_64-linux-musl.tar.gz
+          - os: macos-latest
+            artifact: ironplcc-aarch64-macos.tar.gz
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -27,8 +39,28 @@ jobs:
       # Configure the execution environment
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
 
-      # Execute the install script against a real GitHub release and verify
-      # that the installed binaries are functional. The recipe re-runs the
-      # installer to confirm idempotency.
-      - name: Install script smoke test
+      # Fetch the tarball and checksum this run packaged, laid out the way the
+      # GitHub release download tree is (<root>/v<version>/<artifact>) so
+      # install.sh resolves them with its normal URL construction. The build
+      # job packages pull requests as version 0.0.0.
+      - name: Download this revision's tarball
+        if: ${{ inputs.from-build-artifacts }}
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: ${{ matrix.artifact }}
+          path: local-release/v0.0.0
+      - name: Download this revision's tarball checksum
+        if: ${{ inputs.from-build-artifacts }}
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: ${{ matrix.artifact }}.sha256
+          path: local-release/v0.0.0
+
+      # Execute the install script and verify that the installed binaries are
+      # functional. Both recipes re-run the installer to confirm idempotency.
+      - name: Install script smoke test (this revision)
+        if: ${{ inputs.from-build-artifacts }}
+        run: just install-script-smoke-local local-release 0.0.0
+      - name: Install script smoke test (published release)
+        if: ${{ !inputs.from-build-artifacts }}
         run: just install-script-smoke "${{ inputs.compiler-version }}"
