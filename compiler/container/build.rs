@@ -6,5 +6,6 @@ fn main() {
         // from the enumeration design; codegen owns the rest of that same doc.
         // This is the cross-crate conformance case: one design doc, two crates.
         "enumeration-codegen.md",
+        "variable-value-rendering.md",
     ]);
 }

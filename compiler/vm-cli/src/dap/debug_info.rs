@@ -8,15 +8,11 @@
 //! VAR_NAME, FUNC_NAME, STRING layouts, source file table, `debug_format`) is
 //! a dependency of exactly one module.
 
-use ironplc_container::debug_format::{format_variable_value, read_string_value};
-use ironplc_container::debug_section::{iec_type_tag, DebugSection, SourceFileEntry};
+use ironplc_container::debug_format::VariableRenderer;
+use ironplc_container::debug_section::{DebugSection, SourceFileEntry};
 use ironplc_container::{FunctionId, SourceColumn, SourceFileId, SourceLine};
 
 use super::types::Variable;
-
-/// Placeholder value for a variable whose bytes cannot be read (corrupt
-/// STRING layout) or whose rendering is not yet supported (WSTRING).
-const VALUE_NOT_AVAILABLE: &str = "<not available>";
 
 /// A source breakpoint resolved against the line map.
 #[derive(Debug, PartialEq, Eq)]
@@ -200,78 +196,45 @@ pub fn resolve_frame(
 /// Render a run of variable slots for a `variables` response.
 ///
 /// `values[i]` is the raw 64-bit slot for variable index `i`; `data_region`
-/// backs STRING reads. A slot with a VAR_NAME entry renders with its source
-/// name, declared type, and a value formatted per its IEC type tag; a slot
-/// without one (or a container without VAR_NAME) keeps the `var[i]` /
-/// signed-decimal fallback so the pane never goes blank.
+/// backs STRING and WSTRING reads.
+///
+/// Naming and value rendering both come from
+/// [`VariableRenderer`](ironplc_container::debug_format::VariableRenderer) —
+/// the one place that formats a variable for display
+/// (`specs/design/variable-value-rendering.md`) — so the debugger pane agrees
+/// with `--dump-vars` and the playground. A slot with no VAR_NAME entry keeps
+/// the `var[i]` / signed-decimal fallback, so the pane never goes blank.
 pub fn render_variables(
     debug: Option<&DebugSection>,
     values: &[u64],
     data_region: &[u8],
 ) -> Vec<Variable> {
-    let entries: std::collections::HashMap<usize, &_> = debug
-        .map(|d| {
-            d.var_names
-                .iter()
-                .map(|entry| (entry.var_index.raw() as usize, entry))
-                .collect()
-        })
-        .unwrap_or_default();
+    let renderer = VariableRenderer::from_debug_section(debug);
     values
         .iter()
         .enumerate()
         .map(|(i, &raw)| {
-            let entry = entries.get(&i);
-            match entry {
-                Some(entry) => Variable {
-                    name: entry.name.clone(),
-                    value: variable_value(debug, entry.iec_type_tag, i, raw, data_region),
-                    type_name: Some(entry.type_name.clone()),
-                    variables_reference: 0,
-                },
-                None => Variable {
-                    name: format!("var[{i}]"),
-                    value: (raw as i32).to_string(),
-                    type_name: None,
-                    variables_reference: 0,
-                },
+            let index = i as u16;
+            Variable {
+                name: renderer.name(index),
+                value: renderer.render(index, raw, data_region).text,
+                type_name: renderer.var(index).map(|info| info.type_name.clone()),
+                variables_reference: 0,
             }
         })
         .collect()
-}
-
-/// Format one variable's value per its IEC type tag. STRING values live in
-/// the data region (the slot is unused); everything else renders from the
-/// raw slot via the shared `debug_format` helper.
-fn variable_value(
-    debug: Option<&DebugSection>,
-    tag: u8,
-    var_index: usize,
-    raw: u64,
-    data_region: &[u8],
-) -> String {
-    match tag {
-        iec_type_tag::STRING => debug
-            .and_then(|d| {
-                d.string_layouts
-                    .iter()
-                    .find(|layout| layout.var_index.raw() as usize == var_index)
-            })
-            .and_then(|layout| read_string_value(data_region, layout.data_offset).ok())
-            .unwrap_or_else(|| VALUE_NOT_AVAILABLE.to_string()),
-        // WSTRING rendering is a v1 cut (as in the playground).
-        iec_type_tag::WSTRING => VALUE_NOT_AVAILABLE.to_string(),
-        _ => format_variable_value(raw, tag),
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use ironplc_container::debug_section::{
-        var_section, FuncNameEntry, LineMapEntry, SourceFileEntry, StringLayoutEntry, VarNameEntry,
+        iec_type_tag, var_section, FuncNameEntry, LineMapEntry, SourceFileEntry, StringLayoutEntry,
+        VarNameEntry,
     };
-    use ironplc_container::{SourceColumn, SourceFileId, SourceLine, VarIndex};
+    use ironplc_container::{
+        SourceColumn, SourceFileId, SourceLine, VarIndex, VALUE_INVALID, VALUE_UNAVAILABLE,
+    };
 
     fn line_entry(function_id: FunctionId, offset: u16, file: u16, line: u16) -> LineMapEntry {
         LineMapEntry {
@@ -511,7 +474,7 @@ mod tests {
             ..DebugSection::default()
         };
         let vars = render_variables(Some(&debug), &[0], &[0, 0, 0, 0]);
-        assert_eq!(vars[0].value, VALUE_NOT_AVAILABLE);
+        assert_eq!(vars[0].value, VALUE_INVALID);
     }
 
     #[test]
@@ -527,7 +490,7 @@ mod tests {
         };
         // cur_len (40) reads past the end of the region.
         let vars = render_variables(Some(&debug), &[0], &[8, 0, 40, 0, 1, 0, b'h', b'i']);
-        assert_eq!(vars[0].value, VALUE_NOT_AVAILABLE);
+        assert_eq!(vars[0].value, VALUE_INVALID);
     }
 
     #[test]
@@ -537,17 +500,24 @@ mod tests {
             ..DebugSection::default()
         };
         let vars = render_variables(Some(&debug), &[0], &[]);
-        assert_eq!(vars[0].value, VALUE_NOT_AVAILABLE);
+        assert_eq!(vars[0].value, VALUE_UNAVAILABLE);
     }
 
     #[test]
-    fn render_variables_when_wstring_then_placeholder() {
+    fn render_variables_when_wstring_then_reads_data_region() {
         let debug = DebugSection {
             var_names: vec![var_name(0, iec_type_tag::WSTRING, "wmsg", "WSTRING")],
+            string_layouts: vec![StringLayoutEntry {
+                var_index: VarIndex::new(0),
+                data_offset: 0,
+                max_length: 8,
+            }],
             ..DebugSection::default()
         };
-        let vars = render_variables(Some(&debug), &[0], &[]);
-        assert_eq!(vars[0].value, VALUE_NOT_AVAILABLE);
+        // [max_len=8][cur_len=2][char_width=2] then "hi" as UTF-16LE.
+        let data = vec![8, 0, 2, 0, 2, 0, b'h', 0, b'i', 0];
+        let vars = render_variables(Some(&debug), &[0], &data);
+        assert_eq!(vars[0].value, "\"hi\"");
     }
 
     #[test]
