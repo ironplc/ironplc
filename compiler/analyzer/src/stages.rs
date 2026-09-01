@@ -415,6 +415,46 @@ mod tests {
         assert!(context.has_diagnostics());
     }
 
+    /// Issue #1566: a second file must not displace the first file's
+    /// diagnostics. Every undefined variable across both files is reported.
+    #[test]
+    fn analyze_when_semantic_errors_in_two_files_then_reports_all() {
+        let file_a = "
+PROGRAM a
+VAR
+  x : INT;
+END_VAR
+  x := AAA_ONE;
+  x := AAA_TWO;
+END_PROGRAM";
+
+        let file_b = "
+PROGRAM b
+VAR
+  y : INT;
+END_VAR
+  y := BBB_ONE;
+END_PROGRAM";
+
+        let options = CompilerOptions::default();
+        let library_a = parse_program(file_a, &FileId::from_string("a.st"), &options).unwrap();
+        let library_b = parse_program(file_b, &FileId::from_string("b.st"), &options).unwrap();
+
+        let (_library, context) = analyze(&[&library_a, &library_b], &options).unwrap();
+
+        let reported: Vec<&String> = context
+            .diagnostics()
+            .iter()
+            .flat_map(|d| &d.described)
+            .collect();
+        for expected in ["variable=AAA_ONE", "variable=AAA_TWO", "variable=BBB_ONE"] {
+            assert!(
+                reported.iter().any(|d| d.as_str() == expected),
+                "expected {expected}, got {reported:?}"
+            );
+        }
+    }
+
     #[test]
     fn analyze_2() {
         let lib = parse_shared_library("main.st");

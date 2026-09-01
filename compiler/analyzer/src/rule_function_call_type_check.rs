@@ -54,6 +54,7 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -344,7 +345,7 @@ impl RuleFunctionCallTypeCheck<'_> {
     }
 }
 
-impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
+impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
     type Value = ();
 
     /// Opens a declaration's scope.
@@ -353,7 +354,7 @@ impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
     /// not express a method: clearing at a method boundary would discard
     /// the enclosing function block's fields, and not clearing left a
     /// method's locals shadowing those fields for every later method.
-    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
         self.var_types.enter();
 
         // A declaration's own name is its result variable, so assigning
@@ -385,7 +386,7 @@ impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
         self.var_types.exit();
     }
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let VariableIdentifier::Symbol(ref id) = node.identifier {
             if let TypeReference::Named(ref type_name) = node.type_name() {
                 self.var_types.add(id, type_name.clone());
@@ -394,13 +395,13 @@ impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
         node.recurse_visit(self)
     }
 
-    fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, Diagnostic> {
+    fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, Infallible> {
         self.check_return_type(&node.target, &node.value);
         self.check_assignment_type(&node.target, &node.value);
         node.recurse_visit(self)
     }
 
-    fn visit_function(&mut self, node: &Function) -> Result<Self::Value, Diagnostic> {
+    fn visit_function(&mut self, node: &Function) -> Result<Self::Value, Infallible> {
         let func_sig = self.context.functions.get(&node.name);
 
         if let Some(signature) = func_sig {

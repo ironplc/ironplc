@@ -77,7 +77,11 @@ material here.
 
 When writing compiler code:
 - Prefer `Result<T, Diagnostic>` for fallible operations; propagate with `?`
-- Collect multiple diagnostics rather than failing on the first, where practical
+- Collect multiple diagnostics rather than failing on the first, where practical.
+  In the analyzer this is not a matter of judgement: a semantic rule's visitor
+  cannot return `Err` at all (see
+  [compiler-architecture.md](compiler-architecture.md#error-handling) and
+  [ADR-0048](../adrs/0048-semantic-rules-cannot-fail.md))
 - Provide clear, actionable error messages: include what was expected vs. found
 - Use `Diagnostic::problem()` with an appropriate `Label::span()` for source location
 - Use the `internal_error` and `not_supported` helpers for the special cases they
