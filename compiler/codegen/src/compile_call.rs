@@ -15,6 +15,7 @@ use ironplc_dsl::textual::{
 
 use super::compile::{
     CompileContext, OpType, OpWidth, Signedness, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
+    NARROW_CHAR_WIDTH,
 };
 use super::compile_expr::{
     compile_expr, emit_add, emit_and, emit_div, emit_eq, emit_ge, emit_gt, emit_le, emit_lt,
@@ -291,7 +292,8 @@ fn compile_user_function_call(
                 str_info.max_length,
                 str_info.char_width,
             );
-            let src_offset = resolve_string_arg(emitter, ctx, arg, &func.name.span())?;
+            let src_offset =
+                resolve_string_arg(emitter, ctx, arg, &func.name.span(), NARROW_CHAR_WIDTH)?;
             ctx.num_temp_bufs += 1;
             emitter.emit_str_load_var(src_offset);
             emitter.emit_str_store_var(str_info.data_offset);
@@ -1294,7 +1296,8 @@ pub(crate) fn compile_string_conversion(
             Ok(())
         }
         StringConversion::StringToNum { target } => {
-            let data_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+            let data_offset =
+                resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
             let pool_index = ctx.add_i32_constant(data_offset as i32);
             emitter.emit_load_const_i32(pool_index);
 

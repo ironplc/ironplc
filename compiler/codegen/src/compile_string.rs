@@ -4,18 +4,18 @@
 //! INSERT, DELETE, LEFT, RIGHT, MID, CONCAT) and string comparison.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
-use ironplc_container::opcode;
-use ironplc_dsl::common::ConstantKind;
+use ironplc_container::{opcode, CharWidth};
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
 
 use super::compile::{
-    encode_string_literal, string_region_size, CompileContext, DEFAULT_OP_TYPE,
-    DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
+    string_region_size, CompileContext, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
+    NARROW_CHAR_WIDTH,
 };
 use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
+use crate::string_width::compile_string_value;
 
 /// Compiles the LEN standard function call.
 ///
@@ -68,8 +68,8 @@ pub(crate) fn compile_string_compare(
     compare: &CompareExpr,
 ) -> Result<(), Diagnostic> {
     let span = SourceSpan::default();
-    let left_offset = resolve_string_arg(emitter, ctx, &compare.left, &span)?;
-    let right_offset = resolve_string_arg(emitter, ctx, &compare.right, &span)?;
+    let left_offset = resolve_string_arg(emitter, ctx, &compare.left, &span, NARROW_CHAR_WIDTH)?;
+    let right_offset = resolve_string_arg(emitter, ctx, &compare.right, &span, NARROW_CHAR_WIDTH)?;
 
     // Push data_offsets as stack values.
     let left_pool = ctx.add_i32_constant(left_offset as i32);
@@ -96,97 +96,73 @@ pub(crate) fn compile_string_compare(
     Ok(())
 }
 
+/// Allocates a scratch string slot in the data region and emits its header.
+///
+/// Every string operand that is not already a named string variable needs a
+/// slot of its own to be addressed by: a literal, a nested call's result, a
+/// struct field or array element reached through a general expression. The
+/// three of them differ only in what they store into the slot, so the
+/// allocation — reserving the region, growing the temp-buffer capacity, and
+/// emitting `STR_INIT` — lives here, stated once, at the `char_width` the
+/// caller resolved.
+fn alloc_string_scratch(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    char_width: CharWidth,
+    span: &SourceSpan,
+) -> Result<u32, Diagnostic> {
+    let max_length = DEFAULT_STRING_MAX_LENGTH;
+    let data_offset = ctx.data_region_offset;
+    let total_bytes = string_region_size(max_length, char_width);
+    ctx.data_region_offset = ctx
+        .data_region_offset
+        .checked_add(total_bytes)
+        .ok_or_else(|| Diagnostic::todo_with_span(span.clone()))?;
+
+    if max_length > ctx.max_string_capacity {
+        ctx.max_string_capacity = max_length;
+    }
+    ctx.note_char_width(char_width);
+
+    emitter.emit_str_init(data_offset, max_length, char_width);
+
+    Ok(data_offset)
+}
+
 /// Resolves a string argument to its data_offset in the data region.
 ///
 /// Handles both variable references (looked up in `string_vars`) and
 /// string literals (allocated inline in the data region with initialization
 /// code emitted at the point of use).
+///
+/// `char_width` is the encoding the operation this argument belongs to has
+/// settled on — see [`crate::string_width`]. Anything this function allocates
+/// or interns uses it, so an operand never disagrees with its peers about the
+/// encoding (ADR-0034).
 pub(crate) fn resolve_string_arg(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     arg: &Expr,
-    func_span: &ironplc_dsl::core::SourceSpan,
+    func_span: &SourceSpan,
+    char_width: CharWidth,
 ) -> Result<u32, Diagnostic> {
-    match &arg.kind {
-        ExprKind::Variable(variable) => {
-            // Fast path: simple named variable found in string_vars.
-            if let Some(var_name) = resolve_variable_name(variable) {
-                if let Some(info) = ctx.string_vars.get(var_name) {
-                    return Ok(info.data_offset);
-                }
+    // Fast path: a named string variable already owns a data-region slot.
+    if let ExprKind::Variable(variable) = &arg.kind {
+        if let Some(var_name) = resolve_variable_name(variable) {
+            if let Some(info) = ctx.string_vars.get(var_name) {
+                return Ok(info.data_offset);
             }
-            // Complex variable (e.g., struct field array subscript): fall
-            // through to the general expression path below.
-            let max_length = DEFAULT_STRING_MAX_LENGTH;
-            let data_offset = ctx.data_region_offset;
-            let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone()))?;
-
-            if max_length > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_length;
-            }
-
-            emitter.emit_str_init(data_offset, max_length, NARROW_CHAR_WIDTH);
-
-            let op_type = DEFAULT_OP_TYPE;
-            compile_expr(emitter, ctx, arg, op_type)?;
-            emitter.emit_str_store_var(data_offset);
-
-            Ok(data_offset)
-        }
-        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
-            // Allocate space in the data region for this string literal.
-            let bytes = encode_string_literal(&lit.value, NARROW_CHAR_WIDTH);
-            let max_length = DEFAULT_STRING_MAX_LENGTH;
-            let data_offset = ctx.data_region_offset;
-            let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone()))?;
-
-            if max_length > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_length;
-            }
-
-            // Emit initialization: header + value.
-            emitter.emit_str_init(data_offset, max_length, NARROW_CHAR_WIDTH);
-
-            let pool_index = ctx.add_str_constant(bytes);
-            ctx.num_temp_bufs += 1;
-            emitter.emit_load_const_str(pool_index);
-            emitter.emit_str_store_var(data_offset);
-
-            Ok(data_offset)
-        }
-        _ => {
-            // General expression (e.g., nested function call like MID(...)).
-            // Compile the expression (pushes buf_idx), then store into a
-            // temporary data region slot so the caller gets a data_offset.
-            let max_length = DEFAULT_STRING_MAX_LENGTH;
-            let data_offset = ctx.data_region_offset;
-            let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone()))?;
-
-            if max_length > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_length;
-            }
-
-            emitter.emit_str_init(data_offset, max_length, NARROW_CHAR_WIDTH);
-
-            let op_type = DEFAULT_OP_TYPE;
-            compile_expr(emitter, ctx, arg, op_type)?;
-            emitter.emit_str_store_var(data_offset);
-
-            Ok(data_offset)
         }
     }
+
+    // Everything else — a literal, a nested call such as MID(...), a struct
+    // field or an array element — produces a temp buffer, which needs a slot
+    // of its own for the caller to address.
+    let data_offset = alloc_string_scratch(emitter, ctx, char_width, func_span)?;
+    compile_string_value(emitter, ctx, arg, char_width)?;
+    emitter.emit_str_store_var(data_offset);
+
+    Ok(data_offset)
 }
 
 /// Collects positional input arguments from a function call.
@@ -216,8 +192,10 @@ pub(crate) fn compile_find(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
+    let in1_offset =
+        resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
+    let in2_offset =
+        resolve_string_arg(emitter, ctx, args[1], &func.name.span(), NARROW_CHAR_WIDTH)?;
 
     emitter.emit_find_str(in1_offset, in2_offset);
     Ok(())
@@ -240,8 +218,10 @@ pub(crate) fn compile_replace(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
+    let in1_offset =
+        resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
+    let in2_offset =
+        resolve_string_arg(emitter, ctx, args[1], &func.name.span(), NARROW_CHAR_WIDTH)?;
 
     // Compile L and P integer expressions onto the stack.
     let op_type = DEFAULT_OP_TYPE;
@@ -271,8 +251,10 @@ pub(crate) fn compile_insert(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
+    let in1_offset =
+        resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
+    let in2_offset =
+        resolve_string_arg(emitter, ctx, args[1], &func.name.span(), NARROW_CHAR_WIDTH)?;
 
     // Compile P integer expression onto the stack.
     let op_type = DEFAULT_OP_TYPE;
@@ -302,7 +284,8 @@ fn compile_string_2arg(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let in_offset =
+        resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
 
     let op_type = DEFAULT_OP_TYPE;
     compile_expr(emitter, ctx, args[1], op_type)?;
@@ -330,7 +313,8 @@ fn compile_string_3arg(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let in_offset =
+        resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
 
     let op_type = DEFAULT_OP_TYPE;
     compile_expr(emitter, ctx, args[1], op_type)?;
@@ -407,8 +391,10 @@ pub(crate) fn compile_concat(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
+    let in1_offset =
+        resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
+    let in2_offset =
+        resolve_string_arg(emitter, ctx, args[1], &func.name.span(), NARROW_CHAR_WIDTH)?;
 
     // Account for the temp buffer needed for the result.
     ctx.num_temp_bufs += 1;
