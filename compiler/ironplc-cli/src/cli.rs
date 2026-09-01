@@ -443,6 +443,11 @@ fn map_label(
 /// Paths are canonicalized before comparison so relative-vs-absolute
 /// differences and symbolic links resolve to the same target. When `output`
 /// does not yet exist its canonicalization fails, so there is no conflict.
+///
+/// Hard-link aliasing is NOT caught: two names for one inode are genuinely
+/// distinct paths with nothing for `canonicalize` to resolve, so writing
+/// through one destroys a source reached by the other. Comparing device and
+/// inode instead of canonical paths would close that hole.
 fn output_conflicts_with_source(project: &FileBackedProject, output: &Path) -> bool {
     let Ok(output) = canonicalize(output) else {
         return false;
