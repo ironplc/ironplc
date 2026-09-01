@@ -104,22 +104,23 @@ The `--dump-vars [PATH]` option writes all variable slot values after the VM sto
 - **REQ-VC-vm-cli-006** If `--dump-vars` is specified without a `PATH`, or with `PATH` equal to `-`, the dump is written to stdout.
 - **REQ-VC-vm-cli-007** If a runtime trap occurs and `--dump-vars` is set, the dump of the current variable state is written before the command exits non-zero.
 - **REQ-VC-vm-cli-008** When the container's debug section names a variable, the line uses `<name>: <value>`. Otherwise the line uses `var[<index>]: <raw_i32>`.
-- **REQ-VC-vm-cli-009** When debug info provides an IEC type tag, `<value>` is formatted per the type:
+- **REQ-VC-vm-cli-009** `<value>` is rendered by
+  `ironplc_container::debug_format::VariableRenderer` per
+  [Variable Value Rendering](variable-value-rendering.md), so a variable reads
+  the same in the dump, in the debugger and in the playground:
 
-| Tag | Format | Example |
-|-----|--------|---------|
-| `BOOL` | `TRUE`/`FALSE` | `TRUE` |
-| `SINT`, `INT`, `DINT`, `LINT` | signed decimal | `-42` |
-| `USINT`, `UINT`, `UDINT`, `ULINT` | unsigned decimal | `42` |
-| `REAL` | `{}` (32-bit float) | `3.14` |
-| `LREAL` | `{}` (64-bit float) | `3.14159265` |
-| `BYTE` | `16#XX` | `16#FF` |
-| `WORD` | `16#XXXX` | `16#ABCD` |
-| `DWORD` | `16#XXXXXXXX` | `16#DEADBEEF` |
-| `LWORD` | `16#XXXXXXXXXXXXXXXX` | `16#00000000DEADBEEF` |
-| `TIME` | `T#<ms>ms` | `T#250ms` |
-| `LTIME` | `LTIME#<ms>ms` | `LTIME#250ms` |
-| other | signed decimal fallback | `0` |
+```
+msg: 'hello'
+flag: TRUE
+n: 42
+span: T#1500ms
+day: D#2024-01-15
+```
+
+  The rendering table itself is owned by that document
+  (`REQ-VR-container-*`) rather than restated here — the dump is one of four
+  surfaces showing the same values, and a second copy of the table is a copy
+  that drifts.
 
 - **REQ-VC-vm-cli-010** If the dump file cannot be created (e.g., parent directory missing), the command exits with code 2 and emits V6004 to stderr.
 
