@@ -33,6 +33,7 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -66,10 +67,10 @@ impl DiagnosticVisitor for RuleFunctionCallDeclared<'_> {
     }
 }
 
-impl Visitor<Diagnostic> for RuleFunctionCallDeclared<'_> {
+impl Visitor<Infallible> for RuleFunctionCallDeclared<'_> {
     type Value = ();
 
-    fn visit_function(&mut self, node: &Function) -> Result<Self::Value, Diagnostic> {
+    fn visit_function(&mut self, node: &Function) -> Result<Self::Value, Infallible> {
         // Look up the function in the function environment
         let func_sig = self.context.functions.get(&node.name);
 

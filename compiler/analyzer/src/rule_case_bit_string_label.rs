@@ -31,6 +31,7 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -65,10 +66,10 @@ impl DiagnosticVisitor for RuleCaseBitStringLabel {
     }
 }
 
-impl Visitor<Diagnostic> for RuleCaseBitStringLabel {
+impl Visitor<Infallible> for RuleCaseBitStringLabel {
     type Value = ();
 
-    fn visit_case(&mut self, node: &Case) -> Result<Self::Value, Diagnostic> {
+    fn visit_case(&mut self, node: &Case) -> Result<Self::Value, Infallible> {
         for group in &node.statement_groups {
             for selector in &group.selectors {
                 if let CaseSelectionKind::BitStringLiteral(lit) = selector {

@@ -40,6 +40,7 @@
 //! END_PROGRAM
 //! ```
 use std::collections::{HashMap, HashSet};
+use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::*,
@@ -166,13 +167,13 @@ impl DiagnosticVisitor for RuleMethodCallDeclared<'_> {
     }
 }
 
-impl Visitor<Diagnostic> for RuleMethodCallDeclared<'_> {
+impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
         self.var_to_fb.clear();
         res
@@ -181,7 +182,7 @@ impl Visitor<Diagnostic> for RuleMethodCallDeclared<'_> {
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
         self.var_to_fb.clear();
         res
@@ -190,13 +191,13 @@ impl Visitor<Diagnostic> for RuleMethodCallDeclared<'_> {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
         self.var_to_fb.clear();
         res
     }
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let InitialValueAssignmentKind::FunctionBlock(fbi) = &node.initializer {
             if let Some(id) = node.identifier.symbolic_id() {
                 self.var_to_fb.insert(id.clone(), fbi.type_name.clone());
@@ -205,7 +206,7 @@ impl Visitor<Diagnostic> for RuleMethodCallDeclared<'_> {
         Ok(())
     }
 
-    fn visit_method_call(&mut self, call: &MethodCall) -> Result<Self::Value, Diagnostic> {
+    fn visit_method_call(&mut self, call: &MethodCall) -> Result<Self::Value, Infallible> {
         // `THIS^.M()` / `SUPER^.M()` resolve against the enclosing function
         // block (and, for SUPER^, its base) rather than a variable's declared
         // type. That resolution is not implemented yet, so say so rather than

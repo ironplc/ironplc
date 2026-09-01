@@ -52,6 +52,7 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     intermediate_type::IntermediateType,
@@ -183,7 +184,7 @@ impl RuleAggregateAssignment<'_> {
     }
 }
 
-impl Visitor<Diagnostic> for RuleAggregateAssignment<'_> {
+impl Visitor<Infallible> for RuleAggregateAssignment<'_> {
     type Value = ();
 
     /// Opens a declaration's scope.
@@ -192,7 +193,7 @@ impl Visitor<Diagnostic> for RuleAggregateAssignment<'_> {
     /// declarations go into -- but the match stays exhaustive so that a
     /// new kind of scope has to say so rather than silently sharing the
     /// enclosing declaration's frame.
-    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
         match node {
             ScopeNode::Function(_)
             | ScopeNode::FunctionBlock(_)
@@ -206,7 +207,7 @@ impl Visitor<Diagnostic> for RuleAggregateAssignment<'_> {
         self.declarations.exit();
     }
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         self.declarations.add_if(
             node.identifier.symbolic_id(),
             Declared(node.initializer.clone()),
@@ -214,7 +215,7 @@ impl Visitor<Diagnostic> for RuleAggregateAssignment<'_> {
         node.recurse_visit(self)
     }
 
-    fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Diagnostic> {
+    fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
         self.check_aggregate_assignment(&node.target, &node.value);
         node.recurse_visit(self)
     }

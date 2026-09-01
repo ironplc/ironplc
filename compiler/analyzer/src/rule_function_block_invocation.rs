@@ -40,6 +40,7 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 use std::collections::HashMap;
+use std::convert::Infallible;
 
 use crate::{
     intermediates::stdlib_function_block::is_stdlib_function_block,
@@ -119,13 +120,13 @@ impl DiagnosticVisitor for RuleFunctionBlockUse<'_> {
     }
 }
 
-impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
+impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
 
         // Remove all items from var init decl since we have left this context
@@ -136,7 +137,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
 
         // Remove all items from var init decl since we have left this context
@@ -147,7 +148,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
 
         // Remove all items from var init decl since we have left this context
@@ -155,7 +156,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
         res
     }
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let InitialValueAssignmentKind::FunctionBlock(fbi) = &node.initializer {
             if let Some(id) = node.identifier.symbolic_id() {
                 self.var_to_fb.insert(id.clone(), fbi.type_name.clone());
@@ -164,7 +165,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
         Ok(())
     }
 
-    fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, Diagnostic> {
+    fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, Infallible> {
         // Check if function block is defined because you cannot
         // call a function block that doesn't exist
         // Cloned so that the borrow of `var_to_fb` ends here: the arms below

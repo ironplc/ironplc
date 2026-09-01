@@ -35,6 +35,7 @@
 //! END_FUNCTION_BLOCK
 //! ```
 use std::collections::HashSet;
+use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::*,
@@ -102,9 +103,9 @@ impl DiagnosticVisitor for FindGlobalConstVars<'_> {
     }
 }
 
-impl Visitor<Diagnostic> for FindGlobalConstVars<'_> {
+impl Visitor<Infallible> for FindGlobalConstVars<'_> {
     type Value = ();
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if node.qualifier == DeclarationQualifier::Constant {
             match &node.identifier {
                 VariableIdentifier::Symbol(name) => {
@@ -131,10 +132,10 @@ impl DiagnosticVisitor for RuleExternalGlobalConst<'_> {
     }
 }
 
-impl Visitor<Diagnostic> for RuleExternalGlobalConst<'_> {
+impl Visitor<Infallible> for RuleExternalGlobalConst<'_> {
     type Value = ();
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if node.var_type == VariableType::External
             && node.qualifier != DeclarationQualifier::Constant
         {

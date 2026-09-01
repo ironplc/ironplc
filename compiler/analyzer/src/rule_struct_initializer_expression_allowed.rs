@@ -31,6 +31,7 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -65,13 +66,13 @@ impl DiagnosticVisitor for RuleStructInitializerExpression {
     }
 }
 
-impl Visitor<Diagnostic> for RuleStructInitializerExpression {
+impl Visitor<Infallible> for RuleStructInitializerExpression {
     type Value = ();
 
     fn visit_struct_initial_value_assignment_kind(
         &mut self,
         node: &StructInitialValueAssignmentKind,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         if let StructInitialValueAssignmentKind::Expression(expr) = node {
             self.diagnostics.push(Diagnostic::problem(
                 Problem::StructInitializerExpressionNotAllowed,

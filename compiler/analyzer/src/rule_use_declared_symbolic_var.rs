@@ -39,6 +39,7 @@
 //! END_FUNCTION_BLOCK
 //! ```
 use std::collections::HashMap;
+use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::*,
@@ -106,7 +107,7 @@ impl DiagnosticVisitor for SymbolScopeChecker<'_> {
     }
 }
 
-impl Visitor<Diagnostic> for SymbolScopeChecker<'_> {
+impl Visitor<Infallible> for SymbolScopeChecker<'_> {
     type Value = ();
 
     /// Opens the scope of a declaration and seeds the names that are in
@@ -117,7 +118,7 @@ impl Visitor<Diagnostic> for SymbolScopeChecker<'_> {
     /// and never which node kinds have one. The match is exhaustive on
     /// purpose: a new kind of scope must be a compile error here rather
     /// than a silently unseeded scope.
-    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
         self.table.enter();
 
         match node {
@@ -164,7 +165,7 @@ impl Visitor<Diagnostic> for SymbolScopeChecker<'_> {
         self.table.exit();
     }
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         self.table
             .add_if(node.identifier.symbolic_id(), DummyNode {});
         node.recurse_visit(self)
@@ -173,7 +174,7 @@ impl Visitor<Diagnostic> for SymbolScopeChecker<'_> {
     fn visit_named_variable(
         &mut self,
         node: &ironplc_dsl::textual::NamedVariable,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         if self.table.find(&node.name).is_some() {
             // We found the variable being referred to
             return Ok(());
@@ -665,11 +666,15 @@ END_PROGRAM";
 
         let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
         assert!(
-            reported.iter().any(|d| d.as_str() == "variable=UNDECLARED_ONE"),
+            reported
+                .iter()
+                .any(|d| d.as_str() == "variable=UNDECLARED_ONE"),
             "expected UNDECLARED_ONE, got {reported:?}"
         );
         assert!(
-            reported.iter().any(|d| d.as_str() == "variable=UNDECLARED_TWO"),
+            reported
+                .iter()
+                .any(|d| d.as_str() == "variable=UNDECLARED_TWO"),
             "expected UNDECLARED_TWO, got {reported:?}"
         );
     }

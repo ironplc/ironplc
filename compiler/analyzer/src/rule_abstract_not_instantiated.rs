@@ -40,6 +40,7 @@
 //! ```
 
 use std::collections::HashSet;
+use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::*,
@@ -98,10 +99,10 @@ impl DiagnosticVisitor for RuleAbstractNotInstantiated {
     }
 }
 
-impl Visitor<Diagnostic> for RuleAbstractNotInstantiated {
+impl Visitor<Infallible> for RuleAbstractNotInstantiated {
     type Value = ();
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let InitialValueAssignmentKind::FunctionBlock(fb_init) = &node.initializer {
             if self.abstract_fbs.contains(&fb_init.type_name) {
                 self.diagnostics.push(Diagnostic::problem(

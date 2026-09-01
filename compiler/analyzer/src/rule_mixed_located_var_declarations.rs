@@ -31,6 +31,7 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -76,13 +77,13 @@ impl RuleMixedLocatedVarDeclarations {
     }
 }
 
-impl Visitor<Diagnostic> for RuleMixedLocatedVarDeclarations {
+impl Visitor<Infallible> for RuleMixedLocatedVarDeclarations {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.check(node);
         node.recurse_visit(self)
     }
@@ -90,7 +91,7 @@ impl Visitor<Diagnostic> for RuleMixedLocatedVarDeclarations {
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.check(node);
         node.recurse_visit(self)
     }
@@ -98,7 +99,7 @@ impl Visitor<Diagnostic> for RuleMixedLocatedVarDeclarations {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.check(node);
         node.recurse_visit(self)
     }

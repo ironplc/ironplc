@@ -35,6 +35,7 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -107,13 +108,13 @@ impl DiagnosticVisitor for RuleDeclaredEnumeratedValues<'_> {
     }
 }
 
-impl Visitor<Diagnostic> for RuleDeclaredEnumeratedValues<'_> {
+impl Visitor<Infallible> for RuleDeclaredEnumeratedValues<'_> {
     type Value = ();
 
     fn visit_enumerated_initial_value_assignment(
         &mut self,
         init: &EnumeratedInitialValueAssignment,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let defined_values = match self.find_enum_declaration_values(&init.type_name) {
             Ok(values) => values,
             Err(diagnostic) => {
