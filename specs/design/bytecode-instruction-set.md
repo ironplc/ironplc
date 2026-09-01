@@ -176,7 +176,7 @@ TIME and LTIME literals are ordinary integer constants: `LOAD_CONST_I32` for TIM
 
 #### Variables
 
-Variable instructions use a 16-bit index into the flat variable table ([ADR-0021 — flat variable table](../adrs/0021-flat-variable-table-for-function-calls.md)). The compiler resolves variable names to indices at compile time. Each access is bounds- and scope-checked; a violation traps `V9005 InvalidVariableIndex`.
+Variable instructions use a 16-bit index into the flat variable table ([ADR-0046 — flat variable table](../adrs/0046-flat-variable-table-for-function-calls.md)). The compiler resolves variable names to indices at compile time. Each access is bounds- and scope-checked; a violation traps `V9005 InvalidVariableIndex`.
 
 | Byte | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
@@ -375,9 +375,9 @@ There is no `JMP_IF` (branch-if-true) opcode: the compiler inverts the predicate
 
 #### Calling convention
 
-`CALL` carries both the callee's `function_id` and its `var_offset` — the base of the callee's window in the flat variable table (ADR-0021 — flat variable table). The VM pops `num_params` arguments (declared in the callee's function descriptor) into `var_offset .. var_offset + num_params` in reverse order, so the leftmost argument lands in the lowest slot, then pushes a call frame. The frame stack is bounded by the container's declared worst-case call depth, computed by codegen from the static call graph; exceeding it traps `V9012 CallStackOverflow`, and a container declaring zero depth is rejected at start with `ZeroCallDepth`.
+`CALL` carries both the callee's `function_id` and its `var_offset` — the base of the callee's window in the flat variable table (ADR-0046 — flat variable table). The VM pops `num_params` arguments (declared in the callee's function descriptor) into `var_offset .. var_offset + num_params` in reverse order, so the leftmost argument lands in the lowest slot, then pushes a call frame. The frame stack is bounded by the container's declared worst-case call depth, computed by codegen from the static call graph; exceeding it traps `V9012 CallStackOverflow`, and a container declaring zero depth is rejected at start with `ZeroCallDepth`.
 
-Falling off the end of a function body behaves as `RET_VOID` ([ADR-0011](../adrs/0011-bytecode-implicit-return-behavior.md)).
+Falling off the end of a function body behaves as `RET_VOID` ([ADR-0044](../adrs/0044-implicit-ret-void-at-end-of-function-body.md), superseding ADR-0011). `verify_stack_balance` checks that point as a return site, and codegen runs it over every container it emits, so an emitted body cannot fall off the end with a non-empty operand stack.
 
 ### Fused compare-and-branch (CMP_BR)
 

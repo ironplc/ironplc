@@ -30,5 +30,6 @@ pub use profile::InstructionProfile;
 pub use scheduler::{ProgramInstanceState, TaskState};
 pub use value::Slot;
 pub use vm::{
-    ExecuteOutcome, FaultContext, Phase, RoundOutcome, Vm, VmFaulted, VmReady, VmRunning, VmStopped,
+    ExecuteOutcome, FaultContext, Phase, RoundOutcome, VariableView, Vm, VmFaulted, VmReady,
+    VmRunning, VmStopped,
 };

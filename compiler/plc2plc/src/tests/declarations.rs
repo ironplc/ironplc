@@ -88,6 +88,29 @@ END_FUNCTION_BLOCK
         .expect("normalized bracket form must parse without allow_paren_string_length");
 }
 
+#[test]
+fn write_to_string_when_array_of_string_parenthesis_length_then_normalizes_to_brackets() {
+    let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    names : ARRAY[1..10] OF STRING(255);
+END_VAR
+END_FUNCTION_BLOCK
+";
+    let paren_options = CompilerOptions {
+        allow_paren_string_length: true,
+        ..CompilerOptions::default()
+    };
+    let rendered = assert_round_trips(source, &paren_options);
+
+    // Same normalization as the scalar case: the DSL keeps no delimiter
+    // marker, so the element type always renders with brackets.
+    assert!(rendered.contains("STRING [ 255 ]"));
+
+    parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
+        .expect("normalized bracket form must parse without allow_paren_string_length");
+}
+
 // ---------------------------------------------------------------------
 // CODESYS/TwinCAT FB-instance call-style initializer (distinct node).
 // ---------------------------------------------------------------------

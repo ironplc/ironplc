@@ -77,6 +77,6 @@ This applies to:
 
 ## Relationship to Prior ADRs
 
-* **ADR-0022** (exact type matching): Still applies for non-widening cases
+* **ADR-0047** (exact type matching): Still applies for non-widening cases
 * **ADR-0028** (literal type inference): Bare literal → REAL/LREAL remains as-is; bare literal → ANY_BIT is new and gated
 * **ADR-0029** (integer widening): Extended to include integer → real (lossless) and bit-string widening within ANY_BIT

@@ -31,7 +31,48 @@ The `specs/` directory contains internal technical documentation organized into 
 
 ### `specs/adrs/` — Architecture Decision Records
 
-Trade-off analyses that capture **why** a particular approach was chosen over alternatives. ADRs are numbered (`0000-topic.md`) and are permanent records — they are not updated after the decision is made.
+Trade-off analyses that capture **why** a particular approach was chosen over alternatives. ADRs are numbered (`0000-topic.md`). **A decision, once made, is never rewritten** — a changed mind is a new ADR that supersedes the old one, so the history of the project's thinking stays readable.
+
+That immutability covers the *decision*. It does not cover the *record* of it: a title that names the losing option, a status that never advanced past `proposed`, or a section describing a rejected option as though it had been built are all defects in the record, and leaving them in place is how an ADR comes to mislead the reader it exists to inform.
+
+#### Status
+
+Every ADR carries front matter — `status:` and `date:` — directly under the H1:
+
+```markdown
+# Short Title Naming the Chosen Option
+
+status: accepted
+date: 2026-08-31
+```
+
+| Status | Meaning |
+|---|---|
+| `proposed` | The decision is recorded but the work has not landed. |
+| `accepted` | The decision is in force and the code implements it. |
+| `rejected` | The decision was written up and then not taken. |
+| `superseded by ADR-NNNN` | A later ADR decided otherwise. Add `supersedes: ADR-NNNN` to the front matter of the ADR doing the superseding. |
+
+An in-place correction adds an `amended:` line recording when and why, so a reader can tell the original text from the fix:
+
+```markdown
+status: accepted
+date: 2026-03-15
+amended: 2026-08-31 (title named the rejected option)
+```
+
+**The pull request that lands the work flips `proposed` to `accepted`.** It is part of the change, like updating the design document — not follow-up hygiene. An ADR whose work has shipped but still reads `proposed` tells a reader the decision is speculative when the compiler already enforces it.
+
+An ADR may stay `proposed` indefinitely and that is not a defect, as long as it is *true* — the decision is made, the work is not done. Where a Confirmation criterion was never wired up, record what actually landed and what did not; do not flip the status to make the ADR look finished.
+
+#### Amending an ADR
+
+| Situation | What to do |
+|---|---|
+| The title, filename, status, or a cross-reference misrepresents the decision | Correct it in place; add an `amended:` line. |
+| A section describes a rejected option as if it had been adopted | Move it under that option in *Pros and Cons* and put it in the conditional voice; add an `amended:` line. |
+| What was decided has changed | Write a new ADR and mark the old one `superseded by ADR-NNNN`. Never edit the original outcome. |
+| A motivating premise in *Context* has since become false | Append a dated postscript under *More Information* saying what changed and whether the decision still holds. Leave the original *Context* as written — it is the record of what was known at the time. |
 
 ### `specs/design/` — Design Documents
 
@@ -45,7 +86,7 @@ Work breakdowns that describe **how** to implement: phased task lists, specific 
 
 Plans are the one document type in `specs/` that is not durable. Anything worth keeping — a decision, a constraint, a piece of rationale — must land somewhere durable in the same pull request: `specs/adrs/`, `specs/design/`, or a code doc comment where the reasoning is local to the code (see [Choosing the Right Location](#choosing-the-right-location)).
 
-**Never cite a plan from anywhere else.** Code comments, workflows, the `justfile`, design documents and ADRs must cite an ADR or a design document, never `specs/plans/`. A plan is deleted before its own pull request merges, so a reference to one is either already dead or about to be. `just plan-citations` enforces this and runs as part of `just`.
+**Never cite a plan from anywhere else.** Code comments, workflows, the `justfile`, design documents and ADRs must cite an ADR or a design document, never `specs/plans/`. A plan is deleted before its own pull request merges, so a reference to one is either already dead or about to be. `cd specs && just` enforces this and runs in CI.
 
 ### `specs/steering/` — AI Steering Files
 

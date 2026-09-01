@@ -116,11 +116,7 @@ impl LibraryRenderer {
         match node {
             FunctionReturnType::Named(tn) => self.visit_type_name(tn)?,
             FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
-                let kw = match spec.width {
-                    StringType::String => "STRING",
-                    StringType::WString => "WSTRING",
-                };
-                self.write_ws(kw);
+                self.write_ws(spec.width.keyword());
                 if let Some(len) = &spec.length {
                     self.write_ws("[");
                     self.visit_integer(len.as_integer().unwrap())?;
@@ -215,21 +211,30 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &CharacterStringLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        // Single-byte character strings use single quotes per IEC 61131-3 section 2.2.2
-        // Special characters must be escaped with $ prefix
-        let mut val = String::from("'");
-        for c in &node.value {
-            match c {
-                '$' => val.push_str("$$"),
-                '\'' => val.push_str("$'"),
-                '\n' => val.push_str("$N"),
-                '\r' => val.push_str("$R"),
-                '\t' => val.push_str("$T"),
-                '\x0C' => val.push_str("$P"), // form feed
-                _ => val.push(*c),
-            }
-        }
-        val.push('\'');
+        // Single quotes delimit a STRING, double quotes a WSTRING, per
+        // IEC 61131-3 section 2.2.2.
+        //
+        // The value is written out exactly as it was read in, because
+        // `node.value` holds the source characters *as written* -- the parser
+        // does not decode `$` escapes on the way in. Every re-encoding here is
+        // therefore a corruption:
+        //
+        //   - `$` is already an escape introducer, so escaping it turned the
+        //     one line feed `$L` into the two characters `$` and `L`, and
+        //     compounded on each pass (`$L`, `$$L`, `$$$$L`).
+        //   - a raw tab, which the lexer does admit inside a literal, has no
+        //     `$T` in the source to correspond to, so emitting one turned that
+        //     one tab into the two characters `$` and `T`.
+        //
+        // Both directions changed the value; a raw control character passed
+        // through verbatim merely looks unusual, and re-parses as itself.
+        // Escaping can only become correct once the parser decodes escapes and
+        // `value` holds decoded characters -- see the character-string arm of
+        // the round-trip tests.
+        let delimiter = node.width.delimiter();
+        let mut val = String::from(delimiter);
+        val.extend(node.value.iter());
+        val.push(delimiter);
         self.write_ws(&val);
         Ok(())
     }
@@ -506,28 +511,20 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         self.write_ws(":");
 
-        let typ = match node.width {
-            StringType::String => "STRING",
-            StringType::WString => "WSTRING",
-        };
-        self.write_ws(typ);
+        self.write_ws(node.width.keyword());
 
         self.write_ws("[");
         self.visit_integer(node.length.as_integer().unwrap())?;
         self.write_ws("]");
 
         if let Some(init) = &node.init {
-            // Single quotes delimit a STRING, double quotes a WSTRING.
-            let char = match node.width {
-                StringType::String => "'",
-                StringType::WString => "\"",
-            };
+            let delimiter = node.width.delimiter();
 
             self.write_ws(":=");
 
-            self.write(char);
+            self.write_char(delimiter);
             self.write(init);
-            self.write(char)
+            self.write_char(delimiter);
         }
 
         Ok(())
@@ -562,11 +559,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         match &node.type_name {
             ArrayElementType::Named(tn) => self.visit_type_name(tn)?,
             ArrayElementType::String(spec) | ArrayElementType::WString(spec) => {
-                let kw = match spec.width {
-                    StringType::String => "STRING",
-                    StringType::WString => "WSTRING",
-                };
-                self.write_ws(kw);
+                self.write_ws(spec.width.keyword());
                 if let Some(len) = &spec.length {
                     self.write_ws("[");
                     self.visit_integer(len.as_integer().unwrap())?;
@@ -774,11 +767,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &StringInitializer,
     ) -> Result<Self::Value, Diagnostic> {
-        let kw = match node.width {
-            StringType::String => "STRING",
-            StringType::WString => "WSTRING",
-        };
-        self.write_ws(kw);
+        self.write_ws(node.width.keyword());
 
         if let Some(len) = &node.length {
             self.write_ws("[");
@@ -789,16 +778,13 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         if let Some(init) = &node.initial_value {
             self.write_ws(":=");
 
-            let quote = match node.width {
-                StringType::String => "'",
-                StringType::WString => "\"",
-            };
+            let delimiter = node.width.delimiter();
 
-            self.write(quote);
+            self.write_char(delimiter);
             for c in init.iter() {
                 self.write_char(*c);
             }
-            self.write(quote);
+            self.write_char(delimiter);
         }
 
         Ok(())

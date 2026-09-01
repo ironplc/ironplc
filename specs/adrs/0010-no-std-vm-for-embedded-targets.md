@@ -2,6 +2,7 @@
 
 status: proposed
 date: 2026-02-25
+amended: 2026-08-31 (Implementation Status added; status unchanged)
 
 ## Context and Problem Statement
 
@@ -95,6 +96,36 @@ Replace all heap allocation with fixed-size arrays and borrowed slices.
 | STM32 Nucleo-F446RE | Cortex-M4 | 128 KB | 512 KB | Typical industrial target |
 
 A minimal VM instance needs: header (256 bytes) + stack (`max_stack_depth * 8` bytes) + variables (`num_variables * 8` bytes) + bytecode (in flash, zero RAM). For a small program with stack depth 16 and 32 variables, that is 256 + 128 + 256 = 640 bytes of RAM — well within Arduino Mega's 8 KB budget.
+
+### Implementation Status (as of 2026-08-31)
+
+This ADR is still `proposed` because the Confirmation criteria above were never
+wired up. That is an accurate status, not a stale one, and it is recorded here so
+a reader is not left to infer it from the absence of a marker. Tracked by
+[issue #1573](https://github.com/ironplc/ironplc/issues/1573).
+
+What landed:
+
+* The crate split — `ironplc-vm` (engine) and `ironplc-vm-cli` (desktop CLI) are
+  separate crates, so the CLI's `std` dependencies are structurally out of the
+  engine.
+* `ironplc-container` is `#![no_std]` with a default-on `std` feature gating
+  `blake3` and the I/O paths, as this ADR specified.
+* The engine borrows rather than allocates: `Vm::load` takes
+  `&mut VmBuffers` and sizes execution state from the container header.
+
+What did not:
+
+* **`ironplc-vm` is not `no_std`.** There is no `#![no_std]` attribute on its
+  `lib.rs`, and `vm.rs` imports `std::time::Instant` for scan timing.
+* `VmBuffers` is `Vec`-backed, so the default construction path needs an
+  allocator even though the engine itself only borrows slices.
+* Confirmation items 1 and 2 — the bare-metal cross-compile and the Arduino Due
+  example — do not exist, and the `justfile` has no bare-metal target, so nothing
+  prevents a `std` dependency from re-entering the VM.
+
+The decision stands; the work is unfinished. The pull request that lands the
+cross-compile gate is the one that flips this ADR to `accepted`.
 
 ### Relationship to Other ADRs
 

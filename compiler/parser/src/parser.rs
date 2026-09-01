@@ -340,7 +340,7 @@ parser! {
     rule constant() -> ConstantKind =
         real:real_literal() { ConstantKind::RealLiteral(real) }
         / integer:integer_literal() { ConstantKind::IntegerLiteral(integer) }
-        / c:character_string() { ConstantKind::CharacterString(CharacterStringLiteral::new(c)) }
+        / c:character_string_literal() { ConstantKind::CharacterString(c) }
         / duration:duration() { ConstantKind::Duration(duration) }
         / t:time_of_day() { ConstantKind::TimeOfDay(t) }
         / d:date() { ConstantKind::Date(d) }
@@ -409,6 +409,12 @@ parser! {
 
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = single_byte_character_string() / double_byte_character_string()
+    // The literal keeps which of the two spellings the source used. A
+    // declaration does not need this because its own STRING/WSTRING keyword
+    // says the width, but a literal in a statement body has no such keyword.
+    rule character_string_literal() -> CharacterStringLiteral =
+      c:single_byte_character_string() { CharacterStringLiteral::new(c) }
+      / c:double_byte_character_string() { CharacterStringLiteral::new_wide(c) }
     rule single_byte_character_string() -> Vec<char>  = (tok(TokenType::String) tok(TokenType::Hash))? t:tok(TokenType::SingleByteString) {
       // The token includes the surrounding single quotes, so remove those when generating the literal
       let mut chars = t.text.chars();
@@ -666,9 +672,13 @@ parser! {
     rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ ref_to:ref_to_keyword()? _ type_name:array_element_type() {
       SpecificationKind::Inline(ArraySubranges { ranges, type_name, ref_to } )
     }
+    // The length delimiter comes from string_length_spec() so that the array
+    // element type accepts the same spellings as every other string position
+    // -- standard `STRING[n]` brackets and the `STRING(n)` parenthesis
+    // extension, the latter gated by rule_token_no_paren_string_length.
     rule array_element_type() -> ArrayElementType =
-      tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() _ tok(TokenType::RightBracket) { l })? { ArrayElementType::String(StringSpecification { width: StringType::String, length, keyword_span: tok.span.clone() }) }
-      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() _ tok(TokenType::RightBracket) { l })? { ArrayElementType::WString(StringSpecification { width: StringType::WString, length, keyword_span: tok.span.clone() }) }
+      tok:tok(TokenType::String) length:(_ l:string_length_spec() { l })? { ArrayElementType::String(StringSpecification { width: StringType::String, length, keyword_span: tok.span.clone() }) }
+      / tok:tok(TokenType::WString) length:(_ l:string_length_spec() { l })? { ArrayElementType::WString(StringSpecification { width: StringType::WString, length, keyword_span: tok.span.clone() }) }
       / tn:non_generic_type_name() { ArrayElementType::Named(tn) }
     rule array_initialization() -> Vec<ArrayInitialElementKind> = tok(TokenType::LeftBracket) _ init:array_initial_elements() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) { init }
     rule array_initial_elements() -> ArrayInitialElementKind = size:integer() _ tok(TokenType::LeftParen) _ ai:array_initial_element()? _ tok(TokenType::RightParen) { ArrayInitialElementKind::repeated(size, ai) } / array_initial_element()

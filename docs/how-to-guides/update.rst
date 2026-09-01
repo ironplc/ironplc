@@ -29,9 +29,7 @@ Follow the steps below to update IronPLC.
 
    .. rubric:: Update IronPLC Extension
 
-   #. Download the latest IronPLC extension
-      :download_artifact:`ironplc-vscode-extension.vsix` from
-      `IronPLC GitHub releases`_.
+   .. include:: /includes/download-extension-vsix.rst
 
    Run your development environment, then:
 
@@ -39,7 +37,7 @@ Follow the steps below to update IronPLC.
       :guilabel:`Activity Bar` on the side of the window or using the
       View: Extensions command (:kbd:`Ctrl+Shift+X`).
    #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
-   #. In the :guilabel:`Install from VISX` dialog, select the VISX file you downloaded earlier.
+   #. In the :guilabel:`Install from VSIX` dialog, select the VSIX file you downloaded earlier.
 
 
 .. tab:: macOS
@@ -62,9 +60,7 @@ Follow the steps below to update IronPLC.
 
    .. rubric:: Update IronPLC Extension
 
-   #. Download the latest IronPLC extension
-      :download_artifact:`ironplc-vscode-extension.vsix` from
-      `IronPLC GitHub releases`_.
+   .. include:: /includes/download-extension-vsix.rst
 
    Run your development environment, then:
 
@@ -72,7 +68,7 @@ Follow the steps below to update IronPLC.
       :guilabel:`Activity Bar` on the side of the window or using the
       View: Extensions command (:kbd:`⌘+Shift+X`).
    #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
-   #. In the dialog, select the VISX file you downloaded earlier.
+   #. In the dialog, select the VSIX file you downloaded earlier.
 
 
 .. tab:: Linux
@@ -88,9 +84,7 @@ Follow the steps below to update IronPLC.
 
    .. rubric:: Update IronPLC Extension
 
-   #. Download the latest IronPLC extension
-      :download_artifact:`ironplc-vscode-extension.vsix` from
-      `IronPLC GitHub releases`_.
+   .. include:: /includes/download-extension-vsix.rst
 
    Run your development environment, then:
 
@@ -98,7 +92,7 @@ Follow the steps below to update IronPLC.
       :guilabel:`Activity Bar` on the side of the window or using the
       View: Extensions command (:kbd:`Ctrl+Shift+X`).
    #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
-   #. In the dialog, select the VISX file you downloaded earlier.
+   #. In the dialog, select the VSIX file you downloaded earlier.
 
 
 .. _IronPLC GitHub releases: https://github.com/ironplc/ironplc/releases/
