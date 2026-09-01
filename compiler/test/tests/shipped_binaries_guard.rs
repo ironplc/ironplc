@@ -17,8 +17,12 @@
 //! * **Homebrew**: `libexec.install` and `bin.install_symlink` in
 //!   `compiler/homebrew/Formula/ironplc.rb`, checked separately, because a
 //!   binary that is installed but not symlinked never reaches the PATH.
+//! * **`curl … | sh`**: the `BINARIES="…"` list in `compiler/install.sh`, which
+//!   is the only documented Linux install path. A binary the script does not
+//!   name is extracted from the archive and then deleted with the temp
+//!   directory, so omission here is silent at both build and install time.
 //!
-//! The guard asserts all four agree. Adding a binary therefore fails here until
+//! The guard asserts all five agree. Adding a binary therefore fails here until
 //! every installer carries it.
 
 use std::collections::BTreeSet;
@@ -123,6 +127,18 @@ fn whitespace_list_assignment(text: &str, name: &str) -> Vec<String> {
 /// The `binaries := "…"` packaging list from the justfile.
 fn just_binaries(justfile: &str) -> Vec<String> {
     whitespace_list_assignment(justfile, "binaries")
+}
+
+/// The `BINARIES="…"` install list from `install.sh`.
+fn install_sh_binaries(install_sh: &str) -> Vec<String> {
+    whitespace_list_assignment(install_sh, "BINARIES")
+}
+
+/// The `LEGACY_OPTIONAL_BINARIES="…"` list from `install.sh`: the binaries a
+/// published release is allowed to predate, whose absence from the downloaded
+/// archive warns instead of failing the install.
+fn install_sh_legacy_optional_binaries(install_sh: &str) -> Vec<String> {
+    whitespace_list_assignment(install_sh, "LEGACY_OPTIONAL_BINARIES")
 }
 
 /// The name a `${VAR}` reference points at, if `token` contains exactly one.
@@ -274,11 +290,13 @@ fn every_built_binary_is_shipped_by_every_installer() {
     let justfile = fs::read_to_string(compiler_dir.join("justfile")).unwrap();
     let nsi = fs::read_to_string(compiler_dir.join("setup.nsi")).unwrap();
     let formula = fs::read_to_string(compiler_dir.join("homebrew/Formula/ironplc.rb")).unwrap();
+    let install_sh = fs::read_to_string(compiler_dir.join("install.sh")).unwrap();
 
     let unix: BTreeSet<String> = just_binaries(&justfile).into_iter().collect();
     let windows: BTreeSet<String> = nsis_installed_binaries(&nsi).into_iter().collect();
     let brew_install: BTreeSet<String> = formula_installed_binaries(&formula).into_iter().collect();
     let brew_path: BTreeSet<String> = formula_symlinked_binaries(&formula).into_iter().collect();
+    let curl_sh: BTreeSet<String> = install_sh_binaries(&install_sh).into_iter().collect();
 
     let mut problems = Vec::new();
     problems.extend(compare(
@@ -289,6 +307,21 @@ fn every_built_binary_is_shipped_by_every_installer() {
     problems.extend(compare("setup.nsi (Windows installer)", &built, &windows));
     problems.extend(compare("Homebrew libexec.install", &built, &brew_install));
     problems.extend(compare("Homebrew bin.install_symlink", &built, &brew_path));
+    problems.extend(compare("install.sh `BINARIES` (curl | sh)", &built, &curl_sh));
+
+    // A legacy-optional name is one `install.sh` tolerates being absent from an
+    // older release's archive. It only reaches the install loop if `BINARIES`
+    // also names it, so one that does not is dead configuration that silently
+    // grants nothing.
+    let legacy: BTreeSet<String> = install_sh_legacy_optional_binaries(&install_sh)
+        .into_iter()
+        .collect();
+    let stray: Vec<&String> = legacy.difference(&curl_sh).collect();
+    if !stray.is_empty() {
+        problems.push(format!(
+            "install.sh `LEGACY_OPTIONAL_BINARIES` names binaries absent from `BINARIES`: {stray:?}"
+        ));
+    }
 
     assert!(
         problems.is_empty(),
@@ -408,6 +441,30 @@ fn just_binaries_when_assignment_present_then_splits_on_whitespace() {
 #[test]
 fn just_binaries_when_assignment_missing_then_empty() {
     assert!(just_binaries("compile:\n  cargo build\n").is_empty());
+}
+
+#[test]
+fn install_sh_binaries_when_assignment_present_then_splits_on_whitespace() {
+    let script = "# BINARIES=\"commented\"\nBINARIES=\"ironplcc ironplcvmd\"\n";
+    assert_eq!(install_sh_binaries(script), vec!["ironplcc", "ironplcvmd"]);
+}
+
+#[test]
+fn install_sh_binaries_when_legacy_list_precedes_it_then_reads_the_right_one() {
+    // `LEGACY_OPTIONAL_BINARIES` ends in `BINARIES`; a prefix match that did not
+    // require the `=` to follow the name would read the legacy list as the
+    // install list, and the guard would pass on a script that installs nothing.
+    let script = "LEGACY_OPTIONAL_BINARIES=\"ironplcvmd\"\nBINARIES=\"ironplcc ironplcvmd\"\n";
+    assert_eq!(install_sh_binaries(script), vec!["ironplcc", "ironplcvmd"]);
+    assert_eq!(
+        install_sh_legacy_optional_binaries(script),
+        vec!["ironplcvmd"]
+    );
+}
+
+#[test]
+fn install_sh_legacy_optional_binaries_when_absent_then_empty() {
+    assert!(install_sh_legacy_optional_binaries("BINARIES=\"ironplcc\"\n").is_empty());
 }
 
 #[test]

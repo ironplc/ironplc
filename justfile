@@ -275,7 +275,9 @@ _install-script-smoke-verify:
     echo "warning: compatibility libraries not installed (release predates library shipping); skipping PI check" >&2
   fi
 
-  # ironplcvm and ironplcmcp are optional (older releases may not include them).
+  # The servers below are checked only when installed: this recipe also runs
+  # against the latest published release, which may predate one of them. A
+  # release that ships one makes it a hard check on every later run.
   if [ -x "$BIN/ironplcmcp" ]; then
     # MCP handshake: initialize -> notifications/initialized -> tools/list.
     # The response should contain a known tool name (list_options).
@@ -284,6 +286,17 @@ _install-script-smoke-verify:
       '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
       '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
       | "$BIN/ironplcmcp" | grep -q list_options
+  fi
+
+  if [ -x "$BIN/ironplcvmd" ]; then
+    # DAP handshake over Content-Length framing: a single `initialize` request,
+    # then end-of-stream. The debug server answers with the response and the
+    # `initialized` event, so the reply carries that event name. This is what
+    # the editor does first (see docs E0007), and it fails if the binary was
+    # installed but cannot run.
+    _dap_req='{"seq":1,"type":"request","command":"initialize","arguments":{"adapterID":"ironplc"}}'
+    printf 'Content-Length: %d\r\n\r\n%s' "${#_dap_req}" "$_dap_req" \
+      | "$BIN/ironplcvmd" | grep -q '"event":"initialized"'
   fi
 
 [windows]

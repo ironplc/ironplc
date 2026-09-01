@@ -22,9 +22,18 @@ LATEST_API="https://api.github.com/repos/${REPO}/releases/latest"
 LATEST_REDIRECT="https://github.com/${REPO}/releases/latest"
 ISSUES_URL="https://github.com/${REPO}/issues"
 DEFAULT_INSTALL_DIR="${HOME}/.ironplc"
-# ironplcc is required. Older releases may not include ironplcvm or ironplcmcp.
-REQUIRED_BINARIES="ironplcc"
-OPTIONAL_BINARIES="ironplcvm ironplcmcp"
+# Every executable a release archive carries, all of them required: the
+# compiler, the runtime, the MCP server and the debug server are one toolchain,
+# and the editor resolves ironplcvmd from beside ironplcc. This list must match
+# the workspace's [[bin]] targets -- the `shipped_binaries_guard` test reads it
+# from here and fails when it does not.
+BINARIES="ironplcc ironplcvm ironplcmcp ironplcvmd"
+
+# Binaries a *published* release may legitimately lack because it predates them.
+# Their absence warns; anything else missing from the archive is fatal. Every
+# name here must also appear in BINARIES. Remove a name once no release a user
+# can still install predates it: ironplcvmd first ships after v0.235.0.
+LEGACY_OPTIONAL_BINARIES="ironplcvmd"
 
 # ---- output helpers -------------------------------------------------------
 
@@ -292,13 +301,28 @@ verify_checksum() {
 
 # ---- install flow ---------------------------------------------------------
 
+# True when the archive is allowed not to contain $1.
+is_legacy_optional() {
+    for _legacy in $LEGACY_OPTIONAL_BINARIES; do
+        if [ "$_legacy" = "$1" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 already_installed_same_version() {
     _version_file="$INSTALL_DIR/VERSION"
     [ -f "$_version_file" ] || return 1
     _existing="$(cat "$_version_file" 2>/dev/null || true)"
     [ -n "$_existing" ] || return 1
     [ "$_existing" = "$TAG" ] || return 1
-    for _bin in $REQUIRED_BINARIES; do
+    # A legacy-optional binary the installed release never carried must not make
+    # this look like a partial install, or every re-run would reinstall.
+    for _bin in $BINARIES; do
+        if is_legacy_optional "$_bin"; then
+            continue
+        fi
         [ -x "$INSTALL_DIR/bin/$_bin" ] || return 1
     done
     return 0
@@ -321,17 +345,14 @@ install_binaries() {
     tar -xzf "${_tmp}/${ARTIFACT_NAME}" -C "$_tmp"
 
     mkdir -p "${INSTALL_DIR}/bin"
-    for _bin in $REQUIRED_BINARIES; do
-        [ -f "${_tmp}/${_bin}" ] || die "archive is missing required binary: ${_bin}"
-        mv -f "${_tmp}/${_bin}" "${INSTALL_DIR}/bin/${_bin}"
-        chmod +x "${INSTALL_DIR}/bin/${_bin}"
-    done
-    for _bin in $OPTIONAL_BINARIES; do
+    for _bin in $BINARIES; do
         if [ -f "${_tmp}/${_bin}" ]; then
             mv -f "${_tmp}/${_bin}" "${INSTALL_DIR}/bin/${_bin}"
             chmod +x "${INSTALL_DIR}/bin/${_bin}"
-        else
+        elif is_legacy_optional "$_bin"; then
             warn "archive does not include ${_bin} (released before it existed); skipping"
+        else
+            die "archive is missing required binary: ${_bin}"
         fi
     done
 
