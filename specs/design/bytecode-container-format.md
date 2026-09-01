@@ -389,7 +389,26 @@ iec_type_tag encoding:
 | 15 | STRING | Latin-1 string |
 | 16 | WSTRING | UTF-16 string |
 | 17 | TIME | Duration |
+| 18 | LTIME | Long duration |
+| 19 | DATE | Calendar date |
+| 20 | LDATE | Long calendar date |
+| 21 | TIME_OF_DAY | Time of day |
+| 22 | LTOD | Long time of day |
+| 23 | DATE_AND_TIME | Date and time |
+| 24 | LDT | Long date and time |
+| 25 | STRUCT | Slot holds the data-region offset of the contents, not a value |
+| 26 | ARRAY | As STRUCT; includes an array of structures |
+| 27 | FB_INSTANCE | As STRUCT |
 | 255 | OTHER | Fallback; use type_name for display |
+
+Tags 25-27 mark a variable whose slot holds a data-region offset rather than
+its value, so a reader knows not to display the slot. They are distinct from
+`OTHER` because `OTHER` also carries named subrange types, whose slot does hold
+their value. See [Variable Value Rendering](variable-value-rendering.md).
+
+New tag values are additive: a reader that does not recognise one falls back to
+the same display it would have used for `OTHER`, so adding a tag does not
+require a format version bump.
 
 **Tag 3 — FUNC_NAME:**
 

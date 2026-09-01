@@ -1005,3 +1005,89 @@ END_PROGRAM
 
     Ok(())
 }
+
+/// REQ-VC-vm-cli-009: a structure, array or function-block variable keeps its
+/// contents in the data region, and its slot holds the byte offset of them.
+/// Dumping the slot printed that offset as if it were the value — and a
+/// convincing one, since it moves when an unrelated declaration changes size.
+#[spec_test(REQ_VC_vm_cli_009)]
+fn run_when_dump_vars_and_aggregates_then_names_type_instead_of_offset(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("agg.iplc");
+    write_compiled_container(
+        &container_path,
+        "
+TYPE Point : STRUCT
+    X : DINT;
+    Y : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+VAR
+    origin : Point;
+    counts : ARRAY[1..3] OF DINT;
+    timer  : TON;
+    plain  : DINT := 7;
+END_VAR
+    origin.X := 11;
+    counts[1] := 100;
+END_PROGRAM
+",
+    );
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run")
+        .arg(&container_path)
+        .arg("--scans")
+        .arg("1")
+        .arg("--dump-vars");
+    let out = cmd.assert().success();
+    let dump = String::from_utf8(out.get_output().stdout.clone())?;
+
+    assert!(dump.contains("origin: <POINT>\n"), "dump was:\n{dump}");
+    assert!(
+        dump.contains("counts: <ARRAY OF DINT>\n"),
+        "dump was:\n{dump}"
+    );
+    assert!(dump.contains("timer: <TON>\n"), "dump was:\n{dump}");
+    // The scalar alongside them still shows its value.
+    assert!(dump.contains("plain: 7\n"), "dump was:\n{dump}");
+
+    Ok(())
+}
+
+/// A named subrange also reaches the renderer without an elementary type tag,
+/// but its slot *does* hold its value. It must keep showing it.
+#[spec_test(REQ_VC_vm_cli_009)]
+fn run_when_dump_vars_and_named_subrange_then_shows_value() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("sub.iplc");
+    write_compiled_container(
+        &container_path,
+        "
+TYPE Level : INT (0..100); END_TYPE
+
+PROGRAM main
+VAR
+    lvl : Level := 75;
+END_VAR
+END_PROGRAM
+",
+    );
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run")
+        .arg(&container_path)
+        .arg("--scans")
+        .arg("1")
+        .arg("--dump-vars");
+    let out = cmd.assert().success();
+    let dump = String::from_utf8(out.get_output().stdout.clone())?;
+
+    assert!(dump.contains("lvl: 75\n"), "dump was:\n{dump}");
+
+    Ok(())
+}
