@@ -4,59 +4,46 @@
 //! INSERT, DELETE, LEFT, RIGHT, MID, CONCAT) and string comparison.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
+use ironplc_analyzer::IntermediateType;
 use ironplc_container::opcode;
+use ironplc_container::CharWidth;
 use ironplc_dsl::common::ConstantKind;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
-
-use ironplc_container::CharWidth;
+use ironplc_dsl::textual::{
+    CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind, SymbolicVariableKind,
+    Variable,
+};
 
 use super::compile::{
-    emit_string_literal_load, string_region_size, CompileContext, DEFAULT_OP_TYPE,
-    DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
+    char_width_for_string_type, emit_string_literal_load, string_region_size, CompileContext,
+    DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
 };
 use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
 
 /// Compiles the LEN standard function call.
 ///
-/// LEN takes a single STRING variable argument and returns its current length
-/// as an i32. Instead of going through the BUILTIN dispatch, LEN uses the
-/// dedicated `LEN_STR` opcode which reads `cur_length` directly from the
-/// string's data region header.
+/// LEN takes a single STRING/WSTRING argument and returns its current length
+/// in code units as an i32. Instead of going through the BUILTIN dispatch, LEN
+/// uses the dedicated `LEN_STR` opcode which reads `cur_length` directly from
+/// the string's data region header. The argument is resolved by
+/// [`resolve_string_arg`], so a variable, a literal and a nested string
+/// function call are all accepted.
 pub(crate) fn compile_len(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    // The argument must be a string variable so we can look up its data_offset.
-    let var_name = match &args[0].kind {
-        ExprKind::Variable(variable) => resolve_variable_name(variable),
-        _ => None,
-    };
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
 
-    let name = var_name.ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))?;
-
-    let info = ctx
-        .string_vars
-        .get(name)
-        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))?;
-
-    emitter.emit_len_str(info.data_offset);
+    emitter.emit_len_str(in_offset);
     Ok(())
 }
 
@@ -98,10 +85,88 @@ pub(crate) fn compile_string_compare(
     Ok(())
 }
 
+/// Returns the encoding a string-valued expression produces.
+///
+/// Every string slot records its encoding in its header and the VM rejects a
+/// store whose source and destination disagree (ADR-0034), so the temporary
+/// that [`resolve_string_arg`] allocates has to be initialized at the width
+/// the expression yields rather than at a fixed one. The width is always
+/// known at compile time: a literal spells it, a declaration states it, and
+/// every string function returns the encoding of its first string argument.
+///
+/// Anything whose width cannot be determined here keeps the narrow default.
+fn string_expr_char_width(ctx: &CompileContext, expr: &Expr) -> CharWidth {
+    match &expr.kind {
+        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
+            char_width_for_string_type(&lit.width)
+        }
+        ExprKind::Expression(inner) => string_expr_char_width(ctx, inner),
+        ExprKind::Variable(variable) => variable_char_width(ctx, variable),
+        ExprKind::Function(func) => function_char_width(ctx, func),
+        _ => NARROW_CHAR_WIDTH,
+    }
+}
+
+/// Returns the encoding of a string variable, array element or structure field.
+fn variable_char_width(ctx: &CompileContext, variable: &Variable) -> CharWidth {
+    if let Some(name) = resolve_variable_name(variable) {
+        if let Some(info) = ctx.string_vars.get(name) {
+            return info.char_width;
+        }
+    }
+
+    match variable {
+        Variable::Symbolic(SymbolicVariableKind::Structured(structured)) => {
+            match crate::compile_struct::walk_struct_chain(
+                ctx,
+                &structured.record,
+                &structured.field,
+                0,
+            ) {
+                Ok((_, _, IntermediateType::String { char_width, .. })) => char_width,
+                _ => NARROW_CHAR_WIDTH,
+            }
+        }
+        _ => match crate::compile_array::resolve_access(ctx, variable) {
+            Ok(crate::compile_array::ResolvedAccess::ArrayElement { info, .. })
+            | Ok(crate::compile_array::ResolvedAccess::DerefArrayElement { info, .. })
+                if info.is_string_element =>
+            {
+                info.string_char_width
+            }
+            _ => NARROW_CHAR_WIDTH,
+        },
+    }
+}
+
+/// Returns the encoding of a function call's string result.
+///
+/// The standard string functions return the encoding of their first string
+/// argument; a user-defined function declares its return type.
+fn function_char_width(ctx: &CompileContext, func: &Function) -> CharWidth {
+    let name = func.name.lower_case();
+    match name.as_str() {
+        "concat" | "left" | "right" | "mid" | "insert" | "delete" | "replace" => {
+            match collect_positional_args(func).first() {
+                Some(first) => string_expr_char_width(ctx, first),
+                None => NARROW_CHAR_WIDTH,
+            }
+        }
+        _ => ctx
+            .user_functions
+            .get(name.as_str())
+            .and_then(|info| info.return_string_info.as_ref())
+            .map(|info| info.char_width)
+            .unwrap_or(NARROW_CHAR_WIDTH),
+    }
+}
+
 /// Allocates a data region slot for an intermediate string value.
 ///
 /// Returns the slot's data_offset with its header already initialized at
-/// `char_width`.
+/// `char_width`. A wide slot also marks the program as holding a wide string
+/// so temp buffers are sized in wide bytes (ADR-0035) even when no WSTRING
+/// variable is declared.
 fn allocate_string_temp(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -119,6 +184,9 @@ fn allocate_string_temp(
     if max_length > ctx.max_string_capacity {
         ctx.max_string_capacity = max_length;
     }
+    if char_width.is_wide() {
+        ctx.has_wide_string = true;
+    }
 
     emitter.emit_str_init(data_offset, max_length, char_width);
 
@@ -127,10 +195,11 @@ fn allocate_string_temp(
 
 /// Resolves a string argument to its data_offset in the data region.
 ///
-/// A simple named STRING variable resolves to the offset of its own slot.
-/// Everything else -- a literal, a nested string function call, a structure
-/// field or array element -- is materialized into a temporary slot, and that
-/// slot's offset is returned.
+/// A simple named STRING/WSTRING variable resolves to the offset of its own
+/// slot. Everything else -- a literal, a nested string function call, a
+/// structure field or array element -- is materialized into a temporary slot
+/// allocated at the expression's encoding, and that slot's offset is
+/// returned.
 pub(crate) fn resolve_string_arg(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -146,11 +215,12 @@ pub(crate) fn resolve_string_arg(
         }
     }
 
-    let data_offset = allocate_string_temp(emitter, ctx, NARROW_CHAR_WIDTH, func_span)?;
+    let char_width = string_expr_char_width(ctx, arg);
+    let data_offset = allocate_string_temp(emitter, ctx, char_width, func_span)?;
 
     match &arg.kind {
         ExprKind::Const(ConstantKind::CharacterString(lit)) => {
-            emit_string_literal_load(emitter, ctx, &lit.value, NARROW_CHAR_WIDTH);
+            emit_string_literal_load(emitter, ctx, &lit.value, char_width);
         }
         // A complex variable (structure field, array element) or a general
         // expression such as a nested function call: compiling it leaves a
