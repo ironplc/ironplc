@@ -10,8 +10,10 @@ use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
 
+use ironplc_container::CharWidth;
+
 use super::compile::{
-    encode_string_literal, string_region_size, CompileContext, DEFAULT_OP_TYPE,
+    emit_string_literal_load, string_region_size, CompileContext, DEFAULT_OP_TYPE,
     DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
 };
 use super::compile_expr::{compile_expr, resolve_variable_name};
@@ -96,97 +98,68 @@ pub(crate) fn compile_string_compare(
     Ok(())
 }
 
+/// Allocates a data region slot for an intermediate string value.
+///
+/// Returns the slot's data_offset with its header already initialized at
+/// `char_width`.
+fn allocate_string_temp(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    char_width: CharWidth,
+    func_span: &SourceSpan,
+) -> Result<u32, Diagnostic> {
+    let max_length = DEFAULT_STRING_MAX_LENGTH;
+    let data_offset = ctx.data_region_offset;
+    let total_bytes = string_region_size(max_length, char_width);
+    ctx.data_region_offset = ctx
+        .data_region_offset
+        .checked_add(total_bytes)
+        .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone()))?;
+
+    if max_length > ctx.max_string_capacity {
+        ctx.max_string_capacity = max_length;
+    }
+
+    emitter.emit_str_init(data_offset, max_length, char_width);
+
+    Ok(data_offset)
+}
+
 /// Resolves a string argument to its data_offset in the data region.
 ///
-/// Handles both variable references (looked up in `string_vars`) and
-/// string literals (allocated inline in the data region with initialization
-/// code emitted at the point of use).
+/// A simple named STRING variable resolves to the offset of its own slot.
+/// Everything else -- a literal, a nested string function call, a structure
+/// field or array element -- is materialized into a temporary slot, and that
+/// slot's offset is returned.
 pub(crate) fn resolve_string_arg(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     arg: &Expr,
-    func_span: &ironplc_dsl::core::SourceSpan,
+    func_span: &SourceSpan,
 ) -> Result<u32, Diagnostic> {
-    match &arg.kind {
-        ExprKind::Variable(variable) => {
-            // Fast path: simple named variable found in string_vars.
-            if let Some(var_name) = resolve_variable_name(variable) {
-                if let Some(info) = ctx.string_vars.get(var_name) {
-                    return Ok(info.data_offset);
-                }
+    // Fast path: a simple named variable already owns a data region slot.
+    if let ExprKind::Variable(variable) = &arg.kind {
+        if let Some(var_name) = resolve_variable_name(variable) {
+            if let Some(info) = ctx.string_vars.get(var_name) {
+                return Ok(info.data_offset);
             }
-            // Complex variable (e.g., struct field array subscript): fall
-            // through to the general expression path below.
-            let max_length = DEFAULT_STRING_MAX_LENGTH;
-            let data_offset = ctx.data_region_offset;
-            let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone()))?;
-
-            if max_length > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_length;
-            }
-
-            emitter.emit_str_init(data_offset, max_length, NARROW_CHAR_WIDTH);
-
-            let op_type = DEFAULT_OP_TYPE;
-            compile_expr(emitter, ctx, arg, op_type)?;
-            emitter.emit_str_store_var(data_offset);
-
-            Ok(data_offset)
-        }
-        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
-            // Allocate space in the data region for this string literal.
-            let bytes = encode_string_literal(&lit.value, NARROW_CHAR_WIDTH);
-            let max_length = DEFAULT_STRING_MAX_LENGTH;
-            let data_offset = ctx.data_region_offset;
-            let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone()))?;
-
-            if max_length > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_length;
-            }
-
-            // Emit initialization: header + value.
-            emitter.emit_str_init(data_offset, max_length, NARROW_CHAR_WIDTH);
-
-            let pool_index = ctx.add_str_constant(bytes);
-            ctx.num_temp_bufs += 1;
-            emitter.emit_load_const_str(pool_index);
-            emitter.emit_str_store_var(data_offset);
-
-            Ok(data_offset)
-        }
-        _ => {
-            // General expression (e.g., nested function call like MID(...)).
-            // Compile the expression (pushes buf_idx), then store into a
-            // temporary data region slot so the caller gets a data_offset.
-            let max_length = DEFAULT_STRING_MAX_LENGTH;
-            let data_offset = ctx.data_region_offset;
-            let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone()))?;
-
-            if max_length > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_length;
-            }
-
-            emitter.emit_str_init(data_offset, max_length, NARROW_CHAR_WIDTH);
-
-            let op_type = DEFAULT_OP_TYPE;
-            compile_expr(emitter, ctx, arg, op_type)?;
-            emitter.emit_str_store_var(data_offset);
-
-            Ok(data_offset)
         }
     }
+
+    let data_offset = allocate_string_temp(emitter, ctx, NARROW_CHAR_WIDTH, func_span)?;
+
+    match &arg.kind {
+        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
+            emit_string_literal_load(emitter, ctx, &lit.value, NARROW_CHAR_WIDTH);
+        }
+        // A complex variable (structure field, array element) or a general
+        // expression such as a nested function call: compiling it leaves a
+        // temp buffer index on the stack.
+        _ => compile_expr(emitter, ctx, arg, DEFAULT_OP_TYPE)?,
+    }
+    emitter.emit_str_store_var(data_offset);
+
+    Ok(data_offset)
 }
 
 /// Collects positional input arguments from a function call.
