@@ -285,16 +285,16 @@ impl SignedInteger {
         }
     }
 
-    pub fn positive(a: &str) -> Result<Self, &'static str> {
+    pub fn positive(a: &str, span: SourceSpan) -> Result<Self, &'static str> {
         Ok(Self {
-            value: Integer::new(a, SourceSpan::default())?,
+            value: Integer::new(a, span)?,
             is_neg: false,
         })
     }
 
-    pub fn negative(a: &str) -> Result<Self, &'static str> {
+    pub fn negative(a: &str, span: SourceSpan) -> Result<Self, &'static str> {
         Ok(Self {
-            value: Integer::new(a, SourceSpan::default())?,
+            value: Integer::new(a, span)?,
             is_neg: true,
         })
     }
@@ -3723,7 +3723,7 @@ mod tests {
 
     #[test]
     fn from_signed_integer_to_string_when_negative_then_prefixed() {
-        let si = SignedInteger::negative("42").unwrap();
+        let si = SignedInteger::negative("42", SourceSpan::default()).unwrap();
         let s: String = si.into();
         // Note: The From impl prepends "-" on top of Display which also prepends "-"
         assert!(s.contains("42"));
@@ -3731,7 +3731,7 @@ mod tests {
 
     #[test]
     fn from_signed_integer_to_string_when_positive_then_no_prefix() {
-        let si = SignedInteger::positive("42").unwrap();
+        let si = SignedInteger::positive("42", SourceSpan::default()).unwrap();
         let s: String = si.into();
         assert_eq!(s, "42");
     }
