@@ -87,9 +87,12 @@ answer, which is the accessed variable's type.
 | `BYTE`, `WORD`, `DWORD`, `LWORD` | no | Bit strings are patterns, not numbers, and wrapping them is a legitimate thing to want (`end_to_end_when_byte_overflow_then_wraps` asserts it). |
 | `REAL`, `LREAL`, and everything else | no | Not integer storage. |
 
-Only a decimal integer literal is checked. A radix-prefixed literal (`16#FF`,
-`2#1010`) is a bit pattern in the same sense that `BYTE` is, so it stays out —
-consistent with the bit-string row above.
+The *type* decides, not how the literal was spelled. An earlier draft of this
+plan excluded radix-prefixed literals (`16#FF`) as patterns in the same sense
+as a bit string. That is not implementable and not right: a radix does not
+survive parsing, so `16#1FF` and `511` are the same literal by the time a rule
+sees them, and 511 is not a `USINT` either way. IEC 61131-3 bounds a literal
+by the type it is used as, whatever radix it was written in.
 
 A literal that contradicts its own prefix (`x : DINT := INT#40000`) is
 [issue #1545](https://github.com/ironplc/ironplc/issues/1545).
