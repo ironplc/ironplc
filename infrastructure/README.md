@@ -141,11 +141,33 @@ settings may need a settings/`project:write` scope on the personal API key in
 addition to `insight:write` + `dashboard:write`; if `apply` returns 403, add
 that scope in PostHog → Settings → Personal API keys.
 
-Each insight's `query_json` is the raw PostHog query node. Exact field values
-(boolean property filters, `breakdownFilter` shape, display enums) can vary by
-PostHog version, so if `terraform plan`/`apply` reports a rejected query,
-adjust the offending field and re-apply — the resources are additive and do
-not affect the GitHub labels.
+### Verifying a dashboard after `apply`
+
+Each insight's `query_json` is the raw PostHog query node, and it is **opaque
+to Terraform** — a string as far as the provider is concerned.
+
+A wrong value in it is *not* rejected by the API. PostHog accepts the query and
+the tile silently reads **0**, forever. So `terraform apply` succeeding proves
+only that the insight in PostHog matches this directory; it proves nothing
+about whether the tile counts the right events. Those are two different
+things, and Terraform can only ever check the first.
+
+**Always open the affected tiles after an apply and check the numbers against
+the raw event data.** This is the only thing that closes the loop today. A tile
+that has quietly read 0 since it was created looks exactly like a feature
+nobody uses.
+
+Known encodings that matter:
+
+- **Booleans must be strings.** Property filter values are compared as strings,
+  so write `value = ["false"]`, never `value = [false]`. The latter matches
+  nothing. This zeroed six tiles — including both P9xxx tiles — until it was
+  found by querying the events by hand.
+- **Array properties do not break down elementwise.** `error_codes` and
+  `error_locations` are emitted as string arrays, so a breakdown buckets on the
+  serialized array: `["P9999"]` and `["P9999","P0012"]` are two unrelated rows.
+
+Fixes here are additive and do not affect the GitHub labels.
 
 ## PostHog managed reverse proxy
 

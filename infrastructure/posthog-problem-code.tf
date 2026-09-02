@@ -25,9 +25,16 @@
 # fragment these tiles because every insight breaks down on a low-cardinality
 # property (channel, version, $pathname, $referring_domain), never the full URL.
 #
-# NOTE: query_json field values (property-filter operators such as `is_set`,
-# breakdownFilter shape, display enums) can vary by PostHog version. Validate
-# with `terraform plan` / `terraform apply` and adjust anything the API rejects.
+# NOTE: query_json is opaque to Terraform — it is a string as far as the
+# provider is concerned. A wrong field value is NOT rejected by the API: PostHog
+# accepts the query and the tile silently reads 0 forever. `terraform apply`
+# succeeding therefore proves only that the insight matches this file, never
+# that it counts the right events. After every apply, open the affected tiles
+# and confirm the numbers against the raw event data.
+#
+# Property filter values are compared as strings, so a boolean property must be
+# written as ["true"] / ["false"], never [true] / [false] — that encoding
+# silently zeroed six tiles in posthog.tf before it was caught by hand.
 # ---------------------------------------------------------------------------
 
 locals {
