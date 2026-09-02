@@ -1,5 +1,17 @@
-//! Semantic rule that checks bit access and partial access indices are
-//! within the valid range for the variable's declared type.
+//! Semantic rule that a bit or partial access selects a part of a variable
+//! that exists.
+//!
+//! A variable's declared type fixes what parts it has: a `BYTE` has eight
+//! bits and one byte, a `WORD` sixteen bits and two bytes. An index past the
+//! last part names storage the variable does not have, and a slice wider than
+//! the variable cannot be taken from it at all.
+//!
+//! Both spellings of bit access are checked -- `x.3` and the IEC
+//! 61131-3:2013 form `x.%X3` -- along with the byte, word, dword and lword
+//! slices (`x.%B1`). The `%` forms require `--allow-partial-access-syntax`.
+//!
+//! This bounds an *index into* a variable. What values that variable can
+//! hold is a different question, and not this rule's.
 //!
 //! See section B.1.4.2.
 //!
@@ -10,9 +22,11 @@
 //!    VAR
 //!       myWord : WORD;
 //!       myBool : BOOL;
+//!       myByte : BYTE;
 //!    END_VAR
-//!    myBool := myWord.0;
-//!    myBool := myWord.15;
+//!    myBool := myWord.0;     (* first of 16 bits *)
+//!    myBool := myWord.15;    (* last of 16 bits *)
+//!    myByte := myWord.%B1;   (* second of 2 bytes *)
 //! END_FUNCTION_BLOCK
 //! ```
 //!
@@ -23,27 +37,29 @@
 //!    VAR
 //!       myByte : BYTE;
 //!       myBool : BOOL;
+//!       myWord : WORD;
 //!    END_VAR
-//!    myBool := myByte.8;
+//!    myBool := myByte.8;     (* a BYTE has bits 0..7 *)
+//!    myWord := myByte.%W0;   (* a WORD does not fit in a BYTE *)
+//!    myByte := myWord.%B2;   (* a WORD has bytes 0..1 *)
 //! END_FUNCTION_BLOCK
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{Id, Located},
+    core::Located,
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::*,
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
-use std::collections::HashMap;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::IntermediateType,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    type_environment::TypeEnvironment,
+    variable_type::{self, Declarations, Declared},
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -53,47 +69,38 @@ pub fn apply(
     _options: &CompilerOptions,
 ) -> SemanticResult {
     run_rule(
-        RuleBitAccessRange {
+        RuleBitAndPartialAccessRange {
             type_environment: context.types(),
-            var_initializers: HashMap::new(),
+            // `Declarations::new` opens the base scope, where declarations
+            // made outside any POU land. Opening another here would leave
+            // the stack unbalanced when the table drops.
+            declarations: Declarations::new(),
             diagnostics: Vec::new(),
         },
         lib,
     )
 }
 
-struct RuleBitAccessRange<'a> {
+struct RuleBitAndPartialAccessRange<'a> {
     type_environment: &'a crate::type_environment::TypeEnvironment,
-    /// Maps variable names to their declared initializers within the current scope.
-    var_initializers: HashMap<Id, InitialValueAssignmentKind>,
+    /// The declared type of every variable in scope.
+    declarations: Declarations<'a>,
     diagnostics: Vec<Diagnostic>,
 }
 
-impl DiagnosticVisitor for RuleBitAccessRange<'_> {
+impl DiagnosticVisitor for RuleBitAndPartialAccessRange<'_> {
     fn into_diagnostics(self) -> Vec<Diagnostic> {
         self.diagnostics
     }
 }
 
-impl RuleBitAccessRange<'_> {
-    fn collect_var_types(&mut self, variables: &[VarDecl]) {
-        for var in variables {
-            if let VariableIdentifier::Symbol(id) = &var.identifier {
-                self.var_initializers
-                    .insert(id.clone(), var.initializer.clone());
-            }
-        }
-    }
-
+impl RuleBitAndPartialAccessRange<'_> {
     fn check_partial_access(&mut self, node: &PartialAccessVariable) {
-        let resolved_type = match resolve_variable_type(
-            &node.variable,
-            &self.var_initializers,
-            self.type_environment,
-        ) {
-            Some(t) => t,
-            None => return,
-        };
+        let resolved_type =
+            match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
+                Some(t) => t,
+                None => return,
+            };
 
         let base_bytes = match resolved_type.size_in_bytes() {
             Some(bytes) => bytes as u128,
@@ -149,14 +156,11 @@ impl RuleBitAccessRange<'_> {
 
     fn check_bit_access(&mut self, node: &BitAccessVariable) {
         // Resolve the type of the variable being bit-accessed
-        let resolved_type = match resolve_variable_type(
-            &node.variable,
-            &self.var_initializers,
-            self.type_environment,
-        ) {
-            Some(t) => t,
-            None => return,
-        };
+        let resolved_type =
+            match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
+                Some(t) => t,
+                None => return,
+            };
 
         let bit_width = match resolved_type.size_in_bytes() {
             Some(bytes) => bytes as u128 * 8,
@@ -184,126 +188,35 @@ impl RuleBitAccessRange<'_> {
     }
 }
 
-/// Resolves the `IntermediateType` for a named variable from its initializer.
-fn resolve_initializer_type(
-    init: &InitialValueAssignmentKind,
-    type_env: &TypeEnvironment,
-) -> Option<IntermediateType> {
-    match init {
-        InitialValueAssignmentKind::Simple(si) => {
-            Some(type_env.get(&si.type_name)?.representation.clone())
-        }
-        InitialValueAssignmentKind::LateResolvedType(tn) => {
-            Some(type_env.get(tn)?.representation.clone())
-        }
-        InitialValueAssignmentKind::Structure(si) => {
-            Some(type_env.get(&si.type_name)?.representation.clone())
-        }
-        InitialValueAssignmentKind::Array(ai) => match &ai.spec {
-            SpecificationKind::Named(tn) => Some(type_env.get(tn)?.representation.clone()),
-            SpecificationKind::Inline(subranges) => {
-                let element_type = type_env
-                    .get(&subranges.type_name.to_type_name())?
-                    .representation
-                    .clone();
-                Some(IntermediateType::Array {
-                    element_type: Box::new(element_type),
-                    dimensions: vec![],
-                })
-            }
-        },
-        _ => None,
-    }
-}
-
-/// Resolves the `IntermediateType` for a `SymbolicVariableKind` by walking through
-/// struct field accesses and array subscripts to find the type of the leaf expression.
-fn resolve_variable_type(
-    kind: &SymbolicVariableKind,
-    var_initializers: &HashMap<Id, InitialValueAssignmentKind>,
-    type_env: &TypeEnvironment,
-) -> Option<IntermediateType> {
-    match kind {
-        SymbolicVariableKind::Named(named) => {
-            let init = var_initializers.get(&named.name)?;
-            resolve_initializer_type(init, type_env)
-        }
-        SymbolicVariableKind::Structured(structured) => {
-            let record_type =
-                resolve_variable_type(&structured.record, var_initializers, type_env)?;
-            find_struct_field_type(&record_type, &structured.field)
-        }
-        SymbolicVariableKind::Array(array) => {
-            let array_type =
-                resolve_variable_type(&array.subscripted_variable, var_initializers, type_env)?;
-            match array_type {
-                IntermediateType::Array { element_type, .. } => Some(*element_type),
-                _ => None,
-            }
-        }
-        SymbolicVariableKind::BitAccess(bit_access) => {
-            resolve_variable_type(&bit_access.variable, var_initializers, type_env)
-        }
-        SymbolicVariableKind::PartialAccess(partial) => {
-            resolve_variable_type(&partial.variable, var_initializers, type_env)
-        }
-        SymbolicVariableKind::SelfRef(_) => {
-            // Typing a member of THIS^/SUPER^ needs function-block member
-            // resolution, which does not exist yet. Unreachable in practice:
-            // `visit_self_ref_variable` below reports the construct before
-            // any range check runs. See issue #1406.
-            None
-        }
-        SymbolicVariableKind::Deref(deref) => {
-            resolve_variable_type(&deref.variable, var_initializers, type_env)
-        }
-    }
-}
-
-/// Finds the type of a field within a structure or function block type.
-fn find_struct_field_type(
-    parent_type: &IntermediateType,
-    field_name: &Id,
-) -> Option<IntermediateType> {
-    let fields = match parent_type {
-        IntermediateType::Structure { fields } => fields,
-        IntermediateType::FunctionBlock { fields, .. } => fields,
-        _ => return None,
-    };
-    fields
-        .iter()
-        .find(|f| f.name == *field_name)
-        .map(|f| f.field_type.clone())
-}
-
-impl Visitor<Infallible> for RuleBitAccessRange<'_> {
+impl Visitor<Infallible> for RuleBitAndPartialAccessRange<'_> {
     type Value = ();
 
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Infallible> {
-        self.var_initializers.clear();
-        self.collect_var_types(&node.variables);
-        let ret = node.recurse_visit(self);
-        self.var_initializers.clear();
-        ret
+    /// Opens a declaration's scope.
+    ///
+    /// Every kind contributes the same thing -- a frame its own declarations
+    /// go into -- but the match stays exhaustive so that a new kind of scope
+    /// has to say so rather than silently sharing the enclosing
+    /// declaration's frame.
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
+        match node {
+            ScopeNode::Function(_)
+            | ScopeNode::FunctionBlock(_)
+            | ScopeNode::Program(_)
+            | ScopeNode::Method(_) => self.declarations.enter(),
+        }
+        Ok(())
     }
 
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<(), Infallible> {
-        self.var_initializers.clear();
-        self.collect_var_types(&node.variables);
-        let ret = node.recurse_visit(self);
-        self.var_initializers.clear();
-        ret
+    fn exit_scope(&mut self) {
+        self.declarations.exit();
     }
 
-    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Infallible> {
-        self.var_initializers.clear();
-        self.collect_var_types(&node.variables);
-        let ret = node.recurse_visit(self);
-        self.var_initializers.clear();
-        ret
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
+        self.declarations.add_if(
+            node.identifier.symbolic_id(),
+            Declared(node.initializer.clone()),
+        );
+        node.recurse_visit(self)
     }
 
     fn visit_self_ref_variable(&mut self, node: &SelfRefVariable) -> Result<(), Infallible> {
@@ -607,6 +520,134 @@ END_VAR
     result := FOO(A := 5);
 END_PROGRAM",
         );
+    }
+
+    // --- Declarations outside the POU body ---
+    //
+    // The rule resolves a name against every scope that is open, not just
+    // the enclosing POU's own variables, so a global and a method local are
+    // both checkable.
+
+    #[test]
+    fn apply_when_global_bit_out_of_range_then_err() {
+        assert_bit_access_err(
+            "PROGRAM main
+VAR
+    y : BOOL;
+END_VAR
+    y := g.8;
+END_PROGRAM
+
+CONFIGURATION config
+VAR_GLOBAL
+    g : BYTE;
+END_VAR
+RESOURCE res ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM inst WITH plc_task : main;
+END_RESOURCE
+END_CONFIGURATION",
+        );
+    }
+
+    #[test]
+    fn apply_when_method_local_bit_out_of_range_then_err() {
+        let opts = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let program = "FUNCTION_BLOCK FB_Motor
+VAR
+    y : BOOL;
+END_VAR
+METHOD Start
+VAR
+    local : BYTE;
+END_VAR
+    y := local.8;
+END_METHOD
+END_FUNCTION_BLOCK";
+        let library = parse_program(program, &FileId::default(), &opts).unwrap();
+        let (_library, context) = analyze(&[&library], &opts).unwrap();
+
+        assert!(context
+            .diagnostics()
+            .iter()
+            .any(|d| d.code == Problem::BitAccessOutOfRange.code()));
+    }
+
+    // --- Partial access: byte, word, dword and lword slices ---
+    //
+    // The `%` selectors need `allow_partial_access_syntax`, so these build
+    // their own options rather than using the helpers above.
+
+    /// Analyzes `program` with partial-access syntax enabled, returning
+    /// whether this rule reported the access as out of range. Naming the
+    /// problem keeps a diagnostic from some other rule from passing for one
+    /// of ours.
+    fn reports_out_of_range_with_partial_access(program: &str) -> bool {
+        let opts = CompilerOptions {
+            allow_partial_access_syntax: true,
+            ..CompilerOptions::default()
+        };
+        let library = parse_program(program, &FileId::default(), &opts).unwrap();
+        let (_library, context) = analyze(&[&library], &opts).unwrap();
+        context
+            .diagnostics()
+            .iter()
+            .any(|d| d.code == Problem::BitAccessOutOfRange.code())
+    }
+
+    fn partial_access_program(declared_type: &str, target_type: &str, selector: &str) -> String {
+        format!(
+            "FUNCTION_BLOCK FB1
+VAR
+    x : {declared_type};
+    y : {target_type};
+END_VAR
+    y := x.{selector};
+END_FUNCTION_BLOCK"
+        )
+    }
+
+    #[rstest]
+    // A WORD holds two bytes, so byte 0 and byte 1 exist and byte 2 does not.
+    #[case::word_byte_0("WORD", "BYTE", "%B0", true)]
+    #[case::word_byte_1("WORD", "BYTE", "%B1", true)]
+    #[case::word_byte_2("WORD", "BYTE", "%B2", false)]
+    // A DWORD holds four bytes and two words.
+    #[case::dword_byte_3("DWORD", "BYTE", "%B3", true)]
+    #[case::dword_byte_4("DWORD", "BYTE", "%B4", false)]
+    #[case::dword_word_1("DWORD", "WORD", "%W1", true)]
+    #[case::dword_word_2("DWORD", "WORD", "%W2", false)]
+    fn apply_when_partial_access_index_at_boundary_then_ok_or_err(
+        #[case] declared_type: &str,
+        #[case] target_type: &str,
+        #[case] selector: &str,
+        #[case] expected_ok: bool,
+    ) {
+        let program = partial_access_program(declared_type, target_type, selector);
+
+        assert_eq!(
+            !reports_out_of_range_with_partial_access(&program),
+            expected_ok
+        );
+    }
+
+    #[rstest]
+    // A slice wider than the variable cannot be taken from it, whatever the
+    // index -- a distinct failure from an index past the last slice.
+    #[case::word_from_byte("BYTE", "WORD", "%W0")]
+    #[case::dword_from_word("WORD", "DWORD", "%D0")]
+    #[case::lword_from_dword("DWORD", "LWORD", "%L0")]
+    fn apply_when_partial_access_wider_than_variable_then_err(
+        #[case] declared_type: &str,
+        #[case] target_type: &str,
+        #[case] selector: &str,
+    ) {
+        let program = partial_access_program(declared_type, target_type, selector);
+
+        assert!(reports_out_of_range_with_partial_access(&program));
     }
 
     // ---------------------------------------------------------------------

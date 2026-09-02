@@ -21,11 +21,11 @@ use super::compile_expr::{
     emit_mod, emit_mul, emit_ne, emit_or, emit_sub, emit_truncation, emit_xor, op_type,
     op_type_from_expr, storage_bits,
 };
-use super::compile_setup::resolve_type_name;
 use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
     compile_mid, compile_replace, compile_right, resolve_string_arg,
 };
+use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
 /// Builds the opcode for a builtin defined across all four operation widths

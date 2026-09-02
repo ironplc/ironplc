@@ -59,9 +59,9 @@ use crate::{
     intermediates,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
-    scoped_table::{self, ScopedTable, Value},
     semantic_context::SemanticContext,
     type_environment::TypeEnvironment,
+    variable_type::{Declarations, Declared},
 };
 
 pub fn apply(
@@ -72,29 +72,22 @@ pub fn apply(
     run_rule(
         RuleAggregateAssignment {
             type_environment: context.types(),
-            // `ScopedTable::new` opens the base scope. That is where
+            // `Declarations::new` opens the base scope. That is where
             // declarations made outside any POU land -- a CONFIGURATION's
             // VAR_GLOBAL block, most importantly -- so a POU scope's lookups
             // fall through to them. Opening another here would leave the
             // stack unbalanced when the table drops.
-            declarations: scoped_table::ScopedTable::new(),
+            declarations: Declarations::new(),
             diagnostics: Vec::new(),
         },
         lib,
     )
 }
 
-/// A variable's declared type, as spelled at its declaration site.
-#[derive(Debug)]
-struct Declared(InitialValueAssignmentKind);
-impl Value for Declared {}
-
 struct RuleAggregateAssignment<'a> {
     type_environment: &'a TypeEnvironment,
-    /// Declared type of every variable in scope. Nested scopes let a POU's
-    /// own declarations shadow outer ones while still resolving names the
-    /// POU does not declare itself.
-    declarations: ScopedTable<'a, Id, Declared>,
+    /// Declared type of every variable in scope.
+    declarations: Declarations<'a>,
     diagnostics: Vec<Diagnostic>,
 }
 

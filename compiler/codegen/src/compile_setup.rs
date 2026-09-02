@@ -9,8 +9,8 @@ use ironplc_container::debug_section::{
 };
 use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
-    ConstantKind, ElementaryTypeName, FunctionReturnType, GenericTypeName,
-    InitialValueAssignmentKind, ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
+    ConstantKind, ElementaryTypeName, FunctionReturnType, InitialValueAssignmentKind,
+    ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -25,6 +25,7 @@ use super::compile::{
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
 use super::compile_stmt::resolve_string_max_length;
+use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
 /// Assigns variable table indices and type info for all variable declarations.
@@ -859,144 +860,5 @@ pub(crate) fn emit_zero_const(emitter: &mut Emitter, ctx: &mut CompileContext, o
             let pool_index = ctx.add_f64_constant(0.0);
             emitter.emit_load_const_f64(pool_index);
         }
-    }
-}
-
-/// Maps an IEC 61131-3 type name to its `VarTypeInfo`.
-///
-/// Returns `None` for unrecognized type names (e.g., user-defined types)
-/// and for STRING/WSTRING which are handled separately.
-pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
-    // Try as elementary type first (the common case), then fall back to
-    // generic types mapped to their default concrete representation.
-    // Generic types may reach codegen for expressions like `5 + 5` where
-    // no concrete type context was available during type resolution.
-    let elem = ElementaryTypeName::try_from(name)
-        .or_else(|_| match GenericTypeName::try_from(name)? {
-            GenericTypeName::AnyInt | GenericTypeName::AnyNum | GenericTypeName::AnyMagnitude => {
-                Ok(ElementaryTypeName::DINT)
-            }
-            GenericTypeName::AnyReal => Ok(ElementaryTypeName::REAL),
-            _ => Err(()),
-        })
-        .ok()?;
-    match elem {
-        ElementaryTypeName::SINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 8,
-        }),
-        ElementaryTypeName::INT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 16,
-        }),
-        ElementaryTypeName::DINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LINT => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Signed,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::USINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 8,
-        }),
-        ElementaryTypeName::UINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 16,
-        }),
-        ElementaryTypeName::UDINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::ULINT => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::REAL => Some(VarTypeInfo {
-            op_width: OpWidth::F32,
-            signedness: Signedness::Signed,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LREAL => Some(VarTypeInfo {
-            op_width: OpWidth::F64,
-            signedness: Signedness::Signed,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::BOOL => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 1,
-        }),
-        ElementaryTypeName::BYTE => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 8,
-        }),
-        ElementaryTypeName::WORD => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 16,
-        }),
-        ElementaryTypeName::DWORD => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LWORD => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::TIME => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LTIME => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Signed,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::DATE => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::TimeOfDay => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::DateAndTime => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LDATE => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::LTimeOfDay => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::LDateAndTime => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        // STRING and WSTRING are handled separately in codegen
-        ElementaryTypeName::STRING | ElementaryTypeName::WSTRING => None,
     }
 }
