@@ -6,56 +6,38 @@
 //! rules share one answer rather than each carrying its own copy.
 //!
 //! ```ignore
-//! let mut declarations = DeclaredVariables::new();
-//! declarations.enter_pou(&program.variables);
-//! let element = variable_type::of(&kind, &declarations, type_environment);
+//! // In the visitor: open a scope per POU, record each declaration in it.
+//! fn enter_scope(&mut self, _: ScopeNode<'_>) { self.declarations.enter() }
+//! fn exit_scope(&mut self) { self.declarations.exit() }
+//! fn visit_var_decl(&mut self, node: &VarDecl) {
+//!     self.declarations
+//!         .add_if(node.identifier.symbolic_id(), Declared(node.initializer.clone()));
+//! }
+//!
+//! let element = variable_type::of(&kind, &self.declarations, type_environment);
 //! ```
-
-use std::collections::HashMap;
 
 use ironplc_dsl::{common::*, core::Id, textual::*};
 
-use crate::{intermediate_type::IntermediateType, type_environment::TypeEnvironment};
+use crate::{
+    intermediate_type::IntermediateType,
+    scoped_table::{ScopedTable, Value},
+    type_environment::TypeEnvironment,
+};
 
-/// The variable declarations a rule can see while visiting a POU body.
+/// A variable's declared type, as spelled at its declaration site.
+#[derive(Debug)]
+pub(crate) struct Declared(pub(crate) InitialValueAssignmentKind);
+impl Value for Declared {}
+
+/// The declared type of every variable in scope.
 ///
-/// A POU's own declarations are collected when the traversal enters it and
-/// dropped when it leaves, so a name never resolves to a declaration from a
-/// POU that has already been visited.
-#[derive(Default)]
-pub(crate) struct DeclaredVariables {
-    /// Maps variable names to their declared initializers within the POU
-    /// being visited.
-    local: HashMap<Id, InitialValueAssignmentKind>,
-}
-
-impl DeclaredVariables {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
-    /// Makes `variables` the declarations in scope, replacing the previous
-    /// POU's.
-    pub(crate) fn enter_pou(&mut self, variables: &[VarDecl]) {
-        self.local.clear();
-        for var in variables {
-            if let VariableIdentifier::Symbol(id) = &var.identifier {
-                self.local.insert(id.clone(), var.initializer.clone());
-            }
-        }
-    }
-
-    /// Drops the declarations of the POU the traversal is leaving.
-    pub(crate) fn exit_pou(&mut self) {
-        self.local.clear();
-    }
-
-    /// Returns how `name` was declared, or `None` when nothing in scope
-    /// declares it.
-    pub(crate) fn find(&self, name: &Id) -> Option<&InitialValueAssignmentKind> {
-        self.local.get(name)
-    }
-}
+/// A POU's own declarations shadow outer ones while still resolving the names
+/// it does not declare itself. The base scope -- the one
+/// [`ScopedTable::new`] opens -- is where declarations made outside any POU
+/// land, a `CONFIGURATION`'s `VAR_GLOBAL` block most importantly, so a POU
+/// body sees the globals.
+pub(crate) type Declarations<'a> = ScopedTable<'a, Id, Declared>;
 
 /// Resolves the [`IntermediateType`] a declaration denotes.
 pub(crate) fn resolve_initializer(
@@ -101,12 +83,12 @@ pub(crate) fn resolve_initializer(
 /// value read from or written to the reference has.
 pub(crate) fn of(
     kind: &SymbolicVariableKind,
-    declarations: &DeclaredVariables,
+    declarations: &Declarations,
     type_env: &TypeEnvironment,
 ) -> Option<IntermediateType> {
     match kind {
         SymbolicVariableKind::Named(named) => {
-            resolve_initializer(declarations.find(&named.name)?, type_env)
+            resolve_initializer(&declarations.find(&named.name)?.0, type_env)
         }
         SymbolicVariableKind::Structured(structured) => {
             let record_type = of(&structured.record, declarations, type_env)?;

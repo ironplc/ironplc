@@ -48,6 +48,7 @@ use ironplc_dsl::{
     common::*,
     core::Located,
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::*,
     visitor::Visitor,
 };
@@ -58,7 +59,7 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    variable_type::{self, DeclaredVariables},
+    variable_type::{self, Declarations, Declared},
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -70,7 +71,10 @@ pub fn apply(
     run_rule(
         RuleBitAndPartialAccessRange {
             type_environment: context.types(),
-            declarations: DeclaredVariables::new(),
+            // `Declarations::new` opens the base scope, where declarations
+            // made outside any POU land. Opening another here would leave
+            // the stack unbalanced when the table drops.
+            declarations: Declarations::new(),
             diagnostics: Vec::new(),
         },
         lib,
@@ -79,8 +83,8 @@ pub fn apply(
 
 struct RuleBitAndPartialAccessRange<'a> {
     type_environment: &'a crate::type_environment::TypeEnvironment,
-    /// The variable declarations visible in the POU being visited.
-    declarations: DeclaredVariables,
+    /// The declared type of every variable in scope.
+    declarations: Declarations<'a>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -187,28 +191,32 @@ impl RuleBitAndPartialAccessRange<'_> {
 impl Visitor<Infallible> for RuleBitAndPartialAccessRange<'_> {
     type Value = ();
 
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Infallible> {
-        self.declarations.enter_pou(&node.variables);
-        let ret = node.recurse_visit(self);
-        self.declarations.exit_pou();
-        ret
+    /// Opens a declaration's scope.
+    ///
+    /// Every kind contributes the same thing -- a frame its own declarations
+    /// go into -- but the match stays exhaustive so that a new kind of scope
+    /// has to say so rather than silently sharing the enclosing
+    /// declaration's frame.
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
+        match node {
+            ScopeNode::Function(_)
+            | ScopeNode::FunctionBlock(_)
+            | ScopeNode::Program(_)
+            | ScopeNode::Method(_) => self.declarations.enter(),
+        }
+        Ok(())
     }
 
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<(), Infallible> {
-        self.declarations.enter_pou(&node.variables);
-        let ret = node.recurse_visit(self);
-        self.declarations.exit_pou();
-        ret
+    fn exit_scope(&mut self) {
+        self.declarations.exit();
     }
 
-    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Infallible> {
-        self.declarations.enter_pou(&node.variables);
-        let ret = node.recurse_visit(self);
-        self.declarations.exit_pou();
-        ret
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
+        self.declarations.add_if(
+            node.identifier.symbolic_id(),
+            Declared(node.initializer.clone()),
+        );
+        node.recurse_visit(self)
     }
 
     fn visit_self_ref_variable(&mut self, node: &SelfRefVariable) -> Result<(), Infallible> {
@@ -512,6 +520,60 @@ END_VAR
     result := FOO(A := 5);
 END_PROGRAM",
         );
+    }
+
+    // --- Declarations outside the POU body ---
+    //
+    // The rule resolves a name against every scope that is open, not just
+    // the enclosing POU's own variables, so a global and a method local are
+    // both checkable.
+
+    #[test]
+    fn apply_when_global_bit_out_of_range_then_err() {
+        assert_bit_access_err(
+            "PROGRAM main
+VAR
+    y : BOOL;
+END_VAR
+    y := g.8;
+END_PROGRAM
+
+CONFIGURATION config
+VAR_GLOBAL
+    g : BYTE;
+END_VAR
+RESOURCE res ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM inst WITH plc_task : main;
+END_RESOURCE
+END_CONFIGURATION",
+        );
+    }
+
+    #[test]
+    fn apply_when_method_local_bit_out_of_range_then_err() {
+        let opts = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let program = "FUNCTION_BLOCK FB_Motor
+VAR
+    y : BOOL;
+END_VAR
+METHOD Start
+VAR
+    local : BYTE;
+END_VAR
+    y := local.8;
+END_METHOD
+END_FUNCTION_BLOCK";
+        let library = parse_program(program, &FileId::default(), &opts).unwrap();
+        let (_library, context) = analyze(&[&library], &opts).unwrap();
+
+        assert!(context
+            .diagnostics()
+            .iter()
+            .any(|d| d.code == Problem::BitAccessOutOfRange.code()));
     }
 
     // --- Partial access: byte, word, dword and lword slices ---
