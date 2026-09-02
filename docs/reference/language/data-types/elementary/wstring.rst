@@ -48,8 +48,7 @@ The maximum declared length is 65,535 code units.
 
 ``STRING`` and ``WSTRING`` cannot be mixed. Assigning one to the other, or
 comparing or combining them in one operation, is a compile error
-(:doc:`/reference/compiler/problems/P4034`); the runtime also traps a mixed
-operation that reaches it.
+(:doc:`/reference/compiler/problems/P4034`).
 
 A string literal is not itself narrow or wide. It takes the encoding of
 whatever it is used with, so a literal compares against, concatenates with, and

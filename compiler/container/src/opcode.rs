@@ -34,7 +34,9 @@
 pub type Opcode = u8;
 
 use crate::instruction::declare_instruction_set;
-pub use crate::instruction::{Instruction, Operand};
+pub use crate::instruction::{
+    decode_body, BodyDecoder, DecodeStop, DecodedInstruction, Instruction, Operand,
+};
 
 /// Built-in function IDs used with the BUILTIN opcode.
 ///

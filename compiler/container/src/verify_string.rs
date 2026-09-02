@@ -1,4 +1,8 @@
-//! String-encoding verification for emitted bytecode (verifier rule R0304).
+//! String-encoding verification for emitted bytecode.
+//!
+//! This module implements rule R0304 of the bytecode verifier specified in
+//! `specs/design/bytecode-verifier-rules.md`, which requires every string
+//! operation to find its operands in agreement about their encoding.
 //!
 //! Every string value carries its encoding with it — a `char_width` of 1 for
 //! `STRING` (Latin-1) or 2 for `WSTRING` (UTF-16LE) — in the data-region
@@ -49,10 +53,10 @@ use crate::code_section::CodeSection;
 use crate::constant_pool::ConstantPool;
 use crate::container::Container;
 use crate::id_types::{ConstantIndex, FunctionId};
-use crate::instruction::Instruction;
-use crate::opcode::{self, Opcode};
+use crate::opcode::{self, decode_body, DecodedInstruction, Opcode};
 
-/// R0304: an operation whose operands do not agree on a string encoding.
+/// An operation whose operands do not agree on a string encoding: a
+/// violation of verifier rule R0304 (see the module documentation).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StringEncodingViolation {
     /// Two data-region slots addressed by one operation declare different
@@ -91,7 +95,9 @@ impl StringEncodingViolation {
         }
     }
 
-    /// The `R####` rule code from `bytecode-verifier-rules.md`.
+    /// The rule code this violates, as `bytecode-verifier-rules.md` numbers
+    /// the verifier's rules. Every variant here violates the same one, so a
+    /// caller can name the rule without matching on the variant.
     pub fn rule(&self) -> &'static str {
         "R0304"
     }
@@ -137,35 +143,6 @@ impl fmt::Display for StringEncodingViolation {
     }
 }
 
-/// One decoded instruction of a function body.
-struct Decoded<'a> {
-    offset: usize,
-    opcode: Opcode,
-    instruction: Instruction,
-    operands: &'a [u8],
-}
-
-impl Decoded<'_> {
-    /// Reads the `n`th operand of this instruction as an unsigned integer,
-    /// whatever its declared width.
-    fn operand(&self, n: usize) -> Option<u32> {
-        let mut at = 0usize;
-        for (index, operand) in self.instruction.operands.iter().enumerate() {
-            let width = operand.width();
-            if index == n {
-                let bytes = self.operands.get(at..at + width)?;
-                return Some(match width {
-                    1 => bytes[0] as u32,
-                    2 => u16::from_le_bytes([bytes[0], bytes[1]]) as u32,
-                    _ => u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
-                });
-            }
-            at += width;
-        }
-        None
-    }
-}
-
 /// Verifies string-encoding agreement across every function in `container`.
 ///
 /// Returns the first violation found, scanning functions in directory order
@@ -202,7 +179,7 @@ fn declared_slot_widths(code: &CodeSection) -> BTreeMap<u32, Option<CharWidth>> 
         let bytecode = code
             .get_function_bytecode(entry.function_id)
             .unwrap_or_default();
-        for decoded in decode_body(bytecode) {
+        for decoded in decode_body(bytecode).map_while(Result::ok) {
             if decoded.opcode != opcode::STR_INIT {
                 continue;
             }
@@ -227,39 +204,10 @@ fn declared_slot_widths(code: &CodeSection) -> BTreeMap<u32, Option<CharWidth>> 
     widths
 }
 
-/// Decodes a function body linearly into its instructions, stopping at the
-/// first byte that is not an assigned opcode or whose operands run past the
-/// end. Both of those are what `verify_stack_balance` reports; this pass just
-/// stops looking.
-fn decode_body(bytecode: &[u8]) -> Vec<Decoded<'_>> {
-    let mut decoded = Vec::new();
-    let mut pc = 0usize;
-
-    while pc < bytecode.len() {
-        let op = bytecode[pc];
-        let Some(instruction) = Instruction::decode(op) else {
-            break;
-        };
-        let size = opcode::instruction_size(op);
-        if pc + size > bytecode.len() {
-            break;
-        }
-        decoded.push(Decoded {
-            offset: pc,
-            opcode: op,
-            instruction,
-            operands: &bytecode[pc + 1..pc + size],
-        });
-        pc += size;
-    }
-
-    decoded
-}
-
 /// Reports a violation when two known widths differ.
 fn widths_agree(
     function_id: FunctionId,
-    decoded: &Decoded<'_>,
+    decoded: &DecodedInstruction<'_>,
     left: Option<CharWidth>,
     right: Option<CharWidth>,
 ) -> Result<(), StringEncodingViolation> {
@@ -283,7 +231,9 @@ fn verify_function(
     widths: &BTreeMap<u32, Option<CharWidth>>,
     constants: &ConstantPool,
 ) -> Result<(), StringEncodingViolation> {
-    let body = decode_body(bytecode);
+    // A byte this walk cannot read is the stack-balance verifier's to report;
+    // this pass just stops looking at that point.
+    let body: Vec<DecodedInstruction<'_>> = decode_body(bytecode).map_while(Result::ok).collect();
     let width_of = |offset: u32| widths.get(&offset).copied().flatten();
 
     for (index, decoded) in body.iter().enumerate() {
@@ -350,7 +300,7 @@ fn verify_function(
 /// The data-region offset pushed `back` instructions before `index`, when that
 /// instruction is a `LOAD_CONST_I32` naming an i32 constant.
 fn pushed_constant_offset(
-    body: &[Decoded<'_>],
+    body: &[DecodedInstruction<'_>],
     index: usize,
     back: usize,
     constants: &ConstantPool,
