@@ -247,10 +247,49 @@ fn optimize_when_load_const_zero_add_i64_then_removes_both() {
 }
 
 #[test]
-fn optimize_when_load_const_zero_add_f32_then_removes_both() {
+fn optimize_when_load_const_zero_sub_i64_then_removes_both() {
+    let mut bytecode = Vec::new();
+    bytecode.extend_from_slice(&load_const_i64(0));
+    bytecode.push(opcode::SUB_I64);
+    bytecode.push(opcode::RET_VOID);
+
+    let mut constants = vec![PoolConstant::I64(0)];
+    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
+    assert_eq!(result, vec![opcode::RET_VOID]);
+}
+
+// `x + 0.0` is not an identity on floats: `(-0.0) + 0.0 = +0.0`, so the
+// pair must survive. `x - 0.0` is an identity for every `x`, `-0.0` included.
+
+#[test]
+fn optimize_when_load_const_zero_add_f32_then_no_change() {
     let mut bytecode = Vec::new();
     bytecode.extend_from_slice(&load_const_f32(0));
     bytecode.push(opcode::ADD_F32);
+    bytecode.push(opcode::RET_VOID);
+
+    let mut constants = vec![PoolConstant::F32(0.0)];
+    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
+    assert_eq!(result, bytecode);
+}
+
+#[test]
+fn optimize_when_load_const_zero_add_f64_then_no_change() {
+    let mut bytecode = Vec::new();
+    bytecode.extend_from_slice(&load_const_f64(0));
+    bytecode.push(opcode::ADD_F64);
+    bytecode.push(opcode::RET_VOID);
+
+    let mut constants = vec![PoolConstant::F64(0.0)];
+    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
+    assert_eq!(result, bytecode);
+}
+
+#[test]
+fn optimize_when_load_const_zero_sub_f32_then_removes_both() {
+    let mut bytecode = Vec::new();
+    bytecode.extend_from_slice(&load_const_f32(0));
+    bytecode.push(opcode::SUB_F32);
     bytecode.push(opcode::RET_VOID);
 
     let mut constants = vec![PoolConstant::F32(0.0)];
@@ -259,10 +298,10 @@ fn optimize_when_load_const_zero_add_f32_then_removes_both() {
 }
 
 #[test]
-fn optimize_when_load_const_zero_add_f64_then_removes_both() {
+fn optimize_when_load_const_zero_sub_f64_then_removes_both() {
     let mut bytecode = Vec::new();
     bytecode.extend_from_slice(&load_const_f64(0));
-    bytecode.push(opcode::ADD_F64);
+    bytecode.push(opcode::SUB_F64);
     bytecode.push(opcode::RET_VOID);
 
     let mut constants = vec![PoolConstant::F64(0.0)];
