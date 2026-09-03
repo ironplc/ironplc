@@ -14,6 +14,7 @@
 use std::collections::HashSet;
 
 use ironplc_container::{opcode, VarIndex};
+use rstest::rstest;
 
 use super::{optimize, remap_line_map, OffsetMap};
 use crate::compile::PoolConstant;
@@ -79,6 +80,12 @@ fn load_const_f64(idx: u16) -> Vec<u8> {
 
 fn load_var_i32(idx: u16) -> Vec<u8> {
     let mut v = vec![opcode::LOAD_VAR_I32];
+    v.extend_from_slice(&idx.to_le_bytes());
+    v
+}
+
+fn load_var_f32(idx: u16) -> Vec<u8> {
+    let mut v = vec![opcode::LOAD_VAR_F32];
     v.extend_from_slice(&idx.to_le_bytes());
     v
 }
@@ -208,190 +215,57 @@ fn optimize_when_load_store_different_type_then_no_change() {
     assert_eq!(result, bytecode);
 }
 
-// --- Pattern 2: LOAD_CONST(0) + ADD/SUB ---
+// --- Patterns 2 and 3: LOAD_CONST(0) + ADD/SUB, LOAD_CONST(1) + MUL/DIV ---
+//
+// Each case is the instruction pair (minus the trailing RET_VOID) and the
+// constant pool it reads. The pool index is always 0.
 
-#[test]
-fn optimize_when_load_const_zero_add_i32_then_removes_both() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_i32(0));
-    bytecode.push(opcode::ADD_I32);
-    bytecode.push(opcode::RET_VOID);
+#[rstest]
+#[case::zero_add_i32([load_const_i32(0), vec![opcode::ADD_I32]].concat(), PoolConstant::I32(0))]
+#[case::zero_sub_i32([load_const_i32(0), vec![opcode::SUB_I32]].concat(), PoolConstant::I32(0))]
+#[case::zero_add_i64([load_const_i64(0), vec![opcode::ADD_I64]].concat(), PoolConstant::I64(0))]
+#[case::zero_sub_i64([load_const_i64(0), vec![opcode::SUB_I64]].concat(), PoolConstant::I64(0))]
+#[case::zero_sub_f32([load_const_f32(0), vec![opcode::SUB_F32]].concat(), PoolConstant::F32(0.0))]
+#[case::zero_sub_f64([load_const_f64(0), vec![opcode::SUB_F64]].concat(), PoolConstant::F64(0.0))]
+#[case::one_mul_i32([load_const_i32(0), vec![opcode::MUL_I32]].concat(), PoolConstant::I32(1))]
+#[case::one_div_i32([load_const_i32(0), vec![opcode::DIV_I32]].concat(), PoolConstant::I32(1))]
+#[case::one_mul_i64([load_const_i64(0), vec![opcode::MUL_I64]].concat(), PoolConstant::I64(1))]
+#[case::one_div_i64([load_const_i64(0), vec![opcode::DIV_I64]].concat(), PoolConstant::I64(1))]
+#[case::one_mul_f32([load_const_f32(0), vec![opcode::MUL_F32]].concat(), PoolConstant::F32(1.0))]
+#[case::one_div_f32([load_const_f32(0), vec![opcode::DIV_F32]].concat(), PoolConstant::F32(1.0))]
+#[case::one_mul_f64([load_const_f64(0), vec![opcode::MUL_F64]].concat(), PoolConstant::F64(1.0))]
+#[case::one_div_f64([load_const_f64(0), vec![opcode::DIV_F64]].concat(), PoolConstant::F64(1.0))]
+fn optimize_when_arith_identity_pair_then_removes_both(
+    #[case] pair: Vec<u8>,
+    #[case] constant: PoolConstant,
+) {
+    let bytecode = [pair, vec![opcode::RET_VOID]].concat();
 
-    let mut constants = vec![PoolConstant::I32(0)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
+    let (result, _) = optimize(unpatched(&bytecode), &mut vec![constant]);
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
-#[test]
-fn optimize_when_load_const_zero_sub_i32_then_removes_both() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_i32(0));
-    bytecode.push(opcode::SUB_I32);
-    bytecode.push(opcode::RET_VOID);
+// `x + 0.0` is not an identity on floats: `(-0.0) + 0.0 = +0.0`, so the pair
+// must survive. A constant that is loaded *first* is never adjacent to the
+// operator — `LOAD_CONST; LOAD_VAR; SUB` — so the pass leaves it alone; that
+// matters for `0 - x`, which is negation, not an identity.
 
-    let mut constants = vec![PoolConstant::I32(0)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, vec![opcode::RET_VOID]);
-}
+#[rstest]
+#[case::zero_add_f32([load_const_f32(0), vec![opcode::ADD_F32]].concat(), PoolConstant::F32(0.0))]
+#[case::zero_add_f64([load_const_f64(0), vec![opcode::ADD_F64]].concat(), PoolConstant::F64(0.0))]
+#[case::nonzero_add_i32([load_const_i32(0), vec![opcode::ADD_I32]].concat(), PoolConstant::I32(42))]
+#[case::nonone_mul_i32([load_const_i32(0), vec![opcode::MUL_I32]].concat(), PoolConstant::I32(5))]
+#[case::zero_first_sub_i32([load_const_i32(0), load_var_i32(1), vec![opcode::SUB_I32]].concat(), PoolConstant::I32(0))]
+#[case::zero_first_add_i32([load_const_i32(0), load_var_i32(1), vec![opcode::ADD_I32]].concat(), PoolConstant::I32(0))]
+#[case::one_first_div_i32([load_const_i32(0), load_var_i32(1), vec![opcode::DIV_I32]].concat(), PoolConstant::I32(1))]
+#[case::zero_first_sub_f32([load_const_f32(0), load_var_f32(1), vec![opcode::SUB_F32]].concat(), PoolConstant::F32(0.0))]
+fn optimize_when_not_arith_identity_then_no_change(
+    #[case] instructions: Vec<u8>,
+    #[case] constant: PoolConstant,
+) {
+    let bytecode = [instructions, vec![opcode::RET_VOID]].concat();
 
-#[test]
-fn optimize_when_load_const_zero_add_i64_then_removes_both() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_i64(0));
-    bytecode.push(opcode::ADD_I64);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::I64(0)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, vec![opcode::RET_VOID]);
-}
-
-#[test]
-fn optimize_when_load_const_zero_sub_i64_then_removes_both() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_i64(0));
-    bytecode.push(opcode::SUB_I64);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::I64(0)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, vec![opcode::RET_VOID]);
-}
-
-// `x + 0.0` is not an identity on floats: `(-0.0) + 0.0 = +0.0`, so the
-// pair must survive. `x - 0.0` is an identity for every `x`, `-0.0` included.
-
-#[test]
-fn optimize_when_load_const_zero_add_f32_then_no_change() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_f32(0));
-    bytecode.push(opcode::ADD_F32);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::F32(0.0)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, bytecode);
-}
-
-#[test]
-fn optimize_when_load_const_zero_add_f64_then_no_change() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_f64(0));
-    bytecode.push(opcode::ADD_F64);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::F64(0.0)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, bytecode);
-}
-
-#[test]
-fn optimize_when_load_const_zero_sub_f32_then_removes_both() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_f32(0));
-    bytecode.push(opcode::SUB_F32);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::F32(0.0)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, vec![opcode::RET_VOID]);
-}
-
-#[test]
-fn optimize_when_load_const_zero_sub_f64_then_removes_both() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_f64(0));
-    bytecode.push(opcode::SUB_F64);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::F64(0.0)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, vec![opcode::RET_VOID]);
-}
-
-#[test]
-fn optimize_when_load_const_nonzero_add_i32_then_no_change() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_i32(0));
-    bytecode.push(opcode::ADD_I32);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::I32(42)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, bytecode);
-}
-
-// --- Pattern 3: LOAD_CONST(1) + MUL/DIV ---
-
-#[test]
-fn optimize_when_load_const_one_mul_i32_then_removes_both() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_i32(0));
-    bytecode.push(opcode::MUL_I32);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::I32(1)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, vec![opcode::RET_VOID]);
-}
-
-#[test]
-fn optimize_when_load_const_one_div_i32_then_removes_both() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_i32(0));
-    bytecode.push(opcode::DIV_I32);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::I32(1)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, vec![opcode::RET_VOID]);
-}
-
-#[test]
-fn optimize_when_load_const_one_mul_i64_then_removes_both() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_i64(0));
-    bytecode.push(opcode::MUL_I64);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::I64(1)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, vec![opcode::RET_VOID]);
-}
-
-#[test]
-fn optimize_when_load_const_one_mul_f32_then_removes_both() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_f32(0));
-    bytecode.push(opcode::MUL_F32);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::F32(1.0)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, vec![opcode::RET_VOID]);
-}
-
-#[test]
-fn optimize_when_load_const_one_mul_f64_then_removes_both() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_f64(0));
-    bytecode.push(opcode::MUL_F64);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::F64(1.0)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
-    assert_eq!(result, vec![opcode::RET_VOID]);
-}
-
-#[test]
-fn optimize_when_load_const_nonone_mul_i32_then_no_change() {
-    let mut bytecode = Vec::new();
-    bytecode.extend_from_slice(&load_const_i32(0));
-    bytecode.push(opcode::MUL_I32);
-    bytecode.push(opcode::RET_VOID);
-
-    let mut constants = vec![PoolConstant::I32(5)];
-    let (result, _) = optimize(unpatched(&bytecode), &mut constants);
+    let (result, _) = optimize(unpatched(&bytecode), &mut vec![constant]);
     assert_eq!(result, bytecode);
 }
 
