@@ -7,5 +7,7 @@ fn main() {
         // The analyzer owns the explicit-dereference semantics requirements
         // (`REQ-PTR-analyzer-*`) for POINTER TO.
         "adr-and-pointer-to.md",
+        // The function forms of operators (`REQ-KF-analyzer-*`).
+        "keyword-function-forms.md",
     ]);
 }
