@@ -56,7 +56,9 @@ use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, Library,
     LibraryElementKind, ProgramDeclaration, StringType, VarDecl, VariableType,
 };
-use ironplc_dsl::configuration::{ConfigurationDeclaration, TaskConfiguration};
+use ironplc_dsl::configuration::{
+    ConfigurationDeclaration, ProgramConfiguration, TaskConfiguration,
+};
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_problems::Problem;
@@ -215,6 +217,9 @@ pub fn compile(
 ) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
     let config = find_configuration(library);
+    if let Some(config) = config {
+        check_single_program_instance(config)?;
+    }
     let user_globals: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
 
     // Prepend system uptime globals when the feature is enabled.
@@ -295,8 +300,9 @@ pub fn compile(
 /// Applies the `TASK` that the configuration binds to the compiled program.
 ///
 /// `ContainerBuilder` synthesizes a freewheeling task and a single program
-/// instance. The VM is single-instance in v1 and [`find_program`] compiles
-/// exactly one `PROGRAM`, so the table keeps that one task and one instance —
+/// instance. The VM is single-instance in v1; [`find_program`] and
+/// [`check_single_program_instance`] reject a second `PROGRAM` or instance
+/// before this runs, so the table keeps that one task and one instance —
 /// only the task entry's scheduling fields change. A program with no
 /// `CONFIGURATION`, or one that no resource instantiates, or an instance
 /// declared without a `WITH` clause, keeps the synthesized freewheeling task.
@@ -391,20 +397,128 @@ fn find_bound_task<'a>(
     })
 }
 
-/// Finds the first PROGRAM declaration in the library.
+/// Finds the one PROGRAM declaration that the container runs.
+///
+/// The VM runs a single program instance, so a library with two or more
+/// `PROGRAM` declarations cannot be compiled faithfully. Keeping one of them
+/// silently is worse than refusing: which one survived depended on the
+/// analyzer's toposort order rather than on the source (issue #1588). Every
+/// declaration beyond the first is therefore reported as not yet implemented.
 fn find_program(library: &Library) -> Result<&ProgramDeclaration, Diagnostic> {
-    for element in &library.elements {
-        if let LibraryElementKind::ProgramDeclaration(program) = element {
-            return Ok(program);
-        }
+    let mut programs: Vec<&ProgramDeclaration> = library
+        .elements
+        .iter()
+        .filter_map(|element| match element {
+            LibraryElementKind::ProgramDeclaration(program) => Some(program),
+            _ => None,
+        })
+        .collect();
+    sort_by_source_position(&mut programs, |program| &program.name);
+
+    match programs.as_slice() {
+        [] => Err(Diagnostic::problem(
+            Problem::NoProgramDeclaration,
+            Label::file(
+                FileId::default(),
+                "Source does not contain a PROGRAM declaration",
+            ),
+        )),
+        [program] => Ok(program),
+        _ => Err(multiple_programs_not_implemented(
+            "PROGRAM declaration",
+            &programs
+                .iter()
+                .map(|program| &program.name)
+                .collect::<Vec<_>>(),
+        )),
     }
-    Err(Diagnostic::problem(
-        Problem::NoProgramDeclaration,
-        Label::file(
-            FileId::default(),
-            "Source does not contain a PROGRAM declaration",
+}
+
+/// Rejects a configuration that instantiates more than one program.
+///
+/// `PROGRAM <instance> WITH <task> : <type>` lines are counted across every
+/// `RESOURCE` in the configuration. Two instances of the same program type
+/// are as unsupported as two different types: the VM has one variable table
+/// and one program instance, so the second instance would be dropped.
+fn check_single_program_instance(config: &ConfigurationDeclaration) -> Result<(), Diagnostic> {
+    let mut instances: Vec<&ProgramConfiguration> = config
+        .resource_decl
+        .iter()
+        .flat_map(|resource| resource.programs.iter())
+        .collect();
+    if instances.len() < 2 {
+        return Ok(());
+    }
+    sort_by_source_position(&mut instances, |instance| &instance.name);
+
+    Err(multiple_programs_not_implemented(
+        "program instance",
+        &instances
+            .iter()
+            .map(|instance| &instance.name)
+            .collect::<Vec<_>>(),
+    ))
+}
+
+/// Orders `items` by where their identifier appears in the source.
+///
+/// The analyzer's toposort reorders library elements, and for POUs with no
+/// dependency edges between them the order comes out reversed. Sorting by
+/// file and offset lets a diagnostic call a program "the second" in the sense
+/// the reader expects: the second one in the file.
+fn sort_by_source_position<T>(items: &mut [&T], id: impl Fn(&T) -> &Id) {
+    items.sort_by_key(|item| {
+        let span = &id(item).span;
+        (span.file_id.to_string(), span.start)
+    });
+}
+
+/// Builds the P9999 diagnostic for a second (or later) program.
+///
+/// `names` are in source order. The primary label sits on the second name,
+/// the first one the compiler cannot honour. The first name and any later
+/// ones get secondary labels so the diagnostic points at every program it is
+/// about, not only the one that tipped the count.
+fn multiple_programs_not_implemented(what: &str, names: &[&Id]) -> Diagnostic {
+    let Some(second) = names.get(1) else {
+        return Diagnostic::internal_error();
+    };
+    let mut diagnostic = Diagnostic::not_implemented(Label::span(
+        second.span(),
+        format!(
+            "{} {what}; the compiler currently runs only one PROGRAM",
+            ordinal(2)
         ),
     ))
+    .with_help(
+        "Compile a single PROGRAM for now. Support for more than one PROGRAM is tracked in \
+         https://github.com/ironplc/ironplc/issues/1613",
+    );
+    for (index, name) in names.iter().enumerate() {
+        if index == 1 {
+            continue;
+        }
+        diagnostic = diagnostic.with_secondary(Label::span(
+            name.span(),
+            format!("{} {what}", ordinal(index + 1)),
+        ));
+    }
+    diagnostic
+}
+
+/// Formats a 1-based position as an English ordinal: `1st`, `2nd`, `3rd`, `11th`.
+fn ordinal(position: usize) -> String {
+    let suffix = if (11..=13).contains(&(position % 100)) {
+        "th"
+    } else {
+        match position % 10 {
+            1 => "st",
+            2 => "nd",
+            3 => "rd",
+            _ => "th",
+        }
+    };
+    format!("{position}{suffix}")
 }
 
 /// Finds the first CONFIGURATION declaration in the library, if any.
