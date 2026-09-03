@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use ironplc_analyzer::{operator_function_form, FormOf};
 use ironplc_container::opcode;
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
@@ -17,9 +18,8 @@ use super::compile::{
     CompileContext, OpType, OpWidth, Signedness, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
 };
 use super::compile_expr::{
-    compile_expr, emit_add, emit_and, emit_div, emit_eq, emit_ge, emit_gt, emit_le, emit_lt,
-    emit_mod, emit_mul, emit_ne, emit_or, emit_sub, emit_truncation, emit_xor, op_type,
-    op_type_from_expr, storage_bits,
+    compile_expr, emit_add, emit_arithmetic_op, emit_compare_op, emit_div, emit_mod, emit_mul,
+    emit_not, emit_sub, emit_truncation, op_type, op_type_from_expr, storage_bits,
 };
 use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
@@ -173,29 +173,16 @@ pub(crate) fn compile_function_call(
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     let name = func.name.lower_case();
+    // A function form of an operator (ADD, GT, AND, NOT, ...) compiles as
+    // the operator it is a form of; the analyzer's table says which.
+    if let Some(form) = operator_function_form(name.as_str()) {
+        return compile_operator_form(emitter, ctx, func, op_type, &form.operator);
+    }
     match name.as_str() {
         "shl" | "shr" | "rol" | "ror" => {
             compile_shift_rotate(emitter, ctx, func, op_type, name.as_str())
         }
         "mux" => compile_mux(emitter, ctx, func, op_type),
-        // Arithmetic function forms (equivalent to +, -, *, /, MOD operators)
-        "add" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_add),
-        "sub" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_sub),
-        "mul" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_mul),
-        "div" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_div),
-        "mod" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_mod),
-        // Comparison function forms (equivalent to >, >=, =, <=, <, <> operators)
-        "gt" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_gt),
-        "ge" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_ge),
-        "eq" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_eq),
-        "le" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_le),
-        "lt" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_lt),
-        "ne" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_ne),
-        // Boolean function forms (equivalent to AND, OR, XOR, NOT operators)
-        "and" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_and),
-        "or" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_or),
-        "xor" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_xor),
-        "not" => compile_not_function(emitter, ctx, func, op_type),
         // Assignment function (equivalent to := operator)
         "move" => compile_move(emitter, ctx, func, op_type),
         // Truncation function
@@ -412,7 +399,7 @@ fn compile_two_arg_operator(
     ctx: &mut CompileContext,
     func: &Function,
     op_type: OpType,
-    emit_fn: fn(&mut Emitter, OpType),
+    emit_fn: impl FnOnce(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
     let args: Vec<&Expr> = func
         .param_assignment
@@ -431,6 +418,47 @@ fn compile_two_arg_operator(
     compile_expr(emitter, ctx, args[1], op_type)?;
     emit_fn(emitter, op_type);
     Ok(())
+}
+
+/// Compiles the function form of an operator as the operator itself.
+///
+/// The arguments compile at the enclosing expression's operation type, as
+/// every function argument does, and the opcode comes from the emitter the
+/// operator expression uses, so `AND(a, b)` and `a AND b` cannot diverge.
+fn compile_operator_form(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+    operator: &FormOf,
+) -> Result<(), Diagnostic> {
+    match operator {
+        FormOf::Arithmetic(op) => {
+            compile_two_arg_operator(emitter, ctx, func, op_type, |emitter, op_type| {
+                emit_arithmetic_op(emitter, op, op_type)
+            })
+        }
+        FormOf::Compare(op) => {
+            compile_two_arg_operator(emitter, ctx, func, op_type, |emitter, op_type| {
+                emit_compare_op(emitter, op, op_type)
+            })
+        }
+        FormOf::Not => {
+            let args: Vec<&Expr> = func
+                .param_assignment
+                .iter()
+                .filter_map(|p| match p {
+                    ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+                    _ => None,
+                })
+                .collect();
+            let [term] = args.as_slice() else {
+                return Err(Diagnostic::todo_with_span(func.name.span()));
+            };
+            compile_expr(emitter, ctx, term, op_type)?;
+            emit_not(emitter, op_type, term)
+        }
+    }
 }
 
 /// Extracts two positional input arguments from a function call.
@@ -636,33 +664,6 @@ fn compile_mul_div_time(
         }
     }
 
-    Ok(())
-}
-
-/// Compiles the NOT function form.
-///
-/// NOT(IN) is equivalent to the NOT operator. Takes a single BOOL argument.
-fn compile_not_function(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
-    }
-
-    compile_expr(emitter, ctx, args[0], op_type)?;
-    emitter.emit_bool_not();
     Ok(())
 }
 
