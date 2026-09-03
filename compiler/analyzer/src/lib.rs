@@ -93,6 +93,9 @@ pub use function_environment::{
 };
 pub use intermediate_type::IntermediateType;
 pub use intermediates::enumeration::resolve_ordinal_values;
+pub use intermediates::operator_function_form::{
+    operator_function_form, FormOf, OperatorFunctionForm,
+};
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use type_attributes::TypeAttributes;
 pub use type_category::TypeCategory;
