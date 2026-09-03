@@ -904,6 +904,7 @@ dependencies = [
  "ctor",
  "env_logger",
  "fixedbitset",
+ "indexmap",
  "ironplc-container",
  "ironplc-dsl",
  "ironplc-parser",
