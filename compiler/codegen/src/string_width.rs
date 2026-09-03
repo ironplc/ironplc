@@ -10,10 +10,10 @@
 //!
 //! Getting it right is not the same as knowing it: a string *literal* has no
 //! encoding of its own. `'abc'` and `"abc"` are the same three characters, and
-//! the spelling is a hint rather than a type — which is why `w := 'abc'` on a
-//! `WSTRING` is accepted and stores UTF-16LE. A literal takes the encoding of
-//! whatever it is used with, and that is a property of the *use*, not of the
-//! literal.
+//! the spelling is a preference rather than a type — which is why `w := 'abc'`
+//! on a `WSTRING` is accepted and stores UTF-16LE. A literal takes the
+//! encoding of whatever it is used with, and that is a property of the *use*,
+//! not of the literal.
 //!
 //! This module is where that rule lives, so that no site has to restate it:
 //!
@@ -27,7 +27,7 @@
 //!   that destination is an assignment target, an array element, a function
 //!   parameter, or a scratch slot holding a comparison operand.
 
-use ironplc_analyzer::intermediate_type::IntermediateType;
+use ironplc_analyzer::IntermediateType;
 use ironplc_container::CharWidth;
 use ironplc_dsl::common::{ConstantKind, ElementaryTypeName};
 use ironplc_dsl::core::{Located, SourceSpan};
@@ -41,158 +41,236 @@ use crate::compile::{
     char_width_for_string_type, emit_string_literal_load, CompileContext, DEFAULT_OP_TYPE,
     NARROW_CHAR_WIDTH,
 };
-use crate::compile_expr::compile_expr;
+use crate::compile_expr::{compile_expr, variable_span};
 use crate::emit::Emitter;
 
 /// What codegen knows about the encoding of one string expression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum OperandWidth {
     /// Fixed by a declaration — a variable, a struct field, an array element,
-    /// a function's declared return type. Two of these that disagree cannot
-    /// both be satisfied.
+    /// a function's declared return type, or what a conversion emits. Two of
+    /// these that disagree cannot both be satisfied.
     Declared(CharWidth),
-    /// A literal, which has no encoding until it is used. The width is the one
-    /// its spelling suggests, and applies only when nothing else decides.
+    /// A literal, or a call built only out of literals. It has no encoding
+    /// until it is used; the width is the one its spelling suggests, and
+    /// applies only when nothing else decides.
     Adaptable(CharWidth),
-    /// Codegen cannot tell. Nothing is claimed, and nothing is rejected.
-    Unknown,
 }
 
 /// The standard functions whose result carries the encoding of their string
-/// input rather than one of their own.
+/// inputs rather than one of their own, and how many leading arguments those
+/// string inputs are.
 ///
-/// The analyzer types all of them as `STRING` (it has a single string type
-/// name for both encodings), so their `resolved_type` cannot distinguish a
-/// `WSTRING` result from a `STRING` one and the arguments have to answer
-/// instead.
-const WIDTH_PRESERVING_FUNCTIONS: [&str; 7] = [
-    "concat", "left", "right", "mid", "insert", "delete", "replace",
+/// The analyzer types all of them as `STRING` — it has a single string type
+/// name for both encodings — so their resolved type cannot tell a `WSTRING`
+/// result from a `STRING` one, and the arguments have to answer instead. The
+/// counts are what keeps the walk off the integer arguments that follow, such
+/// as `MID`'s length and position.
+const WIDTH_PRESERVING_FUNCTIONS: [(&str, usize); 7] = [
+    ("concat", 2),
+    ("left", 1),
+    ("right", 1),
+    ("mid", 1),
+    ("insert", 2),
+    ("delete", 1),
+    ("replace", 2),
 ];
 
 /// Returns what codegen knows about the encoding of `expr`.
 ///
-/// Sources are consulted in order of authority. Codegen's own allocation
-/// records come first: they describe the header bytes actually emitted for the
-/// slot, so an answer drawn from them cannot disagree with the running
-/// program. `resolved_type` is the fallback, and only a `WSTRING` there is
-/// taken as fixed — the analyzer names both encodings `STRING` in enough
-/// places that reading `STRING` as "definitely narrow" would reject working
-/// programs.
-pub(crate) fn operand_width(ctx: &CompileContext, expr: &Expr) -> OperandWidth {
+/// The width is known at compile time in every case codegen has to handle: a
+/// literal spells it, a declaration states it, a width-preserving standard
+/// function takes it from its own string arguments, and everything else that
+/// produces a string produces the encoding its return type names.
+///
+/// An expression whose width cannot be determined is a compiler bug rather
+/// than a program error — the analyzer has already established that this is a
+/// string — so it is reported as one (P9998) rather than guessed at, which
+/// would defer the same problem to an encoding-mismatch trap at run time.
+pub(crate) fn operand_width(ctx: &CompileContext, expr: &Expr) -> Result<OperandWidth, Diagnostic> {
     match &expr.kind {
         // A literal's spelling is a preference, not a type.
-        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
-            OperandWidth::Adaptable(char_width_for_string_type(&lit.width))
-        }
+        ExprKind::Const(ConstantKind::CharacterString(lit)) => Ok(OperandWidth::Adaptable(
+            char_width_for_string_type(&lit.width),
+        )),
         ExprKind::Expression(inner) => operand_width(ctx, inner),
-        ExprKind::Variable(variable) => variable_width(ctx, variable),
-        ExprKind::Function(func) => match function_width(ctx, func) {
-            // A call the tables above cannot answer for — a conversion
-            // function, or a user function with no compiled return slot yet.
-            OperandWidth::Unknown => resolved_type_width(expr),
-            known => known,
-        },
-        _ => resolved_type_width(expr),
+        ExprKind::Variable(variable) => {
+            variable_char_width(ctx, variable).map(OperandWidth::Declared)
+        }
+        ExprKind::Function(func) => function_width(ctx, expr, func),
+        _ => Err(unknown_string_encoding(
+            expr.span(),
+            "a string expression of an unexpected kind",
+        )),
     }
 }
 
-/// Resolves the encoding of a variable reference from codegen's own metadata:
-/// the string variable table, the string array element width, or the struct
-/// field's intermediate type.
-fn variable_width(ctx: &CompileContext, variable: &Variable) -> OperandWidth {
-    let Variable::Symbolic(symbolic) = variable else {
-        return OperandWidth::Unknown;
+/// Returns the encoding of a string variable, array element or structure field.
+///
+/// Subscripts and dereferences do not change the encoding, so the access is
+/// walked back to the variable it is rooted in: a name, resolved against the
+/// declared strings and string arrays, or a structure field, whose declared
+/// type carries the width.
+fn variable_char_width(ctx: &CompileContext, variable: &Variable) -> Result<CharWidth, Diagnostic> {
+    let Variable::Symbolic(kind) = variable else {
+        return Err(unknown_string_encoding(
+            variable_span(variable),
+            "a directly represented variable",
+        ));
     };
 
-    match symbolic {
-        SymbolicVariableKind::Named(named) => match ctx.string_vars.get(&named.name) {
-            Some(info) => OperandWidth::Declared(info.char_width),
-            None => OperandWidth::Unknown,
-        },
-        SymbolicVariableKind::Array(array) => {
-            let mut base = array.subscripted_variable.as_ref();
-            while let SymbolicVariableKind::Array(inner) = base {
-                base = inner.subscripted_variable.as_ref();
+    match access_root(kind) {
+        SymbolicVariableKind::Named(named) => {
+            if let Some(info) = ctx.string_vars.get(&named.name) {
+                return Ok(info.char_width);
             }
-            match base {
-                SymbolicVariableKind::Named(named) => match ctx.array_vars.get(&named.name) {
-                    Some(info) if info.is_string_element => {
-                        OperandWidth::Declared(info.string_char_width)
-                    }
-                    _ => OperandWidth::Unknown,
-                },
-                _ => OperandWidth::Unknown,
-            }
+            ctx.array_vars
+                .get(&named.name)
+                .filter(|info| info.is_string_element)
+                .map(|info| info.string_char_width)
+                .ok_or_else(|| {
+                    unknown_string_encoding(
+                        variable_span(variable),
+                        "a variable that is not a declared string",
+                    )
+                })
         }
         SymbolicVariableKind::Structured(structured) => {
-            // A chain codegen cannot walk (an unsupported shape, an unknown
-            // field) is not this module's error to report; the site that
-            // compiles the access reports it with the right message.
-            match crate::compile_struct::walk_struct_chain(
+            let (_, _, field_type) = crate::compile_struct::walk_struct_chain(
                 ctx,
                 &structured.record,
                 &structured.field,
                 0,
-            ) {
-                Ok((_, _, IntermediateType::String { char_width, .. })) => {
-                    OperandWidth::Declared(char_width)
-                }
-                _ => OperandWidth::Unknown,
-            }
+            )
+            .map_err(|_| {
+                unknown_string_encoding(variable_span(variable), "an unresolvable structure field")
+            })?;
+            string_char_width_of(&field_type).ok_or_else(|| {
+                unknown_string_encoding(
+                    variable_span(variable),
+                    "a structure field that is not a string",
+                )
+            })
         }
-        _ => OperandWidth::Unknown,
+        _ => Err(unknown_string_encoding(
+            variable_span(variable),
+            "a variable access of an unexpected kind",
+        )),
     }
 }
 
-/// Resolves the encoding of a function call's result.
-///
-/// A user function declares its return type, so its compiled return slot is
-/// authoritative. A standard function that passes its input's encoding through
-/// is resolved from its own string arguments. Everything else falls back to
-/// the resolved type, which covers the conversion functions that genuinely
-/// produce a narrow `STRING`.
-fn function_width(ctx: &CompileContext, func: &Function) -> OperandWidth {
-    let name = func.name.lower_case();
-
-    if let Some(info) = ctx.user_functions.get(name.as_str()) {
-        return match &info.return_string_info {
-            Some(ret) => OperandWidth::Declared(ret.char_width),
-            None => OperandWidth::Unknown,
+/// Walks past subscripts and dereferences to the variable an access is rooted
+/// in. `s.names[i]` roots in the structure field `s.names`, `arr[i][j]` in the
+/// name `arr`.
+fn access_root(kind: &SymbolicVariableKind) -> &SymbolicVariableKind {
+    let mut current = kind;
+    loop {
+        current = match current {
+            SymbolicVariableKind::Array(array) => array.subscripted_variable.as_ref(),
+            SymbolicVariableKind::Deref(deref) => deref.variable.as_ref(),
+            other => return other,
         };
     }
-
-    if WIDTH_PRESERVING_FUNCTIONS.contains(&name.as_str()) {
-        let mut adaptable = OperandWidth::Unknown;
-        for arg in positional_args(func) {
-            match operand_width(ctx, arg) {
-                declared @ OperandWidth::Declared(_) => return declared,
-                found @ OperandWidth::Adaptable(_) => {
-                    if adaptable == OperandWidth::Unknown {
-                        adaptable = found;
-                    }
-                }
-                OperandWidth::Unknown => {}
-            }
-        }
-        return adaptable;
-    }
-
-    OperandWidth::Unknown
 }
 
-/// Reads an expression's analyzer-assigned type. Only `WSTRING` is conclusive
-/// — see [`operand_width`].
-fn resolved_type_width(expr: &Expr) -> OperandWidth {
-    let is_wstring = expr
+/// Returns the encoding of a STRING type, or of a STRING array's element.
+fn string_char_width_of(field_type: &IntermediateType) -> Option<CharWidth> {
+    match field_type {
+        IntermediateType::String { char_width, .. } => Some(*char_width),
+        IntermediateType::Array { element_type, .. } => string_char_width_of(element_type),
+        _ => None,
+    }
+}
+
+/// Returns the encoding of a function call's string result.
+///
+/// A width-preserving standard function is resolved from its own string
+/// arguments, and stays adaptable when those are all literals, so that
+/// `w := CONCAT('a', 'b')` adapts the same way a bare literal does. A
+/// user-defined function declares its return type. Everything else — the
+/// conversions, which build a Latin-1 string — is resolved from the return
+/// type the analyzer gave the call.
+fn function_width(
+    ctx: &CompileContext,
+    expr: &Expr,
+    func: &Function,
+) -> Result<OperandWidth, Diagnostic> {
+    let name = func.name.lower_case();
+
+    if let Some((_, string_args)) = WIDTH_PRESERVING_FUNCTIONS
+        .iter()
+        .find(|(known, _)| *known == name.as_str())
+    {
+        return width_of_string_args(ctx, func, *string_args);
+    }
+
+    if let Some(info) = ctx.user_functions.get(name.as_str()) {
+        return info
+            .return_string_info
+            .as_ref()
+            .map(|ret| OperandWidth::Declared(ret.char_width))
+            .ok_or_else(|| {
+                unknown_string_encoding(
+                    func.name.span(),
+                    "a function call that does not return a string",
+                )
+            });
+    }
+
+    resolved_type_width(expr).ok_or_else(|| {
+        unknown_string_encoding(
+            func.name.span(),
+            "a function call that does not return a string",
+        )
+    })
+}
+
+/// Resolves a width-preserving function's result from its leading `count`
+/// string arguments: the first that a declaration fixes, else the first
+/// literal's spelling.
+fn width_of_string_args(
+    ctx: &CompileContext,
+    func: &Function,
+    count: usize,
+) -> Result<OperandWidth, Diagnostic> {
+    let args: Vec<&Expr> = positional_args(func).take(count).collect();
+    if args.is_empty() {
+        return Err(unknown_string_encoding(
+            func.name.span(),
+            "a string function call with no arguments",
+        ));
+    }
+
+    let mut adaptable: Option<OperandWidth> = None;
+    for arg in args {
+        match operand_width(ctx, arg)? {
+            declared @ OperandWidth::Declared(_) => return Ok(declared),
+            found @ OperandWidth::Adaptable(_) => {
+                adaptable.get_or_insert(found);
+            }
+        }
+    }
+
+    adaptable.ok_or_else(|| {
+        unknown_string_encoding(
+            func.name.span(),
+            "a string function call with no string arguments",
+        )
+    })
+}
+
+/// The encoding an expression's analyzer-assigned type names, when it names a
+/// string type at all.
+fn resolved_type_width(expr: &Expr) -> Option<OperandWidth> {
+    let elementary = expr
         .resolved_type
         .as_ref()
-        .and_then(|t| ElementaryTypeName::try_from(&t.name).ok())
-        .is_some_and(|e| matches!(e, ElementaryTypeName::WSTRING));
+        .and_then(|t| ElementaryTypeName::try_from(&t.name).ok())?;
 
-    if is_wstring {
-        OperandWidth::Declared(CharWidth::Wide)
-    } else {
-        OperandWidth::Unknown
+    match elementary {
+        ElementaryTypeName::STRING => Some(OperandWidth::Declared(CharWidth::Narrow)),
+        ElementaryTypeName::WSTRING => Some(OperandWidth::Declared(CharWidth::Wide)),
+        _ => None,
     }
 }
 
@@ -202,6 +280,14 @@ fn positional_args(func: &Function) -> impl Iterator<Item = &Expr> {
         ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
         _ => None,
     })
+}
+
+/// Reports that codegen could not determine a string expression's encoding.
+fn unknown_string_encoding(span: SourceSpan, what: &str) -> Diagnostic {
+    Diagnostic::internal_error_at(Label::span(
+        span,
+        format!("Cannot determine the string encoding of {what}"),
+    ))
 }
 
 /// Resolves the single encoding every operand of one string operation shares.
@@ -214,8 +300,7 @@ fn positional_args(func: &Function) -> impl Iterator<Item = &Expr> {
 /// 2. otherwise the encoding the enclosing operation is producing, if this
 ///    operation is nested inside one — a nested all-literal call adapts the
 ///    same way a bare literal does;
-/// 3. otherwise the spelling of the first literal;
-/// 4. otherwise narrow.
+/// 3. otherwise the spelling of the first literal.
 ///
 /// Two operands with different *declared* encodings have no encoding they can
 /// share. That is a program error — `CONCAT(s, w)` mixing a `STRING` and a
@@ -230,7 +315,7 @@ pub(crate) fn resolve_operand_char_width(
     let mut adaptable: Option<CharWidth> = None;
 
     for operand in operands {
-        match operand_width(ctx, operand) {
+        match operand_width(ctx, operand)? {
             OperandWidth::Declared(width) => match declared {
                 Some(existing) if existing != width => {
                     return Err(encoding_mismatch(
@@ -245,7 +330,6 @@ pub(crate) fn resolve_operand_char_width(
             OperandWidth::Adaptable(width) => {
                 adaptable.get_or_insert(width);
             }
-            OperandWidth::Unknown => {}
         }
     }
 
@@ -264,7 +348,9 @@ pub(crate) fn resolve_operand_char_width(
 ///
 /// Any other expression carries an encoding of its own. When that encoding is
 /// known and is not `char_width`, no valid bytecode exists for the store the
-/// caller is about to emit, so this reports P4034 instead of emitting it.
+/// caller is about to emit, so this reports P4034 instead of emitting it. An
+/// encoding codegen cannot work out is left to the destination, which is the
+/// one that decides the store: this is not the site that reports it.
 pub(crate) fn compile_string_value(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -276,7 +362,7 @@ pub(crate) fn compile_string_value(
         return Ok(());
     }
 
-    if let OperandWidth::Declared(width) = operand_width(ctx, expr) {
+    if let Ok(OperandWidth::Declared(width)) = operand_width(ctx, expr) {
         if width != char_width {
             return Err(encoding_mismatch(char_width, width, &expr.span()));
         }
@@ -345,7 +431,7 @@ mod tests {
     fn operand_width_when_narrow_literal_then_adaptable_narrow() {
         let ctx = CompileContext::new();
         assert_eq!(
-            operand_width(&ctx, &literal("abc", false)),
+            operand_width(&ctx, &literal("abc", false)).unwrap(),
             OperandWidth::Adaptable(CharWidth::Narrow)
         );
     }
@@ -354,7 +440,7 @@ mod tests {
     fn operand_width_when_wide_literal_then_adaptable_wide() {
         let ctx = CompileContext::new();
         assert_eq!(
-            operand_width(&ctx, &literal("abc", true)),
+            operand_width(&ctx, &literal("abc", true)).unwrap(),
             OperandWidth::Adaptable(CharWidth::Wide)
         );
     }

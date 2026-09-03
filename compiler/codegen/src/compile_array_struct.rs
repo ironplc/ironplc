@@ -429,7 +429,7 @@ pub(crate) fn register_struct_array_variable(
     );
 
     Ok((
-        ironplc_container::debug_section::iec_type_tag::OTHER,
+        ironplc_container::debug_section::iec_type_tag::ARRAY,
         debug_type_name.to_string(),
     ))
 }

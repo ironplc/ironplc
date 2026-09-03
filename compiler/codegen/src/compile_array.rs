@@ -484,8 +484,8 @@ pub(crate) fn array_spec_from_named(
 }
 
 /// Maps an IntermediateType to the IEC 61131-3 type name (as an Id) that
-/// `resolve_type_name()` in compile.rs can look up. Only primitive types
-/// are supported (arrays of complex types are out of scope).
+/// `type_info::resolve_type_name()` can look up. Only primitive types are
+/// supported (arrays of complex types are out of scope).
 fn intermediate_type_to_name(ty: &IntermediateType) -> Result<Id, Diagnostic> {
     let name = match ty {
         IntermediateType::Bool => "BOOL",
@@ -595,7 +595,7 @@ pub(crate) fn register_array_variable(
             storage_bits: 0,
         }
     } else {
-        super::compile_setup::resolve_type_name(&spec.element_type_name).ok_or_else(|| {
+        super::type_info::resolve_type_name(&spec.element_type_name).ok_or_else(|| {
             Diagnostic::not_implemented(Label::span(span.clone(), "Unsupported array element type"))
         })?
     };
@@ -696,7 +696,7 @@ pub(crate) fn register_array_variable(
         },
     );
 
-    let type_tag = ironplc_container::debug_section::iec_type_tag::OTHER;
+    let type_tag = ironplc_container::debug_section::iec_type_tag::ARRAY;
     let type_name_str = if spec.ref_to {
         format!(
             "ARRAY OF REF_TO {}",
@@ -733,13 +733,11 @@ pub(crate) fn register_ref_to_array_metadata(
                 storage_bits: 64,
             }
         } else {
-            super::compile_setup::resolve_type_name(&spec.element_type_name).unwrap_or(
-                VarTypeInfo {
-                    op_width: OpWidth::W32,
-                    signedness: Signedness::Unsigned,
-                    storage_bits: 32,
-                },
-            )
+            super::type_info::resolve_type_name(&spec.element_type_name).unwrap_or(VarTypeInfo {
+                op_width: OpWidth::W32,
+                signedness: Signedness::Unsigned,
+                storage_bits: 32,
+            })
         };
         let element_type_byte = var_type_info_to_type_byte(&element_vti);
         let mut dimensions = Vec::new();

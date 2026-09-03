@@ -52,15 +52,16 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     intermediate_type::IntermediateType,
     intermediates,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
-    scoped_table::{self, ScopedTable, Value},
     semantic_context::SemanticContext,
     type_environment::TypeEnvironment,
+    variable_type::{Declarations, Declared},
 };
 
 pub fn apply(
@@ -71,29 +72,22 @@ pub fn apply(
     run_rule(
         RuleAggregateAssignment {
             type_environment: context.types(),
-            // `ScopedTable::new` opens the base scope. That is where
+            // `Declarations::new` opens the base scope. That is where
             // declarations made outside any POU land -- a CONFIGURATION's
             // VAR_GLOBAL block, most importantly -- so a POU scope's lookups
             // fall through to them. Opening another here would leave the
             // stack unbalanced when the table drops.
-            declarations: scoped_table::ScopedTable::new(),
+            declarations: Declarations::new(),
             diagnostics: Vec::new(),
         },
         lib,
     )
 }
 
-/// A variable's declared type, as spelled at its declaration site.
-#[derive(Debug)]
-struct Declared(InitialValueAssignmentKind);
-impl Value for Declared {}
-
 struct RuleAggregateAssignment<'a> {
     type_environment: &'a TypeEnvironment,
-    /// Declared type of every variable in scope. Nested scopes let a POU's
-    /// own declarations shadow outer ones while still resolving names the
-    /// POU does not declare itself.
-    declarations: ScopedTable<'a, Id, Declared>,
+    /// Declared type of every variable in scope.
+    declarations: Declarations<'a>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -183,7 +177,7 @@ impl RuleAggregateAssignment<'_> {
     }
 }
 
-impl Visitor<Diagnostic> for RuleAggregateAssignment<'_> {
+impl Visitor<Infallible> for RuleAggregateAssignment<'_> {
     type Value = ();
 
     /// Opens a declaration's scope.
@@ -192,7 +186,7 @@ impl Visitor<Diagnostic> for RuleAggregateAssignment<'_> {
     /// declarations go into -- but the match stays exhaustive so that a
     /// new kind of scope has to say so rather than silently sharing the
     /// enclosing declaration's frame.
-    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
         match node {
             ScopeNode::Function(_)
             | ScopeNode::FunctionBlock(_)
@@ -206,7 +200,7 @@ impl Visitor<Diagnostic> for RuleAggregateAssignment<'_> {
         self.declarations.exit();
     }
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         self.declarations.add_if(
             node.identifier.symbolic_id(),
             Declared(node.initializer.clone()),
@@ -214,7 +208,7 @@ impl Visitor<Diagnostic> for RuleAggregateAssignment<'_> {
         node.recurse_visit(self)
     }
 
-    fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Diagnostic> {
+    fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
         self.check_aggregate_assignment(&node.target, &node.value);
         node.recurse_visit(self)
     }

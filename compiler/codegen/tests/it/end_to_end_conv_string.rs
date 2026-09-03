@@ -119,3 +119,26 @@ END_PROGRAM
 ",
     &[(1, 0.0)],
 );
+
+#[test]
+fn conversion_result_when_used_as_a_string_operand_then_narrow_encoding() {
+    // A conversion builds a Latin-1 string, and nothing in the call spells
+    // that out: it is neither a literal nor a declared variable, and the
+    // encoding has to come from the STRING the analyzer typed the call as.
+    // Failing to work it out is a compiler bug, so a wrong answer here shows
+    // up as one (P9998) rather than as a wrong encoding at run time.
+    let source = "
+PROGRAM main
+  VAR
+    i : INT := 42;
+    out : STRING[20];
+  END_VAR
+  out := CONCAT(INT_TO_STRING(i), 'x');
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // i occupies var 0; `out` is the only string in the data region that the
+    // program names, and CONCAT's temporaries follow it.
+    assert_eq!(read_string(&bufs.data_region, 0), "42x");
+}

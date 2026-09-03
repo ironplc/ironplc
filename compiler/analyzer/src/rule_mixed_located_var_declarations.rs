@@ -31,8 +31,13 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 
 pub fn apply(
     lib: &Library,
@@ -43,19 +48,22 @@ pub fn apply(
         return Ok(());
     }
 
-    let mut visitor = RuleMixedLocatedVarDeclarations {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleMixedLocatedVarDeclarations {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleMixedLocatedVarDeclarations {
     diagnostics: Vec<Diagnostic>,
+}
+
+impl DiagnosticVisitor for RuleMixedLocatedVarDeclarations {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 impl RuleMixedLocatedVarDeclarations {
@@ -69,13 +77,13 @@ impl RuleMixedLocatedVarDeclarations {
     }
 }
 
-impl Visitor<Diagnostic> for RuleMixedLocatedVarDeclarations {
+impl Visitor<Infallible> for RuleMixedLocatedVarDeclarations {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.check(node);
         node.recurse_visit(self)
     }
@@ -83,7 +91,7 @@ impl Visitor<Diagnostic> for RuleMixedLocatedVarDeclarations {
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.check(node);
         node.recurse_visit(self)
     }
@@ -91,7 +99,7 @@ impl Visitor<Diagnostic> for RuleMixedLocatedVarDeclarations {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.check(node);
         node.recurse_visit(self)
     }

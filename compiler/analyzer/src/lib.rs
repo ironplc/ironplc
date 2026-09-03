@@ -27,7 +27,7 @@ pub mod intermediate_type;
 mod result;
 mod rule_abstract_not_instantiated;
 mod rule_assignment_aggregate_type_compat;
-mod rule_bit_access_range;
+mod rule_bit_and_partial_access_range;
 mod rule_case_bit_string_label;
 mod rule_decl_struct_element_unique_names;
 mod rule_decl_subrange_limits;
@@ -66,6 +66,7 @@ mod type_attributes;
 mod type_category;
 mod type_environment;
 mod type_table;
+mod variable_type;
 mod xform_fold_constant_expressions;
 mod xform_fold_initializer_expressions;
 mod xform_insert_implicit_deref;
@@ -95,7 +96,9 @@ pub use intermediates::enumeration::resolve_ordinal_values;
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use type_attributes::TypeAttributes;
 pub use type_category::TypeCategory;
-pub use type_environment::{TypeEnvironment, TypeEnvironmentBuilder, UsageContext};
+pub use type_environment::{
+    elementary_type, TypeEnvironment, TypeEnvironmentBuilder, UsageContext,
+};
 
 #[cfg(test)]
 mod test_helpers;

@@ -4,7 +4,8 @@
 //! INSERT, DELETE, LEFT, RIGHT, MID, CONCAT) and string comparison.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
-use ironplc_container::{opcode, CharWidth};
+use ironplc_container::opcode;
+use ironplc_container::CharWidth;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
@@ -18,42 +19,28 @@ use crate::string_width::{compile_string_value, encoding_mismatch, resolve_opera
 
 /// Compiles the LEN standard function call.
 ///
-/// LEN takes a single STRING variable argument and returns its current length
-/// as an i32. Instead of going through the BUILTIN dispatch, LEN uses the
-/// dedicated `LEN_STR` opcode which reads `cur_length` directly from the
-/// string's data region header.
+/// LEN takes a single STRING/WSTRING argument and returns its current length
+/// in code units as an i32. Instead of going through the BUILTIN dispatch, LEN
+/// uses the dedicated `LEN_STR` opcode which reads `cur_length` directly from
+/// the string's data region header. The argument is resolved by
+/// [`resolve_string_arg`], so a variable, a literal and a nested string
+/// function call are all accepted.
 pub(crate) fn compile_len(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    // The argument must be a string variable so we can look up its data_offset.
-    let var_name = match &args[0].kind {
-        ExprKind::Variable(variable) => resolve_variable_name(variable),
-        _ => None,
-    };
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0]], &span)?;
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
 
-    let name = var_name.ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))?;
-
-    let info = ctx
-        .string_vars
-        .get(name)
-        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))?;
-
-    emitter.emit_len_str(info.data_offset);
+    emitter.emit_len_str(in_offset);
     Ok(())
 }
 
@@ -99,20 +86,17 @@ pub(crate) fn compile_string_compare(
     Ok(())
 }
 
-/// Allocates a scratch string slot in the data region and emits its header.
+/// Allocates a data region slot for an intermediate string value.
 ///
-/// Every string operand that is not already a named string variable needs a
-/// slot of its own to be addressed by — a literal, a nested call's result, a
-/// struct field or array element reached through a general expression — and
-/// they differ only in what they store into it. The allocation itself
-/// (reserving the region, growing the temp-buffer capacity, emitting
-/// `STR_INIT`) is stated once, here, at the `char_width` the caller
-/// resolved.
-fn alloc_string_scratch(
+/// Returns the slot's data_offset with its header already initialized at
+/// `char_width`. A wide slot also marks the program as holding a wide string
+/// so temp buffers are sized in wide bytes (ADR-0035) even when no WSTRING
+/// variable is declared.
+fn allocate_string_temp(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     char_width: CharWidth,
-    span: &SourceSpan,
+    func_span: &SourceSpan,
 ) -> Result<u32, Diagnostic> {
     let max_length = DEFAULT_STRING_MAX_LENGTH;
     let data_offset = ctx.data_region_offset;
@@ -120,12 +104,14 @@ fn alloc_string_scratch(
     ctx.data_region_offset = ctx
         .data_region_offset
         .checked_add(total_bytes)
-        .ok_or_else(|| Diagnostic::todo_with_span(span.clone()))?;
+        .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone()))?;
 
     if max_length > ctx.max_string_capacity {
         ctx.max_string_capacity = max_length;
     }
-    ctx.note_char_width(char_width);
+    if char_width.is_wide() {
+        ctx.has_wide_string = true;
+    }
 
     emitter.emit_str_init(data_offset, max_length, char_width);
 
@@ -134,15 +120,11 @@ fn alloc_string_scratch(
 
 /// Resolves a string argument to its data_offset in the data region.
 ///
-/// A named string variable is already a slot and is used where it lies.
-/// Anything else — a literal, a nested call, a struct field, an array element
-/// — is compiled into a scratch slot allocated here, so that the caller has a
-/// data offset to name.
-///
-/// `char_width` is the encoding the operation this argument belongs to has
-/// settled on — see [`crate::string_width`]. Anything this function allocates
-/// or interns uses it, so an operand never disagrees with its peers about the
-/// encoding (ADR-0034).
+/// A simple named STRING/WSTRING variable resolves to the offset of its own
+/// slot. Everything else -- a literal, a nested string function call, a
+/// structure field or array element -- is materialized into a temporary slot
+/// allocated at the expression's encoding, and that slot's offset is
+/// returned.
 pub(crate) fn resolve_string_arg(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -150,8 +132,8 @@ pub(crate) fn resolve_string_arg(
     func_span: &SourceSpan,
     char_width: CharWidth,
 ) -> Result<u32, Diagnostic> {
-    // Fast path: a named string variable already owns a data-region slot.
-    // Its declared encoding is fixed, so a caller that needs a different one
+    // Fast path: a simple named variable already owns a data region slot. Its
+    // declared encoding is fixed, so a caller that needs a different one
     // (STRING_TO_INT, which parses Latin-1, is the case that can reach here)
     // has no bytecode to emit rather than a slot to reuse.
     if let ExprKind::Variable(variable) = &arg.kind {
@@ -165,10 +147,7 @@ pub(crate) fn resolve_string_arg(
         }
     }
 
-    // Everything else — a literal, a nested call such as MID(...), a struct
-    // field or an array element — produces a temp buffer, which needs a slot
-    // of its own for the caller to address.
-    let data_offset = alloc_string_scratch(emitter, ctx, char_width, func_span)?;
+    let data_offset = allocate_string_temp(emitter, ctx, char_width, func_span)?;
     compile_string_value(emitter, ctx, arg, char_width)?;
     emitter.emit_str_store_var(data_offset);
 

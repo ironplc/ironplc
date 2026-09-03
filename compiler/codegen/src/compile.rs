@@ -66,11 +66,12 @@ use ironplc_analyzer::{FunctionEnvironment, SemanticContext, TypeEnvironment};
 use crate::emit::Emitter;
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
-use super::compile_setup::{assign_variables, emit_initial_values, resolve_type_name};
+use super::compile_setup::{assign_variables, emit_initial_values};
 use super::compile_stmt::compile_body;
+use super::type_info::resolve_type_name;
 
 /// The native operation width used for arithmetic and comparisons.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum OpWidth {
     /// 32-bit integer operations (for SINT, INT, DINT, USINT, UINT, UDINT).
     W32,
@@ -83,7 +84,7 @@ pub(crate) enum OpWidth {
 }
 
 /// Whether a type uses signed or unsigned semantics for division and comparison.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Signedness {
     Signed,
     Unsigned,

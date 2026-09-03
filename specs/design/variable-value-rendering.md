@@ -101,6 +101,17 @@ real zero, which is what made the original defect worse than an omission.
 - **REQ-VR-container-042** A rendered value is marked invalid when, and only
   when, its text is one of those placeholders, so a surface that styles values
   can show a placeholder as a placeholder.
+- **REQ-VR-container-043** A `STRUCT`, `ARRAY` or `FB_INSTANCE` variable
+  renders as `<TYPE_NAME>` from its declared type name, or `<aggregate>` when
+  no type name is recorded, and is marked invalid. Its slot holds the byte
+  offset of its contents in the data region rather than a value, so rendering
+  the slot would publish an internal layout detail as program data — and a
+  convincing one, since the offset moves when an unrelated declaration changes
+  size. Rendering the contents needs a layout sub-table the container does not
+  yet carry.
+
+These three tags are distinct from `OTHER` rather than folded into it because
+`OTHER` also carries named subrange types, whose slot *does* hold their value.
 
 ## Enumerations
 

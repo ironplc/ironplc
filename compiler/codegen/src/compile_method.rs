@@ -21,8 +21,9 @@ use super::compile::{
     finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn, DEFAULT_OP_TYPE,
 };
 use super::compile_expr::emit_load_var;
-use super::compile_setup::{emit_function_local_prologue, resolve_type_name};
+use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::compile_statements;
+use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
 /// Compiles every `METHOD` declared on `fb_decl`, in declaration order.

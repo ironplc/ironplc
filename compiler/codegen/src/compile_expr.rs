@@ -22,9 +22,9 @@ use super::compile::{
     DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
 use super::compile_call::compile_function_call;
-use super::compile_setup::resolve_type_name;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
 use super::compile_string::compile_string_compare;
+use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
 /// Returns the operation type from an expression's resolved type annotation.

@@ -76,10 +76,18 @@ jobs:
         run: shellcheck -s sh compiler/install.sh
 
   install-script-smoke:
-    name: Install Script Smoke Test (Last Release)
-    needs: approve
-    # Runs install.sh against the last published release on Linux and macOS.
-    # This catches regressions in the script without requiring a new release.
+    name: Install Script Smoke Test (This Revision)
+    # Needs the tarballs the compiler package matrix uploads for this run.
+    needs: [approve, ironplcc-tests]
+    # Runs install.sh on Linux and macOS against the tarball built from this
+    # revision, so the script is tested against the artifacts the change
+    # actually produces. Installing the last published release instead would
+    # test the script against a payload nobody in this pull request wrote --
+    # and install.sh requires every binary in the archive, so any release
+    # predating one of them is not installable and would fail here for a
+    # reason that has nothing to do with the change under test. The published
+    # path stays covered at deployment time, against the new release.
     uses: ./.github/workflows/partial_install_script_test.yaml
     with:
       compiler-version: ""
+      from-build-artifacts: true
