@@ -1,7 +1,7 @@
+use indexmap::IndexMap;
 use ironplc_dsl::common::{TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
-use std::collections::HashMap;
 
 /// A scope's position in the nesting tree: the chain of declaration
 /// names from the library root.
@@ -145,19 +145,22 @@ impl SymbolInfo {
     }
 }
 
-/// The main symbol environment that tracks all symbols across the library
+/// The main symbol environment that tracks all symbols across the library.
+///
+/// Symbols are kept in insertion order so that every accessor that returns
+/// a list reports symbols in declaration order, run after run.
 pub struct SymbolEnvironment {
     /// Global symbols (types, functions, function blocks, programs)
-    global_symbols: HashMap<Id, SymbolInfo>,
+    global_symbols: IndexMap<Id, SymbolInfo>,
     /// Scoped symbols (variables within functions, function blocks, etc.)
-    scoped_symbols: HashMap<ScopeKind, HashMap<Id, SymbolInfo>>,
+    scoped_symbols: IndexMap<ScopeKind, IndexMap<Id, SymbolInfo>>,
 }
 
 impl SymbolEnvironment {
     pub fn new() -> Self {
         Self {
-            global_symbols: HashMap::new(),
-            scoped_symbols: HashMap::new(),
+            global_symbols: IndexMap::new(),
+            scoped_symbols: IndexMap::new(),
         }
     }
 
@@ -761,5 +764,75 @@ mod tests {
         env.insert(&local, SymbolKind::Variable, &inner).unwrap();
 
         assert!(env.find(&local, &outer).is_none());
+    }
+
+    /// Enough names that a hash-seeded order almost never matches the
+    /// declaration order by chance.
+    fn names(prefix: &str) -> Vec<Id> {
+        (0..16).map(|i| Id::from(&format!("{prefix}{i}"))).collect()
+    }
+
+    #[test]
+    fn get_programs_when_several_declared_then_returns_declaration_order() {
+        let mut env = SymbolEnvironment::new();
+        let programs = names("prog");
+        for name in &programs {
+            env.insert(name, SymbolKind::Program, &ScopeKind::Global)
+                .unwrap();
+        }
+
+        let actual: Vec<&Id> = env.get_programs().into_iter().map(|(id, _)| id).collect();
+        let expected: Vec<&Id> = programs.iter().collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn get_variables_in_scope_when_several_declared_then_returns_declaration_order() {
+        let mut env = SymbolEnvironment::new();
+        let scope = ScopeKind::Named(Id::from("main").into());
+        let variables = names("var");
+        for name in &variables {
+            env.insert_variable(name, SymbolKind::Variable, &scope, VariableType::Var, None)
+                .unwrap();
+        }
+
+        let actual: Vec<&Id> = env
+            .get_variables_in_scope(&scope)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        let expected: Vec<&Id> = variables.iter().collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn get_enumeration_values_for_type_when_several_declared_then_returns_declaration_order() {
+        let mut env = SymbolEnvironment::new();
+        let enum_type = TypeName::from("Color");
+        let values = names("value");
+        for name in &values {
+            env.insert_enumeration_value(name, &enum_type, &ScopeKind::Global)
+                .unwrap();
+        }
+
+        let actual = env.get_enumeration_values_for_type(&enum_type);
+        let expected: Vec<&Id> = values.iter().collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn insert_when_symbol_redefined_then_keeps_first_declared_position() {
+        let mut env = SymbolEnvironment::new();
+        let first = Id::from("first");
+        let second = Id::from("second");
+        env.insert(&first, SymbolKind::Program, &ScopeKind::Global)
+            .unwrap();
+        env.insert(&second, SymbolKind::Program, &ScopeKind::Global)
+            .unwrap();
+        env.insert(&first, SymbolKind::Program, &ScopeKind::Global)
+            .unwrap();
+
+        let actual: Vec<&Id> = env.get_programs().into_iter().map(|(id, _)| id).collect();
+        assert_eq!(actual, vec![&first, &second]);
     }
 }
