@@ -20,6 +20,7 @@ log = "0.4.29"
 phf = { version = "0.14", features = ["macros"] }
 petgraph = { version = "0.8" }
 fixedbitset = { version = "0.5" }
+indexmap = "2"
 
 [build-dependencies]
 ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
