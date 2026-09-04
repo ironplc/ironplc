@@ -108,6 +108,40 @@ impl FunctionSignature {
     pub fn input_parameter_count(&self) -> usize {
         self.parameters.iter().filter(|p| p.is_input).count()
     }
+
+    /// Returns the input parameters in argument order, continuing past the
+    /// declared ones for an extensible signature.
+    ///
+    /// IEC 61131-3 names the inputs of an extensible function `IN1`, `IN2`,
+    /// ..., `INn`, so the parameters beyond the declared list are the last
+    /// declared input with its number counted on: `IN1`, `IN2` continue as
+    /// `IN3`, `IN4`, ...; `MUX`'s `K`, `IN0`, `IN1` continue as `IN2`, .... Each
+    /// has that parameter's type. The extension stops at `max_inputs`, or
+    /// never when there is none, so a caller with no argument list to zip
+    /// against must bound what it takes.
+    pub fn input_parameters(&self) -> impl Iterator<Item = IntermediateFunctionParameter> + '_ {
+        let declared = self.parameters.iter().filter(|p| p.is_input);
+        let extension = self
+            .is_extensible
+            .then(|| declared.clone().next_back())
+            .flatten()
+            .map(|last| {
+                let name = last.name.original();
+                let digits_at = name.trim_end_matches(|c: char| c.is_ascii_digit()).len();
+                let (prefix, digits) = name.split_at(digits_at);
+                let number: usize = digits.parse().unwrap_or(0);
+                let room = self.max_inputs.map_or(usize::MAX, |max| {
+                    max.saturating_sub(declared.clone().count())
+                });
+                (1..)
+                    .take(room)
+                    .map(move |offset| IntermediateFunctionParameter {
+                        name: Id::from(&format!("{prefix}{}", number + offset)),
+                        ..last.clone()
+                    })
+            });
+        declared.cloned().chain(extension.into_iter().flatten())
+    }
 }
 
 /// The function environment tracks all function signatures.
@@ -344,6 +378,73 @@ mod tests {
         );
 
         assert_eq!(sig.input_parameter_count(), 2);
+    }
+
+    fn input(name: &str, type_name: &str) -> IntermediateFunctionParameter {
+        IntermediateFunctionParameter {
+            name: Id::from(name),
+            param_type: TypeName::from(type_name),
+            is_input: true,
+            is_output: false,
+            is_inout: false,
+            is_reference: false,
+        }
+    }
+
+    fn names(params: impl Iterator<Item = IntermediateFunctionParameter>) -> Vec<String> {
+        params.map(|p| p.name.original().clone()).collect()
+    }
+
+    #[test]
+    fn function_signature_input_parameters_when_not_extensible_then_declared_inputs_only() {
+        let sig = FunctionSignature::stdlib(
+            "SUB",
+            TypeName::from("ANY_NUM"),
+            vec![input("IN1", "ANY_NUM"), input("IN2", "ANY_NUM")],
+        );
+        assert_eq!(names(sig.input_parameters()), vec!["IN1", "IN2"]);
+    }
+
+    #[test]
+    fn function_signature_input_parameters_when_unbounded_then_numbering_continues() {
+        let sig = FunctionSignature::stdlib_extensible(
+            "ADD",
+            TypeName::from("ANY_NUM"),
+            vec![input("IN1", "ANY_NUM"), input("IN2", "ANY_NUM")],
+            None,
+        );
+        let params: Vec<_> = sig.input_parameters().take(5).collect();
+        assert_eq!(
+            names(params.iter().cloned()),
+            vec!["IN1", "IN2", "IN3", "IN4", "IN5"]
+        );
+        assert!(params
+            .iter()
+            .all(|p| p.param_type == TypeName::from("ANY_NUM") && p.is_input));
+    }
+
+    #[test]
+    fn function_signature_input_parameters_when_bounded_then_stops_at_max_inputs() {
+        let sig = FunctionSignature::stdlib_extensible(
+            "MUX",
+            TypeName::from("ANY_NUM"),
+            vec![
+                input("K", "ANY_INT"),
+                input("IN0", "ANY_NUM"),
+                input("IN1", "ANY_NUM"),
+            ],
+            Some(5),
+        );
+        assert_eq!(
+            names(sig.input_parameters()),
+            vec!["K", "IN0", "IN1", "IN2", "IN3"]
+        );
+    }
+
+    #[test]
+    fn function_signature_input_parameters_when_extensible_without_inputs_then_empty() {
+        let sig = FunctionSignature::stdlib_extensible("F", TypeName::from("INT"), vec![], None);
+        assert_eq!(sig.input_parameters().count(), 0);
     }
 
     #[test]

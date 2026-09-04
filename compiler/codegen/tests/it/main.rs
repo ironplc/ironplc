@@ -95,6 +95,7 @@ mod end_to_end_fb_tp;
 mod end_to_end_find;
 mod end_to_end_float;
 mod end_to_end_func_forms;
+mod end_to_end_func_forms_extensible;
 mod end_to_end_global;
 mod end_to_end_if;
 mod end_to_end_insert;

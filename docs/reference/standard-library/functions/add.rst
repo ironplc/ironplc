@@ -58,13 +58,14 @@ The return type matches the input type. ``ADD`` accepts ``SINT``,
      - Description
    * - Return value
      - ``ANY_NUM``
-     - The sum of IN1 and IN2. Same type as the inputs.
+     - The sum of all inputs. Same type as the inputs.
 
 Description
 -----------
 
-Returns the sum of *IN1* and *IN2*. ``ADD(a, b)`` is the functional
-form of the ``+`` operator: ``a + b``. Both forms are equivalent.
+Returns the sum of all inputs. ``ADD(a, b)`` is the functional form of
+the ``+`` operator: ``a + b``. Both forms are equivalent, and
+``ADD(a, b, c)`` is ``a + b + c``.
 
 For integer types, overflow behavior wraps around (modular arithmetic).
 
@@ -74,8 +75,9 @@ Example
 .. playground-with-program::
    :vars: result : DINT;
 
-   result := ADD(10, 20);   (* result = 30 *)
-   result := 10 + 20;       (* result = 30, operator form *)
+   result := ADD(10, 20);      (* result = 30 *)
+   result := 10 + 20;          (* result = 30, operator form *)
+   result := ADD(10, 20, 30);  (* result = 60 *)
 
 See Also
 --------
