@@ -201,6 +201,19 @@ fn partial_access_when_wide_result_then_expected(
     assert_eq!(bufs.vars[0].as_i64() as u64, expected);
 }
 
+/// A slice of a floating-point base is not compiled as an integer of the
+/// same width. The analyzer does not yet reject the access, so codegen
+/// refuses it rather than emitting integer masks over a float.
+#[rstest]
+#[case::read_real("f : REAL; b : BYTE;", "b := f.%B0;")]
+#[case::write_real("f : REAL;", "f.%B0 := BYTE#16#FF;")]
+#[case::read_lreal("f : LREAL; d : DWORD;", "d := f.%D1;")]
+#[case::write_lreal("f : LREAL;", "f.%W0 := WORD#16#FFFF;")]
+fn partial_access_when_base_is_float_then_compile_error(#[case] decls: &str, #[case] body: &str) {
+    let source = format!("PROGRAM main VAR {decls} END_VAR {body} END_PROGRAM");
+    assert!(try_parse_and_compile(&source, &opts()).is_err());
+}
+
 // --- Compilation gating ---
 
 const BYTE_SLICE_PROGRAM: &str = "
