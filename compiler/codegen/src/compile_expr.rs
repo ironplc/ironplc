@@ -1479,6 +1479,15 @@ fn compile_partial_access_assignment_on_struct_field_array(
     Ok(())
 }
 
+/// A mask with the low `bits` bits set.
+///
+/// Built at 128 bits so that a slice exactly as wide as its operand -- `%D`
+/// on a `DWORD`, `%L` on an `LWORD` -- does not overflow the shift. Callers
+/// narrow the result to the operand width they AND it with.
+fn low_bits_mask(bits: u32) -> u128 {
+    (1u128 << bits) - 1
+}
+
 /// Emits the read-modify-write sequence for partial access: clear the
 /// target region and OR in the shifted RHS value.
 ///
@@ -1491,25 +1500,36 @@ fn emit_partial_access_read_modify_write(
     bit_offset: u32,
     value: &Expr,
 ) -> Result<(), Diagnostic> {
+    // The slice is a bit string of its own width, so the value written is
+    // compiled as one: an `%L` slice takes a 64-bit right-hand side, every
+    // narrower slice a 32-bit one.
+    let wide_value = access_bits > 32;
+    let value_width = if wide_value {
+        OpWidth::W64
+    } else {
+        OpWidth::W32
+    };
+    let value_op_type = (value_width, Signedness::Unsigned);
+
     match base_width {
         OpWidth::W64 => {
-            let clear_mask = !((((1u128 << access_bits) - 1) << bit_offset) as u64 as i64);
+            let clear_mask = !((low_bits_mask(access_bits) << bit_offset) as u64) as i64;
             let clear_pool = ctx.add_i64_constant(clear_mask);
             emitter.emit_load_const_i64(clear_pool);
             emitter.emit_bit_and_64();
 
-            compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-            if access_bits <= 32 {
-                let slice_mask = (1i32 << access_bits) - 1;
+            compile_expr(emitter, ctx, value, value_op_type)?;
+            if wide_value {
+                let slice_mask = low_bits_mask(access_bits) as u64 as i64;
+                let mask_pool = ctx.add_i64_constant(slice_mask);
+                emitter.emit_load_const_i64(mask_pool);
+                emitter.emit_bit_and_64();
+            } else {
+                let slice_mask = low_bits_mask(access_bits) as u32 as i32;
                 let mask_pool = ctx.add_i32_constant(slice_mask);
                 emitter.emit_load_const_i32(mask_pool);
                 emitter.emit_bit_and_32();
                 emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
-            } else {
-                let slice_mask = (1i64 << access_bits) - 1;
-                let mask_pool = ctx.add_i64_constant(slice_mask);
-                emitter.emit_load_const_i64(mask_pool);
-                emitter.emit_bit_and_64();
             }
             if bit_offset > 0 {
                 let shift_pool = ctx.add_i32_constant(bit_offset as i32);
@@ -1519,13 +1539,13 @@ fn emit_partial_access_read_modify_write(
             emitter.emit_bit_or_64();
         }
         _ => {
-            let clear_mask = !(((1i64 << access_bits) - 1) << bit_offset) as i32;
+            let clear_mask = !((low_bits_mask(access_bits) << bit_offset) as u32) as i32;
             let clear_pool = ctx.add_i32_constant(clear_mask);
             emitter.emit_load_const_i32(clear_pool);
             emitter.emit_bit_and_32();
 
-            compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-            let slice_mask = (1i32 << access_bits) - 1;
+            compile_expr(emitter, ctx, value, value_op_type)?;
+            let slice_mask = low_bits_mask(access_bits) as u32 as i32;
             let mask_pool = ctx.add_i32_constant(slice_mask);
             emitter.emit_load_const_i32(mask_pool);
             emitter.emit_bit_and_32();

@@ -111,6 +111,21 @@ END_PROGRAM
     "s.value := DWORD#16#12345678; s.value.%B2 := BYTE#16#FF; r := s.value;",
     0x12FF5678
 )]
+#[case::write_word_0_of_dint(
+    "",
+    "n : DINT",
+    "DINT",
+    "n := 16#12345678; n.%W0 := WORD#16#BEEF; r := n;",
+    0x1234BEEF
+)]
+// A slice as wide as its base replaces the whole value.
+#[case::write_dword_0_of_dword(
+    "",
+    "d : DWORD",
+    "DWORD",
+    "d := DWORD#16#AABBCCDD; d.%D0 := DWORD#16#11223344; r := d;",
+    0x11223344
+)]
 fn partial_access_when_narrow_result_then_expected(
     #[case] prelude: &str,
     #[case] decls: &str,
@@ -122,12 +137,46 @@ fn partial_access_when_narrow_result_then_expected(
     assert_eq!(bufs.vars[0].as_i32() as u32, expected);
 }
 
-/// Slice writes whose result is a 64-bit value.
+/// Slice reads and writes whose result is a 64-bit value.
 #[rstest]
+#[case::lword_0_of_lword(
+    "l : LWORD",
+    "l := LWORD#16#0102030405060708; r := l.%L0;",
+    0x0102030405060708
+)]
 #[case::write_word_1_of_lword(
     "l : LWORD",
     "l := LWORD#16#0000000000000000; l.%W1 := WORD#16#ABCD; r := l;",
     0x00000000ABCD0000
+)]
+#[case::write_dword_1_of_lword(
+    "l : LWORD",
+    "l := LWORD#16#0000000011111111; l.%D1 := DWORD#16#AABBCCDD; r := l;",
+    0xAABBCCDD11111111
+)]
+// A 32-bit literal with its top bit set is a bit pattern, not a negative
+// number.
+#[case::write_dword_0_of_lword(
+    "l : LWORD",
+    "l := LWORD#16#AABBCCDD11223344; l.%D0 := DWORD#16#FFFFFFFF; r := l;",
+    0xAABBCCDDFFFFFFFF
+)]
+#[case::write_dword_1_of_lword_from_variable(
+    "l : LWORD; d : DWORD",
+    "d := DWORD#16#AABBCCDD; l := LWORD#16#0000000011111111; l.%D1 := d; r := l;",
+    0xAABBCCDD11111111
+)]
+// A 64-bit slice takes a 64-bit right-hand side, whether a literal or a
+// variable; a 32-bit path would keep only the low half.
+#[case::write_lword_0_of_lword(
+    "l : LWORD",
+    "l.%L0 := LWORD#16#0102030405060708; r := l;",
+    0x0102030405060708
+)]
+#[case::write_lword_0_of_lword_from_variable(
+    "l : LWORD; l2 : LWORD",
+    "l2 := LWORD#16#0102030405060708; l.%L0 := l2; r := l;",
+    0x0102030405060708
 )]
 fn partial_access_when_wide_result_then_expected(
     #[case] decls: &str,

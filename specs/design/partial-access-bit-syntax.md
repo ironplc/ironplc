@@ -155,10 +155,17 @@ is bit 0 of the result. Given `d : DWORD := 16#AABBCCDD`, `d.%B0` is `16#DD`,
 `d.%B3` is `16#AA`, `d.%W1` is `16#AABB`; given
 `l : LWORD := 16#AABBCCDD11223344`, `l.%D1` is `16#AABBCCDD`.
 
-**REQ-PAB-131** Assigning `x.%Bn := v` / `x.%Wn := v` replaces only the bits of
-slice `n` with the low bits of `v`; every other bit of `x` is unchanged. Given
-`d : DWORD := 16#AABBCCDD`, after `d.%B1 := 16#FF` the value of `d` is
-`16#AABBFFDD`.
+**REQ-PAB-131** Assigning `x.%Bn := v`, `x.%Wn := v`, `x.%Dn := v` or
+`x.%Ln := v` replaces only the bits of slice `n` with the low bits of `v`;
+every other bit of `x` is unchanged. Given `d : DWORD := 16#AABBCCDD`, after
+`d.%B1 := 16#FF` the value of `d` is `16#AABBFFDD`. A slice as wide as its
+base (`d.%D0` on a `DWORD`, `l.%L0` on an `LWORD`) replaces the whole value.
+
+**REQ-PAB-133** The value assigned to a slice is compiled at the slice's own
+width, unsigned: a 64-bit slice takes a 64-bit right-hand side (an `LWORD`
+variable keeps all 64 bits, an `LWORD` literal is not range-checked as a
+32-bit constant), and a 32-bit slice accepts a literal with its top bit set
+(`DWORD#16#FFFFFFFF`) as a bit pattern.
 
 **REQ-PAB-132** Reads and writes of a slice work on array elements
 (`arr[0].%B2`) and structured fields (`s.value.%B2`) with the same semantics as
@@ -204,14 +211,15 @@ Each REQ above is tied to one primary test. Test names follow
 | REQ-PAB-052  | `options_spec_req_pab_052_ed3_dialect_enables_partial_access_syntax`            | `compiler/parser/src/options.rs` (tests mod)                      | options     |
 | REQ-PAB-060  | `plc2plc_spec_req_pab_060_percent_x_round_trips_through_short_form`             | `compiler/plc2plc/src/tests/`                                   | round-trip  |
 | REQ-PAB-100  | `lexer_spec_req_pab_100_percent_b_w_d_l_digits_tokenize_as_partial_access_selectors` | `compiler/parser/src/tests/partial_access.rs`                | lexer       |
-| REQ-PAB-101  | `end_to_end_when_read_byte_from_dword_array_then_correct`, `end_to_end_when_read_byte_from_struct_field_then_correct` | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
+| REQ-PAB-101  | `partial_access_when_narrow_result_then_expected` (`byte_2_of_array_element`, `byte_1_of_struct_field`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
 | REQ-PAB-110  | `end_to_end_when_partial_access_byte_flag_on_then_compiles`                     | `compiler/codegen/tests/it/end_to_end_partial_access.rs`          | e2e         |
-| REQ-PAB-120  | `end_to_end_when_read_word_1_from_dword_then_correct` (result assigned to a `WORD`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs`      | e2e         |
+| REQ-PAB-120  | `partial_access_when_narrow_result_then_expected` (`word_1_of_dword`, result assigned to a `WORD`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
 | REQ-PAB-121  | `apply_when_partial_access_wider_than_variable_then_err`                        | `compiler/analyzer/src/rule_bit_and_partial_access_range.rs` (tests mod) | analyzer |
 | REQ-PAB-122  | `apply_when_partial_access_index_at_boundary_then_ok_or_err`                    | `compiler/analyzer/src/rule_bit_and_partial_access_range.rs` (tests mod) | analyzer |
-| REQ-PAB-130  | `end_to_end_when_read_byte_0_from_dword_then_correct`, `end_to_end_when_read_byte_3_from_dword_then_correct`, `end_to_end_when_read_word_1_from_dword_then_correct`, `end_to_end_when_read_dword_1_from_lword_then_correct` | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
-| REQ-PAB-131  | `end_to_end_when_write_byte_1_to_dword_then_preserves_others`, `end_to_end_when_write_word_to_lword_then_correct` | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
-| REQ-PAB-132  | `end_to_end_when_write_byte_to_dword_array_then_correct`, `end_to_end_when_write_byte_to_struct_field_then_correct` | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
+| REQ-PAB-130  | `partial_access_when_narrow_result_then_expected` (`byte_0_of_dword`, `byte_3_of_dword`, `word_1_of_dword`, `dword_1_of_lword`), `partial_access_when_wide_result_then_expected` (`lword_0_of_lword`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
+| REQ-PAB-131  | `partial_access_when_narrow_result_then_expected` (`write_byte_1_of_dword`, `write_dword_0_of_dword`), `partial_access_when_wide_result_then_expected` (`write_word_1_of_lword`, `write_dword_1_of_lword`, `write_lword_0_of_lword`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
+| REQ-PAB-132  | `partial_access_when_narrow_result_then_expected` (`write_byte_3_of_array_element`, `write_byte_2_of_struct_field`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
+| REQ-PAB-133  | `partial_access_when_wide_result_then_expected` (`write_dword_0_of_lword`, `write_lword_0_of_lword`, `write_lword_0_of_lword_from_variable`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
 | REQ-PAB-140  | `apply_when_partial_access_byte_and_flag_off_then_error`                        | `compiler/parser/src/rule_token_no_partial_access_syntax.rs` (tests mod) | negative |
 | REQ-PAB-141  | `codesys_dialect_enables_exactly_these_flags`, `twincat_dialect_enables_exactly_these_flags` | `compiler/parser/src/options.rs` (tests mod)               | options     |
 | REQ-PAB-150  | `plc2plc_when_partial_access_multi_then_round_trips`                            | `compiler/plc2plc/src/tests/partial_access.rs`                    | round-trip  |
