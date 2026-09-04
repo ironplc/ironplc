@@ -65,6 +65,7 @@ mod string_similarity;
 pub mod symbol_environment;
 mod type_attributes;
 mod type_category;
+mod type_compat;
 mod type_environment;
 mod type_table;
 pub mod value_range;
