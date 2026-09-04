@@ -15,7 +15,7 @@ use crate::{
     ironplc_dsl::common::Library,
     result::SemanticResult,
     rule_abstract_not_instantiated, rule_assignment_aggregate_type_compat,
-    rule_bit_and_partial_access_range, rule_case_bit_string_label,
+    rule_bit_and_partial_access_range, rule_case_bit_string_label, rule_constant_range,
     rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
     rule_enumeration_values_unique, rule_extends_field_duplicated,
     rule_function_block_call_unsupported, rule_function_block_invocation,
@@ -370,6 +370,7 @@ pub(crate) fn semantic(
         rule_pou_hierarchy::apply,
         rule_bit_and_partial_access_range::apply,
         rule_case_bit_string_label::apply,
+        rule_constant_range::apply,
         rule_ref_to::apply,
     ];
 
