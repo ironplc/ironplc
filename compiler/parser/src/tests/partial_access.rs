@@ -1,9 +1,10 @@
 //! Partial-access (`%X`, `%B`, `%W`, `%D`, `%L`) syntax parsing.
 
 use super::common::*;
+use spec_test_macro::spec_test;
 
-/// REQ-PAB-001: The lexer tokenizes `%X<digits>` as `PartialAccessBit`.
-#[test]
+/// REQ-PAB-parser-001: The lexer tokenizes `%X<digits>` as `PartialAccessBit`.
+#[spec_test(REQ_PAB_parser_001)]
 fn lexer_spec_req_pab_001_percent_x_digits_tokenizes_as_partial_access_bit() {
     use crate::token::TokenType;
     let (tokens, _) = crate::tokenize_program(
@@ -31,8 +32,8 @@ fn lexer_spec_req_pab_001_percent_x_digits_tokenizes_as_partial_access_bit() {
         .any(|t| t.token_type == TokenType::PartialAccessBit && t.text == "%x3"));
 }
 
-/// REQ-PAB-002: `%X0` does not cannibalize `DirectAddress` tokens like `%IX0.0`.
-#[test]
+/// REQ-PAB-parser-002: `%X0` does not cannibalize `DirectAddress` tokens like `%IX0.0`.
+#[spec_test(REQ_PAB_parser_002)]
 fn lexer_spec_req_pab_002_direct_address_still_takes_precedence() {
     use crate::token::TokenType;
     let (tokens, _) = crate::tokenize_program(
@@ -50,10 +51,10 @@ fn lexer_spec_req_pab_002_direct_address_still_takes_precedence() {
         .any(|t| t.token_type == TokenType::PartialAccessBit));
 }
 
-/// REQ-PAB-100: The lexer tokenizes `%B`, `%W`, `%D` and `%L` followed by
+/// REQ-PAB-parser-100: The lexer tokenizes `%B`, `%W`, `%D` and `%L` followed by
 /// digits as the byte, word, dword and lword partial-access selectors,
 /// case-insensitive.
-#[test]
+#[spec_test(REQ_PAB_parser_100)]
 fn lexer_spec_req_pab_100_percent_b_w_d_l_digits_tokenize_as_partial_access_selectors() {
     use crate::token::TokenType;
     let cases = [
@@ -81,24 +82,54 @@ fn lexer_spec_req_pab_100_percent_b_w_d_l_digits_tokenize_as_partial_access_sele
     }
 }
 
-/// REQ-PAB-010: `.%Xn` is accepted on a simple variable.
+/// REQ-PAB-parser-101: the wider selectors are accepted wherever `.%Xn` is:
+/// after a simple variable, an array subscript and a structure field.
+#[spec_test(REQ_PAB_parser_101)]
+#[rstest]
+#[case::simple_var("r := b.%B0;")]
+#[case::array_element("r := arr[0].%W0;")]
+#[case::struct_field("r := s.f.%D0;")]
+fn parser_spec_req_pab_101_wider_selectors_accepted_in_every_position(#[case] body: &str) {
+    let src = wrap_program(body);
+    let result = parse_program(&src, &FileId::default(), &opts_with_partial_access());
+    assert!(result.is_ok(), "parse failed: {:?}", result.err());
+}
+
+/// REQ-PAB-parser-110: a wider selector lowers to `PartialAccessVariable`
+/// carrying its size and index, a node distinct from `BitAccessVariable`.
+#[spec_test(REQ_PAB_parser_110)]
 #[test]
+fn parser_spec_req_pab_110_wider_selector_lowers_to_partial_access_variable() {
+    let src = wrap_program("r := b.%W1;");
+    let library = parse_program(&src, &FileId::default(), &opts_with_partial_access()).unwrap();
+    let program = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
+    let statements = cast!(&program.body, FunctionBlockBodyKind::Statements);
+    let assignment = cast!(&statements.body[0], StmtKind::Assignment);
+    let variable = cast!(&assignment.value.kind, ExprKind::Variable);
+    let symbolic = cast!(variable, Variable::Symbolic);
+    let partial = cast!(symbolic, SymbolicVariableKind::PartialAccess);
+    assert_eq!(partial.size, PartialAccessSize::Word);
+    assert_eq!(partial.index.value, 1);
+}
+
+/// REQ-PAB-parser-010: `.%Xn` is accepted on a simple variable.
+#[spec_test(REQ_PAB_parser_010)]
 fn parser_spec_req_pab_010_dot_percent_x_accepted_on_simple_var() {
     let src = wrap_program("r := b.%X0;");
     let result = parse_program(&src, &FileId::default(), &opts_with_partial_access());
     assert!(result.is_ok(), "parse failed: {:?}", result.err());
 }
 
-/// REQ-PAB-011: `.%Xn` is accepted after an array subscript — the user's case.
-#[test]
+/// REQ-PAB-parser-011: `.%Xn` is accepted after an array subscript — the user's case.
+#[spec_test(REQ_PAB_parser_011)]
 fn parser_spec_req_pab_011_dot_percent_x_accepted_after_array_subscript() {
     let src = wrap_program("r := arr[0].%X0;");
     let result = parse_program(&src, &FileId::default(), &opts_with_partial_access());
     assert!(result.is_ok(), "parse failed: {:?}", result.err());
 }
 
-/// REQ-PAB-012: `.%Xn` is accepted after a struct field access.
-#[test]
+/// REQ-PAB-parser-012: `.%Xn` is accepted after a struct field access.
+#[spec_test(REQ_PAB_parser_012)]
 fn parser_spec_req_pab_012_dot_percent_x_accepted_after_struct_field() {
     // Define MY_STRUCT with a BYTE field so the program type-checks later,
     // though this test only exercises the parser surface.
@@ -116,8 +147,8 @@ END_PROGRAM
     assert!(result.is_ok(), "parse failed: {:?}", result.err());
 }
 
-/// REQ-PAB-020: `x.%Xn` and `x.n` produce equal AST subtrees.
-#[test]
+/// REQ-PAB-parser-020: `x.%Xn` and `x.n` produce equal AST subtrees.
+#[spec_test(REQ_PAB_parser_020)]
 fn parser_spec_req_pab_020_dot_percent_x_and_dot_n_produce_equal_ast() {
     let long = wrap_program("r := b.%X3;");
     let short = wrap_program("r := b.3;");
@@ -137,9 +168,9 @@ fn parser_spec_req_pab_020_dot_percent_x_and_dot_n_produce_equal_ast() {
     assert_eq!(long_prog.body, short_prog.body);
 }
 
-/// REQ-PAB-050: When the flag is off, `.%Xn` produces
+/// REQ-PAB-parser-050: When the flag is off, `.%Xn` produces
 /// `PartialAccessSyntaxDisabled` (P4033) — not a lexer-level P0003.
-#[test]
+#[spec_test(REQ_PAB_parser_050)]
 fn parser_spec_req_pab_050_disabled_flag_produces_partial_access_syntax_disabled() {
     let src = wrap_program("r := b.%X0;");
     let result = parse_program(&src, &FileId::default(), &CompilerOptions::default());

@@ -4,6 +4,7 @@
 use crate::common::{parse_and_run, try_parse_and_compile, VmBuffers};
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
+use spec_test_macro::spec_test;
 
 fn opts() -> CompilerOptions {
     CompilerOptions {
@@ -41,6 +42,15 @@ END_PROGRAM
 }
 
 /// Slice reads and writes whose result fits a 32-bit slot.
+///
+/// REQ-PAB-codegen-120: a slice reads as the bit-string type of its width.
+/// REQ-PAB-codegen-130: slice `n` is bits `n * width ..= (n + 1) * width - 1`.
+/// REQ-PAB-codegen-131: a write replaces only the addressed slice.
+/// REQ-PAB-codegen-132: array elements and structure fields behave the same.
+#[spec_test(REQ_PAB_codegen_120)]
+#[spec_test(REQ_PAB_codegen_130)]
+#[spec_test(REQ_PAB_codegen_131)]
+#[spec_test(REQ_PAB_codegen_132)]
 #[rstest]
 // --- reads ---
 #[case::byte_0_of_dword("", "d : DWORD", "BYTE", "d := DWORD#16#AABBCCDD; r := d.%B0;", 0xDD)]
@@ -138,6 +148,10 @@ fn partial_access_when_narrow_result_then_expected(
 }
 
 /// Slice reads and writes whose result is a 64-bit value.
+///
+/// REQ-PAB-codegen-130 and REQ-PAB-codegen-131 as above, on an `LWORD` base.
+/// REQ-PAB-codegen-133: the value written is compiled at the slice's width.
+#[spec_test(REQ_PAB_codegen_133)]
 #[rstest]
 #[case::lword_0_of_lword(
     "l : LWORD",

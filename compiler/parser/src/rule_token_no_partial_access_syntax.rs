@@ -47,6 +47,7 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 #[cfg(test)]
 mod test {
     use dsl::core::SourceSpan;
+    use spec_test_macro::spec_test;
 
     use crate::{
         options::CompilerOptions,
@@ -90,7 +91,9 @@ mod test {
         assert!(result.is_ok());
     }
 
-    #[test]
+    /// REQ-PAB-parser-140: a wider selector without the flag is
+    /// `PartialAccessSyntaxDisabled`, the same diagnostic as `.%Xn`.
+    #[spec_test(REQ_PAB_parser_140)]
     fn apply_when_partial_access_byte_and_flag_off_then_error() {
         let tokens = vec![mk_token(TokenType::PartialAccessByte, "%B0")];
         let result = apply(

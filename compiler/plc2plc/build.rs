@@ -8,5 +8,7 @@ fn main() {
         // plc2plc owns the POINTER TO rendering requirements
         // (`REQ-PTR-plc2plc-*`).
         "adr-and-pointer-to.md",
+        // Partial-access syntax (`REQ-PAB-plc2plc-*`): round-trip rendering.
+        "partial-access-bit-syntax.md",
     ]);
 }
