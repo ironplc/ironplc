@@ -43,6 +43,19 @@ remainder is what you want:
        wrapped := REAL_TO_DINT(angle) MOD 360;
    END_PROGRAM
 
-For a floating-point remainder, use a library function written for it. The
-Beckhoff ``Tc2_Math`` compatibility library provides ``LMOD`` for ``LREAL``
-operands; see :doc:`/reference/compatibility-libraries/tc2-math`.
+For a floating-point remainder, subtract the truncated quotient. :doc:`TRUNC
+</reference/standard-library/functions/trunc>` drops the fractional part of the
+quotient, and the ``<INT>_TO_<REAL>`` conversion brings it back to the operand
+type:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       angle : REAL := 400.5;
+       wrapped : REAL;
+   END_VAR
+       wrapped := angle - DINT_TO_REAL(TRUNC(angle / 360.0)) * 360.0;  (* 40.5 *)
+   END_PROGRAM
+
+The result has the sign of the dividend, as ``MOD`` does for integers.
