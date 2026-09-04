@@ -419,11 +419,15 @@ END_PROGRAM
     &[(1, 1), (2, 1)],
 );
 
-// A single-quoted literal spells STRING, but a literal has no encoding until
-// it is used -- the same rule that makes `w := 'abc'` store UTF-16LE.
-e2e_i32!(
-    wstring_when_compared_to_narrow_spelled_literal_then_literal_adapts,
-    "
+#[test]
+fn wstring_when_compared_to_single_quoted_literal_then_p4034() {
+    // A delimiter is what types a literal: 'abc' is a STRING and "abc" a
+    // WSTRING (IEC 61131-3 Table 5). Comparison operands are peers, with no
+    // destination for either to take an encoding from, so the two types have
+    // nothing in common and the program is rejected rather than widened.
+    use ironplc_problems::Problem;
+
+    let source = "
 PROGRAM main
   VAR
     w : WSTRING[10] := \"abc\";
@@ -431,9 +435,11 @@ PROGRAM main
   END_VAR
   eq := w = 'abc';
 END_PROGRAM
-",
-    &[(1, 1)],
-);
+";
+    let diagnostic =
+        crate::common::try_parse_and_compile(source, &CompilerOptions::default()).unwrap_err();
+    assert_eq!(diagnostic.code, Problem::StringEncodingMismatch.code());
+}
 
 // The literal operand order must not matter.
 e2e_i32!(
@@ -484,9 +490,28 @@ END_PROGRAM
 }
 
 #[test]
-fn wstring_when_nested_call_has_only_literals_then_adapts_to_target() {
-    // CONCAT('a', 'b') has nothing of its own to resolve an encoding from; it
-    // adapts to the WSTRING target it is being produced for.
+fn wstring_when_nested_call_has_only_wide_literals_then_result_is_wide() {
+    let source = "
+PROGRAM main
+  VAR
+    out : WSTRING[20];
+  END_VAR
+  out := CONCAT(\"a\", \"b\");
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
+    assert_eq!(read_wstring(&bufs.data_region, 0), "ab");
+}
+
+#[test]
+fn wstring_assigned_narrow_call_result_when_compiled_then_p4034() {
+    // CONCAT('a', 'b') is a STRING expression whatever it is assigned to. The
+    // destination decides the encoding of a literal written into it, not of a
+    // string a call already built.
+    use ironplc_problems::Problem;
+
     let source = "
 PROGRAM main
   VAR
@@ -495,10 +520,9 @@ PROGRAM main
   out := CONCAT('a', 'b');
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
-    assert_eq!(read_wstring(&bufs.data_region, 0), "ab");
+    let diagnostic =
+        crate::common::try_parse_and_compile(source, &CompilerOptions::default()).unwrap_err();
+    assert_eq!(diagnostic.code, Problem::StringEncodingMismatch.code());
 }
 
 #[test]
@@ -586,7 +610,7 @@ END_PROGRAM
 }
 
 #[test]
-fn wstring_when_concat_with_narrow_spelled_literal_then_appends_wide() {
+fn wstring_when_concat_with_wide_literal_then_appends_wide() {
     // The example in docs/reference/language/data-types/elementary/wstring.rst.
     let source = "
 PROGRAM main
@@ -594,7 +618,7 @@ PROGRAM main
     w : WSTRING[10] := \"abc\";
   END_VAR
   IF w = \"abc\" THEN
-    w := CONCAT(w, 'd');
+    w := CONCAT(w, \"d\");
   END_IF;
 END_PROGRAM
 ";

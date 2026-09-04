@@ -1172,13 +1172,6 @@ pub(crate) struct CompileContext {
     /// True when any WSTRING (wide) string is declared. Temp buffers are then
     /// sized in wide bytes so an intermediate wide value fits (ADR-0035).
     pub(crate) has_wide_string: bool,
-    /// The encoding the string value currently being compiled is produced at,
-    /// while one is. A nested string operation whose own operands are all
-    /// literals -- `w := CONCAT('a', 'b')` -- has nothing of its own to
-    /// resolve an encoding from, and adapts to this instead of defaulting to
-    /// narrow and tripping the destination's encoding check.
-    /// See [`crate::string_width`].
-    pub(crate) string_width_hint: Option<CharWidth>,
     /// Number of temp buffers needed: one per string-operation call site,
     /// counted across every function, not just the init function.
     ///
@@ -1251,7 +1244,6 @@ impl CompileContext {
             data_region_offset: 0,
             max_string_capacity: 0,
             has_wide_string: false,
-            string_width_hint: None,
             num_temp_bufs: 0,
             debug_var_names: Vec::new(),
             debug_string_layouts: Vec::new(),

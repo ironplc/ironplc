@@ -50,18 +50,21 @@ The maximum declared length is 65,535 code units.
 comparing or combining them in one operation, is a compile error
 (:doc:`/reference/compiler/problems/P4034`).
 
-A string literal is not itself narrow or wide. It takes the encoding of
-whatever it is used with, so a literal compares against, concatenates with, and
-initializes a ``WSTRING`` whichever way it is spelled:
+The quotes select the type: ``'abc'`` is a ``STRING`` literal and ``"abc"`` a
+``WSTRING`` one. A literal used with a ``WSTRING`` is written with double
+quotes:
 
 .. code-block::
 
    VAR
        w : WSTRING[10] := "abc";
    END_VAR
-       IF w = "abc" THEN     (* the literal is encoded as WSTRING *)
-           w := CONCAT(w, 'd');
+       IF w = "abc" THEN
+           w := CONCAT(w, "d");
        END_IF;
+
+Mixing the two — a ``STRING`` literal where a ``WSTRING`` is expected, or the
+reverse — is :doc:`/reference/compiler/problems/P4034`.
 
 See Also
 --------

@@ -27,12 +27,9 @@ The same applies to the operands of one operation. ``CONCAT(narrow, wide)``,
 ``FIND(narrow, wide)`` and ``narrow = wide`` each need a single encoding to
 work in, and there is none both operands share.
 
-A string literal is an exception, because it is not yet stored in either
-encoding: it is a sequence of characters that the compiler encodes when it
-sees where the value is going. Assigned to a ``WSTRING`` it is encoded as
-UTF-16LE, and assigned to a ``STRING`` as Latin-1, whichever quotes it is
-written with. So ``wide := 'abc'`` and ``wide = "abc"`` are both accepted,
-and neither reinterprets any bytes.
+A string literal is typed by its quotes: ``'abc'`` is a ``STRING`` and
+``"abc"`` a ``WSTRING``. So ``wide = 'abc'`` mixes the two types the same way
+``wide = narrow`` does, and is the same error; write ``wide = "abc"``.
 
 To fix this error, use variables of the same string type on both sides:
 
