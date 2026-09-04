@@ -1,4 +1,4 @@
-# Partial Access Bit Syntax (`.%Xn`)
+# Partial Access Syntax (`.%Xn`, `.%Bn`, `.%Wn`, `.%Dn`, `.%Ln`)
 
 ## Overview
 
@@ -9,6 +9,12 @@ semantically equivalent. The new form is accepted on any symbolic variable,
 including array elements and structured fields, producing the same AST and
 bytecode as the existing short form.
 
+The same syntax family also selects wider slices: `x.%Bn` (byte), `x.%Wn`
+(word), `x.%Dn` (double word) and `x.%Ln` (long word). Those forms return a
+bit-string view of the underlying data rather than a `BOOL`, so they have their
+own AST node and codegen path; see [Multi-Byte Partial
+Access](#multi-byte-partial-access) below.
+
 The motivating case is a rusty program the compiler rejects with P0003:
 
 ```
@@ -17,14 +23,9 @@ r := myByteArray[0].%X0;                        (* TRUE *)
 myByteArray[0].%X1 := TRUE;                     (* write *)
 ```
 
-The syntax is gated behind `--allow-partial-access-syntax`, which is enabled
-by the `rusty` and `iec61131-3-ed3` dialect presets.
-
-This design covers only bit partial access (`.%Xn`). Byte/word/dword/lword
-partial access (`.%Bn`, `.%Wn`, `.%Dn`, `.%Ln`) returns a non-bit view of the
-underlying data and requires a distinct AST node and codegen path; those are
-out of scope here and will be covered by a separate design that can reuse the
-same gating flag.
+All five forms are gated behind the one flag `--allow-partial-access-syntax`,
+which the `iec61131-3-ed3`, `rusty`, `codesys` and `twincat` dialect presets
+enable.
 
 ## Lexical Grammar
 
@@ -98,6 +99,89 @@ Source parsed, rendered, and re-parsed produces an AST equal to the original.
 The normalization is intentional: `BitAccessVariable` carries only an integer
 index, so the surface syntax is not preserved in the AST.
 
+## Multi-Byte Partial Access
+
+The byte, word, dword and lword forms select a slice of the base value and
+read and write it as the bit-string type of the slice's width. Slice `n`
+covers bits `n * width` through `(n + 1) * width - 1`; index 0 is the least
+significant slice.
+
+| form   | width  | result type | example                              |
+|--------|--------|-------------|--------------------------------------|
+| `.%Bn` | 8-bit  | BYTE        | `DWORD_VAR.%B2` → bits 16-23         |
+| `.%Wn` | 16-bit | WORD        | `LWORD_VAR.%W1` → bits 16-31         |
+| `.%Dn` | 32-bit | DWORD       | `LWORD_VAR.%D1` → bits 32-63         |
+| `.%Ln` | 64-bit | LWORD       | `LWORD_VAR.%L0` → all 64 bits        |
+
+### Lexical and Syntactic Grammar
+
+**REQ-PAB-100** The lexer recognizes the tokens `PartialAccessByte`,
+`PartialAccessWord`, `PartialAccessDWord` and `PartialAccessLWord` matching
+`%B\d+`, `%W\d+`, `%D\d+` and `%L\d+` respectively, case-insensitive. As
+with `%X`, a direct address such as `%IB0` still tokenizes as `DirectAddress`.
+
+**REQ-PAB-101** `symbolic_variable` accepts `.%Bn`, `.%Wn`, `.%Dn` and `.%Ln`
+in every position where `.%Xn` is accepted: after a simple variable, after an
+array subscript (`arr[i].%B2`) and after a structured field (`s.value.%B1`).
+
+### AST Representation
+
+**REQ-PAB-110** The wider forms lower to
+`SymbolicVariableKind::PartialAccess(PartialAccessVariable { variable, size, index })`,
+where `size: PartialAccessSize` is one of `Byte`, `Word`, `DWord` or `LWord`.
+This is a distinct node from `BitAccessVariable`; `.%Xn` continues to lower
+to `BitAccessVariable`.
+
+### Semantic Analysis
+
+**REQ-PAB-120** The type of a partial-access expression is the bit-string type
+of the slice width: `BYTE`, `WORD`, `DWORD` or `LWORD` for `.%Bn`, `.%Wn`,
+`.%Dn` and `.%Ln` respectively, independent of the base variable's type.
+
+**REQ-PAB-121** `rule_bit_and_partial_access_range` rejects a slice wider than
+the base variable with `BitAccessOutOfRange` (`P4025`); `byte_var.%W0` is an
+error because a `WORD` does not fit in a `BYTE`.
+
+**REQ-PAB-122** `rule_bit_and_partial_access_range` rejects an index past the
+last slice with `BitAccessOutOfRange` (`P4025`). The valid range is
+`0..(base_bytes / slice_bytes - 1)`: `word_var.%B1` is accepted and
+`word_var.%B2` is rejected.
+
+### Execution Semantics
+
+**REQ-PAB-130** Reading `x.%Bn` / `x.%Wn` / `x.%Dn` on a wider base returns
+the bits of slice `n`, shifted down so that the slice's least significant bit
+is bit 0 of the result. Given `d : DWORD := 16#AABBCCDD`, `d.%B0` is `16#DD`,
+`d.%B3` is `16#AA`, `d.%W1` is `16#AABB`; given
+`l : LWORD := 16#AABBCCDD11223344`, `l.%D1` is `16#AABBCCDD`.
+
+**REQ-PAB-131** Assigning `x.%Bn := v` / `x.%Wn := v` replaces only the bits of
+slice `n` with the low bits of `v`; every other bit of `x` is unchanged. Given
+`d : DWORD := 16#AABBCCDD`, after `d.%B1 := 16#FF` the value of `d` is
+`16#AABBFFDD`.
+
+**REQ-PAB-132** Reads and writes of a slice work on array elements
+(`arr[0].%B2`) and structured fields (`s.value.%B2`) with the same semantics as
+on a plain variable.
+
+### Feature Gating
+
+**REQ-PAB-140** When `allow_partial_access_syntax` is false, a source containing
+`.%Bn`, `.%Wn`, `.%Dn` or `.%Ln` produces `PartialAccessSyntaxDisabled`
+(`P4033`) pointing at the selector token, the same diagnostic as `.%Xn`.
+
+**REQ-PAB-141** `CompilerOptions::from_dialect` sets
+`allow_partial_access_syntax` to true for `Dialect::Codesys` and
+`Dialect::TwinCat`, in addition to `Dialect::Rusty` and
+`Dialect::Iec61131_3Ed3` (REQ-PAB-051, REQ-PAB-052).
+
+### Round-Trip Rendering
+
+**REQ-PAB-150** The plc2plc renderer emits `.%Bn`, `.%Wn`, `.%Dn` and `.%Ln`
+verbatim for a `PartialAccessVariable`. Unlike `.%Xn`, these forms have no
+short-form equivalent, so the rendered output still requires the flag to
+re-parse.
+
 ## Requirements → Tests
 
 Each REQ above is tied to one primary test. Test names follow
@@ -119,6 +203,18 @@ Each REQ above is tied to one primary test. Test names follow
 | REQ-PAB-051  | `options_spec_req_pab_051_rusty_dialect_enables_partial_access_syntax`          | `compiler/parser/src/options.rs` (tests mod)                      | options     |
 | REQ-PAB-052  | `options_spec_req_pab_052_ed3_dialect_enables_partial_access_syntax`            | `compiler/parser/src/options.rs` (tests mod)                      | options     |
 | REQ-PAB-060  | `plc2plc_spec_req_pab_060_percent_x_round_trips_through_short_form`             | `compiler/plc2plc/src/tests/`                                   | round-trip  |
+| REQ-PAB-100  | `lexer_spec_req_pab_100_percent_b_w_d_l_digits_tokenize_as_partial_access_selectors` | `compiler/parser/src/tests/partial_access.rs`                | lexer       |
+| REQ-PAB-101  | `end_to_end_when_read_byte_from_dword_array_then_correct`, `end_to_end_when_read_byte_from_struct_field_then_correct` | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
+| REQ-PAB-110  | `end_to_end_when_partial_access_byte_flag_on_then_compiles`                     | `compiler/codegen/tests/it/end_to_end_partial_access.rs`          | e2e         |
+| REQ-PAB-120  | `end_to_end_when_read_word_1_from_dword_then_correct` (result assigned to a `WORD`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs`      | e2e         |
+| REQ-PAB-121  | `apply_when_partial_access_wider_than_variable_then_err`                        | `compiler/analyzer/src/rule_bit_and_partial_access_range.rs` (tests mod) | analyzer |
+| REQ-PAB-122  | `apply_when_partial_access_index_at_boundary_then_ok_or_err`                    | `compiler/analyzer/src/rule_bit_and_partial_access_range.rs` (tests mod) | analyzer |
+| REQ-PAB-130  | `end_to_end_when_read_byte_0_from_dword_then_correct`, `end_to_end_when_read_byte_3_from_dword_then_correct`, `end_to_end_when_read_word_1_from_dword_then_correct`, `end_to_end_when_read_dword_1_from_lword_then_correct` | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
+| REQ-PAB-131  | `end_to_end_when_write_byte_1_to_dword_then_preserves_others`, `end_to_end_when_write_word_to_lword_then_correct` | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
+| REQ-PAB-132  | `end_to_end_when_write_byte_to_dword_array_then_correct`, `end_to_end_when_write_byte_to_struct_field_then_correct` | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
+| REQ-PAB-140  | `apply_when_partial_access_byte_and_flag_off_then_error`                        | `compiler/parser/src/rule_token_no_partial_access_syntax.rs` (tests mod) | negative |
+| REQ-PAB-141  | `codesys_dialect_enables_exactly_these_flags`, `twincat_dialect_enables_exactly_these_flags` | `compiler/parser/src/options.rs` (tests mod)               | options     |
+| REQ-PAB-150  | `plc2plc_when_partial_access_multi_then_round_trips`                            | `compiler/plc2plc/src/tests/partial_access.rs`                    | round-trip  |
 
 ### Enforcement
 

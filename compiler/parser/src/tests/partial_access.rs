@@ -1,4 +1,4 @@
-//! Partial-access (`%X`) syntax parsing.
+//! Partial-access (`%X`, `%B`, `%W`, `%D`, `%L`) syntax parsing.
 
 use super::common::*;
 
@@ -48,6 +48,37 @@ fn lexer_spec_req_pab_002_direct_address_still_takes_precedence() {
     assert!(!tokens
         .iter()
         .any(|t| t.token_type == TokenType::PartialAccessBit));
+}
+
+/// REQ-PAB-100: The lexer tokenizes `%B`, `%W`, `%D` and `%L` followed by
+/// digits as the byte, word, dword and lword partial-access selectors,
+/// case-insensitive.
+#[test]
+fn lexer_spec_req_pab_100_percent_b_w_d_l_digits_tokenize_as_partial_access_selectors() {
+    use crate::token::TokenType;
+    let cases = [
+        ("%B1", TokenType::PartialAccessByte),
+        ("%w1", TokenType::PartialAccessWord),
+        ("%D1", TokenType::PartialAccessDWord),
+        ("%l0", TokenType::PartialAccessLWord),
+    ];
+    for (selector, expected) in cases {
+        let source = format!("PROGRAM p VAR l : LWORD; END_VAR l.{selector}; END_PROGRAM");
+        let (tokens, _) = crate::tokenize_program(
+            &source,
+            &FileId::default(),
+            &opts_with_partial_access(),
+            0,
+            0,
+        );
+        assert!(
+            tokens
+                .iter()
+                .any(|t| t.token_type == expected && t.text == selector),
+            "{selector}: tokens = {:?}",
+            tokens
+        );
+    }
 }
 
 /// REQ-PAB-010: `.%Xn` is accepted on a simple variable.

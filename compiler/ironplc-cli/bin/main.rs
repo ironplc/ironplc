@@ -165,9 +165,10 @@ struct FileArgs {
     #[arg(long)]
     allow_cross_family_widening: bool,
 
-    /// Allow IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) as an alias
-    /// for the short form `.n`. Enabled by `--dialect=iec61131-3-ed3` and
-    /// `--dialect=rusty`.
+    /// Allow IEC 61131-3:2013 partial-access syntax: the bit form `.%Xn` (an
+    /// alias for the short form `.n`) and the byte/word/dword/lword forms
+    /// `.%Bn`, `.%Wn`, `.%Dn`, `.%Ln`. Enabled by `--dialect=iec61131-3-ed3`,
+    /// `--dialect=rusty`, `--dialect=codesys`, and `--dialect=twincat`.
     #[arg(long)]
     allow_partial_access_syntax: bool,
 
