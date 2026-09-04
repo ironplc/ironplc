@@ -18,8 +18,9 @@
 //! Passes:
 //!
 //! 1. [`pass_self_assign`] — `LOAD_VAR x; STORE_VAR x` (same var, same type).
-//! 2. [`pass_arith_identity`] — `LOAD_CONST 0; ADD|SUB` and
-//!    `LOAD_CONST 1; MUL|DIV` (matching width).
+//! 2. [`pass_arith_identity`] — `LOAD_CONST 0; ADD|SUB` on integers,
+//!    `LOAD_CONST 0.0; SUB` on floats, and `LOAD_CONST 1; MUL|DIV`
+//!    (matching width). Float `ADD` is excluded: `-0.0 + 0.0` is `+0.0`.
 //! 3. [`pass_const_trunc`] — `LOAD_CONST_I32; TRUNC_*`, where the truncation
 //!    is resolved at compile time instead of at every scan.
 //!
