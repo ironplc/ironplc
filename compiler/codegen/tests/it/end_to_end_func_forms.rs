@@ -3,8 +3,9 @@
 //! One smoke test per function form to verify the full pipeline works.
 //! Detailed opcode testing is in compile_func_forms.rs.
 //!
-//! Note: NOT(x) is tested via the unary operator path since the parser
-//! treats NOT as a unary operator applied to parenthesized expression (x).
+//! Note: NOT(x) parses as the unary operator applied to the parenthesized
+//! expression (x); the named-argument spelling NOT(IN := x) is the one that
+//! reaches the function form, so that is what the NOT tests use.
 
 // --- Arithmetic functions ---
 
@@ -246,4 +247,82 @@ PROGRAM main
 END_PROGRAM
 ",
     &[(0, 42), (1, 42)],
+);
+
+// --- Bitwise boolean functions on bit strings (#1567) ---
+
+e2e_i32!(
+    end_to_end_when_and_function_on_word_then_returns_bitwise_and,
+    "
+PROGRAM main
+  VAR
+    a : WORD := 16#F0;
+    b : WORD := 16#3C;
+    result : WORD;
+  END_VAR
+  result := AND(a, b);
+END_PROGRAM
+",
+    &[(2, 0x30)],
+);
+
+e2e_i32!(
+    end_to_end_when_or_function_on_word_then_returns_bitwise_or,
+    "
+PROGRAM main
+  VAR
+    a : WORD := 16#F0;
+    b : WORD := 16#3C;
+    result : WORD;
+  END_VAR
+  result := OR(a, b);
+END_PROGRAM
+",
+    &[(2, 0xFC)],
+);
+
+e2e_i32!(
+    end_to_end_when_xor_function_on_word_then_returns_bitwise_xor,
+    "
+PROGRAM main
+  VAR
+    a : WORD := 16#F0;
+    b : WORD := 16#3C;
+    result : WORD;
+  END_VAR
+  result := XOR(a, b);
+END_PROGRAM
+",
+    &[(2, 0xCC)],
+);
+
+e2e_i32!(
+    end_to_end_when_not_function_on_word_then_returns_complement_in_width,
+    "
+PROGRAM main
+  VAR
+    a : WORD := 16#F0F0;
+    result : WORD;
+  END_VAR
+  result := NOT(IN := a);
+END_PROGRAM
+",
+    &[(1, 0x0F0F)],
+);
+
+e2e_i32!(
+    end_to_end_when_not_function_on_bool_then_returns_logical_complement,
+    "
+PROGRAM main
+  VAR
+    a : BOOL := TRUE;
+    b : BOOL := FALSE;
+    not_a : BOOL;
+    not_b : BOOL;
+  END_VAR
+  not_a := NOT(IN := a);
+  not_b := NOT(IN := b);
+END_PROGRAM
+",
+    &[(2, 0), (3, 1)],
 );

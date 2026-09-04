@@ -1096,6 +1096,20 @@ END_VAR
 END_FUNCTION_BLOCK",
         "INT"
     )]
+    // AND has generic return type ANY_BIT; the function form resolves to the
+    // operand type like the operator form does (#1567).
+    #[case::and_function_on_word_resolves_operand_type(
+        "
+PROGRAM test
+  VAR
+    a : WORD;
+    b : WORD;
+    result : WORD;
+  END_VAR
+    result := AND(a, b);
+END_PROGRAM",
+        "WORD"
+    )]
     // ABS has generic return type ANY_NUM; should resolve to concrete input type.
     #[case::function_call_resolves_return_type(
         "
