@@ -1,0 +1,48 @@
+=====
+P4049
+=====
+
+.. problem-summary:: P4049
+
+This error occurs when an operator is applied to an operand whose type the
+operator is not defined for. IEC 61131-3 defines the ``MOD`` operator only for
+the integer types (``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``,
+``UDINT``, ``ULINT``). There is no floating-point remainder operator, so a
+``REAL`` or ``LREAL`` operand is a type error.
+
+The function form ``MOD(a, b)`` accepts the same operand types as the operator.
+A mismatch there is reported as :doc:`P4026` instead.
+
+Example
+-------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       angle : REAL := 400.5;
+       wrapped : REAL;
+   END_VAR
+       wrapped := angle MOD 360.0;
+   END_PROGRAM
+
+The variable ``angle`` is ``REAL``, but ``MOD`` accepts only integer operands.
+
+To fix this error, convert the operands to an integer type when an integer
+remainder is what you want:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       angle : REAL := 400.5;
+       wrapped : DINT;
+   END_VAR
+       wrapped := REAL_TO_DINT(angle) MOD 360;
+   END_PROGRAM
+
+For a floating-point remainder, use a library function written for it. The
+Beckhoff ``Tc2_Math`` compatibility library provides ``LMOD`` for ``LREAL``
+operands; see :doc:`/reference/compatibility-libraries/tc2-math`.

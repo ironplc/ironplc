@@ -41,6 +41,7 @@ mod rule_function_call_type_check;
 mod rule_method_call_declared;
 mod rule_mixed_located_var_declarations;
 mod rule_no_top_level_var_global;
+mod rule_operator_operand_type_check;
 mod rule_pou_hierarchy;
 mod rule_program_task_definition_exists;
 mod rule_ref_to;
