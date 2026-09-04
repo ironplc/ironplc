@@ -146,14 +146,7 @@ pub(crate) fn compile_expr(
         ExprKind::BinaryOp(binary) => {
             compile_expr(emitter, ctx, &binary.left, op_type)?;
             compile_expr(emitter, ctx, &binary.right, op_type)?;
-            match binary.op {
-                Operator::Add => emit_add(emitter, op_type),
-                Operator::Sub => emit_sub(emitter, op_type),
-                Operator::Mul => emit_mul(emitter, op_type),
-                Operator::Div => emit_div(emitter, op_type),
-                Operator::Mod => emit_mod(emitter, op_type),
-                Operator::Pow => emit_pow(emitter, op_type),
-            }
+            emit_arithmetic_op(emitter, &binary.op, op_type);
             Ok(())
         }
         ExprKind::UnaryOp(unary) => match unary.op {
@@ -164,19 +157,7 @@ pub(crate) fn compile_expr(
             }
             UnaryOp::Not => {
                 compile_expr(emitter, ctx, &unary.term, op_type)?;
-                match op_type {
-                    (OpWidth::W32, Signedness::Unsigned) => {
-                        emitter.emit_bit_not_32();
-                        match storage_bits(&unary.term)? {
-                            8 => emitter.emit_trunc_u8(),
-                            16 => emitter.emit_trunc_u16(),
-                            _ => {}
-                        }
-                    }
-                    (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_not_64(),
-                    _ => emitter.emit_bool_not(),
-                }
-                Ok(())
+                emit_not(emitter, op_type, &unary.term)
             }
         },
         ExprKind::LateBound(late_bound) => {
@@ -255,22 +236,7 @@ fn compile_compare(
         .unwrap_or(op_type);
     compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
     compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
-    match compare.op {
-        CompareOp::Eq => emit_eq(emitter, operand_op_type),
-        CompareOp::Ne => emit_ne(emitter, operand_op_type),
-        CompareOp::Lt => emit_lt(emitter, operand_op_type),
-        CompareOp::Gt => emit_gt(emitter, operand_op_type),
-        CompareOp::LtEq => emit_le(emitter, operand_op_type),
-        CompareOp::GtEq => emit_ge(emitter, operand_op_type),
-        CompareOp::And => emit_and(emitter, operand_op_type),
-        CompareOp::Or => emit_or(emitter, operand_op_type),
-        CompareOp::Xor => emit_xor(emitter, operand_op_type),
-        // Only reached for non-BOOL operands, where there is no boolean to
-        // short-circuit on and the operator degenerates to its eager
-        // counterpart. See `ShortCircuitOp::for_expr`.
-        CompareOp::AndThen => emit_and(emitter, operand_op_type),
-        CompareOp::OrElse => emit_or(emitter, operand_op_type),
-    }
+    emit_compare_op(emitter, &compare.op, operand_op_type);
     Ok(())
 }
 
@@ -1888,6 +1854,74 @@ emit_signed_op!(ge);
 emit_logical_op!(and);
 emit_logical_op!(or);
 emit_logical_op!(xor);
+
+/// Emits the opcode of a binary arithmetic operator for operands of `op_type`.
+///
+/// The operator expression and the function form of the operator (`ADD`,
+/// `SUB`, ...) both come through here, so the two spellings cannot emit
+/// differently.
+pub(crate) fn emit_arithmetic_op(emitter: &mut Emitter, op: &Operator, op_type: OpType) {
+    match op {
+        Operator::Add => emit_add(emitter, op_type),
+        Operator::Sub => emit_sub(emitter, op_type),
+        Operator::Mul => emit_mul(emitter, op_type),
+        Operator::Div => emit_div(emitter, op_type),
+        Operator::Mod => emit_mod(emitter, op_type),
+        Operator::Pow => emit_pow(emitter, op_type),
+    }
+}
+
+/// Emits the opcode of a comparison, logical or bitwise operator for
+/// operands of `op_type`.
+///
+/// The operator expression and the function form of the operator (`GT`,
+/// `AND`, ...) both come through here, so the two spellings cannot emit
+/// differently.
+pub(crate) fn emit_compare_op(emitter: &mut Emitter, op: &CompareOp, op_type: OpType) {
+    match op {
+        CompareOp::Eq => emit_eq(emitter, op_type),
+        CompareOp::Ne => emit_ne(emitter, op_type),
+        CompareOp::Lt => emit_lt(emitter, op_type),
+        CompareOp::Gt => emit_gt(emitter, op_type),
+        CompareOp::LtEq => emit_le(emitter, op_type),
+        CompareOp::GtEq => emit_ge(emitter, op_type),
+        CompareOp::And => emit_and(emitter, op_type),
+        CompareOp::Or => emit_or(emitter, op_type),
+        CompareOp::Xor => emit_xor(emitter, op_type),
+        // Only reached for non-BOOL operands, where there is no boolean to
+        // short-circuit on and the operator degenerates to its eager
+        // counterpart. See `ShortCircuitOp::for_expr`.
+        CompareOp::AndThen => emit_and(emitter, op_type),
+        CompareOp::OrElse => emit_or(emitter, op_type),
+    }
+}
+
+/// Emits the complement of the value of `term`, already on the stack.
+///
+/// The unsigned operation types are the bit strings, so they take the
+/// bitwise complement, truncated back to `term`'s storage width where the
+/// 32-bit complement would widen a BYTE or WORD. Every other type takes the
+/// boolean complement. The `NOT` operator and the `NOT` function form both
+/// come through here, so the two spellings cannot emit differently.
+pub(crate) fn emit_not(
+    emitter: &mut Emitter,
+    op_type: OpType,
+    term: &Expr,
+) -> Result<(), Diagnostic> {
+    match op_type {
+        (OpWidth::W32, Signedness::Unsigned) => {
+            emitter.emit_bit_not_32();
+            match storage_bits(term)? {
+                8 => emitter.emit_trunc_u8(),
+                16 => emitter.emit_trunc_u16(),
+                _ => {}
+            }
+        }
+        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_not_64(),
+        _ => emitter.emit_bool_not(),
+    }
+    Ok(())
+}
 
 // Hand-written one-offs that do not fit the generated shapes above:
 

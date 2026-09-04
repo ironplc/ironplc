@@ -1097,12 +1097,18 @@ fn try_constant_i64(expr: &Expr) -> Option<i64> {
 
 /// Returns the `(min, max)` value range for a narrow integer type, or `None`
 /// for 32- and 64-bit types where `emit_truncation` is already a no-op.
+///
+/// The bounds come from `value_range`, which is where the range a type can
+/// hold is stated; "narrow" is this caller's own concern.
 fn narrow_type_range(type_info: VarTypeInfo) -> Option<(i64, i64)> {
-    match (type_info.signedness, type_info.storage_bits) {
-        (Signedness::Signed, 8) => Some((i8::MIN as i64, i8::MAX as i64)),
-        (Signedness::Signed, 16) => Some((i16::MIN as i64, i16::MAX as i64)),
-        (Signedness::Unsigned, 8) => Some((0, u8::MAX as i64)),
-        (Signedness::Unsigned, 16) => Some((0, u16::MAX as i64)),
+    match type_info.storage_bits {
+        bits @ (8 | 16) => {
+            let (minimum, maximum) = ironplc_analyzer::value_range::for_integer(
+                u32::from(bits),
+                type_info.signedness == Signedness::Signed,
+            );
+            Some((minimum as i64, maximum as i64))
+        }
         _ => None,
     }
 }
