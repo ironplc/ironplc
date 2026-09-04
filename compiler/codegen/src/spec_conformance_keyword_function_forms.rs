@@ -12,6 +12,7 @@
 use ironplc_container::FunctionId;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 use spec_test_macro::spec_test;
 
 /// Compiles `source` and returns the bytecode of its program body.
@@ -51,32 +52,35 @@ END_PROGRAM"
 /// REQ-KF-codegen-001: the function form and the operator expression compile
 /// to the same bytecode.
 #[spec_test(REQ_KF_codegen_001)]
-fn codegen_spec_req_kf_001_function_form_compiles_as_the_operator() {
-    for (operand_type, result_type, call, operator) in [
-        ("DINT", "DINT", "ADD(a, b)", "a + b"),
-        ("LINT", "LINT", "SUB(a, b)", "a - b"),
-        ("REAL", "REAL", "MUL(a, b)", "a * b"),
-        ("LREAL", "LREAL", "DIV(a, b)", "a / b"),
-        ("INT", "INT", "MOD(a, b)", "a MOD b"),
-        ("DINT", "BOOL", "GT(a, b)", "a > b"),
-        ("DINT", "BOOL", "GE(a, b)", "a >= b"),
-        ("DINT", "BOOL", "EQ(a, b)", "a = b"),
-        ("DINT", "BOOL", "LE(a, b)", "a <= b"),
-        ("DINT", "BOOL", "LT(a, b)", "a < b"),
-        ("DINT", "BOOL", "NE(a, b)", "a <> b"),
-        ("BOOL", "BOOL", "AND(a, b)", "a AND b"),
-        ("BYTE", "BYTE", "AND(a, b)", "a AND b"),
-        ("WORD", "WORD", "OR(a, b)", "a OR b"),
-        ("DWORD", "DWORD", "XOR(a, b)", "a XOR b"),
-        ("LWORD", "LWORD", "XOR(a, b)", "a XOR b"),
-        ("BOOL", "BOOL", "NOT(IN := a)", "NOT a"),
-        ("WORD", "WORD", "NOT(IN := a)", "NOT a"),
-        ("LWORD", "LWORD", "NOT(IN := a)", "NOT a"),
-    ] {
-        assert_eq!(
-            program_bytecode(&program(operand_type, result_type, call)),
-            program_bytecode(&program(operand_type, result_type, operator)),
-            "{call} and {operator} on {operand_type} compiled differently"
-        );
-    }
+#[rstest]
+#[case::add_dint("DINT", "DINT", "ADD(a, b)", "a + b")]
+#[case::sub_lint("LINT", "LINT", "SUB(a, b)", "a - b")]
+#[case::mul_real("REAL", "REAL", "MUL(a, b)", "a * b")]
+#[case::div_lreal("LREAL", "LREAL", "DIV(a, b)", "a / b")]
+#[case::mod_int("INT", "INT", "MOD(a, b)", "a MOD b")]
+#[case::gt_dint("DINT", "BOOL", "GT(a, b)", "a > b")]
+#[case::ge_dint("DINT", "BOOL", "GE(a, b)", "a >= b")]
+#[case::eq_dint("DINT", "BOOL", "EQ(a, b)", "a = b")]
+#[case::le_dint("DINT", "BOOL", "LE(a, b)", "a <= b")]
+#[case::lt_dint("DINT", "BOOL", "LT(a, b)", "a < b")]
+#[case::ne_dint("DINT", "BOOL", "NE(a, b)", "a <> b")]
+#[case::and_bool("BOOL", "BOOL", "AND(a, b)", "a AND b")]
+#[case::and_byte("BYTE", "BYTE", "AND(a, b)", "a AND b")]
+#[case::or_word("WORD", "WORD", "OR(a, b)", "a OR b")]
+#[case::xor_dword("DWORD", "DWORD", "XOR(a, b)", "a XOR b")]
+#[case::xor_lword("LWORD", "LWORD", "XOR(a, b)", "a XOR b")]
+#[case::not_bool("BOOL", "BOOL", "NOT(IN := a)", "NOT a")]
+#[case::not_word("WORD", "WORD", "NOT(IN := a)", "NOT a")]
+#[case::not_lword("LWORD", "LWORD", "NOT(IN := a)", "NOT a")]
+fn codegen_spec_req_kf_001_function_form_compiles_as_the_operator(
+    #[case] operand_type: &str,
+    #[case] result_type: &str,
+    #[case] call: &str,
+    #[case] operator: &str,
+) {
+    assert_eq!(
+        program_bytecode(&program(operand_type, result_type, call)),
+        program_bytecode(&program(operand_type, result_type, operator)),
+        "{call} and {operator} on {operand_type} compiled differently"
+    );
 }

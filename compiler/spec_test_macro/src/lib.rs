@@ -16,6 +16,18 @@ use syn::{parse_macro_input, Ident, ItemFn};
 ///     assert_eq!(std::mem::size_of::<FileHeader>(), 256);
 /// }
 /// ```
+///
+/// A parameterised test keeps its `#[rstest]`, which generates the `#[test]`
+/// functions itself; `spec_test` then only injects the reference. Put
+/// `#[spec_test]` first so it sees the function before `rstest` expands it:
+///
+/// ```ignore
+/// #[spec_test(REQ_CF_container_002)]
+/// #[rstest]
+/// fn container_spec_req_cf_002_magic(#[values(0, 1)] section: usize) {
+///     // ...
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn spec_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     let req_id = parse_macro_input!(attr as Ident);
@@ -30,8 +42,12 @@ pub fn spec_test(attr: TokenStream, item: TokenStream) -> TokenStream {
         __inner()
     });
 
-    // Add #[test] if not already present.
-    let has_test = func.attrs.iter().any(|a| a.path().is_ident("test"));
+    // Add #[test] unless the function already has one, or has #[rstest],
+    // which generates the #[test] functions from the cases itself.
+    let has_test = func
+        .attrs
+        .iter()
+        .any(|a| a.path().is_ident("test") || a.path().is_ident("rstest"));
     if !has_test {
         func.attrs.insert(0, syn::parse_quote!(#[test]));
     }
