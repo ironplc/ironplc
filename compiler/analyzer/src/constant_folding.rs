@@ -116,26 +116,29 @@ pub(crate) fn fold_integer_binary(
 }
 
 /// Attempts to fold a binary expression on two real constants.
-pub(crate) fn fold_real_binary(op: &Operator, left: f64, right: f64) -> Result<f64, FoldError> {
+///
+/// Returns `Ok(None)` for an operator that is not defined on reals: `MOD` is
+/// defined over `ANY_INT` only (IEC 61131-3 Table 24), so a real `MOD` is
+/// left unfolded for `rule_operator_operand_type_check` to reject rather
+/// than folded into a remainder the language does not have.
+pub(crate) fn fold_real_binary(
+    op: &Operator,
+    left: f64,
+    right: f64,
+) -> Result<Option<f64>, FoldError> {
     match op {
-        Operator::Add => Ok(left + right),
-        Operator::Sub => Ok(left - right),
-        Operator::Mul => Ok(left * right),
+        Operator::Add => Ok(Some(left + right)),
+        Operator::Sub => Ok(Some(left - right)),
+        Operator::Mul => Ok(Some(left * right)),
         Operator::Div => {
             if right == 0.0 {
                 Err(FoldError::DivisionByZero)
             } else {
-                Ok(left / right)
+                Ok(Some(left / right))
             }
         }
-        Operator::Mod => {
-            if right == 0.0 {
-                Err(FoldError::DivisionByZero)
-            } else {
-                Ok(left % right)
-            }
-        }
-        Operator::Pow => Ok(left.powf(right)),
+        Operator::Mod => Ok(None),
+        Operator::Pow => Ok(Some(left.powf(right))),
     }
 }
 
@@ -177,7 +180,7 @@ pub(crate) fn try_fold_binary(binary: &BinaryExpr) -> Result<Option<ExprKind>, F
             ExprKind::Const(ConstantKind::RealLiteral(right)),
         ) => {
             let result = fold_real_binary(&binary.op, left.value, right.value)?;
-            Ok(Some(ExprKind::Const(make_real_constant(result))))
+            Ok(result.map(|value| ExprKind::Const(make_real_constant(value))))
         }
         // Mixed integer + real: promote the integer to f64 and fold as real.
         (
@@ -195,7 +198,7 @@ pub(crate) fn try_fold_binary(binary: &BinaryExpr) -> Result<Option<ExprKind>, F
                 return Ok(None);
             };
             let result = fold_real_binary(&binary.op, lv, rv)?;
-            Ok(Some(ExprKind::Const(make_real_constant(result))))
+            Ok(result.map(|value| ExprKind::Const(make_real_constant(value))))
         }
         _ => Ok(None),
     }

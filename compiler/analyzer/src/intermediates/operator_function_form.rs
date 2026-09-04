@@ -118,11 +118,13 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         "ANY_NUM",
         FormResult::Operand,
     ),
+    // MOD alone is defined over ANY_INT (IEC 61131-3 Table 24): there is no
+    // floating-point remainder operator, and codegen has no opcode for one.
     form(
         "MOD",
         FormOf::Arithmetic(Operator::Mod),
         Arity::Binary,
-        "ANY_NUM",
+        "ANY_INT",
         FormResult::Operand,
     ),
     // Comparison (IEC 61131-3 Section 2.5.1.5.3, Table 33): defined for
@@ -204,6 +206,16 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
 ];
 
 impl OperatorFunctionForm {
+    /// The type every operand of the operator must have: a generic category
+    /// such as `ANY_INT`, or `BOOL`.
+    ///
+    /// This is the row's operand cell as a type name, so the function form's
+    /// parameters and an operand check on the operator itself compare
+    /// against the same type.
+    pub(crate) fn operand_type(&self) -> TypeName {
+        TypeName::from(self.operands)
+    }
+
     /// Derives the function's signature from the row.
     ///
     /// A unary form takes `IN`; a binary form takes `IN1` and `IN2`. Every
@@ -216,7 +228,7 @@ impl OperatorFunctionForm {
             Arity::Binary => vec![operand("IN1"), operand("IN2")],
         };
         let return_type = match self.result {
-            FormResult::Operand => TypeName::from(self.operands),
+            FormResult::Operand => self.operand_type(),
             FormResult::Bool => TypeName::from("BOOL"),
         };
         FunctionSignature::stdlib(self.name, return_type, parameters)
@@ -231,6 +243,14 @@ pub fn operator_function_form(name: &str) -> Option<&'static OperatorFunctionFor
     OPERATOR_FUNCTION_FORMS
         .iter()
         .find(|form| form.name.eq_ignore_ascii_case(name))
+}
+
+/// Returns the row whose function is the form of `operator`, or `None` when
+/// the operator has no function form.
+pub(crate) fn form_of_operator(operator: &FormOf) -> Option<&'static OperatorFunctionForm> {
+    OPERATOR_FUNCTION_FORMS
+        .iter()
+        .find(|form| form.operator == *operator)
 }
 
 /// Returns the signatures of the function forms of operators, in table order.
@@ -255,7 +275,7 @@ mod tests {
     #[case::sub("SUB", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
     #[case::mul("MUL", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
     #[case::div("DIV", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
-    #[case::modulo("MOD", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
+    #[case::modulo("MOD", &["IN1", "IN2"], "ANY_INT", "ANY_INT")]
     #[case::gt("GT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
     #[case::ge("GE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
     #[case::eq("EQ", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
@@ -296,6 +316,18 @@ mod tests {
         let form = operator_function_form("and").unwrap();
         assert_eq!(form.name, "AND");
         assert_eq!(form.operator, FormOf::Compare(CompareOp::And));
+    }
+
+    #[test]
+    fn form_of_operator_when_arithmetic_operator_then_row_with_its_operand_type() {
+        let form = form_of_operator(&FormOf::Arithmetic(Operator::Mod)).unwrap();
+        assert_eq!(form.name, "MOD");
+        assert_eq!(form.operand_type(), TypeName::from("ANY_INT"));
+    }
+
+    #[test]
+    fn form_of_operator_when_operator_has_no_function_form_then_none() {
+        assert!(form_of_operator(&FormOf::Arithmetic(Operator::Pow)).is_none());
     }
 
     #[test]

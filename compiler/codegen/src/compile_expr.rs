@@ -1927,16 +1927,20 @@ pub(crate) fn emit_not(
 
 /// MOD dispatch. Fits the width+signedness shape for integers, but IEC 61131-3
 /// MOD is integer-only, so the float arms are a no-op rather than a call to a
-/// (nonexistent) `emit_mod_f32`. The analyzer should reject float MOD before
-/// codegen.
+/// (nonexistent) `emit_mod_f32`. The analyzer rejects a float MOD before
+/// codegen: the function form through the `MOD` row of the operator-form
+/// table (P4026), the operator through `rule_operator_operand_type_check`
+/// (P4049).
 pub(crate) fn emit_mod(emitter: &mut Emitter, op_type: OpType) {
     match op_type {
         (OpWidth::W32, Signedness::Signed) => emitter.emit_mod_i32(),
         (OpWidth::W32, Signedness::Unsigned) => emitter.emit_mod_u32(),
         (OpWidth::W64, Signedness::Signed) => emitter.emit_mod_i64(),
         (OpWidth::W64, Signedness::Unsigned) => emitter.emit_mod_u64(),
-        // Float MOD is not supported (IEC 61131-3 MOD is integer-only).
-        // The analyzer should catch this before codegen.
+        // Unreachable from source: the analyzer has already rejected a float
+        // MOD (see above). Emitting nothing leaves the operand stack
+        // unbalanced, which the bytecode verifier reports as an internal
+        // error, so a gap in the analyzer cannot produce a silent miscompile.
         (OpWidth::F32, _) | (OpWidth::F64, _) => {}
     }
 }
