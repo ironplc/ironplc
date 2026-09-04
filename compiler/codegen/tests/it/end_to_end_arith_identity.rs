@@ -2,11 +2,12 @@
 //!
 //! Every case runs `x := <x>; y := <expr>; z := 1.0 / y;` (or the integer
 //! equivalent without `z`) and checks the result with the constant on either
-//! side of the operator. The sign of a float zero is invisible to
-//! `assert_eq!` (`-0.0 == 0.0`), so the float cases also check `z`: `1.0 /
-//! (+0.0)` is `+inf` and `1.0 / (-0.0)` is `-inf`. IEEE 754 says `(-0.0) +
-//! 0.0 = +0.0`, so the optimizer must not remove the add; `(-0.0) - 0.0 =
-//! -0.0`, so it may remove the subtract.
+//! side of the operator. Float results are compared by bit pattern, because
+//! `-0.0 == 0.0` and the sign of zero is the whole point: IEEE 754 says
+//! `(-0.0) + 0.0 = +0.0`, so the optimizer must not remove the add, while
+//! `(-0.0) - 0.0 = -0.0`, so it may remove the subtract. `z` shows the
+//! consequence a program can observe: `1.0 / (+0.0)` is `+inf` and
+//! `1.0 / (-0.0)` is `-inf`.
 
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
@@ -41,7 +42,7 @@ impl Float {
 #[rstest]
 #[case::neg_zero_plus_zero("-0.0", "x + 0.0", 0.0, f64::INFINITY)]
 #[case::zero_plus_neg_zero("-0.0", "0.0 + x", 0.0, f64::INFINITY)]
-#[case::neg_zero_minus_zero("-0.0", "x - 0.0", 0.0, f64::NEG_INFINITY)]
+#[case::neg_zero_minus_zero("-0.0", "x - 0.0", -0.0, f64::NEG_INFINITY)]
 #[case::zero_minus_neg_zero("-0.0", "0.0 - x", 0.0, f64::INFINITY)]
 #[case::value_plus_zero("4.0", "x + 0.0", 4.0, 0.25)]
 #[case::zero_plus_value("4.0", "0.0 + x", 4.0, 0.25)]
@@ -75,8 +76,8 @@ END_PROGRAM
     );
     let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
 
-    assert_eq!(float.read(&bufs, 1), y, "y mismatch");
-    assert_eq!(float.read(&bufs, 2), z, "z mismatch");
+    assert_eq!(float.read(&bufs, 1).to_bits(), y.to_bits(), "y mismatch");
+    assert_eq!(float.read(&bufs, 2).to_bits(), z.to_bits(), "z mismatch");
 }
 
 #[rstest]
