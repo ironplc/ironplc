@@ -8,14 +8,37 @@ This error occurs when a constant does not fit the type it is stored into.
 
 Every integer type holds a fixed range of values:
 
-- ``SINT``: -128 to 127
-- ``INT``: -32768 to 32767
-- ``DINT``: -2147483648 to 2147483647
-- ``LINT``: -9223372036854775808 to 9223372036854775807
-- ``USINT``: 0 to 255
-- ``UINT``: 0 to 65535
-- ``UDINT``: 0 to 4294967295
-- ``ULINT``: 0 to 18446744073709551615
+.. list-table:: Integer type ranges
+   :header-rows: 1
+   :stub-columns: 1
+
+   * - Type
+     - Minimum
+     - Maximum
+   * - **SINT**
+     - -128
+     - 127
+   * - **INT**
+     - -32768
+     - 32767
+   * - **DINT**
+     - -2147483648
+     - 2147483647
+   * - **LINT**
+     - -9223372036854775808
+     - 9223372036854775807
+   * - **USINT**
+     - 0
+     - 255
+   * - **UINT**
+     - 0
+     - 65535
+   * - **UDINT**
+     - 0
+     - 4294967295
+   * - **ULINT**
+     - 0
+     - 18446744073709551615
 
 Storing a value outside that range would silently keep the low bits and
 discard the rest, so ``c : SINT := 200`` would hold -56. Nothing in the
