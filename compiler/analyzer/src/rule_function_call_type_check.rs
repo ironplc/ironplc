@@ -384,6 +384,65 @@ END_VAR
 END_PROGRAM"
     );
 
+    /// The function forms of the bitwise boolean operators accept every
+    /// ANY_BIT type, as the operators do (#1567).
+    #[rstest]
+    #[case::and_bool("AND", "BOOL")]
+    #[case::and_byte("AND", "BYTE")]
+    #[case::and_word("AND", "WORD")]
+    #[case::and_dword("AND", "DWORD")]
+    #[case::and_lword("AND", "LWORD")]
+    #[case::or_word("OR", "WORD")]
+    #[case::xor_word("XOR", "WORD")]
+    fn apply_when_bitwise_function_form_on_bit_string_then_ok(
+        #[case] function: &str,
+        #[case] type_name: &str,
+    ) {
+        let program = format!(
+            "
+PROGRAM main
+VAR
+    a : {type_name};
+    b : {type_name};
+    result : {type_name};
+END_VAR
+    result := {function}(a, b);
+END_PROGRAM"
+        );
+        let (library, context) = parse_and_resolve_types_with_context(&program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    rule_ctx_errn!(
+        apply_when_bitwise_function_form_on_int_then_error_per_argument,
+        "
+PROGRAM main
+VAR
+    a : INT;
+    b : INT;
+    result : INT;
+END_VAR
+    result := AND(a, b);
+END_PROGRAM",
+        2,
+        Problem::FunctionCallArgTypeMismatch
+    );
+
+    // NOT(x) parses as the unary operator; the named-argument spelling is the
+    // one that reaches the function signature.
+    rule_ctx_ok!(
+        apply_when_not_function_form_on_word_then_ok,
+        "
+PROGRAM main
+VAR
+    a : WORD;
+    result : WORD;
+END_VAR
+    result := NOT(IN := a);
+END_PROGRAM"
+    );
+
     rule_ctx_err1!(
         apply_when_multiple_args_one_mismatch_then_one_error,
         "

@@ -148,26 +148,28 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
-    // Boolean (IEC 61131-3 Section 2.5.1.5.1): the result has the operand type.
+    // Bitwise boolean (IEC 61131-3 Section 2.5.1.5.3): defined for ANY_BIT,
+    // so they are the boolean operators on BOOL and the bitwise operators on
+    // BYTE, WORD, DWORD and LWORD; the result has the operand type.
     form(
         "AND",
         FormOf::Compare(CompareOp::And),
-        "BOOL",
+        "ANY_BIT",
         FormResult::Operand,
     ),
     form(
         "OR",
         FormOf::Compare(CompareOp::Or),
-        "BOOL",
+        "ANY_BIT",
         FormResult::Operand,
     ),
     form(
         "XOR",
         FormOf::Compare(CompareOp::Xor),
-        "BOOL",
+        "ANY_BIT",
         FormResult::Operand,
     ),
-    form("NOT", FormOf::Not, "BOOL", FormResult::Operand),
+    form("NOT", FormOf::Not, "ANY_BIT", FormResult::Operand),
 ];
 
 impl OperatorFunctionForm {
@@ -247,10 +249,10 @@ mod tests {
     #[case::le("LE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
     #[case::lt("LT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
     #[case::ne("NE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::and("AND", &["IN1", "IN2"], "BOOL", "BOOL")]
-    #[case::or("OR", &["IN1", "IN2"], "BOOL", "BOOL")]
-    #[case::xor("XOR", &["IN1", "IN2"], "BOOL", "BOOL")]
-    #[case::not("NOT", &["IN"], "BOOL", "BOOL")]
+    #[case::and("AND", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT")]
+    #[case::or("OR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT")]
+    #[case::xor("XOR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT")]
+    #[case::not("NOT", &["IN"], "ANY_BIT", "ANY_BIT")]
     fn operator_function_form_when_row_then_signature_is_derived_from_it(
         #[case] name: &str,
         #[case] param_names: &[&str],
