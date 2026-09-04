@@ -69,13 +69,81 @@ fn assert_clean(operand_type: &str, result_type: &str, expr: &str) {
 #[spec_test(REQ_KF_analyzer_001)]
 #[rstest]
 fn analyzer_spec_req_kf_001_arithmetic_forms_accept_any_num(
-    #[values("ADD", "SUB", "MUL", "DIV", "MOD")] function: &str,
+    #[values("ADD", "SUB", "MUL", "DIV")] function: &str,
     #[values(
         "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "REAL", "LREAL"
     )]
     operand_type: &str,
 ) {
     assert_clean(operand_type, operand_type, &call(function));
+}
+
+/// REQ-KF-analyzer-006: MOD accepts every ANY_INT type and returns the
+/// operand type. (A real operand is P4026 by REQ-KF-analyzer-005.)
+#[spec_test(REQ_KF_analyzer_006)]
+#[rstest]
+fn analyzer_spec_req_kf_006_mod_form_accepts_any_int(
+    #[values("SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT")] operand_type: &str,
+) {
+    assert_clean(operand_type, operand_type, &call("MOD"));
+}
+
+/// REQ-KF-analyzer-007: the MOD operator is held to the same row as its
+/// function form. Every elementary type, the same way as REQ-KF-analyzer-005:
+/// a type the row's category admits analyzes clean in both spellings, and any
+/// other type is P4049 for the operator where it is P4026 for the form.
+#[spec_test(REQ_KF_analyzer_007)]
+#[rstest]
+fn analyzer_spec_req_kf_007_mod_operator_agrees_with_its_form(
+    #[values(
+        "BOOL",
+        "SINT",
+        "INT",
+        "DINT",
+        "LINT",
+        "USINT",
+        "UINT",
+        "UDINT",
+        "ULINT",
+        "REAL",
+        "LREAL",
+        "BYTE",
+        "WORD",
+        "DWORD",
+        "LWORD",
+        "STRING",
+        "WSTRING",
+        "TIME",
+        "LTIME",
+        "DATE",
+        "LDATE",
+        "TIME_OF_DAY",
+        "LTIME_OF_DAY",
+        "DATE_AND_TIME",
+        "LDATE_AND_TIME"
+    )]
+    operand_type: &str,
+) {
+    let signature = operator_function_form("MOD").unwrap().signature();
+    let category = GenericTypeName::try_from(&signature.parameters[0].param_type.name).unwrap();
+    let elementary = ElementaryTypeName::try_from(&Id::from(operand_type)).unwrap();
+    let admitted = category.is_compatible_with(&elementary);
+
+    let form_codes = analyze_codes(&program(operand_type, operand_type, "MOD(a, b)"));
+    let operator_codes = analyze_codes(&program(operand_type, operand_type, "a MOD b"));
+    let p4026 = Problem::FunctionCallArgTypeMismatch.code().to_string();
+    let p4049 = Problem::OperatorOperandTypeMismatch.code().to_string();
+    if admitted {
+        assert!(
+            form_codes.is_empty() && operator_codes.is_empty(),
+            "MOD on {operand_type}: {category:?} admits it, expected clean analysis, got {form_codes:?} for the form and {operator_codes:?} for the operator"
+        );
+    } else {
+        assert!(
+            form_codes.contains(&p4026) && operator_codes.contains(&p4049),
+            "MOD on {operand_type}: outside {category:?}, expected {p4026} for the form and {p4049} for the operator, got {form_codes:?} and {operator_codes:?}"
+        );
+    }
 }
 
 /// REQ-KF-analyzer-002: the comparison forms accept every ANY_ELEMENTARY type

@@ -257,14 +257,7 @@ fn compile_user_function_call(
     func: &Function,
     func_info: &UserFunctionInfo,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     // Compile each argument with the corresponding parameter's OpType.
     // STRING parameters are copied into the function's data region before CALL;
@@ -360,14 +353,7 @@ fn compile_generic_builtin(
 
     let expected_args = opcode::builtin::arg_count(func_id) as usize;
 
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != expected_args {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -401,21 +387,9 @@ fn compile_two_arg_operator(
     op_type: OpType,
     emit_fn: impl FnOnce(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
-    }
-
-    compile_expr(emitter, ctx, args[0], op_type)?;
-    compile_expr(emitter, ctx, args[1], op_type)?;
+    let (in1, in2) = extract_two_positional_args(func)?;
+    compile_expr(emitter, ctx, in1, op_type)?;
+    compile_expr(emitter, ctx, in2, op_type)?;
     emit_fn(emitter, op_type);
     Ok(())
 }
@@ -444,14 +418,7 @@ fn compile_operator_form(
             })
         }
         FormOf::Not => {
-            let args: Vec<&Expr> = func
-                .param_assignment
-                .iter()
-                .filter_map(|p| match p {
-                    ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-                    _ => None,
-                })
-                .collect();
+            let args = collect_positional_args(func);
             let [term] = args.as_slice() else {
                 return Err(Diagnostic::todo_with_span(func.name.span()));
             };
@@ -463,20 +430,10 @@ fn compile_operator_form(
 
 /// Extracts two positional input arguments from a function call.
 fn extract_two_positional_args(func: &Function) -> Result<(&Expr, &Expr), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+    match collect_positional_args(func).as_slice() {
+        [in1, in2] => Ok((in1, in2)),
+        _ => Err(Diagnostic::todo_with_span(func.name.span())),
     }
-
-    Ok((args[0], args[1]))
 }
 
 /// Compiles ADD_DT_TIME, SUB_DT_TIME, and CONCAT_DATE_TOD.
@@ -530,14 +487,7 @@ fn compile_dt_to_date(
     ctx: &mut CompileContext,
     func: &Function,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -567,14 +517,7 @@ fn compile_dt_to_tod(
     ctx: &mut CompileContext,
     func: &Function,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -677,14 +620,7 @@ fn compile_move(
     func: &Function,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -707,14 +643,7 @@ fn compile_trunc(
     func: &Function,
     target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -759,14 +688,7 @@ fn compile_sizeof(
     ctx: &mut CompileContext,
     func: &Function,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -813,14 +735,7 @@ fn compile_bcd_to_int(
     func: &Function,
     _target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -851,14 +766,7 @@ fn compile_int_to_bcd(
     func: &Function,
     target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -899,14 +807,7 @@ fn compile_mux(
     func: &Function,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     // Must have at least 3 args (K + 2 IN values)
     if args.len() < 3 {
@@ -965,14 +866,7 @@ pub(crate) fn compile_type_conversion(
 ) -> Result<(), Diagnostic> {
     let source_op_type: OpType = (source.op_width, source.signedness);
 
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -1072,14 +966,7 @@ fn compile_shift_rotate(
     op_type: OpType,
     name: &str,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 2 {
         return Err(Diagnostic::todo_with_span(func.name.span()));
