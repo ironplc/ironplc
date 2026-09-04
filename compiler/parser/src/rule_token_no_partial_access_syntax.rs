@@ -1,8 +1,7 @@
 //! Validation rule: reject partial-access syntax (`.%Xn`, `.%Bn`, `.%Wn`,
 //! `.%Dn`, `.%Ln`) unless the `allow_partial_access_syntax` flag is set.
 //! IEC 61131-3:2013 standardizes this form; IronPLC accepts it under
-//! `--allow-partial-access-syntax` (implied by the `iec61131-3-ed3`, `rusty`,
-//! `codesys` and `twincat` dialects).
+//! `--allow-partial-access-syntax`.
 
 use dsl::diagnostic::{Diagnostic, Label};
 

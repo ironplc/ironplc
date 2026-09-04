@@ -109,7 +109,8 @@ to the same representation. The Edition 3 form is gated behind
 Using ``.%Xn`` without the flag raises
 :doc:`P4033 </reference/compiler/problems/P4033>`.
 
-.. code-block::
+.. playground::
+   :dialect: iec61131-3-ed3
 
    PROGRAM main
        VAR
@@ -120,9 +121,6 @@ Using ``.%Xn`` without the flag raises
        r := my_byte_array[0].%X0;     (* TRUE *)
        my_byte_array[0].%X1 := TRUE;  (* write bit 1 *)
    END_PROGRAM
-
-The plc2plc renderer normalizes both surface forms to ``.n`` on output; the
-chosen bit index is preserved.
 
 Byte / Word / Dword / Lword Partial Access
 ------------------------------------------
@@ -201,7 +199,8 @@ behind ``--allow-partial-access-syntax`` and raise
 :doc:`P4033 </reference/compiler/problems/P4033>` without it. Unlike
 ``.%Xn``, they have no Edition 2 short form.
 
-.. code-block::
+.. playground::
+   :dialect: iec61131-3-ed3
 
    PROGRAM main
        VAR
@@ -214,9 +213,6 @@ behind ``--allow-partial-access-syntax`` and raise
        hi := packet.%W1;         (* 16#AABB — upper 16 bits *)
        packet.%B1 := 16#FF;      (* packet becomes 16#AABBFFDD *)
    END_PROGRAM
-
-The plc2plc renderer preserves these forms on output, since they have no
-short-form equivalent.
 
 See Also
 --------

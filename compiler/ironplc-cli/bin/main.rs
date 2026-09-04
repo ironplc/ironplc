@@ -167,8 +167,7 @@ struct FileArgs {
 
     /// Allow IEC 61131-3:2013 partial-access syntax: the bit form `.%Xn` (an
     /// alias for the short form `.n`) and the byte/word/dword/lword forms
-    /// `.%Bn`, `.%Wn`, `.%Dn`, `.%Ln`. Enabled by `--dialect=iec61131-3-ed3`,
-    /// `--dialect=rusty`, `--dialect=codesys`, and `--dialect=twincat`.
+    /// `.%Bn`, `.%Wn`, `.%Dn`, `.%Ln`.
     #[arg(long)]
     allow_partial_access_syntax: bool,
 

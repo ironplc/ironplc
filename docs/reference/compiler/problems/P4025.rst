@@ -54,7 +54,8 @@ The same check applies to the Edition 3 byte, word, double word, and long
 word forms. The slice must fit within the variable, and the index must not
 run past its last slice:
 
-.. code-block::
+.. playground::
+   :dialect: iec61131-3-ed3
 
    FUNCTION_BLOCK FB1
        VAR
