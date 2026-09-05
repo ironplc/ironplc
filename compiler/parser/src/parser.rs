@@ -361,12 +361,12 @@ parser! {
       / tok(TokenType::Udint) { IntegerTypeName::UDINT }
       / tok(TokenType::Ulint) { IntegerTypeName::ULINT }
     rule integer_literal() -> IntegerLiteral = data_type:(t:integer_literal_type() tok(TokenType::Hash) {t})? value:(bi:binary_integer() { bi.into() } / oi:octal_integer() { oi.into() } / hi:hex_integer() { hi.into() } / si:signed_integer() { si }) { IntegerLiteral { value, data_type } }
-    rule signed_integer__positive() -> SignedInteger = tok(TokenType::Plus)? digits:tok(TokenType::Digits) {? SignedInteger::positive(digits.text.as_str()) }
-    rule signed_integer__negative() -> SignedInteger = tok(TokenType::Minus) digits:tok(TokenType::Digits) {? SignedInteger::negative(digits.text.as_str()) }
+    rule signed_integer__positive() -> SignedInteger = tok(TokenType::Plus)? digits:tok(TokenType::Digits) {? SignedInteger::positive(digits.text.as_str(), digits.span.clone()) }
+    rule signed_integer__negative() -> SignedInteger = sign:tok(TokenType::Minus) digits:tok(TokenType::Digits) {? SignedInteger::negative(digits.text.as_str(), SourceSpan::join(&sign.span, &digits.span)) }
     rule signed_integer() -> SignedInteger = signed_integer__positive() / signed_integer__negative()
     rule integer__string() -> &'input str = n:tok(TokenType::Digits) { n.text.as_str() }
     rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
-    rule integer() -> Integer = n:integer__string() {? Integer::new(n, SourceSpan::default()) }
+    rule integer() -> Integer = n:tok(TokenType::Digits) {? Integer::new(n.text.as_str(), n.span.clone()) }
     rule binary_integer() -> Integer =  n:tok(TokenType::BinDigits) {? Integer::try_binary(n.text.as_str()) }
     rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()) }
     rule hex_integer() -> Integer = n:tok(TokenType::HexDigits) {? Integer::try_hex(n.text.as_str()) }

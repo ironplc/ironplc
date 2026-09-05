@@ -81,12 +81,13 @@ impl FunctionSignature {
     /// Extensible functions accept additional positional arguments beyond the
     /// declared parameters. The declared parameters define the minimum required
     /// arguments (e.g., MUX requires at least K + 2 IN values).
-    /// The `max_inputs` parameter sets the upper bound on total input arguments.
+    /// `max_inputs` bounds the total number of input arguments; `None` leaves
+    /// it unbounded.
     pub fn stdlib_extensible(
         name: &str,
         return_type: TypeName,
         parameters: Vec<IntermediateFunctionParameter>,
-        max_inputs: usize,
+        max_inputs: Option<usize>,
     ) -> Self {
         Self {
             name: Id::from(name),
@@ -94,7 +95,7 @@ impl FunctionSignature {
             parameters,
             span: SourceSpan::builtin(),
             is_extensible: true,
-            max_inputs: Some(max_inputs),
+            max_inputs,
         }
     }
 

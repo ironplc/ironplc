@@ -195,9 +195,9 @@ Options
    extension supported by CODESYS, TwinCAT, and RuSTy.
 
 ``--allow-partial-access-syntax``
-   Allow IEC 61131-3:2013 partial-access bit syntax (``.%Xn``) as an alias
-   for the short form ``.n``. Byte/word/dword/lword partial access (``.%Bn``,
-   ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
+   Allow IEC 61131-3:2013 partial-access syntax: the bit form ``.%Xn`` (an
+   alias for the short form ``.n``) and the byte, word, double word, and
+   long word forms ``.%Bn``, ``.%Wn``, ``.%Dn``, and ``.%Ln``.
 
 ``--allow-pragmas``
    Allow curly-brace pragmas such as ``{attribute 'qualified_only'}``. This

@@ -71,6 +71,8 @@ Example
 Programs are associated with tasks using the ``WITH`` keyword. A task
 executes its associated programs at the specified interval.
 
+.. include:: /includes/single-program-limitation.rst
+
 See Also
 --------
 

@@ -4,3 +4,146 @@ P2026
 
 .. problem-summary:: P2026
 
+This error occurs when a constant does not fit the type it is stored into.
+
+Every integer type holds a fixed range of values:
+
+.. list-table:: Integer type ranges
+   :header-rows: 1
+   :stub-columns: 1
+
+   * - Type
+     - Minimum
+     - Maximum
+   * - **SINT**
+     - -128
+     - 127
+   * - **INT**
+     - -32768
+     - 32767
+   * - **DINT**
+     - -2147483648
+     - 2147483647
+   * - **LINT**
+     - -9223372036854775808
+     - 9223372036854775807
+   * - **USINT**
+     - 0
+     - 255
+   * - **UINT**
+     - 0
+     - 65535
+   * - **UDINT**
+     - 0
+     - 4294967295
+   * - **ULINT**
+     - 0
+     - 18446744073709551615
+
+Storing a value outside that range would silently keep the low bits and
+discard the rest, so ``c : SINT := 200`` would hold -56. Nothing in the
+program says the value changes, so the compiler reports it instead.
+
+Example
+-------
+
+The following code will generate error P2026:
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           count : USINT := 300;
+           total : SINT;
+       END_VAR
+
+       total := 200;  (* Error: a SINT holds -128 to 127 *)
+   END_PROGRAM
+
+To fix this error, use a value the type can hold:
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           count : USINT := 200;
+       END_VAR
+   END_PROGRAM
+
+Or declare a type wide enough for the value you want:
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           count : UINT := 300;
+       END_VAR
+   END_PROGRAM
+
+Where the check applies
+-----------------------
+
+The type a value is stored or compared as bounds the constants written for
+it. That includes an operand of an operator, because the operator does not
+widen the type:
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           count : USINT;
+       END_VAR
+
+       count := 255 + 1;  (* Error: the sum is not a USINT *)
+   END_PROGRAM
+
+It also includes a comparison and a :code:`CASE` label, where a constant the
+variable can never equal makes a branch that can never run:
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           total : SINT;
+           result : DINT;
+       END_VAR
+
+       IF total = 200 THEN  (* Error: a SINT is never 200 *)
+           result := 1;
+       END_IF;
+   END_PROGRAM
+
+A subrange type states its own range, and a constant outside it is reported
+the same way:
+
+.. code-block::
+
+   TYPE
+       Ratio : INT(0..10);
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           r : Ratio := 20;  (* Error: Ratio holds 0 to 10 *)
+       END_VAR
+   END_PROGRAM
+
+Bit strings are not checked
+---------------------------
+
+``BYTE``, ``WORD``, ``DWORD`` and ``LWORD`` hold bit patterns rather than
+magnitudes, and wrapping one is a legitimate thing for a program to want. A
+value too large for a bit string keeps its low bits without a diagnostic:
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           pattern : BYTE;
+       END_VAR
+
+       pattern := 255 + 1;  (* Accepted: a BYTE wraps to 0 *)
+   END_PROGRAM
+
+How a constant was written makes no difference to the check. ``16#1FF`` is
+511 whichever radix it was spelled in, and a ``USINT`` cannot hold 511.

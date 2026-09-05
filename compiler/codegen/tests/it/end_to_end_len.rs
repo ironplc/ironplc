@@ -63,6 +63,119 @@ END_PROGRAM
     &[(1, 1)],
 );
 
+// n is at variable slot 0. LEN accepts a literal argument directly; this is
+// the example published in the LEN reference documentation.
+e2e_i32!(
+    end_to_end_when_len_of_string_literal_then_returns_length,
+    "
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN('Hello');
+END_PROGRAM
+",
+    &[(0, 5)],
+);
+
+e2e_i32!(
+    end_to_end_when_len_of_empty_string_literal_then_returns_zero,
+    "
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN('');
+END_PROGRAM
+",
+    &[(0, 0)],
+);
+
+// LEN of a WSTRING literal counts code units, not bytes.
+e2e_i32!(
+    end_to_end_when_len_of_wstring_literal_then_returns_code_unit_count,
+    "
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(\"Hello\");
+END_PROGRAM
+",
+    &[(0, 5)],
+);
+
+// Non-ASCII BMP code points are one code unit each in UTF-16LE.
+e2e_i32!(
+    end_to_end_when_len_of_non_ascii_wstring_literal_then_counts_code_units,
+    "
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(\"é€\");
+END_PROGRAM
+",
+    &[(0, 2)],
+);
+
+// s is at slot 0, n at slot 1. A nested call is resolved into a temporary,
+// so LEN(MID(...)) does not need the intermediate hoisted into a variable.
+e2e_i32!(
+    end_to_end_when_len_of_nested_string_call_then_returns_length,
+    "
+PROGRAM main
+  VAR
+    s : STRING[32] := 'hello world';
+    n : INT;
+  END_VAR
+  n := LEN(MID(s, 3, 1));
+END_PROGRAM
+",
+    &[(1, 3)],
+);
+
+// ws is at slot 0, n at slot 1.
+e2e_i32!(
+    end_to_end_when_len_of_nested_wstring_call_then_returns_length,
+    "
+PROGRAM main
+  VAR
+    ws : WSTRING[32] := \"hello world\";
+    n : INT;
+  END_VAR
+  n := LEN(MID(ws, 3, 1));
+END_PROGRAM
+",
+    &[(1, 3)],
+);
+
+e2e_i32!(
+    end_to_end_when_len_of_concat_of_literals_then_returns_total_length,
+    "
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(CONCAT('ab', 'cde'));
+END_PROGRAM
+",
+    &[(0, 5)],
+);
+
+e2e_i32!(
+    end_to_end_when_len_of_concat_of_wstring_literals_then_returns_total_length,
+    "
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(CONCAT(\"ab\", \"cde\"));
+END_PROGRAM
+",
+    &[(0, 5)],
+);
+
 /// Generates printable ASCII strings safe for IEC 61131-3 string literals.
 /// Excludes single quote (0x27) and dollar sign (0x24, the escape character).
 fn safe_string_strategy() -> impl Strategy<Value = String> {

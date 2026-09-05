@@ -1,6 +1,7 @@
 //! Partial-access (`%X`) round-tripping.
 
 use super::common::*;
+use spec_test_macro::spec_test;
 
 fn partial_access_options() -> CompilerOptions {
     CompilerOptions {
@@ -9,10 +10,10 @@ fn partial_access_options() -> CompilerOptions {
     }
 }
 
-/// REQ-PAB-060: plc2plc normalizes `.%Xn` to `.n`. The round trip proves the
+/// REQ-PAB-plc2plc-060: plc2plc normalizes `.%Xn` to `.n`. The round trip proves the
 /// normalization is semantics-preserving: re-parsing the rendered output
 /// yields the same AST as parsing the original source.
-#[test]
+#[spec_test(REQ_PAB_plc2plc_060)]
 fn plc2plc_spec_req_pab_060_percent_x_round_trips_through_short_form() {
     let rendered = assert_resource_renders_to(
         "partial_access_bit.st",
@@ -26,10 +27,11 @@ fn plc2plc_spec_req_pab_060_percent_x_round_trips_through_short_form() {
         .expect("normalized `.n` form must parse without allow_partial_access_syntax");
 }
 
-#[test]
+/// REQ-PAB-plc2plc-150: the wider selectors render verbatim. Byte/word/dword
+/// access keeps its `%B0` spelling (only `%Xn` has a short form), so the
+/// rendering still needs the flag to re-parse.
+#[spec_test(REQ_PAB_plc2plc_150)]
 fn plc2plc_when_partial_access_multi_then_round_trips() {
-    // Byte/word/dword access keeps its `%B0` spelling (only `%Xn` has a short
-    // form), so the rendering still needs the flag to re-parse.
     assert_resource_renders_to(
         "partial_access_multi.st",
         "partial_access_multi_rendered.st",

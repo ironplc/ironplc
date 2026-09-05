@@ -197,6 +197,46 @@ END_PROGRAM
 }
 
 #[test]
+fn wstring_when_concat_with_literal_then_literal_is_utf16le() {
+    // The literal is encoded at the width the source spells, so it stores into
+    // a wide destination without an encoding mismatch (ADR-0034).
+    let source = "
+PROGRAM main
+  VAR
+    a : WSTRING[10] := \"foo\";
+    out : WSTRING[20];
+  END_VAR
+  out := CONCAT(a, \"€\");
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    let out_offset = wstring_region(10);
+    assert_eq!(read_char_width(&bufs.data_region, out_offset), 2);
+    assert_eq!(read_cur_length(&bufs.data_region, out_offset), 4);
+    assert_eq!(read_wstring(&bufs.data_region, out_offset), "foo€");
+}
+
+#[test]
+fn wstring_when_concat_of_literals_only_then_result_is_utf16le() {
+    // No WSTRING variable participates in the expression, so the wide temp
+    // buffer sizing has to come from the literals themselves.
+    let source = "
+PROGRAM main
+  VAR
+    out : WSTRING[20];
+  END_VAR
+  out := CONCAT(\"é\", \"€\");
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
+    assert_eq!(read_cur_length(&bufs.data_region, 0), 2);
+    assert_eq!(read_wstring(&bufs.data_region, 0), "é€");
+}
+
+#[test]
 fn wstring_when_left_right_mid_then_index_by_code_unit() {
     let source = "
 PROGRAM main
