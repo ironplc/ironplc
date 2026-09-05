@@ -39,7 +39,11 @@ ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
 
 [dev-dependencies]
 assert_cmd = { version = "2.2" }
-ironplc-container = { path = "../container", version = "0.241.0" }
+# `test-support` gives the tests the shared container fixtures. Enabling it
+# here (dev-dependencies only) keeps it out of the shipped binaries.
+ironplc-container = { path = "../container", version = "0.241.0", features = [
+  "test-support",
+] }
 # The debugger's timing regression test (issue #1397) needs a real compiled
 # program: a TASK with an INTERVAL and a TON whose PT spans several cycles.
 # Hand-writing that container would test the test's arithmetic, not codegen's.
