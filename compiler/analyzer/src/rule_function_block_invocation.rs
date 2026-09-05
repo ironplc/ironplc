@@ -40,52 +40,15 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 use std::collections::HashMap;
+use std::convert::Infallible;
 
 use crate::{
-    intermediates::stdlib_function_block::is_stdlib_function_block, result::SemanticResult,
+    intermediates::stdlib_function_block::is_stdlib_function_block,
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
 };
 use ironplc_parser::options::CompilerOptions;
-
-/// Returns the first variable matching the specified name and one of the
-/// variable types or `None` if the owner does not contain a matching
-/// variable.
-fn find<'a>(
-    owner: &'a dyn HasVariables,
-    name: &'a Id,
-    types: &[VariableType],
-) -> Option<&'a VarDecl> {
-    owner
-        .variables()
-        .iter()
-        .find(|item| match item.identifier.symbolic_id() {
-            Some(n) => n.eq(name) && types.contains(&item.var_type),
-            None => false,
-        })
-}
-
-fn count_input_type(owner: &dyn HasVariables) -> usize {
-    owner
-        .variables()
-        .iter()
-        .filter(|item| item.var_type == VariableType::Input)
-        .count()
-}
-
-/// Returns the first VAR_INPUT or VAR_INOUT variable matching the name
-/// or `None` if the owner does not contain a matching variable.
-fn find_input_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a VarDecl> {
-    find(owner, name, &[VariableType::Input, VariableType::InOut])
-}
-
-/// Returns the first VAR_OUTPUT variable matching the name
-/// or `None` if the owner does not contain a matching variable.
-///
-/// VAR_IN_OUT are output variables, but they are only assigned
-/// through the input `:=` syntax so not included for this rule.
-fn find_output_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a VarDecl> {
-    find(owner, name, &[VariableType::Output])
-}
 
 pub fn apply(
     lib: &Library,
@@ -102,8 +65,7 @@ pub fn apply(
     }
 
     // Walk the library to find all references to function blocks
-    let mut visitor = RuleFunctionBlockUse::new(&function_blocks);
-    visitor.walk(lib).map_err(|e| vec![e])
+    run_rule(RuleFunctionBlockUse::new(&function_blocks), lib)
 }
 
 struct RuleFunctionBlockUse<'a> {
@@ -113,114 +75,58 @@ struct RuleFunctionBlockUse<'a> {
 
     // Map of variable name to the function block name that is the implementation
     var_to_fb: HashMap<Id, TypeName>,
+
+    diagnostics: Vec<Diagnostic>,
 }
 impl<'a> RuleFunctionBlockUse<'a> {
     fn new(decls: &'a HashMap<TypeName, &'a FunctionBlockDeclaration>) -> Self {
         Self {
             function_blocks: decls,
             var_to_fb: HashMap::new(),
+            diagnostics: Vec::new(),
         }
     }
 
     fn check_assignments(
         function_block: &FunctionBlockDeclaration,
         fb_call: &FbCall,
-    ) -> Result<(), Diagnostic> {
-        // Sort the inputs as either named, positional, and outputs
-        let mut formal: Vec<&NamedInput> = vec![];
-        let mut non_formal: Vec<&PositionalInput> = vec![];
-        let mut outputs: Vec<&Output> = vec![];
-        for param in fb_call.params.iter() {
-            match param {
-                ParamAssignmentKind::NamedInput(n) => {
-                    formal.push(n);
-                }
-                ParamAssignmentKind::PositionalInput(p) => {
-                    non_formal.push(p);
-                }
-                // Don't care outputs here
-                ParamAssignmentKind::Output(o) => {
-                    outputs.push(o);
-                }
-            }
-        }
+    ) -> Vec<Diagnostic> {
+        crate::call_assignment_check::check_assignments(
+            function_block,
+            function_block.span(),
+            fb_call.span(),
+            &fb_call.params,
+            &crate::call_assignment_check::AssignmentCheckLabels {
+                call_label: "Function block invocation",
+                context_key: "invocation",
+                owner_name: &function_block.name.to_string(),
+                decl_label: "Function block declaration",
+            },
+        )
+    }
 
-        // Don't allow a mixture so assert that either named is empty or
-        // positional is empty
-        if !formal.is_empty() && !non_formal.is_empty() {
-            return Err(Diagnostic::problem(
-                Problem::FunctionCallMixedArgTypes,
-                Label::span(fb_call.span(), "Function "),
-            )
-            .with_context_type("function", &function_block.name));
-        }
-
-        // Check that the names and types match. Unassigned values are
-        // permitted so we use the assignments as the set to iterate
-        if !formal.is_empty() {
-            // TODO check the types.
-            for name in formal {
-                match find_input_type(function_block, &name.name) {
-                    Some(_) => {}
-                    None => {
-                        return Err(Diagnostic::problem(
-                            Problem::FunctionInvocationMissingInput,
-                            Label::span(fb_call.span(), "Function block invocation"),
-                        )
-                        .with_context_type("invocation", &function_block.name)
-                        .with_context_id("undefined input", &name.name)
-                        .with_secondary(Label::span(
-                            function_block.span(),
-                            "Function block declaration",
-                        )))
-                    }
-                }
-            }
-        }
-
-        // Check that the number of variables matches exactly the number
-        // of expected inputs and the types match.
-        if !non_formal.is_empty() {
-            let num_required_inputs = count_input_type(function_block);
-            if non_formal.len() != num_required_inputs {
-                return Err(Diagnostic::problem(
-                    Problem::FunctionInvocationRequiresFormal,
-                    Label::span(fb_call.span(), "Function block invocation"),
-                )
-                .with_context_type("invocation", &function_block.name)
-                .with_context("required", &format!("{num_required_inputs}"))
-                .with_context("actual", &format!("{}", non_formal.len())));
-            }
-        }
-
-        // Check that the assigned output parameter names match the actual
-        // output parameter names
-        for output in outputs {
-            match find_output_type(function_block, &output.src) {
-                Some(_) => {}
-                None => {
-                    return Err(Diagnostic::problem(
-                        Problem::FunctionInvocationUndefinedOutput,
-                        Label::span(fb_call.span(), "Function block invocation"),
-                    )
-                    .with_context_type("invocation", &function_block.name)
-                    .with_context_id("source", &output.src)
-                    .with_context("target", &output.tgt.to_string()))
-                }
-            }
-        }
-
-        Ok(())
+    fn not_in_scope(fb_call: &FbCall) -> Diagnostic {
+        Diagnostic::problem(
+            Problem::FunctionBlockNotInScope,
+            Label::span(fb_call.span(), "Function block invocation"),
+        )
+        .with_context_id("invocation", &fb_call.var_name)
     }
 }
 
-impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
+impl DiagnosticVisitor for RuleFunctionBlockUse<'_> {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
 
         // Remove all items from var init decl since we have left this context
@@ -231,7 +137,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
 
         // Remove all items from var init decl since we have left this context
@@ -242,7 +148,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
 
         // Remove all items from var init decl since we have left this context
@@ -250,7 +156,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
         res
     }
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let InitialValueAssignmentKind::FunctionBlock(fbi) = &node.initializer {
             if let Some(id) = node.identifier.symbolic_id() {
                 self.var_to_fb.insert(id.clone(), fbi.type_name.clone());
@@ -259,49 +165,41 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
         Ok(())
     }
 
-    fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, Diagnostic> {
+    fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, Infallible> {
         // Check if function block is defined because you cannot
         // call a function block that doesn't exist
-        let function_block_name = self.var_to_fb.get(&fb_call.var_name);
-        match function_block_name {
-            Some(function_block_name) => {
-                // Standard library function blocks (TON, TOF, TP, CTU, etc.)
-                // are validated during type resolution, not here.
-                if is_stdlib_function_block(&function_block_name.name) {
-                    return Ok(());
-                }
-                let function_block_decl = self.function_blocks.get(function_block_name);
-                match function_block_decl {
-                    None => Err(Diagnostic::problem(
-                        Problem::FunctionBlockNotInScope,
-                        Label::span(fb_call.span(), "Function block invocation"),
-                    )
-                    .with_context_id("invocation", &fb_call.var_name)),
-                    Some(fb) => {
-                        // Validate the parameter assignments
-                        RuleFunctionBlockUse::check_assignments(fb, fb_call)
-                    }
-                }
-            }
-            None => Err(Diagnostic::problem(
-                Problem::FunctionBlockNotInScope,
-                Label::span(fb_call.span(), "Function block invocation"),
-            )
-            .with_context_id("invocation", &fb_call.var_name)),
+        // Cloned so that the borrow of `var_to_fb` ends here: the arms below
+        // push onto `self.diagnostics`, which borrows `self` mutably.
+        let function_block_name = self.var_to_fb.get(&fb_call.var_name).cloned();
+        let Some(function_block_name) = function_block_name else {
+            self.diagnostics.push(Self::not_in_scope(fb_call));
+            return Ok(());
+        };
+
+        // Standard library function blocks (TON, TOF, TP, CTU, etc.)
+        // are validated during type resolution, not here.
+        if is_stdlib_function_block(&function_block_name.name) {
+            return Ok(());
         }
+
+        match self.function_blocks.get(&function_block_name) {
+            None => self.diagnostics.push(Self::not_in_scope(fb_call)),
+            Some(fb) => {
+                // Validate the parameter assignments
+                let diagnostics = RuleFunctionBlockUse::check_assignments(fb, fb_call);
+                self.diagnostics.extend(diagnostics);
+            }
+        }
+
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
-
-    use super::*;
-
-    #[test]
-    fn apply_when_no_names_uses_default_then_return_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_no_names_uses_default_then_return_ok,
+        "
 FUNCTION_BLOCK Callee
 
 END_FUNCTION_BLOCK
@@ -311,18 +209,12 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE();
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn apply_when_some_formal_input_names_assigned_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_some_formal_input_names_assigned_then_ok,
+        "
 FUNCTION_BLOCK Callee
 VAR_INPUT
 IN1: BOOL;
@@ -335,18 +227,12 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(IN1 := TRUE);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn apply_when_mixed_formal_nonformal_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_mixed_formal_nonformal_then_error,
+        "
 FUNCTION_BLOCK Callee
 VAR_INPUT
 IN1: BOOL;
@@ -359,35 +245,23 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(IN1 := TRUE, FALSE);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_function_block_definition_not_defined_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_function_block_definition_not_defined_then_error,
+        "
 FUNCTION_BLOCK Caller
 VAR
 IN1: BOOL;
 END_VAR
 FB_INSTANCE(IN1 := TRUE);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_nonformal_input_names_assigned_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_nonformal_input_names_assigned_then_ok,
+        "
 FUNCTION_BLOCK Callee
 VAR_INPUT
 IN1: BOOL;
@@ -400,18 +274,12 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(TRUE, FALSE);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn apply_when_some_output_names_assigned_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_some_output_names_assigned_then_ok,
+        "
 FUNCTION_BLOCK Callee
 VAR_OUTPUT
 OUT1: BOOL;
@@ -425,18 +293,12 @@ FB_INSTANCE : Callee;
 LOCAL: BOOL;
 END_VAR
 FB_INSTANCE(OUT1 => LOCAL);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn apply_when_all_formal_input_names_assigned_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_all_formal_input_names_assigned_then_ok,
+        "
 FUNCTION_BLOCK Callee
 VAR_INPUT
 IN1: BOOL;
@@ -449,18 +311,12 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(IN1 := TRUE, IN2 := FALSE);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn apply_when_formal_names_incorrect_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_formal_names_incorrect_then_error,
+        "
 FUNCTION_BLOCK Callee
 END_FUNCTION_BLOCK
         
@@ -469,18 +325,12 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(BAR := TRUE);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_nonformal_names_too_few_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_nonformal_names_too_few_then_error,
+        "
 FUNCTION_BLOCK Callee
 VAR_INPUT
 IN1: BOOL;
@@ -493,18 +343,12 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(TRUE);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_nonformal_names_too_many_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_nonformal_names_too_many_then_error,
+        "
 FUNCTION_BLOCK Callee
 VAR_INPUT
 IN2: BOOL;
@@ -516,18 +360,12 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(TRUE, FALSE);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_one_input_name_incorrect_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_one_input_name_incorrect_then_error,
+        "
 FUNCTION_BLOCK Callee
 VAR_INPUT
 IN1: BOOL;
@@ -539,18 +377,12 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(IN1 := TRUE, BAR := TRUE);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_one_output_name_incorrect_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_one_output_name_incorrect_then_error,
+        "
 FUNCTION_BLOCK Callee
 VAR_OUTPUT
 OUT1: BOOL;
@@ -563,18 +395,12 @@ FB_INSTANCE : Callee;
 LOCAL: BOOL;
 END_VAR
 FB_INSTANCE(OUT2 => LOCAL);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_program_invokes_function_block_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_program_invokes_function_block_then_ok,
+        "
 FUNCTION_BLOCK Callee
 VAR_INPUT
 IN1: BOOL;
@@ -586,12 +412,39 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(IN1 := TRUE);
-END_PROGRAM";
+END_PROGRAM"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
+    rule_errn!(
+        apply_when_two_undeclared_function_block_calls_then_reports_both,
+        "
+PROGRAM main
+VAR
+    x : INT;
+END_VAR
+FIRST();
+SECOND();
+END_PROGRAM",
+        2,
+        ironplc_problems::Problem::FunctionBlockNotInScope
+    );
 
-        assert!(result.is_ok())
-    }
+    rule_errn!(
+        apply_when_call_names_two_undeclared_inputs_then_reports_both,
+        "
+FUNCTION_BLOCK Callee
+VAR_INPUT
+IN1 : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+FB_INSTANCE : Callee;
+END_VAR
+FB_INSTANCE(NOPE1 := TRUE, NOPE2 := TRUE);
+END_PROGRAM",
+        2,
+        ironplc_problems::Problem::FunctionInvocationMissingInput
+    );
 }

@@ -2,8 +2,12 @@
 //!
 //! Provides a builder that appends opcodes and operands to a byte buffer.
 
+use std::collections::HashSet;
+
 use ironplc_container::opcode;
 use ironplc_container::{CharWidth, FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex};
+
+use crate::optimize::OffsetMap;
 
 /// A bytecode-offset → source-location entry recorded by the [`Emitter`].
 ///
@@ -31,12 +35,46 @@ pub struct EmittedLineMapEntry {
 #[derive(Clone, Copy)]
 pub struct Label(usize);
 
+/// Byte position of the branch operand within a `JMP`/`JMP_IF_NOT`
+/// instruction: straight after the opcode.
+const JMP_OPERAND_DELTA: usize = 1;
+
+/// Byte position of the branch operand within a `CMP_BR_*` instruction:
+/// after the opcode, the cmp_op byte, the variable index and the pool index.
+const CMP_BR_OPERAND_DELTA: usize = 6;
+
 /// A pending jump that needs to be patched once the target label is bound.
 struct PendingPatch {
-    /// Position of the i16 operand in the bytecode buffer.
-    patch_offset: usize,
+    /// Start of the instruction carrying the jump operand. Held rather than
+    /// the operand's own position because only instruction starts survive
+    /// the optimizer's old→new offset map.
+    instruction_offset: usize,
+    /// Where the i16 operand sits within that instruction.
+    operand_delta: usize,
     /// The label this jump targets.
     label: Label,
+}
+
+impl PendingPatch {
+    /// Position of the i16 operand in the bytecode buffer.
+    fn patch_offset(&self) -> usize {
+        self.instruction_offset + self.operand_delta
+    }
+}
+
+/// The emitter's bytecode before its jump operands have been patched,
+/// together with the positions those jumps will land on.
+///
+/// This is what the peephole optimizer consumes. Handing it the offsets
+/// symbolically — rather than making it recover them from encoded branch
+/// operands — is what keeps knowledge of the branch instruction encoding out
+/// of `optimize/` entirely.
+pub(crate) struct UnpatchedCode<'a> {
+    /// The emitted bytes. Every branch operand is still a placeholder.
+    pub(crate) bytecode: &'a [u8],
+    /// Bound label positions referenced by at least one pending jump. These
+    /// are the offsets the optimizer must not remove or rewrite.
+    pub(crate) jump_targets: HashSet<usize>,
 }
 
 /// Accumulates bytecode instructions.
@@ -162,10 +200,12 @@ impl Emitter {
         }
     }
 
-    // The three line_map APIs below are scaffolding for the source-map
-    // work tracked in specs/plans/2026-04-07-debug-source-map-and-hook.md.
-    // They are exercised by unit tests; the consumer in compile_stmt /
-    // compile_fn lands in a follow-up.
+    // Source-map recording. `compile_stmt` sets a position per statement,
+    // `compile.rs` carries the entries through the optimizer's offset
+    // remapping into the container's LINE_MAP (tag 1), and
+    // `codegen/tests/it/end_to_end_debug_line_map.rs` asserts the result
+    // against real source. See `specs/design/debugger-support.md`
+    // §"Source Position Tracking".
 
     /// Sets the source position to associate with subsequently emitted
     /// opcodes. Each new opcode that actually pushes bytes records an
@@ -489,6 +529,19 @@ impl Emitter {
         self.pop_stack(2);
     }
 
+    /// Emits COPY_REGION with dst_var, dst_desc and src_desc operands.
+    ///
+    /// The source's data-region offset must already be on the stack. The copy
+    /// length is not emitted — the VM derives it from the two descriptors and
+    /// traps if they disagree. Pops 1 (source offset). Net: -1.
+    pub fn emit_copy_region(&mut self, dst_var: VarIndex, dst_desc: u16, src_desc: u16) {
+        self.emit_opcode(opcode::COPY_REGION);
+        self.bytecode.extend_from_slice(&dst_var.to_le_bytes());
+        self.bytecode.extend_from_slice(&dst_desc.to_le_bytes());
+        self.bytecode.extend_from_slice(&src_desc.to_le_bytes());
+        self.pop_stack(1);
+    }
+
     /// Emits STR_INIT_ARRAY with var_index and desc_index operands.
     /// Initializes all string headers in an array. No stack effect.
     pub fn emit_str_init_array(&mut self, var_index: VarIndex, desc_index: u16) {
@@ -547,11 +600,12 @@ impl Emitter {
 
     /// Emits JMP with a placeholder offset targeting the given label.
     pub fn emit_jmp(&mut self, label: Label) {
+        let instruction_offset = self.bytecode.len();
         self.emit_opcode(opcode::JMP);
-        let patch_offset = self.bytecode.len();
         self.bytecode.extend_from_slice(&0i16.to_le_bytes());
         self.patches.push(PendingPatch {
-            patch_offset,
+            instruction_offset,
+            operand_delta: JMP_OPERAND_DELTA,
             label,
         });
     }
@@ -559,11 +613,12 @@ impl Emitter {
     /// Emits JMP_IF_NOT with a placeholder offset targeting the given label.
     /// Pops the condition value from the stack.
     pub fn emit_jmp_if_not(&mut self, label: Label) {
+        let instruction_offset = self.bytecode.len();
         self.emit_opcode(opcode::JMP_IF_NOT);
-        let patch_offset = self.bytecode.len();
         self.bytecode.extend_from_slice(&0i16.to_le_bytes());
         self.patches.push(PendingPatch {
-            patch_offset,
+            instruction_offset,
+            operand_delta: JMP_OPERAND_DELTA,
             label,
         });
         self.pop_stack(1);
@@ -619,14 +674,20 @@ impl Emitter {
             opcode::cmp_op::is_valid(cmp_op_byte),
             "emit_cmp_br requires a valid cmp_op byte"
         );
+        let instruction_offset = self.bytecode.len();
         self.emit_opcode(op);
         self.bytecode.push(cmp_op_byte);
         self.bytecode.extend_from_slice(&var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&const_idx.to_le_bytes());
-        let patch_offset = self.bytecode.len();
+        debug_assert_eq!(
+            self.bytecode.len() - instruction_offset,
+            CMP_BR_OPERAND_DELTA,
+            "CMP_BR_OPERAND_DELTA must name where the branch offset is written"
+        );
         self.bytecode.extend_from_slice(&0i16.to_le_bytes());
         self.patches.push(PendingPatch {
-            patch_offset,
+            instruction_offset,
+            operand_delta: CMP_BR_OPERAND_DELTA,
             label: target,
         });
         // Stack effect: 0 (no pushes, no pops).
@@ -804,6 +865,45 @@ impl Emitter {
         self.bytecode.extend_from_slice(&type_id.to_le_bytes());
     }
 
+    /// Emits METHOD_CALL (OOP extension, ADR-0041 Phase 1 static dispatch).
+    ///
+    /// `fb_ref` (pushed by a preceding [`Emitter::emit_fb_load_instance`])
+    /// remains on the stack, matching [`Emitter::emit_fb_call`]. Pops
+    /// `num_params` arguments from above `fb_ref`, then -- if the method
+    /// has a return type -- pushes the return value on top of `fb_ref`
+    /// (the caller is responsible for discarding both, in that order,
+    /// once done with the call).
+    #[allow(clippy::too_many_arguments)]
+    pub fn emit_method_call(
+        &mut self,
+        function_id: FunctionId,
+        field_var_off: VarIndex,
+        num_fields: u8,
+        param_var_off: VarIndex,
+        num_params: u16,
+        has_return_value: bool,
+        callee_max_stack: u16,
+    ) {
+        self.emit_opcode(opcode::METHOD_CALL);
+        self.bytecode.extend_from_slice(&function_id.to_le_bytes());
+        self.bytecode
+            .extend_from_slice(&field_var_off.to_le_bytes());
+        self.bytecode.push(num_fields);
+        self.bytecode
+            .extend_from_slice(&param_var_off.to_le_bytes());
+        if num_params > 0 {
+            self.pop_stack(num_params);
+        }
+        // Account for the callee's stack usage on the shared stack.
+        if callee_max_stack > 0 {
+            self.push_stack(callee_max_stack);
+            self.pop_stack(callee_max_stack);
+        }
+        if has_return_value {
+            self.push_stack(1);
+        }
+    }
+
     /// Emits CALL with a function ID and variable offset.
     /// Pops `num_params` arguments and pushes one return value.
     /// `var_offset` is the absolute variable table index where the
@@ -844,16 +944,90 @@ impl Emitter {
     /// Returns the accumulated bytecode with all pending jump patches resolved.
     ///
     /// Peephole optimizations (consecutive load → DUP, store-load → insert
-    /// DUP before STORE) are applied inline during emission, so no separate
-    /// pass runs here.
+    /// DUP before STORE) are applied inline during emission. The pass-based
+    /// optimizer runs on the un-patched bytes, so it must be given
+    /// [`Self::unpatched_code`] and its result handed back through
+    /// [`Self::apply_optimized`] before this is called.
     pub fn bytecode(&mut self) -> &[u8] {
         self.patch_jumps();
         &self.bytecode
     }
 
+    /// Returns the emitted bytes with their jump operands still unresolved,
+    /// alongside the offsets those jumps target.
+    ///
+    /// The target set is derived from the pending patches rather than from
+    /// every bound label: a label that is bound but never jumped to
+    /// constrains nothing, and protecting its position would needlessly
+    /// block a peephole there.
+    pub(crate) fn unpatched_code(&self) -> UnpatchedCode<'_> {
+        let jump_targets = self
+            .patches
+            .iter()
+            .map(|patch| self.labels[patch.label.0].expect("label must be bound before optimizing"))
+            .collect();
+        UnpatchedCode {
+            bytecode: &self.bytecode,
+            jump_targets,
+        }
+    }
+
+    /// Replaces the emitted bytes with the optimizer's output, moving every
+    /// label and pending patch to where `offset_map` says its instruction now
+    /// starts.
+    ///
+    /// The jump operands are still placeholders afterwards;
+    /// [`Self::bytecode`] resolves them against the new positions.
+    pub(crate) fn apply_optimized(&mut self, bytecode: Vec<u8>, offset_map: &OffsetMap) {
+        // The optimizer never removes a branch instruction — no pass matches
+        // a pair containing one — so a patch's instruction start always maps
+        // to the same instruction rather than snapping forward to the next.
+        let opcodes: Vec<u8> = self
+            .patches
+            .iter()
+            .map(|patch| self.bytecode[patch.instruction_offset])
+            .collect();
+
+        self.bytecode = bytecode;
+        for (patch, opcode) in self.patches.iter_mut().zip(opcodes) {
+            patch.instruction_offset = offset_map[&patch.instruction_offset];
+            debug_assert_eq!(
+                self.bytecode[patch.instruction_offset], opcode,
+                "the optimizer moved a branch instruction away from its patch"
+            );
+        }
+        for label in self.labels.iter_mut().flatten() {
+            *label = offset_map[label];
+        }
+    }
+
     /// Returns the maximum stack depth reached during emission.
     pub fn max_stack_depth(&self) -> u16 {
         self.max_stack_depth
+    }
+
+    /// Returns the operand-stack depth the emitter is currently tracking.
+    ///
+    /// Pair with [`Self::reset_stack_depth`] around the arms of a branch.
+    pub fn stack_depth(&self) -> u16 {
+        self.current_stack_depth
+    }
+
+    /// Restores the tracked operand-stack depth to `depth`.
+    ///
+    /// The emitter counts depth in *emission* order, so it sums the arms of a
+    /// branch as if they ran back to back. That is harmless for statement
+    /// bodies, which are stack-neutral, but an expression arm leaves a value
+    /// behind: without this, every conditionally-evaluated expression would
+    /// inflate `max_stack_depth` by a slot. Record the depth before the first
+    /// arm and reset to it before emitting the second, so the depth after the
+    /// merge is the depth one arm actually delivers.
+    ///
+    /// This only corrects the emitter's own bookkeeping. What ships is checked
+    /// against the real control-flow graph by
+    /// [`ironplc_container::verify_stack_balance`].
+    pub fn reset_stack_depth(&mut self, depth: u16) {
+        self.current_stack_depth = depth;
     }
 
     /// Resolves all pending jump patches by computing relative offsets.
@@ -862,11 +1036,12 @@ impl Emitter {
             let label_pos =
                 self.labels[patch.label.0].expect("label must be bound before patching");
             // Offset is relative to the byte after the i16 operand
-            let next_pc = patch.patch_offset + 2;
+            let patch_offset = patch.patch_offset();
+            let next_pc = patch_offset + 2;
             let offset = (label_pos as isize - next_pc as isize) as i16;
             let bytes = offset.to_le_bytes();
-            self.bytecode[patch.patch_offset] = bytes[0];
-            self.bytecode[patch.patch_offset + 1] = bytes[1];
+            self.bytecode[patch_offset] = bytes[0];
+            self.bytecode[patch_offset + 1] = bytes[1];
         }
     }
 

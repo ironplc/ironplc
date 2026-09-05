@@ -60,11 +60,23 @@ package filename:
 
 # Build the Marketplace VSIX package. The Visual Studio Marketplace uses the
 # extension ID ironplc.ironplc-vscode because the original ironplc.ironplc ID
-# cannot be reused; Open VSX keeps ironplc.ironplc. Only the `name` differs, so
-# `displayName` and publisher remain identical on both registries. Overriding
-# the name here mutates package.json in the (ephemeral) build tree only.
+# cannot be reused; Open VSX keeps ironplc.ironplc. The `displayName` is also
+# overridden to "IronPLC IDE" because the Marketplace still reserves the bare
+# "IronPLC" display name from the removed listing and rejects it as in use; the
+# publisher (ironplc) is unchanged. Open VSX keeps `name: ironplc` and
+# `displayName: IronPLC`. Both overrides mutate package.json in the (ephemeral)
+# build tree only.
+#
+# "IDE" is deliberately neutral -- not "Structured Text" or "IEC 61131-3" --
+# so the name still fits if other languages or standards are added later. A
+# Marketplace display name cannot be changed once published.
+#
+# The two-VSIX scheme is safe because only `name` and `displayName` differ.
+# Command IDs, language IDs and activation events are literal strings that do
+# not derive from `name`, so nothing else diverges between the builds.
 package-marketplace filename:
   npm pkg set name=ironplc-vscode
+  npm pkg set 'displayName=IronPLC IDE'
   npx vsce package --out {{filename}}
 
 # Generate a CycloneDX JSON SBOM (bom.cdx.json) for the VS Code extension.

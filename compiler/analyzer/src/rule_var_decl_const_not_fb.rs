@@ -24,8 +24,13 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -33,25 +38,28 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleVarDeclConstIsNotFunctionBlock {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleVarDeclConstIsNotFunctionBlock {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleVarDeclConstIsNotFunctionBlock {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
+impl DiagnosticVisitor for RuleVarDeclConstIsNotFunctionBlock {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+impl Visitor<Infallible> for RuleVarDeclConstIsNotFunctionBlock {
     type Value = ();
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
         if node.qualifier == DeclarationQualifier::Constant {
             if let InitialValueAssignmentKind::FunctionBlock(fb) = &node.initializer {
                 self.diagnostics.push(
@@ -73,14 +81,9 @@ impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
-
-    use super::*;
-
-    #[test]
-    fn apply_when_var_init_function_block_is_const_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_var_init_function_block_is_const_then_error,
+        "
 FUNCTION_BLOCK Callee
 
 END_FUNCTION_BLOCK
@@ -90,17 +93,12 @@ VAR CONSTANT
 FB_INSTANCE : Callee;
 END_VAR
 
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-    #[test]
-    fn apply_when_var_init_function_block_not_const_then_error() {
-        let program = "
+    rule_ok!(
+        apply_when_var_init_function_block_not_const_then_error,
+        "
 FUNCTION_BLOCK Callee
 
 END_FUNCTION_BLOCK
@@ -110,12 +108,6 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
-    }
+END_FUNCTION_BLOCK"
+    );
 }

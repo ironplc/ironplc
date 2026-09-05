@@ -1,6 +1,5 @@
 //! Implements the command line behavior.
 
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -8,9 +7,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use ironplc_container::debug_format::{build_var_debug_map, format_variable_value, VarDebugInfo};
+use ironplc_container::debug_format::VariableRenderer;
 use ironplc_container::Container;
-use ironplc_vm::{Vm, VmBuffers};
+use ironplc_vm::{VariableView, Vm, VmBuffers};
 use serde_json::json;
 
 use crate::error::{self, VmError};
@@ -70,12 +69,12 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
             }
         }
 
-        let current_us = start.elapsed().as_micros() as u64;
-        if let Err(ctx) = running.run_round(current_us) {
+        let uptime_us = start.elapsed().as_micros() as u64;
+        if let Err(ctx) = running.run_round(uptime_us) {
             let faulted = running.fault(ctx);
             let err = VmError::from_trap(faulted.trap(), faulted.task_id(), faulted.instance_id());
             if let Some(dump_path) = dump_vars {
-                dump_variables_faulted(&faulted, &container, dump_path)?;
+                dump_variables(&faulted, &container, dump_path)?;
             }
             return Err(err);
         }
@@ -95,7 +94,7 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
     let stopped = running.stop();
 
     if let Some(dump_path) = dump_vars {
-        dump_variables_stopped(&stopped, &container, dump_path)?;
+        dump_variables(&stopped, &container, dump_path)?;
     }
 
     Ok(())
@@ -129,8 +128,8 @@ pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), VmError> {
 
     // Warmup phase (unmeasured)
     for _ in 0..warmup {
-        let current_us = clock.elapsed().as_micros() as u64;
-        if let Err(ctx) = running.run_round(current_us) {
+        let uptime_us = clock.elapsed().as_micros() as u64;
+        if let Err(ctx) = running.run_round(uptime_us) {
             let faulted = running.fault(ctx);
             return Err(VmError::from_trap(
                 faulted.trap(),
@@ -144,8 +143,8 @@ pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), VmError> {
     let mut durations_us = Vec::with_capacity(cycles as usize);
     for _ in 0..cycles {
         let round_start = Instant::now();
-        let current_us = clock.elapsed().as_micros() as u64;
-        if let Err(ctx) = running.run_round(current_us) {
+        let uptime_us = clock.elapsed().as_micros() as u64;
+        if let Err(ctx) = running.run_round(uptime_us) {
             let faulted = running.fault(ctx);
             return Err(VmError::from_trap(
                 faulted.trap(),
@@ -232,33 +231,6 @@ fn round3(v: f64) -> f64 {
     (v * 1000.0).round() / 1000.0
 }
 
-/// Writes a single variable line to the writer.
-///
-/// Uses debug info when available: `Buzzer: TRUE`
-/// Falls back to indexed format: `var[0]: 1`
-fn write_variable_line(
-    out: &mut dyn Write,
-    index: u16,
-    raw: u64,
-    debug_map: &HashMap<u16, VarDebugInfo>,
-) -> Result<(), VmError> {
-    let line = if let Some(info) = debug_map.get(&index) {
-        format!(
-            "{}: {}",
-            info.name,
-            format_variable_value(raw, info.iec_type_tag)
-        )
-    } else {
-        format!("var[{index}]: {}", raw as i32)
-    };
-    writeln!(out, "{line}").map_err(|e| {
-        VmError::io(
-            error::DUMP_WRITE,
-            format!("Unable to write dump output: {e}"),
-        )
-    })
-}
-
 /// Opens the dump output destination: stdout for "-", otherwise a file.
 fn open_dump_output(dump_path: &Path) -> Result<Box<dyn Write>, VmError> {
     if dump_path == Path::new("-") {
@@ -274,40 +246,44 @@ fn open_dump_output(dump_path: &Path) -> Result<Box<dyn Write>, VmError> {
     }
 }
 
-fn dump_variables_stopped(
-    stopped: &ironplc_vm::VmStopped,
+/// Writes every variable slot to the dump destination.
+///
+/// Takes the VM as a [`VariableView`] so the clean-stop and post-trap dumps
+/// share one body: the two differ only in which state the VM ended in.
+fn dump_variables(
+    vm: &dyn VariableView,
     container: &Container,
     dump_path: &Path,
 ) -> Result<(), VmError> {
-    let debug_map = build_var_debug_map(container);
-    let num_vars = stopped.num_variables();
+    let renderer = VariableRenderer::new(container);
     let mut out = open_dump_output(dump_path)?;
-    for i in 0..num_vars {
-        let raw = stopped
-            .read_variable_raw(ironplc_container::VarIndex::new(i))
-            .map_err(|e| {
-                VmError::io(error::VAR_READ, format!("Unable to read variable {i}: {e}"))
-            })?;
-        write_variable_line(&mut *out, i, raw, &debug_map)?;
-    }
-    Ok(())
+    write_variable_lines(&mut *out, vm, &renderer)
 }
 
-fn dump_variables_faulted(
-    faulted: &ironplc_vm::VmFaulted,
-    container: &Container,
-    dump_path: &Path,
+/// Writes one `<name>: <value>` line per variable slot.
+///
+/// Rendering goes through [`VariableRenderer`], the one place that formats a
+/// variable for display (`specs/design/variable-value-rendering.md`), so the
+/// dump agrees line for line with the debugger and the playground — including
+/// for STRING, whose content lives in the data region rather than in the slot.
+fn write_variable_lines(
+    out: &mut dyn Write,
+    vm: &dyn VariableView,
+    renderer: &VariableRenderer,
 ) -> Result<(), VmError> {
-    let debug_map = build_var_debug_map(container);
-    let num_vars = faulted.num_variables();
-    let mut out = open_dump_output(dump_path)?;
-    for i in 0..num_vars {
-        let raw = faulted
+    let data_region = vm.data_region();
+    for i in 0..vm.num_variables() {
+        let raw = vm
             .read_variable_raw(ironplc_container::VarIndex::new(i))
             .map_err(|e| {
                 VmError::io(error::VAR_READ, format!("Unable to read variable {i}: {e}"))
             })?;
-        write_variable_line(&mut *out, i, raw, &debug_map)?;
+        writeln!(out, "{}", renderer.line(i, raw, data_region)).map_err(|e| {
+            VmError::io(
+                error::DUMP_WRITE,
+                format!("Unable to write dump output: {e}"),
+            )
+        })?;
     }
     Ok(())
 }
@@ -315,7 +291,9 @@ fn dump_variables_faulted(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_container::debug_section::iec_type_tag;
+    use ironplc_container::debug_section::{iec_type_tag, var_section, VarNameEntry};
+    use ironplc_container::{ContainerBuilder, FunctionId, StringLayoutEntry, VarIndex};
+    use ironplc_vm::error::Trap;
     use spec_test_macro::spec_test;
 
     /// REQ-VC-vm-cli-013: percentile of an empty sample returns 0 so benchmark can
@@ -349,138 +327,126 @@ mod tests {
         assert_eq!(round3(0.0004), 0.0);
     }
 
-    /// REQ-VC-vm-cli-009: BOOL formats as TRUE/FALSE.
-    #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_bool_then_true_or_false() {
-        assert_eq!(format_variable_value(1, iec_type_tag::BOOL), "TRUE");
-        assert_eq!(format_variable_value(0, iec_type_tag::BOOL), "FALSE");
-        // Non-zero lower i32 bits → TRUE.
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF, iec_type_tag::BOOL),
-            "TRUE"
-        );
+    /// A VM state holding the given raw slots and data region, so the dump
+    /// path can be exercised without running a program.
+    struct FakeVm {
+        slots: Vec<u64>,
+        data_region: Vec<u8>,
     }
 
-    /// REQ-VC-vm-cli-009: signed IEC integer types decode as signed decimals at their widths.
-    #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_signed_int_then_signed_decimal() {
-        assert_eq!(
-            format_variable_value(0xFF_u64, iec_type_tag::SINT),
-            "-1",
-            "SINT should sign-extend from 8 bits"
-        );
-        assert_eq!(
-            format_variable_value(0xFFFF_u64, iec_type_tag::INT),
-            "-1",
-            "INT should sign-extend from 16 bits"
-        );
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF_u64, iec_type_tag::DINT),
-            "-1",
-            "DINT should sign-extend from 32 bits"
-        );
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF_FFFF_FFFF_u64, iec_type_tag::LINT),
-            "-1",
-            "LINT should interpret as signed 64-bit"
-        );
+    impl VariableView for FakeVm {
+        fn num_variables(&self) -> u16 {
+            self.slots.len() as u16
+        }
+
+        fn read_variable_raw(&self, index: ironplc_container::VarIndex) -> Result<u64, Trap> {
+            Ok(self.slots[index.raw() as usize])
+        }
+
+        fn data_region(&self) -> &[u8] {
+            &self.data_region
+        }
     }
 
-    /// REQ-VC-vm-cli-009: unsigned IEC integer types decode as unsigned decimals at their widths.
-    #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_unsigned_int_then_unsigned_decimal() {
-        assert_eq!(format_variable_value(0xFF_u64, iec_type_tag::USINT), "255");
-        assert_eq!(
-            format_variable_value(0xFFFF_u64, iec_type_tag::UINT),
-            "65535"
-        );
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF_u64, iec_type_tag::UDINT),
-            "4294967295"
-        );
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF_FFFF_FFFF_u64, iec_type_tag::ULINT),
-            "18446744073709551615"
-        );
+    /// Dumps a one-variable program whose only variable has the given tag.
+    fn dump_line(tag: u8, raw: u64) -> String {
+        let container = ContainerBuilder::new()
+            .add_var_name(VarNameEntry {
+                var_index: VarIndex::new(0),
+                function_id: FunctionId::GLOBAL_SCOPE,
+                var_section: var_section::VAR,
+                iec_type_tag: tag,
+                name: "v".into(),
+                type_name: String::new(),
+            })
+            .build();
+        let vm = FakeVm {
+            slots: vec![raw],
+            data_region: vec![],
+        };
+        let mut buf = Vec::new();
+        let renderer = VariableRenderer::new(&container);
+        assert!(write_variable_lines(&mut buf, &vm, &renderer).is_ok());
+        String::from_utf8(buf).unwrap()
     }
 
-    /// REQ-VC-vm-cli-009: REAL and LREAL reinterpret the raw bits as float/double.
+    /// REQ-VC-vm-cli-009: the dump line's `<value>` is formatted per the IEC type
+    /// tag from debug info — one representative per format family. The full
+    /// rendering table and its per-width cases are owned by
+    /// `ironplc_container::debug_format`.
     #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_real_then_float_decimal() {
-        let raw32 = 1.5_f32.to_bits() as u64;
-        assert_eq!(format_variable_value(raw32, iec_type_tag::REAL), "1.5");
-        let raw64 = 2.25_f64.to_bits();
-        assert_eq!(format_variable_value(raw64, iec_type_tag::LREAL), "2.25");
+    fn write_variable_lines_when_debug_type_tag_then_formats_per_iec_type() {
+        assert_eq!(dump_line(iec_type_tag::BOOL, 1), "v: TRUE\n");
+        assert_eq!(dump_line(iec_type_tag::SINT, 0xFF), "v: -1\n");
+        assert_eq!(dump_line(iec_type_tag::USINT, 0xFF), "v: 255\n");
+        assert_eq!(
+            dump_line(iec_type_tag::REAL, 1.5_f32.to_bits() as u64),
+            "v: 1.5\n"
+        );
+        assert_eq!(dump_line(iec_type_tag::WORD, 0xABCD), "v: 16#ABCD\n");
+        assert_eq!(dump_line(iec_type_tag::TIME, 250), "v: T#250ms\n");
+        assert_eq!(
+            dump_line(iec_type_tag::DATE, 1_705_276_800),
+            "v: D#2024-01-15\n"
+        );
+        assert_eq!(dump_line(iec_type_tag::OTHER, 0xFFFF_FFFF), "v: -1\n");
     }
 
-    /// REQ-VC-vm-cli-009: BYTE/WORD/DWORD/LWORD render in IEC `16#...` hex form at their widths.
+    /// A STRING's slot is unused, so a dump that reads it prints a plausible
+    /// `0`. The value has to come from the data region instead.
     #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_bit_string_then_iec_hex() {
-        assert_eq!(format_variable_value(0xAB, iec_type_tag::BYTE), "16#AB");
-        assert_eq!(format_variable_value(0x0F, iec_type_tag::BYTE), "16#0F");
-        assert_eq!(format_variable_value(0xABCD, iec_type_tag::WORD), "16#ABCD");
-        assert_eq!(
-            format_variable_value(0xDEAD_BEEF, iec_type_tag::DWORD),
-            "16#DEADBEEF"
-        );
-        assert_eq!(
-            format_variable_value(0x0000_0000_DEAD_BEEF, iec_type_tag::LWORD),
-            "16#00000000DEADBEEF"
-        );
-    }
-
-    /// REQ-VC-vm-cli-009: TIME/LTIME render with `T#` / `LTIME#` prefixes.
-    #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_time_then_iec_duration() {
-        assert_eq!(format_variable_value(250, iec_type_tag::TIME), "T#250ms");
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF, iec_type_tag::TIME),
-            "T#-1ms"
-        );
-        assert_eq!(
-            format_variable_value(10_000, iec_type_tag::LTIME),
-            "LTIME#10000ms"
-        );
-    }
-
-    /// REQ-VC-vm-cli-009: an unknown tag falls back to signed i32 decimal.
-    #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_unknown_tag_then_signed_i32_fallback() {
-        assert_eq!(format_variable_value(42, iec_type_tag::OTHER), "42");
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF, iec_type_tag::OTHER),
-            "-1"
-        );
+    fn write_variable_lines_when_string_then_prints_content_not_slot() {
+        let container = ContainerBuilder::new()
+            .add_var_name(VarNameEntry {
+                var_index: VarIndex::new(0),
+                function_id: FunctionId::GLOBAL_SCOPE,
+                var_section: var_section::VAR,
+                iec_type_tag: iec_type_tag::STRING,
+                name: "msg".into(),
+                type_name: "STRING".into(),
+            })
+            .add_string_layout(StringLayoutEntry {
+                var_index: VarIndex::new(0),
+                data_offset: 0,
+                max_length: 20,
+            })
+            .build();
+        let mut data_region = Vec::new();
+        data_region.extend_from_slice(&20u16.to_le_bytes());
+        data_region.extend_from_slice(&5u16.to_le_bytes());
+        data_region.extend_from_slice(&1u16.to_le_bytes());
+        data_region.extend_from_slice(b"hello");
+        let vm = FakeVm {
+            slots: vec![0],
+            data_region,
+        };
+        let mut buf = Vec::new();
+        let renderer = VariableRenderer::new(&container);
+        assert!(write_variable_lines(&mut buf, &vm, &renderer).is_ok());
+        assert_eq!(String::from_utf8(buf).unwrap(), "msg: 'hello'\n");
     }
 
     /// REQ-VC-vm-cli-008: without debug info, lines use the `var[i]: <i32>` fallback.
     #[spec_test(REQ_VC_vm_cli_008)]
-    fn write_variable_line_when_no_debug_then_indexed_format() {
-        let debug_map: HashMap<u16, VarDebugInfo> = HashMap::new();
+    fn write_variable_lines_when_no_debug_then_indexed_format() {
+        let vm = FakeVm {
+            slots: vec![10, 0xFFFF_FFFF],
+            data_region: vec![],
+        };
         let mut buf = Vec::new();
-        assert!(write_variable_line(&mut buf, 3, 0xFFFF_FFFF, &debug_map).is_ok());
-        assert_eq!(std::str::from_utf8(&buf).unwrap(), "var[3]: -1\n");
+        let renderer = VariableRenderer::from_debug_section(None);
+        assert!(write_variable_lines(&mut buf, &vm, &renderer).is_ok());
+        assert_eq!(String::from_utf8(buf).unwrap(), "var[0]: 10\nvar[1]: -1\n");
     }
 
     /// REQ-VC-vm-cli-008: with debug info, lines use `name: <typed value>`.
     #[spec_test(REQ_VC_vm_cli_008)]
-    fn write_variable_line_when_debug_then_named_and_typed() {
-        let mut debug_map: HashMap<u16, VarDebugInfo> = HashMap::new();
-        debug_map.insert(
-            0,
-            VarDebugInfo {
-                name: "Counter".into(),
-                type_name: "DINT".into(),
-                iec_type_tag: iec_type_tag::DINT,
-            },
-        );
-        let mut buf = Vec::new();
-        assert!(write_variable_line(&mut buf, 0, 42_u64, &debug_map).is_ok());
-        assert_eq!(std::str::from_utf8(&buf).unwrap(), "Counter: 42\n");
+    fn write_variable_lines_when_debug_then_named_and_typed() {
+        assert_eq!(dump_line(iec_type_tag::DINT, 42), "v: 42\n");
     }
 
     /// A Write impl that always fails, used to cover the write-error branch in
-    /// `write_variable_line`.
+    /// `write_variable_lines`.
     struct FailingWriter;
     impl Write for FailingWriter {
         fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
@@ -493,11 +459,14 @@ mod tests {
 
     /// REQ-VC-vm-cli-005: dump write failures produce a V6006 error.
     #[spec_test(REQ_VC_vm_cli_005)]
-    fn write_variable_line_when_writer_errors_then_v6006() {
-        let debug_map: HashMap<u16, VarDebugInfo> = HashMap::new();
+    fn write_variable_lines_when_writer_errors_then_v6006() {
+        let vm = FakeVm {
+            slots: vec![0],
+            data_region: vec![],
+        };
         let mut sink = FailingWriter;
-        let err = write_variable_line(&mut sink, 0, 0, &debug_map)
-            .expect_err("writer failure should surface as VmError");
+        let renderer = VariableRenderer::from_debug_section(None);
+        let err = write_variable_lines(&mut sink, &vm, &renderer).unwrap_err();
         assert!(
             err.to_string().starts_with("V6006"),
             "expected V6006 (dump write), got {err}"

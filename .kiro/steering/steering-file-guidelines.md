@@ -1,3 +1,8 @@
+---
+inclusion: fileMatch
+fileMatchPattern: "specs/steering/**,.kiro/steering/**"
+---
+
 # Steering File Guidelines
 
 See [specs/steering/steering-file-guidelines.md](../../specs/steering/steering-file-guidelines.md) for the complete guide on creating and maintaining steering files.

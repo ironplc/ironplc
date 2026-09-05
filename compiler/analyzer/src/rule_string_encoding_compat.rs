@@ -24,6 +24,7 @@
 //! ```
 
 use std::collections::HashMap;
+use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::*,
@@ -35,6 +36,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::result::SemanticResult;
+use crate::rule_support::{run_rule, DiagnosticVisitor};
 use crate::semantic_context::SemanticContext;
 use ironplc_parser::options::CompilerOptions;
 
@@ -43,24 +45,25 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleStringEncodingCompat {
-        diagnostics: vec![],
-        string_vars: HashMap::new(),
-    };
-
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if visitor.diagnostics.is_empty() {
-        Ok(())
-    } else {
-        Err(visitor.diagnostics)
-    }
+    run_rule(
+        RuleStringEncodingCompat {
+            diagnostics: vec![],
+            string_vars: HashMap::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleStringEncodingCompat {
     diagnostics: Vec<Diagnostic>,
     /// Declared encoding of each named string variable in the current POU.
     string_vars: HashMap<Id, StringType>,
+}
+
+impl DiagnosticVisitor for RuleStringEncodingCompat {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 /// Returns the declared string encoding of a simple named variable, if it is a
@@ -105,13 +108,13 @@ impl RuleStringEncodingCompat {
     }
 }
 
-impl Visitor<Diagnostic> for RuleStringEncodingCompat {
+impl Visitor<Infallible> for RuleStringEncodingCompat {
     type Value = ();
 
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.string_vars.clear();
         node.recurse_visit(self)
     }
@@ -119,7 +122,7 @@ impl Visitor<Diagnostic> for RuleStringEncodingCompat {
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.string_vars.clear();
         node.recurse_visit(self)
     }
@@ -127,12 +130,12 @@ impl Visitor<Diagnostic> for RuleStringEncodingCompat {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.string_vars.clear();
         node.recurse_visit(self)
     }
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let VariableIdentifier::Symbol(ref id) = node.identifier {
             if let InitialValueAssignmentKind::String(ref string_init) = node.initializer {
                 self.string_vars
@@ -142,7 +145,7 @@ impl Visitor<Diagnostic> for RuleStringEncodingCompat {
         node.recurse_visit(self)
     }
 
-    fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, Diagnostic> {
+    fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, Infallible> {
         let target_enc = named_variable_encoding(&node.target, &self.string_vars).cloned();
         let value_enc = expr_string_encoding(&node.value, &self.string_vars).cloned();
         if let (Some(target_enc), Some(value_enc)) = (target_enc, value_enc) {
@@ -153,7 +156,7 @@ impl Visitor<Diagnostic> for RuleStringEncodingCompat {
         node.recurse_visit(self)
     }
 
-    fn visit_compare_expr(&mut self, node: &CompareExpr) -> Result<Self::Value, Diagnostic> {
+    fn visit_compare_expr(&mut self, node: &CompareExpr) -> Result<Self::Value, Infallible> {
         let left_enc = expr_string_encoding(&node.left, &self.string_vars).cloned();
         let right_enc = expr_string_encoding(&node.right, &self.string_vars).cloned();
         if let (Some(left_enc), Some(right_enc)) = (left_enc, right_enc) {

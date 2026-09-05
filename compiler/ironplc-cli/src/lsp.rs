@@ -76,7 +76,7 @@ fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOpt
 
         let mut options = CompilerOptions::from_dialect(dialect);
 
-        // Overlay individual vendor flags (can only enable, never disable). The
+        // Overlay individual dialect flags (can only enable, never disable). The
         // LSP option key is the lowerCamelCase form of each descriptor's
         // `option_key` (e.g. `allow_ref_to` -> `allowRefTo`). Deriving from
         // `FEATURE_DESCRIPTORS` keeps this in lockstep with the compiler: a new
@@ -673,20 +673,16 @@ mod test {
 
         fn receive_response<T: DeserializeOwned>(&mut self, request_id: RequestId) -> T {
             self.receive();
-            let response = self.responses.get(&request_id).expect("No request");
+            let response = self.responses.get(&request_id).unwrap();
             // `response_result` is `Ok(value)` for a successful response and
             // `Err(..)` for a failure, so `expect` asserts success here.
-            let result = response
-                .response_result
-                .as_ref()
-                .expect("Expected successful response")
-                .clone();
+            let result = response.response_result.as_ref().unwrap().clone();
             serde_json::from_value::<T>(result).unwrap()
         }
 
         fn receive_notification<T: DeserializeOwned>(&mut self) -> T {
             self.receive();
-            let notification = self.notifications.pop().expect("Must have notification");
+            let notification = self.notifications.pop().unwrap();
             serde_json::from_value::<T>(notification.params).unwrap()
         }
 
@@ -788,12 +784,12 @@ mod test {
     }
 
     /// Guards the LSP option surface against drifting out of sync with the
-    /// compiler: every vendor flag must be enablable via its lowerCamelCase
+    /// compiler: every dialect flag must be enablable via its lowerCamelCase
     /// `initializationOptions` key. `extract_compiler_options` derives these
     /// from `FEATURE_DESCRIPTORS`, so this also pins the snake -> camelCase
     /// contract the VS Code extension relies on.
     #[test]
-    fn extract_compiler_options_when_each_vendor_flag_key_set_then_flag_enabled() {
+    fn extract_compiler_options_when_each_dialect_flag_key_set_then_flag_enabled() {
         for fd in ironplc_parser::options::CompilerOptions::FEATURE_DESCRIPTORS {
             let key = super::to_lower_camel_case(fd.option_key);
             let params = params_with_init_options(serde_json::json!({ key.clone(): true }));
@@ -836,7 +832,8 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(options.allow_iec_61131_3_2013);
+        assert!(options.allow_long_time_types);
+        assert!(options.allow_ref_to);
     }
 
     #[test]
@@ -858,11 +855,11 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_time_types);
     }
 
     #[test]
-    fn extract_compiler_options_when_rusty_dialect_then_enables_ref_to_and_vendor_flags() {
+    fn extract_compiler_options_when_rusty_dialect_then_enables_ref_to_and_dialect_flags() {
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
@@ -880,7 +877,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_time_types);
         assert!(options.allow_ref_to);
         assert!(options.allow_c_style_comments);
         assert!(options.allow_missing_semicolon);
@@ -905,7 +902,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(options.allow_long_time_types);
         assert!(options.allow_ref_to);
         assert!(options.allow_c_style_comments);
         assert!(options.allow_sizeof);
@@ -932,13 +929,15 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(options.allow_long_time_types);
         assert!(options.allow_c_style_comments);
         assert!(options.allow_pragmas);
         assert!(options.allow_short_circuit_operators);
         // TwinCAT spells references/pointers REFERENCE TO / POINTER TO, not the
         // CODESYS REF_TO / REF() / NULL, so none of the REF_TO-family flags are
         // enabled.
+        assert!(options.allow_reference_to);
+        assert!(options.allow_pointer_to);
         assert!(!options.allow_ref_to);
         assert!(!options.allow_ref_arithmetic);
         assert!(!options.allow_ref_stack_variables);
@@ -966,7 +965,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_time_types);
     }
 
     #[test]
@@ -1125,6 +1124,72 @@ mod test {
 
         let options = super::extract_compiler_options(&params);
         assert!(options.allow_reference_to);
+    }
+
+    #[test]
+    fn extract_compiler_options_when_allow_pointer_to_then_enables_flag() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"allowPointerTo": true})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_compiler_options(&params);
+        assert!(options.allow_pointer_to);
+    }
+
+    #[test]
+    fn extract_compiler_options_when_allow_adr_then_enables_flag() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"allowAdr": true})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_compiler_options(&params);
+        assert!(options.allow_adr);
+    }
+
+    #[test]
+    fn extract_compiler_options_when_allow_fb_inheritance_then_enables_flag() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"allowFbInheritance": true})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_compiler_options(&params);
+        assert!(options.allow_fb_inheritance);
     }
 
     #[test]

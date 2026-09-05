@@ -4,11 +4,12 @@
 use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, parse_and_run_rounds};
+use crate::common::parse_and_run_rounds;
 
-#[test]
-fn end_to_end_when_array_store_and_load_then_roundtrips() {
-    let source = "
+// x is at var index 1 (arr is var 0, x is var 1)
+e2e_i32!(
+    end_to_end_when_array_store_and_load_then_roundtrips,
+    "
 PROGRAM main
   VAR
     arr : ARRAY[1..5] OF INT;
@@ -17,15 +18,14 @@ PROGRAM main
   arr[3] := 42;
   x := arr[3];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // x is at var index 1 (arr is var 0, x is var 1)
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-}
+",
+    &[(1, 42)],
+);
 
-#[test]
-fn end_to_end_when_array_sum_loop_then_computes_correct_sum() {
-    let source = "
+// sum is var index 1 (arr=0, sum=1, i=2)
+e2e_i32!(
+    end_to_end_when_array_sum_loop_then_computes_correct_sum,
+    "
 PROGRAM main
   VAR
     arr : ARRAY[1..5] OF INT;
@@ -42,15 +42,13 @@ PROGRAM main
     sum := sum + arr[i];
   END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // sum is var index 1 (arr=0, sum=1, i=2)
-    assert_eq!(bufs.vars[1].as_i32(), 150);
-}
+",
+    &[(1, 150)],
+);
 
-#[test]
-fn end_to_end_when_array_with_initialization_then_values_set() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_array_with_initialization_then_values_set,
+    "
 PROGRAM main
   VAR
     arr : ARRAY[1..3] OF INT := [10, 20, 30];
@@ -58,14 +56,13 @@ PROGRAM main
   END_VAR
   x := arr[2];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 20);
-}
+",
+    &[(1, 20)],
+);
 
-#[test]
-fn end_to_end_when_array_dint_then_correct_values() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_array_dint_then_correct_values,
+    "
 PROGRAM main
   VAR
     arr : ARRAY[0..2] OF DINT;
@@ -76,14 +73,13 @@ PROGRAM main
   arr[2] := 300000;
   x := arr[1];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 200000);
-}
+",
+    &[(1, 200000)],
+);
 
-#[test]
-fn end_to_end_when_array_negative_lower_bound_then_correct_indexing() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_array_negative_lower_bound_then_correct_indexing,
+    "
 PROGRAM main
   VAR
     arr : ARRAY[-2..2] OF INT;
@@ -96,14 +92,14 @@ PROGRAM main
   arr[2] := 500;
   x := arr[0];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 300);
-}
+",
+    &[(1, 300)],
+);
 
-#[test]
-fn end_to_end_when_array_multiple_independent_stores_then_no_interference() {
-    let source = "
+// arr=0, a=1, b=2, c=3
+e2e_i32!(
+    end_to_end_when_array_multiple_independent_stores_then_no_interference,
+    "
 PROGRAM main
   VAR
     arr : ARRAY[1..3] OF INT;
@@ -118,14 +114,12 @@ PROGRAM main
   b := arr[2];
   c := arr[3];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // arr=0, a=1, b=2, c=3
-    assert_eq!(bufs.vars[1].as_i32(), 11);
-    assert_eq!(bufs.vars[2].as_i32(), 22);
-    assert_eq!(bufs.vars[3].as_i32(), 33);
-}
+",
+    &[(1, 11), (2, 22), (3, 33)],
+);
 
+// Multi-scan test: array state must persist across VM rounds, so it drives the
+// VM directly rather than using the single-scan `e2e_i32!` helper.
 #[test]
 fn end_to_end_when_array_persists_across_scans_then_values_retained() {
     let source = "
@@ -153,9 +147,10 @@ END_PROGRAM
     });
 }
 
-#[test]
-fn end_to_end_when_array_with_repeated_init_then_values_set() {
-    let source = "
+// arr=0, x=1, y=2; arr[1] = first of 3(10); arr[4] = first of 3(20)
+e2e_i32!(
+    end_to_end_when_array_with_repeated_init_then_values_set,
+    "
 PROGRAM main
   VAR
     arr : ARRAY[1..6] OF INT := [3(10), 3(20)];
@@ -165,16 +160,13 @@ PROGRAM main
   x := arr[1];
   y := arr[4];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // arr=0, x=1, y=2
-    assert_eq!(bufs.vars[1].as_i32(), 10); // arr[1] = first of 3(10)
-    assert_eq!(bufs.vars[2].as_i32(), 20); // arr[4] = first of 3(20)
-}
+",
+    &[(1, 10), (2, 20)],
+);
 
-#[test]
-fn end_to_end_when_array_2d_then_correct_indexing() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_array_2d_then_correct_indexing,
+    "
 PROGRAM main
   VAR
     matrix : ARRAY[1..3, 1..4] OF INT;
@@ -183,14 +175,13 @@ PROGRAM main
   matrix[2, 3] := 42;
   x := matrix[2, 3];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-}
+",
+    &[(1, 42)],
+);
 
-#[test]
-fn end_to_end_when_array_in_function_var_then_parses_and_analyzes() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_array_in_function_var_then_parses_and_analyzes,
+    "
 FUNCTION MY_FUNC : INT
 VAR_INPUT
     x : INT;
@@ -208,7 +199,6 @@ END_VAR
     arg := 42;
     result := MY_FUNC(x := arg);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-}
+",
+    &[(0, 42)],
+);

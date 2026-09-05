@@ -28,8 +28,13 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
+use std::convert::Infallible;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -37,28 +42,31 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleFunctionBlockCallUnsupported {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleFunctionBlockCallUnsupported {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleFunctionBlockCallUnsupported {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl Visitor<Diagnostic> for RuleFunctionBlockCallUnsupported {
+impl DiagnosticVisitor for RuleFunctionBlockCallUnsupported {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+impl Visitor<Infallible> for RuleFunctionBlockCallUnsupported {
     type Value = ();
 
     fn visit_function_block_call_initializer(
         &mut self,
         node: &FunctionBlockCallInitializer,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         self.diagnostics
             .push(Diagnostic::not_implemented(Label::span(
                 node.type_name.span(),
@@ -94,7 +102,7 @@ END_FUNCTION_BLOCK";
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&input, &context, &CompilerOptions::default());
 
-        let diagnostics = result.expect_err("call-style initializer must be flagged");
+        let diagnostics = result.unwrap_err();
         assert_eq!(diagnostics.len(), 1);
         // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
         // (must be constructed via Diagnostic::not_implemented), so assert on
@@ -102,11 +110,9 @@ END_FUNCTION_BLOCK";
         assert_eq!(diagnostics[0].code, "P9999");
     }
 
-    #[test]
-    fn apply_when_fb_member_init_then_ok() {
-        // The `:= (member := value)` member-init form is a different
-        // construct and must not be flagged by this rule.
-        let program = "
+    rule_ok!(
+        apply_when_fb_member_init_then_ok,
+        "
 FUNCTION_BLOCK FB_Comm
 VAR_INPUT
     retries : INT;
@@ -117,19 +123,12 @@ FUNCTION_BLOCK FB_Example
 VAR
     comm : FB_Comm := (retries := 3);
 END_VAR
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let input = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_bare_fb_decl_then_ok() {
-        // A bare FB instance declaration must not be flagged.
-        let program = "
+    rule_ok!(
+        apply_when_bare_fb_decl_then_ok,
+        "
 FUNCTION_BLOCK FB_Comm
 END_FUNCTION_BLOCK
 
@@ -137,12 +136,6 @@ FUNCTION_BLOCK FB_Example
 VAR
     comm : FB_Comm;
 END_VAR
-END_FUNCTION_BLOCK";
-
-        let input = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
+END_FUNCTION_BLOCK"
+    );
 }

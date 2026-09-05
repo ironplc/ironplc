@@ -10,7 +10,9 @@ This design implements [ADR-0012](../adrs/0012-accept-vendor-dialect-files-as-is
 
 **In scope (parsing):** Accept all syntactically valid TwinCAT ST constructs within `.TcPOU`, `.TcGVL`, and `.TcDUT` files and represent them in the AST without parse errors.
 
-**Out of scope (future):** Semantic analysis of TwinCAT-specific constructs (e.g., resolving `EXTENDS` hierarchies, type checking `POINTER TO` dereferences, method dispatch). Standard IEC 61131-3 semantic analysis continues to run on the standard-compliant portions.
+**Out of scope (future):** Semantic analysis of the TwinCAT-specific constructs not listed below (e.g. type checking `POINTER TO` dereferences). Standard IEC 61131-3 semantic analysis continues to run on the standard-compliant portions.
+
+Two constructs originally listed here have since been implemented and are no longer out of scope. Field inheritance through the `EXTENDS` chain is fully resolved, so a plain `EXTENDS` with no `IMPLEMENTS` and no `ABSTRACT` is not flagged as an unsupported extension. Static method dispatch is implemented as Phase 1 of [ADR-0041](../adrs/0041-staged-method-and-interface-dispatch.md); dynamic dispatch through references, pointers, and interface values is Phase 2 and is not decided yet.
 
 ## Current State
 
@@ -129,9 +131,13 @@ INTERFACE I_Drivable
 END_INTERFACE
 ```
 
-In TwinCAT XML, interfaces are a separate object type (`<Itf>` element instead of `<POU>`).
+In TwinCAT XML, interfaces are a separate object type (`<Itf>` element instead of `<POU>`), stored in its own file with the `.TcIO` extension.
 
-**Design:** Add `Interface` and `EndInterface` as keyword tokens. The parser recognizes `INTERFACE name ... END_INTERFACE` as a top-level declaration containing method signatures (method declarations without bodies). In the AST, interfaces are a new `LibraryElementKind::Interface`.
+**Design:** Add `Interface` and `EndInterface` as keyword tokens. The parser recognizes `INTERFACE name ... END_INTERFACE` as a top-level declaration. In the AST, interfaces are a new `LibraryElementKind::Interface`.
+
+**As shipped — header only.** Only the interface header is parsed: the name and an optional `EXTENDS` list. Method and property signatures inside the interface body are not parsed, and TwinCAT stores each as a separate `<Method>`/`<Property>` XML element that is currently ignored.
+
+In the type-declaration environment an interface is modelled as an **empty structure**, because IronPLC has no representation for interface members today. This is deliberately a placeholder: it is enough for a variable declared with an interface type to resolve rather than failing with "type not declared", and it is not a claim that member or method access through an interface works. Dispatch through an interface value is Phase 2 of [ADR-0041](../adrs/0041-staged-method-and-interface-dispatch.md) and is not decided yet.
 
 The `twincat_parser.rs` module needs to handle `<Itf>` elements in addition to `<POU>`, `<GVL>`, and `<DUT>`.
 
@@ -309,7 +315,23 @@ IF (ptr <> 0 AND_THEN ptr^ = 99) THEN
 END_IF;
 ```
 
-**Design:** Add `AndThen` and `OrElse` as keyword tokens. These are binary operators with the same precedence as `AND` and `OR` respectively. In the AST, they map to new boolean operator variants. Semantically they are identical to `AND`/`OR` except for evaluation order, which is a code generation concern.
+**Design:** Add `AndThen` and `OrElse` as keyword tokens, demoted to identifiers unless `--allow-short-circuit-operators` is set. These are binary operators with the same precedence as `AND` and `OR` respectively. In the AST they are `CompareOp::AndThen` and `CompareOp::OrElse` — deliberately *not* normalized to `And`/`Or`, since the evaluation-order difference is real and externally visible. Type resolution treats them like `AND`/`OR`.
+
+**Code generation:** Each lowers to a conditional branch around the right operand, so the right operand is not evaluated when the left one already decides the answer:
+
+```text
+    <left>                  ; push left
+    JMP_IF_NOT alt          ; pops left
+    <then-arm>              ; AND_THEN: <right>     OR_ELSE: LOAD_TRUE
+    JMP end
+alt:
+    <else-arm>              ; AND_THEN: LOAD_FALSE  OR_ELSE: <right>
+end:
+```
+
+Exactly one arm runs, so exactly one value reaches the merge. The emitter tracks operand-stack depth in emission order and would otherwise charge for both arms, so it resets to the pre-arm depth between them; what ships is verified against the real control-flow graph by the stack-balance pass.
+
+Short-circuiting applies only when both operands are `BOOL`. `AND`/`OR` are also the bit-string operators, and skipping the right operand has no meaning for a bit-string result — short-circuiting `2#1010 AND_THEN 2#0110` would yield `2#0110` where the bitwise answer is `2#0010` — so non-`BOOL` operands compile to the same eager bitwise op `AND`/`OR` produce.
 
 #### 3.5 `OVERRIDE` and `CONTINUE` Keywords
 
@@ -413,67 +435,31 @@ END_TYPE
 
 **Design:** After the closing `)` of an enum value list, the parser optionally accepts a type name specifying the underlying type. This is stored as metadata on the enum declaration AST node.
 
-## Extension Origin Model
+## Keyword Promotion Is Gated by Dialect and Flags
 
-Every vendor-specific construct in IronPLC is tagged with its origin — which vendor dialects introduced it. This enum is the **single source of truth** that drives both the token transform pipeline (which keywords to promote) and the semantic diagnostic (which extensions to flag as unsupported).
-
-### `ExtensionOrigin` Enum
+Whether a non-standard keyword is recognized is decided entirely by the active
+dialect and its `--allow-*` [flags](../steering/glossary.md#flag) — not by any
+per-construct "origin" tag. The words that carry OOP syntax (`EXTENDS`,
+`IMPLEMENTS`, `INTERFACE`, `END_INTERFACE`, `ABSTRACT`) are ordinary IEC
+61131-3 identifiers when the corresponding flag is off, so a token transform
+*demotes* them back to `Identifier` unless the flag is enabled. See
+`compiler/parser/src/xform_demote_oop_keywords.rs`:
 
 ```rust
-/// Identifies the vendor or standards origin of a language extension.
-///
-/// A single extension may have multiple origins. For example, `VAR_STAT`
-/// appears in both Beckhoff TwinCAT and Siemens SCL. `CONTINUE` is part
-/// of IEC 61131-3 3rd edition AND appears in Beckhoff/CODESYS.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ExtensionOrigin {
-    /// IEC 61131-3 3rd edition (2013) features not yet supported by IronPLC.
-    Iec61131Ed3,
-    /// Beckhoff TwinCAT / CODESYS OOP and type system extensions.
-    BeckhoffCodesys,
-    /// Siemens SCL-specific extensions.
-    SiemensSCL,
+pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
+    if options.allow_fb_inheritance {
+        return;
+    }
+    // Demote EXTENDS / IMPLEMENTS / INTERFACE / END_INTERFACE / ABSTRACT
+    // tokens back to Identifier.
 }
 ```
 
-The origin is a **static property of each extension type**, not determined per-instance at parse time. `VAR_STAT` always returns `&[BeckhoffCodesys, SiemensSCL]` regardless of which file it was parsed from.
-
-### How `ExtensionOrigin` Drives the Token Transform Pipeline
-
-The keyword promotion table is indexed by `ExtensionOrigin`. When the dialect is `BeckhoffTwinCAT`, the transform enables all keywords tagged with `BeckhoffCodesys`. When the dialect is `SiemensSCL`, it enables all keywords tagged with `SiemensSCL`. Keywords tagged with both (like `VAR_STAT`) are promoted in both dialects.
-
-```rust
-/// Associates each promotable keyword with its extension origins.
-struct KeywordEntry {
-    text: &'static str,         // e.g., "METHOD"
-    token_type: TokenType,      // e.g., TokenType::Method
-    origins: &'static [ExtensionOrigin],  // e.g., &[BeckhoffCodesys]
-}
-
-const DIALECT_KEYWORDS: &[KeywordEntry] = &[
-    // Beckhoff/CODESYS only
-    KeywordEntry { text: "METHOD",     token_type: TokenType::Method,     origins: &[BeckhoffCodesys] },
-    KeywordEntry { text: "INTERFACE",  token_type: TokenType::Interface,  origins: &[BeckhoffCodesys] },
-    KeywordEntry { text: "EXTENDS",    token_type: TokenType::Extends,    origins: &[BeckhoffCodesys] },
-    // ...
-
-    // Shared between Beckhoff and Siemens
-    KeywordEntry { text: "VAR_STAT",   token_type: TokenType::VarStat,    origins: &[BeckhoffCodesys, SiemensSCL] },
-    KeywordEntry { text: "CONTINUE",   token_type: TokenType::Continue,   origins: &[Iec61131Ed3, BeckhoffCodesys] },
-    // ...
-];
-
-fn promote_keywords(tokens: Vec<Token>, dialect: Dialect) -> Vec<Token> {
-    let active_origins = dialect.extension_origins(); // e.g., &[BeckhoffCodesys]
-    // Promote Identifier tokens whose text matches an entry
-    // where entry.origins intersects active_origins
-}
-```
-
-This design means:
-- Adding a new keyword requires one entry in `DIALECT_KEYWORDS`
-- The same table drives both `promote_twincat_keywords` and `promote_scl_keywords`
-- No duplication between the promotion logic and the AST metadata
+The flag-to-dialect mapping is declared once in the `define_compiler_options!`
+table in `compiler/parser/src/options.rs` (for example `--allow-fb-inheritance`
+is enabled for the `Rusty` and `Codesys` dialects). This dialect table is the
+single place that records which dialects accept a given extension — there is no
+separate per-extension enumeration of vendors.
 
 ## Parser Integration
 
@@ -741,38 +727,34 @@ pub enum StmtKind {
 ### New Operator Variants
 
 ```rust
-// For AND_THEN / OR_ELSE short-circuit operators:
-pub enum Operator {
+// For AND_THEN / OR_ELSE short-circuit operators. These join the other
+// boolean/bitwise combinators, which live in CompareOp rather than Operator:
+pub enum CompareOp {
     // ... existing variants ...
     AndThen,   // AND_THEN — short-circuit AND
     OrElse,    // OR_ELSE — short-circuit OR
 }
 ```
 
-## Vendor Extension Trait and Semantic Rule
+## Language Extension Trait and Semantic Rule
 
-### The `VendorExtension` Trait
+### The `LanguageExtension` Trait
 
-Every AST node representing a vendor-specific construct implements this trait. It provides the metadata needed for the `P9004` diagnostic without any per-instance runtime data — origins are static per type.
+Every AST node representing a non-standard construct implements this trait. It provides the metadata needed for the `P9999 NotImplemented` diagnostic without any per-instance runtime data.
 
 ```rust
-/// Marker trait for AST nodes representing vendor-specific language extensions.
+/// Marker trait for AST nodes representing non-standard language extensions.
 ///
 /// Nodes implementing this trait are parsed and represented in the AST but
 /// not yet semantically analyzed or supported in code generation. The semantic
-/// rule `rule_unsupported_extension` walks the AST and emits P9004 for every
+/// rule `rule_unsupported_extension` walks the AST and emits P9999 for every
 /// node that implements this trait.
 ///
-/// As each extension graduates to full support, remove its VendorExtension
+/// As each extension graduates to full support, remove its LanguageExtension
 /// impl. The semantic rule automatically stops flagging it.
-pub trait VendorExtension {
+pub trait LanguageExtension {
     /// Human-readable name of this extension (e.g., "METHOD declaration").
     fn extension_name(&self) -> &'static str;
-
-    /// Which vendor dialects introduced this extension. A single extension
-    /// may originate from multiple vendors (e.g., VAR_STAT is both
-    /// BeckhoffCodesys and SiemensSCL).
-    fn extension_origins(&self) -> &'static [ExtensionOrigin];
 
     /// The source span for diagnostic reporting.
     fn extension_span(&self) -> SourceSpan;
@@ -782,62 +764,41 @@ pub trait VendorExtension {
 **Example implementations:**
 
 ```rust
-// Beckhoff/CODESYS extension — METHOD declaration
-// Extension: Beckhoff/CODESYS OOP
-impl VendorExtension for MethodDeclaration {
+// METHOD declaration
+impl LanguageExtension for MethodDeclaration {
     fn extension_name(&self) -> &'static str { "METHOD declaration" }
-    fn extension_origins(&self) -> &'static [ExtensionOrigin] { &[ExtensionOrigin::BeckhoffCodesys] }
     fn extension_span(&self) -> SourceSpan { self.span }
 }
 
-// Shared extension — VAR_STAT
-// Extension: Beckhoff/CODESYS, Siemens SCL
-impl VendorExtension for VarStatSection {
+// VAR_STAT section
+impl LanguageExtension for VarStatSection {
     fn extension_name(&self) -> &'static str { "VAR_STAT section" }
-    fn extension_origins(&self) -> &'static [ExtensionOrigin] {
-        &[ExtensionOrigin::BeckhoffCodesys, ExtensionOrigin::SiemensSCL]
-    }
     fn extension_span(&self) -> SourceSpan { self.span }
 }
 
-// IEC 61131-3 3rd edition + Beckhoff — CONTINUE statement
-// Extension: IEC 61131-3 3rd edition, Beckhoff/CODESYS
-impl VendorExtension for ContinueStatement {
+// CONTINUE statement
+impl LanguageExtension for ContinueStatement {
     fn extension_name(&self) -> &'static str { "CONTINUE statement" }
-    fn extension_origins(&self) -> &'static [ExtensionOrigin] {
-        &[ExtensionOrigin::Iec61131Ed3, ExtensionOrigin::BeckhoffCodesys]
-    }
     fn extension_span(&self) -> SourceSpan { self.span }
 }
 ```
 
-### Problem Code: `P9004 — UnsupportedExtension`
+### Problem Code: `P9999 — NotImplemented`
 
-One problem code covers all unsupported extensions. The diagnostic message identifies the specific extension and its origin(s):
+Unsupported extensions are reported with the general-purpose `P9999 NotImplemented` diagnostic, constructed via `Diagnostic::not_implemented`. The message identifies the specific extension:
 
 ```
-P9004 - Recognized extension not supported
+P9999 - Capability is not implemented (yet!)
   --> project/FB_Motor.TcPOU:15:1
    |
 15 | METHOD Start : BOOL
-   | ^^^^^^^^^^^^^^^^^^^^ METHOD declaration (Beckhoff/CODESYS extension) is recognized
-   |                      but not yet supported by IronPLC
-```
-
-For shared extensions:
-
-```
-P9004 - Recognized extension not supported
-  --> project/FC_Counter.scl:8:1
-   |
- 8 | VAR_STAT
-   | ^^^^^^^^ VAR_STAT section (Beckhoff/CODESYS, Siemens SCL extension) is recognized
-   |          but not yet supported by IronPLC
+   | ^^^^^^^^^^^^^^^^^^^^ METHOD declaration is recognized but not yet supported
+   |                      by IronPLC
 ```
 
 ### Semantic Rule: `rule_unsupported_extension.rs`
 
-A single visitor walks the AST and emits `P9004` for every `VendorExtension` node. The visitor checks each AST node type that could be a vendor extension:
+A single visitor walks the AST and emits `P9999` for every `LanguageExtension` node. The visitor checks each AST node type that could be an extension:
 
 ```rust
 pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
@@ -850,34 +811,28 @@ pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
 }
 
 impl RuleUnsupportedExtension {
-    fn check_extension(&mut self, ext: &dyn VendorExtension) {
-        let origins: Vec<&str> = ext.extension_origins().iter().map(|o| o.as_str()).collect();
-        let origin_text = origins.join(", ");
-        self.diagnostics.push(Diagnostic::problem(
-            Problem::UnsupportedExtension,
-            Label::span(
-                ext.extension_span(),
-                format!(
-                    "{} ({} extension) is recognized but not yet supported by IronPLC",
-                    ext.extension_name(),
-                    origin_text,
-                ),
+    fn flag(&mut self, ext: &dyn LanguageExtension) {
+        self.diagnostics.push(Diagnostic::not_implemented(Label::span(
+            ext.extension_span(),
+            format!(
+                "{} is recognized but not yet supported by IronPLC",
+                ext.extension_name(),
             ),
-        ));
+        )));
     }
 }
 ```
 
-The visitor overrides `visit_*` for each extension node type (MethodDeclaration, PropertyDeclaration, InterfaceDeclaration, etc.) and calls `check_extension`. As extensions graduate to full support, their `visit_*` override is removed (or their `VendorExtension` impl is removed) and the rule stops flagging them.
+The visitor overrides `visit_*` for each extension node type (MethodDeclaration, PropertyDeclaration, InterfaceDeclaration, etc.) and calls `check_extension`. As extensions graduate to full support, their `visit_*` override is removed (or their `LanguageExtension` impl is removed) and the rule stops flagging them.
 
 ### Graduation Path
 
 When an extension moves from "parsed but unsupported" to "fully supported":
 
-1. Remove the `VendorExtension` impl from the AST node
+1. Remove the `LanguageExtension` impl from the AST node
 2. Remove the `visit_*` override in `rule_unsupported_extension.rs`
 3. Add real semantic rules for the construct
-4. The `P9004` diagnostic automatically stops appearing for that construct
+4. The `P9999` diagnostic automatically stops appearing for that construct
 
 ## Testing Strategy
 
@@ -991,10 +946,9 @@ This test lives in `compiler/parser/src/tests/` alongside the other parser tests
 
 0. **Phase 0 — Prerequisites** (before any dialect code):
    - Keyword safety regression test: function block with all planned keywords as variable names, parsed in standard mode
-   - `ExtensionOrigin` enum in the DSL crate
-   - `VendorExtension` trait in the DSL crate
-   - `P9004 UnsupportedExtension` problem code in CSV and documentation
-   - `rule_unsupported_extension.rs` semantic rule (empty initially — no extension nodes exist yet)
+   - `LanguageExtension` trait in the DSL crate
+   - `rule_unsupported_extension.rs` semantic rule (empty initially — no extension nodes exist yet), emitting `P9999 NotImplemented`
+
 
 1. **Phase 1 — Core OOP and pragmas** (enables parsing most real TwinCAT projects):
    - `Dialect` enum and `CompilerOptions` extension (shared infrastructure)
@@ -1006,14 +960,14 @@ This test lives in `compiler/parser/src/tests/` alongside the other parser tests
    - Method, Property, and Interface XML element handling in `twincat_parser.rs`
    - `INTERFACE` / `END_INTERFACE`
    - DSL: `MethodDeclaration`, `PropertyDeclaration`, `InterfaceDeclaration`, `extends`/`implements` fields
-   - `VendorExtension` impls on all new AST nodes; `rule_unsupported_extension` visitor overrides
+   - `LanguageExtension` impls on all new AST nodes; `rule_unsupported_extension` visitor overrides
 
 2. **Phase 2 — Access modifiers and expressions**:
    - Access modifiers on methods/properties (`PUBLIC`, `PRIVATE`, `PROTECTED`, `INTERNAL`)
    - `ABSTRACT` / `FINAL` / `OVERRIDE` method modifiers
    - `THIS^` / `SUPER^` expressions
    - DSL: `AccessModifier`, `ThisRef`, `SuperRef`
-   - `VendorExtension` impls on new nodes
+   - `LanguageExtension` impls on new nodes
 
 3. **Phase 3 — Type system extensions**:
    - `POINTER TO` / `REFERENCE TO`
@@ -1025,11 +979,11 @@ This test lives in `compiler/parser/src/tests/` alongside the other parser tests
    - `AND_THEN` / `OR_ELSE` short-circuit operators
    - `CONTINUE` statement
    - DSL: `PointerTo`, `ReferenceTo`, `UnionDeclaration`, `RefAssign`, `Continue`, `AndThen`/`OrElse`
-   - `VendorExtension` impls on new nodes
+   - `LanguageExtension` impls on new nodes
 
 4. **Phase 4 — Advanced features**:
    - `S=` / `R=` extended assignment operators (parser-level, assignment context)
    - `__TRY` / `__CATCH` / `__FINALLY` / `__ENDTRY`
    - Conditional compilation pragmas (`{IF defined(...)}` / `{END_IF}`)
    - DSL: `SetAssign`, `ResetAssign`
-   - `VendorExtension` impls on new nodes
+   - `LanguageExtension` impls on new nodes

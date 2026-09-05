@@ -2,10 +2,12 @@
 
 use std::{collections::HashMap, path::Path};
 
-use ironplc_dsl::{core::FileId, diagnostic::Diagnostic};
+use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
 use ironplc_parser::options::CompilerOptions;
-use log::{info, trace};
+use log::{debug, info, trace};
 
+use crate::file_type::FileType;
+use crate::libraries::{LibraryName, LibraryRegistry};
 use crate::source::Source;
 
 /// A project consisting of one or more source files
@@ -14,6 +16,12 @@ pub struct SourceProject {
     sources: HashMap<FileId, Source>,
     /// Parse options applied to all sources
     compiler_options: CompilerOptions,
+    /// Names of the activated compatibility libraries, in activation order.
+    ///
+    /// The active set comes only from explicit activation (a project-file
+    /// reference or an explicit CLI/playground request) and is never inferred
+    /// from source content (`REQ-CL-sources-005`).
+    activated_libraries: Vec<LibraryName>,
 }
 
 impl Default for SourceProject {
@@ -28,6 +36,7 @@ impl SourceProject {
         SourceProject {
             sources: HashMap::new(),
             compiler_options: CompilerOptions::default(),
+            activated_libraries: Vec::new(),
         }
     }
 
@@ -36,7 +45,42 @@ impl SourceProject {
         SourceProject {
             sources: HashMap::new(),
             compiler_options,
+            activated_libraries: Vec::new(),
         }
+    }
+
+    /// Set the activated compatibility libraries by name (in activation order).
+    ///
+    /// Replaces any previously activated set. Activation is out of band — it
+    /// never touches source text — and comes only from an explicit channel such
+    /// as a project-file reference or a `--library` request.
+    pub fn set_activated_libraries(&mut self, names: Vec<LibraryName>) {
+        self.activated_libraries = names;
+    }
+
+    /// The names of the activated compatibility libraries, in activation order.
+    pub fn activated_libraries(&self) -> &[LibraryName] {
+        &self.activated_libraries
+    }
+
+    /// Load the activated compatibility libraries from the bundled registry.
+    ///
+    /// Returns the parsed [`Library`] for each activated library that resolves,
+    /// plus one diagnostic per library that could not be loaded (unshipped name
+    /// or malformed manifest). The libraries are returned in activation order,
+    /// which callers inject ahead of user source so a user declaration shadows
+    /// a library declaration of the same name.
+    pub fn load_activated_libraries(&self) -> (Vec<Library>, Vec<Diagnostic>) {
+        let registry = LibraryRegistry::bundled();
+        let mut libraries = Vec::new();
+        let mut diagnostics = Vec::new();
+        for name in &self.activated_libraries {
+            match registry.load(name) {
+                Ok(loaded) => libraries.push(loaded.library),
+                Err(diagnostic) => diagnostics.push(diagnostic),
+            }
+        }
+        (libraries, diagnostics)
     }
 
     /// Add a source file to the project by file ID
@@ -54,6 +98,22 @@ impl SourceProject {
     pub fn add_source(&mut self, file_id: FileId, content: String) {
         trace!("Adding source file: {}", file_id);
         let source = Source::new(content, &file_id, self.compiler_options);
+        self.sources.insert(file_id, source);
+    }
+
+    /// Add source content whose file type is supplied rather than derived from
+    /// the file ID's extension.
+    ///
+    /// Used for content that never had a filename (the playground editor's
+    /// buffer), where the caller detects the type from the content itself.
+    pub fn add_source_with_file_type(
+        &mut self,
+        file_id: FileId,
+        content: String,
+        file_type: FileType,
+    ) {
+        trace!("Adding source file: {} as {:?}", file_id, file_type);
+        let source = Source::with_file_type(content, &file_id, self.compiler_options, file_type);
         self.sources.insert(file_id, source);
     }
 
@@ -84,6 +144,7 @@ impl SourceProject {
     /// supported files when no specific project is detected.
     pub fn initialize_from_directory(&mut self, dir: &Path) -> Vec<Diagnostic> {
         self.sources.clear();
+        self.activated_libraries.clear();
         self.discover_and_add(dir)
     }
 
@@ -98,6 +159,7 @@ impl SourceProject {
     /// loading.
     pub fn initialize_from_directories(&mut self, dirs: &[&Path]) -> Vec<Diagnostic> {
         self.sources.clear();
+        self.activated_libraries.clear();
         let mut errors = vec![];
         for dir in dirs {
             errors.extend(self.discover_and_add(dir));
@@ -123,6 +185,23 @@ impl SourceProject {
         );
 
         let mut errors = vec![];
+
+        // Auto-activate the compatibility libraries the project declares it
+        // references (`REQ-CL-sources-001`). Resolution is by strict name match
+        // against the bundled registry; a referenced-but-unshipped library
+        // contributes a diagnostic naming it (`REQ-CL-sources-004`) but does not
+        // abort discovery. Activation is out of band -- the source text is never
+        // touched.
+        let (activated, reference_diagnostics) =
+            LibraryRegistry::bundled().resolve_references(&discovered.library_references);
+        for name in activated {
+            if !self.activated_libraries.contains(&name) {
+                debug!("Auto-activating referenced library: {name}");
+                self.activated_libraries.push(name);
+            }
+        }
+        errors.extend(reference_diagnostics);
+
         for file_path in &discovered.files {
             let file_id = FileId::from_path(file_path);
             if let Err(err) = self.add_file(file_id) {
@@ -174,6 +253,48 @@ mod tests {
         assert_eq!(project.len(), 1);
         assert!(!project.is_empty());
         assert!(project.get_source(&file_id).is_some());
+    }
+
+    /// The playground's case: a buffer with no filename, so the extension
+    /// cannot say what it is. Detection is the caller's, and the supplied type
+    /// -- not the file ID -- decides which parser runs.
+    #[test]
+    fn add_source_with_file_type_when_xml_content_and_no_extension_then_parses_as_xml() {
+        let content = r#"<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="main" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="x"><type><INT/></type></variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">x := 1;</xhtml>
+          </ST>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>"#;
+        let file_id = FileId::default();
+
+        let mut project = SourceProject::new();
+        project.add_source_with_file_type(
+            file_id.clone(),
+            content.to_string(),
+            FileType::from_content(content),
+        );
+
+        let source = project.get_source_mut(&file_id).unwrap();
+        assert_eq!(source.file_type(), FileType::Xml);
+        assert!(
+            source.library().is_ok(),
+            "the XML parser should have run despite the file ID having no extension"
+        );
     }
 
     #[test]
@@ -329,7 +450,6 @@ mod tests {
 
     // -----------------------------------------------------------------
     // Multi-directory initialization.
-    // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
     // -----------------------------------------------------------------
 
     #[test]

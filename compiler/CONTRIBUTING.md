@@ -11,6 +11,7 @@ The compiler follows specific architectural patterns and coding standards define
 * [Problem Code Management](../specs/steering/problem-code-management.md) - Error handling patterns and diagnostic creation
 * [IEC 61131-3 Compliance](../specs/steering/iec-61131-3-compliance.md) - Standard compliance validation and type system rules
 * [Syntax Support Guide](../specs/steering/syntax-support-guide.md) - Checklist for adding new syntax (relevant for parser, codegen, and plc2plc work)
+* [Compatibility Library Authoring](../specs/steering/compatibility-library-authoring.md) - Licensing risk tiers, allowed/forbidden inputs, and the clean-room provenance record required when adding a bundled compatibility library under `sources/resources/libs/`
 
 These steering files provide detailed implementation guidance that complements the development workflow described below.
 

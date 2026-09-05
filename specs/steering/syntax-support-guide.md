@@ -1,6 +1,6 @@
 # Syntax Support Guide
 
-This guide describes everything needed to add support for new syntax in the IronPLC compiler. Follow this guide when adding new language features, vendor extensions, or fixing syntax-related issues.
+This guide describes everything needed to add support for new syntax in the IronPLC compiler. Follow this guide when adding new language features, extensions, or fixing syntax-related issues.
 
 > **Note**: This covers the full pipeline from lexer through execution. For general compiler architecture, see [compiler-architecture.md](compiler-architecture.md). For IEC 61131-3 compliance rules, see [iec-61131-3-compliance.md](iec-61131-3-compliance.md).
 
@@ -15,13 +15,54 @@ When adding new syntax, ensure every applicable item is complete:
 - [ ] **Analyzer**: Add semantic validation in `analyzer/`
 - [ ] **Codegen**: Add bytecode emission in `codegen/`
 - [ ] **plc2plc renderer**: Update `plc2plc/src/renderer.rs` to render the new syntax
-- [ ] **plc2plc round-trip test**: Parse → render → compare against expected output (in a focused file under `plc2plc/src/tests/` — see [Test File Organization](#test-file-organization-avoid-merge-conflicts))
+- [ ] **plc2plc round-trip test**: Parse → render → **re-parse** (in a focused file under `plc2plc/src/tests/` — see [Test File Organization](#test-file-organization-avoid-merge-conflicts) and [plc2plc round-trip tests](#plc2plc-round-trip-tests-always-re-parse))
 - [ ] **End-to-end execution test**: Parse → compile → run → verify variable values
+- [ ] **Whitespace invariance**: Every `_` a new grammar rule introduces earns a row in `parser/src/tests/whitespace.rs`, so a rule that later loses its `_` fails there (see [Which leg asserts what](#which-leg-asserts-what-avoid-duplicate-tests))
 - [ ] **Non-standard gating**: If not standard IEC 61131-3, gate behind `--allow-x` flag
 - [ ] **LSP integration**: If a new `--allow-x` flag, add to LSP `extract_compiler_options`
 - [ ] **Documentation**: If a new `--allow-x` flag, update `docs/explanation/enabling-dialects-and-features.rst`, `docs/reference/compiler/ironplcc.rst`, and the flag table in this file
 
 Not every syntax change requires all items. A new operator might not need new tokens. A token-level fix might not need codegen changes. Use judgment, but **always** include both round-trip and execution tests when the syntax produces executable code.
+
+Each test leg must assert something the others do not — a parser test that only
+checks "it parses" is subsumed by the round-trip test on the same snippet. See
+[Which leg asserts what](#which-leg-asserts-what-avoid-duplicate-tests).
+
+## plc2plc round-trip tests: always re-parse
+
+Rendering is only half the job — what the renderer emits has to be text the
+parser accepts. A test that only compares the rendering against a golden
+`*_rendered.st` file cannot tell correct output from output the parser
+rejects: it records the broken spelling as "expected".
+
+So every renderer test **re-parses what it rendered**. A plc2plc test is one
+of two shapes, both provided by `plc2plc/src/tests/common.rs`:
+
+1. **Round trip** — `assert_round_trips(source, &options)`: parse → render →
+   re-parse, requiring the same AST. This is the default; reach for it first.
+2. **Round trip pinned to a golden file** — `assert_resource_renders_to(
+   source_name, rendered_name, &options)`: the same round trip, plus an
+   equality check of the rendered text against the committed
+   `*_rendered.st`. Use it when the exact layout is worth freezing.
+
+Both return the rendered text. Add `assert!(rendered.contains(...))` on top
+only for what AST equality cannot see — identifier casing (`Id` compares
+case-insensitively) or a spelling the AST does not record, such as
+`STRING [ 255 ]` where the DSL keeps no bracket/paren marker. A `contains`
+that merely restates something the re-parse already proves is redundant;
+drop it. Never assert only `contains`.
+
+When the rendering deliberately normalizes to a *different* AST spelling — a
+bit-string literal that decimalizes, a mixed `VAR` block that renders one
+block per declaration — use `assert_round_trips_idempotently` and say why at
+the call site. It still re-parses; it asserts a second render reproduces
+identical text instead of AST equality.
+
+A rendering is re-parsed under the **same** options as its source. A
+rendering that needs a laxer dialect than its source did is a renderer bug.
+Where a normalization makes the output *stricter*-grammar-valid (`STRING(255)`
+→ `STRING [ 255 ]`, `.%X0` → `.0`), add an explicit second parse under
+`CompilerOptions::default()` to pin that.
 
 ## Test File Organization (avoid merge conflicts)
 
@@ -45,6 +86,32 @@ one: appending puts every branch's new tests on the same trailing lines,
 which is exactly what causes the recurring conflicts. Only add to an
 existing file when the new tests genuinely extend that same narrow feature.
 
+### Which leg asserts what (avoid duplicate tests)
+
+A feature gets tests in several crates, and each leg must assert something
+the others do not. A round-trip test already parses the source with the same
+options, so a parser test that only asserts `is_ok()` on that same snippet
+adds no signal — it is subsumed. Keep the legs distinct:
+
+| Leg | Asserts | Do **not** write |
+|---|---|---|
+| **Parser** (`parser/src/tests/`) | The AST *shape*: the node variant, its fields, counts, nesting | A bare "it parses" on a snippet a plc2plc round-trip already covers |
+| **plc2plc** (`plc2plc/src/tests/`) | Text → AST → text → AST fidelity: the rendering re-parses to the same AST, optionally pinned against a golden file | A render assertion that never re-parses the rendering |
+| **Analyzer** (`analyzer/src/rule_*.rs`) | The semantic outcome (accepted, or a specific problem code) | Anything about parse success or failure |
+| **codegen `compile_*`** | The emitted instruction sequence / container structure | Run results |
+| **codegen `end_to_end_*`** | Run results — the nominal behavior matrix reachable from ST | — |
+| **VM** (`vm/tests/it/`) | Traps, overflow/wrap edges, and states codegen cannot emit | A nominal case its codegen twin already runs |
+| **Whitespace** (`parser/src/tests/whitespace.rs`) | That the gaps the grammar permits stay permitted, and that adjacencies inside one lexical unit stay rejected | A row duplicating a rejection another file already owns — `REF=` belongs to `parser/src/tests/reference_to.rs` |
+
+Parser tests asserting only `is_ok()` are still right when there is **no**
+round-trip counterpart — a dialect-flag rejection, a pragma, or a corpus file
+plc2plc does not render. The rule is about the same snippet being asserted
+twice at the same strength, not about `is_ok()` itself.
+
+When a VM test and a codegen end-to-end test would cover the same behavior,
+the codegen test owns it and the VM file says so in its module header (see
+`vm/tests/it/execute_fb_ton.rs` or `execute_string_ops.rs` for the wording).
+
 ## Lexer and Token Patterns
 
 The lexer lives in `parser/src/lexer.rs` and uses the `logos` crate. Token types are defined in `parser/src/token.rs` with ~200+ variants.
@@ -67,29 +134,39 @@ Keywords are case-insensitive (`ignore(case)`). Identifiers have lower priority 
 
 ### Token Demotion Pattern
 
-**When to use**: When a keyword is only valid under certain conditions (e.g., Edition 3 mode, or a vendor extension flag) and programs may use that keyword as an identifier otherwise.
+**When to use**: When a keyword is only valid under certain conditions (e.g., Edition 3 mode, or an extension flag) and programs may use that keyword as an identifier otherwise.
 
-**How it works**: Define the token as a specific type in the lexer, then "demote" it to `TokenType::Identifier` in a transform pass when the feature is disabled.
+**How it works**: Define the token as a specific type in the lexer, then "demote" it to `TokenType::Identifier` when the feature is disabled. All flag-gated demotions live in **one** module, `parser/src/xform_demote_keywords.rs`, which is the single place that defines *which keyword demotes under which flag*.
 
-**Reference implementation**: `parser/src/xform_demote_edition3_keywords.rs`
+**Reference implementation**: `parser/src/xform_demote_keywords.rs`
+
+To add a demotion, precompute the gate once and add a `match` arm to `apply`:
 
 ```rust
 pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
-    let demote_time_types = !options.allow_iec_61131_3_2013;
-    let demote_ref = !options.allow_iec_61131_3_2013 && !options.allow_ref_to;
+    // Precompute each gate once. Demotion happens when the gate is `true`.
+    let demote_time_types = !options.allow_long_time_types;
+    let demote_ref = !options.allow_ref_to;
+    let demote_oop = !options.allow_fb_inheritance;
+    // ...one gate per feature...
 
     for tok in tokens.iter_mut() {
-        match tok.token_type {
-            TokenType::Ltime | TokenType::Ldate | TokenType::Ltod | TokenType::Ldt
-                if demote_time_types => {
-                tok.token_type = TokenType::Identifier;
+        let demote = match tok.token_type {
+            TokenType::Ltime | TokenType::Ldate | TokenType::Ltod | TokenType::Ldt => {
+                demote_time_types
             }
-            TokenType::RefTo | TokenType::Ref | TokenType::Null if demote_ref => {
-                tok.token_type = TokenType::Identifier;
-            }
-            _ => {}
+            TokenType::RefTo | TokenType::Ref | TokenType::Null => demote_ref,
+            TokenType::Extends | TokenType::Implements | TokenType::Interface
+                | TokenType::EndInterface | TokenType::Abstract => demote_oop,
+            // ...one arm per keyword group...
+            _ => false,
+        };
+        if demote {
+            tok.token_type = TokenType::Identifier;
         }
     }
+
+    apply_time(tokens, options); // context-sensitive cases stay separate
 }
 ```
 
@@ -97,7 +174,8 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
 - The transform runs between lexing and parsing
 - When the feature is enabled, tokens keep their specific type and the parser can match on them
 - When disabled, tokens become identifiers, so programs can use those names freely
-- Each demotion transform is its own `xform_*.rs` module in `parser/src/`
+- Adding a keyword is normally **one `match` arm plus one gate** in `xform_demote_keywords.rs` — no new module and no `lib.rs` registration
+- A **context-sensitive** demotion (one that depends on neighbouring tokens, like `TIME`) stays its own private function in that module (see `apply_time`), called from `apply`
 
 ### Validation Rule Pattern
 
@@ -142,7 +220,7 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 | New keyword that could conflict with existing identifiers | Token demotion |
 | Syntax that is always distinct from standard syntax | Validation rule |
 | Feature controlled by `--dialect` (edition selection) | Token demotion |
-| Feature controlled by `--allow-x` vendor flag | Either, depending on conflict risk |
+| Feature controlled by `--allow-x` flag | Either, depending on conflict risk |
 
 ### Token Insertion Pattern
 
@@ -165,54 +243,39 @@ pub fn insert_keyword_statement_terminators(
 
 ## Non-Standard Syntax Gating (`--allow-x` Flags)
 
-**Rule**: Anything not in the IEC 61131-3 standard **must** be gated behind an `--allow-x` flag. Using `--dialect=rusty` enables all vendor extensions.
+**Rule**: Anything not in IEC 61131-3 Edition 2 **must** be gated behind an `--allow-x` flag. That includes Edition 3 syntax, which is gated the same way.
 
 ### Before Creating a New Flag
 
 **Always check existing flags first**. Group related extensions under one flag when they represent the same vendor behavior.
 
-Current flags in `CompilerOptions` (`parser/src/options.rs`). The authoritative
-list is the `define_compiler_options!` macro invocation (exposed at runtime via
-`CompilerOptions::FEATURE_DESCRIPTORS` and the `ironplcc dialects` command); this
-table is a convenience mirror, so consult the macro if the two ever disagree.
+The full list of existing flags is intentionally **not** duplicated here — a
+mirrored table drifts out of date. Consult these instead:
 
-| Flag | CLI | Purpose |
-|------|-----|---------|
-| `allow_iec_61131_3_2013` | Set by `--dialect` | Enables Edition 3 keywords (set by `iec61131-3-ed3` dialect) |
-| `allow_c_style_comments` | `--allow-c-style-comments` | Permits `//` and `/* */` comments |
-| `allow_missing_semicolon` | `--allow-missing-semicolon` | Inserts semicolons after END_IF etc. |
-| `allow_top_level_var_global` | `--allow-top-level-var-global` | VAR_GLOBAL outside CONFIGURATION |
-| `allow_constant_type_params` | `--allow-constant-type-params` | Constants in type params (e.g., `STRING[MY_CONST]`) |
-| `allow_empty_var_blocks` | `--allow-empty-var-blocks` | Empty variable blocks (VAR END_VAR etc.) |
-| `allow_time_as_function_name` | `--allow-time-as-function-name` | TIME as function name (OSCAT compat) |
-| `allow_ref_to` | `--allow-ref-to` | REF_TO/REF/NULL syntax without full Edition 3 |
-| `allow_reference_to` | `--allow-reference-to` | TwinCAT/CODESYS `REFERENCE TO` reference types and the `REF=` binding operator (alternative to `--allow-ref-to`; enabled by the `twincat` and `codesys` dialects) |
-| `allow_ref_arithmetic` | `--allow-ref-arithmetic` | Arithmetic (`+`, `-`) and ordering comparisons on REF_TO types |
-| `allow_ref_stack_variables` | `--allow-ref-stack-variables` | REF() on stack-allocated vars (VAR_TEMP, function VAR_INPUT/VAR_OUTPUT) |
-| `allow_ref_type_punning` | `--allow-ref-type-punning` | Assigning between REF_TO types of different base types |
-| `allow_int_to_bool_initializer` | `--allow-int-to-bool-initializer` | Integer literals `0`/`1` as BOOL initializers |
-| `allow_sizeof` | `--allow-sizeof` | SIZEOF() operator (returns size in bytes) |
-| `allow_system_uptime_global` | `--allow-system-uptime-global` | Exposes `__SYSTEM_UP_TIME`/`__SYSTEM_UP_LTIME` implicit globals |
-| `allow_cross_family_widening` | `--allow-cross-family-widening` | Implicit widening between bit-string and integer families |
-| `allow_partial_access_syntax` | `--allow-partial-access-syntax` | IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) |
-| `allow_pragmas` | `--allow-pragmas` | Curly-brace pragmas (`{attribute 'qualified_only'}`) parsed and discarded like a comment |
-| `allow_short_circuit_operators` | `--allow-short-circuit-operators` | AND_THEN short-circuit boolean operator (Beckhoff/CODESYS) |
-| `allow_mixed_located_var_declarations` | `--allow-mixed-located-var-declarations` | `AT`-located variable (e.g. `AT %I*`) mixed with plain variables in one `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block |
-| `allow_constant_initializer_expressions` | `--allow-constant-initializer-expressions` | Constant expressions (not just bare literals) in `VAR` initializers, e.g. `SCALE*4.0` |
-| `allow_bit_string_case_labels` | `--allow-bit-string-case-labels` | Hex/binary/octal bit-string literals (`16#D012`, `2#1010`) as `CASE` labels (TwinCAT/CODESYS) |
-| `allow_paren_string_length` | `--allow-paren-string-length` | `STRING(n)`/`WSTRING(n)` parenthesis length delimiter in addition to the standard `STRING[n]` brackets (gated by P4042; matched delimiters required) |
+- **Authoritative (code):** the `define_compiler_options!` macro invocation in
+  `compiler/parser/src/options.rs`, exposed at runtime via
+  `CompilerOptions::FEATURE_DESCRIPTORS` and the `ironplcc dialects` command.
+- **Reader-friendly (docs):**
+  [`docs/reference/compiler/ironplcc.rst`](../../docs/reference/compiler/ironplcc.rst)
+  documents every `--allow-*` flag with a description, and
+  [`docs/explanation/enabling-dialects-and-features.rst`](../../docs/explanation/enabling-dialects-and-features.rst)
+  explains which dialects enable each flag.
+
+Scan those before adding a flag to confirm an existing one doesn't already cover
+your syntax.
 
 ### Dialects
 
 Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags can override on top.
 
-| Dialect | `--dialect` value | Edition 3 types | REF_TO | Vendor extensions |
-|---------|-------------------|----------------|--------|-------------------|
-| IEC 61131-3 Ed 2 (default) | `iec61131-3-ed2` | OFF | OFF | all OFF |
-| IEC 61131-3 Ed 3 | `iec61131-3-ed3` | ON | ON | all OFF |
-| RuSTy | `rusty` | OFF | ON | all ON |
-| CODESYS | `codesys` | OFF | ON | all ON except `allow_system_uptime_global` |
-| TwinCAT | `twincat` | OFF | OFF | CODESYS set minus the whole `REF_TO` family (`allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`, `allow_ref_type_punning`), plus `allow_reference_to` — TwinCAT uses `REFERENCE TO` (parsed) / `POINTER TO` (not yet parsed) |
+The dialects are `iec61131-3-ed2` (the default), `iec61131-3-ed3`, `rusty`,
+`codesys` and `twincat`.
+
+Which flags each one enables is **not** listed here, for the same reason the
+flags themselves are not: a mirrored table drifts. Run `ironplcc dialects`, or
+read the per-dialect `**Enables:**` lists in
+[`docs/explanation/enabling-dialects-and-features.rst`](../../docs/explanation/enabling-dialects-and-features.rst),
+which a build-time check keeps in step with `options.rs`.
 
 ### Grouping Guidance
 
@@ -220,6 +283,35 @@ Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags 
 - If the extension is common across multiple vendors and represents the same concept, group under one flag
 - If the extension is unique to a specific vendor behavior, create a new flag
 - Keep flag names descriptive: `allow_<what_it_allows>`
+
+#### Naming: be specific, avoid umbrella terms
+
+Flag names must describe the **specific syntax** they enable, not a broad
+category. Vague umbrella words — `extensions`, `features`, `oop`, `advanced`,
+`extra`, `misc` — are ambiguous the moment a second, unrelated extension in the
+same category is added: `allow_oop_extensions` gives no hint whether it covers
+`EXTENDS`, `METHOD`/`PROPERTY`, `THIS^`/`SUPER^`, or interface dispatch, and a
+future OOP flag would have no room left to name itself distinctly.
+
+Prefer names that spell out the construct(s) gated:
+
+| Avoid (ambiguous) | Prefer (specific) |
+|-------------------|-------------------|
+| `allow_oop_extensions` | `allow_fb_inheritance` (`EXTENDS`/`IMPLEMENTS`/`INTERFACE`/`ABSTRACT` shape) |
+| `allow_pointer_features` | `allow_ref_to`, `allow_ref_arithmetic`, … (one flag per construct) |
+| `allow_string_extras` | `allow_paren_string_length` |
+
+When one flag genuinely gates several related constructs, name it after the
+concept they share (e.g. the `REF_TO` family), not after the vendor or the word
+"extension". If you cannot name the flag without a generic umbrella term, that
+usually means it should be split into more than one flag.
+
+The same applies to the flag's **description** and doc comments: describe the
+*syntax* it gates, not the vendor it came from. A construct is rarely exclusive
+to one tool — the same OOP or reference syntax often appears across several —
+so "OOP function-block declaration syntax" ages better than "TwinCAT/CODESYS OOP
+extensions". Let the [Dialects](#dialects) table express which dialects turn the
+flag on; that is where the vendor mapping belongs.
 
 ### Adding a New Flag
 
@@ -241,7 +333,7 @@ Add the clap argument:
 
 ```rust
 /// Allow [description of what this enables].
-/// This is a vendor extension not part of the IEC 61131-3 standard.
+/// This is an extension not part of the IEC 61131-3 standard.
 #[arg(long)]
 allow_my_extension: bool,
 ```
@@ -257,7 +349,7 @@ fn compiler_options(&self) -> CompilerOptions {
 }
 ```
 
-**Also add the flag to relevant dialect presets** in `CompilerOptions::from_dialect()` (in `parser/src/options.rs`). If the extension should be on for the RuSTy dialect, add it to the `Dialect::Rusty` arm.
+**Also add the flag to the relevant dialects** by listing them in the flag's own entry in `define_compiler_options!` (in `parser/src/options.rs`), e.g. `[Codesys, TwinCat]`. `from_dialect()` is generated from those tags — there are no per-dialect arms to edit.
 
 #### 3. LSP extraction (`plc2x/src/lsp.rs`)
 
@@ -280,7 +372,7 @@ Use either the token demotion pattern, validation rule pattern, or analyzer-leve
 #### 6. Documentation
 
 Update these files to document the new flag:
-- `docs/explanation/enabling-dialects-and-features.rst` — add to the Vendor Extensions section
+- `docs/explanation/enabling-dialects-and-features.rst` — add to the Language Extensions section
 - `docs/reference/compiler/ironplcc.rst` — add to the Options section
 - Update the flag table in this file (syntax-support-guide.md)
 
@@ -337,7 +429,7 @@ fn parse_and_render_with_options(name: &'static str, options: CompilerOptions) -
 }
 
 #[test]
-fn write_to_string_my_vendor_extension() {
+fn write_to_string_my_dialect_extension() {
     let options = CompilerOptions {
         allow_my_extension: true,
         ..CompilerOptions::default()
@@ -459,7 +551,7 @@ The token processing pipeline in `parser/src/lib.rs` (`tokenize_program` functio
 1. **`preprocess()`** — normalize source text
 2. **`tokenize()`** — lexer produces raw tokens (via `logos`)
 3. **`insert_keyword_statement_terminators()`** — token transform (flag-gated)
-4. **`xform_demote_edition3_keywords::apply()`** — token demotion (edition-gated)
+4. **`xform_demote_keywords::apply()`** — token demotion (edition- and flag-gated)
 5. **`check_tokens()`** — runs validation rules (flag-gated)
 6. **`parse_library()`** — PEG parser consumes tokens, produces AST
 
@@ -481,15 +573,15 @@ fn check_tokens(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<D
 }
 ```
 
-New demotion transforms must be called in `tokenize_program()` **before** `check_tokens()` and **before** `parse_library()`. The order matters: demotion must happen before parsing so the parser sees identifiers, not keywords.
+Keyword demotions are added as a `match` arm in `xform_demote_keywords::apply()` (already wired into `tokenize_program()`), not as new modules. That single pass runs **before** `check_tokens()` and **before** `parse_library()`: demotion must happen before parsing so the parser sees identifiers, not keywords.
 
 ## Common Mistakes
 
-- **Forgetting dialect presets**: Every new `--allow-x` flag must be added to the relevant dialect presets in `CompilerOptions::from_dialect()`. Without this, the RuSTy dialect (or future dialects) silently ignores the new feature.
+- **Forgetting dialect presets**: Every new `--allow-x` flag must list the dialects that enable it in its `define_compiler_options!` entry. Without this, every dialect silently ignores the new feature.
 - **Missing LSP wiring**: The flag works on the CLI but not in VS Code because `extract_compiler_options()` in `plc2x/src/lsp.rs` was not updated. Always add LSP extraction for new flags.
 - **No round-trip test**: The feature parses but the renderer in `plc2plc` cannot write it back. Always add the round-trip test.
 - **No execution test**: The feature parses and analyzes but was never proven to execute correctly. Always add at least one end-to-end test.
-- **Creating a flag for standard syntax**: Only vendor extensions get `--allow-x` flags. Standard IEC 61131-3 syntax is always on (or gated by `--dialect`).
+- **Creating a flag for standard syntax**: Only extensions get `--allow-x` flags. Standard IEC 61131-3 syntax is always on (or gated by `--dialect`).
 - **Stateful lexer changes**: The lexer (`logos`) is stateless. Use token transforms for context-dependent behavior, not lexer rules.
 - **Not registering transforms**: Adding a new `xform_*.rs` module but forgetting to call it from `tokenize_program()` in `parser/src/lib.rs`, or adding a new rule module but forgetting to register it in `check_tokens()`.
 
@@ -497,7 +589,7 @@ New demotion transforms must be called in `tokenize_program()` **before** `check
 
 This walkthrough shows the typical sequence for adding a new syntax feature.
 
-### Example: Adding Support for a Hypothetical Vendor Extension
+### Example: Adding Support for a Hypothetical Language Extension
 
 Suppose a vendor allows `REPEAT ... UNTIL ... END_REPEAT` with an optional `LIMIT` clause (non-standard).
 
@@ -507,7 +599,7 @@ Review `parser/src/options.rs` — does an existing flag cover this? If not, pro
 
 #### Step 2: Add the Flag
 
-1. Add `allow_repeat_limit` to `CompilerOptions` vendor fields in the `define_compiler_options!` macro
+1. Add `allow_repeat_limit` to `CompilerOptions` dialect fields in the `define_compiler_options!` macro
 2. Add `--allow-repeat-limit` to CLI `FileArgs`
 3. Add `|= self.allow_repeat_limit` in `compiler_options()`
 4. Add to relevant dialect presets in `CompilerOptions::from_dialect()`
@@ -522,20 +614,14 @@ If the syntax uses a new keyword like `LIMIT`, add it to `parser/src/token.rs`:
 Limit,
 ```
 
-Then add a demotion transform so that `LIMIT` is treated as an identifier when the flag is off:
+Then add a demotion so that `LIMIT` is treated as an identifier when the flag is off — a gate plus a `match` arm in the existing `xform_demote_keywords::apply`:
 
 ```rust
-// In a new xform_demote_repeat_limit.rs
-pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
-    if options.allow_repeat_limit {
-        return;
-    }
-    for tok in tokens.iter_mut() {
-        if tok.token_type == TokenType::Limit {
-            tok.token_type = TokenType::Identifier;
-        }
-    }
-}
+// In xform_demote_keywords::apply, alongside the other gates:
+let demote_limit = !options.allow_repeat_limit;
+
+// ...and in the match inside the loop:
+TokenType::Limit => demote_limit,
 ```
 
 #### Step 4: Add Parser Rules

@@ -8,8 +8,9 @@
 //! in the correct positions. This allows codegen to treat all function call
 //! arguments uniformly as positional.
 //!
-//! Extensible functions (like MUX) are skipped because they have variable
-//! parameter counts that don't map cleanly to a fixed positional order.
+//! An extensible function (MUX, ADD, AND, ...) accepts inputs beyond its
+//! declared parameters, named by counting on from the last declared one
+//! (`IN3` after `IN2`); those bind in number order after the declared ones.
 
 use std::collections::HashMap;
 
@@ -49,11 +50,6 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
         let Some(signature) = self.function_environment.get(&node.name) else {
             return Function::recurse_fold(node, self);
         };
-
-        // Skip extensible functions (variable parameter counts)
-        if signature.is_extensible {
-            return Function::recurse_fold(node, self);
-        }
 
         // 2. If there are ANY positional arguments, pass through
         let has_positional = node
@@ -125,6 +121,25 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
             }
         }
 
+        // 4b. An extensible function's further inputs continue the numbering
+        //     of its last declared one. Only as many are tried as there are
+        //     names left to place: the parameter list may be unbounded, and
+        //     an input numbered past a gap is undeclared like any other.
+        if signature.is_extensible {
+            let further = signature
+                .input_parameters()
+                .skip(signature.input_parameter_count())
+                .take(named_map.len());
+            for param in further {
+                if let Some(ni) = named_map.remove(&param.name) {
+                    let folded_expr = self.fold_expr(ni.expr)?;
+                    positional_args.push(ParamAssignmentKind::PositionalInput(PositionalInput {
+                        expr: folded_expr,
+                    }));
+                }
+            }
+        }
+
         // 5. Anything left in the map is an undeclared parameter name
         for ni in named_map.into_values() {
             self.errors.push(Diagnostic::problem(
@@ -145,7 +160,9 @@ impl Fold<Diagnostic> for NamedToPositionalResolver<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::function_environment::{FunctionEnvironment, FunctionSignature};
+    use crate::function_environment::{
+        FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
+    };
     use crate::intermediate_type::IntermediateFunctionParameter;
     use crate::test_helpers::parse_and_resolve_types;
     use ironplc_dsl::common::{FunctionReturnType, TypeName};
@@ -300,6 +317,86 @@ END_PROGRAM
             &func.param_assignment[1],
             ParamAssignmentKind::PositionalInput(_)
         ));
+    }
+
+    /// The integer literal each positional argument of `func` is, in order.
+    fn positional_literals(func: &Function) -> Vec<u128> {
+        func.param_assignment
+            .iter()
+            .map(|p| match p {
+                ParamAssignmentKind::PositionalInput(pos) => match &pos.expr.kind {
+                    ExprKind::Const(ironplc_dsl::common::ConstantKind::IntegerLiteral(lit)) => {
+                        lit.value.value.value
+                    }
+                    _ => u128::MAX,
+                },
+                _ => u128::MAX,
+            })
+            .collect()
+    }
+
+    /// An extensible function's inputs beyond the declared ones bind by
+    /// number, so `IN3` takes the third position however it is written.
+    #[test]
+    fn apply_when_named_args_on_extensible_function_then_positional_in_number_order() {
+        let program = "
+PROGRAM main
+VAR
+  x : INT;
+END_VAR
+  x := ADD(IN3 := 3, IN1 := 1, IN2 := 2);
+END_PROGRAM
+";
+        let library = parse_and_resolve_types(program);
+        let env = FunctionEnvironmentBuilder::new()
+            .with_stdlib_functions()
+            .build();
+        let result = apply(library, &env).unwrap();
+
+        let func = find_function_call(&result, "ADD").unwrap();
+        assert_eq!(positional_literals(&func), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn apply_when_named_args_on_mux_then_positional_after_declared() {
+        let program = "
+PROGRAM main
+VAR
+  x : INT;
+END_VAR
+  x := MUX(IN2 := 3, K := 0, IN0 := 1, IN1 := 2);
+END_PROGRAM
+";
+        let library = parse_and_resolve_types(program);
+        let env = FunctionEnvironmentBuilder::new()
+            .with_stdlib_functions()
+            .build();
+        let result = apply(library, &env).unwrap();
+
+        let func = find_function_call(&result, "MUX").unwrap();
+        assert_eq!(positional_literals(&func), vec![0, 1, 2, 3]);
+    }
+
+    /// The numbering is consecutive: `IN5` with no `IN3` and `IN4` is not a
+    /// parameter of the call.
+    #[test]
+    fn apply_when_named_arg_on_extensible_function_skips_a_number_then_error() {
+        let program = "
+PROGRAM main
+VAR
+  x : INT;
+END_VAR
+  x := ADD(IN1 := 1, IN2 := 2, IN5 := 3);
+END_PROGRAM
+";
+        let library = parse_and_resolve_types(program);
+        let env = FunctionEnvironmentBuilder::new()
+            .with_stdlib_functions()
+            .build();
+        let errs = apply(library, &env).unwrap_err();
+        assert!(errs
+            .iter()
+            .any(|d| d.code == Problem::FunctionCallNamedArgUndeclared.code()));
     }
 
     #[test]

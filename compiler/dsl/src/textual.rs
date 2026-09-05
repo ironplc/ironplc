@@ -10,7 +10,7 @@ use std::fmt;
 
 use crate::fold::Fold;
 use crate::visitor::Visitor;
-use dsl_macro_derive::Recurse;
+use dsl_macro_derive::{Located, Recurse};
 
 /// A body of a function bock (one of the possible types).
 ///
@@ -52,6 +52,9 @@ impl From<SymbolicVariableKind> for Variable {
             SymbolicVariableKind::Deref(deref) => {
                 Variable::Symbolic(SymbolicVariableKind::Deref(deref))
             }
+            SymbolicVariableKind::SelfRef(self_ref) => {
+                Variable::Symbolic(SymbolicVariableKind::SelfRef(self_ref))
+            }
         }
     }
 }
@@ -73,6 +76,7 @@ pub enum SymbolicVariableKind {
     BitAccess(BitAccessVariable),
     PartialAccess(PartialAccessVariable),
     Deref(DerefVariable),
+    SelfRef(SelfRefVariable),
 }
 
 impl fmt::Display for SymbolicVariableKind {
@@ -88,6 +92,7 @@ impl fmt::Display for SymbolicVariableKind {
             }
             SymbolicVariableKind::PartialAccess(partial) => f.write_fmt(format_args!("{partial}")),
             SymbolicVariableKind::Deref(deref) => f.write_fmt(format_args!("{deref}")),
+            SymbolicVariableKind::SelfRef(self_ref) => f.write_fmt(format_args!("{self_ref}")),
         }
     }
 }
@@ -101,6 +106,7 @@ impl Located for SymbolicVariableKind {
             SymbolicVariableKind::BitAccess(bit_access) => bit_access.span(),
             SymbolicVariableKind::PartialAccess(partial) => partial.span(),
             SymbolicVariableKind::Deref(deref) => deref.span(),
+            SymbolicVariableKind::SelfRef(self_ref) => self_ref.span(),
         }
     }
 }
@@ -131,8 +137,9 @@ impl Variable {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct NamedVariable {
+    #[located(delegate)]
     pub name: Id,
 }
 
@@ -142,15 +149,10 @@ impl fmt::Display for NamedVariable {
     }
 }
 
-impl Located for NamedVariable {
-    fn span(&self) -> SourceSpan {
-        self.name.span()
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct ArrayVariable {
     /// The variable that is being accessed by subscript (the array).
+    #[located(delegate)]
     pub subscripted_variable: Box<SymbolicVariableKind>,
     /// The ordered set of subscripts. These should be expressions that
     /// evaluate to an index.
@@ -167,12 +169,6 @@ impl fmt::Display for ArrayVariable {
             write!(f, "{subscript}")?;
         }
         write!(f, "]")
-    }
-}
-
-impl Located for ArrayVariable {
-    fn span(&self) -> SourceSpan {
-        self.subscripted_variable.as_ref().span()
     }
 }
 
@@ -283,9 +279,10 @@ impl Located for PartialAccessVariable {
 /// accessed (e.g., `PT^[0]` or `PT^.field`).
 ///
 /// See section B.1.4.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct DerefVariable {
     /// The variable being dereferenced.
+    #[located(delegate)]
     pub variable: Box<SymbolicVariableKind>,
 }
 
@@ -295,16 +292,68 @@ impl fmt::Display for DerefVariable {
     }
 }
 
-impl Located for DerefVariable {
-    fn span(&self) -> SourceSpan {
-        self.variable.span()
+/// Which implicit instance a [`SelfRefVariable`] names.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum SelfRefKind {
+    /// `THIS^` — the function block instance currently executing.
+    This,
+    /// `SUPER^` — the same instance, viewed as its base type.
+    Super,
+}
+
+impl SelfRefKind {
+    /// The source spelling, including the mandatory dereference caret.
+    pub fn spelling(&self) -> &'static str {
+        match self {
+            SelfRefKind::This => "THIS^",
+            SelfRefKind::Super => "SUPER^",
+        }
+    }
+}
+
+/// `THIS^` or `SUPER^` at the head of a variable reference (OOP extension).
+///
+/// This is the head of a symbolic variable rather than an expression
+/// because `THIS^.count := 1;` puts it in assignment-target position,
+/// where the AST is a [`Variable`]. Placing it at the head means the
+/// ordinary element chain — `.field`, `[i]`, `.%X0` — composes with it
+/// for free, in both read and write position.
+///
+/// The dereference caret is part of this node rather than a wrapping
+/// [`DerefVariable`]: `THIS`/`SUPER` have no pointer type to be given,
+/// so an un-dereferenced form would be a node nothing could type, and
+/// folding the caret in makes "the caret is mandatory" structural.
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
+pub struct SelfRefVariable {
+    #[recurse(ignore)]
+    pub kind: SelfRefKind,
+    /// Spans the keyword through the caret.
+    pub position: SourceSpan,
+}
+
+impl fmt::Display for SelfRefVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.kind.spelling())
+    }
+}
+
+impl crate::extension::LanguageExtension for SelfRefVariable {
+    fn extension_name(&self) -> &'static str {
+        match self.kind {
+            SelfRefKind::This => "THIS^ self reference",
+            SelfRefKind::Super => "SUPER^ base reference",
+        }
+    }
+
+    fn extension_span(&self) -> SourceSpan {
+        self.position.clone()
     }
 }
 
 /// Function block invocation.
 ///
 /// See section 3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct FbCall {
     /// Name of the variable that is associated with the function block
     /// call.
@@ -313,10 +362,46 @@ pub struct FbCall {
     pub position: SourceSpan,
 }
 
-impl Located for FbCall {
-    fn span(&self) -> SourceSpan {
-        self.position.clone()
+/// Method invocation, statement position only: `instance.MethodName(args);`
+/// (OOP extension, ADR-0041 Phase 1). Any return value is discarded, same
+/// restriction as `FbCall` for a plain FB invocation. Method calls in
+/// expression position (e.g. `IF fb.IsMoving() THEN`) are a follow-up
+/// slice.
+/// The instance a [`MethodCall`] is invoked on.
+#[derive(Debug, PartialEq, Clone, Recurse)]
+pub enum MethodReceiver {
+    /// A function block instance named by a variable: `instance.M()`.
+    Instance(Id),
+    /// The enclosing instance itself: `THIS^.M()` or `SUPER^.M()`.
+    SelfRef(SelfRefVariable),
+}
+
+impl fmt::Display for MethodReceiver {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MethodReceiver::Instance(name) => f.write_fmt(format_args!("{name}")),
+            MethodReceiver::SelfRef(self_ref) => f.write_fmt(format_args!("{self_ref}")),
+        }
     }
+}
+
+impl Located for MethodReceiver {
+    fn span(&self) -> SourceSpan {
+        match self {
+            MethodReceiver::Instance(name) => name.span(),
+            MethodReceiver::SelfRef(self_ref) => self_ref.span(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
+pub struct MethodCall {
+    /// The function block instance the method is called on.
+    pub receiver: MethodReceiver,
+    /// Name of the method being called.
+    pub method: Id,
+    pub params: Vec<ParamAssignmentKind>,
+    pub position: SourceSpan,
 }
 
 /// A binary expression that produces a Boolean result by comparing operands.
@@ -380,8 +465,9 @@ impl fmt::Display for LateBound {
 ///
 /// The `resolved_type` field is populated by a later analysis pass. During
 /// parsing and initial construction, it is always `None`.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct Expr {
+    #[located(delegate)]
     pub kind: ExprKind,
     #[recurse(ignore)]
     pub resolved_type: Option<TypeName>,
@@ -408,12 +494,6 @@ impl Expr {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.kind)
-    }
-}
-
-impl Located for Expr {
-    fn span(&self) -> SourceSpan {
-        self.kind.span()
     }
 }
 
@@ -612,6 +692,8 @@ pub enum CompareOp {
     /// short-circuit vs. eager evaluation distinction is real and
     /// externally-visible in TwinCAT/CODESYS itself.
     AndThen,
+    /// CODESYS/TwinCAT short-circuit `OR`, the dual of [`CompareOp::AndThen`].
+    OrElse,
     Eq,
     Ne,
     Lt,
@@ -620,21 +702,32 @@ pub enum CompareOp {
     GtEq,
 }
 
-impl fmt::Display for CompareOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let symbol = match self {
+impl CompareOp {
+    /// The operator's source spelling.
+    ///
+    /// This is the single definition of how a `CompareOp` is written: both
+    /// [`fmt::Display`] and the `plc2plc` renderer read it, so an operator
+    /// added to this enum is spelled once.
+    pub fn as_str(&self) -> &'static str {
+        match self {
             CompareOp::Or => "OR",
             CompareOp::Xor => "XOR",
             CompareOp::And => "AND",
             CompareOp::AndThen => "AND_THEN",
+            CompareOp::OrElse => "OR_ELSE",
             CompareOp::Eq => "=",
             CompareOp::Ne => "<>",
             CompareOp::Lt => "<",
             CompareOp::Gt => ">",
             CompareOp::LtEq => "<=",
             CompareOp::GtEq => ">=",
-        };
-        write!(f, "{symbol}")
+        }
+    }
+}
+
+impl fmt::Display for CompareOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -694,6 +787,7 @@ pub enum StmtKind {
     Assignment(Assignment),
     // Function and function block control
     FbCall(FbCall),
+    MethodCall(MethodCall),
     // Selection statements
     If(If),
     Case(Case),
@@ -713,6 +807,7 @@ impl Located for StmtKind {
         match self {
             StmtKind::Assignment(a) => a.span(),
             StmtKind::FbCall(f) => f.span(),
+            StmtKind::MethodCall(m) => m.span(),
             StmtKind::If(i) => i.span(),
             StmtKind::Case(c) => c.span(),
             StmtKind::For(f) => f.span(),
@@ -825,7 +920,7 @@ impl StmtKind {
 /// Assigns a variable as the evaluation of an expression.
 ///
 /// See section 3.3.2.1.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct Assignment {
     pub target: Variable,
     #[recurse(ignore)]
@@ -838,31 +933,21 @@ pub struct Assignment {
     #[recurse(ignore)]
     pub ref_bind: bool,
     pub value: Expr,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for Assignment {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 /// If selection statement.
 ///
 /// See section 3.3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct If {
     pub expr: Expr,
     pub body: Vec<StmtKind>,
     pub else_ifs: Vec<ElseIf>,
     pub else_body: Vec<StmtKind>,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for If {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 #[derive(Debug, PartialEq, Clone, Recurse)]
@@ -874,19 +959,14 @@ pub struct ElseIf {
 /// Case selection statement.
 ///
 /// See section 3.3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct Case {
     /// An expression, the result of which is used to select a particular case.
     pub selector: Expr,
     pub statement_groups: Vec<CaseStatementGroup>,
     pub else_body: Vec<StmtKind>,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for Case {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 /// A group of statements that can be selected within a case.
@@ -907,15 +987,14 @@ pub enum CaseSelectionKind {
     SignedInteger(SignedInteger),
     EnumeratedValue(EnumeratedValue),
     /// A radix-prefixed bit-string literal used as a `CASE` label (e.g.
-    /// `16#D012:`, `2#1010:`). See
-    /// specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+    /// `16#D012:`, `2#1010:`).
     BitStringLiteral(BitStringLiteral),
 }
 
 /// The for loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct For {
     /// The variable that is assigned and contains the value for each loop iteration.
     pub control: Id,
@@ -923,45 +1002,30 @@ pub struct For {
     pub to: Expr,
     pub step: Option<Expr>,
     pub body: Vec<StmtKind>,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for For {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 /// The while loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct While {
     pub condition: Expr,
     pub body: Vec<StmtKind>,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for While {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 /// The repeat loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct Repeat {
     pub until: Expr,
     pub body: Vec<StmtKind>,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for Repeat {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 #[cfg(test)]

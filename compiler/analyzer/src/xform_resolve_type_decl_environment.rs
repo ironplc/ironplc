@@ -102,7 +102,7 @@ impl TypeEnvironment {
                 // not TYPE declarations, so they should never appear in the type environment.
                 // If we reach this branch, it indicates a bug in the compiler.
                 IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. } => {
-                    Err(Diagnostic::internal_error(file!(), line!()))
+                    Err(Diagnostic::internal_error())
                 }
                 // Primitive types are handled by the is_primitive() check above,
                 // so reaching this branch indicates a bug in the compiler
@@ -115,9 +115,7 @@ impl TypeEnvironment {
                 | IntermediateType::Date { .. }
                 | IntermediateType::TimeOfDay { .. }
                 | IntermediateType::DateAndTime { .. }
-                | IntermediateType::String { .. } => {
-                    Err(Diagnostic::internal_error(file!(), line!()))
-                }
+                | IntermediateType::String { .. } => Err(Diagnostic::internal_error()),
             }
         }
     }
@@ -241,13 +239,13 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // Reference types are not resolved through simple declarations
             }
             InitialValueAssignmentKind::LateResolvedType(_type_name) => {
-                return Err(Diagnostic::internal_error(file!(), line!()));
+                return Err(Diagnostic::internal_error());
             }
             InitialValueAssignmentKind::SimpleExpr(_) => {
                 // Constant-expression initializers are a VAR-declaration
-                // vendor extension; they never appear in a TYPE alias's
+                // extension; they never appear in a TYPE alias's
                 // spec_and_init (that grammar path is unchanged).
-                return Err(Diagnostic::internal_error(file!(), line!()));
+                return Err(Diagnostic::internal_error());
             }
         }
 
@@ -364,7 +362,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                     array::IntermediateResult::Type(attrs) => attrs.representation,
                     array::IntermediateResult::Alias(base_type_name) => self
                         .get(&base_type_name)
-                        .ok_or_else(|| Diagnostic::internal_error(file!(), line!()))?
+                        .ok_or_else(|| Diagnostic::internal_error())?
                         .representation
                         .clone(),
                 }
@@ -461,6 +459,31 @@ impl Fold<Diagnostic> for TypeEnvironment {
         );
         self.insert_type(&node.name, attrs)?;
 
+        Ok(node)
+    }
+
+    fn fold_interface_declaration(
+        &mut self,
+        node: InterfaceDeclaration,
+    ) -> Result<InterfaceDeclaration, Diagnostic> {
+        // Register the interface name as a known type so that variables
+        // declared with an interface type (e.g. `pDrv : I_Drivable;`)
+        // resolve instead of failing with "type not declared."
+        //
+        // Modeled as an empty structure: interfaces have no fields in
+        // IronPLC's model today (method/property signatures are not yet
+        // parsed — see specs/design/beckhoff-twincat-dialect.md §1.3).
+        // This is intentionally a placeholder representation, not a claim
+        // that interface field/method access works. Any real use beyond
+        // "declare a variable of this type" is unreachable: the
+        // `InterfaceDeclaration` itself always triggers P9999 via
+        // `rule_unsupported_extension`, which blocks codegen for the whole
+        // project before this representation could matter.
+        let attrs = crate::type_attributes::TypeAttributes::new(
+            node.name.span(),
+            IntermediateType::Structure { fields: vec![] },
+        );
+        self.insert_type(&TypeName::from_id(&node.name), attrs)?;
         Ok(node)
     }
 
@@ -1055,5 +1078,60 @@ END_TYPE
             Problem::ParentTypeNotDeclared.code(),
             error.first().unwrap().code
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // OOP extension: INTERFACE registers as a known type.
+    // See specs/design/beckhoff-twincat-dialect.md §1.3.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn apply_when_interface_declared_then_registers_as_structure_type() {
+        let program = "
+INTERFACE I_Drivable
+END_INTERFACE
+        ";
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let input = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(input, &mut env);
+        assert!(result.is_ok(), "{:?}", result.err());
+
+        let interface_type = env.get(&TypeName::from("I_Drivable")).unwrap();
+        assert!(interface_type.representation.is_structure());
+    }
+
+    #[test]
+    fn apply_when_var_declared_with_interface_type_then_resolves() {
+        // Interface must be declared before use (declarations are sorted
+        // upstream by xform_toposort_declarations, but this module alone
+        // only resolves types in file order, so declare first here).
+        let program = "
+INTERFACE I_Drivable
+END_INTERFACE
+
+FUNCTION_BLOCK FB_Example
+VAR
+    pDrv : I_Drivable;
+END_VAR
+END_FUNCTION_BLOCK
+        ";
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let input = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(input, &mut env);
+        assert!(result.is_ok(), "{:?}", result.err());
     }
 }

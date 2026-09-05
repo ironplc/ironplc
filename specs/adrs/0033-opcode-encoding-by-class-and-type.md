@@ -36,6 +36,8 @@ Family consolidation under sub-opcode dispatch is mandatory, not optional: witho
 
 After the change, ~41 of the 64 op-class slots are used. The remaining 23 are headroom for fused superinstructions (`INC_VAR`, `LOAD_ADD_STORE`, `BR_*_VAR_IMM`) and any future top-level operations. WSTRING-style type extensions cost zero op-class slots: WSTRING becomes `STRING_OP` with `type_tag = 1`.
 
+> **The slot arithmetic in this paragraph and in Consequences is wrong**, and the `STRING_OP` class it names does not exist. The encoding shipped as decided; only its capacity claims were never true. See [Amendment: the slot budget is one, not 23](#amendment-the-slot-budget-is-one-not-23-2026-08-31).
+
 ## Considered Alternatives
 
 ### Keep the flat encoding
@@ -59,7 +61,7 @@ Lifts the 256-byte ceiling entirely. Permanently doubles the bytecode-fetch cost
 **Guaranteed by the encoding alone:**
 
 - Outer-match arm count drops from ~96 to ~41. BTB working set on the dispatch loop's hot indirect branch shrinks proportionally.
-- 23 op-class slots open up for future top-level operations.
+- 23 op-class slots open up for future top-level operations. *(Wrong — one did. See the amendment below.)*
 - Future type-variant extensions (WSTRING, additional integer widths, fixed-point types) cost zero op-class slots.
 
 **Speculative — measured, not asserted:**
@@ -67,18 +69,40 @@ Lifts the 256-byte ceiling entirely. Permanently doubles the bytecode-fetch cost
 - Total `execute()` machine-code size reduction. The `vm-performance.md` §4b table predicts ~18KB → ~6-8KB, which depends on LLVM deduplicating per-arm prologue/epilogue code. Whether that deduplication actually happens is a question for the disassembler.
 - Wall-clock improvement on real workloads. Comes from BTB and possibly L1i; relative contribution is platform-specific.
 
-The implementation plan (`specs/plans/2026-04-28-opcode-encoding-reorganization.md`) requires baseline measurement before changes and post-change re-measurement to validate the size prediction. If the size reduction is small (<20%), the BTB win and structural headroom still justify the change but the L1i story is muted; we should not assume further BTB-only optimizations will compound usefully.
+Validating the size prediction requires baseline measurement before the change and re-measurement afterwards. If the size reduction is small (<20%), the BTB win and structural headroom still justify the change but the L1i story is muted; we should not assume further BTB-only optimizations will compound usefully.
 
 **Costs:**
 
 - `DIV` / `MOD` / `LT` / `LE` / `GT` / `GE` split into signed/unsigned op-class pairs because they need 6 type variants and only 4 fit per class. Adds 6 op-class slots to the count, but the split is semantically clean (signed and unsigned int division genuinely use different CPU instructions).
 - `STRING_OP`, `FB_OP`, `ARRAY_OP`, `BOOL_OP`, `STACK_OP` family consolidations add an inner sub-opcode dispatch. These op classes are not on any FOR-loop hot path; the string family is the only one that's hot in string-heavy programs, and string handlers are already large enough that the sub-opcode dispatch is a small relative cost.
 - Bytecode format break. The user has explicitly waived backwards compatibility for this work.
-- Test migration: ~445 raw-hex bytecode literals across ~30 VM test files need conversion to use named constants. The plan defers this work behind a cargo feature gate (`legacy_bytecode_tests`) until after the post-change measurement validates the encoding is worth keeping.
+- Test migration: ~445 raw-hex bytecode literals across ~30 VM test files need conversion to use named constants. This migration is deferred behind a cargo feature gate (`legacy_bytecode_tests`) until the post-change measurement validates the encoding is worth keeping.
+
+## Amendment: the slot budget is one, not 23 (2026-08-31)
+
+The 23-slot figure assumed five family consolidations. Two happened:
+
+| Family | This ADR requires | Shipped |
+|---|---|---|
+| `BOOL_OP` | one class | folded — `OP_CLASS_BOOL_OP` 0x1E, tags 0-3 |
+| `STACK_OP` | one class | folded — `OP_CLASS_STACK_OP` 0x24, tags 0-2 |
+| `FB_OP` | one class | four classes — `FB_LOAD_INSTANCE`, `FB_STORE_PARAM`, `FB_LOAD_PARAM`, `FB_CALL` |
+| `STRING_OP` | one class | fifteen classes — `STR_*`, `LEN_STR`, `FIND_STR`, and the rest of 0x2E-0x3C |
+| `ARRAY_OP` | one class | no such family; four classes at 0x2A-0x2D |
+
+So the count landed near the cap exactly as the "mandatory, not optional" paragraph predicts it would *without* consolidation. The census today: 63 op classes assigned, highest 0x3E, one slot free. `CMP_BR` — one of the fusions the headroom was meant for — took 0x3D.
+
+The WSTRING claim describes a mechanism that never existed: there is no `STRING_OP` class to carry a `type_tag = 1`. The outcome was fine anyway, because ADR-0034 solved WSTRING differently, with one `STR_*` family carrying `char_width` in the operand stream. `specs/design/bytecode-instruction-set.md` has agreed with the code all along ("63 of 64 op-class slots in use").
+
+Two things changed as a result of this correction:
+
+1. **The cap is now asserted.** `encode_opcode` panics above `MAX_OP_CLASS` (0x3F); since every opcode constant is derived through it in a const context, a 65th op class is a compile error rather than a silent wrap onto class 0's bytes. `encoding_when_op_class_census_taken_then_one_slot_free` in `codegen/tests/it/wire_format.rs` pins the census, so spending 0x3F is a deliberate, reviewed change.
+2. **The consolidation question is still open.** With one slot left, the next top-level operation forces it. Folding the string family as this ADR intended it — all fifteen ops at 0x2E-0x3C behind one class — would return fourteen slots; folding just the six `STR_*` ops would return five, and folding `FB_*` would return three. This amendment does not decide which, only records that the decision was deferred rather than made.
+
+The decision this ADR records — class-and-type encoding, two-level dispatch, `FORMAT_VERSION` 2 — is unaffected. Only its capacity arithmetic was wrong.
 
 ## References
 
-- Plan: `specs/plans/2026-04-28-opcode-encoding-reorganization.md`
 - Design: `specs/design/vm-performance.md` §4b "Opcode Consolidation to Reduce Instruction Cache Pressure" (Option A is what this ADR adopts).
 - Measurement instrument: `compiler/benchmarks/tests/profile_for_loop.rs`.
 - ADR-0006 (verification requirement) — not implemented here, but the encoding's structural validity check (valid op-class, zero type bits on untyped ops, valid sub-opcode for family ops) is a partial form of what the verifier will eventually do.

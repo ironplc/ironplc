@@ -53,7 +53,7 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/partial_vscode_extension.yaml
     with:
-      commit-ref: ${{ needs.release.outputs.commit-tag }}
+      source-revision: ${{ needs.release.outputs.commit-tag }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
       artifact-name: ironplc-vscode-extension.vsix
       marketplace-artifact-name: ironplc-vscode-extension-marketplace.vsix
@@ -64,7 +64,7 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/partial_compiler.yaml
     with:
-      commit-ref: ${{ needs.release.outputs.commit-tag }}
+      source-revision: ${{ needs.release.outputs.commit-tag }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
       version: ${{ needs.release.outputs.version }}
 
@@ -73,7 +73,7 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/partial_playground.yaml
     with:
-      commit-ref: ${{ needs.release.outputs.commit-tag }}
+      source-revision: ${{ needs.release.outputs.commit-tag }}
 
   upload-release-artifacts:
     name: Upload Release Artifacts
@@ -100,8 +100,15 @@ jobs:
       extension-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
       compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override  }}
       ironplcc-installer-x86_64-windows-filename: "ironplcc-x86_64-windows.exe"
-      ironplc-vscode-extension-filename: "ironplc-vscode-extension.vsix"
-      ironplc-vscode-extension-name: "garretfick.ironplc"
+      # Smoke test the Visual Studio Marketplace build: it is the channel most
+      # users install from, and its extension ID (ironplc.ironplc-vscode)
+      # differs from the Open VSX build's, so it is the one worth exercising
+      # end to end. The two VSIXs are otherwise identical -- only `name` and
+      # `displayName` differ. The name below must match the VSIX's real
+      # extension ID because the test sideloads it into
+      # .vscode/extensions/<id>-<version> and writes a matching extensions.json.
+      ironplc-vscode-extension-filename: "ironplc-vscode-extension-marketplace.vsix"
+      ironplc-vscode-extension-name: "ironplc.ironplc-vscode"
 
   install-script-smoke-test:
     name: Install Script Smoke Test
@@ -127,6 +134,17 @@ jobs:
       compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
       model: "qwen2.5:1.5b"
 
+  library-e2e-test:
+    name: Library Installer E2E Test
+    # Install the just-published compiler with the real OS installers (tarball,
+    # NSIS, Homebrew formula) and verify the bundled compatibility libraries
+    # ship beside the binaries and resolve at compile/run time.
+    needs: [release, upload-release-artifacts]
+    uses: ./.github/workflows/partial_library_e2e.yaml
+    if: ${{ !inputs.dryrun || inputs.dryrun-test-version-override }}
+    with:
+      compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
+
   playground-e2e-test:
     name: Playground E2E Test
     # Run browser-based E2E tests against the built playground before publishing.
@@ -140,14 +158,14 @@ jobs:
     # if those are failing so we depend on those. In particular,
     # install-script-smoke-test must pass before we publish the
     # docs site, because the site serves install.sh.
-    needs: [release, smoke-test, install-script-smoke-test, opencode-e2e-test, playground-e2e-test]
+    needs: [release, smoke-test, install-script-smoke-test, opencode-e2e-test, library-e2e-test, playground-e2e-test]
     # peaceiris/actions-gh-pages pushes the gh-pages branch via GITHUB_TOKEN.
     permissions:
       contents: write
     uses: ./.github/workflows/partial_website.yaml
     with:
       publish: ${{ !inputs.dryrun }}
-      commit-ref: ${{ needs.release.outputs.commit-tag }}
+      source-revision: ${{ needs.release.outputs.commit-tag }}
 
   publish-release:
     name: Publish Release
@@ -172,10 +190,20 @@ jobs:
       - name: Checkout HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         if: ${{ !needs.release.outputs.commit-tag }}
+      # The Open VSX build (extension ID ironplc.ironplc).
       - name: Download VSIX Build Artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: ironplc-vscode-extension.vsix
+          path: ./integrations/vscode
+      # The Visual Studio Marketplace build (extension ID
+      # ironplc.ironplc-vscode). The two registries are independent namespaces
+      # and each VSIX carries its own extension ID, so each registry is
+      # published from its own artifact.
+      - name: Download Marketplace VSIX Build Artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: ironplc-vscode-extension-marketplace.vsix
           path: ./integrations/vscode
       
       # Configure the execution environment
@@ -185,17 +213,14 @@ jobs:
       # Execute build recipes
       - name: Install dependencies
         run: just setup
-      # TODO: Restore once the ironplc publisher and ironplc.ironplc
-      # extension are reinstated on the Visual Studio Marketplace.
-      # The publisher was blocked and the extension removed by Microsoft;
-      # publish attempts return RequestBlockedException (VSID/Concurrency)
-      # until the listing is restored. Users install via the GitHub
-      # release VSIX in the meantime (see docs/quickstart/installation.rst).
-      # - name: Publish VS Code Extension to Marketplace
-      #   if: ${{ !inputs.dryrun }}
-      #   run: just publish ironplc-vscode-extension.vsix
-      #   env:
-      #     VSCE_PAT: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+      # Publishes the Marketplace-specific VSIX (extension ID
+      # ironplc.ironplc-vscode), not the Open VSX one: the original
+      # ironplc.ironplc ID is retired on the Marketplace and cannot be reused.
+      - name: Publish VS Code Extension to Marketplace
+        if: ${{ !inputs.dryrun }}
+        run: just publish ironplc-vscode-extension-marketplace.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VS_MARKETPLACE_TOKEN }}
       - name: Publish VS Code Extension to Open VSX
         if: ${{ !inputs.dryrun }}
         run: just publish-openvsx ironplc-vscode-extension.vsix

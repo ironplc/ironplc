@@ -2,41 +2,40 @@
 //!
 //! Use [`Dialect`] to select a preset configuration, then optionally
 //! override individual flags.  Use the [`define_compiler_options`] macro
-//! to declare vendor-extension fields so that [`CompilerOptions::from_dialect`]
+//! to declare dialect-extension fields so that [`CompilerOptions::from_dialect`]
 //! is the single place that maps dialects to flags.
 
 use std::fmt;
 use std::str::FromStr;
 
 /// A named configuration preset that sets the IEC edition and
-/// vendor-extension flags in one shot.
+/// dialect-extension flags in one shot.
 ///
 /// Individual `--allow-*` CLI flags can still override on top of a dialect.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
-    /// Strict IEC 61131-3:2003 (Edition 2).  No vendor extensions.
+    /// Strict IEC 61131-3:2003 (Edition 2).  No extensions.
     #[default]
     Iec61131_3Ed2,
-    /// Strict IEC 61131-3:2013 (Edition 3).  No vendor extensions.
+    /// Strict IEC 61131-3:2013 (Edition 3).  No extensions.
     Iec61131_3Ed3,
     /// RuSTy-compatible dialect: Edition 2 base (so long-time keywords
     /// like `LDT` stay as identifiers) plus `REF_TO` support and all
-    /// vendor extensions enabled.
+    /// extensions enabled.
     Rusty,
     /// CODESYS-compatible dialect: Edition 2 base plus `REF_TO` support
-    /// and the vendor extensions that CODESYS accepts.  Does not bind the
+    /// and the extensions that CODESYS accepts.  Does not bind the
     /// implicit `__SYSTEM_UP_TIME` globals, which are an IronPLC runtime
     /// convention rather than a CODESYS feature.
     Codesys,
-    /// Beckhoff TwinCAT-compatible dialect: Edition 2 base plus the vendor
+    /// Beckhoff TwinCAT-compatible dialect: Edition 2 base plus the dialect
     /// extensions that TwinCAT accepts.  TwinCAT 3 is built on the CODESYS V3
     /// runtime, so this is close to [`Dialect::Codesys`], but does not enable
     /// the `REF_TO` / `REF()` / `NULL` reference extensions: TwinCAT spells
-    /// references and pointers `REFERENCE TO` / `POINTER TO` (with `ADR()`),
-    /// which IronPLC does not parse yet, so enabling the CODESYS `REF_TO`
-    /// syntax here would accept code TwinCAT itself rejects.  Like CODESYS, it
-    /// does not bind the implicit `__SYSTEM_UP_TIME` globals (an IronPLC
-    /// runtime convention).
+    /// references and pointers `REFERENCE TO` / `POINTER TO`, so enabling the
+    /// CODESYS `REF_TO` syntax here would accept code TwinCAT itself rejects.
+    /// Like CODESYS, it does not bind the implicit `__SYSTEM_UP_TIME` globals
+    /// (an IronPLC runtime convention).
     TwinCat,
 }
 
@@ -65,17 +64,17 @@ impl Dialect {
     pub fn description(&self) -> &'static str {
         match self {
             Dialect::Iec61131_3Ed2 => {
-                "Strict IEC 61131-3:2003 (Edition 2). No vendor extensions. [default]"
+                "Strict IEC 61131-3:2003 (Edition 2). No extensions. [default]"
             }
-            Dialect::Iec61131_3Ed3 => "Strict IEC 61131-3:2013 (Edition 3). No vendor extensions.",
+            Dialect::Iec61131_3Ed3 => "Strict IEC 61131-3:2013 (Edition 3). No extensions.",
             Dialect::Rusty => {
-                "RuSTy-compatible: Edition 2 base with REF_TO and all vendor extensions."
+                "RuSTy-compatible: Edition 2 base with REF_TO and the extensions RuSTy accepts."
             }
             Dialect::Codesys => {
-                "CODESYS-compatible: Edition 2 base with REF_TO and CODESYS vendor extensions."
+                "CODESYS-compatible: Edition 2 base with REF_TO and CODESYS extensions."
             }
             Dialect::TwinCat => {
-                "TwinCAT-compatible: Edition 2 base with the vendor extensions TwinCAT accepts."
+                "TwinCAT-compatible: Edition 2 base with the extensions TwinCAT accepts."
             }
         }
     }
@@ -94,7 +93,9 @@ impl Dialect {
 
 impl fmt::Display for Dialect {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.cli_name())
+        // `pad` rather than `write_str`: the latter bypasses the formatter's
+        // width, so a `{:<20}` in a caller would silently do nothing.
+        f.pad(self.cli_name())
     }
 }
 
@@ -128,7 +129,7 @@ impl fmt::Display for ParseDialectError {
 
 impl std::error::Error for ParseDialectError {}
 
-/// Metadata for a single vendor-extension feature flag.
+/// Metadata for a single dialect-extension feature flag.
 pub struct FeatureDescriptor {
     /// The CLI flag name (e.g. `"--allow-c-style-comments"`).
     pub cli_flag: &'static str,
@@ -141,7 +142,7 @@ pub struct FeatureDescriptor {
     pub dialects: &'static [Dialect],
 }
 
-/// Declares [`CompilerOptions`] with a set of vendor-extension boolean flags.
+/// Declares [`CompilerOptions`] with a set of dialect-extension boolean flags.
 ///
 /// Each field carries a description string and a list of [`Dialect`] variants
 /// that enable it.  The macro auto-generates the struct, its `Default` impl,
@@ -152,15 +153,12 @@ macro_rules! define_compiler_options {
             $desc:literal,
             $cli_flag:literal,
             [$($dialect:ident),* $(,)?],
-            $vendor_field:ident
+            $flag_field:ident
         ),* $(,)?
     ) => {
         #[derive(Debug, Default, Clone, Copy)]
         pub struct CompilerOptions {
-            /// When `true`, IEC 61131-3:2013 keywords (`LTIME`, `LDATE`,
-            /// `LTOD`, `LDT`, `REF_TO`, `REF`, `NULL`) are recognised.
-            pub allow_iec_61131_3_2013: bool,
-            $(pub $vendor_field: bool,)*
+            $(pub $flag_field: bool,)*
         }
 
         impl CompilerOptions {
@@ -170,38 +168,35 @@ macro_rules! define_compiler_options {
             /// additional extensions on top of the dialect.
             pub fn from_dialect(dialect: Dialect) -> Self {
                 let mut opts = Self::default();
-                if dialect == Dialect::Iec61131_3Ed3 {
-                    opts.allow_iec_61131_3_2013 = true;
-                }
                 $(
                     if [$(Dialect::$dialect),*].contains(&dialect) {
-                        opts.$vendor_field = true;
+                        opts.$flag_field = true;
                     }
                 )*
                 opts
             }
 
-            /// Metadata for every vendor-extension feature flag.
+            /// Metadata for every dialect-extension feature flag.
             pub const FEATURE_DESCRIPTORS: &[FeatureDescriptor] = &[
                 $(
                     FeatureDescriptor {
                         cli_flag: $cli_flag,
-                        option_key: stringify!($vendor_field),
+                        option_key: stringify!($flag_field),
                         description: $desc,
                         dialects: &[$(Dialect::$dialect),*],
                     },
                 )*
             ];
 
-            /// Set a vendor-extension feature flag by its `option_key` (the
+            /// Set a dialect-extension feature flag by its `option_key` (the
             /// field name from [`FeatureDescriptor`]).
             ///
             /// Returns `true` if the key matched a known flag.
             pub fn set_flag_by_key(&mut self, key: &str, value: bool) -> bool {
                 match key {
                     $(
-                        stringify!($vendor_field) => {
-                            self.$vendor_field = value;
+                        stringify!($flag_field) => {
+                            self.$flag_field = value;
                             true
                         }
                     )*
@@ -209,14 +204,14 @@ macro_rules! define_compiler_options {
                 }
             }
 
-            /// Get a vendor-extension feature flag by its `option_key` (the
+            /// Get a dialect-extension feature flag by its `option_key` (the
             /// field name from [`FeatureDescriptor`]).
             ///
             /// Returns `None` if the key does not match a known flag.
             pub fn get_flag_by_key(&self, key: &str) -> Option<bool> {
                 match key {
                     $(
-                        stringify!($vendor_field) => Some(self.$vendor_field),
+                        stringify!($flag_field) => Some(self.$flag_field),
                     )*
                     _ => None,
                 }
@@ -256,15 +251,30 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_time_as_function_name,
 
-    "Allow REF_TO, REF(), and NULL without full Edition 3",
+    "Allow IEC 61131-3:2013 long-time-type keywords (LTIME, LDATE, LTOD, LDT)",
+    "--allow-long-time-types",
+    [Iec61131_3Ed3, Codesys, TwinCat],
+    allow_long_time_types,
+
+    "Allow REF_TO, REF(), and NULL (standardized in IEC 61131-3:2013)",
     "--allow-ref-to",
-    [Rusty, Codesys],
+    [Rusty, Codesys, Iec61131_3Ed3],
     allow_ref_to,
 
     "Allow Beckhoff TwinCAT/CODESYS REFERENCE TO reference types and the REF= binding operator",
     "--allow-reference-to",
     [Codesys, TwinCat],
     allow_reference_to,
+
+    "Allow POINTER TO pointer types with explicit dereference (^)",
+    "--allow-pointer-to",
+    [Codesys, TwinCat],
+    allow_pointer_to,
+
+    "Allow the ADR() address-of operator (returns a typed pointer to a variable)",
+    "--allow-adr",
+    [Codesys, TwinCat],
+    allow_adr,
 
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
     "--allow-ref-arithmetic",
@@ -311,7 +321,7 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_pragmas,
 
-    "Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension)",
+    "Allow the AND_THEN and OR_ELSE short-circuit boolean operators (Beckhoff/CODESYS extension)",
     "--allow-short-circuit-operators",
     [Rusty, Codesys, TwinCat],
     allow_short_circuit_operators,
@@ -323,7 +333,7 @@ define_compiler_options! {
 
     "Allow constant expressions (not just bare literals) in VAR initializers, e.g. SCALE*4.0",
     "--allow-constant-initializer-expressions",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_constant_initializer_expressions,
 
     "Allow hex/binary/octal bit-string literals (16#D012, 2#1010) as CASE labels",
@@ -340,6 +350,11 @@ define_compiler_options! {
     "--allow-struct-initializer-expressions",
     [Rusty, Codesys, TwinCat],
     allow_struct_initializer_expressions,
+
+    "Allow IEC 61131-3:2013 object-oriented syntax: EXTENDS/IMPLEMENTS/ABSTRACT on FUNCTION_BLOCK declarations, INTERFACE declarations, METHOD declarations, and THIS/SUPER",
+    "--allow-fb-inheritance",
+    [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
+    allow_fb_inheritance,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -356,14 +371,9 @@ pub fn describe_dialects() -> String {
             .iter()
             .filter(|f| f.dialects.contains(dialect))
             .collect();
-        if features.is_empty() && *dialect != Dialect::Iec61131_3Ed3 {
+        if features.is_empty() {
             out.push_str("  (none)\n");
         } else {
-            if *dialect == Dialect::Iec61131_3Ed3 {
-                out.push_str(
-                    "  IEC 61131-3:2013 keywords (LTIME, LDATE, LTOD, LDT, REF_TO, REF, NULL)\n",
-                );
-            }
             for f in &features {
                 out.push_str(&format!("  {:<34} {}\n", f.cli_flag, f.description));
             }
@@ -375,10 +385,12 @@ pub fn describe_dialects() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
+    use spec_test_macro::spec_test;
 
-    /// Collect the vendor-flag `option_key`s that `from_dialect(dialect)`
+    /// Collect the dialect-flag `option_key`s that `from_dialect(dialect)`
     /// turns on, sorted for order-independent comparison.
-    fn enabled_vendor_flags(dialect: Dialect) -> Vec<&'static str> {
+    fn enabled_flags(dialect: Dialect) -> Vec<&'static str> {
         let options = CompilerOptions::from_dialect(dialect);
         let mut enabled: Vec<&'static str> = CompilerOptions::FEATURE_DESCRIPTORS
             .iter()
@@ -389,43 +401,51 @@ mod tests {
         enabled
     }
 
-    /// Assert that a dialect enables *exactly* the given set of vendor flags --
+    /// Assert that a dialect enables *exactly* the given set of dialect flags --
     /// no more, no less. This is the guard against a newly added option
     /// silently leaking into a dialect it should not belong to: adding an
     /// option to a dialect's macro tags forces a matching update here, and an
     /// accidental extra tag makes that dialect's expected set mismatch.
-    fn assert_enabled_vendor_flags(dialect: Dialect, expected: &[&str]) {
+    fn assert_enabled_flags(dialect: Dialect, expected: &[&str]) {
         let mut expected_sorted = expected.to_vec();
         expected_sorted.sort_unstable();
         assert_eq!(
-            enabled_vendor_flags(dialect),
+            enabled_flags(dialect),
             expected_sorted,
-            "dialect {dialect} does not enable exactly the expected vendor flags"
+            "dialect {dialect} does not enable exactly the expected dialect flags"
         );
     }
 
-    /// IEC 61131-3 Ed. 2 (the default) enables no vendor extensions at all.
+    /// IEC 61131-3 Ed. 2 (the default) enables no extensions at all.
     #[test]
-    fn ed2_dialect_enables_no_vendor_flags() {
-        assert!(!CompilerOptions::from_dialect(Dialect::Iec61131_3Ed2).allow_iec_61131_3_2013);
-        assert_enabled_vendor_flags(Dialect::Iec61131_3Ed2, &[]);
+    fn ed2_dialect_enables_no_flags() {
+        assert_enabled_flags(Dialect::Iec61131_3Ed2, &[]);
     }
 
-    /// IEC 61131-3 Ed. 3 turns on the Edition-3 keyword set and, among vendor
-    /// extensions, only partial-access syntax (standardized in Edition 3).
+    /// IEC 61131-3 Ed. 3 is a preset assembled from the descriptors tagged with
+    /// `Iec61131_3Ed3`: the long-time-type keywords, the `REF_TO`/`REF`/`NULL`
+    /// reference keywords, partial-access syntax, and the object-oriented
+    /// syntax (`allow_fb_inheritance`) that is the headline addition of the
+    /// 2013 edition.
     #[test]
-    fn ed3_dialect_enables_only_partial_access_syntax() {
-        assert!(CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3).allow_iec_61131_3_2013);
-        assert_enabled_vendor_flags(Dialect::Iec61131_3Ed3, &["allow_partial_access_syntax"]);
+    fn ed3_dialect_enables_edition3_descriptors() {
+        assert_enabled_flags(
+            Dialect::Iec61131_3Ed3,
+            &[
+                "allow_long_time_types",
+                "allow_ref_to",
+                "allow_partial_access_syntax",
+                "allow_fb_inheritance",
+            ],
+        );
     }
 
     /// The RuSTy dialect stays on the Edition-2 keyword base and enables every
-    /// vendor extension. Listed explicitly (not derived) so a new option that
+    /// extension. Listed explicitly (not derived) so a new option that
     /// is meant to be Rusty-only, or accidentally left off Rusty, is caught.
     #[test]
-    fn rusty_dialect_enables_exactly_these_vendor_flags() {
-        assert!(!CompilerOptions::from_dialect(Dialect::Rusty).allow_iec_61131_3_2013);
-        assert_enabled_vendor_flags(
+    fn rusty_dialect_enables_exactly_these_flags() {
+        assert_enabled_flags(
             Dialect::Rusty,
             &[
                 "allow_c_style_comments",
@@ -450,18 +470,21 @@ mod tests {
                 "allow_bit_string_case_labels",
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
+                "allow_fb_inheritance",
             ],
         );
     }
 
-    /// The CODESYS dialect matches RuSTy except it does *not* bind the
-    /// `__SYSTEM_UP_TIME` globals (`allow_system_uptime_global`), which are an
-    /// IronPLC/RuSTy runtime convention rather than a CODESYS feature. Listed
-    /// explicitly so that omission is asserted rather than assumed.
+    /// The CODESYS dialect is close to RuSTy, with two differences: it does
+    /// *not* bind the `__SYSTEM_UP_TIME` globals (`allow_system_uptime_global`),
+    /// which are an IronPLC/RuSTy runtime convention rather than a CODESYS
+    /// feature, and it *does* enable `allow_long_time_types` (CODESYS supports
+    /// the LTIME/LDATE/LTOD/LDT keywords, whereas RuSTy keeps them as
+    /// identifiers for OSCAT). Listed explicitly so each divergence is asserted
+    /// rather than assumed.
     #[test]
-    fn codesys_dialect_enables_exactly_these_vendor_flags() {
-        assert!(!CompilerOptions::from_dialect(Dialect::Codesys).allow_iec_61131_3_2013);
-        assert_enabled_vendor_flags(
+    fn codesys_dialect_enables_exactly_these_flags() {
+        assert_enabled_flags(
             Dialect::Codesys,
             &[
                 "allow_c_style_comments",
@@ -470,8 +493,11 @@ mod tests {
                 "allow_constant_type_params",
                 "allow_empty_var_blocks",
                 "allow_time_as_function_name",
+                "allow_long_time_types",
                 "allow_ref_to",
                 "allow_reference_to",
+                "allow_pointer_to",
+                "allow_adr",
                 "allow_ref_arithmetic",
                 "allow_ref_stack_variables",
                 "allow_ref_type_punning",
@@ -486,6 +512,7 @@ mod tests {
                 "allow_bit_string_case_labels",
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
+                "allow_fb_inheritance",
             ],
         );
     }
@@ -493,16 +520,17 @@ mod tests {
     /// The TwinCAT dialect is close to CODESYS (TwinCAT 3 runs on the CODESYS
     /// V3 runtime) but does *not* enable the `REF_TO` reference extensions.
     /// TwinCAT spells references `REFERENCE TO` (not the CODESYS `REF_TO` /
-    /// `REF()` / `NULL`), so it enables `allow_reference_to` instead, and none
-    /// of `allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`,
-    /// or `allow_ref_type_punning` are enabled -- enabling those would accept
-    /// `REF_TO` code that TwinCAT itself rejects. (Pointer types `POINTER TO`
-    /// with `ADR()` are not parsed yet.) Listed explicitly so an accidental
+    /// `REF()` / `NULL`), so it enables `allow_reference_to` and
+    /// `allow_pointer_to` instead, and none of `allow_ref_to`,
+    /// `allow_ref_arithmetic`, `allow_ref_stack_variables`, or
+    /// `allow_ref_type_punning` are enabled -- enabling those would accept
+    /// `REF_TO` code that TwinCAT itself rejects. It does enable
+    /// `allow_long_time_types`, since TwinCAT supports the
+    /// LTIME/LDATE/LTOD/LDT keywords. Listed explicitly so an accidental
     /// divergence from the intended set is caught.
     #[test]
-    fn twincat_dialect_enables_exactly_these_vendor_flags() {
-        assert!(!CompilerOptions::from_dialect(Dialect::TwinCat).allow_iec_61131_3_2013);
-        assert_enabled_vendor_flags(
+    fn twincat_dialect_enables_exactly_these_flags() {
+        assert_enabled_flags(
             Dialect::TwinCat,
             &[
                 "allow_c_style_comments",
@@ -511,7 +539,10 @@ mod tests {
                 "allow_constant_type_params",
                 "allow_empty_var_blocks",
                 "allow_time_as_function_name",
+                "allow_long_time_types",
                 "allow_reference_to",
+                "allow_pointer_to",
+                "allow_adr",
                 "allow_int_to_bool_initializer",
                 "allow_sizeof",
                 "allow_cross_family_widening",
@@ -519,24 +550,39 @@ mod tests {
                 "allow_pragmas",
                 "allow_short_circuit_operators",
                 "allow_mixed_located_var_declarations",
+                "allow_constant_initializer_expressions",
                 "allow_bit_string_case_labels",
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
+                "allow_fb_inheritance",
             ],
         );
     }
 
-    /// REQ-PAB-051: The `rusty` dialect preset enables partial-access syntax.
-    #[test]
+    /// REQ-PAB-parser-051: The `rusty` dialect preset enables partial-access syntax.
+    #[spec_test(REQ_PAB_parser_051)]
     fn options_spec_req_pab_051_rusty_dialect_enables_partial_access_syntax() {
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
         assert!(options.allow_partial_access_syntax);
     }
 
-    /// REQ-PAB-052: The `iec61131-3-ed3` dialect preset enables partial-access syntax.
-    #[test]
+    /// REQ-PAB-parser-052: The `iec61131-3-ed3` dialect preset enables partial-access syntax.
+    #[spec_test(REQ_PAB_parser_052)]
     fn options_spec_req_pab_052_ed3_dialect_enables_partial_access_syntax() {
         let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+        assert!(options.allow_partial_access_syntax);
+    }
+
+    /// REQ-PAB-parser-141: The `codesys` and `twincat` dialect presets enable
+    /// partial-access syntax.
+    #[spec_test(REQ_PAB_parser_141)]
+    #[rstest]
+    #[case::codesys(Dialect::Codesys)]
+    #[case::twincat(Dialect::TwinCat)]
+    fn options_spec_req_pab_141_vendor_dialects_enable_partial_access_syntax(
+        #[case] dialect: Dialect,
+    ) {
+        let options = CompilerOptions::from_dialect(dialect);
         assert!(options.allow_partial_access_syntax);
     }
 
@@ -544,7 +590,7 @@ mod tests {
     fn from_dialect_when_default_then_ed2() {
         let options = CompilerOptions::from_dialect(Dialect::default());
 
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_time_types);
         assert!(!options.allow_ref_to);
     }
 

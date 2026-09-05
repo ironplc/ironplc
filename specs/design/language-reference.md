@@ -186,5 +186,5 @@ Metadata table with: IEC 61131-3 section, Support status. Followed by Inputs tab
 ## Future Extensibility
 
 - New IEC 61131-3 languages (FBD, SFC) add a subdirectory under `language/`
-- Vendor dialect features can add an "Availability" row to the metadata table (e.g., "Siemens S7 dialect, requires `--dialect s7`")
+- Dialect features can add an "Availability" row to the metadata table (e.g., "Siemens S7 dialect, requires `--dialect s7`")
 - New standard functions/FBs add individual pages under the appropriate directory

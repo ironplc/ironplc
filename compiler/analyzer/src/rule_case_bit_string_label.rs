@@ -7,7 +7,7 @@
 //! where `signed_integer` is a *decimal* digit sequence. Radix-prefixed
 //! bit-string literals (`hex_integer` / `binary_integer` / `octal_integer`)
 //! are deliberately not in `case_list_element`, so accepting them as a
-//! label is a vendor extension (TwinCAT/CODESYS). The parser always accepts
+//! label is an extension. The parser always accepts
 //! the form; this rule is what enforces the flag.
 //!
 //! ## Fails (without the flag)
@@ -31,8 +31,13 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 
 pub fn apply(
     lib: &ironplc_dsl::common::Library,
@@ -43,25 +48,28 @@ pub fn apply(
         return Ok(());
     }
 
-    let mut visitor = RuleCaseBitStringLabel {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleCaseBitStringLabel {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleCaseBitStringLabel {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl Visitor<Diagnostic> for RuleCaseBitStringLabel {
+impl DiagnosticVisitor for RuleCaseBitStringLabel {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+impl Visitor<Infallible> for RuleCaseBitStringLabel {
     type Value = ();
 
-    fn visit_case(&mut self, node: &Case) -> Result<Self::Value, Diagnostic> {
+    fn visit_case(&mut self, node: &Case) -> Result<Self::Value, Infallible> {
         for group in &node.statement_groups {
             for selector in &group.selectors {
                 if let CaseSelectionKind::BitStringLiteral(lit) = selector {
@@ -90,9 +98,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn apply_when_hex_case_label_and_flag_disabled_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_hex_case_label_and_flag_disabled_then_error,
+        "
 FUNCTION_BLOCK FB_Example
 VAR
     x : DINT;
@@ -101,14 +109,8 @@ END_VAR
 CASE x OF
     16#D012: y := 1;
 END_CASE;
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-    }
+END_FUNCTION_BLOCK"
+    );
 
     #[test]
     fn apply_when_hex_case_label_and_flag_enabled_then_ok() {
@@ -148,16 +150,13 @@ END_FUNCTION_BLOCK";
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&library, &context, &CompilerOptions::default());
 
-        let diagnostics = result.expect_err("both bit-string labels must be flagged");
+        let diagnostics = result.unwrap_err();
         assert_eq!(diagnostics.len(), 2);
     }
 
-    #[test]
-    fn apply_when_plain_decimal_case_label_then_never_flagged() {
-        // A plain decimal label parses as SignedInteger, not BitStringLiteral,
-        // so it is standard syntax and must never be flagged regardless of the
-        // option.
-        let program = "
+    rule_ok!(
+        apply_when_plain_decimal_case_label_then_never_flagged,
+        "
 FUNCTION_BLOCK FB_Example
 VAR
     x : INT;
@@ -166,12 +165,6 @@ END_VAR
 CASE x OF
     5: y := 1;
 END_CASE;
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
+END_FUNCTION_BLOCK"
+    );
 }

@@ -12,11 +12,15 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 use std::collections::HashMap;
+use std::convert::Infallible;
 
 use ironplc_parser::options::CompilerOptions;
 
 use crate::{
-    result::SemanticResult, semantic_context::SemanticContext, type_environment::TypeEnvironment,
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+    type_environment::TypeEnvironment,
 };
 
 pub fn apply(
@@ -24,22 +28,19 @@ pub fn apply(
     context: &SemanticContext,
     options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleRefTo {
-        type_environment: context.types(),
-        var_types: HashMap::new(),
-        var_classes: HashMap::new(),
-        pou_kind: PouKind::Program,
-        allow_ref_arithmetic: options.allow_ref_arithmetic,
-        diagnostics: Vec::new(),
-        allow_ref_stack_variables: options.allow_ref_stack_variables,
-        allow_ref_type_punning: options.allow_ref_type_punning,
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleRefTo {
+            type_environment: context.types(),
+            var_types: HashMap::new(),
+            var_classes: HashMap::new(),
+            pou_kind: PouKind::Program,
+            allow_ref_arithmetic: options.allow_ref_arithmetic,
+            diagnostics: Vec::new(),
+            allow_ref_stack_variables: options.allow_ref_stack_variables,
+            allow_ref_type_punning: options.allow_ref_type_punning,
+        },
+        lib,
+    )
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -64,6 +65,12 @@ struct RuleRefTo<'a> {
     allow_ref_stack_variables: bool,
     /// When true, suppress P2032 type mismatch for REF_TO type punning.
     allow_ref_type_punning: bool,
+}
+
+impl DiagnosticVisitor for RuleRefTo<'_> {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 /// Extracts a span from a Variable, falling back to default.
@@ -262,7 +269,11 @@ impl RuleRefTo<'_> {
                     Label::span(span, "Ordering comparison on reference types"),
                 ));
             }
-            CompareOp::Or | CompareOp::Xor | CompareOp::And | CompareOp::AndThen => {}
+            CompareOp::Or
+            | CompareOp::Xor
+            | CompareOp::And
+            | CompareOp::AndThen
+            | CompareOp::OrElse => {}
         }
     }
 
@@ -328,10 +339,10 @@ fn expr_span(expr: &Expr) -> SourceSpan {
     }
 }
 
-impl Visitor<Diagnostic> for RuleRefTo<'_> {
+impl Visitor<Infallible> for RuleRefTo<'_> {
     type Value = ();
 
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Diagnostic> {
+    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Infallible> {
         self.clear_variables();
         self.pou_kind = PouKind::Function;
         self.collect_variables(&node.variables);
@@ -343,7 +354,7 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         self.clear_variables();
         self.pou_kind = PouKind::FunctionBlock;
         self.collect_variables(&node.variables);
@@ -352,7 +363,7 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
         ret
     }
 
-    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Diagnostic> {
+    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Infallible> {
         self.clear_variables();
         self.pou_kind = PouKind::Program;
         self.collect_variables(&node.variables);
@@ -364,7 +375,7 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
     fn visit_reference_declaration(
         &mut self,
         node: &ReferenceDeclaration,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         // P2036: Check for nested REF_TO (only applicable for named targets)
         if let ReferenceTarget::Named(referenced_type_name) = &node.target {
             if self.is_reference_type(referenced_type_name) {
@@ -377,7 +388,7 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
         node.recurse_visit(self)
     }
 
-    fn visit_expr(&mut self, node: &Expr) -> Result<(), Diagnostic> {
+    fn visit_expr(&mut self, node: &Expr) -> Result<(), Infallible> {
         match &node.kind {
             ExprKind::Ref(var) => {
                 self.check_ref_operand(var);
@@ -396,7 +407,7 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
         node.recurse_visit(self)
     }
 
-    fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Diagnostic> {
+    fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
         self.check_null_assignment(&node.target, &node.value);
         self.check_ref_assignment(&node.target, &node.value);
         node.recurse_visit(self)
@@ -407,21 +418,19 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
 mod tests {
     use crate::stages::analyze;
     use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::CompilerOptions, parse_program};
+    use ironplc_parser::{
+        options::{CompilerOptions, Dialect},
+        parse_program,
+    };
 
     fn edition3_options() -> CompilerOptions {
-        CompilerOptions {
-            allow_iec_61131_3_2013: true,
-            ..CompilerOptions::default()
-        }
+        CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
     }
 
     fn ref_arithmetic_options() -> CompilerOptions {
-        CompilerOptions {
-            allow_iec_61131_3_2013: true,
-            allow_ref_arithmetic: true,
-            ..CompilerOptions::default()
-        }
+        let mut options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+        options.allow_ref_arithmetic = true;
+        options
     }
 
     fn parse_with_options(program: &str, options: &CompilerOptions) -> Result<(), String> {
@@ -787,7 +796,7 @@ END_PROGRAM",
     #[test]
     fn ref_when_allow_ref_stack_variables_and_function_var_input_then_ok() {
         let options = CompilerOptions {
-            allow_iec_61131_3_2013: true,
+            allow_ref_to: true,
             allow_ref_stack_variables: true,
             ..CompilerOptions::default()
         };
@@ -811,7 +820,7 @@ END_FUNCTION",
     #[test]
     fn ref_when_allow_ref_stack_variables_and_var_temp_then_ok() {
         let options = CompilerOptions {
-            allow_iec_61131_3_2013: true,
+            allow_ref_to: true,
             allow_ref_stack_variables: true,
             ..CompilerOptions::default()
         };
@@ -834,7 +843,7 @@ END_FUNCTION_BLOCK",
     #[test]
     fn assign_when_allow_ref_type_punning_and_types_incompatible_then_ok() {
         let options = CompilerOptions {
-            allow_iec_61131_3_2013: true,
+            allow_ref_to: true,
             allow_ref_type_punning: true,
             ..CompilerOptions::default()
         };
@@ -871,7 +880,7 @@ END_PROGRAM",
     #[test]
     fn assign_when_allow_ref_stack_variables_only_and_types_incompatible_then_error() {
         let options = CompilerOptions {
-            allow_iec_61131_3_2013: true,
+            allow_ref_to: true,
             allow_ref_stack_variables: true,
             ..CompilerOptions::default()
         };

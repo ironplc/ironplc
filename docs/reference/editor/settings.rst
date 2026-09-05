@@ -40,6 +40,27 @@ Example values:
 * macOS: ``/usr/local/bin/ironplcc``
 * Linux: ``/home/username/ironplc/ironplcc``
 
+ironplc.debugServerPath
+-----------------------
+
+:Type: String
+:Default: Empty (auto-discovery)
+
+Specifies the path to the :program:`ironplcvmd` debug server. When empty (the
+default), the extension looks for the server next to the :program:`ironplcc`
+compiler it discovered.
+
+Use this setting when the debug server is installed apart from the compiler,
+or when :doc:`problems/E0007` reports that the server was not found.
+
+Example values:
+
+* Windows: ``C:\Program Files\IronPLC\bin\ironplcvmd.exe``
+* macOS: ``/usr/local/bin/ironplcvmd``
+* Linux: ``/home/username/ironplc/ironplcvmd``
+
+See :doc:`debugging` for what the debug server does.
+
 ironplc.logLevel
 ----------------
 
@@ -88,18 +109,19 @@ ironplc.dialect
 :Values: ``iec61131-3-ed2``, ``iec61131-3-ed3``, ``rusty``, ``codesys``, ``twincat``
 
 Selects the language dialect preset. A dialect controls the IEC 61131-3 edition
-and a default set of vendor extensions.
+and a default set of extensions.
 
-* ``iec61131-3-ed2``: Strict IEC 61131-3:2003 (Edition 2). No vendor extensions.
+* ``iec61131-3-ed2``: Strict IEC 61131-3:2003 (Edition 2). No extensions.
 * ``iec61131-3-ed3``: IEC 61131-3:2013 (Edition 3) with ``LTIME``, ``REF_TO``, etc.
 * ``rusty``: RuSTy-compatible — designed for compatibility with code from
   RuSTy-based PLC environments.
 * ``codesys``: CODESYS-compatible — Edition 2 base with ``REF_TO`` and the
-  vendor extensions that the CODESYS IDE accepts.
-* ``twincat``: TwinCAT-compatible — Edition 2 base with the vendor extensions
+  extensions that the CODESYS IDE accepts.
+* ``twincat``: TwinCAT-compatible — Edition 2 base with the extensions
   Beckhoff TwinCAT shares with CODESYS. Unlike ``codesys`` it does not enable
-  the ``REF_TO`` reference extensions, since TwinCAT uses ``REFERENCE TO`` /
-  ``POINTER TO`` (not yet parsed by IronPLC).
+  the ``REF_TO`` reference extensions, since TwinCAT uses ``REFERENCE TO``
+  (bound with ``REF=``) and ``POINTER TO`` (bound with ``ADR()``), which it
+  enables instead.
 
 This setting corresponds to the ``--dialect`` command-line option documented in
 :doc:`/reference/compiler/ironplcc`.
@@ -117,6 +139,7 @@ You can also configure these settings directly in your :file:`settings.json` fil
 
    {
      "ironplc.path": "/custom/path/to/ironplcc",
+     "ironplc.debugServerPath": "/custom/path/to/ironplcvmd",
      "ironplc.logLevel": "DEBUG",
      "ironplc.logFile": "/tmp/ironplc-debug.log",
      "ironplc.dialect": "rusty"

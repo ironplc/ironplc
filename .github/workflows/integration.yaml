@@ -26,7 +26,7 @@ jobs:
     needs: approve
     uses: ./.github/workflows/partial_compiler.yaml
     with:
-      commit-ref: ""
+      source-revision: ""
       gh-release-tag: ""
       version: "0.0.0"
 
@@ -35,7 +35,7 @@ jobs:
     needs: approve
     uses: ./.github/workflows/partial_vscode_extension.yaml
     with:
-      commit-ref: ""
+      source-revision: ""
       gh-release-tag: ""
       artifact-name: vscode-extension
       marketplace-artifact-name: vscode-extension-marketplace
@@ -47,8 +47,24 @@ jobs:
     # if those are failing so we depend on those.
     uses: ./.github/workflows/partial_website.yaml
     with:
-      commit-ref: ""
+      source-revision: ""
       publish: false
+
+  specs:
+    name: Check Specs
+    needs: approve
+    # Repository-hygiene checks over specs/ -- no build, no toolchain beyond
+    # just. Its own job rather than a step in the compiler gate: nothing here
+    # depends on a Rust build, so it reports independently and in parallel.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./specs
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
+      - name: Check specs
+        run: just ci
 
   install-script-lint:
     name: Lint Install Script
@@ -60,10 +76,18 @@ jobs:
         run: shellcheck -s sh compiler/install.sh
 
   install-script-smoke:
-    name: Install Script Smoke Test (Last Release)
-    needs: approve
-    # Runs install.sh against the last published release on Linux and macOS.
-    # This catches regressions in the script without requiring a new release.
+    name: Install Script Smoke Test (This Revision)
+    # Needs the tarballs the compiler package matrix uploads for this run.
+    needs: [approve, ironplcc-tests]
+    # Runs install.sh on Linux and macOS against the tarball built from this
+    # revision, so the script is tested against the artifacts the change
+    # actually produces. Installing the last published release instead would
+    # test the script against a payload nobody in this pull request wrote --
+    # and install.sh requires every binary in the archive, so any release
+    # predating one of them is not installable and would fail here for a
+    # reason that has nothing to do with the change under test. The published
+    # path stays covered at deployment time, against the new release.
     uses: ./.github/workflows/partial_install_script_test.yaml
     with:
       compiler-version: ""
+      from-build-artifacts: true

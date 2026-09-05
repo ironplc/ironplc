@@ -2,7 +2,7 @@
 //!
 //! ## Why this exists
 //!
-//! The `list_options` tool exposes one entry per vendor-extension flag in
+//! The `list_options` tool exposes one entry per dialect-extension flag in
 //! [`CompilerOptions::FEATURE_DESCRIPTORS`]. It is tempting to test that surface
 //! by *counting* flags (`assert_eq!(flags.len(), 16)`) or by asserting a flag's
 //! boolean is set. Both couple the test suite to every feature commit — the
@@ -52,7 +52,7 @@ struct FlagFixture {
     source: &'static str,
 }
 
-/// One fixture per vendor-extension flag. Order mirrors
+/// One fixture per dialect-extension flag. Order mirrors
 /// `FEATURE_DESCRIPTORS` for readability; the suite does not depend on ordering.
 /// Snippets are adapted from the compiler's own positive/negative tests (parser
 /// and analyzer) so they exercise the real enforcement path.
@@ -97,6 +97,15 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION TIME : INT\nVAR_INPUT x : INT; END_VAR\nTIME := x;\nEND_FUNCTION\nPROGRAM p\nEND_PROGRAM",
     },
+    // The IEC 61131-3:2013 long-time type LTIME and its literal. With the flag
+    // off, LTIME is demoted to an identifier, so the `LTIME#...` duration
+    // literal (which needs the LTIME keyword token) fails to parse; with it on,
+    // both the type and the literal are recognized.
+    FlagFixture {
+        key: "allow_long_time_types",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\nt : LTIME;\nEND_VAR\nt := LTIME#1000ms;\nEND_PROGRAM",
+    },
     // REF_TO / REF() without full Edition 3. With the flag off, REF_TO is
     // demoted to an identifier and the declaration fails to parse.
     FlagFixture {
@@ -110,6 +119,23 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_reference_to",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nx : REFERENCE TO INT;\nEND_VAR\nEND_PROGRAM",
+    },
+    // TwinCAT/CODESYS POINTER TO: without the flag, POINTER is a demoted
+    // identifier and the declaration is a parse error; with it, the type
+    // parses.
+    FlagFixture {
+        key: "allow_pointer_to",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\np : POINTER TO INT;\nEND_VAR\nEND_PROGRAM",
+    },
+    // The ADR() address-of operator. With the flag off, ADR is an ordinary
+    // identifier and the call is an undeclared function (P4017); with it on,
+    // the call is rewritten to the reference address-of expression. Needs
+    // allow_pointer_to for the destination pointer declaration.
+    FlagFixture {
+        key: "allow_adr",
+        prereqs: &["allow_pointer_to"],
+        source: "PROGRAM main\nVAR\nx : INT;\np : POINTER TO INT;\nEND_VAR\np := ADR(x);\nEND_PROGRAM",
     },
     // Arithmetic on a REF_TO type (P2033). Needs REF_TO to parse at all.
     FlagFixture {
@@ -212,6 +238,15 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_struct_initializer_expressions",
         prereqs: &["allow_ref_to"],
         source: "FUNCTION_BLOCK FB_Device\nVAR_INPUT\nDelta : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nTYPE MyStruct :\nSTRUCT\nx : INT;\nEND_STRUCT;\nEND_TYPE\nPROGRAM main\nVAR\npDevice : REF_TO FB_Device;\ns : MyStruct := (x := pDevice^.Delta);\nEND_VAR\nEND_PROGRAM",
+    },
+    // The IEC 61131-3:2013 EXTENDS clause on a FUNCTION_BLOCK header. With the
+    // flag off, EXTENDS demotes to a plain identifier, so two consecutive
+    // identifiers after the FB name is a parse error. With the flag on, it
+    // parses as the inheritance clause.
+    FlagFixture {
+        key: "allow_fb_inheritance",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_Base\nVAR\nx : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nFUNCTION_BLOCK FB_Derived EXTENDS FB_Base\nEND_FUNCTION_BLOCK",
     },
 ];
 

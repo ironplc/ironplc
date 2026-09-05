@@ -9,8 +9,8 @@ use ironplc_container::debug_section::{
 };
 use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
-    ConstantKind, ElementaryTypeName, FunctionDeclaration, FunctionReturnType, GenericTypeName,
-    InitialValueAssignmentKind, ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
+    ConstantKind, ElementaryTypeName, FunctionReturnType, InitialValueAssignmentKind,
+    ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -25,6 +25,7 @@ use super::compile::{
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
 use super::compile_stmt::resolve_string_max_length;
+use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
 /// Assigns variable table indices and type info for all variable declarations.
@@ -57,7 +58,7 @@ pub(crate) fn assign_variables(
                             &decl.identifier.span(),
                         )?;
                         let type_name_str = simple.type_name.to_string().to_uppercase();
-                        (iec_type_tag::OTHER, type_name_str)
+                        (iec_type_tag::STRUCT, type_name_str)
                     } else if let Some(subrange_type) =
                         types.resolve_subrange_type(&simple.type_name)
                     {
@@ -168,42 +169,44 @@ pub(crate) fn assign_variables(
                             },
                         );
                     }
-                    (iec_type_tag::OTHER, fb_name)
+                    (iec_type_tag::FB_INSTANCE, fb_name)
                 }
                 InitialValueAssignmentKind::Array(array_init) => {
-                    let spec = match &array_init.spec {
-                        SpecificationKind::Inline(array_subranges) => {
-                            crate::compile_array::array_spec_from_inline(
-                                array_subranges,
-                                &decl.identifier.span(),
-                            )?
-                        }
-                        SpecificationKind::Named(type_name) => {
-                            let array_type =
-                                types.resolve_array_type(type_name).ok_or_else(|| {
-                                    Diagnostic::not_implemented(Label::span(
-                                        type_name.span(),
-                                        "Unknown array type",
-                                    ))
-                                })?;
-                            let IntermediateType::Array {
-                                element_type,
-                                dimensions,
-                            } = array_type
-                            else {
-                                unreachable!("resolve_array_type guarantees Array variant");
-                            };
-                            crate::compile_array::array_spec_from_named(element_type, dimensions)?
-                        }
-                    };
-                    crate::compile_array::register_array_variable(
-                        ctx,
-                        builder,
-                        id,
-                        index,
-                        &spec,
-                        &decl.identifier.span(),
-                    )?
+                    // An array whose elements are structures is laid out as
+                    // one flat run of slots rather than one slot per element,
+                    // so it registers through its own path.
+                    if let Some((element_type, debug_type_name, dimensions)) =
+                        crate::compile_array_struct::struct_array_declaration(
+                            types,
+                            &array_init.spec,
+                            &decl.identifier.span(),
+                        )?
+                    {
+                        crate::compile_array_struct::register_struct_array_variable(
+                            ctx,
+                            builder,
+                            id,
+                            index,
+                            &element_type,
+                            &debug_type_name,
+                            &dimensions,
+                            &decl.identifier.span(),
+                        )?
+                    } else {
+                        let spec = crate::compile_array::array_spec_for_declaration(
+                            types,
+                            &array_init.spec,
+                            &decl.identifier.span(),
+                        )?;
+                        crate::compile_array::register_array_variable(
+                            ctx,
+                            builder,
+                            id,
+                            index,
+                            &spec,
+                            &decl.identifier.span(),
+                        )?
+                    }
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
                     // References are stored as 64-bit variable-table indices (unsigned).
@@ -231,7 +234,7 @@ pub(crate) fn assign_variables(
                         &decl.identifier.span(),
                     )?;
                     let type_name_str = struct_init.type_name.to_string().to_uppercase();
-                    (iec_type_tag::OTHER, type_name_str)
+                    (iec_type_tag::STRUCT, type_name_str)
                 }
                 InitialValueAssignmentKind::EnumeratedType(enum_init) => {
                     // Enum variables use DINT (W32/Signed/32-bit) per REQ-EN-codegen-010.
@@ -272,7 +275,7 @@ pub(crate) fn assign_variables(
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     // LateResolvedType should have been resolved before codegen.
                     // If we reach here, it indicates a bug in the compiler.
-                    return Err(Diagnostic::internal_error(file!(), line!()));
+                    return Err(Diagnostic::internal_error());
                 }
                 // Other initializer kinds (EnumeratedValues, etc.)
                 // do not yet have type info tracked in codegen.
@@ -361,6 +364,16 @@ pub(crate) fn debug_type_for_decl(decl: &VarDecl) -> (u8, String) {
             }
         }
         InitialValueAssignmentKind::Reference(_) => (iec_type_tag::OTHER, "REF_TO".into()),
+        // A local aggregate keeps its contents in the data region and its slot
+        // holds their offset, exactly as a program-level one does.
+        InitialValueAssignmentKind::Structure(struct_init) => (
+            iec_type_tag::STRUCT,
+            struct_init.type_name.to_string().to_uppercase(),
+        ),
+        InitialValueAssignmentKind::FunctionBlock(fb_init) => (
+            iec_type_tag::FB_INSTANCE,
+            fb_init.type_name.to_string().to_uppercase(),
+        ),
         InitialValueAssignmentKind::EnumeratedType(enum_init) => (
             iec_type_tag::DINT,
             enum_init.type_name.to_string().to_uppercase(),
@@ -480,7 +493,23 @@ pub(crate) fn emit_initial_values(
                     }
                 }
                 InitialValueAssignmentKind::Array(array_init) => {
-                    if let Some(array_info) = ctx.array_vars.get(id) {
+                    // An array of structures holds the data region offset in
+                    // its variable slot, like a structure variable does. Its
+                    // element fields are left zeroed, matching what an
+                    // array-of-struct field of a structure gets today.
+                    if let Some(struct_array_info) = ctx.struct_array_vars.get(id) {
+                        if !array_init.initial_values.is_empty() {
+                            return Err(Diagnostic::not_implemented(Label::span(
+                                decl.identifier.span(),
+                                "Initial values for an array of structures",
+                            )));
+                        }
+                        let data_offset = struct_array_info.data_offset;
+                        let var_index = struct_array_info.var_index;
+                        let offset_const = ctx.add_i32_constant(data_offset as i32);
+                        emitter.emit_load_const_i32(offset_const);
+                        emitter.emit_store_var_i32(var_index);
+                    } else if let Some(array_info) = ctx.array_vars.get(id) {
                         let data_offset = array_info.data_offset;
                         let var_index = array_info.var_index;
                         let desc_index = array_info.desc_index;
@@ -684,12 +713,13 @@ pub(crate) fn emit_initial_values(
 pub(crate) fn emit_function_local_prologue(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func_decl: &FunctionDeclaration,
+    variables: &[VarDecl],
+    return_id: &Id,
     return_var_index: VarIndex,
     return_op_type: OpType,
 ) -> Result<(), Diagnostic> {
     // Re-initialize VAR locals (not Input parameters).
-    for decl in &func_decl.variables {
+    for decl in variables {
         if decl.var_type != VariableType::Var {
             continue;
         }
@@ -760,8 +790,9 @@ pub(crate) fn emit_function_local_prologue(
                     emit_store_var(emitter, var_index, op_type);
                 }
                 _ => {
-                    // Other initializer kinds (FunctionBlock, etc.)
-                    // are not expected in function locals; zero-fill as default.
+                    // Other initializer kinds; zero-fill as default.
+                    // `Structure` and `Array` reach this arm, and zero-filling
+                    // discards their declared field values.
                     emit_zero_const(emitter, ctx, op_type);
                     emit_store_var(emitter, var_index, op_type);
                 }
@@ -770,7 +801,7 @@ pub(crate) fn emit_function_local_prologue(
     }
 
     // Zero-initialize the return variable.
-    if let Some(struct_info) = ctx.struct_vars.get(&func_decl.name).cloned() {
+    if let Some(struct_info) = ctx.struct_vars.get(return_id).cloned() {
         // Struct return: store data_offset into the return var slot and
         // zero all struct fields. Functions are stateless, so the struct
         // must be re-initialized on every call.
@@ -799,7 +830,7 @@ pub(crate) fn emit_function_local_prologue(
             &fields,
             &[],
         )?;
-    } else if let Some(info) = ctx.string_vars.get(&func_decl.name) {
+    } else if let Some(info) = ctx.string_vars.get(return_id) {
         // STRING/WSTRING return: initialize the string header in the data region.
         emitter.emit_str_init(info.data_offset, info.max_length, info.char_width);
     } else {
@@ -829,144 +860,5 @@ pub(crate) fn emit_zero_const(emitter: &mut Emitter, ctx: &mut CompileContext, o
             let pool_index = ctx.add_f64_constant(0.0);
             emitter.emit_load_const_f64(pool_index);
         }
-    }
-}
-
-/// Maps an IEC 61131-3 type name to its `VarTypeInfo`.
-///
-/// Returns `None` for unrecognized type names (e.g., user-defined types)
-/// and for STRING/WSTRING which are handled separately.
-pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
-    // Try as elementary type first (the common case), then fall back to
-    // generic types mapped to their default concrete representation.
-    // Generic types may reach codegen for expressions like `5 + 5` where
-    // no concrete type context was available during type resolution.
-    let elem = ElementaryTypeName::try_from(name)
-        .or_else(|_| match GenericTypeName::try_from(name)? {
-            GenericTypeName::AnyInt | GenericTypeName::AnyNum | GenericTypeName::AnyMagnitude => {
-                Ok(ElementaryTypeName::DINT)
-            }
-            GenericTypeName::AnyReal => Ok(ElementaryTypeName::REAL),
-            _ => Err(()),
-        })
-        .ok()?;
-    match elem {
-        ElementaryTypeName::SINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 8,
-        }),
-        ElementaryTypeName::INT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 16,
-        }),
-        ElementaryTypeName::DINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LINT => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Signed,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::USINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 8,
-        }),
-        ElementaryTypeName::UINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 16,
-        }),
-        ElementaryTypeName::UDINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::ULINT => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::REAL => Some(VarTypeInfo {
-            op_width: OpWidth::F32,
-            signedness: Signedness::Signed,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LREAL => Some(VarTypeInfo {
-            op_width: OpWidth::F64,
-            signedness: Signedness::Signed,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::BOOL => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 1,
-        }),
-        ElementaryTypeName::BYTE => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 8,
-        }),
-        ElementaryTypeName::WORD => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 16,
-        }),
-        ElementaryTypeName::DWORD => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LWORD => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::TIME => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LTIME => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Signed,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::DATE => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::TimeOfDay => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::DateAndTime => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LDATE => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::LTimeOfDay => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::LDateAndTime => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        // STRING and WSTRING are handled separately in codegen
-        ElementaryTypeName::STRING | ElementaryTypeName::WSTRING => None,
     }
 }

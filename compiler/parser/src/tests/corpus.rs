@@ -2,85 +2,20 @@
 //! First Steps structural fixtures.
 
 use super::common::*;
+use rstest::rstest;
 
-#[test]
-fn parse_variable_declarations() {
-    let res = parse_resource("var_decl.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_inout_variable_declarations() {
-    let res = parse_resource("inout_var_decl.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_input_variable_declarations() {
-    let res = parse_resource("input_var_decl.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_strings() {
-    let res = parse_resource("strings.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_type_decl() {
-    let res = parse_resource("type_decl.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_textual() {
-    let res = parse_resource("textual.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_conditional() {
-    let res = parse_resource("conditional.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_oscat() {
-    // OSCAT files have a header that as far as I can tell is not valid
-    // but it is common.
-    let res = parse_resource("oscat.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_expressions() {
-    let res = parse_resource("expressions.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_array() {
-    let res = parse_resource("array.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_nested() {
-    let res: Result<Library, Diagnostic> = parse_resource("nested.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_configuration() {
-    let res: Result<Library, Diagnostic> = parse_resource("configuration.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_program_then_ok() {
-    let res: Result<Library, Diagnostic> = parse_resource("program.st");
-    assert!(res.is_ok())
+/// Corpus `.st` resources that must parse without error but have no plc2plc
+/// round-trip case. A round-trip test parses the same resource with the same
+/// `CompilerOptions::default()` and unwraps the result, so it already proves
+/// the resource parses — listing such a resource here too would assert the
+/// same thing at the same strength. Add a `#[case]` only for a resource
+/// `plc2plc/src/tests/corpus.rs` does not render.
+#[rstest]
+// OSCAT files have a header that as far as I can tell is not valid but it is common.
+#[case::oscat("oscat.st")]
+fn parse_when_corpus_resource_then_ok(#[case] name: &'static str) {
+    let res = parse_resource(name);
+    assert!(res.is_ok());
 }
 
 #[test]
@@ -123,6 +58,8 @@ fn parse_when_first_steps_function_block_counter_fbd_then_builds_structure() {
                 StmtKind::simple_assignment("OUT", "Cnt"),
             ]),
             span: SourceSpan::default(),
+            oop: None,
+            methods: vec![],
         },
     ));
     assert_eq!(actual, expected);
@@ -306,6 +243,8 @@ fn parse_when_first_steps_function_block_logger_then_test_apply_when_names_corre
                 StmtKind::assignment(Variable::named("TRIG0"), ExprKind::late_bound("TRIG")),
             ]),
             span: SourceSpan::default(),
+            oop: None,
+            methods: vec![],
         },
     ));
 
@@ -398,6 +337,8 @@ fn parse_when_first_steps_function_block_counter_sfc_then_builds_structure() {
                 ],
             }]),
             span: SourceSpan::default(),
+            oop: None,
+            methods: vec![],
         },
     ));
     assert_eq!(actual, expected);

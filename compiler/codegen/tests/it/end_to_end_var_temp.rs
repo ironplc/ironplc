@@ -1,12 +1,8 @@
 //! End-to-end integration tests for VAR_TEMP declarations.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_function_with_var_temp_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_function_with_var_temp_then_correct,
+    "
 FUNCTION add_doubled : DINT
   VAR_INPUT
     a : DINT;
@@ -25,15 +21,13 @@ PROGRAM main
   END_VAR
   result := add_doubled(3, 4);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 14)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 14);
-}
-
-#[test]
-fn end_to_end_when_function_with_multiple_var_temp_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_function_with_multiple_var_temp_then_correct,
+    "
 FUNCTION compute : DINT
   VAR_INPUT
     x : DINT;
@@ -53,8 +47,6 @@ PROGRAM main
   END_VAR
   result := compute(4);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 15);
-}
+",
+    &[(0, 15)],
+);

@@ -1,0 +1,17 @@
+=====
+V6009
+=====
+
+.. problem-summary:: V6009
+
+The debugger loaded the container, but it has no debug section, so there is no
+source-line or variable-name information to debug against. The container was
+compiled without debug information.
+
+Solutions
+---------
+
+1. Recompile the source program with :program:`ironplcc compile`
+2. Confirm the ``.iplc`` container was produced by :program:`ironplcc` and not by another tool
+3. Confirm the container was not modified after compilation to remove the debug section
+4. Run the program with :program:`ironplcvm` instead if source-level debugging is not required

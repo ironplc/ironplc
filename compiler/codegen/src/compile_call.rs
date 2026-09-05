@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use ironplc_analyzer::{operator_function_form, FormOf};
 use ironplc_container::opcode;
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
@@ -17,120 +18,146 @@ use super::compile::{
     CompileContext, OpType, OpWidth, Signedness, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
 };
 use super::compile_expr::{
-    compile_expr, emit_add, emit_and, emit_div, emit_eq, emit_ge, emit_gt, emit_le, emit_lt,
-    emit_mod, emit_mul, emit_ne, emit_or, emit_sub, emit_truncation, emit_xor, op_type,
-    op_type_from_expr, storage_bits,
+    compile_expr, emit_add, emit_arithmetic_op, emit_compare_op, emit_div, emit_mod, emit_mul,
+    emit_not, emit_sub, emit_truncation, op_type, op_type_from_expr, storage_bits,
 };
-use super::compile_setup::resolve_type_name;
 use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
     compile_mid, compile_replace, compile_right, resolve_string_arg,
 };
+use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
+
+/// Builds the opcode for a builtin defined across all four operation widths
+/// (both integer widths and both float widths), independent of signedness.
+///
+/// Used for the identically-shaped EXPT/ABS/SEL arms of [`lookup_builtin`].
+macro_rules! numeric_builtin {
+    ($op_width:expr, $i32_op:path, $i64_op:path, $f32_op:path, $f64_op:path) => {
+        Some(match $op_width {
+            OpWidth::W32 => $i32_op,
+            OpWidth::W64 => $i64_op,
+            OpWidth::F32 => $f32_op,
+            OpWidth::F64 => $f64_op,
+        })
+    };
+}
+
+/// Builds the opcode for a builtin whose integer variants distinguish
+/// signedness but whose float variants do not.
+///
+/// Used for the identically-shaped MIN/MAX/LIMIT arms of [`lookup_builtin`].
+macro_rules! signed_numeric_builtin {
+    ($op_width:expr, $signedness:expr,
+     $i32_op:path, $u32_op:path, $i64_op:path, $u64_op:path,
+     $f32_op:path, $f64_op:path) => {
+        Some(match ($op_width, $signedness) {
+            (OpWidth::W32, Signedness::Signed) => $i32_op,
+            (OpWidth::W32, Signedness::Unsigned) => $u32_op,
+            (OpWidth::W64, Signedness::Signed) => $i64_op,
+            (OpWidth::W64, Signedness::Unsigned) => $u64_op,
+            (OpWidth::F32, _) => $f32_op,
+            (OpWidth::F64, _) => $f64_op,
+        })
+    };
+}
+
+/// Builds the opcode for a float-only (transcendental) builtin. The integer
+/// operation widths have no variant and yield `None`.
+///
+/// Used for the many identically-shaped SQRT/LN/.../ATAN2 arms of
+/// [`lookup_builtin`].
+macro_rules! float_builtin {
+    ($op_width:expr, $f32_op:path, $f64_op:path) => {
+        match $op_width {
+            OpWidth::F32 => Some($f32_op),
+            OpWidth::F64 => Some($f64_op),
+            OpWidth::W32 | OpWidth::W64 => None,
+        }
+    };
+}
 
 /// Returns the builtin opcode for a named standard library function, if known.
 ///
 /// The `op_width` selects the correct width variant and `signedness` selects
 /// the signed/unsigned variant for functions that distinguish them.
+///
+/// The arms delegate to the `*_builtin!` macros above, which each capture one
+/// recurring arm shape (all-widths, signed/unsigned, float-only). The opcode
+/// identifiers are still written verbatim per arm — the workspace has no
+/// `paste` crate to concatenate them, and spelling them out keeps every opcode
+/// greppable — while the macros remove the ~55 lines of duplicated `match`
+/// scaffolding the arms would otherwise repeat.
 pub(crate) fn lookup_builtin(name: &str, op_width: OpWidth, signedness: Signedness) -> Option<u16> {
+    use opcode::builtin;
     match name.to_uppercase().as_str() {
-        "EXPT" => Some(match op_width {
-            OpWidth::W32 => opcode::builtin::EXPT_I32,
-            OpWidth::W64 => opcode::builtin::EXPT_I64,
-            OpWidth::F32 => opcode::builtin::EXPT_F32,
-            OpWidth::F64 => opcode::builtin::EXPT_F64,
-        }),
-        "ABS" => Some(match op_width {
-            OpWidth::W32 => opcode::builtin::ABS_I32,
-            OpWidth::W64 => opcode::builtin::ABS_I64,
-            OpWidth::F32 => opcode::builtin::ABS_F32,
-            OpWidth::F64 => opcode::builtin::ABS_F64,
-        }),
-        "MIN" => Some(match (op_width, signedness) {
-            (OpWidth::W32, Signedness::Signed) => opcode::builtin::MIN_I32,
-            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::MIN_U32,
-            (OpWidth::W64, Signedness::Signed) => opcode::builtin::MIN_I64,
-            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::MIN_U64,
-            (OpWidth::F32, _) => opcode::builtin::MIN_F32,
-            (OpWidth::F64, _) => opcode::builtin::MIN_F64,
-        }),
-        "MAX" => Some(match (op_width, signedness) {
-            (OpWidth::W32, Signedness::Signed) => opcode::builtin::MAX_I32,
-            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::MAX_U32,
-            (OpWidth::W64, Signedness::Signed) => opcode::builtin::MAX_I64,
-            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::MAX_U64,
-            (OpWidth::F32, _) => opcode::builtin::MAX_F32,
-            (OpWidth::F64, _) => opcode::builtin::MAX_F64,
-        }),
-        "LIMIT" => Some(match (op_width, signedness) {
-            (OpWidth::W32, Signedness::Signed) => opcode::builtin::LIMIT_I32,
-            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::LIMIT_U32,
-            (OpWidth::W64, Signedness::Signed) => opcode::builtin::LIMIT_I64,
-            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::LIMIT_U64,
-            (OpWidth::F32, _) => opcode::builtin::LIMIT_F32,
-            (OpWidth::F64, _) => opcode::builtin::LIMIT_F64,
-        }),
-        "SEL" => Some(match op_width {
-            OpWidth::W32 => opcode::builtin::SEL_I32,
-            OpWidth::W64 => opcode::builtin::SEL_I64,
-            OpWidth::F32 => opcode::builtin::SEL_F32,
-            OpWidth::F64 => opcode::builtin::SEL_F64,
-        }),
-        "SQRT" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::SQRT_F32),
-            OpWidth::F64 => Some(opcode::builtin::SQRT_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "LN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::LN_F32),
-            OpWidth::F64 => Some(opcode::builtin::LN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "LOG" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::LOG_F32),
-            OpWidth::F64 => Some(opcode::builtin::LOG_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "EXP" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::EXP_F32),
-            OpWidth::F64 => Some(opcode::builtin::EXP_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "SIN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::SIN_F32),
-            OpWidth::F64 => Some(opcode::builtin::SIN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "COS" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::COS_F32),
-            OpWidth::F64 => Some(opcode::builtin::COS_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "TAN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::TAN_F32),
-            OpWidth::F64 => Some(opcode::builtin::TAN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "ASIN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::ASIN_F32),
-            OpWidth::F64 => Some(opcode::builtin::ASIN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "ACOS" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::ACOS_F32),
-            OpWidth::F64 => Some(opcode::builtin::ACOS_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "ATAN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::ATAN_F32),
-            OpWidth::F64 => Some(opcode::builtin::ATAN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "ATAN2" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::ATAN2_F32),
-            OpWidth::F64 => Some(opcode::builtin::ATAN2_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
+        "EXPT" => numeric_builtin!(
+            op_width,
+            builtin::EXPT_I32,
+            builtin::EXPT_I64,
+            builtin::EXPT_F32,
+            builtin::EXPT_F64
+        ),
+        "ABS" => numeric_builtin!(
+            op_width,
+            builtin::ABS_I32,
+            builtin::ABS_I64,
+            builtin::ABS_F32,
+            builtin::ABS_F64
+        ),
+        "SEL" => numeric_builtin!(
+            op_width,
+            builtin::SEL_I32,
+            builtin::SEL_I64,
+            builtin::SEL_F32,
+            builtin::SEL_F64
+        ),
+        "MIN" => signed_numeric_builtin!(
+            op_width,
+            signedness,
+            builtin::MIN_I32,
+            builtin::MIN_U32,
+            builtin::MIN_I64,
+            builtin::MIN_U64,
+            builtin::MIN_F32,
+            builtin::MIN_F64
+        ),
+        "MAX" => signed_numeric_builtin!(
+            op_width,
+            signedness,
+            builtin::MAX_I32,
+            builtin::MAX_U32,
+            builtin::MAX_I64,
+            builtin::MAX_U64,
+            builtin::MAX_F32,
+            builtin::MAX_F64
+        ),
+        "LIMIT" => signed_numeric_builtin!(
+            op_width,
+            signedness,
+            builtin::LIMIT_I32,
+            builtin::LIMIT_U32,
+            builtin::LIMIT_I64,
+            builtin::LIMIT_U64,
+            builtin::LIMIT_F32,
+            builtin::LIMIT_F64
+        ),
+        "SQRT" => float_builtin!(op_width, builtin::SQRT_F32, builtin::SQRT_F64),
+        "LN" => float_builtin!(op_width, builtin::LN_F32, builtin::LN_F64),
+        "LOG" => float_builtin!(op_width, builtin::LOG_F32, builtin::LOG_F64),
+        "EXP" => float_builtin!(op_width, builtin::EXP_F32, builtin::EXP_F64),
+        "SIN" => float_builtin!(op_width, builtin::SIN_F32, builtin::SIN_F64),
+        "COS" => float_builtin!(op_width, builtin::COS_F32, builtin::COS_F64),
+        "TAN" => float_builtin!(op_width, builtin::TAN_F32, builtin::TAN_F64),
+        "ASIN" => float_builtin!(op_width, builtin::ASIN_F32, builtin::ASIN_F64),
+        "ACOS" => float_builtin!(op_width, builtin::ACOS_F32, builtin::ACOS_F64),
+        "ATAN" => float_builtin!(op_width, builtin::ATAN_F32, builtin::ATAN_F64),
+        "ATAN2" => float_builtin!(op_width, builtin::ATAN2_F32, builtin::ATAN2_F64),
+        // Compiler intrinsics (reserved `__` namespace): real-preserving
+        // truncation and floating modulo, ANY_REAL with the width selecting
+        // the F32/F64 builtin variant.
+        "__TRUNC" => float_builtin!(op_width, builtin::TRUNC_F32, builtin::TRUNC_F64),
+        "__MOD" => float_builtin!(op_width, builtin::MOD_F32, builtin::MOD_F64),
         _ => None,
     }
 }
@@ -146,34 +173,21 @@ pub(crate) fn compile_function_call(
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     let name = func.name.lower_case();
+    // A function form of an operator (ADD, GT, AND, NOT, ...) compiles as
+    // the operator it is a form of; the analyzer's table says which.
+    if let Some(form) = operator_function_form(name.as_str()) {
+        return compile_operator_form(emitter, ctx, func, op_type, &form.operator);
+    }
     match name.as_str() {
         "shl" | "shr" | "rol" | "ror" => {
             compile_shift_rotate(emitter, ctx, func, op_type, name.as_str())
         }
         "mux" => compile_mux(emitter, ctx, func, op_type),
-        // Arithmetic function forms (equivalent to +, -, *, /, MOD operators)
-        "add" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_add),
-        "sub" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_sub),
-        "mul" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_mul),
-        "div" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_div),
-        "mod" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_mod),
-        // Comparison function forms (equivalent to >, >=, =, <=, <, <> operators)
-        "gt" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_gt),
-        "ge" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_ge),
-        "eq" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_eq),
-        "le" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_le),
-        "lt" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_lt),
-        "ne" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_ne),
-        // Boolean function forms (equivalent to AND, OR, XOR, NOT operators)
-        "and" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_and),
-        "or" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_or),
-        "xor" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_xor),
-        "not" => compile_not_function(emitter, ctx, func, op_type),
         // Assignment function (equivalent to := operator)
         "move" => compile_move(emitter, ctx, func, op_type),
         // Truncation function
         "trunc" => compile_trunc(emitter, ctx, func, op_type),
-        // SIZEOF operator (vendor extension)
+        // SIZEOF operator (extension)
         "sizeof" => compile_sizeof(emitter, ctx, func),
         // BCD conversion functions
         "bcd_to_int" => compile_bcd_to_int(emitter, ctx, func, op_type),
@@ -243,14 +257,7 @@ fn compile_user_function_call(
     func: &Function,
     func_info: &UserFunctionInfo,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     // Compile each argument with the corresponding parameter's OpType.
     // STRING parameters are copied into the function's data region before CALL;
@@ -342,25 +349,14 @@ fn compile_generic_builtin(
 ) -> Result<(), Diagnostic> {
     let func_name = func.name.original().to_uppercase();
     let func_id = lookup_builtin(&func_name, op_type.0, op_type.1)
-        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
+        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))?;
 
     let expected_args = opcode::builtin::arg_count(func_id) as usize;
 
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != expected_args {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let is_sel = func_name == "SEL";
@@ -389,51 +385,84 @@ fn compile_two_arg_operator(
     ctx: &mut CompileContext,
     func: &Function,
     op_type: OpType,
-    emit_fn: fn(&mut Emitter, OpType),
+    emit_fn: impl FnOnce(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    compile_expr(emitter, ctx, args[0], op_type)?;
-    compile_expr(emitter, ctx, args[1], op_type)?;
+    let (in1, in2) = extract_two_positional_args(func)?;
+    compile_expr(emitter, ctx, in1, op_type)?;
+    compile_expr(emitter, ctx, in2, op_type)?;
     emit_fn(emitter, op_type);
+    Ok(())
+}
+
+/// Compiles the function form of an operator as the operator itself.
+///
+/// The arguments compile at the enclosing expression's operation type, as
+/// every function argument does, and the opcode comes from the emitter the
+/// operator expression uses, so `AND(a, b)` and `a AND b` cannot diverge.
+///
+/// A binary operator folds its arguments from the left, so `ADD(a, b, c)`
+/// compiles as `(a + b) + c`. The analyzer has already enforced how many
+/// arguments the form takes; the fold is the same code for the two of a
+/// binary form and the two or more of an extensible one.
+fn compile_operator_form(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+    operator: &FormOf,
+) -> Result<(), Diagnostic> {
+    match operator {
+        FormOf::Arithmetic(op) => {
+            compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {
+                emit_arithmetic_op(emitter, op, op_type)
+            })
+        }
+        FormOf::Compare(op) => {
+            compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {
+                emit_compare_op(emitter, op, op_type)
+            })
+        }
+        FormOf::Not => {
+            let args = collect_positional_args(func);
+            let [term] = args.as_slice() else {
+                return Err(Diagnostic::todo_with_span(func.name.span()));
+            };
+            compile_expr(emitter, ctx, term, op_type)?;
+            emit_not(emitter, op_type, term)
+        }
+    }
+}
+
+/// Compiles a call's two or more positional arguments, emitting the operator
+/// after each argument but the first, so the arguments fold from the left.
+fn compile_left_fold(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+    emit_fn: impl Fn(&mut Emitter, OpType),
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+    let [first, rest @ ..] = args.as_slice() else {
+        return Err(Diagnostic::todo_with_span(func.name.span()));
+    };
+    if rest.is_empty() {
+        return Err(Diagnostic::todo_with_span(func.name.span()));
+    }
+    compile_expr(emitter, ctx, first, op_type)?;
+    for arg in rest {
+        compile_expr(emitter, ctx, arg, op_type)?;
+        emit_fn(emitter, op_type);
+    }
     Ok(())
 }
 
 /// Extracts two positional input arguments from a function call.
 fn extract_two_positional_args(func: &Function) -> Result<(&Expr, &Expr), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+    match collect_positional_args(func).as_slice() {
+        [in1, in2] => Ok((in1, in2)),
+        _ => Err(Diagnostic::todo_with_span(func.name.span())),
     }
-
-    Ok((args[0], args[1]))
 }
 
 /// Compiles ADD_DT_TIME, SUB_DT_TIME, and CONCAT_DATE_TOD.
@@ -487,21 +516,10 @@ fn compile_dt_to_date(
     ctx: &mut CompileContext,
     func: &Function,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let op_type = (OpWidth::W32, Signedness::Unsigned);
@@ -528,21 +546,10 @@ fn compile_dt_to_tod(
     ctx: &mut CompileContext,
     func: &Function,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let op_type = (OpWidth::W32, Signedness::Unsigned);
@@ -632,37 +639,6 @@ fn compile_mul_div_time(
     Ok(())
 }
 
-/// Compiles the NOT function form.
-///
-/// NOT(IN) is equivalent to the NOT operator. Takes a single BOOL argument.
-fn compile_not_function(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    compile_expr(emitter, ctx, args[0], op_type)?;
-    emitter.emit_bool_not();
-    Ok(())
-}
-
 /// Compiles the MOVE function form.
 ///
 /// MOVE(IN) is equivalent to assignment. Takes a single argument and returns
@@ -673,21 +649,10 @@ fn compile_move(
     func: &Function,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     compile_expr(emitter, ctx, args[0], op_type)?;
@@ -707,21 +672,10 @@ fn compile_trunc(
     func: &Function,
     target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     // Determine the argument's float type from its resolved type.
@@ -763,21 +717,10 @@ fn compile_sizeof(
     ctx: &mut CompileContext,
     func: &Function,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     // Check if the argument is a variable that maps to an array.
@@ -805,9 +748,8 @@ fn sizeof_from_resolved_type(expr: &Expr) -> Result<u32, Diagnostic> {
     let resolved = expr
         .resolved_type
         .as_ref()
-        .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
-    let info =
-        resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+        .ok_or_else(|| Diagnostic::todo())?;
+    let info = resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo())?;
     // Ceiling division: types like BOOL (1 bit) still occupy 1 byte.
     Ok((info.storage_bits as u32).div_ceil(8))
 }
@@ -822,21 +764,10 @@ fn compile_bcd_to_int(
     func: &Function,
     _target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let arg_op_type = op_type(args[0])?;
@@ -848,13 +779,7 @@ fn compile_bcd_to_int(
         16 => opcode::builtin::BCD_TO_INT_16,
         32 => opcode::builtin::BCD_TO_INT_32,
         64 => opcode::builtin::BCD_TO_INT_64,
-        _ => {
-            return Err(Diagnostic::todo_with_span(
-                func.name.span(),
-                file!(),
-                line!(),
-            ))
-        }
+        _ => return Err(Diagnostic::todo_with_span(func.name.span())),
     };
     emitter.emit_builtin(func_id);
     Ok(())
@@ -870,21 +795,10 @@ fn compile_int_to_bcd(
     func: &Function,
     target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let arg_op_type = op_type(args[0])?;
@@ -901,13 +815,7 @@ fn compile_int_to_bcd(
             match target_op_type.0 {
                 OpWidth::W32 => opcode::builtin::INT_TO_BCD_32,
                 OpWidth::W64 => opcode::builtin::INT_TO_BCD_64,
-                _ => {
-                    return Err(Diagnostic::todo_with_span(
-                        func.name.span(),
-                        file!(),
-                        line!(),
-                    ))
-                }
+                _ => return Err(Diagnostic::todo_with_span(func.name.span())),
             }
         }
     };
@@ -928,32 +836,17 @@ fn compile_mux(
     func: &Function,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     // Must have at least 3 args (K + 2 IN values)
     if args.len() < 3 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let num_inputs = (args.len() - 1) as u16; // subtract K
 
     if num_inputs > opcode::builtin::MUX_MAX_INPUTS {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let base = match op_type.0 {
@@ -1002,21 +895,10 @@ pub(crate) fn compile_type_conversion(
 ) -> Result<(), Diagnostic> {
     let source_op_type: OpType = (source.op_width, source.signedness);
 
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     compile_expr(emitter, ctx, args[0], source_op_type)?;
@@ -1029,11 +911,7 @@ pub(crate) fn compile_type_conversion(
             OpWidth::W32 => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_BOOL),
             OpWidth::W64 => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_BOOL),
             _ => {
-                return Err(Diagnostic::todo_with_span(
-                    func.name.span(),
-                    file!(),
-                    line!(),
-                ));
+                return Err(Diagnostic::todo_with_span(func.name.span()));
             }
         }
     } else {
@@ -1117,21 +995,10 @@ fn compile_shift_rotate(
     op_type: OpType,
     name: &str,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     // Compile IN (value) with the inferred op_type
@@ -1163,13 +1030,7 @@ fn compile_shift_rotate(
             16 => opcode::builtin::ROR_U16,
             _ => opcode::builtin::ROR_I32,
         },
-        _ => {
-            return Err(Diagnostic::todo_with_span(
-                func.name.span(),
-                file!(),
-                line!(),
-            ))
-        }
+        _ => return Err(Diagnostic::todo_with_span(func.name.span())),
     };
 
     emitter.emit_builtin(func_id);
@@ -1329,11 +1190,7 @@ pub(crate) fn compile_string_conversion(
 ) -> Result<(), Diagnostic> {
     let args = collect_positional_args(func);
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     match conv {
@@ -1346,11 +1203,7 @@ pub(crate) fn compile_string_conversion(
                 (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::CONV_U32_TO_STR,
                 (OpWidth::F32, _) => opcode::builtin::CONV_F32_TO_STR,
                 _ => {
-                    return Err(Diagnostic::todo_with_span(
-                        func.name.span(),
-                        file!(),
-                        line!(),
-                    ));
+                    return Err(Diagnostic::todo_with_span(func.name.span()));
                 }
             };
             emitter.emit_builtin(func_id);
@@ -1366,16 +1219,103 @@ pub(crate) fn compile_string_conversion(
                 OpWidth::W32 => opcode::builtin::CONV_STR_TO_I32,
                 OpWidth::F32 => opcode::builtin::CONV_STR_TO_F32,
                 _ => {
-                    return Err(Diagnostic::todo_with_span(
-                        func.name.span(),
-                        file!(),
-                        line!(),
-                    ));
+                    return Err(Diagnostic::todo_with_span(func.name.span()));
                 }
             };
             emitter.emit_builtin(func_id);
             emit_truncation(emitter, target);
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lookup_builtin_when_all_width_numeric_then_selects_by_width() {
+        // EXPT/ABS/SEL are defined for every op width, independent of sign.
+        assert_eq!(
+            lookup_builtin("ABS", OpWidth::W32, Signedness::Signed),
+            Some(opcode::builtin::ABS_I32)
+        );
+        assert_eq!(
+            lookup_builtin("ABS", OpWidth::W64, Signedness::Unsigned),
+            Some(opcode::builtin::ABS_I64)
+        );
+        assert_eq!(
+            lookup_builtin("EXPT", OpWidth::F32, Signedness::Signed),
+            Some(opcode::builtin::EXPT_F32)
+        );
+        assert_eq!(
+            lookup_builtin("SEL", OpWidth::F64, Signedness::Signed),
+            Some(opcode::builtin::SEL_F64)
+        );
+    }
+
+    #[test]
+    fn lookup_builtin_when_signed_numeric_then_selects_by_width_and_sign() {
+        assert_eq!(
+            lookup_builtin("MIN", OpWidth::W32, Signedness::Signed),
+            Some(opcode::builtin::MIN_I32)
+        );
+        assert_eq!(
+            lookup_builtin("MIN", OpWidth::W32, Signedness::Unsigned),
+            Some(opcode::builtin::MIN_U32)
+        );
+        assert_eq!(
+            lookup_builtin("MAX", OpWidth::W64, Signedness::Unsigned),
+            Some(opcode::builtin::MAX_U64)
+        );
+        // Float variants ignore signedness.
+        assert_eq!(
+            lookup_builtin("LIMIT", OpWidth::F32, Signedness::Unsigned),
+            Some(opcode::builtin::LIMIT_F32)
+        );
+        assert_eq!(
+            lookup_builtin("LIMIT", OpWidth::F64, Signedness::Signed),
+            Some(opcode::builtin::LIMIT_F64)
+        );
+    }
+
+    #[test]
+    fn lookup_builtin_when_float_only_and_float_width_then_selects_variant() {
+        assert_eq!(
+            lookup_builtin("SIN", OpWidth::F32, Signedness::Signed),
+            Some(opcode::builtin::SIN_F32)
+        );
+        assert_eq!(
+            lookup_builtin("ATAN2", OpWidth::F64, Signedness::Signed),
+            Some(opcode::builtin::ATAN2_F64)
+        );
+    }
+
+    #[test]
+    fn lookup_builtin_when_float_only_and_integer_width_then_none() {
+        assert_eq!(
+            lookup_builtin("SIN", OpWidth::W32, Signedness::Signed),
+            None
+        );
+        assert_eq!(
+            lookup_builtin("SQRT", OpWidth::W64, Signedness::Unsigned),
+            None
+        );
+    }
+
+    #[test]
+    fn lookup_builtin_when_case_insensitive_then_matches() {
+        assert_eq!(
+            lookup_builtin("sin", OpWidth::F32, Signedness::Signed),
+            Some(opcode::builtin::SIN_F32)
+        );
+    }
+
+    #[test]
+    fn lookup_builtin_when_unknown_name_then_none() {
+        assert_eq!(
+            lookup_builtin("NOT_A_BUILTIN", OpWidth::F32, Signedness::Signed),
+            None
+        );
     }
 }

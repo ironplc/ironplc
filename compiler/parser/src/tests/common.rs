@@ -1,10 +1,10 @@
 pub(crate) use dsl::common::{
-    next_block_id, ArrayElementType, ConstantKind, DataTypeDeclarationKind, DeclarationQualifier,
-    EnumeratedSpecificationInit, EnumerationDeclaration, FunctionBlockBodyKind,
-    FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType, InitialValueAssignmentKind,
-    Library, LibraryElementKind, ProgramDeclaration, RealLiteral, ReferenceTarget,
-    SimpleInitializer, SpecificationKind, TypeName, TypeReference, VarDecl, VariableIdentifier,
-    VariableType,
+    next_block_id, ArrayElementType, CharacterStringLiteral, ConstantKind, DataTypeDeclarationKind,
+    DeclarationQualifier, EnumeratedSpecificationInit, EnumerationDeclaration,
+    FunctionBlockBodyKind, FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType,
+    InitialValueAssignmentKind, Library, LibraryElementKind, ProgramDeclaration, RealLiteral,
+    ReferenceTarget, SimpleInitializer, SpecificationKind, StringType, TypeName, TypeReference,
+    VarDecl, VariableIdentifier, VariableType,
 };
 pub(crate) use dsl::configuration::{
     ConfigurationDeclaration, DataSourceKind, ProgramConfiguration, ResourceDeclaration,
@@ -59,10 +59,7 @@ pub(crate) fn with_empty_var_blocks_flag() -> CompilerOptions {
 }
 
 pub(crate) fn parse_text_edition3(source: &str) -> Library {
-    let options = CompilerOptions {
-        allow_iec_61131_3_2013: true,
-        ..CompilerOptions::default()
-    };
+    let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
     let result = parse_program(source, &FileId::default(), &options);
     assert!(result.is_ok(), "Parse failed: {:?}", result.err());
     result.unwrap()
@@ -78,13 +75,18 @@ pub(crate) fn parse_text_reference_to(source: &str) -> Library {
     result.unwrap()
 }
 
-/// Parse with `allow_paren_string_length` enabled (the STRING(n)/WSTRING(n)
-/// vendor delimiter). The default (strict IEC 61131-3) dialect rejects it.
-pub(crate) fn parse_text_paren_string_length(source: &str) -> Library {
-    let options = CompilerOptions {
+/// Options enabling `allow_paren_string_length` (the STRING(n)/WSTRING(n)
+/// dialect delimiter). The default (strict IEC 61131-3) dialect rejects it.
+pub(crate) fn opts_with_paren_string_length() -> CompilerOptions {
+    CompilerOptions {
         allow_paren_string_length: true,
         ..CompilerOptions::default()
-    };
+    }
+}
+
+/// Parse with `allow_paren_string_length` enabled.
+pub(crate) fn parse_text_paren_string_length(source: &str) -> Library {
+    let options = opts_with_paren_string_length();
     let result = parse_program(source, &FileId::default(), &options);
     assert!(result.is_ok(), "Parse failed: {:?}", result.err());
     result.unwrap()
@@ -112,7 +114,7 @@ pub(crate) fn opts_with_partial_access() -> CompilerOptions {
 
 pub(crate) fn wrap_program(body: &str) -> String {
     format!(
-            "PROGRAM main\nVAR\n  b : BYTE;\n  r : BOOL;\n  arr : ARRAY[0..1] OF BYTE;\n  s : MY_STRUCT;\nEND_VAR\n{}\nEND_PROGRAM",
+            "PROGRAM main\nVAR\n  b : BYTE;\n  r : BOOL;\n  v : INT;\n  arr : ARRAY[0..1] OF BYTE;\n  grid : ARRAY[0..3, 0..3] OF INT;\n  s : MY_STRUCT;\nEND_VAR\n{}\nEND_PROGRAM",
             body
         )
 }
@@ -132,13 +134,13 @@ pub(crate) fn extract_duration(library: &Library) -> &DurationLiteral {
     );
     let initializer = &func.variables[0].initializer;
     let simple = cast!(initializer, InitialValueAssignmentKind::Simple);
-    let constant = simple.initial_value.as_ref().expect("initializer");
+    let constant = simple.initial_value.as_ref().unwrap();
     cast!(constant, ConstantKind::Duration)
 }
 
 // ---------------------------------------------------------------------
 // TwinCAT/Siemens `{ ... }` pragma skipping.
-// See specs/plans/2026-07-18-twincat-pragma-skipping.md.
+// See specs/design/beckhoff-twincat-dialect.md §3.3.
 // ---------------------------------------------------------------------
 
 pub(crate) fn enum_with_pragma_header() -> String {
@@ -153,7 +155,6 @@ pub(crate) fn enum_with_pragma_header() -> String {
 
 // -----------------------------------------------------------------
 // CASE branch with no statements.
-// See specs/plans/2026-07-20-twincat-empty-case-branch.md.
 // -----------------------------------------------------------------
 
 pub(crate) fn extract_case(library: &Library) -> Case {
@@ -161,15 +162,15 @@ pub(crate) fn extract_case(library: &Library) -> Case {
         .elements
         .iter()
         .find(|e| matches!(e, LibraryElementKind::FunctionBlockDeclaration(_)))
-        .expect("expected a FunctionBlockDeclaration");
+        .unwrap();
     let fb = cast!(element, LibraryElementKind::FunctionBlockDeclaration);
     let stmts = cast!(&fb.body, FunctionBlockBodyKind::Statements);
     cast!(&stmts.body[0], StmtKind::Case).clone()
 }
 
 // -----------------------------------------------------------------
-// AND_THEN short-circuit boolean operator.
-// See specs/plans/2026-07-20-twincat-and-then-operator.md.
+// AND_THEN / OR_ELSE short-circuit boolean operators.
+// See specs/design/beckhoff-twincat-dialect.md §3.4.
 // -----------------------------------------------------------------
 
 pub(crate) fn opts_with_short_circuit_operators() -> CompilerOptions {
@@ -184,7 +185,7 @@ pub(crate) fn extract_assignment_value(library: &Library) -> Expr {
         .elements
         .iter()
         .find(|e| matches!(e, LibraryElementKind::FunctionBlockDeclaration(_)))
-        .expect("expected a FunctionBlockDeclaration");
+        .unwrap();
     let fb = cast!(element, LibraryElementKind::FunctionBlockDeclaration);
     let stmts = cast!(&fb.body, FunctionBlockBodyKind::Statements);
     let assignment = cast!(&stmts.body[0], StmtKind::Assignment);
@@ -193,7 +194,6 @@ pub(crate) fn extract_assignment_value(library: &Library) -> Expr {
 
 // ---------------------------------------------------------------------
 // Constant-expression VAR initializers.
-// See specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
 // ---------------------------------------------------------------------
 
 pub(crate) fn opts_with_constant_initializer_expressions() -> CompilerOptions {
@@ -201,4 +201,25 @@ pub(crate) fn opts_with_constant_initializer_expressions() -> CompilerOptions {
         allow_constant_initializer_expressions: true,
         ..CompilerOptions::default()
     }
+}
+
+// ---------------------------------------------------------------------
+// OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE.
+// See specs/design/beckhoff-twincat-dialect.md §1.3-1.4.
+// ---------------------------------------------------------------------
+
+pub(crate) fn opts_with_fb_inheritance() -> CompilerOptions {
+    CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    }
+}
+
+pub(crate) fn extract_fb(library: &Library) -> &FunctionBlockDeclaration {
+    let element = library
+        .elements
+        .iter()
+        .find(|e| matches!(e, LibraryElementKind::FunctionBlockDeclaration(_)))
+        .unwrap();
+    cast!(element, LibraryElementKind::FunctionBlockDeclaration)
 }

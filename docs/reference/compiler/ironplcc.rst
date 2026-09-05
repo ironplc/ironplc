@@ -44,13 +44,13 @@ Build Commands
    Compile source files into a bytecode container (``.iplc``) file. Requires
    the ``--output`` (``-o``) flag to specify the output file path.
 
-   .. warning::
+   .. note::
 
-      The compile command currently supports only trivial programs. Supported
-      features include: ``PROGRAM`` declarations, ``INT`` variable declarations,
-      assignment statements, integer literal constants, and the ``+`` (add)
-      operator. Programs using other features will produce a code generation
-      error.
+      The compile command supports Structured Text programs, including
+      functions, function blocks, the standard library, and activated
+      compatibility libraries. A program that uses a feature code
+      generation does not yet support produces a code generation error
+      rather than incorrect bytecode.
 
 Diagnostic Commands
 -------------------
@@ -94,49 +94,70 @@ Options
 
 ``--dialect`` *DIALECT*
    Select the language dialect. A dialect sets the IEC 61131-3 edition and a
-   default set of vendor extensions. Individual ``--allow-*`` flags can
+   default set of extensions. Individual ``--allow-*`` flags can
    override the dialect's defaults. Available values: ``iec61131-3-ed2``
    (default), ``iec61131-3-ed3``, ``rusty``, ``codesys``, ``twincat``. See
    :doc:`/explanation/enabling-dialects-and-features` for details.
 
+``--library`` *NAME*
+   Activate a :doc:`compatibility library </reference/compatibility-libraries/index>`
+   by name (for example ``--library Tc2_System``). Repeat the option to
+   activate several libraries. Applies to the ``check`` and ``compile``
+   commands. Libraries referenced by a discovered project file are
+   activated automatically and do not need this option.
+
 ``--allow-c-style-comments``
    Allow C-style comments (``//`` line comments and ``/* */`` block
-   comments). This is a vendor extension not part of the IEC 61131-3
+   comments). This is an extension not part of the IEC 61131-3
    standard.
 
 ``--allow-missing-semicolon``
    Allow missing semicolons after keyword statements like ``END_IF`` and
-   ``END_STRUCT``. This is a vendor extension not part of the IEC 61131-3
+   ``END_STRUCT``. This is an extension not part of the IEC 61131-3
    standard.
 
 ``--allow-top-level-var-global``
    Allow ``VAR_GLOBAL`` declarations at the top level of a file, outside of
-   a ``CONFIGURATION`` block. This is a vendor extension not part of the
+   a ``CONFIGURATION`` block. This is an extension not part of the
    IEC 61131-3 standard.
 
 ``--allow-constant-type-params``
    Allow constant references in type parameters (e.g., ``STRING[MY_CONST]``
-   or ``ARRAY[1..MY_CONST] OF INT``). This is a vendor extension not part
+   or ``ARRAY[1..MY_CONST] OF INT``). This is an extension not part
    of the IEC 61131-3 standard.
 
 ``--allow-empty-var-blocks``
    Allow empty variable blocks (``VAR END_VAR``, ``VAR_INPUT END_VAR``,
-   etc.). This is a vendor extension not part of the IEC 61131-3 standard.
+   etc.). This is an extension not part of the IEC 61131-3 standard.
 
 ``--allow-time-as-function-name``
    Allow ``TIME`` to be used as a function name (e.g., ``TIME()``).
-   Required for OSCAT compatibility. This is a vendor extension not part
+   Required for OSCAT compatibility. This is an extension not part
    of the IEC 61131-3 standard.
 
+``--allow-long-time-types``
+   Allow the IEC 61131-3:2013 long-time-type keywords ``LTIME``, ``LDATE``,
+   ``LTIME_OF_DAY`` (``LTOD``), and ``LDATE_AND_TIME`` (``LDT``). Without this
+   flag those words remain available as ordinary identifiers.
+
 ``--allow-ref-to``
-   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
-   Edition 3. This is a vendor extension useful when you need references
-   but want to keep Edition 2 keyword handling for the rest of your code.
+   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax (standardized in
+   IEC 61131-3:2013) without enabling the rest of Edition 3. This is useful
+   when you need references but want to keep Edition 2 keyword handling for the
+   rest of your code.
 
 ``--allow-reference-to``
    Allow the Beckhoff TwinCAT / CODESYS ``REFERENCE TO`` reference type and the
    ``REF=`` binding operator — the TwinCAT/CODESYS-facing alternative to
    ``--allow-ref-to``.
+
+``--allow-pointer-to``
+   Allow the Beckhoff TwinCAT / CODESYS ``POINTER TO`` pointer type with
+   explicit dereference (``^``).
+
+``--allow-adr``
+   Allow the ``ADR()`` address-of operator, which returns a typed pointer to
+   a variable for assignment to a ``POINTER TO`` variable.
 
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
@@ -145,22 +166,22 @@ Options
 
 ``--allow-ref-stack-variables``
    Allow ``REF()`` on stack-allocated variables (``VAR_TEMP`` and function
-   ``VAR_INPUT``/``VAR_OUTPUT``). This is a vendor extension not part of the
+   ``VAR_INPUT``/``VAR_OUTPUT``). This is an extension not part of the
    IEC 61131-3 standard.
 
 ``--allow-ref-type-punning``
    Allow assigning between ``REF_TO`` types of different base types (type
-   punning). This is a vendor extension not part of the IEC 61131-3 standard.
+   punning). This is an extension not part of the IEC 61131-3 standard.
 
 ``--allow-int-to-bool-initializer``
    Allow integer literals ``0`` and ``1`` as ``BOOL`` variable initializers,
-   treating ``0`` as ``FALSE`` and ``1`` as ``TRUE``. This is a vendor
+   treating ``0`` as ``FALSE`` and ``1`` as ``TRUE``. This is a dialect
    extension supported by CoDeSys, TwinCAT, RuSTy, and virtually every
    PLC runtime.
 
 ``--allow-sizeof``
    Allow the ``SIZEOF()`` operator that returns the size in bytes of a
-   variable or type. This is a vendor extension supported by CODESYS,
+   variable or type. This is an extension supported by CODESYS,
    TwinCAT, and RuSTy.
 
 ``--allow-system-uptime-global``
@@ -170,13 +191,13 @@ Options
 
 ``--allow-cross-family-widening``
    Allow implicit widening between bit-string and integer type families
-   (e.g. ``BYTE`` to ``INT``, literal ``0`` to ``BYTE``). This is a vendor
+   (e.g. ``BYTE`` to ``INT``, literal ``0`` to ``BYTE``). This is a dialect
    extension supported by CODESYS, TwinCAT, and RuSTy.
 
 ``--allow-partial-access-syntax``
-   Allow IEC 61131-3:2013 partial-access bit syntax (``.%Xn``) as an alias
-   for the short form ``.n``. Byte/word/dword/lword partial access (``.%Bn``,
-   ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
+   Allow IEC 61131-3:2013 partial-access syntax: the bit form ``.%Xn`` (an
+   alias for the short form ``.n``) and the byte, word, double word, and
+   long word forms ``.%Bn``, ``.%Wn``, ``.%Dn``, and ``.%Ln``.
 
 ``--allow-pragmas``
    Allow curly-brace pragmas such as ``{attribute 'qualified_only'}``. This
@@ -185,11 +206,11 @@ Options
    not interpreted.
 
 ``--allow-short-circuit-operators``
-   Allow the ``AND_THEN`` short-circuit boolean operator, a Beckhoff/CODESYS
-   extension that only evaluates its right operand when the left operand is
-   ``TRUE``. ``ironplcc check`` fully supports it; codegen
-   (``ironplcc compile``) does not yet implement short-circuit evaluation and
-   refuses to compile it.
+   Allow the ``AND_THEN`` and ``OR_ELSE`` short-circuit boolean operators, a
+   Beckhoff/CODESYS extension. ``AND_THEN`` evaluates its right operand only
+   when the left operand is ``TRUE``; ``OR_ELSE`` only when the left operand
+   is ``FALSE``. Bit-string operands have nothing to short-circuit on and
+   evaluate both operands, matching ``AND`` and ``OR``.
 
 ``--allow-mixed-located-var-declarations``
    Allow an ``AT``-located variable (e.g. ``AT %I*``) inside an otherwise
@@ -217,7 +238,7 @@ Options
    Allow a string type's maximum length to be delimited with parentheses
    (``STRING(255)``, ``WSTRING(100)``) in addition to the standard square
    brackets. The IEC 61131-3 standard declares a string length only with
-   brackets; the parenthesis form is a vendor extension. Produces
+   brackets; the parenthesis form is an extension. Produces
    :doc:`P4042 </reference/compiler/problems/P4042>` when used without this
    flag.
 
@@ -227,10 +248,21 @@ Options
    structured or call-style initializer's ``name := value`` pairs (e.g.
    ``tonDelta : TON := (PT := pDevice^.Delta);``). The IEC 61131-3 standard
    permits only a constant, enumerated value, array initializer, or nested
-   structure initializer here; this vendor extension accepts a value
+   structure initializer here; this extension accepts a value
    computed at instantiation time. Produces
    :doc:`P4043 </reference/compiler/problems/P4043>` when used without this
    flag.
+
+``--allow-fb-inheritance``
+   Allow the IEC 61131-3:2013 object-oriented syntax:
+   ``EXTENDS``/``IMPLEMENTS``/``ABSTRACT`` on ``FUNCTION_BLOCK``
+   declarations, ``INTERFACE`` declarations, ``METHOD`` declarations, and
+   ``THIS``/``SUPER``. Support beyond parsing varies by keyword — see
+   :doc:`/reference/language/object-orientation/index`; the parts that are
+   parsed but not yet analyzed produce
+   :doc:`P9999 </reference/compiler/problems/P9999>`. Enabled by
+   ``--dialect=iec61131-3-ed3``, ``--dialect=rusty``, ``--dialect=codesys``,
+   and ``--dialect=twincat``.
 
 Examples
 ========

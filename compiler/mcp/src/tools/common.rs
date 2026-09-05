@@ -272,15 +272,14 @@ mod tests {
     }
 
     #[test]
-    fn validate_sources_when_name_contains_slash_then_error() {
+    fn validate_sources_when_name_contains_slash_then_accepted() {
         let sources = vec![SourceInput {
             name: "path/file.st".into(),
             content: String::new(),
         }];
-        // '/' is 0x2F which IS printable ASCII, but that's fine for the
-        // allowlist — the spec says printable ASCII is allowed. The old
-        // denylist rejected '/' but the new allowlist permits it.
-        // '/' is within 0x20-0x7E so it passes validation.
+        // A name is an opaque key, not a filesystem path, so a separator in
+        // it means nothing to the server. '/' is 0x2F, inside the printable
+        // ASCII range REQ-STL-mcp-004 allows, so it is accepted.
         let errs = validate_sources(&sources);
         assert!(errs.is_empty());
     }
@@ -385,7 +384,7 @@ mod tests {
     fn parse_options_when_ed2_dialect_then_default_options() {
         let val = serde_json::json!({"dialect": "iec61131-3-ed2"});
         let opts = parse_options(&val).unwrap();
-        assert!(!opts.allow_iec_61131_3_2013);
+        assert!(!opts.allow_long_time_types);
         assert!(!opts.allow_c_style_comments);
     }
 
@@ -393,12 +392,13 @@ mod tests {
     fn parse_options_when_ed3_dialect_then_edition3_enabled() {
         let val = serde_json::json!({"dialect": "iec61131-3-ed3"});
         let opts = parse_options(&val).unwrap();
-        assert!(opts.allow_iec_61131_3_2013);
+        assert!(opts.allow_long_time_types);
+        assert!(opts.allow_ref_to);
         assert!(!opts.allow_c_style_comments);
     }
 
     #[test]
-    fn parse_options_when_rusty_dialect_then_vendor_flags_enabled() {
+    fn parse_options_when_rusty_dialect_then_dialect_flags_enabled() {
         let val = serde_json::json!({"dialect": "rusty"});
         let opts = parse_options(&val).unwrap();
         assert!(opts.allow_c_style_comments);

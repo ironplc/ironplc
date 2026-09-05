@@ -6,15 +6,13 @@
 //! TIME values are 32-bit signed integers in milliseconds.
 //! The VM cycle_time is in microseconds; timer intrinsics convert to ms internally.
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
-use crate::common::{parse_and_compile, VmBuffers};
-use ironplc_vm::test_support::load_and_start;
+use crate::common::{drive_fb, FbStep, FbStep::*};
 
-#[test]
-fn end_to_end_when_tp_triggered_then_q_is_true() {
-    let source = "
+// timer=var0, result=var1.
+const TP_IN_TRUE: &str = "
 PROGRAM main
   VAR
     timer : TP;
@@ -23,82 +21,9 @@ PROGRAM main
   timer(IN := TRUE, PT := T#5s, Q => result);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
-        // Round 1 at t=0: IN goes TRUE, pulse starts, Q should be TRUE
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(1)).unwrap(),
-            1,
-            "Q should be TRUE when pulse starts"
-        );
-    }
-}
-
-#[test]
-fn end_to_end_when_tp_before_pt_then_q_is_true() {
-    let source = "
-PROGRAM main
-  VAR
-    timer : TP;
-    result : BOOL;
-  END_VAR
-  timer(IN := TRUE, PT := T#5s, Q => result);
-END_PROGRAM
-";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
-
-        // Round 1 at t=0: pulse starts
-        vm.run_round(0).unwrap();
-
-        // Round 2 at t=2s: still before PT (5s)
-        vm.run_round(2_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(1)).unwrap(),
-            1,
-            "Q should be TRUE at t=2s"
-        );
-    }
-}
-
-#[test]
-fn end_to_end_when_tp_after_pt_then_q_is_false() {
-    let source = "
-PROGRAM main
-  VAR
-    timer : TP;
-    result : BOOL;
-  END_VAR
-  timer(IN := TRUE, PT := T#5s, Q => result);
-END_PROGRAM
-";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
-
-        // Round 1 at t=0: pulse starts
-        vm.run_round(0).unwrap();
-
-        // Round 2 at t=6s: past PT (5s), pulse expired
-        vm.run_round(6_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(1)).unwrap(),
-            0,
-            "Q should be FALSE after PT elapsed"
-        );
-    }
-}
-
-#[test]
-fn end_to_end_when_tp_reads_et_then_elapsed_time_correct() {
-    let source = "
+// timer=var0, elapsed=var1.
+const TP_ET: &str = "
 PROGRAM main
   VAR
     timer : TP;
@@ -107,28 +32,9 @@ PROGRAM main
   timer(IN := TRUE, PT := T#10s, ET => elapsed);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
-        // Round 1 at t=0: pulse starts
-        vm.run_round(0).unwrap();
-
-        // Round 2 at t=3s: ET should be 3000 ms (3 seconds)
-        vm.run_round(3_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(1)).unwrap(),
-            3000,
-            "ET should be 3000 ms (3 seconds)"
-        );
-    }
-}
-
-#[test]
-fn end_to_end_when_tp_in_falls_during_pulse_then_q_stays_true() {
-    // TP-specific: IN goes FALSE during pulse, but Q stays TRUE until PT expires.
-    let source = "
+// timer=var0, enable=var1, result=var2, elapsed=var3.
+const TP_ENABLE_Q_ET: &str = "
 PROGRAM main
   VAR
     timer : TP;
@@ -139,76 +45,9 @@ PROGRAM main
   timer(IN := enable, PT := T#5s, Q => result, ET => elapsed);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
-        // Round 1 at t=0: enable=TRUE, pulse starts
-        vm.write_variable(VarIndex::new(1), 1).unwrap();
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            1,
-            "Q should be TRUE"
-        );
-
-        // Round 2 at t=2s: enable=FALSE, but pulse continues
-        vm.write_variable(VarIndex::new(1), 0).unwrap();
-        vm.run_round(2_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            1,
-            "Q should still be TRUE (pulse ignores IN)"
-        );
-
-        // Round 3 at t=6s: pulse expired
-        vm.run_round(6_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            0,
-            "Q should be FALSE after pulse expired"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            5000,
-            "ET should be clamped to PT (5000 ms)"
-        );
-    }
-}
-
-#[test]
-fn end_to_end_when_tp_at_exact_pt_then_q_is_false() {
-    let source = "
-PROGRAM main
-  VAR
-    timer : TP;
-    result : BOOL;
-  END_VAR
-  timer(IN := TRUE, PT := T#5s, Q => result);
-END_PROGRAM
-";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
-
-        // Round 1 at t=0: pulse starts
-        vm.run_round(0).unwrap();
-
-        // Round 2 at exactly t=5s: ET == PT, pulse should end
-        vm.run_round(5_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(1)).unwrap(),
-            0,
-            "Q should be FALSE when ET equals PT exactly"
-        );
-    }
-}
-
-#[test]
-fn end_to_end_when_two_tp_timers_then_independent() {
-    let source = "
+// timer1=var0, timer2=var1, enable=var2, q1=var3, q2=var4.
+const TP_TWO: &str = "
 PROGRAM main
   VAR
     timer1 : TP;
@@ -221,53 +60,31 @@ PROGRAM main
   timer2(IN := enable, PT := T#7s, Q => q2);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
-        // Round 1 at t=0: enable=TRUE, both start pulsing
-        // enable is var index 2 (after timer1=0, timer2=1)
-        vm.write_variable(VarIndex::new(2), 1).unwrap();
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            1,
-            "q1 should be TRUE"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(4)).unwrap(),
-            1,
-            "q2 should be TRUE"
-        );
-
-        // Drop enable so pulses don't retrigger after expiry
-        vm.write_variable(VarIndex::new(2), 0).unwrap();
-
-        // Round 2 at t=4s: timer1 (3s) pulse expired, timer2 (7s) still pulsing
-        vm.run_round(4_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            0,
-            "q1 should be FALSE at t=4s"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(4)).unwrap(),
-            1,
-            "q2 should be TRUE at t=4s"
-        );
-
-        // Round 3 at t=8s: both pulses expired
-        vm.run_round(8_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            0,
-            "q1 should be FALSE at t=8s"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(4)).unwrap(),
-            0,
-            "q2 should be FALSE at t=8s"
-        );
-    }
+#[rstest]
+// Pulse starts on the rising edge: Q TRUE.
+#[case::triggered(TP_IN_TRUE, &[Run(0), Expect(1, 1)])]
+// Within PT the pulse stays TRUE.
+#[case::before_pt(TP_IN_TRUE, &[Run(0), Run(2_000_000), Expect(1, 1)])]
+// Past PT the pulse ends: Q FALSE.
+#[case::after_pt(TP_IN_TRUE, &[Run(0), Run(6_000_000), Expect(1, 0)])]
+// ET reports 3s of pulse elapsed.
+#[case::reads_et(TP_ET, &[Run(0), Run(3_000_000), Expect(1, 3000)])]
+// IN falling during the pulse does not cut it short; ET clamps to PT.
+#[case::in_falls_during_pulse(TP_ENABLE_Q_ET, &[
+    Write(1, 1), Run(0), Expect(2, 1),
+    Write(1, 0), Run(2_000_000), Expect(2, 1),
+    Run(6_000_000), Expect(2, 0), Expect(3, 5000),
+])]
+// ET == PT exactly: pulse has ended, Q FALSE.
+#[case::at_exact_pt(TP_IN_TRUE, &[Run(0), Run(5_000_000), Expect(1, 0)])]
+// Two TP timers with different PT run independently.
+#[case::two_timers(TP_TWO, &[
+    Write(2, 1), Run(0), Expect(3, 1), Expect(4, 1),
+    Write(2, 0),
+    Run(4_000_000), Expect(3, 0), Expect(4, 1),
+    Run(8_000_000), Expect(3, 0), Expect(4, 0),
+])]
+fn end_to_end_fb_tp(#[case] source: &str, #[case] steps: &[FbStep]) {
+    drive_fb(source, &CompilerOptions::default(), steps);
 }

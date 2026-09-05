@@ -165,6 +165,12 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
             LibraryElementKind::GlobalVarDeclarations(decls) => {
                 global_var_decls.push(decls);
             }
+            LibraryElementKind::InterfaceDeclaration(decl) => {
+                elems_by_name.insert(
+                    decl.name.clone(),
+                    LibraryElementKind::InterfaceDeclaration(decl),
+                );
+            }
         }
     }
 
@@ -450,7 +456,11 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.name.clone());
-        self.declarations.add_node(&node.name.name);
+        let this = self.declarations.add_node(&node.name.name);
+        if let Some(parent) = node.oop.as_ref().and_then(|oop| oop.base.as_ref()) {
+            let depends_on = self.declarations.add_node(&parent.name);
+            self.declarations.graph.add_edge(depends_on, this, ());
+        }
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -463,6 +473,21 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         self.current_from = Some(node.name.clone());
         let idx = self.declarations.add_node(&node.name);
         self.program_nodes.push(idx);
+        let res = node.recurse_visit(self);
+        self.current_from = None;
+        res
+    }
+
+    fn visit_interface_declaration(
+        &mut self,
+        node: &InterfaceDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.current_from = Some(node.name.clone());
+        let this = self.declarations.add_node(&node.name);
+        for parent in &node.extends {
+            let depends_on = self.declarations.add_node(&parent.name);
+            self.declarations.graph.add_edge(depends_on, this, ());
+        }
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -491,7 +516,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                 let to = self.declarations.add_node(&node.name);
                 self.declarations.graph.add_edge(to, from, ());
             }
-            None => return Err(Diagnostic::todo(file!(), line!())),
+            None => return Err(Diagnostic::todo()),
         }
 
         node.recurse_visit(self)
@@ -512,7 +537,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                 let to = self.declarations.add_node(&init.type_name.name);
                 self.declarations.graph.add_edge(to, from, ());
             }
-            None => return Err(Diagnostic::todo(file!(), line!())),
+            None => return Err(Diagnostic::todo()),
         }
 
         Ok(())
@@ -556,7 +581,23 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         let to = self.declarations.add_node(&struct_init.type_name.name);
                         self.declarations.graph.add_edge(to, from, ());
                     }
-                    InitialValueAssignmentKind::Array(_) => {}
+                    InitialValueAssignmentKind::Array(array_init) => {
+                        // An array-typed field depends on its element type
+                        // exactly as `visit_array_declaration` does for a
+                        // top-level array type. Without this edge, the
+                        // element type may be ordered after the containing
+                        // declaration and is then missing from the type
+                        // environment, surfacing as a spurious P2013.
+                        let element_type_name = match &array_init.spec {
+                            SpecificationKind::Named(parent) => parent.name.clone(),
+                            SpecificationKind::Inline(subranges) => {
+                                subranges.type_name.to_type_name().name
+                            }
+                        };
+                        let from = self.declarations.add_node(from);
+                        let to = self.declarations.add_node(&element_type_name);
+                        self.declarations.graph.add_edge(to, from, ());
+                    }
                     InitialValueAssignmentKind::Reference(_) => {}
                     InitialValueAssignmentKind::LateResolvedType(lrt) => {
                         // We only care about these because these may be references to a function block
@@ -635,6 +676,71 @@ mod tests {
         let decl = library.elements.get(1).unwrap();
         let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
         assert_eq!(decl.name, TypeName::from("Caller"));
+    }
+
+    // ---------------------------------------------------------------------
+    // FUNCTION_BLOCK EXTENDS dependency edge.
+    // ---------------------------------------------------------------------
+
+    fn parse_with_fb_inheritance(program: &str) -> Library {
+        use ironplc_parser::{options::CompilerOptions, parse_program};
+
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        parse_program(program, &FileId::default(), &options).unwrap()
+    }
+
+    #[test]
+    fn apply_when_function_block_extends_cycle_then_return_error() {
+        let program = "
+FUNCTION_BLOCK FB_A EXTENDS FB_B
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_B EXTENDS FB_A
+END_FUNCTION_BLOCK";
+
+        let library = parse_with_fb_inheritance(program);
+        let result = apply(library);
+        assert_eq!(
+            result.unwrap_err().first().unwrap().code,
+            Problem::RecursiveCycle.code().to_string()
+        );
+    }
+
+    #[test]
+    fn apply_when_function_block_extends_forward_reference_then_base_ordered_first() {
+        // The derived FB is declared textually *before* its base -- the
+        // new dependency edge must still order the base first.
+        let program = "
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Base
+END_FUNCTION_BLOCK";
+
+        let library = parse_with_fb_inheritance(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
+        assert_eq!(decl.name, TypeName::from("FB_Base"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
+        assert_eq!(decl.name, TypeName::from("FB_Derived"));
+    }
+
+    #[test]
+    fn apply_when_function_block_no_extends_then_return_ok() {
+        let program = "
+FUNCTION_BLOCK FB_Plain
+END_FUNCTION_BLOCK";
+
+        let library = parse_with_fb_inheritance(program);
+        let result = apply(library);
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -1076,5 +1182,159 @@ END_TYPE";
             first,
             LibraryElementKind::GlobalVarDeclarations(_)
         ));
+    }
+
+    // ---------------------------------------------------------------------
+    // Array element type dependency edge for array-typed struct fields.
+    // ---------------------------------------------------------------------
+
+    /// Returns the position of the named structure declaration in the sorted
+    /// library, or `None` when the library does not declare that structure.
+    fn structure_position(library: &Library, name: &str) -> Option<usize> {
+        library.elements.iter().position(|element| match element {
+            LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Structure(decl)) => {
+                decl.type_name == TypeName::from(name)
+            }
+            _ => false,
+        })
+    }
+
+    #[test]
+    fn apply_when_struct_array_field_element_declared_first_then_element_ordered_first() {
+        // Declaration order already matches dependency order. The element type
+        // must still be ordered ahead of the struct that arrays over it --
+        // without a dependency edge the sort is free to emit either order.
+        let program = "
+TYPE Item : STRUCT
+    Flag : BOOL;
+END_STRUCT;
+END_TYPE
+
+TYPE Holder : STRUCT
+    Items : ARRAY[1..6] OF Item;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        let item = structure_position(&library, "Item").unwrap();
+        let holder = structure_position(&library, "Holder").unwrap();
+        assert!(item < holder, "Item must be ordered before Holder");
+    }
+
+    #[test]
+    fn apply_when_struct_array_field_element_declared_last_then_element_ordered_first() {
+        // Forward reference: the element type is declared textually *after*
+        // the struct whose array field references it.
+        let program = "
+TYPE Holder : STRUCT
+    Items : ARRAY[1..6] OF Item;
+END_STRUCT;
+END_TYPE
+
+TYPE Item : STRUCT
+    Flag : BOOL;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        let item = structure_position(&library, "Item").unwrap();
+        let holder = structure_position(&library, "Holder").unwrap();
+        assert!(item < holder, "Item must be ordered before Holder");
+    }
+
+    #[test]
+    fn apply_when_struct_array_field_element_is_elementary_then_return_ok() {
+        // Elementary element types have no declaration to order against. The
+        // added edge must not make the graph unsortable.
+        let program = "
+TYPE Holder : STRUCT
+    Nums : ARRAY[1..4] OF INT;
+    Flags : ARRAY[1..2] OF BOOL;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        assert!(structure_position(&library, "Holder").is_some());
+    }
+
+    #[test]
+    fn apply_when_struct_array_field_is_self_recursive_then_return_error() {
+        // An array of the enclosing struct is infinitely sized. The new edge
+        // makes this a genuine cycle, which must be reported as such.
+        let program = "
+TYPE A : STRUCT
+    Items : ARRAY[1..2] OF A;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let result = apply(library);
+        assert_eq!(
+            result.unwrap_err().first().unwrap().code,
+            Problem::RecursiveCycle.code().to_string()
+        );
+    }
+
+    #[test]
+    fn apply_when_struct_array_fields_are_mutually_recursive_then_return_error() {
+        let program = "
+TYPE A : STRUCT
+    Items : ARRAY[1..2] OF B;
+END_STRUCT;
+END_TYPE
+
+TYPE B : STRUCT
+    Items : ARRAY[1..2] OF A;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let result = apply(library);
+        assert_eq!(
+            result.unwrap_err().first().unwrap().code,
+            Problem::RecursiveCycle.code().to_string()
+        );
+    }
+
+    #[test]
+    fn resolve_types_when_struct_array_field_element_declared_before_program_then_return_ok() {
+        // Pipeline-level regression guard for the reported symptom: this
+        // layout previously failed with P2013 because the element type was
+        // absent from the type environment when the array field was resolved.
+        // See https://github.com/ironplc/ironplc/issues/1376.
+        use ironplc_parser::options::CompilerOptions;
+
+        let program = "
+TYPE Item : STRUCT
+    Flag : BOOL;
+END_STRUCT;
+END_TYPE
+
+TYPE Holder : STRUCT
+    Items : ARRAY[1..6] OF Item;
+    Other : BOOL;
+END_STRUCT;
+END_TYPE
+
+PROGRAM Main
+VAR
+    H : Holder;
+END_VAR
+    H.Other := TRUE;
+END_PROGRAM";
+
+        let library = parse_only(program);
+        let result = crate::stages::resolve_types(&[&library], &CompilerOptions::default());
+        assert!(
+            result.is_ok(),
+            "expected type resolution to succeed, got {:?}",
+            result.err()
+        );
     }
 }

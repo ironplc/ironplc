@@ -6,9 +6,9 @@ use crate::common::parse_and_run;
 
 // --- SHL ---
 
-#[test]
-fn end_to_end_when_shl_byte_then_shifts_left() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_shl_byte_then_shifts_left,
+    "
 PROGRAM main
   VAR
     x : BYTE;
@@ -17,15 +17,13 @@ PROGRAM main
   x := BYTE#16#0F;
   y := SHL(x, 4);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0x0F);
-    assert_eq!(bufs.vars[1].as_i32(), 0xF0);
-}
+",
+    &[(0, 0x0F), (1, 0xF0)],
+);
 
-#[test]
-fn end_to_end_when_shl_dword_then_shifts_left() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_shl_dword_then_shifts_left,
+    "
 PROGRAM main
   VAR
     x : DWORD;
@@ -34,15 +32,13 @@ PROGRAM main
   x := DWORD#16#0000_000F;
   y := SHL(x, 16);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0x0F);
-    assert_eq!(bufs.vars[1].as_i32(), 0x000F_0000_u32 as i32);
-}
+",
+    &[(0, 0x0F), (1, 0x000F_0000_u32 as i32)],
+);
 
-#[test]
-fn end_to_end_when_shl_lword_then_shifts_left_64bit() {
-    let source = "
+e2e_i64!(
+    end_to_end_when_shl_lword_then_shifts_left_64bit,
+    "
 PROGRAM main
   VAR
     x : LWORD;
@@ -51,17 +47,15 @@ PROGRAM main
   x := LWORD#16#01;
   y := SHL(x, 32);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i64(), 0x01);
-    assert_eq!(bufs.vars[1].as_i64(), 0x1_0000_0000);
-}
+",
+    &[(0, 0x01), (1, 0x1_0000_0000)],
+);
 
 // --- SHR ---
 
-#[test]
-fn end_to_end_when_shr_word_then_shifts_right() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_shr_word_then_shifts_right,
+    "
 PROGRAM main
   VAR
     x : WORD;
@@ -70,15 +64,13 @@ PROGRAM main
   x := WORD#16#FF00;
   y := SHR(x, 8);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0xFF00);
-    assert_eq!(bufs.vars[1].as_i32(), 0x00FF);
-}
+",
+    &[(0, 0xFF00), (1, 0x00FF)],
+);
 
-#[test]
-fn end_to_end_when_shr_byte_then_shifts_right() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_shr_byte_then_shifts_right,
+    "
 PROGRAM main
   VAR
     x : BYTE;
@@ -87,18 +79,16 @@ PROGRAM main
   x := BYTE#16#F0;
   y := SHR(x, 4);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0xF0);
-    assert_eq!(bufs.vars[1].as_i32(), 0x0F);
-}
+",
+    &[(0, 0xF0), (1, 0x0F)],
+);
 
 // --- ROL ---
 
-#[test]
-fn end_to_end_when_rol_byte_then_rotates_within_8_bits() {
-    // ROL(BYTE#16#81, 1) should give 0x03 (bit 7 wraps to bit 0 within 8 bits)
-    let source = "
+// ROL(BYTE#16#81, 1) should give 0x03 (bit 7 wraps to bit 0 within 8 bits)
+e2e_i32!(
+    end_to_end_when_rol_byte_then_rotates_within_8_bits,
+    "
 PROGRAM main
   VAR
     x : BYTE;
@@ -107,16 +97,14 @@ PROGRAM main
   x := BYTE#16#81;
   y := ROL(x, 1);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0x81);
-    assert_eq!(bufs.vars[1].as_i32(), 0x03);
-}
+",
+    &[(0, 0x81), (1, 0x03)],
+);
 
-#[test]
-fn end_to_end_when_rol_word_then_rotates_within_16_bits() {
-    // ROL(WORD#16#8001, 1) = 0x0003
-    let source = "
+// ROL(WORD#16#8001, 1) = 0x0003
+e2e_i32!(
+    end_to_end_when_rol_word_then_rotates_within_16_bits,
+    "
 PROGRAM main
   VAR
     x : WORD;
@@ -125,16 +113,14 @@ PROGRAM main
   x := WORD#16#8001;
   y := ROL(x, 1);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0x8001);
-    assert_eq!(bufs.vars[1].as_i32(), 0x0003);
-}
+",
+    &[(0, 0x8001), (1, 0x0003)],
+);
 
-#[test]
-fn end_to_end_when_rol_dword_then_rotates_left() {
-    // ROL(DWORD#16#80000001, 1) = 0x00000003
-    let source = "
+// ROL(DWORD#16#80000001, 1) = 0x00000003
+e2e_i32!(
+    end_to_end_when_rol_dword_then_rotates_left,
+    "
 PROGRAM main
   VAR
     x : DWORD;
@@ -143,18 +129,16 @@ PROGRAM main
   x := DWORD#16#80000001;
   y := ROL(x, 1);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0x80000001_u32 as i32);
-    assert_eq!(bufs.vars[1].as_i32(), 0x00000003);
-}
+",
+    &[(0, 0x80000001_u32 as i32), (1, 0x00000003)],
+);
 
 // --- ROR ---
 
-#[test]
-fn end_to_end_when_ror_dword_then_rotates_right() {
-    // ROR(DWORD#16#00000001, 1) = 0x80000000 (bit 0 wraps to bit 31)
-    let source = "
+// ROR(DWORD#16#00000001, 1) = 0x80000000 (bit 0 wraps to bit 31)
+e2e_i32!(
+    end_to_end_when_ror_dword_then_rotates_right,
+    "
 PROGRAM main
   VAR
     x : DWORD;
@@ -163,16 +147,14 @@ PROGRAM main
   x := DWORD#16#00000001;
   y := ROR(x, 1);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0x01);
-    assert_eq!(bufs.vars[1].as_i32(), 0x80000000_u32 as i32);
-}
+",
+    &[(0, 0x01), (1, 0x80000000_u32 as i32)],
+);
 
-#[test]
-fn end_to_end_when_ror_byte_then_rotates_within_8_bits() {
-    // ROR(BYTE#16#01, 1) = 0x80 (bit 0 wraps to bit 7 within 8 bits)
-    let source = "
+// ROR(BYTE#16#01, 1) = 0x80 (bit 0 wraps to bit 7 within 8 bits)
+e2e_i32!(
+    end_to_end_when_ror_byte_then_rotates_within_8_bits,
+    "
 PROGRAM main
   VAR
     x : BYTE;
@@ -181,16 +163,14 @@ PROGRAM main
   x := BYTE#16#01;
   y := ROR(x, 1);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0x01);
-    assert_eq!(bufs.vars[1].as_i32(), 0x80);
-}
+",
+    &[(0, 0x01), (1, 0x80)],
+);
 
-#[test]
-fn end_to_end_when_shl_byte_overflow_then_truncates() {
-    // SHL(BYTE#16#FF, 4) = 0xF0 (shifted to 0xFF0, truncated to u8 = 0xF0)
-    let source = "
+// SHL(BYTE#16#FF, 4) = 0xF0 (shifted to 0xFF0, truncated to u8 = 0xF0)
+e2e_i32!(
+    end_to_end_when_shl_byte_overflow_then_truncates,
+    "
 PROGRAM main
   VAR
     x : BYTE;
@@ -199,11 +179,9 @@ PROGRAM main
   x := BYTE#16#FF;
   y := SHL(x, 4);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0xFF);
-    assert_eq!(bufs.vars[1].as_i32(), 0xF0);
-}
+",
+    &[(0, 0xFF), (1, 0xF0)],
+);
 
 #[test]
 fn end_to_end_when_shl_with_zero_shift_then_unchanged() {
@@ -223,9 +201,9 @@ END_PROGRAM
 
 // --- Nested function calls ---
 
-#[test]
-fn end_to_end_when_shr_with_abs_then_computes_correctly() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_shr_with_abs_then_computes_correctly,
+    "
 PROGRAM main
   VAR
     a : DINT;
@@ -234,8 +212,6 @@ PROGRAM main
   a := -8;
   result := SHR(ABS(a), 1);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), -8);
-    assert_eq!(bufs.vars[1].as_i32(), 4);
-}
+",
+    &[(0, -8), (1, 4)],
+);

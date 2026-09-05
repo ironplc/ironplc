@@ -33,6 +33,7 @@
 //! ```
 
 use std::collections::HashMap;
+use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::{FunctionBlockDeclaration, FunctionDeclaration, Library, ProgramDeclaration},
@@ -42,7 +43,11 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -50,13 +55,7 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut hierarchy_visitor = HierarchyVisitor::new();
-    hierarchy_visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !hierarchy_visitor.problems.is_empty() {
-        return Err(hierarchy_visitor.problems);
-    }
-    Ok(())
+    run_rule(HierarchyVisitor::new(), lib)
 }
 
 #[derive(Debug)]
@@ -83,13 +82,19 @@ impl HierarchyVisitor {
     }
 }
 
-impl Visitor<Diagnostic> for HierarchyVisitor {
+impl DiagnosticVisitor for HierarchyVisitor {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.problems
+    }
+}
+
+impl Visitor<Infallible> for HierarchyVisitor {
     type Value = ();
 
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         if let Some(existing) = self
             .pou_types
             .insert(node.name.clone(), (PouKind::Function, node.name.span()))
@@ -110,7 +115,7 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         if let Some(existing) = self.pou_types.insert(
             node.name.name.clone(),
             (PouKind::FunctionBlock, node.name.span()),
@@ -131,7 +136,7 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         if let Some(existing) = self
             .pou_types
             .insert(node.name.clone(), (PouKind::Program, node.name.span()))
@@ -152,7 +157,7 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
     fn visit_configuration_declaration(
         &mut self,
         node: &ironplc_dsl::configuration::ConfigurationDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         if let Some(existing) = self
             .pou_types
             .insert(node.name.clone(), (PouKind::Config, node.name.span()))
@@ -179,27 +184,25 @@ mod tests {
         test_helpers::{parse_and_resolve_types, parse_only},
     };
     use ironplc_parser::options::CompilerOptions;
+    use rstest::rstest;
 
-    #[test]
-    fn apply_when_duplicate_function_name_then_error() {
-        let program = "
+    /// A duplicated POU name (across each declaration kind) is an error. Each
+    /// case parses without type resolution, applies the rule against a fresh
+    /// empty context, and expects an error; each row still runs as an
+    /// individually-named test.
+    #[rstest]
+    #[case::duplicate_function_name(
+        "
         FUNCTION Foo : BOOL
             Foo := FALSE;
         END_FUNCTION
 
         FUNCTION Foo : BOOL
             Foo := TRUE;
-        END_FUNCTION";
-
-        let library = parse_only(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_duplicate_function_block_name_then_error() {
-        let program = "
+        END_FUNCTION"
+    )]
+    #[case::duplicate_function_block_name(
+        "
         FUNCTION_BLOCK Bar
             VAR
                 X : BOOL;
@@ -210,17 +213,10 @@ mod tests {
             VAR
                 Y : BOOL;
             END_VAR
-        END_FUNCTION_BLOCK";
-
-        let library = parse_only(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_duplicate_program_name_then_error() {
-        let program = "
+        END_FUNCTION_BLOCK"
+    )]
+    #[case::duplicate_program_name(
+        "
         PROGRAM Baz
             VAR
                 X : BOOL;
@@ -231,17 +227,10 @@ mod tests {
             VAR
                 Y : BOOL;
             END_VAR
-        END_PROGRAM";
-
-        let library = parse_only(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_duplicate_configuration_name_then_error() {
-        let program = "
+        END_PROGRAM"
+    )]
+    #[case::duplicate_configuration_name(
+        "
         FUNCTION_BLOCK Fb1
             VAR
                 X : BOOL;
@@ -266,17 +255,18 @@ mod tests {
                 TASK Main(INTERVAL := T#20ms, PRIORITY := 1);
                 PROGRAM P2 WITH Main : Prg1;
             END_RESOURCE
-        END_CONFIGURATION";
-
+        END_CONFIGURATION"
+    )]
+    fn apply_when_duplicate_pou_name_then_error(#[case] program: &str) {
         let library = parse_only(program);
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&library, &context, &CompilerOptions::default());
         assert!(result.is_err());
     }
 
-    #[test]
-    fn apply_when_program_uses_function_block_instance_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_program_uses_function_block_instance_then_ok,
+        "
         FUNCTION_BLOCK COUNTER
             VAR
                 count : INT;
@@ -289,17 +279,12 @@ mod tests {
                 c : COUNTER;
             END_VAR
             c();
-        END_PROGRAM";
+        END_PROGRAM"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_function_block_uses_function_block_instance_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_function_block_uses_function_block_instance_then_ok,
+        "
         FUNCTION_BLOCK Callee
             VAR
                 IN1 : BOOL;
@@ -310,13 +295,8 @@ mod tests {
             VAR
                 CalleeInstance : Callee;
             END_VAR
-        END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+        END_FUNCTION_BLOCK"
+    );
 
     #[test]
     fn apply_when_function_invokes_function_block_then_error() {

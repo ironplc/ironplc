@@ -4,13 +4,9 @@
 //! any integer parameter type. Bare real literals resolve as ANY_REAL and are
 //! compatible with any real parameter type.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_bare_int_literal_to_int_param_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_bare_int_literal_to_int_param_then_correct,
+    "
 FUNCTION ADD_ONE : INT
 VAR_INPUT
     x : INT;
@@ -24,14 +20,13 @@ VAR
 END_VAR
     result := ADD_ONE(5);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 6);
-}
+",
+    &[(0, 6)],
+);
 
-#[test]
-fn end_to_end_when_bare_int_literal_to_sint_param_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_bare_int_literal_to_sint_param_then_correct,
+    "
 FUNCTION DOUBLE : SINT
 VAR_INPUT
     x : SINT;
@@ -45,14 +40,13 @@ VAR
 END_VAR
     result := DOUBLE(7);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 14);
-}
+",
+    &[(0, 14)],
+);
 
-#[test]
-fn end_to_end_when_bare_int_literal_to_dint_param_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_bare_int_literal_to_dint_param_then_correct,
+    "
 FUNCTION TRIPLE : DINT
 VAR_INPUT
     x : DINT;
@@ -66,14 +60,14 @@ VAR
 END_VAR
     result := TRIPLE(100);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 300);
-}
+",
+    &[(0, 300)],
+);
 
-#[test]
-fn end_to_end_when_bare_real_literal_to_lreal_param_then_correct() {
-    let source = "
+e2e_f64_near!(
+    end_to_end_when_bare_real_literal_to_lreal_param_then_correct,
+    0.001,
+    "
 FUNCTION ADD_PI : LREAL
 VAR_INPUT
     x : LREAL;
@@ -87,15 +81,14 @@ VAR
 END_VAR
     result := ADD_PI(3.25);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    let val = bufs.vars[0].as_f64();
-    assert!((val - 3.25).abs() < 0.001);
-}
+",
+    &[(0, 3.25)],
+);
 
-#[test]
-fn end_to_end_when_bare_int_literal_to_real_param_then_correct() {
-    let source = "
+e2e_f32_near!(
+    end_to_end_when_bare_int_literal_to_real_param_then_correct,
+    1e-5,
+    "
 FUNCTION HALVE : REAL
 VAR_INPUT
     x : REAL;
@@ -109,14 +102,14 @@ VAR
 END_VAR
     result := HALVE(10);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert!((bufs.vars[0].as_f32() - 5.0).abs() < 1e-5);
-}
+",
+    &[(0, 5.0)],
+);
 
-#[test]
-fn end_to_end_when_bare_int_literal_to_lreal_param_then_correct() {
-    let source = "
+e2e_f64_near!(
+    end_to_end_when_bare_int_literal_to_lreal_param_then_correct,
+    1e-10,
+    "
 FUNCTION IDENTITY_LREAL : LREAL
 VAR_INPUT
     x : LREAL;
@@ -130,14 +123,13 @@ VAR
 END_VAR
     result := IDENTITY_LREAL(42);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert!((bufs.vars[0].as_f64() - 42.0).abs() < 1e-10);
-}
+",
+    &[(0, 42.0)],
+);
 
-#[test]
-fn end_to_end_when_bare_literal_in_expression_with_int_var_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_bare_literal_in_expression_with_int_var_then_correct,
+    "
 PROGRAM main
 VAR
     x : INT;
@@ -146,7 +138,6 @@ END_VAR
     x := INT#10;
     result := x + 5;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 15);
-}
+",
+    &[(1, 15)],
+);

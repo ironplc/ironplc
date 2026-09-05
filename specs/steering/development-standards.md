@@ -15,21 +15,78 @@ IronPLC consists of four primary components:
 
 **Critical**: The build will fail if the compiler, VS Code extension, and documentation website get out of sync. Always ensure version numbers, problem codes, and language features are synchronized across those three components.
 
+## Component-Specific Standards
+
+This file holds the cross-component process and conventions that apply to *all*
+work. Standards specific to one component live in their own steering files, which
+load only when you touch that component's files:
+
+- **[compiler-standards.md](compiler-standards.md)** — Rust coding standards for `compiler/**` (module structure, testing, error handling, performance, `unsafe`)
+- **[doc-standards.md](doc-standards.md)** — documentation website standards for `docs/**` (quadrants, writing style, RST roles)
+- **[extension-standards.md](extension-standards.md)** — VS Code extension standards for `integrations/vscode/**`
+
 ## Specs Directory Structure
 
 The `specs/` directory contains internal technical documentation organized into four folders:
 
 ### `specs/adrs/` — Architecture Decision Records
 
-Trade-off analyses that capture **why** a particular approach was chosen over alternatives. ADRs are numbered (`0000-topic.md`) and are permanent records — they are not updated after the decision is made.
+Trade-off analyses that capture **why** a particular approach was chosen over alternatives. ADRs are numbered (`0000-topic.md`). **A decision, once made, is never rewritten** — a changed mind is a new ADR that supersedes the old one, so the history of the project's thinking stays readable.
+
+That immutability covers the *decision*. It does not cover the *record* of it: a title that names the losing option, a status that never advanced past `proposed`, or a section describing a rejected option as though it had been built are all defects in the record, and leaving them in place is how an ADR comes to mislead the reader it exists to inform.
+
+#### Status
+
+Every ADR carries front matter — `status:` and `date:` — directly under the H1:
+
+```markdown
+# Short Title Naming the Chosen Option
+
+status: accepted
+date: 2026-08-31
+```
+
+| Status | Meaning |
+|---|---|
+| `proposed` | The decision is recorded but the work has not landed. |
+| `accepted` | The decision is in force and the code implements it. |
+| `rejected` | The decision was written up and then not taken. |
+| `superseded by ADR-NNNN` | A later ADR decided otherwise. Add `supersedes: ADR-NNNN` to the front matter of the ADR doing the superseding. |
+
+An in-place correction adds an `amended:` line recording when and why, so a reader can tell the original text from the fix:
+
+```markdown
+status: accepted
+date: 2026-03-15
+amended: 2026-08-31 (title named the rejected option)
+```
+
+**The pull request that lands the work flips `proposed` to `accepted`.** It is part of the change, like updating the design document — not follow-up hygiene. An ADR whose work has shipped but still reads `proposed` tells a reader the decision is speculative when the compiler already enforces it.
+
+An ADR may stay `proposed` indefinitely and that is not a defect, as long as it is *true* — the decision is made, the work is not done. Where a Confirmation criterion was never wired up, record what actually landed and what did not; do not flip the status to make the ADR look finished.
+
+#### Amending an ADR
+
+| Situation | What to do |
+|---|---|
+| The title, filename, status, or a cross-reference misrepresents the decision | Correct it in place; add an `amended:` line. |
+| A section describes a rejected option as if it had been adopted | Move it under that option in *Pros and Cons* and put it in the conditional voice; add an `amended:` line. |
+| What was decided has changed | Write a new ADR and mark the old one `superseded by ADR-NNNN`. Never edit the original outcome. |
+| A motivating premise in *Context* has since become false | Append a dated postscript under *More Information* saying what changed and whether the decision still holds. Leave the original *Context* as written — it is the record of what was known at the time. |
 
 ### `specs/design/` — Design Documents
 
-Specifications that describe **what** to build: architecture, formats, interfaces, algorithms, data structures, and component interactions. A design document answers "what does this system look like?" without prescribing the step-by-step work to get there. Cross-reference the implementation plan if one exists.
+Specifications that describe **what** to build: architecture, formats, interfaces, algorithms, data structures, and component interactions. A design document answers "what does this system look like?" without prescribing the step-by-step work to get there.
 
 ### `specs/plans/` — Implementation Plans
 
 Work breakdowns that describe **how** to implement: phased task lists, specific code changes, file modifications, and verification steps. A plan document answers "what steps do I follow to build this?" Plans reference the design they implement.
+
+**A plan is branch-local.** It is committed as the first commit on a feature branch so it can be reviewed as a file diff, and deleted from that branch before merge. Because the repository squash-merges, the add and the delete cancel within the squashed commit, so no plan content reaches `main`. The plan stays viewable on the pull request.
+
+Plans are the one document type in `specs/` that is not durable. Anything worth keeping — a decision, a constraint, a piece of rationale — must land somewhere durable in the same pull request: `specs/adrs/`, `specs/design/`, or a code doc comment where the reasoning is local to the code (see [Choosing the Right Location](#choosing-the-right-location)).
+
+**Never cite a plan from anywhere else.** Code comments, workflows, the `justfile`, design documents and ADRs must cite an ADR or a design document, never `specs/plans/`. A plan is deleted before its own pull request merges, so a reference to one is either already dead or about to be. `cd specs && just` enforces this and runs in CI.
 
 ### `specs/steering/` — AI Steering Files
 
@@ -41,10 +98,19 @@ Guidance for AI assistants working with the codebase (conventions, patterns, wor
 |----------|----------|
 | Why did we choose approach X over Y? | `specs/adrs/` |
 | What should the container format look like? | `specs/design/` |
-| What are the steps to implement the container format? | `specs/plans/` |
+| Why is *this function* written this way? | a doc comment on it |
+| What are the steps to implement the container format? | `specs/plans/` (deleted before merge) |
 | How should AI assistants name tests? | `specs/steering/` |
 
-When a document contains both design and plan content, split it into two files with cross-references between them. The design file goes in `specs/design/` and the plan file goes in `specs/plans/`.
+**A decision may live in a code comment.** Rationale whose reader is the next
+person editing that function or file belongs next to the code, not in `specs/`
+— a deliberate divergence from the obvious implementation, why a branch exists,
+why a simpler shape was not used. Moving it to a design document makes it worse:
+further from the code it constrains, and easier to leave behind when the code
+moves.
+
+Reserve `specs/` for what a code comment cannot hold: a decision that constrains
+a subsystem, spans crates, or picks between alternatives someone will re-litigate.
 
 **Important**: Plan and design documents must **never** be placed in `docs/`. The `docs/` directory is exclusively for the public Sphinx documentation website. All internal technical documents (plans, designs, ADRs, steering files) belong in `specs/`.
 
@@ -76,89 +142,147 @@ Rules:
 
 Each requirement **must** have a corresponding conformance test annotated with `#[spec_test(REQ_<AREA>_<crate_slug>_NNN)]` in the owning crate. The build system enforces this bidirectionally: removing a requirement from the spec causes a compile error; adding a requirement without a test causes that crate's completeness meta-test to fail.
 
-See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the full enforcement mechanism.
+The completeness half is weaker than it reads. A requirement counts as tested when its marker appears anywhere in the crate, so an empty or `#[ignore]`d body satisfies it without asserting anything. Write a real assertion; a marker on an empty test is worse than no marker, because it reports the requirement as covered.
 
-### Planning Requirement
+**Fix divergence opportunistically.** When a design document and the code disagree, reconcile that section as part of whatever work brought you there, rather than scheduling an audit of everything. `/project:reconcile-spec` does one section at a time.
 
-All non-trivial features and changes **must** begin with an implementation plan committed to `specs/plans/` before code changes start. The plan is the first deliverable — commit it to the feature branch before writing any implementation code.
+See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the full enforcement mechanism, and [ADR-0043](../adrs/0043-spec-conformance-tests-over-a-workflow-framework.md) for why this mechanism rather than a spec-driven-development framework.
+
+## AI Development Process
+
+A person is accountable for all changes. We use a custom process for all non-trivial features and changes to ensure human review.
+
+### Required Steps
+
+**Planning**
+
+1. AI researches the code base and desired changes
+2. AI creates a **plan branch**, writes the plan to `specs/plans/YYYY-MM-DD-short-description.md`, and creates a PR for the plan.
+3. A person reviews and provides feedback on the plan until the plan is approved. This PR is never merged.
+
+**Prefactoring**
+4. AI creates one or more **prefactor branches**, implements any pre-factoring, and creates PRs for prefactors.
+5. A person reviews, provides feedback and merges the prefactor PRs.
+
+**Core Change**
+6. If the change requires one or more **core change PRs**, then AI creates a GitHub issue detailing the planned work. The issue is the durable record so that we complete all work in the plan.
+7. AI creates one or more **core change branches**, implements the changes, and creates PRs for the changes.
+8. A person reviews, provides feedback and merges the core change PRs.
+
+**Cleanup**
+9. AI discards the plan branch.
+10. If there was an associated GitHub issue, then AI closes the GitHub issue.
+
+AI can help write code but all  **must** use the following process so that someone can review.
+
+### Planning Document
 
 A plan document should include:
 
 - **Goal** — a concise statement of what the change accomplishes
 - **Architecture** — brief summary of the technical approach
+- **Prefactoring** — the simplifications to make *before* adding the new
+  behaviour, or an explicit statement that none is needed and why (see
+  [Prefactoring](#prefactoring))
 - **Design doc reference** — link to `specs/design/` doc if one exists
 - **File map** — which files will be created or modified
 - **Tasks** — ordered steps with checkboxes (`- [ ]`) for tracking progress
 
 Name plan files with a date prefix: `YYYY-MM-DD-short-description.md` (e.g., `2026-04-01-planning-requirement.md`).
 
-**When a plan may be skipped:** Changes that are clearly mechanical and self-contained — typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits — do not require a plan.
+### Prefactoring
+
+**Prefactoring** is refactoring done *before* new behaviour is added: reshape the
+existing code so the new behaviour drops in, then add it. It is the opposite
+order from the more familiar "make it work, then clean it up" — and it is the
+order this project uses.
+
+Every change **must** start by looking for related prefactoring opportunities t
+prevent complexity creep and avoid the need for premature abstractions.
+
+#### Signals that a change needs prefactoring
+
+Look for these while reading the code you are about to modify. Any one of them
+means stop and reshape first:
+
+- The new behaviour needs a new `match` arm or `if` in **more than one place** —
+  the distinction wants to be a type or a data table, not repeated branching
+- You would copy an existing function and change a few lines of it
+- The new tests would duplicate an existing test's setup wholesale, or you would
+  need a combinatorial matrix of tests to cover how the new flag interacts with
+  the existing ones
+- The module would cross the 1000-line limit (see
+  [compiler-standards.md](compiler-standards.md#code-organization)) once the change
+  lands
+- A similar bug could occur rather than being prevented at compile time
+
+#### How to prefactor
+
+1. **Change the shape, not the behaviour.** The existing tests must pass
+   unchanged. If they have to be edited to accept the prefactoring — beyond
+   mechanical renames — the commit is not behaviour-preserving; split it.
+2. **Commit the prefactoring separately.** A reviewer can then read a diff that
+   provably changes nothing, followed by a smaller diff that adds the feature.
+   Either can be reverted alone.
+
+#### When *not* to prefactor
+
+Prefactoring is a tool for reducing the cost of the change in hand, not a
+licence to rewrite:
+
+- **No speculative generality.** Do not build an abstraction for a case nobody
+  has asked for. Extract a shared shape when the second or third caller arrives,
+  not the first.
+- **No unbounded rewrites.** If the reshaping is far larger than the feature,
+  write it up as its own plan and change, and land the feature the simple way
+  in the meantime — with a note saying so.
+- **Not for one-line fixes.** Typos, dependency bumps, and single-line bug fixes
+  stay single-line.
+
+### What good looks like
+
+A well-prefactored change shows up as a *smaller* feature diff and *fewer* new
+tests than the same feature added on top of the old shape — because there are
+fewer distinct paths to cover, not because anything went untested. The coverage
+gate (see [common-tasks.md](common-tasks.md#coverage-requirements)) still applies unchanged.
 
 ## Code Organization
 
-### Module Structure
-- Follow the existing pattern of organizing related functionality in subdirectories (e.g., `analyzer/src/intermediates/`)
-- Use descriptive module names that reflect their purpose in the compilation pipeline
-- Keep modules focused on a single responsibility
+### Avoid Duplication
 
-### Naming Conventions
-- Use `snake_case` for functions, variables, and module names
-- Use `PascalCase` for types, structs, and enums
-- Use `SCREAMING_SNAKE_CASE` for constants
-- Problem codes follow the pattern `P####` (e.g., P2016)
-- Problem enum variants use descriptive names (e.g., `SubrangeOutOfBounds`)
+**Do not repeat content that has a single source of truth.** This applies to
+prose and configuration as much as to code: a fact stated in two places
+drifts, and a reader has no way to tell which copy is stale.
 
-## Testing Standards
+In Rust, factor shared behaviour into a function, trait, or shared crate
+rather than copying it between crates.
 
-### Test Naming
-**Always use BDD-style test names** following the pattern:
-```rust
-#[test]
-fn function_name_when_condition_then_expected_result() {
-    // Test implementation
-}
-```
+In the documentation website, the mechanisms for sharing are, in order of
+preference:
 
-Examples:
-- `validate_subrange_bounds_with_various_types_then_validates_correctly`
-- `try_from_with_invalid_range_then_p0004_error`
+1. **`.. include::` a file in `docs/includes/`** for a paragraph or admonition
+   that appears verbatim on more than one page. Reach for this as soon as the
+   second copy appears — most of the duplication found in `docs/` was text
+   that already had an include, added after the copies.
+2. **A substitution** (`.. |name| replace::`) when the shared text varies by a
+   word or two between pages, such as a flag name or a keyboard shortcut.
+3. **A cross-reference** (`:doc:`, `:ref:`) when the reader should be sent to
+   the authoritative page instead of being shown the text again.
 
-### Test Implementation Rules
-- **No branching logic** in tests (no `if`, `match`, loops)
-- **No global state dependencies** - each test must be self-contained
-- **Terminate on failure** - use `assert!`, `assert_eq!`, etc. rather than continuing
-- **One assertion per logical concept** - but multiple assertions for the same concept are fine
-- **No panic! in tests** - Use `assert!` macros instead of `panic!()` for test failures
-  - ❌ Bad: `match result { Ok(x) => assert_eq!(x, 5), _ => panic!("Expected Ok") }`
-  - ✅ Good: `assert!(result.is_ok()); assert_eq!(result.unwrap(), 5);`
-  - ✅ Better: `assert!(matches!(result, Ok(5)))`
+Duplication that is acceptable, and should be left alone:
 
-### Test Organization
-- Group related tests in the same module
-- Use descriptive test function names that explain the scenario and expected outcome
-- Include both positive and negative test cases
-- Test edge cases and boundary conditions
+- **Generated content.** Problem summaries come from the compiler via
+  `problem-summary`; the compiler is the source of truth.
+- **Parallel reference pages.** Sibling entries such as `CTU`/`CTD` or
+  `TON`/`TOF` describe symmetric behaviour in symmetric sentences. Each page
+  must stand alone for a reader who arrives from search.
+- **Worked examples repeated across quadrants.** The same program may appear
+  in an explanation and in a reference page; the reader of either should not
+  have to navigate away to see it.
 
-## Error Handling
-
-### Problem Codes
-Error handling is **critical** for developer experience. Follow these rules:
-
-1. **Unique codes**: Each problem gets its own unique P#### code - never reuse codes
-2. **Descriptive names**: Problem enum variants should clearly describe the issue
-3. **Shared definitions**: Problem codes are defined in `compiler/problems/resources/problem-codes.csv`
-4. **Documentation required**: Every problem code MUST have documentation in `docs/compiler/problems/P####.rst`
-
-### Problem Code Format
-```csv
-Code,Name,Message
-P2016,SubrangeOutOfBounds,Subrange is outside base type bounds
-```
-
-### Error Messages
-- Provide clear, actionable error messages
-- Include context about what was expected vs. what was found
-- Use `Diagnostic::problem()` with appropriate `Label::span()` for source location
+`cd docs && just duplicates` checks this. See
+[docs/CONTRIBUTING.md](../../docs/CONTRIBUTING.md) for what the check can and
+cannot currently see.
 
 ## Steering Files for AI Assistants
 
@@ -179,265 +303,29 @@ When creating or updating steering files:
 
 For complete guidance on steering files, see [steering-file-guidelines.md](./steering-file-guidelines.md).
 
-## Documentation Standards
-
-### Documentation Quadrants Framework
-All IronPLC documentation follows the **Documentation Quadrants** approach, organizing content into four distinct types:
-
-#### 1. Tutorials (Learning-Oriented)
-- **Purpose**: Guide newcomers through their first successful experience
-- **Audience**: People studying and learning
-- **Content**: Step-by-step lessons that work reliably
-- **Examples**: "Getting Started with IronPLC", "Your First PLC Program"
-- **Location**: `docs/tutorials/`
-
-#### 2. How-To Guides (Problem-Oriented)
-- **Purpose**: Show how to solve specific real-world problems
-- **Audience**: Practitioners at work who need to accomplish something
-- **Content**: Series of steps focused on achieving a goal
-- **Examples**: "How to Debug Compilation Errors", "How to Add a New Data Type"
-- **Location**: `docs/how-to/`
-
-#### 3. Technical Reference (Information-Oriented)
-- **Purpose**: Describe the machinery and how to operate it
-- **Audience**: Practitioners at work who need accurate information
-- **Content**: Structured descriptions of APIs, commands, and features
-- **Examples**: "Compiler CLI Reference", "Problem Code Reference", "Language Grammar"
-- **Location**: `docs/reference/`
-
-#### 4. Explanation (Understanding-Oriented)
-- **Purpose**: Clarify and illuminate topics for deeper understanding
-- **Audience**: People studying who want to understand concepts
-- **Content**: Discussions of design decisions, alternatives, and context
-- **Examples**: "IEC 61131-3 Compliance Strategy", "Compiler Architecture Overview"
-- **Location**: `docs/explanation/`
-
-### Documentation Relationships
-- **Tutorials + How-To Guides**: Both describe practical steps
-- **How-To Guides + Reference**: Both serve practitioners at work
-- **Reference + Explanation**: Both provide theoretical knowledge
-- **Tutorials + Explanation**: Both support learning and study
-
-### Writing Style
-
-All documentation follows these writing style principles to keep content clear, direct, and easy to scan.
-
-#### Voice and Tense
-
-- **Use active voice.** Name the actor (the compiler, the runtime, IEC 61131-3, the user) as the subject of the sentence.
-  - ✅ "Edition 3 introduced the following features"
-  - ❌ "The following features were introduced in Edition 3"
-  - ✅ "IronPLC supports the following platforms"
-  - ❌ "IronPLC is supported on the following platforms"
-- **Use present tense.** Describe what the software *does*, not what it *will do* or *did*.
-  - ✅ "The compiler reports an error when..."
-  - ❌ "The compiler will report an error when..."
-- **Passive voice is acceptable** in two cases:
-  1. The actor is genuinely unknown or irrelevant (e.g., "the file may be corrupted").
-  2. Active voice would blame the user for an error (e.g., "This error occurs when a comment is not properly closed" is better than "You forgot to close the comment").
-
-#### Person and Mood
-
-- **Use second person ("you")** in tutorials and how-to guides.
-- **Use imperative mood** for instructions: "Run the command", not "You should run the command" or "The command can be run".
-- **Avoid third-person references to the reader**: "the user", "the developer", "one".
-
-#### Sentence Structure
-
-- **Lead with the action or result**, not the context. Put the most important information first.
-  - ✅ "Set the ``--std`` flag to enable Edition 3 features."
-  - ❌ "In order to enable Edition 3 features, you need to set the ``--std`` flag."
-- **Keep sentences short.** Prefer one idea per sentence. If a sentence has more than one comma-separated clause, consider splitting it.
-- **Avoid nominalizations.** Use verbs instead of noun forms of verbs.
-  - ✅ "The compiler validates the program"
-  - ❌ "The compiler performs validation of the program"
-
-### RST Annotation Conventions
-
-All Sphinx documentation must use the correct RST roles for consistent rendering. **Never use plain text or double backticks for elements that have a dedicated role.**
-
-| Element | Role | Example |
-|---------|------|---------|
-| Menu paths | `:menuselection:` | `:menuselection:\`File --> New File...\`` |
-| UI elements (buttons, panels) | `:guilabel:` | `:guilabel:\`Install\`` |
-| Keyboard shortcuts | `:kbd:` | `:kbd:\`Ctrl+Shift+P\`` |
-| File names and extensions | `:file:` | `:file:\`main.st\``, `:file:\`.st\`` |
-| Commands and executables | `:program:` | `:program:\`ironplcc --version\`` |
-| Code keywords | `:code:` | `:code:\`PROGRAM\`` |
-| User-typed text | `:samp:` | `:samp:\`IronPLC\`` |
-| Cross-document links | `:doc:` | `:doc:\`/compiler/problems/index\`` |
-
-**Menu paths** use ` --> ` as separator: `:menuselection:\`File --> Preferences --> Settings\``
-
-**Platform-specific keyboard shortcuts** use separate `:kbd:` roles: `:kbd:\`Ctrl+Shift+X\`` for Windows/Linux, `:kbd:\`⌘+Shift+X\`` for macOS.
-
-### Interactive Examples in Documentation
-
-Documentation pages that include IEC 61131-3 code examples **should** use interactive playground directives instead of static `.. code-block::` when the example is a valid, compilable program or snippet. This lets readers edit and run the code directly in the browser.
-
-Two Sphinx directives are available (defined in `docs/extensions/ironplc_playground.py`):
-
-| Directive | Use when |
-|-----------|----------|
-| `.. playground::` | The example is a complete program (includes `PROGRAM`/`END_PROGRAM`) |
-| `.. playground-with-program::` | The example is a code snippet that should be auto-wrapped in a `PROGRAM` scaffold |
-
-**`playground-with-program` options:**
-- `:vars:` — semicolon-separated variable declarations (e.g., `:vars: result : DINT; value : REAL;`)
-- `:height:` — custom iframe height (auto-calculated by default)
-
-**Example** (from a standard library function page):
-```rst
-.. playground-with-program::
-   :vars: result : DINT;
-
-   result := ABS(-42);    (* result = 42 *)
-```
-
-**When NOT to use playground directives:**
-- Problem code documentation (`docs/compiler/problems/`) — these show invalid code that would fail compilation
-- Partial syntax fragments that are not runnable
-
-**Source of truth for the playground:**
-- Frontend: `playground/` (HTML/JS/CSS single-page app)
-- WASM compiler crate: `compiler/playground/` (Rust compiled to WebAssembly via wasm-pack)
-- Sphinx extension: `docs/extensions/ironplc_playground.py` (directive implementation)
-- Build system: `playground/justfile`
-
-### Documentation Content Guidelines
-
-- **Describe features as they are, not as future plans.** The website documents current capabilities. Do not include forward-looking statements like "this page will be updated when..." or "future versions will support...". If a feature is not yet supported, say so plainly (e.g., "Not yet supported") without speculating about when it will be added.
-- **Do not document architecture or internals** in user-facing reference docs. Architecture belongs in `docs/explanation/` if anywhere.
-- **Do not explain standard VS Code concepts** (e.g., workspace vs. user settings). Assume the reader knows VS Code.
-- **Use platform tabs** (via `sphinx_inline_tabs`) for platform-specific instructions.
-
-### Edition-Gated Features
-
-Some IEC 61131-3 features require the user to enable a specific edition of the standard. When documenting an edition-gated feature:
-
-1. **Use the reusable include** — add `.. include:: ../../../includes/requires-edition3.rst` near the top of the page (after the description, before the detail table). Do not write a custom note.
-2. **Link to the edition support matrix** — in the feature's detail table, use `:doc:\`Edition 3 </reference/language/edition-support>\`` in the Support row instead of hardcoding the flag name.
-3. **Update the matrix** — add the feature to `docs/reference/language/edition-support.rst`.
-
-The centralized explanation page at `docs/explanation/enabling-dialects-and-features.rst` covers how to enable editions in both the CLI and VS Code. Individual feature pages link there rather than duplicating instructions.
-
-### Problem Documentation Format
-Each problem code must have a corresponding `.rst` file in `docs/compiler/problems/` with:
-
-```rst
-=====
-P####
-=====
-
-.. problem-summary:: P####
-
-[Clear description of when this error occurs]
-
-Example
--------
-
-The following code will generate error P####:
-
-.. code-block::
-
-   [Example that triggers the error]
-
-[Explanation of why this is an error]
-
-To fix this error, [solution]:
-
-.. code-block::
-
-   [Corrected example]
-```
-
-### Supported File Format Synchronization
-File extensions and format details are listed in **two** canonical locations. All other docs cross-reference these rather than repeating extension lists. When adding or modifying a supported source file format, update:
-
-1. **Compiler source** - `compiler/sources/src/file_type.rs` (the source of truth for detection)
-2. **VS Code extension** - `integrations/vscode/package.json` (language contributions) and `integrations/vscode/src/extension.ts` (document selector)
-3. **Source format reference page** - the format-specific page in `docs/compiler/source-formats/` (e.g., `twincat.rst`)
-4. **VS Code overview** - `docs/vscode/overview.rst` (Supported Languages section)
-
-### README Synchronization
-The project has multiple README files that must stay synchronized:
-
-- **Root `README.md`**: Main project overview, mission, progress, and capabilities
-- **`integrations/vscode/README.md`**: VS Code Extension specific documentation for the Marketplace
-
-**When updating the main README:**
-1. Review if the extension README needs corresponding updates
-2. The extension README should reflect the same capabilities/limitations
-3. Keep the "warning" banner (`⚠`) consistent between both files
-4. Ensure feature lists match (e.g., syntax highlighting, analysis capabilities)
-
-**When updating the extension README:**
-1. Keep it focused on VS Code-specific usage and features
-2. Include extension settings, commands, and configuration
-3. Reference the main documentation website for detailed information
-
-### Code Documentation
-- **Best effort** documentation for now, but focus on public APIs
-- Use Rust doc comments (`///`) for public functions and types
-- Include examples in documentation when helpful
-- Document complex algorithms or IEC 61131-3 specific behavior
-
-### Example Synchronization
-**Important**: Examples in documentation should also exist as tests in the Rust compiler to ensure documentation accuracy. Follow the existing naming conventions for test examples.
-
-## IEC 61131-3 Compliance
-
-### Compliance Levels
-The compiler supports various levels of IEC 61131-3 compliance:
-
-- **Parse everything**: The compiler should be able to parse any 61131-3 code
-- **Compatibility flags**: Users pass flags/options to enable/disable specific syntax validation
-- **Graceful degradation**: Invalid syntax should be parsed but flagged with appropriate problem codes
-
-### Implementation Approach
-- Design for flexibility in compliance checking
-- Use feature flags or configuration options for different compliance levels
-- Ensure error messages reference the relevant IEC 61131-3 standard sections when applicable
-
 ## Build System Integration
 
-### Just Commands
-Use `just` for all build tasks. Key commands:
-- `just` - Run full CI pipeline for the current component
-- `just compile` - Build the component
-- `just test` - Run tests
-- `just lint` - Run linting (clippy + fmt for Rust)
-- `just devenv-smoke` - Quick environment check
+IronPLC uses `just` as its command runner. The full command reference — per
+component, coverage, packaging, and troubleshooting — lives in
+[common-tasks.md](common-tasks.md). Do not restate it here.
 
-For complete setup and development workflow instructions, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
+### Git Workflow and Pre-PR Quality Gate
 
-### CRITICAL: Git Workflow and Pre-PR Quality Gate
-
-**NEVER commit or push directly to `main`.** Always create a feature branch and open a pull request. This ensures CI validates all changes before they reach main.
-
-**Before creating any pull request, you MUST run and pass the full CI pipeline:**
+**NEVER commit or push directly to `main`.** Create a feature branch and open a
+pull request so CI validates every change before it reaches `main`. Before
+creating any PR, run and pass the full pipeline:
 
 ```bash
 cd compiler && just
 ```
 
-This runs compile, test, coverage, and lint. The **lint step includes clippy**, which catches common Rust issues. PRs that fail clippy will be rejected by CI.
-
-**Do not:**
-- Push directly to `main` — always use a feature branch and PR
-- Skip running `just` before creating a PR
-- Suppress clippy warnings with `#[allow(...)]` — fix the underlying issue instead. The only acceptable exception is `#[allow(dead_code)]` or `#[allow(unused_*)]` for in-progress code that is not yet wired up
-- Create a PR if any check fails
-
-See [common-tasks.md](./common-tasks.md) for detailed pre-PR requirements and troubleshooting.
+See [common-tasks.md](common-tasks.md#critical-pre-pr-requirements) for what this
+runs and how to fix failures. The clippy-suppression rule lives in
+[compiler-standards.md](compiler-standards.md#code-quality).
 
 ### Version Management
-**Version numbers are generated and incremented automatically** - no manual version management is required:
-
-- **Automated versioning**: The build system handles version increments automatically
-- **No manual updates**: Do not manually edit version numbers in `Cargo.toml` or other files
-- **Synchronization**: The build system ensures version numbers stay synchronized across all components
-- **Release process**: Version bumps happen as part of the automated release workflow
+**Version numbers are generated and incremented automatically** — never edit them
+manually (see [common-tasks.md](common-tasks.md#version-management)).
 
 ### Synchronization Checks
 The build system enforces synchronization between components:
@@ -446,37 +334,6 @@ The build system enforces synchronization between components:
 - Examples in docs must have corresponding tests
 
 ### Cross-Platform Support
-- Support Windows, macOS, and Linux
-- Use platform-specific just recipes when needed (`_command-{{os_family()}}`)
-- Test in Dev Container environment when possible
-
-## Performance Considerations
-
-### Memory Usage
-- Design for embedded/PLC contexts where memory may be constrained
-- Use appropriate data structures for the compilation pipeline
-- Consider memory layout for type representations (see `ByteSized` enum)
-
-### Compilation Speed
-- Optimize for reasonable compilation times
-- Use efficient algorithms for type checking and semantic analysis
-- Profile performance-critical paths when needed
-
-## Code Quality
-
-### Rust Best Practices
-- Do not suppress clippy warnings with `#[allow(...)]` — fix the underlying code instead. The only acceptable exception is `#[allow(dead_code)]` or `#[allow(unused_*)]` for in-progress code that is not yet wired up; remove these suppressions once the code is complete
-- Prefer `Result<T, E>` for error handling over panics
-- Use appropriate visibility modifiers (`pub`, `pub(crate)`, etc.)
-- Follow Rust naming conventions and idioms
-
-### Safety
-- Leverage Rust's safety guarantees
-- **`unsafe` code is rejected at compile time.** The workspace sets `unsafe_code = "deny"` in `[workspace.lints.rust]` (root `compiler/Cargo.toml`), and every member crate inherits it via `[lints] workspace = true`. Any `unsafe` block, function, trait, or impl in IronPLC code fails the build
-- **Do not bypass the check with `#[allow(unsafe_code)]`.** The standards already forbid `#[allow(...)]` suppressions (see [Code Quality](#code-quality)); `unsafe_code` is no exception. `deny` (rather than `forbid`) is the chosen level only so that proc-macros which wrap unsafe internally — e.g. `ctor::ctor`, whose expansion includes `#[allow(unsafe_code)]` — keep working. If a feature appears to require `unsafe`, raise it for discussion
-- Use strong typing to prevent logic errors (e.g., `TypeName` vs `String`)
-
-### Dependencies
-- Keep dependencies minimal and well-justified
-- Use workspace dependencies for consistency
-- Regular dependency updates via `just update`
+The compiler, extension, and playground all target Windows, macOS, and Linux.
+Component-specific cross-platform guidance (e.g. the compiler's `just` recipes)
+lives in the relevant [component standards file](#component-specific-standards).

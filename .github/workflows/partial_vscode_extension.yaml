@@ -2,7 +2,10 @@ name: VS Code Extension
 on:
   workflow_call:
     inputs:
-      commit-ref:
+      # Name deliberately avoids "ref"/"head"/"branch"/"sha"/"commit": those
+      # substrings make CodeQL read the checkout below as a pull request head
+      # checkout. See partial_compiler.yaml for the full explanation.
+      source-revision:
         required: false
         type: string
         description: 'If not empty, then run for the specified branch name or tag'
@@ -44,14 +47,14 @@ jobs:
         working-directory: ./integrations/vscode
     steps:
       # Checkout the repository/fetch input artifacts
-      - name: Checkout tag ${{ inputs.commit-ref }}
+      - name: Checkout tag ${{ inputs.source-revision }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.commit-ref }}
+        if: ${{ inputs.source-revision }}
         with:
-          ref: ${{ inputs.commit-ref }}
+          ref: ${{ inputs.source-revision }}
       - name: Checkout HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+        if: ${{ !inputs.source-revision }}
 
       # Configure the execution environment
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
@@ -77,14 +80,12 @@ jobs:
         run: just sbom ${{ inputs.version }}
 
       # Package the Visual Studio Marketplace build (extension ID
-      # ironplc.ironplc-vscode) to validate that Marketplace packaging works
-      # end-to-end in CI. This runs unconditionally so every build proves the
-      # package builds; the VSIX is uploaded as a build artifact only when
-      # marketplace-artifact-name is set (see below) and is never published:
-      # automated Marketplace publishing (Stage 2 of
-      # specs/plans/vscode-marketplace-extension-id.md) is deferred until the new
-      # listing is validated by hand. Runs after the Open VSX VSIX and the SBOM
-      # so its package.json `name` override does not affect those artifacts.
+      # ironplc.ironplc-vscode). This runs unconditionally so every build proves
+      # the package builds; the VSIX is uploaded as a build artifact only when
+      # marketplace-artifact-name is set (see below). Publishing happens in
+      # deployment.yaml::publish-release, which consumes that artifact -- this
+      # job stays credential-free. Runs after the Open VSX VSIX and the SBOM so
+      # its package.json `name` override does not affect those artifacts.
       - name: Create Marketplace VSIX package
         run: just package-marketplace ironplc-vscode-extension-marketplace.vsix
 
@@ -110,8 +111,8 @@ jobs:
           if-no-files-found: error
       # Marketplace VSIX (ironplc.ironplc-vscode), uploaded as a separate build
       # artifact. The consolidated upload-release-artifacts job attaches it to
-      # the GitHub Release so users can install the Marketplace build manually.
-      # Automated publishing to the Marketplace remains deferred.
+      # the GitHub Release, and deployment.yaml::publish-release downloads it to
+      # publish to the Visual Studio Marketplace.
       - name: Upload Marketplace VSIX to build artifact
         if: ${{ inputs.marketplace-artifact-name }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

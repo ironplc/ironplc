@@ -7,11 +7,13 @@ use regex::Regex;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 
-use dsl_macro_derive::Recurse;
+use dsl_macro_derive::{Located, Recurse};
 
 use crate::configuration::{ConfigurationDeclaration, Direction};
 use crate::core::{Id, Located, SourceSpan};
+use crate::extension::LanguageExtension;
 use crate::fold::Fold;
+use crate::scope::ScopeBearing;
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
 use crate::time::*;
@@ -97,19 +99,14 @@ impl fmt::Display for Boolean {
 
 /// Integer liberal. The representation is of the largest possible integer
 /// and later bound to smaller types depend on context.
-#[derive(Debug, Clone, PartialEq, Recurse)]
+#[derive(Debug, Clone, PartialEq, Recurse, Located)]
 pub struct Integer {
+    #[located(position)]
     pub span: SourceSpan,
     /// The value in the maximum possible size. An integer is inherently
     /// an unsigned value.
     #[recurse(ignore)]
     pub value: u128,
-}
-
-impl Located for Integer {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 #[derive(Debug)]
@@ -288,16 +285,16 @@ impl SignedInteger {
         }
     }
 
-    pub fn positive(a: &str) -> Result<Self, &'static str> {
+    pub fn positive(a: &str, span: SourceSpan) -> Result<Self, &'static str> {
         Ok(Self {
-            value: Integer::new(a, SourceSpan::default())?,
+            value: Integer::new(a, span)?,
             is_neg: false,
         })
     }
 
-    pub fn negative(a: &str) -> Result<Self, &'static str> {
+    pub fn negative(a: &str, span: SourceSpan) -> Result<Self, &'static str> {
         Ok(Self {
-            value: Integer::new(a, SourceSpan::default())?,
+            value: Integer::new(a, span)?,
             is_neg: true,
         })
     }
@@ -317,7 +314,7 @@ impl SignedInteger {
 
 /// An integer value that may be either a literal or a reference to a named constant.
 ///
-/// This enables vendor extensions where constant identifiers can be used in
+/// This enables extensions where constant identifiers can be used in
 /// positions that normally require integer literals, such as STRING lengths
 /// and array bounds.
 #[derive(Clone, Debug, PartialEq, Recurse)]
@@ -337,7 +334,7 @@ impl IntegerRef {
 
 /// A signed integer value that may be either a literal or a reference to a named constant.
 ///
-/// See `IntegerRef` for details on the vendor extension support.
+/// See `IntegerRef` for details on the extension support.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub enum SignedIntegerRef {
     Literal(SignedInteger),
@@ -566,18 +563,38 @@ impl fmt::Display for BooleanLiteral {
 #[derive(Debug, PartialEq, Clone)]
 pub struct CharacterStringLiteral {
     pub value: Vec<char>,
+    /// The width the source spelled, which is what selects the delimiter:
+    /// single quotes for `STRING`, double quotes for `WSTRING`.
+    ///
+    /// The width belongs on the literal and not only on the declaration it
+    /// initializes because a literal also appears in statement bodies, where
+    /// there is no declaration to borrow it from.
+    pub width: StringType,
 }
 
 impl CharacterStringLiteral {
+    /// Creates a single-byte (`STRING`) literal.
     pub fn new(value: Vec<char>) -> Self {
-        Self { value }
+        Self {
+            value,
+            width: StringType::String,
+        }
+    }
+
+    /// Creates a double-byte (`WSTRING`) literal.
+    pub fn new_wide(value: Vec<char>) -> Self {
+        Self {
+            value,
+            width: StringType::WString,
+        }
     }
 }
 
 impl fmt::Display for CharacterStringLiteral {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s: String = self.value.iter().collect();
-        write!(f, "'{}'", s)
+        let delimiter = self.width.delimiter();
+        write!(f, "{delimiter}{s}{delimiter}")
     }
 }
 
@@ -602,8 +619,9 @@ impl fmt::Display for BitStringLiteral {
 /// Types are all identifiers but we use a separate structure
 /// because it is convenient to treat types and other identifiers
 /// separately.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Located)]
 pub struct TypeName {
+    #[located(delegate)]
     pub name: Id,
 }
 
@@ -625,12 +643,6 @@ impl Eq for TypeName {}
 impl Hash for TypeName {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
-    }
-}
-
-impl Located for TypeName {
-    fn span(&self) -> SourceSpan {
-        self.name.span()
     }
 }
 
@@ -911,8 +923,20 @@ impl ElementaryTypeName {
     /// cross-family rules (requires `--allow-cross-family-widening`).
     ///
     /// Allowed: bit-string → integer where target is strictly wider.
-    /// Not allowed: integer → bit-string (always requires explicit conversion).
+    /// Not allowed (in general): integer → bit-string, or equal-width
+    /// bit-string ↔ integer -- both always require an explicit conversion.
+    ///
+    /// One verified exception: `UDINT` ↔ `DWORD` (32-bit), both
+    /// directions, despite being equal width. Beckhoff's own
+    /// documentation states no implicit conversion exists between
+    /// bit-string and integer types even at equal width, but this was
+    /// confirmed permissive against a real TcXaeShell build. Scoped to
+    /// exactly this pair -- other same-width
+    /// bit-string/unsigned-integer pairs (`BYTE`↔`USINT`, `WORD`↔`UINT`,
+    /// `LWORD`↔`ULINT`) and signed integers are not verified and must not
+    /// be assumed to behave the same.
     pub fn can_widen_cross_family_to(&self, target: &ElementaryTypeName) -> bool {
+        use ElementaryTypeName::{DWORD, UDINT};
         use TypeFamily::*;
         let Some((src_family, src_bits)) = self.type_properties() else {
             return false;
@@ -921,6 +945,11 @@ impl ElementaryTypeName {
             return false;
         };
         match (&src_family, &tgt_family) {
+            (BitString, UnsignedInteger) | (UnsignedInteger, BitString)
+                if matches!(self, DWORD | UDINT) && matches!(target, DWORD | UDINT) =>
+            {
+                true
+            }
             (BitString, SignedInteger | UnsignedInteger) => tgt_bits > src_bits,
             _ => false,
         }
@@ -1342,12 +1371,13 @@ impl ReferenceTarget {
 
 /// The surface syntax that produced a reference declaration or initializer.
 ///
-/// References share a single backend (a variable-table index), but two
+/// References share a single backend (a variable-table index), but three
 /// keywords produce them: the IEC 61131-3 `REF_TO` and the Beckhoff
-/// TwinCAT / CODESYS `REFERENCE TO`. This tag records which one appeared in
-/// the source so the renderer can reproduce it and so per-declaration
-/// dereference behavior can be keyed on it. See
-/// `specs/design/reference-to-twincat.md`.
+/// TwinCAT / CODESYS `REFERENCE TO` and `POINTER TO`. This tag records which
+/// one appeared in the source so the renderer can reproduce it and so
+/// per-declaration dereference behavior can be keyed on it. See
+/// `specs/design/reference-to-twincat.md` and
+/// `specs/design/adr-and-pointer-to.md`.
 ///
 /// This is a leaf tag, always carried behind a `#[recurse(ignore)]` field, so
 /// it deliberately does not derive `Recurse`.
@@ -1357,6 +1387,10 @@ pub enum RefSyntax {
     RefTo,
     /// Beckhoff TwinCAT / CODESYS `REFERENCE TO`.
     ReferenceTo,
+    /// Beckhoff TwinCAT / CODESYS `POINTER TO`. Same backend as `REF_TO`
+    /// with explicit `^` dereference. See
+    /// `specs/design/adr-and-pointer-to.md`.
+    PointerTo,
 }
 
 /// Reference type declaration (`REF_TO` or `REFERENCE TO`).
@@ -1482,7 +1516,7 @@ pub struct EnumeratedValue {
     pub value: Id,
     /// Present when this member's value was assigned explicitly
     /// (`member := 5`) in an enum *declaration's* value list -- a
-    /// CODESYS/TwinCAT extension (also standard as of IEC 61131-3:2013).
+    /// an extension (also standard as of IEC 61131-3:2013).
     /// `None` in every other context `EnumeratedValue` is used in
     /// (references, default values, case labels) -- only the
     /// declaration-list grammar path sets this.
@@ -1686,6 +1720,17 @@ impl StringType {
         match self {
             StringType::String => "STRING",
             StringType::WString => "WSTRING",
+        }
+    }
+
+    /// Returns the character that delimits a literal of this string type:
+    /// a single quote for `STRING`, a double quote for `WSTRING`.
+    ///
+    /// See IEC 61131-3 section 2.2.2.
+    pub fn delimiter(&self) -> char {
+        match self {
+            StringType::String => '\'',
+            StringType::WString => '"',
         }
     }
 }
@@ -1898,9 +1943,10 @@ pub fn next_block_id() -> BlockId {
 /// Variable declaration.
 ///
 /// See section 2.4.3.
-#[derive(Clone, Debug, Recurse)]
+#[derive(Clone, Debug, Recurse, Located)]
 pub struct VarDecl {
     // Not all variable types have a "name", so the name is part of the type.
+    #[located(delegate)]
     pub identifier: VariableIdentifier,
     #[recurse(ignore)]
     pub var_type: VariableType,
@@ -1923,12 +1969,6 @@ impl PartialEq for VarDecl {
             && self.var_type == other.var_type
             && self.qualifier == other.qualifier
             && self.initializer == other.initializer
-    }
-}
-
-impl Located for VarDecl {
-    fn span(&self) -> SourceSpan {
-        self.identifier.span()
     }
 }
 
@@ -2109,7 +2149,7 @@ impl VarDecl {
 
 /// Declarations that are `AT`-located but share a `BlockId` with at least
 /// one plain (symbolic) declaration -- derived from block identity, not
-/// stored. This is the CODESYS/TwinCAT vendor extension gated by
+/// stored. This is the extension gated by
 /// `--allow-mixed-located-var-declarations`: standard IEC 61131-3 requires
 /// located variables to live in their own dedicated block, separate from
 /// ordinary symbolic ones.
@@ -2244,7 +2284,6 @@ impl VariableIdentifier {
         VariableIdentifier::Direct(DirectVariableIdentifier {
             name,
             address_assignment: location,
-            span: SourceSpan::default(),
         })
     }
 
@@ -2290,12 +2329,22 @@ impl Display for VariableIdentifier {
 pub struct DirectVariableIdentifier {
     pub name: Option<Id>,
     pub address_assignment: AddressAssignment,
-    pub span: SourceSpan,
 }
 
 impl Located for DirectVariableIdentifier {
+    /// The span of the symbolic name, or of the address when the declaration
+    /// has no name (`VAR AT %IX0.0 : BOOL; END_VAR`).
+    ///
+    /// Deriving this from the parts rather than storing a span of its own is
+    /// deliberate: a stored span is one every construction site has to
+    /// remember to fill in, and none of them did -- every located variable
+    /// reported position 0, so `P4036` put its caret on the first character
+    /// of the file instead of on the variable.
     fn span(&self) -> SourceSpan {
-        self.span.clone()
+        match &self.name {
+            Some(name) => name.span(),
+            None => self.address_assignment.position.clone(),
+        }
     }
 }
 
@@ -2331,6 +2380,18 @@ pub struct AddressAssignment {
     #[recurse(ignore)]
     pub address: Vec<u32>,
     pub position: SourceSpan,
+}
+
+impl AddressAssignment {
+    /// Returns this address with `position` as its source position.
+    ///
+    /// [`AddressAssignment::try_from`] parses the address out of the token
+    /// text alone, which carries no position, so the caller puts the token's
+    /// span back.
+    pub fn with_position(mut self, position: SourceSpan) -> Self {
+        self.position = position;
+        self
+    }
 }
 
 lazy_static! {
@@ -2429,7 +2490,7 @@ pub enum InitialValueAssignmentKind {
     /// definitions. Value is the name of the type.
     LateResolvedType(TypeName),
     /// A constant-expression initializer not yet folded to a literal
-    /// (vendor extension — see `allow_constant_initializer_expressions`).
+    /// (extension — see `allow_constant_initializer_expressions`).
     /// Always normalized to `Simple` by
     /// `xform_fold_initializer_expressions` before any other pass runs;
     /// no other code should ever match on this variant.
@@ -2524,7 +2585,7 @@ pub struct SimpleInitializer {
 /// A variable initializer expressed as a constant expression (e.g.
 /// `PI/180.0`) rather than a bare literal.
 ///
-/// This is a vendor extension — the IEC 61131-3 standard's `constant()`
+/// This is an extension — the IEC 61131-3 standard's `constant()`
 /// grammar production only permits literals in this position. Parsed
 /// unconditionally; `xform_fold_initializer_expressions` folds it back to
 /// `SimpleInitializer` or emits a diagnostic, depending on
@@ -2538,7 +2599,7 @@ pub struct SimpleExprInitializer {
 /// Provides the initialization of a string variable declaration.
 ///
 /// See sections 2.4.3.1 and 2.4.3.2.
-#[derive(Clone, PartialEq, Debug, Recurse)]
+#[derive(Clone, PartialEq, Debug, Recurse, Located)]
 pub struct StringInitializer {
     /// Maximum length of the string.
     pub length: Option<IntegerRef>,
@@ -2550,13 +2611,8 @@ pub struct StringInitializer {
     #[recurse(ignore)]
     pub initial_value: Option<Vec<char>>,
 
+    #[located(position)]
     pub keyword_span: SourceSpan,
-}
-
-impl Located for StringInitializer {
-    fn span(&self) -> SourceSpan {
-        self.keyword_span.clone()
-    }
 }
 
 impl StringInitializer {
@@ -2676,12 +2732,15 @@ pub enum LibraryElementKind {
     FunctionBlockDeclaration(FunctionBlockDeclaration),
     ProgramDeclaration(ProgramDeclaration),
     ConfigurationDeclaration(ConfigurationDeclaration),
-    /// Top-level global variable declarations (vendor extension).
+    /// Top-level global variable declarations (extension).
     ///
     /// In the IEC 61131-3 standard, VAR_GLOBAL only appears inside
     /// CONFIGURATION/RESOURCE blocks. This variant enables the common
-    /// vendor extension of declaring globals at the top level.
+    /// extension of declaring globals at the top level.
     GlobalVarDeclarations(Vec<VarDecl>),
+    /// `INTERFACE ... END_INTERFACE` (extension). See
+    /// `InterfaceDeclaration`.
+    InterfaceDeclaration(InterfaceDeclaration),
 }
 
 /// Return type for a function declaration.
@@ -2726,6 +2785,7 @@ impl From<TypeName> for FunctionReturnType {
 ///
 /// See section 2.5.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
+#[recurse(scope)]
 pub struct FunctionDeclaration {
     pub name: Id,
     pub return_type: FunctionReturnType,
@@ -2747,13 +2807,66 @@ impl HasVariables for FunctionDeclaration {
 /// and variables retain values between invocations.
 ///
 /// See section 2.5.2.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Located)]
+#[recurse(scope)]
 pub struct FunctionBlockDeclaration {
     pub name: TypeName,
     pub variables: Vec<VarDecl>,
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: FunctionBlockBodyKind,
+    #[located(position)]
     pub span: SourceSpan,
+    /// Object-oriented facet (OOP extension).
+    ///
+    /// `None` for an ordinary function block — the common case — so OOP is
+    /// unrepresentable on a plain FB rather than "present but empty."
+    /// `Some` only when the source actually uses `EXTENDS`, `IMPLEMENTS`,
+    /// or `ABSTRACT`. See `LanguageExtension` impl on `FunctionBlockOop` and
+    /// `specs/design/beckhoff-twincat-dialect.md` §1.4.
+    pub oop: Option<FunctionBlockOop>,
+    /// `METHOD ... END_METHOD` blocks declared on this function block
+    /// (OOP extension). Empty for an ordinary function block — same
+    /// "empty is the common case" convention as `variables`, rather than
+    /// nesting under `FunctionBlockOop` (a plain FB can declare methods
+    /// without using `EXTENDS`/`IMPLEMENTS`/`ABSTRACT`). See ADR-0041.
+    pub methods: Vec<MethodDeclaration>,
+}
+
+/// `METHOD name (: return_type)? ... END_METHOD` (OOP extension).
+///
+/// Declared on a `FunctionBlockDeclaration`. Shaped like a
+/// `FunctionDeclaration`, except `return_type` is optional: unlike a
+/// function, a method with no return type is valid IEC 61131-3 and acts
+/// like a procedure (see `FunctionSignature::return_type` in
+/// `ironplc-analyzer` for the same modeling choice on the resolved side).
+///
+/// See ADR-0041 ("Staged Method/Property Dispatch and Interface Values"),
+/// Phase 1: static dispatch. Resolution of calls against this declaration
+/// (own methods first, then the `EXTENDS` chain) is implemented outside
+/// the AST, in `ironplc-analyzer`.
+#[derive(Clone, Debug, PartialEq, Recurse, Located)]
+#[recurse(scope)]
+pub struct MethodDeclaration {
+    pub name: Id,
+    pub return_type: Option<FunctionReturnType>,
+    pub variables: Vec<VarDecl>,
+    /// `R_EDGE`/`F_EDGE`-qualified `VAR` declarations (IEC 61131-3
+    /// §2.4.3). Not a TwinCAT-specific or OOP-specific capability: the
+    /// parser's `method_declaration()` rule reuses the exact same
+    /// standard variable-declaration grammar (`io_var_declarations()`/
+    /// `other_var_declarations()`) that `FunctionDeclaration` and
+    /// `FunctionBlockDeclaration` already use, so edge variables are
+    /// inherited for free, the same way a `VAR` block full stop is.
+    pub edge_variables: Vec<EdgeVarDecl>,
+    pub body: Vec<StmtKind>,
+    #[located(position)]
+    pub span: SourceSpan,
+}
+
+impl HasVariables for MethodDeclaration {
+    fn variables(&self) -> &Vec<VarDecl> {
+        &self.variables
+    }
 }
 
 impl HasVariables for FunctionBlockDeclaration {
@@ -2762,9 +2875,91 @@ impl HasVariables for FunctionBlockDeclaration {
     }
 }
 
-impl Located for FunctionBlockDeclaration {
-    fn span(&self) -> SourceSpan {
+/// The object-oriented facet of a function block: the
+/// `EXTENDS`/`IMPLEMENTS`/`ABSTRACT` header. Present only when the function
+/// block participates in OOP, so an ordinary function block cannot carry
+/// any of this data. Single home for OOP metadata and the natural hook for
+/// ADR-0041 Phase 2: "does this FB participate in polymorphism" is
+/// `oop.is_some()`, not a scan of individual fields.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct FunctionBlockOop {
+    /// `EXTENDS base` — the single base function block, if any.
+    ///
+    /// Function blocks are single-inheritance (IEC 61131-3 and
+    /// CODESYS/TwinCAT alike), so this is `Option`, not a list. Named
+    /// `base` rather than `extends` so the single-base cardinality isn't
+    /// hidden behind a name shared with `InterfaceDeclaration::extends`,
+    /// which *is* a list.
+    pub base: Option<TypeName>,
+    /// `IMPLEMENTS i1, i2, ...` — interfaces this function block
+    /// implements. Multiple allowed; empty `Vec` when the clause is
+    /// absent.
+    pub implements: Vec<TypeName>,
+    /// `ABSTRACT` modifier. An abstract function block cannot be
+    /// instantiated directly (enforced by `rule_abstract_not_instantiated`,
+    /// P4045).
+    #[recurse(ignore)]
+    pub is_abstract: bool,
+    /// Span of the OOP-related tokens, so diagnostics can point at the
+    /// clause rather than the whole function block.
+    pub span: SourceSpan,
+}
+
+/// Only the OOP facet is a dialect/edition extension — the rest of a
+/// function block is standard IEC 61131-3. Implementing `LanguageExtension`
+/// here (rather than on `FunctionBlockDeclaration`) means an ordinary
+/// function block is not, and cannot claim to be, an extension.
+impl LanguageExtension for FunctionBlockOop {
+    fn extension_name(&self) -> &'static str {
+        "EXTENDS/IMPLEMENTS/ABSTRACT clause"
+    }
+
+    fn extension_span(&self) -> SourceSpan {
         self.span.clone()
+    }
+}
+
+/// `INTERFACE name (EXTENDS base_list)? END_INTERFACE` (OOP
+/// extension).
+///
+/// Only the header is represented — method and property signatures are not
+/// yet parsed (TwinCAT stores each as a separate `<Method>`/`<Property>` XML
+/// element, silently ignored today; see
+/// `specs/design/beckhoff-twincat-dialect.md` §1.3). This
+/// is enough for an interface name to be recognized as a known type, so
+/// that variables declared with an interface type resolve instead of
+/// failing with "type not declared."
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct InterfaceDeclaration {
+    pub name: Id,
+    /// Interfaces this interface extends (an interface may extend more than
+    /// one other interface, unlike a function block).
+    pub extends: Vec<TypeName>,
+}
+
+impl Located for InterfaceDeclaration {
+    /// Derived from the declaration's own located parts rather than stored:
+    /// the name (always present) through the last extended interface, if any.
+    /// This spans the declaration's identifiers rather than the surrounding
+    /// `INTERFACE`/`END_INTERFACE` keywords.
+    fn span(&self) -> SourceSpan {
+        match self.extends.last() {
+            Some(last) => SourceSpan::join(&self.name.span(), &last.span()),
+            None => self.name.span(),
+        }
+    }
+}
+
+/// An `InterfaceDeclaration` is always an extension — unlike
+/// `FunctionBlockDeclaration`, there is no standard-IEC-61131-3 meaning for
+/// it.
+impl LanguageExtension for InterfaceDeclaration {
+    fn extension_name(&self) -> &'static str {
+        "INTERFACE declaration"
+    }
+
+    fn extension_span(&self) -> SourceSpan {
+        self.span()
     }
 }
 
@@ -2775,6 +2970,7 @@ impl Located for FunctionBlockDeclaration {
 ///
 /// See section 2.5.3.
 #[derive(Clone, Debug, PartialEq, Recurse)]
+#[recurse(scope)]
 pub struct ProgramDeclaration {
     pub name: Id,
     pub variables: Vec<VarDecl>,
@@ -2863,7 +3059,6 @@ mod tests {
                     address: vec![0],
                     position: SourceSpan::default(),
                 },
-                span: SourceSpan::default(),
             }),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
@@ -2876,6 +3071,34 @@ mod tests {
         let mut decl = VarDecl::simple(name, "INT");
         decl.block = block;
         decl
+    }
+
+    #[test]
+    fn span_when_direct_variable_identifier_has_name_then_is_name_span() {
+        let identifier = VariableIdentifier::new_direct(
+            Some(Id::from("tempSensor").with_position(SourceSpan::range(37, 47))),
+            AddressAssignment::try_from("%I*")
+                .unwrap()
+                .with_position(SourceSpan::range(50, 53)),
+        );
+
+        let span = identifier.span();
+        assert_eq!(span.start, 37);
+        assert_eq!(span.end, 47);
+    }
+
+    #[test]
+    fn span_when_direct_variable_identifier_has_no_name_then_is_address_span() {
+        let identifier = VariableIdentifier::new_direct(
+            None,
+            AddressAssignment::try_from("%IX0.0")
+                .unwrap()
+                .with_position(SourceSpan::range(50, 56)),
+        );
+
+        let span = identifier.span();
+        assert_eq!(span.start, 50);
+        assert_eq!(span.end, 56);
     }
 
     #[test]
@@ -3027,15 +3250,18 @@ mod tests {
 
     #[test]
     fn test_character_string_literal_partial_eq_and_clone() {
-        let csl1 = CharacterStringLiteral {
-            value: vec!['a', 'b', 'c'],
-        };
+        let csl1 = CharacterStringLiteral::new(vec!['a', 'b', 'c']);
         let csl2 = csl1.clone();
         assert_eq!(csl1, csl2);
-        let csl3 = CharacterStringLiteral {
-            value: vec!['x', 'y', 'z'],
-        };
+        let csl3 = CharacterStringLiteral::new(vec!['x', 'y', 'z']);
         assert_ne!(csl1, csl3);
+    }
+
+    #[test]
+    fn eq_when_same_value_but_different_width_then_not_equal() {
+        let narrow = CharacterStringLiteral::new(vec!['a', 'b', 'c']);
+        let wide = CharacterStringLiteral::new_wide(vec!['a', 'b', 'c']);
+        assert_ne!(narrow, wide);
     }
 
     #[test]
@@ -3361,10 +3587,20 @@ mod tests {
 
     #[test]
     fn display_when_character_string_literal_then_quoted() {
-        let csl = CharacterStringLiteral {
-            value: vec!['h', 'i'],
-        };
+        let csl = CharacterStringLiteral::new(vec!['h', 'i']);
         assert_eq!(format!("{csl}"), "'hi'");
+    }
+
+    #[test]
+    fn display_when_wide_character_string_literal_then_double_quoted() {
+        let csl = CharacterStringLiteral::new_wide(vec!['h', 'i']);
+        assert_eq!(format!("{csl}"), "\"hi\"");
+    }
+
+    #[test]
+    fn delimiter_when_string_type_then_matches_iec_spelling() {
+        assert_eq!(StringType::String.delimiter(), '\'');
+        assert_eq!(StringType::WString.delimiter(), '"');
     }
 
     #[test]
@@ -3451,9 +3687,7 @@ mod tests {
 
     #[test]
     fn display_when_constant_kind_character_string_then_formatted() {
-        let ck = ConstantKind::CharacterString(CharacterStringLiteral {
-            value: vec!['a', 'b'],
-        });
+        let ck = ConstantKind::CharacterString(CharacterStringLiteral::new(vec!['a', 'b']));
         assert_eq!(format!("{ck}"), "'ab'");
     }
 
@@ -3489,7 +3723,7 @@ mod tests {
 
     #[test]
     fn from_signed_integer_to_string_when_negative_then_prefixed() {
-        let si = SignedInteger::negative("42").unwrap();
+        let si = SignedInteger::negative("42", SourceSpan::default()).unwrap();
         let s: String = si.into();
         // Note: The From impl prepends "-" on top of Display which also prepends "-"
         assert!(s.contains("42"));
@@ -3497,7 +3731,7 @@ mod tests {
 
     #[test]
     fn from_signed_integer_to_string_when_positive_then_no_prefix() {
-        let si = SignedInteger::positive("42").unwrap();
+        let si = SignedInteger::positive("42", SourceSpan::default()).unwrap();
         let s: String = si.into();
         assert_eq!(s, "42");
     }
@@ -3510,265 +3744,78 @@ mod tests {
         assert_eq!(si.value.value, 7);
     }
 
-    #[test]
-    fn can_widen_to_when_sint_to_int_then_true() {
-        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::INT));
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::sint_to_int(ElementaryTypeName::SINT, ElementaryTypeName::INT, true)]
+    #[case::sint_to_dint(ElementaryTypeName::SINT, ElementaryTypeName::DINT, true)]
+    #[case::sint_to_lint(ElementaryTypeName::SINT, ElementaryTypeName::LINT, true)]
+    #[case::int_to_dint(ElementaryTypeName::INT, ElementaryTypeName::DINT, true)]
+    #[case::dint_to_lint(ElementaryTypeName::DINT, ElementaryTypeName::LINT, true)]
+    #[case::usint_to_uint(ElementaryTypeName::USINT, ElementaryTypeName::UINT, true)]
+    #[case::usint_to_ulint(ElementaryTypeName::USINT, ElementaryTypeName::ULINT, true)]
+    #[case::uint_to_udint(ElementaryTypeName::UINT, ElementaryTypeName::UDINT, true)]
+    #[case::usint_to_int(ElementaryTypeName::USINT, ElementaryTypeName::INT, true)]
+    #[case::uint_to_dint(ElementaryTypeName::UINT, ElementaryTypeName::DINT, true)]
+    #[case::udint_to_lint(ElementaryTypeName::UDINT, ElementaryTypeName::LINT, true)]
+    #[case::dint_to_int(ElementaryTypeName::DINT, ElementaryTypeName::INT, false)]
+    #[case::lint_to_dint(ElementaryTypeName::LINT, ElementaryTypeName::DINT, false)]
+    #[case::int_to_uint(ElementaryTypeName::INT, ElementaryTypeName::UINT, false)]
+    #[case::int_to_int(ElementaryTypeName::INT, ElementaryTypeName::INT, false)]
+    #[case::uint_to_int(ElementaryTypeName::UINT, ElementaryTypeName::INT, false)]
+    #[case::sint_to_real(ElementaryTypeName::SINT, ElementaryTypeName::REAL, true)]
+    #[case::int_to_real(ElementaryTypeName::INT, ElementaryTypeName::REAL, true)]
+    #[case::usint_to_real(ElementaryTypeName::USINT, ElementaryTypeName::REAL, true)]
+    #[case::uint_to_real(ElementaryTypeName::UINT, ElementaryTypeName::REAL, true)]
+    #[case::dint_to_real(ElementaryTypeName::DINT, ElementaryTypeName::REAL, false)]
+    #[case::lint_to_real(ElementaryTypeName::LINT, ElementaryTypeName::REAL, false)]
+    #[case::udint_to_real(ElementaryTypeName::UDINT, ElementaryTypeName::REAL, false)]
+    #[case::ulint_to_real(ElementaryTypeName::ULINT, ElementaryTypeName::REAL, false)]
+    #[case::sint_to_lreal(ElementaryTypeName::SINT, ElementaryTypeName::LREAL, true)]
+    #[case::lint_to_lreal(ElementaryTypeName::LINT, ElementaryTypeName::LREAL, true)]
+    #[case::ulint_to_lreal(ElementaryTypeName::ULINT, ElementaryTypeName::LREAL, true)]
+    #[case::real_to_int(ElementaryTypeName::REAL, ElementaryTypeName::INT, false)]
+    #[case::lreal_to_dint(ElementaryTypeName::LREAL, ElementaryTypeName::DINT, false)]
+    #[case::real_to_lreal(ElementaryTypeName::REAL, ElementaryTypeName::LREAL, true)]
+    #[case::lreal_to_real(ElementaryTypeName::LREAL, ElementaryTypeName::REAL, false)]
+    #[case::real_to_real(ElementaryTypeName::REAL, ElementaryTypeName::REAL, false)]
+    #[case::byte_to_word(ElementaryTypeName::BYTE, ElementaryTypeName::WORD, true)]
+    #[case::byte_to_dword(ElementaryTypeName::BYTE, ElementaryTypeName::DWORD, true)]
+    #[case::byte_to_lword(ElementaryTypeName::BYTE, ElementaryTypeName::LWORD, true)]
+    #[case::word_to_dword(ElementaryTypeName::WORD, ElementaryTypeName::DWORD, true)]
+    #[case::dword_to_lword(ElementaryTypeName::DWORD, ElementaryTypeName::LWORD, true)]
+    #[case::word_to_byte(ElementaryTypeName::WORD, ElementaryTypeName::BYTE, false)]
+    #[case::byte_to_byte(ElementaryTypeName::BYTE, ElementaryTypeName::BYTE, false)]
+    #[case::bool_to_byte(ElementaryTypeName::BOOL, ElementaryTypeName::BYTE, false)]
+    #[case::byte_to_int(ElementaryTypeName::BYTE, ElementaryTypeName::INT, false)]
+    #[case::int_to_byte(ElementaryTypeName::INT, ElementaryTypeName::BYTE, false)]
+    fn can_widen_to_when_source_and_target_then_matches_expected(
+        #[case] from: ElementaryTypeName,
+        #[case] to: ElementaryTypeName,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(from.can_widen_to(&to), expected);
     }
 
-    #[test]
-    fn can_widen_to_when_sint_to_dint_then_true() {
-        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::DINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_sint_to_lint_then_true() {
-        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::LINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_int_to_dint_then_true() {
-        assert!(ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::DINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_dint_to_lint_then_true() {
-        assert!(ElementaryTypeName::DINT.can_widen_to(&ElementaryTypeName::LINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_usint_to_uint_then_true() {
-        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::UINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_usint_to_ulint_then_true() {
-        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::ULINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_uint_to_udint_then_true() {
-        assert!(ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::UDINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_usint_to_int_then_true() {
-        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_to_when_uint_to_dint_then_true() {
-        assert!(ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::DINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_udint_to_lint_then_true() {
-        assert!(ElementaryTypeName::UDINT.can_widen_to(&ElementaryTypeName::LINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_dint_to_int_then_false() {
-        assert!(!ElementaryTypeName::DINT.can_widen_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_to_when_lint_to_dint_then_false() {
-        assert!(!ElementaryTypeName::LINT.can_widen_to(&ElementaryTypeName::DINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_int_to_uint_then_false() {
-        assert!(!ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::UINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_int_to_int_then_false() {
-        assert!(!ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_to_when_uint_to_int_then_false() {
-        assert!(!ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::INT));
-    }
-
-    // Integer → REAL (lossless: ≤16-bit integers)
-
-    #[test]
-    fn can_widen_to_when_sint_to_real_then_true() {
-        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_int_to_real_then_true() {
-        assert!(ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_usint_to_real_then_true() {
-        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_uint_to_real_then_true() {
-        assert!(ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_dint_to_real_then_false() {
-        assert!(!ElementaryTypeName::DINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_lint_to_real_then_false() {
-        assert!(!ElementaryTypeName::LINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_udint_to_real_then_false() {
-        assert!(!ElementaryTypeName::UDINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_ulint_to_real_then_false() {
-        assert!(!ElementaryTypeName::ULINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    // Integer → LREAL (always lossless)
-
-    #[test]
-    fn can_widen_to_when_sint_to_lreal_then_true() {
-        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::LREAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_lint_to_lreal_then_true() {
-        assert!(ElementaryTypeName::LINT.can_widen_to(&ElementaryTypeName::LREAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_ulint_to_lreal_then_true() {
-        assert!(ElementaryTypeName::ULINT.can_widen_to(&ElementaryTypeName::LREAL));
-    }
-
-    // Real → Integer: never allowed
-
-    #[test]
-    fn can_widen_to_when_real_to_int_then_false() {
-        assert!(!ElementaryTypeName::REAL.can_widen_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_to_when_lreal_to_dint_then_false() {
-        assert!(!ElementaryTypeName::LREAL.can_widen_to(&ElementaryTypeName::DINT));
-    }
-
-    // REAL <-> LREAL: widening allowed, narrowing not
-
-    #[test]
-    fn can_widen_to_when_real_to_lreal_then_true() {
-        assert!(ElementaryTypeName::REAL.can_widen_to(&ElementaryTypeName::LREAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_lreal_to_real_then_false() {
-        assert!(!ElementaryTypeName::LREAL.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_real_to_real_then_false() {
-        assert!(!ElementaryTypeName::REAL.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    // Bit-string widening within ANY_BIT
-
-    #[test]
-    fn can_widen_to_when_byte_to_word_then_true() {
-        assert!(ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::WORD));
-    }
-
-    #[test]
-    fn can_widen_to_when_byte_to_dword_then_true() {
-        assert!(ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::DWORD));
-    }
-
-    #[test]
-    fn can_widen_to_when_byte_to_lword_then_true() {
-        assert!(ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::LWORD));
-    }
-
-    #[test]
-    fn can_widen_to_when_word_to_dword_then_true() {
-        assert!(ElementaryTypeName::WORD.can_widen_to(&ElementaryTypeName::DWORD));
-    }
-
-    #[test]
-    fn can_widen_to_when_dword_to_lword_then_true() {
-        assert!(ElementaryTypeName::DWORD.can_widen_to(&ElementaryTypeName::LWORD));
-    }
-
-    #[test]
-    fn can_widen_to_when_word_to_byte_then_false() {
-        assert!(!ElementaryTypeName::WORD.can_widen_to(&ElementaryTypeName::BYTE));
-    }
-
-    #[test]
-    fn can_widen_to_when_byte_to_byte_then_false() {
-        assert!(!ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::BYTE));
-    }
-
-    #[test]
-    fn can_widen_to_when_bool_to_byte_then_false() {
-        assert!(!ElementaryTypeName::BOOL.can_widen_to(&ElementaryTypeName::BYTE));
-    }
-
-    // Cross-family: not allowed in standard can_widen_to
-
-    #[test]
-    fn can_widen_to_when_byte_to_int_then_false() {
-        assert!(!ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_to_when_int_to_byte_then_false() {
-        assert!(!ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::BYTE));
-    }
-
-    // Cross-family widening (separate method, requires flag)
-
-    #[test]
-    fn can_widen_cross_family_to_when_byte_to_int_then_true() {
-        assert!(ElementaryTypeName::BYTE.can_widen_cross_family_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_byte_to_uint_then_true() {
-        assert!(ElementaryTypeName::BYTE.can_widen_cross_family_to(&ElementaryTypeName::UINT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_word_to_dint_then_true() {
-        assert!(ElementaryTypeName::WORD.can_widen_cross_family_to(&ElementaryTypeName::DINT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_dword_to_lint_then_true() {
-        assert!(ElementaryTypeName::DWORD.can_widen_cross_family_to(&ElementaryTypeName::LINT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_byte_to_sint_then_false() {
-        // Same width, not strictly wider
-        assert!(!ElementaryTypeName::BYTE.can_widen_cross_family_to(&ElementaryTypeName::SINT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_word_to_int_then_false() {
-        // Same width, not strictly wider
-        assert!(!ElementaryTypeName::WORD.can_widen_cross_family_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_int_to_byte_then_false() {
-        // Integer → bit-string: never allowed
-        assert!(!ElementaryTypeName::INT.can_widen_cross_family_to(&ElementaryTypeName::BYTE));
+    #[rstest]
+    #[case::byte_to_int(ElementaryTypeName::BYTE, ElementaryTypeName::INT, true)]
+    #[case::byte_to_uint(ElementaryTypeName::BYTE, ElementaryTypeName::UINT, true)]
+    #[case::word_to_dint(ElementaryTypeName::WORD, ElementaryTypeName::DINT, true)]
+    #[case::dword_to_lint(ElementaryTypeName::DWORD, ElementaryTypeName::LINT, true)]
+    #[case::byte_to_sint(ElementaryTypeName::BYTE, ElementaryTypeName::SINT, false)]
+    #[case::word_to_int(ElementaryTypeName::WORD, ElementaryTypeName::INT, false)]
+    #[case::int_to_byte(ElementaryTypeName::INT, ElementaryTypeName::BYTE, false)]
+    #[case::udint_to_dword(ElementaryTypeName::UDINT, ElementaryTypeName::DWORD, true)]
+    #[case::dword_to_udint(ElementaryTypeName::DWORD, ElementaryTypeName::UDINT, true)]
+    #[case::dint_to_dword(ElementaryTypeName::DINT, ElementaryTypeName::DWORD, false)]
+    #[case::dword_to_dint(ElementaryTypeName::DWORD, ElementaryTypeName::DINT, false)]
+    #[case::word_to_uint(ElementaryTypeName::WORD, ElementaryTypeName::UINT, false)]
+    #[case::uint_to_word(ElementaryTypeName::UINT, ElementaryTypeName::WORD, false)]
+    fn can_widen_cross_family_to_when_source_and_target_then_matches_expected(
+        #[case] from: ElementaryTypeName,
+        #[case] to: ElementaryTypeName,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(from.can_widen_cross_family_to(&to), expected);
     }
 }

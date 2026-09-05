@@ -2,12 +2,12 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, parse_and_try_run};
+use crate::common::parse_and_try_run;
 use ironplc_vm::error::Trap;
 
-#[test]
-fn end_to_end_when_mod_expression_then_variable_has_remainder() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_mod_expression_then_variable_has_remainder,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -16,28 +16,23 @@ PROGRAM main
   x := 12;
   y := x MOD 5;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 12), (1, 2)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 12);
-    assert_eq!(bufs.vars[1].as_i32(), 2);
-}
-
-#[test]
-fn end_to_end_when_chain_of_modulos_then_correct() {
-    let source = "
+// (100 MOD 7) MOD 3 = 2 MOD 3 = 2
+e2e_i32!(
+    end_to_end_when_chain_of_modulos_then_correct,
+    "
 PROGRAM main
   VAR
     x : DINT;
   END_VAR
   x := 100 MOD 7 MOD 3;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // (100 MOD 7) MOD 3 = 2 MOD 3 = 2
-    assert_eq!(bufs.vars[0].as_i32(), 2);
-}
+",
+    &[(0, 2)],
+);
 
 #[test]
 fn end_to_end_when_integer_mod_by_zero_then_traps() {

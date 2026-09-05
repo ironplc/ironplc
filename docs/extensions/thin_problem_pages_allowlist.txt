@@ -32,7 +32,6 @@ reference/compiler/problems/P2019
 reference/compiler/problems/P2020
 reference/compiler/problems/P2022
 reference/compiler/problems/P2023
-reference/compiler/problems/P2026
 reference/compiler/problems/P2027
 reference/compiler/problems/P2028
 reference/compiler/problems/P2030
@@ -59,6 +58,8 @@ reference/runtime/problems/V6004
 reference/runtime/problems/V6005
 reference/runtime/problems/V6006
 reference/runtime/problems/V6007
+reference/runtime/problems/V6009
+reference/runtime/problems/V6010
 reference/runtime/problems/V9001
 reference/runtime/problems/V9002
 reference/runtime/problems/V9003

@@ -35,8 +35,13 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -47,17 +52,20 @@ pub fn apply(
     // Walk the library to find all references to enumerations
     // checking that all references use an enumeration value
     // that is part of the enumeration
-    let mut visitor = RuleDeclaredEnumeratedValues::new(context);
-    visitor.walk(lib).map_err(|e| vec![e])
+    run_rule(RuleDeclaredEnumeratedValues::new(context), lib)
 }
 
 struct RuleDeclaredEnumeratedValues<'a> {
     context: &'a SemanticContext,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> RuleDeclaredEnumeratedValues<'a> {
     fn new(context: &'a SemanticContext) -> Self {
-        RuleDeclaredEnumeratedValues { context }
+        RuleDeclaredEnumeratedValues {
+            context,
+            diagnostics: Vec::new(),
+        }
     }
 
     /// Returns enumeration values for a given enumeration type name.
@@ -74,7 +82,10 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
     /// * a type name does not exist
     /// * the type is not an enumeration
     /// * there's a circular reference in the alias chain
-    fn find_enum_declaration_values(&self, type_name: &TypeName) -> Result<Vec<&Id>, Diagnostic> {
+    fn find_enum_declaration_values(
+        &self,
+        type_name: &TypeName,
+    ) -> Result<Vec<&'a Id>, Diagnostic> {
         // Check if the type exists and is an enumeration
         if !self.context.types().is_enumeration(type_name) {
             return Err(Diagnostic::problem(
@@ -91,22 +102,39 @@ impl<'a> RuleDeclaredEnumeratedValues<'a> {
     }
 }
 
-impl Visitor<Diagnostic> for RuleDeclaredEnumeratedValues<'_> {
+impl DiagnosticVisitor for RuleDeclaredEnumeratedValues<'_> {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+impl Visitor<Infallible> for RuleDeclaredEnumeratedValues<'_> {
     type Value = ();
 
     fn visit_enumerated_initial_value_assignment(
         &mut self,
         init: &EnumeratedInitialValueAssignment,
-    ) -> Result<Self::Value, Diagnostic> {
-        let defined_values = self.find_enum_declaration_values(&init.type_name)?;
+    ) -> Result<Self::Value, Infallible> {
+        let defined_values = match self.find_enum_declaration_values(&init.type_name) {
+            Ok(values) => values,
+            Err(diagnostic) => {
+                // The type is not an enumeration, so there is nothing to check
+                // this initializer's value against. Report that and carry on to
+                // the next declaration.
+                self.diagnostics.push(diagnostic);
+                return Ok(());
+            }
+        };
         if let Some(value) = &init.initial_value {
             // Check if the value is in the list of defined enumeration values
             if !defined_values.iter().any(|id| **id == value.value) {
-                return Err(Diagnostic::problem(
-                    Problem::EnumValueNotDefined,
-                    Label::span(value.span(), "Expected value in enumeration"),
-                )
-                .with_context_id("value", &value.value));
+                self.diagnostics.push(
+                    Diagnostic::problem(
+                        Problem::EnumValueNotDefined,
+                        Label::span(value.span(), "Expected value in enumeration"),
+                    )
+                    .with_context_id("value", &value.value),
+                );
             }
         }
 
@@ -120,6 +148,39 @@ mod tests {
     use crate::stages::analyze;
     use ironplc_dsl::core::FileId;
     use ironplc_parser::{options::CompilerOptions, parse_program};
+
+    #[test]
+    fn apply_when_two_undefined_enum_values_then_reports_both() {
+        let program = "
+TYPE
+LEVEL : (INFO, WARN) := INFO;
+END_TYPE
+
+FUNCTION_BLOCK LOGGER
+VAR_INPUT
+A : LEVEL := CRITICAL;
+B : LEVEL := FATAL;
+END_VAR
+END_FUNCTION_BLOCK";
+
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
+
+        let reported: Vec<&String> = context
+            .diagnostics()
+            .iter()
+            .flat_map(|d| &d.described)
+            .collect();
+        assert!(
+            reported.iter().any(|d| d.as_str() == "value=CRITICAL"),
+            "expected CRITICAL, got {reported:?}"
+        );
+        assert!(
+            reported.iter().any(|d| d.as_str() == "value=FATAL"),
+            "expected FATAL, got {reported:?}"
+        );
+    }
 
     #[test]
     fn apply_when_multiple_enum_values_with_one_undefined_then_error() {

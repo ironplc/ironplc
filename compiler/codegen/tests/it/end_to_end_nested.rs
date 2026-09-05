@@ -19,9 +19,9 @@ fn read_string(data_region: &[u8], data_offset: usize) -> String {
     bytes.iter().map(|&b| b as char).collect()
 }
 
-#[test]
-fn end_to_end_when_three_level_nested_struct_then_leaf_field_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_three_level_nested_struct_then_leaf_field_correct,
+    "
 TYPE Inner :
   STRUCT
     value : DINT;
@@ -50,14 +50,13 @@ PROGRAM main
   END_VAR
     result := o.id;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
+",
+    &[(1, 1)],
+);
 
-#[test]
-fn end_to_end_when_nested_struct_deep_field_read_then_default_zero() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_nested_struct_deep_field_read_then_default_zero,
+    "
 TYPE Inner :
   STRUCT
     value : DINT;
@@ -85,16 +84,16 @@ PROGRAM main
   END_VAR
     result := o.middle.factor;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
+",
+    &[(1, 0)],
+);
 
-#[test]
-fn end_to_end_when_struct_field_read_and_array_store_then_roundtrips() {
-    // Combines struct field reads with array store/load to verify both
-    // data region types coexist without interference.
-    let source = "
+// Combines struct field reads with array store/load to verify both
+// data region types coexist without interference.
+// sensor=0, readings=1, result_id=2, result_reading=3
+e2e_i32!(
+    end_to_end_when_struct_field_read_and_array_store_then_roundtrips,
+    "
 TYPE Sensor :
   STRUCT
     reading : DINT;
@@ -113,12 +112,9 @@ PROGRAM main
     readings[3] := result_id;
     result_reading := readings[3];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // sensor=0, readings=1, result_id=2, result_reading=3
-    assert_eq!(bufs.vars[2].as_i32(), 7);
-    assert_eq!(bufs.vars[3].as_i32(), 7);
-}
+",
+    &[(2, 7), (3, 7)],
+);
 
 #[test]
 fn end_to_end_when_string_before_struct_then_both_initialized() {
@@ -155,9 +151,9 @@ END_PROGRAM
     assert_eq!(s, "sensor-1");
 }
 
-#[test]
-fn end_to_end_when_four_level_nested_struct_then_deepest_field_accessible() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_four_level_nested_struct_then_deepest_field_accessible,
+    "
 TYPE Level4 :
   STRUCT
     deep_val : DINT;
@@ -192,15 +188,16 @@ PROGRAM main
   END_VAR
     r1 := root.val1;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
+",
+    &[(1, 1)],
+);
 
-#[test]
-fn end_to_end_when_nested_struct_field_used_in_array_loop_then_correct_sum() {
-    // Uses struct field values to drive array computation.
-    let source = "
+// Uses struct field values to drive array computation.
+// data = [3, 6, 9, 12, 15], sum = 45
+// cfg=0, data=1, sum=2, i=3, mult=4
+e2e_i32!(
+    end_to_end_when_nested_struct_field_used_in_array_loop_then_correct_sum,
+    "
 TYPE Config :
   STRUCT
     multiplier : DINT;
@@ -225,18 +222,16 @@ PROGRAM main
       sum := sum + data[i];
     END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // data = [3, 6, 9, 12, 15], sum = 45
-    // cfg=0, data=1, sum=2, i=3, mult=4
-    assert_eq!(bufs.vars[2].as_i32(), 45);
-}
+",
+    &[(2, 45)],
+);
 
-#[test]
-fn end_to_end_when_two_structs_and_array_then_no_interference() {
-    // Two independent struct instances alongside an array, verifying
-    // no data region interference between allocations.
-    let source = "
+// Two independent struct instances alongside an array, verifying
+// no data region interference between allocations.
+// p1=0, p2=1, distances=2, r1=3, r2=4
+e2e_i32!(
+    end_to_end_when_two_structs_and_array_then_no_interference,
+    "
 TYPE Point :
   STRUCT
     x : DINT;
@@ -258,17 +253,15 @@ PROGRAM main
     distances[2] := r2;
     distances[3] := r1 + r2;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // p1=0, p2=1, distances=2, r1=3, r2=4
-    assert_eq!(bufs.vars[3].as_i32(), 30); // 10+20
-    assert_eq!(bufs.vars[4].as_i32(), 70); // 30+40
-}
+",
+    &[(3, 30), (4, 70)],
+);
 
-#[test]
-fn end_to_end_when_2d_array_and_struct_then_both_correct() {
-    // 2D array alongside a struct to verify data region coexistence.
-    let source = "
+// 2D array alongside a struct to verify data region coexistence.
+// cal=0, matrix=1, result_high=2, result_cell=3
+e2e_i32!(
+    end_to_end_when_2d_array_and_struct_then_both_correct,
+    "
 TYPE Range :
   STRUCT
     low : DINT;
@@ -287,12 +280,9 @@ PROGRAM main
     matrix[2, 2] := result_high + 5;
     result_cell := matrix[2, 2];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // cal=0, matrix=1, result_high=2, result_cell=3
-    assert_eq!(bufs.vars[2].as_i32(), 100);
-    assert_eq!(bufs.vars[3].as_i32(), 105);
-}
+",
+    &[(2, 100), (3, 105)],
+);
 
 #[test]
 fn end_to_end_when_array_and_struct_persist_across_scans_then_state_retained() {
@@ -373,11 +363,12 @@ END_PROGRAM
     assert_eq!(s, "data-log");
 }
 
-#[test]
-fn end_to_end_when_nested_struct_init_then_inner_fields_initialized() {
-    // Verifies nested struct initialization: inner fields receive
-    // explicit values rather than being silently default-initialized.
-    let source = "
+// Verifies nested struct initialization: inner fields receive
+// explicit values rather than being silently default-initialized.
+// line=0, r1=1, r2=2, r3=3, r4=4
+e2e_i32!(
+    end_to_end_when_nested_struct_init_then_inner_fields_initialized,
+    "
 TYPE Point :
   STRUCT
     x : DINT;
@@ -405,20 +396,16 @@ PROGRAM main
     r3 := line.end_pt.x;
     r4 := line.end_pt.y;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // line=0, r1=1, r2=2, r3=3, r4=4
-    assert_eq!(bufs.vars[1].as_i32(), 10);
-    assert_eq!(bufs.vars[2].as_i32(), 20);
-    assert_eq!(bufs.vars[3].as_i32(), 30);
-    assert_eq!(bufs.vars[4].as_i32(), 40);
-}
+",
+    &[(1, 10), (2, 20), (3, 30), (4, 40)],
+);
 
-#[test]
-fn end_to_end_when_nested_struct_partial_init_then_unspecified_fields_zero() {
-    // Only some inner fields are explicitly initialized; the rest
-    // should be default-initialized to zero.
-    let source = "
+// Only some inner fields are explicitly initialized; the rest
+// should be default-initialized to zero.
+// o=0, ra=1, rb=2, rc=3, rtag=4
+e2e_i32!(
+    end_to_end_when_nested_struct_partial_init_then_unspecified_fields_zero,
+    "
 TYPE Inner :
   STRUCT
     a : DINT;
@@ -447,19 +434,15 @@ PROGRAM main
     rc := o.inner.c;
     rtag := o.tag;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // o=0, ra=1, rb=2, rc=3, rtag=4
-    assert_eq!(bufs.vars[1].as_i32(), 0); // a: default
-    assert_eq!(bufs.vars[2].as_i32(), 42); // b: explicit
-    assert_eq!(bufs.vars[3].as_i32(), 0); // c: default
-    assert_eq!(bufs.vars[4].as_i32(), 7); // tag: explicit
-}
+",
+    &[(1, 0), (2, 42), (3, 0), (4, 7)],
+);
 
-#[test]
-fn end_to_end_when_struct_field_store_then_value_updated() {
-    // Tests struct field assignment (store), which was added in PR #799.
-    let source = "
+// Tests struct field assignment (store), which was added in PR #799.
+// c=0, result_total=1, result_count=2
+e2e_i32!(
+    end_to_end_when_struct_field_store_then_value_updated,
+    "
 TYPE Counter :
   STRUCT
     total : DINT;
@@ -478,12 +461,9 @@ PROGRAM main
     result_total := c.total;
     result_count := c.count;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // c=0, result_total=1, result_count=2
-    assert_eq!(bufs.vars[1].as_i32(), 10);
-    assert_eq!(bufs.vars[2].as_i32(), 1);
-}
+",
+    &[(1, 10), (2, 1)],
+);
 
 #[test]
 fn end_to_end_when_struct_field_store_across_scans_then_accumulates() {
@@ -525,10 +505,12 @@ END_PROGRAM
     });
 }
 
-#[test]
-fn end_to_end_when_deeply_nested_init_and_array_loop_then_correct_result() {
-    // Combines 3-level nested struct init with array loop computation.
-    let source = "
+// Combines 3-level nested struct init with array loop computation.
+// data = [3, 6, 9, 12, 15], sum of first 5 = 45
+// dev=0, data=1, sum=2, i=3, n=4, mult=5
+e2e_i32!(
+    end_to_end_when_deeply_nested_init_and_array_loop_then_correct_result,
+    "
 TYPE Params :
   STRUCT
     count : DINT;
@@ -563,19 +545,15 @@ PROGRAM main
       sum := sum + data[i];
     END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // data = [3, 6, 9, 12, 15], sum of first 5 = 45
-    // dev=0, data=1, sum=2, i=3, n=4, mult=5
-    assert_eq!(bufs.vars[2].as_i32(), 45);
-    assert_eq!(bufs.vars[4].as_i32(), 5);
-    assert_eq!(bufs.vars[5].as_i32(), 3);
-}
+",
+    &[(2, 45), (4, 5), (5, 3)],
+);
 
-#[test]
-fn end_to_end_when_2d_array_and_nested_struct_init_then_both_correct() {
-    // 2D array alongside nested struct with explicit init values.
-    let source = "
+// 2D array alongside nested struct with explicit init values.
+// cal=0, matrix=1, result_high=2, result_cell=3
+e2e_i32!(
+    end_to_end_when_2d_array_and_nested_struct_init_then_both_correct,
+    "
 TYPE Range :
   STRUCT
     low : DINT;
@@ -601,9 +579,6 @@ PROGRAM main
     matrix[2, 2] := result_high + cal.offset;
     result_cell := matrix[2, 2];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // cal=0, matrix=1, result_high=2, result_cell=3
-    assert_eq!(bufs.vars[2].as_i32(), 100);
-    assert_eq!(bufs.vars[3].as_i32(), 105);
-}
+",
+    &[(2, 100), (3, 105)],
+);

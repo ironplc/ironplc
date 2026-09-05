@@ -96,6 +96,8 @@ CPU. A slow task (``T#1s``) is gentler on the CPU but less responsive.
 You can define multiple tasks with different intervals. For example, a
 fast task for motion control and a slow task for temperature monitoring.
 
+.. include:: /includes/single-program-limitation.rst
+
 --------------------------------------
 Resources
 --------------------------------------

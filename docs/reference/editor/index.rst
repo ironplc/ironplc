@@ -10,6 +10,7 @@ development environment.
 
    Overview <overview>
    Build Tasks <build-tasks>
+   Debugging <debugging>
    Bytecode Viewer <bytecode-viewer>
    Settings <settings>
    Problem Code Index <problems/index>

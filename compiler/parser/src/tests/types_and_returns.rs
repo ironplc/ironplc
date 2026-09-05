@@ -145,7 +145,7 @@ fn parse_when_function_with_wstring_length_return_type_then_parses() {
 #[test]
 fn parse_when_function_with_string_paren_length_return_type_then_parses() {
     // CODESYS/TwinCAT accept STRING(n) with parentheses as an alternate
-    // delimiter to the standard STRING[n] brackets. This is a vendor
+    // delimiter to the standard STRING[n] brackets. This is a dialect
     // extension, not standard IEC 61131-3, so it requires the
     // `allow_paren_string_length` flag; the strict default dialect rejects
     // it (see parse_when_var_with_string_paren_length_and_strict_dialect_
@@ -241,7 +241,7 @@ END_PROGRAM",
 
 #[test]
 fn parse_when_var_with_string_paren_length_and_strict_dialect_then_rejected() {
-    // The STRING(n) parenthesis delimiter is a vendor extension, not
+    // The STRING(n) parenthesis delimiter is an extension, not
     // standard IEC 61131-3. Under the strict default dialect (no
     // allow_paren_string_length flag) it must be rejected (P4042).
     let result = parse_program(
@@ -257,10 +257,51 @@ END_PROGRAM",
 }
 
 #[test]
+fn parse_when_array_of_string_paren_length_and_strict_dialect_then_rejected() {
+    // The array element-type position is gated on the same flag as every
+    // other string position -- without allow_paren_string_length the
+    // parenthesis delimiter is rejected there too (P4042).
+    let result = parse_program(
+        "PROGRAM main
+VAR
+    names : ARRAY[1..10] OF STRING(255);
+END_VAR
+END_PROGRAM",
+        &FileId::default(),
+        &CompilerOptions::default(),
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn parse_when_array_of_string_paren_length_then_length_is_on_element_type() {
+    // The length must land on the element type's StringSpecification, not
+    // be silently dropped to the default 254.
+    let lib = parse_text_paren_string_length(
+        "PROGRAM main
+VAR
+    names : ARRAY[1..10] OF STRING(255);
+END_VAR
+END_PROGRAM",
+    );
+
+    let program = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let var = &program.variables[0];
+    let array = cast!(&var.initializer, InitialValueAssignmentKind::Array);
+    let subranges = cast!(&array.spec, SpecificationKind::Inline);
+    let spec = cast!(&subranges.type_name, ArrayElementType::String);
+    assert_eq!(spec.width, dsl::common::StringType::String);
+    assert_eq!(
+        spec.length.as_ref().unwrap().as_integer().unwrap().value,
+        255
+    );
+}
+
+#[test]
 fn parse_when_var_with_string_mixed_bracket_paren_delimiters_then_rejected() {
     // A mismatched delimiter pair (`[` ... `)`) is not a valid length spec
     // under either form. Uses the flag ON so the failure is attributable to
-    // the delimiter mismatch, not the vendor-extension gate.
+    // the delimiter mismatch, not the dialect-extension gate.
     let options = CompilerOptions {
         allow_paren_string_length: true,
         ..CompilerOptions::default()
@@ -315,7 +356,7 @@ END_PROGRAM",
         &FileId::default(),
         &options,
     );
-    let lib = result.expect("should parse");
+    let lib = result.unwrap();
     let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
     let spec = cast!(
         &prog.variables[0].initializer,

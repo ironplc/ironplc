@@ -5,7 +5,7 @@ date: 2026-04-02
 
 ## Context and Problem Statement
 
-ADR-0022 established exact type matching for user-defined function arguments: passing an `INT` variable to a `DINT` parameter is rejected, requiring an explicit `INT_TO_DINT()` call. While safe, this is stricter than the IEC 61131-3 standard and every major commercial PLC runtime (CODESYS, TwinCAT, Siemens TIA Portal, Rockwell Logix 5000, PLCnext).
+ADR-0047 established exact type matching for user-defined function arguments: passing an `INT` variable to a `DINT` parameter is rejected, requiring an explicit `INT_TO_DINT()` call. While safe, this is stricter than the IEC 61131-3 standard and every major commercial PLC runtime (CODESYS, TwinCAT, Siemens TIA Portal, Rockwell Logix 5000, PLCnext).
 
 This strictness blocks compatibility with widely-used libraries like OSCAT, where patterns like `EVEN(disc)` (INT argument, DINT parameter) are pervasive — 294 functions fail because of this restriction.
 
@@ -56,9 +56,9 @@ This applies to:
 * Good, because all widening conversions are lossless by definition
 * Neutral, because explicit conversion functions remain available and recommended for cross-family conversions (integer ↔ real, integer ↔ bit-string)
 
-## Relationship to ADR-0022
+## Relationship to ADR-0047
 
-This decision supersedes ADR-0022's exact-matching rule **for integer types only**. ADR-0022's principle still applies to:
+This decision supersedes ADR-0047's exact-matching rule **for integer types only**. ADR-0047's principle still applies to:
 
 * Integer ↔ real type mismatches
 * Integer ↔ bit-string type mismatches

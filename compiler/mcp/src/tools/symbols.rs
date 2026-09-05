@@ -91,10 +91,7 @@ pub fn build_response(
         project.add_source(FileId::from_string(&src.name), src.content.clone());
     }
 
-    let diagnostics_json = match project.semantic() {
-        Ok(()) => vec![],
-        Err(diags) => serialize_diagnostics(&diags),
-    };
+    let diagnostics_json = serialize_diagnostics(&project.semantic());
 
     let has_errors = diagnostics_json
         .iter()
@@ -339,10 +336,7 @@ fn empty_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn ed2_options() -> serde_json::Value {
-        serde_json::json!({"dialect": "iec61131-3-ed2"})
-    }
+    use crate::tools::test_support::ed2_options;
 
     #[test]
     fn build_response_when_valid_program_then_ok_true() {
@@ -381,12 +375,8 @@ mod tests {
             .function_blocks
             .iter()
             .find(|fb| fb.name == "fb")
-            .expect("fb not found");
-        let var = fb
-            .variables
-            .iter()
-            .find(|v| v.name == "x")
-            .expect("x not found");
+            .unwrap();
+        let var = fb.variables.iter().find(|v| v.name == "x").unwrap();
         assert_eq!(var.direction, "In");
         assert!(var.external);
     }
@@ -430,11 +420,7 @@ mod tests {
         }];
         let resp = build_response(&sources, &ed2_options(), None);
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
-        let t = resp
-            .types
-            .iter()
-            .find(|t| t.name == "MyEnum")
-            .expect("MyEnum not found");
+        let t = resp.types.iter().find(|t| t.name == "MyEnum").unwrap();
         assert_eq!(t.kind, "enumeration");
     }
 

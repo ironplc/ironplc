@@ -6,7 +6,7 @@
 //! like `AT %IX0.0`, or incomplete/wildcard address like `AT %I*`) to live
 //! in their own dedicated `VAR ... END_VAR` block, separate from ordinary
 //! symbolic variables. Real CODESYS/TwinCAT code commonly mixes them in one
-//! block; this is a vendor extension.
+//! block; this is an extension.
 //!
 //! The parser always accepts the mixed form; this rule is what actually
 //! enforces the flag, by deriving "is this declaration mixed with a plain
@@ -31,8 +31,13 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 
 pub fn apply(
     lib: &Library,
@@ -43,19 +48,22 @@ pub fn apply(
         return Ok(());
     }
 
-    let mut visitor = RuleMixedLocatedVarDeclarations {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleMixedLocatedVarDeclarations {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleMixedLocatedVarDeclarations {
     diagnostics: Vec<Diagnostic>,
+}
+
+impl DiagnosticVisitor for RuleMixedLocatedVarDeclarations {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 impl RuleMixedLocatedVarDeclarations {
@@ -69,13 +77,13 @@ impl RuleMixedLocatedVarDeclarations {
     }
 }
 
-impl Visitor<Diagnostic> for RuleMixedLocatedVarDeclarations {
+impl Visitor<Infallible> for RuleMixedLocatedVarDeclarations {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.check(node);
         node.recurse_visit(self)
     }
@@ -83,7 +91,7 @@ impl Visitor<Diagnostic> for RuleMixedLocatedVarDeclarations {
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.check(node);
         node.recurse_visit(self)
     }
@@ -91,7 +99,7 @@ impl Visitor<Diagnostic> for RuleMixedLocatedVarDeclarations {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.check(node);
         node.recurse_visit(self)
     }
@@ -111,22 +119,59 @@ mod tests {
         }
     }
 
-    #[test]
-    fn apply_when_mixed_block_and_flag_disabled_then_error() {
-        let program = "
+    rule_err1_at!(
+        apply_when_mixed_block_and_flag_disabled_then_error,
+        "
 FUNCTION_BLOCK FB_Example
 VAR
     tempSensor AT%I*: INT;
     fbComm     : BOOL;
 END_VAR
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        Problem::MixedLocatedVarDeclarationNotAllowed,
+        "tempSensor",
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
+    rule_err1_at!(
+        /// The located variable is in the third of four blocks, so a label
+        /// that named the declaration only by its enclosing POU -- or one
+        /// carrying a default span -- would leave the reader to find it.
+        apply_when_mixed_block_follows_other_blocks_then_error_points_at_located_variable,
+        "
+FUNCTION_BLOCK FB_Example
+VAR_INPUT
+    enable : BOOL;
+END_VAR
+VAR_OUTPUT
+    ready : BOOL;
+END_VAR
+VAR
+    counter    : INT;
+    tempSensor AT%I*: INT;
+END_VAR
+VAR
+    scratch : INT;
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::MixedLocatedVarDeclarationNotAllowed,
+        "tempSensor",
+    );
 
-        assert!(result.is_err());
-    }
+    rule_err1_at!(
+        /// A complete address (`AT %IX0.0`) reaches the rule through a
+        /// different parser rule than the incomplete `AT %I*` above, so it
+        /// needs its own span assertion.
+        apply_when_mixed_block_has_complete_address_then_error_points_at_located_variable,
+        "
+FUNCTION_BLOCK FB_Example
+VAR
+    fbComm     : BOOL;
+    tempSensor AT %IX0.0 : BOOL;
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::MixedLocatedVarDeclarationNotAllowed,
+        "tempSensor",
+    );
 
     #[test]
     fn apply_when_mixed_block_and_flag_enabled_then_ok() {
@@ -145,43 +190,25 @@ END_FUNCTION_BLOCK";
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn apply_when_dedicated_incompl_located_block_then_never_flagged() {
-        // A block containing ONLY located variables uses the pre-existing,
-        // always-allowed incompl_located_var_declarations() grammar path,
-        // not the new mixed-block extension -- must never be flagged
-        // regardless of the option, proving mixed_located_var_decls
-        // correctly distinguishes the two (no Symbol sibling in this
-        // block's BlockId group).
-        let program = "
+    rule_ok!(
+        apply_when_dedicated_incompl_located_block_then_never_flagged,
+        "
 FUNCTION_BLOCK FB_Example
 VAR
     tempSensor1 AT%I*: INT;
     tempSensor2 AT%I*: INT;
 END_VAR
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_plain_block_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_plain_block_then_ok,
+        "
 FUNCTION_BLOCK FB_Example
 VAR
     x : INT;
     y : BOOL;
 END_VAR
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
+END_FUNCTION_BLOCK"
+    );
 }

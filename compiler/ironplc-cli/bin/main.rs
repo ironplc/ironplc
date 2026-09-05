@@ -6,6 +6,7 @@ use ironplc_cli::cli;
 use ironplc_cli::logger;
 use ironplc_cli::lsp;
 use ironplc_parser::options::{describe_dialects, CompilerOptions, Dialect};
+use ironplc_sources::LibraryName;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -74,17 +75,17 @@ struct FileArgs {
     allow_missing_semicolon: bool,
 
     /// Allow VAR_GLOBAL declarations at the top level (outside CONFIGURATION).
-    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_top_level_var_global: bool,
 
     /// Allow constant references in type parameters (e.g., STRING[MY_CONST]).
-    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_constant_type_params: bool,
 
     /// Allow empty variable blocks (VAR END_VAR, VAR_INPUT END_VAR, etc.).
-    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_empty_var_blocks: bool,
 
@@ -98,20 +99,38 @@ struct FileArgs {
     #[arg(long)]
     allow_c_style_comments: bool,
 
-    /// Allow REF_TO, REF(), and NULL syntax without enabling full Edition 3.
-    /// This is useful for libraries like OSCAT that use references but also
-    /// use Edition 3 type names (LDT, LTIME) as identifiers.
+    /// Allow the IEC 61131-3:2013 long-time-type keywords (LTIME, LDATE, LTOD,
+    /// LDT). Without this flag those words remain available as identifiers.
+    #[arg(long)]
+    allow_long_time_types: bool,
+
+    /// Allow REF_TO, REF(), and NULL syntax (standardized in IEC 61131-3:2013)
+    /// without enabling the rest of Edition 3. This is useful for libraries like
+    /// OSCAT that use references but also use Edition 3 type names (LDT, LTIME)
+    /// as identifiers.
     #[arg(long)]
     allow_ref_to: bool,
 
     /// Allow the Beckhoff TwinCAT/CODESYS `REFERENCE TO` reference type and the
-    /// `REF=` binding operator. This is a vendor extension, an alternative to
+    /// `REF=` binding operator. This is an extension, an alternative to
     /// `--allow-ref-to`; the `twincat` and `codesys` dialects enable it.
     #[arg(long)]
     allow_reference_to: bool,
 
+    /// Allow the Beckhoff TwinCAT/CODESYS `POINTER TO` pointer type with
+    /// explicit dereference (^). This is an extension; the `twincat` and
+    /// `codesys` dialects enable it.
+    #[arg(long)]
+    allow_pointer_to: bool,
+
+    /// Allow the ADR() address-of operator, which returns a typed pointer to
+    /// a variable. This is an extension; the `twincat` and `codesys` dialects
+    /// enable it.
+    #[arg(long)]
+    allow_adr: bool,
+
     /// Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types.
-    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_ref_arithmetic: bool,
 
@@ -127,12 +146,12 @@ struct FileArgs {
     allow_ref_type_punning: bool,
 
     /// Allow integer literals (0 or 1) as BOOL variable initializers.
-    /// This is a vendor extension supported by CoDeSys, TwinCAT, and RuSTy.
+    /// This is an extension supported by CoDeSys, TwinCAT, and RuSTy.
     #[arg(long)]
     allow_int_to_bool_initializer: bool,
 
     /// Allow SIZEOF() operator that returns the size in bytes of a variable or type.
-    /// This is a vendor extension supported by CODESYS, TwinCAT, and RuSTy.
+    /// This is an extension supported by CODESYS, TwinCAT, and RuSTy.
     #[arg(long)]
     allow_sizeof: bool,
 
@@ -142,56 +161,64 @@ struct FileArgs {
     allow_system_uptime_global: bool,
 
     /// Allow implicit widening between bit-string and integer type families
-    /// (e.g. BYTE→INT, literal 0→BYTE). This is a vendor extension.
+    /// (e.g. BYTE→INT, literal 0→BYTE). This is an extension.
     #[arg(long)]
     allow_cross_family_widening: bool,
 
-    /// Allow IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) as an alias
-    /// for the short form `.n`. Enabled by `--dialect=iec61131-3-ed3` and
-    /// `--dialect=rusty`.
+    /// Allow IEC 61131-3:2013 partial-access syntax: the bit form `.%Xn` (an
+    /// alias for the short form `.n`) and the byte/word/dword/lword forms
+    /// `.%Bn`, `.%Wn`, `.%Dn`, `.%Ln`.
     #[arg(long)]
     allow_partial_access_syntax: bool,
 
     /// Allow curly-brace pragmas ({attribute 'name'}) as opaque, skipped trivia.
-    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_pragmas: bool,
 
-    /// Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension).
-    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    /// Allow the AND_THEN and OR_ELSE short-circuit boolean operators
+    /// (Beckhoff/CODESYS extension).
+    /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_short_circuit_operators: bool,
 
     /// Allow an AT-located variable inside an otherwise plain
     /// VAR/VAR_INPUT/VAR_OUTPUT block, instead of requiring its own dedicated
-    /// block. This is a vendor extension not part of the IEC 61131-3 standard.
+    /// block. This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_mixed_located_var_declarations: bool,
 
     /// Allow a VAR initializer to be a constant expression (e.g. SCALE*4.0)
-    /// rather than only a bare literal. This is a vendor extension not part
+    /// rather than only a bare literal. This is an extension not part
     /// of the IEC 61131-3 standard.
     #[arg(long)]
     allow_constant_initializer_expressions: bool,
 
     /// Allow hex/binary/octal bit-string literals (e.g. 16#D012, 2#1010) as
-    /// CASE labels. This is a vendor extension not part of the IEC 61131-3
+    /// CASE labels. This is an extension not part of the IEC 61131-3
     /// standard.
     #[arg(long)]
     allow_bit_string_case_labels: bool,
 
     /// Allow the STRING(n)/WSTRING(n) parenthesis length delimiter in addition
-    /// to the standard STRING[n]/WSTRING[n] brackets. This is a vendor
+    /// to the standard STRING[n]/WSTRING[n] brackets. This is a dialect
     /// extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_paren_string_length: bool,
 
     /// Allow a general (non-constant) expression as the value in a
     /// structured/call-style initializer's `name := value` pairs (e.g.
-    /// `tonDelta : TON := (PT := pDevice^.Delta);`). This is a vendor
+    /// `tonDelta : TON := (PT := pDevice^.Delta);`). This is a dialect
     /// extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_struct_initializer_expressions: bool,
+
+    /// Allow IEC 61131-3:2013 object-oriented syntax: EXTENDS/IMPLEMENTS/
+    /// ABSTRACT on FUNCTION_BLOCK declarations, INTERFACE declarations,
+    /// METHOD declarations, and THIS/SUPER. Enabled by
+    /// `--dialect=iec61131-3-ed3` and by the vendor dialects.
+    #[arg(long)]
+    allow_fb_inheritance: bool,
 }
 
 impl FileArgs {
@@ -204,8 +231,11 @@ impl FileArgs {
         options.allow_empty_var_blocks |= self.allow_empty_var_blocks;
         options.allow_time_as_function_name |= self.allow_time_as_function_name;
         options.allow_c_style_comments |= self.allow_c_style_comments;
+        options.allow_long_time_types |= self.allow_long_time_types;
         options.allow_ref_to |= self.allow_ref_to;
         options.allow_reference_to |= self.allow_reference_to;
+        options.allow_pointer_to |= self.allow_pointer_to;
+        options.allow_adr |= self.allow_adr;
         options.allow_ref_arithmetic |= self.allow_ref_arithmetic;
         options.allow_ref_stack_variables |= self.allow_ref_stack_variables;
         options.allow_ref_type_punning |= self.allow_ref_type_punning;
@@ -222,6 +252,7 @@ impl FileArgs {
         options.allow_bit_string_case_labels |= self.allow_bit_string_case_labels;
         options.allow_paren_string_length |= self.allow_paren_string_length;
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
+        options.allow_fb_inheritance |= self.allow_fb_inheritance;
         options
     }
 }
@@ -235,6 +266,15 @@ enum Action {
     Check {
         #[command(flatten)]
         file_args: FileArgs,
+
+        /// Activate a compatibility library by name (repeatable), e.g.
+        /// `--library Tc2_System`. Activation injects the library's declarations
+        /// (such as the TwinCAT `PI` constant) so they resolve under their
+        /// exact vendor names. Use for source that has no project context; a
+        /// discovered project file activates its referenced libraries
+        /// automatically.
+        #[arg(long = "library")]
+        libraries: Vec<LibraryName>,
     },
     /// Compiles source files into a bytecode container (.iplc) file.
     ///
@@ -247,6 +287,11 @@ enum Action {
         /// Output file path for the compiled bytecode container (.iplc).
         #[arg(short, long)]
         output: PathBuf,
+
+        /// Activate a compatibility library by name (repeatable), e.g.
+        /// `--library Tc2_System`. See `check --library`.
+        #[arg(long = "library")]
+        libraries: Vec<LibraryName>,
     },
     /// The echo action reads (parses) the libraries and writes the context to the
     /// standard output.
@@ -285,13 +330,24 @@ pub fn main() -> Result<(), String> {
 
     match args.action {
         Action::Lsp { stdio: _ } => lsp::start(),
-        Action::Check { file_args } => {
-            cli::check(&file_args.files, file_args.compiler_options(), false)
-        }
-        Action::Compile { file_args, output } => cli::compile(
+        Action::Check {
+            file_args,
+            libraries,
+        } => cli::check(
+            &file_args.files,
+            file_args.compiler_options(),
+            &libraries,
+            false,
+        ),
+        Action::Compile {
+            file_args,
+            output,
+            libraries,
+        } => cli::compile(
             &file_args.files,
             &output,
             file_args.compiler_options(),
+            &libraries,
             false,
         ),
         Action::Echo { file_args } => {
@@ -324,12 +380,12 @@ mod tests {
     }
 
     /// Guards the hand-maintained `FileArgs` flag list against drifting out of
-    /// sync with the compiler's `FEATURE_DESCRIPTORS`: every vendor flag must be
+    /// sync with the compiler's `FEATURE_DESCRIPTORS`: every dialect flag must be
     /// reachable via its `--allow-*` CLI form and wired through to
     /// `CompilerOptions`. clap needs a static field per arg, so the list cannot
     /// be derived — but this test makes an omission fail CI instead of shipping.
     #[test]
-    fn file_args_when_each_vendor_flag_cli_form_passed_then_option_enabled() {
+    fn file_args_when_each_dialect_flag_cli_form_passed_then_option_enabled() {
         #[derive(Parser)]
         struct TestCli {
             #[command(flatten)]
@@ -386,12 +442,9 @@ mod tests {
         // The `enum` array must list exactly the dialect cli_names, in order.
         let enum_values: Vec<&str> = dialect["enum"]
             .as_array()
-            .expect("ironplc.dialect.enum must be an array")
+            .unwrap()
             .iter()
-            .map(|v| {
-                v.as_str()
-                    .expect("ironplc.dialect.enum entries must be strings")
-            })
+            .map(|v| v.as_str().unwrap())
             .collect();
         assert_eq!(
             enum_values, expected_names,
@@ -414,9 +467,7 @@ mod tests {
         }
 
         // The prose description must mention every dialect by cli_name.
-        let markdown = dialect["markdownDescription"]
-            .as_str()
-            .expect("ironplc.dialect.markdownDescription must be a string");
+        let markdown = dialect["markdownDescription"].as_str().unwrap();
         for name in &expected_names {
             assert!(
                 markdown.contains(name),

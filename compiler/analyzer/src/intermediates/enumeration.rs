@@ -5,8 +5,8 @@ use ironplc_dsl::diagnostic::*;
 use ironplc_problems::Problem;
 
 /// Resolves each enum member's effective integer value using ordinary
-/// C-style enum semantics: an explicit value (`member := 5`, a
-/// CODESYS/TwinCAT extension) is used as-is; an unlabeled member
+/// C-style enum semantics: an explicit value (`member := 5`,
+/// an extension) is used as-is; an unlabeled member
 /// continues from the previous resolved value + 1 (starting at 0 if the
 /// very first member has no explicit value). Matches Beckhoff's own
 /// documented example (`Red := 2, Green, Blue := 10` -> Green resolves to
@@ -122,8 +122,8 @@ mod tests {
     }
 
     fn value_with(name: &str, explicit: i64) -> EnumeratedValue {
-        let explicit_value = SignedInteger::new(&explicit.to_string(), SourceSpan::default())
-            .expect("valid integer literal");
+        let explicit_value =
+            SignedInteger::new(&explicit.to_string(), SourceSpan::default()).unwrap();
         EnumeratedValue {
             explicit_value: Some(explicit_value),
             ..EnumeratedValue::new(name)

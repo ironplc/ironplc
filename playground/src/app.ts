@@ -1,4 +1,5 @@
 import uPlot from "./uPlot.esm.js";
+import type { UplotData } from "./uPlot.esm.js";
 import type {
   Diagnostic,
   DialectOption,
@@ -231,16 +232,21 @@ function markModified(): void {
   registerSuper({ program_modified: true });
 }
 
-// A runtime failure (a VM trap, or an infrastructure error like a decode
-// failure) carries the same message/code shape as a compiler diagnostic, so
-// present it as one. Runtime errors have no source location, so the line/column
-// fields are 0 — renderDiagnostics omits the location line when they are.
+// A runtime failure (a VM trap, or a host illegal state like a decode failure)
+// carries the same message/code shape as a compiler diagnostic, so present it as
+// one. Runtime errors have no *program* source location, so the line/column
+// fields are 0 — renderDiagnostics omits the location line when they are. A host
+// illegal state (P9998) instead carries the WASM host's own file/line in
+// compiler_file/compiler_line, exactly as a P9xxx compiler diagnostic does, so
+// it ranks by location on the same reporting path.
 function runErrorToDiagnostic(error: RunError): Diagnostic {
   return {
     code: error.code ?? "",
     message: error.message,
     start_line: 0,
     start_column: 0,
+    compiler_file: error.compiler_file,
+    compiler_line: error.compiler_line,
   };
 }
 
@@ -387,6 +393,74 @@ const allowsParam = (params.get("allows") || "")
   .split(",")
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
+
+// `libraries` is a comma-separated list of compatibility-library names to
+// activate (e.g. "Tc2_System"), mirroring the CLI `--library` option and a
+// `.plcproj`'s referenced-library list. Each named library's declarations are
+// served alongside the app as plain-text `.st` files; we fetch and load them so
+// their symbols (e.g. `PI`) resolve, without editing the user's source
+// (REQ-CL-playground-001).
+const librariesParam = (params.get("libraries") || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0);
+
+// The served library sources, once fetched: a JSON array of `.st` file
+// contents ready to hand to the WASM compile path. Empty until fetched (and
+// when no library is activated), which the compiler treats as "no library".
+let activatedLibrarySources: string[] = [];
+
+// Index of the served compatibility libraries, generated at build time and
+// served at `libs/index.json`: library name -> the paths of its `.st` files
+// (relative to the app root). A static index avoids relying on directory
+// listing, which static hosts do not provide.
+type LibraryIndex = Record<string, string[]>;
+
+// Fetch and load the activated libraries' plain-text files. Best-effort: a
+// missing index or file leaves the affected library inactive (its symbols stay
+// undefined and surface as ordinary diagnostics) rather than blocking the app.
+async function loadActivatedLibraries(): Promise<void> {
+  if (librariesParam.length === 0) {
+    return;
+  }
+  let index: LibraryIndex;
+  try {
+    const response = await fetch("libs/index.json");
+    if (!response.ok) {
+      return;
+    }
+    index = (await response.json()) as LibraryIndex;
+  } catch {
+    return;
+  }
+
+  const sources: string[] = [];
+  for (const name of librariesParam) {
+    const files = index[name];
+    if (!files) {
+      continue;
+    }
+    for (const path of files) {
+      try {
+        const response = await fetch(path);
+        if (response.ok) {
+          sources.push(await response.text());
+        }
+      } catch {
+        // Skip a file that fails to load; its symbols stay undefined.
+      }
+    }
+  }
+  activatedLibrarySources = sources;
+}
+
+// The activated library sources as the WASM compile path expects them: a JSON
+// array of `.st` file contents, or "" when none are active.
+function getLibraries(): string {
+  return activatedLibrarySources.length > 0
+    ? JSON.stringify(activatedLibrarySources)
+    : "";
+}
 
 // Populate the dialect picker from the compiler-provided list (via the WASM
 // `dialects()` export), then apply the URL dialect parameter and dialect badge.
@@ -541,8 +615,13 @@ worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
     compilerVersion = msg.version || "";
     initDialects(msg.dialects);
     initAnalytics();
-    startBtn.disabled = false;
-    statusEl.textContent = "Ready";
+    // Fetch any activated compatibility libraries' served files before enabling
+    // Start, so the first compile already has them. The load is best-effort and
+    // resolves even if a file is missing.
+    void loadActivatedLibraries().finally(() => {
+      startBtn.disabled = false;
+      statusEl.textContent = "Ready";
+    });
     return;
   }
 
@@ -728,7 +807,15 @@ startBtn.addEventListener("click", async () => {
   const allows = getAllows();
   const compileStart = performance.now();
   capture("compile_attempted", { trigger: "manual" });
-  const loadMsg = await postCommand({ command: "load_program", source, cycleTimeUs, dialect, allows });
+  const libraries = getLibraries();
+  const loadMsg = await postCommand({
+    command: "load_program",
+    source,
+    cycleTimeUs,
+    dialect,
+    allows,
+    libraries,
+  });
   const compileDurationMs = performance.now() - compileStart;
 
   if (loadMsg.type === "error") {
@@ -789,6 +876,9 @@ startBtn.addEventListener("click", async () => {
   previousValues = new Map();
   valueHistory = new Map();
   lastVariables = null;
+  // A recompile invalidates the previous run's variable indices and charts, so
+  // force a fresh rebuild even if the new program's variable set looks identical.
+  destroyRenderedVariables();
   isRunning = true;
   isPaused = false;
   currentIntervalMs = intervalMs;
@@ -939,41 +1029,117 @@ function accumulateHistory(variables: Variable[]): void {
 
 // --- Display helpers ---
 
-function renderVariables(variables: Variable[]): void {
-  if (!variables || variables.length === 0) {
-    variablesPanel.innerHTML = '<p class="placeholder">No variables.</p>';
-    return;
-  }
+// DOM row and uPlot instance cached per variable so the render loop can update
+// values and sparklines in place. See `renderVariables` for the rebuild rules.
+interface RenderedRow {
+  row: HTMLTableRowElement;
+  valueCell: HTMLTableCellElement;
+  sparkCell: HTMLTableCellElement;
+  chart: uPlot | null;
+}
 
-  let html = '<table class="var-table"><thead><tr><th>Variable</th><th>Value</th><th>History</th></tr></thead><tbody>';
-  for (const v of variables) {
-    const prev = previousValues.get(v.index);
-    const changed = prev !== undefined && prev !== v.value;
-    html += `<tr${changed ? ' class="changed"' : ''}>`;
-    const label = v.name ? `${escapeHtml(v.name)} : ${escapeHtml(v.type_name)}` : `var[${v.index}]`;
-    const valueClass = v.valid === false ? ' class="value-invalid"' : '';
-    html += `<td>${label}</td><td${valueClass}>${escapeHtml(v.value)}</td>`;
-    html += `<td class="sparkline-cell" data-var-idx="${v.index}"></td>`;
-    html += '</tr>';
-  }
-  html += "</tbody></table>";
-  variablesPanel.innerHTML = html;
+let renderedRows: Map<number, RenderedRow> = new Map();
+let renderedSignature: string | null = null;
 
-  // Create uPlot sparklines in the empty cells
-  const now = performance.now();
+// Identity of the variable set — index, name, and type of each variable, in
+// order. Values are deliberately excluded: a value change updates the existing
+// row and chart in place, only a change to this signature triggers a rebuild.
+function variablesSignature(variables: Variable[]): string {
+  return variables.map((v) => `${v.index} ${v.name ?? ""} ${v.type_name}`).join("");
+}
+
+function sparkData(hist: HistoryEntry[], now: number): UplotData {
   const windowStart = now - HISTORY_WINDOW_MS;
+  const xs = hist.map((e) => (e.t - windowStart) / 1000);
+  const ys = hist.map((e) => e.v);
+  return [xs, ys];
+}
+
+// Destroy all cached uPlot instances and forget the rendered rows. Called
+// before a rebuild and whenever the panel is cleared or a new run begins.
+function destroyRenderedVariables(): void {
+  for (const rendered of renderedRows.values()) {
+    if (rendered.chart) rendered.chart.destroy();
+  }
+  renderedRows = new Map();
+  renderedSignature = null;
+}
+
+// Build the table skeleton and register a RenderedRow per variable. Sparkline
+// charts are created lazily by `updateVariables` once history has two points.
+function rebuildVariables(variables: Variable[]): void {
+  destroyRenderedVariables();
+
+  const table = document.createElement("table");
+  table.className = "var-table";
+  table.innerHTML = "<thead><tr><th>Variable</th><th>Value</th><th>History</th></tr></thead>";
+  const tbody = document.createElement("tbody");
+
   for (const v of variables) {
+    const row = document.createElement("tr");
+
+    const labelCell = document.createElement("td");
+    labelCell.textContent = v.name ? `${v.name} : ${v.type_name}` : `var[${v.index}]`;
+
+    const valueCell = document.createElement("td");
+
+    const sparkCell = document.createElement("td");
+    sparkCell.className = "sparkline-cell";
+
+    row.append(labelCell, valueCell, sparkCell);
+    tbody.appendChild(row);
+
+    renderedRows.set(v.index, { row, valueCell, sparkCell, chart: null });
+  }
+
+  table.appendChild(tbody);
+  variablesPanel.replaceChildren(table);
+  renderedSignature = variablesSignature(variables);
+}
+
+// Update value text, the changed/invalid classes, and each sparkline in place.
+// A chart is created on the first tick a variable has two history points, then
+// reused via setData on every subsequent tick.
+function updateVariables(variables: Variable[]): void {
+  const now = performance.now();
+  for (const v of variables) {
+    const rendered = renderedRows.get(v.index);
+    if (!rendered) continue;
+
+    const prev = previousValues.get(v.index);
+    rendered.row.classList.toggle("changed", prev !== undefined && prev !== v.value);
+
+    rendered.valueCell.textContent = v.value;
+    rendered.valueCell.classList.toggle("value-invalid", v.valid === false);
+
     const hist = valueHistory.get(v.index);
     if (hist && hist.length >= 2) {
-      const cell = variablesPanel.querySelector(`[data-var-idx="${v.index}"]`) as HTMLElement | null;
-      if (cell) {
-        const xs = hist.map((e) => (e.t - windowStart) / 1000);
-        const ys = hist.map((e) => e.v);
+      const data = sparkData(hist, now);
+      if (rendered.chart) {
+        rendered.chart.setData(data);
+      } else {
         const opts = v.type_name.toUpperCase() === "BOOL" ? boolSparkOpts : sparkOpts;
-        new uPlot(opts, [xs, ys], cell);
+        rendered.chart = new uPlot(opts, data, rendered.sparkCell);
       }
     }
   }
+}
+
+function renderVariables(variables: Variable[]): void {
+  if (!variables || variables.length === 0) {
+    destroyRenderedVariables();
+    variablesPanel.innerHTML = '<p class="placeholder">No variables.</p>';
+    previousValues = new Map();
+    return;
+  }
+
+  // Rebuild the table (and tear down charts) only when the variable set
+  // changes; otherwise reuse the existing DOM and canvases so the 500ms render
+  // loop redraws sparklines instead of reconstructing them each tick.
+  if (variablesSignature(variables) !== renderedSignature) {
+    rebuildVariables(variables);
+  }
+  updateVariables(variables);
 
   previousValues = new Map(variables.map((v) => [v.index, v.value]));
 }
@@ -982,24 +1148,29 @@ function renderDiagnostics(diagnostics: Diagnostic[]): void {
   let html = "";
   for (const d of diagnostics) {
     html += '<div class="diagnostic-item">';
-    // Infrastructure errors (e.g. a decode failure) carry no code; skip the
-    // code chip rather than render an empty one.
-    if (d.code) {
-      const code = escapeHtml(d.code);
-      // P#### are compiler problems and V#### are runtime (VM) problems; each
-      // has a documentation page under a different section of the reference
-      // site. Codes outside these families render as plain, unlinked chips.
-      const section = /^P\d{4}$/.test(d.code)
-        ? "compiler"
-        : /^V\d{4}$/.test(d.code)
-          ? "runtime"
-          : null;
-      if (section) {
-        const url = `https://www.ironplc.com/reference/${section}/problems/${d.code}.html?version=${encodeURIComponent(compilerVersion)}`;
-        html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
-      } else {
-        html += `<span class="diagnostic-code">${code}</span>`;
-      }
+    // Every diagnostic — compiler, VM trap, or host/embedding-layer error —
+    // now carries a code, so the chip always renders.
+    const code = escapeHtml(d.code);
+    // P#### are compiler problems and V#### are runtime (VM) problems; each has
+    // a documentation page under a different section of the reference site.
+    // Host/embedding-layer illegal states reuse the P9998 internal-error code,
+    // so they link to the compiler section like any other P####. Codes outside
+    // these families render as plain, unlinked chips.
+    const section = /^P\d{4}$/.test(d.code)
+      ? "compiler"
+      : /^V\d{4}$/.test(d.code)
+        ? "runtime"
+        : null;
+    if (section) {
+      // channel=playground attributes the arrival to the playground; version
+      // stays for the out-of-date banner in docs/_static/version-check.js.
+      // PostHog captures both as breakdown dimensions via
+      // custom_campaign_params in docs/_static/posthog-init.js.
+      const v = encodeURIComponent(compilerVersion);
+      const url = `https://www.ironplc.com/reference/${section}/problems/${d.code}.html?version=${v}&channel=playground`;
+      html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
+    } else {
+      html += `<span class="diagnostic-code">${code}</span>`;
     }
     let message = escapeHtml(d.message);
     if (d.label) {

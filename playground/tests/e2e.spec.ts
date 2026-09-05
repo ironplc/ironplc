@@ -225,6 +225,7 @@ END_PROGRAM
     const link = diagnosticsPanel.locator("a.diagnostic-code");
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute("href", /https:\/\/www\.ironplc\.com\/reference\/compiler\/problems\/P\d{4}\.html\?version=/);
+    await expect(link).toHaveAttribute("href", /channel=playground/);
     await expect(link).toHaveAttribute("target", "_blank");
 
     // Diagnostic message should include the label context
@@ -468,6 +469,42 @@ END_PROGRAM
     await expect(canvas).toBeAttached({ timeout: 10000 });
     await expect(canvas).toHaveAttribute("width", "120");
     await expect(canvas).toHaveAttribute("height", "24");
+
+    await page.click('[data-testid="stop-btn"]');
+  });
+
+  test("start_when_running_then_reuses_sparkline_canvas_across_ticks", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    await editor.fill(`PROGRAM main
+  VAR
+    count : INT;
+  END_VAR
+  count := count + 1;
+END_PROGRAM
+`);
+
+    await page.fill('[data-testid="interval-input"]', "100");
+    await page.click('[data-testid="start-btn"]');
+
+    const variablesPanel = page.locator('[data-testid="variables-panel"]');
+    const canvas = variablesPanel.locator("canvas").first();
+    await expect(canvas).toBeAttached({ timeout: 10000 });
+
+    // Tag the live canvas node. renderVariables now updates charts in place via
+    // setData rather than tearing down and recreating them each 500ms tick, so
+    // this exact node — and its tag — must survive several render ticks. A
+    // rebuild would replace the canvas and drop the tag.
+    await canvas.evaluate((el) => el.setAttribute("data-persist-check", "1"));
+
+    // Span multiple render ticks (render loop runs every 500ms).
+    await page.waitForTimeout(1600);
+
+    // Still exactly one canvas, and still the tagged one.
+    await expect(variablesPanel.locator("canvas")).toHaveCount(1);
+    await expect(variablesPanel.locator("canvas").first()).toHaveAttribute(
+      "data-persist-check",
+      "1",
+    );
 
     await page.click('[data-testid="stop-btn"]');
   });

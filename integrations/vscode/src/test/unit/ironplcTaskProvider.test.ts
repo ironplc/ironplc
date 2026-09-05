@@ -1,6 +1,20 @@
 import * as assert from 'assert';
 import * as path from 'path';
-import { buildCompileArgs, outputFileNameForFolder } from '../../taskProviderLogic';
+import { buildCompileArgs, compileArgs, outputFileNameForFolder } from '../../taskProviderLogic';
+
+suite('compileArgs', () => {
+  test('compileArgs_when_project_input_then_compile_dot_output', () => {
+    assert.deepStrictEqual(compileArgs('.', '/out/proj.iplc'), ['compile', '.', '-o', '/out/proj.iplc']);
+  });
+
+  test('compileArgs_when_single_file_input_then_compile_file_output', () => {
+    // The debug adapter compiles one source file to a temp container.
+    assert.deepStrictEqual(
+      compileArgs('/work/main.st', '/tmp/main.iplc'),
+      ['compile', '/work/main.st', '-o', '/tmp/main.iplc'],
+    );
+  });
+});
 
 suite('buildCompileArgs', () => {
   test('buildCompileArgs_when_workspace_folder_then_returns_compile_dot_with_output', () => {

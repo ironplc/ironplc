@@ -4,6 +4,7 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
+use proptest::prelude::*;
 
 /// Reads a STRING value from the data region at the given byte offset.
 fn read_string(data_region: &[u8], data_offset: usize) -> String {
@@ -24,6 +25,20 @@ fn string_offset(preceding_max_lengths: &[u16]) -> usize {
         .sum()
 }
 
+/// Generates printable ASCII strings safe for IEC 61131-3 string literals.
+/// Excludes single quote (0x27) and dollar sign (0x24, the escape character).
+/// Length is bounded to 0..=127 so the concatenated result stays <= 254 and
+/// never triggers the STRING[254] truncation branch.
+fn safe_string_strategy() -> impl Strategy<Value = String> {
+    proptest::collection::vec(
+        (0x20u8..=0x7Eu8).prop_filter("exclude quote and dollar", |&b| b != b'\'' && b != b'$'),
+        0..=127,
+    )
+    .prop_map(|bytes| bytes.into_iter().map(|b| b as char).collect())
+}
+
+// --- Deterministic anchors ---
+
 #[test]
 fn end_to_end_when_concat_two_strings_then_correct_result() {
     let source = "
@@ -43,116 +58,6 @@ END_PROGRAM
 }
 
 #[test]
-fn end_to_end_when_concat_single_chars_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'A';
-    s2 : STRING := 'B';
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "AB");
-}
-
-#[test]
-fn end_to_end_when_concat_empty_first_then_second_string() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING;
-    s2 : STRING := 'World';
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "World");
-}
-
-#[test]
-fn end_to_end_when_concat_empty_second_then_first_string() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello';
-    s2 : STRING;
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello");
-}
-
-#[test]
-fn end_to_end_when_concat_both_empty_then_empty() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING;
-    s2 : STRING;
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "");
-}
-
-#[test]
-fn end_to_end_when_concat_longer_strings_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'The quick brown ';
-    s2 : STRING := 'fox jumps over';
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(
-        read_string(&bufs.data_region, result_offset),
-        "The quick brown fox jumps over"
-    );
-}
-
-#[test]
-fn end_to_end_when_concat_same_variable_then_doubled() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABC';
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s1);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABCABC");
-}
-
-#[test]
 fn end_to_end_when_concat_two_literals_then_correct_result() {
     let source = "
 PROGRAM main
@@ -169,52 +74,30 @@ END_PROGRAM
     assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
 }
 
-#[test]
-fn end_to_end_when_concat_literal_and_variable_then_correct_result() {
-    let source = "
+// --- Property test: CONCAT(s1, s2) == s1 followed by s2 ---
+// Inputs are bounded so the concatenation stays <= 254 (no truncation). Oracle
+// is pure Rust. The literal-argument lowering path is pinned by the anchor above.
+proptest! {
+    #[test]
+    fn end_to_end_when_concat_of_arbitrary_strings_then_appends(
+        s1 in safe_string_strategy(),
+        s2 in safe_string_strategy(),
+    ) {
+        let expected = format!("{s1}{s2}");
+        let source = format!(
+            "
 PROGRAM main
   VAR
-    s1 : STRING := 'World';
+    s1 : STRING := '{s1}';
+    s2 : STRING := '{s2}';
     result : STRING;
   END_VAR
-  result := CONCAT('Hello ', s1);
+  result := CONCAT(s1, s2);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
-}
-
-#[test]
-fn end_to_end_when_concat_variable_and_literal_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello';
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, ' World');
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
-}
-
-#[test]
-fn end_to_end_when_concat_single_char_literals_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    result : STRING;
-  END_VAR
-  result := CONCAT('A', 'B');
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "AB");
+"
+        );
+        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+        let result_offset = string_offset(&[254, 254]);
+        prop_assert_eq!(read_string(&bufs.data_region, result_offset), expected);
+    }
 }

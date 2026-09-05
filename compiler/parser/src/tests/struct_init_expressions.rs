@@ -2,8 +2,7 @@
 //! `tonDelta : TON := (PT := pDevice^.Delta);`. The parser accepts the value
 //! expression unconditionally (a permissive superset); the
 //! `--allow-struct-initializer-expressions` flag is enforced by a later
-//! semantic rule, not here. See
-//! specs/plans/2026-07-26-twincat-struct-init-expression-value.md.
+//! semantic rule, not here.
 
 use super::common::*;
 use dsl::common::StructInitialValueAssignmentKind;

@@ -24,9 +24,13 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
-    result::SemanticResult, semantic_context::SemanticContext, stdlib::is_unsupported_standard_type,
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+    stdlib::is_unsupported_standard_type,
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -35,28 +39,25 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleUnsupportedStdLibType {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleUnsupportedStdLibType {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleUnsupportedStdLibType {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl Visitor<Diagnostic> for RuleUnsupportedStdLibType {
+impl Visitor<Infallible> for RuleUnsupportedStdLibType {
     type Value = ();
 
     fn visit_function_block_initial_value_assignment(
         &mut self,
         node: &FunctionBlockInitialValueAssignment,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         if is_unsupported_standard_type(&node.type_name) {
             self.diagnostics.push(Diagnostic::problem(
                 Problem::UnsupportedStdLibType,
@@ -67,55 +68,42 @@ impl Visitor<Diagnostic> for RuleUnsupportedStdLibType {
     }
 }
 
+impl DiagnosticVisitor for RuleUnsupportedStdLibType {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
-
-    #[test]
-    fn apply_when_has_ctu_dint_supported_type_then_ok() {
-        // CTU_DINT is now a supported stdlib type variant
-        let program = "
+    // CTU_DINT is now a supported stdlib type variant
+    rule_ok!(
+        apply_when_has_ctu_dint_supported_type_then_ok,
+        "
 FUNCTION_BLOCK DUMMY
 VAR_INPUT
 counter : CTU_DINT;
 END_VAR
 
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let input = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        // CTU_DINT is now supported, so this should pass (no unsupported stdlib type error)
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_has_ton_supported_type_then_ok() {
-        // TON is a supported stdlib type - should not trigger this rule
-        let program = "
+    // TON is a supported stdlib type - should not trigger this rule
+    rule_ok!(
+        apply_when_has_ton_supported_type_then_ok,
+        "
 FUNCTION_BLOCK DUMMY
 VAR_INPUT
 timer : TON;
 END_VAR
 
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let input = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        // TON is now supported, so this should pass (no unsupported stdlib type error)
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_has_user_defined_function_block_then_ok() {
-        // User-defined function blocks should not trigger this rule
-        let program = "
+    // User-defined function blocks should not trigger this rule
+    rule_ok!(
+        apply_when_has_user_defined_function_block_then_ok,
+        "
 FUNCTION_BLOCK MY_CUSTOM_FB
 VAR_INPUT
 value : INT;
@@ -126,13 +114,6 @@ FUNCTION_BLOCK DUMMY
 VAR_INPUT
 my_var : MY_CUSTOM_FB;
 END_VAR
-END_FUNCTION_BLOCK";
-
-        let input = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        // User-defined function blocks are not stdlib types, so this should pass
-        assert!(result.is_ok());
-    }
+END_FUNCTION_BLOCK"
+    );
 }

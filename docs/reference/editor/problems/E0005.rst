@@ -1,0 +1,32 @@
+=====
+E0005
+=====
+
+.. problem-summary:: E0005
+
+The program selected for debugging is neither a Structured Text source nor a
+compiled :file:`.iplc` container.
+
+The IronPLC debugger can launch either a Structured Text source file, which it
+compiles first, or an already-compiled :file:`.iplc` container, which it runs
+directly. A ``program`` of any other type is rejected before it reaches the
+debug server, because handing an unrelated file to the server would fail with
+an opaque "invalid magic number" error instead of a message you can act on.
+
+A common way to hit this is ``"program": "${file}"`` combined with the wrong
+editor being focused: ``${file}`` follows the active editor, so pressing
+:kbd:`F5` while :file:`launch.json` is focused makes :file:`launch.json` the
+program.
+
+**Solutions**:
+
+1. **Point at a source file**: Set ``program`` to a :file:`.st` (or other
+   Structured Text) file that you want to debug.
+
+2. **Point at a container**: Set ``program`` to a compiled :file:`.iplc` file
+   produced by :program:`ironplcc compile`.
+
+3. **Check ${file}**: If you use ``"program": "${file}"``, focus the Structured
+   Text editor before pressing :kbd:`F5`, or replace ``${file}`` with an
+   explicit path such as ``${workspaceFolder}/main.st`` so the program does not
+   depend on the active editor.

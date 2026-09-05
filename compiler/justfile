@@ -1,5 +1,12 @@
 set windows-shell := ["powershell.exe", "-c"]
 
+# The executables every installer and package ships. This is the single Unix
+# packaging list -- both `_package-macos` and `_package-linux` read it -- and the
+# `shipped_binaries_guard` test asserts it matches the workspace's `[[bin]]`
+# targets, `setup.nsi`, and the Homebrew formula. A binary that is built but not
+# listed here fails that guard rather than silently missing from the release.
+binaries := "ironplcc ironplcvm ironplcmcp ironplcvmd"
+
 alias ci := default
 # Coverage runs all tests with instrumentation, so separate test step is redundant
 default: compile coverage lint dupes
@@ -12,26 +19,36 @@ setup:
 compile:
   cargo build
 
+# Run the test suite. Excludes benchmarks (which `--all-targets` would run as
+# tests, since st_benchmark uses `harness = false`); benches are compile-checked
+# by `just lint` and run via `just bench`. Mirrors the targets `just coverage`
+# exercises.
 test:
-  cargo test --quiet --all-targets
+  cargo test --quiet --workspace
 
 # Run tests and produce coverage report
 coverage:
-  cargo llvm-cov --quiet --ignore-filename-regex "cargo|dsl_macro_derive|rustup" --workspace --features ironplc-vm-cli/dap --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
+  cargo llvm-cov --quiet --ignore-filename-regex "cargo|dsl_macro_derive|container_derive|rustup" --workspace --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
 
 # Fix linting errors.
 format:
-  cargo clippy --all-targets --features ironplc-vm-cli/dap --fix
+  cargo clippy --all-targets --fix
   cargo fmt --all
 
 # Check for linting errors.
 lint:
-  cargo clippy --all-targets --features ironplc-vm-cli/dap
+  cargo clippy --all-targets
   cargo fmt --all -- --check
 
 # Check for duplicate code (AST-based).
 dupes:
   cargo dupes check --max-exact-percent 10 --max-near-percent 5 --exclude-tests --min-lines 10
+
+# Report duplication including test code (informational only; does not gate CI).
+# The blocking `dupes` recipe above uses `--exclude-tests`, so test duplication is
+# otherwise unmeasured. Use this to track redundancy-reduction progress in tests.
+dupes-tests:
+  cargo dupes check --max-exact-percent 100 --max-near-percent 100 --min-lines 10
 
 # Set the version number for this component.
 version version:
@@ -62,14 +79,67 @@ _package-windows version filename target:
 _package-macos version filename target:
   cargo build --release --target {{target}}
   cp bom.cdx.json target/{{target}}/release/bom.cdx.json
-  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp bom.cdx.json
+  # Stage the compatibility libraries so they ship beside the binaries; the
+  # loader reads them from `<bindir>/resources/libs` at runtime.
+  rm -rf target/{{target}}/release/resources/libs
+  mkdir -p target/{{target}}/release/resources
+  cp -R sources/resources/libs target/{{target}}/release/resources/libs
+  tar -czvf {{filename}} --directory=target/{{target}}/release {{binaries}} bom.cdx.json resources
   shasum -a 256 {{filename}} > {{filename}}.sha256
 
 _package-linux version filename target:
   cargo build --release --target {{target}}
   cp bom.cdx.json target/{{target}}/release/bom.cdx.json
-  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp bom.cdx.json
+  # Stage the compatibility libraries so they ship beside the binaries; the
+  # loader reads them from `<bindir>/resources/libs` at runtime.
+  rm -rf target/{{target}}/release/resources/libs
+  mkdir -p target/{{target}}/release/resources
+  cp -R sources/resources/libs target/{{target}}/release/resources/libs
+  tar -czvf {{filename}} --directory=target/{{target}}/release {{binaries}} bom.cdx.json resources
   sha256sum {{filename}} > {{filename}}.sha256
+
+# Smoke-test the release binaries that were just packaged: run the exact bytes
+# that went into the installer/tarball (target/<target>/release), not a test
+# build. `cargo test` is a debug-profile build for the *host*, so nothing in
+# `just test` ever executed the release artifacts we ship.
+#
+# The assertions live in tests/e2e/library/verify.sh -- the same script the
+# post-release library end-to-end test runs against an installed compiler -- so
+# the packaged bytes and the installed bytes are checked identically, and a new
+# assertion lands in both places at once. Paths handed to the script are
+# repository-root relative because the script cd's to the repository root.
+#
+# Run after `just package`; only meaningful when the runner can execute <target>.
+verify-package target:
+  just _verify-package-{{os()}} {{target}}
+
+_verify-package-linux target:
+  sh ../tests/e2e/library/verify.sh compiler/target/{{target}}/release/ironplcc compiler/target/{{target}}/release/ironplcvm
+
+_verify-package-macos target:
+  #!/usr/bin/env sh
+  set -eu
+  # Running the x86_64 build on the arm64 runner needs Rosetta 2. The install
+  # is a no-op when already present; failure falls through to the real check,
+  # which then fails loudly if the binary truly cannot execute.
+  if [ "$(uname -m)" = "arm64" ]; then
+    sudo softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || true
+  fi
+  sh ../tests/e2e/library/verify.sh compiler/target/{{target}}/release/ironplcc compiler/target/{{target}}/release/ironplcvm
+
+# The unix package recipes stage resources/libs beside the binaries before
+# tarring, so the release directory already has the installed layout. On Windows
+# the NSIS installer does that copy at install time (setup.nsi), so stage the
+# same layout here before running the check.
+#
+# Each line is a separate PowerShell process (set windows-shell), so the script
+# runs through Git for Windows' bash and only the $LASTEXITCODE propagation stays
+# in PowerShell -- without it a failing script would be reported as a pass.
+_verify-package-windows target:
+  if (Test-Path "target\{{target}}\release\resources\libs") { Remove-Item -Recurse -Force "target\{{target}}\release\resources\libs" }
+  New-Item -ItemType Directory -Force "target\{{target}}\release\resources" | Out-Null
+  Copy-Item -Recurse "sources\resources\libs" "target\{{target}}\release\resources\libs"
+  bash ../tests/e2e/library/verify.sh compiler/target/{{target}}/release/ironplcc.exe compiler/target/{{target}}/release/ironplcvm.exe; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # Builds the Homebrew repository to release for Mac and Linux
 publish $VERSION $MACFILENAME $LINUXFILENAME:

@@ -4,62 +4,46 @@
 //! INSERT, DELETE, LEFT, RIGHT, MID, CONCAT) and string comparison.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
+use ironplc_analyzer::IntermediateType;
 use ironplc_container::opcode;
+use ironplc_container::CharWidth;
 use ironplc_dsl::common::ConstantKind;
 use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::textual::{
+    CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind, SymbolicVariableKind,
+    Variable,
+};
 
 use super::compile::{
-    encode_string_literal, string_region_size, CompileContext, DEFAULT_OP_TYPE,
-    DEFAULT_STRING_MAX_LENGTH_U16, NARROW_CHAR_WIDTH,
+    char_width_for_string_type, emit_string_literal_load, string_region_size, CompileContext,
+    DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
 };
-use super::compile_expr::{compile_expr, resolve_variable_name};
+use super::compile_expr::{compile_expr, resolve_variable_name, variable_span};
 use crate::emit::Emitter;
 
 /// Compiles the LEN standard function call.
 ///
-/// LEN takes a single STRING variable argument and returns its current length
-/// as an i32. Instead of going through the BUILTIN dispatch, LEN uses the
-/// dedicated `LEN_STR` opcode which reads `cur_length` directly from the
-/// string's data region header.
+/// LEN takes a single STRING/WSTRING argument and returns its current length
+/// in code units as an i32. Instead of going through the BUILTIN dispatch, LEN
+/// uses the dedicated `LEN_STR` opcode which reads `cur_length` directly from
+/// the string's data region header. The argument is resolved by
+/// [`resolve_string_arg`], so a variable, a literal and a nested string
+/// function call are all accepted.
 pub(crate) fn compile_len(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
 ) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
+    let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    // The argument must be a string variable so we can look up its data_offset.
-    let var_name = match &args[0].kind {
-        ExprKind::Variable(variable) => resolve_variable_name(variable),
-        _ => None,
-    };
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
 
-    let name =
-        var_name.ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
-
-    let info = ctx
-        .string_vars
-        .get(name)
-        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
-
-    emitter.emit_len_str(info.data_offset);
+    emitter.emit_len_str(in_offset);
     Ok(())
 }
 
@@ -95,103 +79,224 @@ pub(crate) fn compile_string_compare(
         CompareOp::LtEq => emitter.emit_le_i32(),
         CompareOp::GtEq => emitter.emit_ge_i32(),
         _ => {
-            return Err(Diagnostic::todo_with_span(span, file!(), line!()));
+            return Err(Diagnostic::todo_with_span(span));
         }
     }
     Ok(())
 }
 
+/// Returns the encoding a string-valued expression produces.
+///
+/// Every string slot records its encoding in its header and the VM rejects a
+/// store whose source and destination disagree (ADR-0034), so the temporary
+/// that [`resolve_string_arg`] allocates has to be initialized at the width
+/// the expression yields rather than at a fixed one. The width is always
+/// known at compile time: a literal spells it, a declaration states it, and
+/// every string function returns the encoding of its first string argument.
+///
+/// An expression whose width cannot be determined is a compiler bug rather
+/// than a program error -- the analyzer has already established that this
+/// argument is a string. Report it as one instead of guessing a width, which
+/// would defer the same problem to an encoding-mismatch trap at run time.
+fn string_expr_char_width(ctx: &CompileContext, expr: &Expr) -> Result<CharWidth, Diagnostic> {
+    match &expr.kind {
+        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
+            Ok(char_width_for_string_type(&lit.width))
+        }
+        ExprKind::Expression(inner) => string_expr_char_width(ctx, inner),
+        ExprKind::Variable(variable) => variable_char_width(ctx, variable),
+        ExprKind::Function(func) => function_char_width(ctx, func),
+        _ => Err(unknown_string_encoding(
+            expr.span(),
+            "a string expression of an unexpected kind",
+        )),
+    }
+}
+
+/// Returns the encoding of a string variable, array element or structure field.
+///
+/// Subscripts and dereferences do not change the encoding, so the access is
+/// walked back to the variable it is rooted in: a name, resolved against the
+/// declared strings and string arrays, or a structure field, whose declared
+/// type carries the width.
+fn variable_char_width(ctx: &CompileContext, variable: &Variable) -> Result<CharWidth, Diagnostic> {
+    let Variable::Symbolic(kind) = variable else {
+        return Err(unknown_string_encoding(
+            variable_span(variable),
+            "a directly represented variable",
+        ));
+    };
+
+    match access_root(kind) {
+        SymbolicVariableKind::Named(named) => {
+            if let Some(info) = ctx.string_vars.get(&named.name) {
+                return Ok(info.char_width);
+            }
+            ctx.array_vars
+                .get(&named.name)
+                .filter(|info| info.is_string_element)
+                .map(|info| info.string_char_width)
+                .ok_or_else(|| {
+                    unknown_string_encoding(
+                        variable_span(variable),
+                        "a variable that is not a declared string",
+                    )
+                })
+        }
+        SymbolicVariableKind::Structured(structured) => {
+            let (_, _, field_type) = crate::compile_struct::walk_struct_chain(
+                ctx,
+                &structured.record,
+                &structured.field,
+                0,
+            )
+            .map_err(|_| {
+                unknown_string_encoding(variable_span(variable), "an unresolvable structure field")
+            })?;
+            string_char_width_of(&field_type).ok_or_else(|| {
+                unknown_string_encoding(
+                    variable_span(variable),
+                    "a structure field that is not a string",
+                )
+            })
+        }
+        _ => Err(unknown_string_encoding(
+            variable_span(variable),
+            "a variable access of an unexpected kind",
+        )),
+    }
+}
+
+/// Walks past subscripts and dereferences to the variable an access is rooted
+/// in. `s.names[i]` roots in the structure field `s.names`, `arr[i][j]` in the
+/// name `arr`.
+fn access_root(kind: &SymbolicVariableKind) -> &SymbolicVariableKind {
+    let mut current = kind;
+    loop {
+        current = match current {
+            SymbolicVariableKind::Array(array) => array.subscripted_variable.as_ref(),
+            SymbolicVariableKind::Deref(deref) => deref.variable.as_ref(),
+            other => return other,
+        };
+    }
+}
+
+/// Returns the encoding of a STRING type, or of a STRING array's element.
+fn string_char_width_of(field_type: &IntermediateType) -> Option<CharWidth> {
+    match field_type {
+        IntermediateType::String { char_width, .. } => Some(*char_width),
+        IntermediateType::Array { element_type, .. } => string_char_width_of(element_type),
+        _ => None,
+    }
+}
+
+/// Returns the encoding of a function call's string result.
+///
+/// The standard string functions return the encoding of their first string
+/// argument; a user-defined function declares its return type.
+fn function_char_width(ctx: &CompileContext, func: &Function) -> Result<CharWidth, Diagnostic> {
+    let name = func.name.lower_case();
+    match name.as_str() {
+        "concat" | "left" | "right" | "mid" | "insert" | "delete" | "replace" => {
+            match collect_positional_args(func).first() {
+                Some(first) => string_expr_char_width(ctx, first),
+                None => Err(unknown_string_encoding(
+                    func.name.span(),
+                    "a string function call with no arguments",
+                )),
+            }
+        }
+        _ => ctx
+            .user_functions
+            .get(name.as_str())
+            .and_then(|info| info.return_string_info.as_ref())
+            .map(|info| info.char_width)
+            .ok_or_else(|| {
+                unknown_string_encoding(
+                    func.name.span(),
+                    "a function call that does not return a string",
+                )
+            }),
+    }
+}
+
+/// Reports that codegen could not determine a string expression's encoding.
+fn unknown_string_encoding(span: SourceSpan, what: &str) -> Diagnostic {
+    Diagnostic::internal_error_at(Label::span(
+        span,
+        format!("Cannot determine the string encoding of {what}"),
+    ))
+}
+
+/// Allocates a data region slot for an intermediate string value.
+///
+/// Returns the slot's data_offset with its header already initialized at
+/// `char_width`. A wide slot also marks the program as holding a wide string
+/// so temp buffers are sized in wide bytes (ADR-0035) even when no WSTRING
+/// variable is declared.
+fn allocate_string_temp(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    char_width: CharWidth,
+    func_span: &SourceSpan,
+) -> Result<u32, Diagnostic> {
+    let max_length = DEFAULT_STRING_MAX_LENGTH;
+    let data_offset = ctx.data_region_offset;
+    let total_bytes = string_region_size(max_length, char_width);
+    ctx.data_region_offset = ctx
+        .data_region_offset
+        .checked_add(total_bytes)
+        .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone()))?;
+
+    if max_length > ctx.max_string_capacity {
+        ctx.max_string_capacity = max_length;
+    }
+    if char_width.is_wide() {
+        ctx.has_wide_string = true;
+    }
+
+    emitter.emit_str_init(data_offset, max_length, char_width);
+
+    Ok(data_offset)
+}
+
 /// Resolves a string argument to its data_offset in the data region.
 ///
-/// Handles both variable references (looked up in `string_vars`) and
-/// string literals (allocated inline in the data region with initialization
-/// code emitted at the point of use).
+/// A simple named STRING/WSTRING variable resolves to the offset of its own
+/// slot. Everything else -- a literal, a nested string function call, a
+/// structure field or array element -- is materialized into a temporary slot
+/// allocated at the expression's encoding, and that slot's offset is
+/// returned.
 pub(crate) fn resolve_string_arg(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     arg: &Expr,
-    func_span: &ironplc_dsl::core::SourceSpan,
+    func_span: &SourceSpan,
 ) -> Result<u32, Diagnostic> {
-    match &arg.kind {
-        ExprKind::Variable(variable) => {
-            // Fast path: simple named variable found in string_vars.
-            if let Some(var_name) = resolve_variable_name(variable) {
-                if let Some(info) = ctx.string_vars.get(var_name) {
-                    return Ok(info.data_offset);
-                }
+    // Fast path: a simple named variable already owns a data region slot.
+    if let ExprKind::Variable(variable) = &arg.kind {
+        if let Some(var_name) = resolve_variable_name(variable) {
+            if let Some(info) = ctx.string_vars.get(var_name) {
+                return Ok(info.data_offset);
             }
-            // Complex variable (e.g., struct field array subscript): fall
-            // through to the general expression path below.
-            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
-            let data_offset = ctx.data_region_offset;
-            let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
-
-            if max_length > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_length;
-            }
-
-            emitter.emit_str_init(data_offset, max_length, NARROW_CHAR_WIDTH);
-
-            let op_type = DEFAULT_OP_TYPE;
-            compile_expr(emitter, ctx, arg, op_type)?;
-            emitter.emit_str_store_var(data_offset);
-
-            Ok(data_offset)
-        }
-        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
-            // Allocate space in the data region for this string literal.
-            let bytes = encode_string_literal(&lit.value, NARROW_CHAR_WIDTH);
-            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
-            let data_offset = ctx.data_region_offset;
-            let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
-
-            if max_length > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_length;
-            }
-
-            // Emit initialization: header + value.
-            emitter.emit_str_init(data_offset, max_length, NARROW_CHAR_WIDTH);
-
-            let pool_index = ctx.add_str_constant(bytes);
-            ctx.num_temp_bufs += 1;
-            emitter.emit_load_const_str(pool_index);
-            emitter.emit_str_store_var(data_offset);
-
-            Ok(data_offset)
-        }
-        _ => {
-            // General expression (e.g., nested function call like MID(...)).
-            // Compile the expression (pushes buf_idx), then store into a
-            // temporary data region slot so the caller gets a data_offset.
-            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
-            let data_offset = ctx.data_region_offset;
-            let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
-
-            if max_length > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_length;
-            }
-
-            emitter.emit_str_init(data_offset, max_length, NARROW_CHAR_WIDTH);
-
-            let op_type = DEFAULT_OP_TYPE;
-            compile_expr(emitter, ctx, arg, op_type)?;
-            emitter.emit_str_store_var(data_offset);
-
-            Ok(data_offset)
         }
     }
+
+    let char_width = string_expr_char_width(ctx, arg)?;
+    let data_offset = allocate_string_temp(emitter, ctx, char_width, func_span)?;
+
+    match &arg.kind {
+        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
+            emit_string_literal_load(emitter, ctx, &lit.value, char_width);
+        }
+        // A complex variable (structure field, array element) or a general
+        // expression such as a nested function call: compiling it leaves a
+        // temp buffer index on the stack.
+        _ => compile_expr(emitter, ctx, arg, DEFAULT_OP_TYPE)?,
+    }
+    emitter.emit_str_store_var(data_offset);
+
+    Ok(data_offset)
 }
 
 /// Collects positional input arguments from a function call.
@@ -218,11 +323,7 @@ pub(crate) fn compile_find(
     let args = collect_positional_args(func);
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
@@ -246,11 +347,7 @@ pub(crate) fn compile_replace(
     let args = collect_positional_args(func);
 
     if args.len() != 4 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
@@ -281,11 +378,7 @@ pub(crate) fn compile_insert(
     let args = collect_positional_args(func);
 
     if args.len() != 3 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
@@ -316,11 +409,7 @@ fn compile_string_2arg(
     let args = collect_positional_args(func);
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
@@ -348,11 +437,7 @@ fn compile_string_3arg(
     let args = collect_positional_args(func);
 
     if args.len() != 3 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
@@ -429,11 +514,7 @@ pub(crate) fn compile_concat(
     let args = collect_positional_args(func);
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;

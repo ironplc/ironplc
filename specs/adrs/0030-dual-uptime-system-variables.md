@@ -1,10 +1,10 @@
 # ADR-0030: Dual System Uptime Variables (TIME and LTIME)
 
-## Status
+status: accepted
+date: 2026-08-24
+amended: 2026-08-31 (converted to the front-matter format; accepted)
 
-Proposed
-
-## Context
+## Context and Problem Statement
 
 IronPLC needs to expose the VM's monotonic uptime counter so that user code
 can implement vendor-specific time functions like CODESYS's `TIME()` in pure ST.
@@ -35,6 +35,64 @@ Review identified several issues:
 * **Clarity** — the variable name should unambiguously communicate "uptime"
 
 ## Considered Options
+
+* **Option A** — a single `__SYSTEM_TIME_MS : TIME` (i32 milliseconds)
+* **Option B** — a single `__SYSTEM_UPTIME_MS : LTIME` (i64 milliseconds)
+* **Option C** — a single `__SYSTEM_UPTIME_MS : UDINT` (u32, matching CODESYS's
+  internal representation)
+* **Option D** — dual variables, `__SYSTEM_UP_TIME : TIME` and
+  `__SYSTEM_UP_LTIME : LTIME`, one per time width
+
+## Decision Outcome
+
+**Option D: Dual variables.**
+
+The primary driver is avoiding unnecessary conversions. The most common use case
+is passing uptime to timer-related logic that expects TIME. Forcing users through
+LTIME_TO_TIME or UDINT_TO_TIME on every access adds friction and error potential
+for no benefit when the timing interval is well within the 24.8-day range (as it
+almost always is for timer FBs).
+
+For the less common case of long-running elapsed measurements, the LTIME variant
+provides a wrap-free alternative without requiring any compromise in the common path.
+
+### Variable Definitions
+
+| Variable | Type | Storage | Wrap |
+|----------|------|---------|------|
+| `__SYSTEM_UP_TIME` | TIME | i32 ms | ~24.8 days |
+| `__SYSTEM_UP_LTIME` | LTIME | i64 ms | ~292M years |
+
+Both are injected at the start of the global variable table (indices 0 and 1)
+and written by the VM before each scan round.
+
+### Naming
+
+"UP_TIME" / "UP_LTIME" instead of "TIME_MS" to:
+- Clearly communicate this is uptime, not wall-clock time
+- The `_MS` suffix is dropped because the type already implies the unit (TIME is
+  defined as milliseconds per ADR-0021)
+
+### Consequences
+
+* Two variable slots are always consumed when the feature is enabled, even if
+  user code only references one. This is negligible overhead (16 bytes total).
+* The TIME variant wraps at ~24.8 days. Documentation must clearly state this
+  and recommend the LTIME variant for durations exceeding days.
+* A CODESYS-compatible `TIME()` function is a pure library concern:
+  `FUNCTION TIME : TIME ... TIME := __SYSTEM_UP_TIME; END_FUNCTION`
+* Future system variables (cycle count, etc.) follow the same injection pattern
+  at subsequent indices.
+
+### Confirmation
+
+Both variables ship and the design is load-bearing in the container format:
+`FLAG_HAS_SYSTEM_UPTIME` is permanently allocated bit 0 of the header flags
+(`container/src/header.rs`), pinned by REQ-CF-container-007; `codegen` sets it
+when either variable is referenced, and the VM writes both slots before each scan
+round only when it is set.
+
+## Pros and Cons of the Options
 
 ### Option A: Single `__SYSTEM_TIME_MS : TIME` (i32)
 
@@ -75,44 +133,3 @@ Two system globals, one per time width. Users choose based on their needs.
 * Neutral, because two variable slots are consumed even if only one is used
 * Neutral, because the TIME variant still wraps at ~24.8 days (but users who
   care about long durations use the LTIME variant instead)
-
-## Decision Outcome
-
-**Option D: Dual variables.**
-
-The primary driver is avoiding unnecessary conversions. The most common use case
-is passing uptime to timer-related logic that expects TIME. Forcing users through
-LTIME_TO_TIME or UDINT_TO_TIME on every access adds friction and error potential
-for no benefit when the timing interval is well within the 24.8-day range (as it
-almost always is for timer FBs).
-
-For the less common case of long-running elapsed measurements, the LTIME variant
-provides a wrap-free alternative without requiring any compromise in the common path.
-
-### Variable Definitions
-
-| Variable | Type | Storage | Wrap |
-|----------|------|---------|------|
-| `__SYSTEM_UP_TIME` | TIME | i32 ms | ~24.8 days |
-| `__SYSTEM_UP_LTIME` | LTIME | i64 ms | ~292M years |
-
-Both are injected at the start of the global variable table (indices 0 and 1)
-and written by the VM before each scan round.
-
-### Naming
-
-"UP_TIME" / "UP_LTIME" instead of "TIME_MS" to:
-- Clearly communicate this is uptime, not wall-clock time
-- The `_MS` suffix is dropped because the type already implies the unit (TIME is
-  defined as milliseconds per ADR-0021)
-
-## Consequences
-
-* Two variable slots are always consumed when the feature is enabled, even if
-  user code only references one. This is negligible overhead (16 bytes total).
-* The TIME variant wraps at ~24.8 days. Documentation must clearly state this
-  and recommend the LTIME variant for durations exceeding days.
-* A CODESYS-compatible `TIME()` function is a pure library concern:
-  `FUNCTION TIME : TIME ... TIME := __SYSTEM_UP_TIME; END_FUNCTION`
-* Future system variables (cycle count, etc.) follow the same injection pattern
-  at subsequent indices.

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { existsSync } from 'fs';
 import {
   LanguageClient,
@@ -10,8 +11,16 @@ import { IplcEditorProvider } from './iplcEditorProvider';
 import { IronplcTaskProvider } from './ironplcTaskProvider';
 import { CompilerEnvironment, findCompilerPath, formatStartFailure } from './compilerDiscovery';
 import { ProblemCode, formatProblem } from './problems';
+import { problemHelpUrl } from './problemUrl';
 import { RunSession, RunState } from './runSession';
 import { findProgramLenses } from './runCodeLensProvider';
+import {
+  IRONPLC_DEBUG_TYPE,
+  IronplcDebugAdapterDescriptorFactory,
+  IronplcDebugConfigurationProvider,
+} from './debugAdapter';
+import { registerCustomRequests } from './customRequests';
+import { sourceExtensionsFromLanguages } from './debugAdapterLogic';
 
 /**
  * Reactive code lens provider for PROGRAM declarations. Shows "Run Program"
@@ -72,8 +81,23 @@ let runSession: RunSession | undefined;
 let extensionVersion = '';
 
 function openProblemInBrowser(code: ProblemCode) {
-  const url = 'https://www.ironplc.com/reference/editor/problems/' + code + '.html?version=' + encodeURIComponent(extensionVersion);
+  const url = problemHelpUrl(code, extensionVersion);
   vscode.env.openExternal(vscode.Uri.parse(url));
+}
+
+/**
+ * Shows a coded problem as an error notification with an "Open Online Help"
+ * action that links to the problem's documentation page. Shared by the
+ * activation path and the debug adapter.
+ */
+function showProblem(code: ProblemCode, context?: string) {
+  void vscode.window
+    .showErrorMessage(formatProblem(code, context), 'Open Online Help')
+    .then((selection) => {
+      if (selection === 'Open Online Help') {
+        openProblemInBrowser(code);
+      }
+    });
 }
 
 // This method is called when this extension is activated.
@@ -91,6 +115,10 @@ export function activate(context: vscode.ExtensionContext) {
   // Register run commands unconditionally so they exist even without a
   // compiler (the commands gracefully no-op when no client is available).
   registerRunSupport(context);
+
+  // Scan-cycle custom-request commands are always available; they no-op when
+  // no IronPLC debug session is active.
+  registerCustomRequests(context);
 
   const env: CompilerEnvironment = {
     platform: process.platform,
@@ -122,6 +150,8 @@ export function activate(context: vscode.ExtensionContext) {
       new IronplcTaskProvider(result.path),
     ),
   );
+
+  registerDebugSupport(context, result.path);
 
   const config = vscode.workspace.getConfiguration('ironplc');
   client = createClient(result.path, config);
@@ -257,6 +287,38 @@ function registerRunSupport(context: vscode.ExtensionContext) {
         await runSession.stop();
       }
     }),
+  );
+}
+
+/**
+ * Registers the DAP debug adapter: a configuration provider that compiles a
+ * source program to an `.iplc` container before launch, and an adapter factory
+ * that spawns the `ironplcvmd` debug server (resolved from the compiler's
+ * directory).
+ */
+function registerDebugSupport(context: vscode.ExtensionContext, compilerPath: string) {
+  const compilerDir = path.dirname(compilerPath);
+
+  const log = vscode.window.createOutputChannel('IronPLC Debug');
+  context.subscriptions.push(log);
+
+  // Single source of truth for the source extensions: the extension's own
+  // `contributes.languages` declarations, so new dialects need no code change.
+  const languages = context.extension.packageJSON?.contributes?.languages ?? [];
+  const sourceExtensions = sourceExtensionsFromLanguages(languages);
+
+  context.subscriptions.push(
+    vscode.debug.registerDebugConfigurationProvider(
+      IRONPLC_DEBUG_TYPE,
+      new IronplcDebugConfigurationProvider(compilerPath, showProblem, log, sourceExtensions),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.debug.registerDebugAdapterDescriptorFactory(
+      IRONPLC_DEBUG_TYPE,
+      new IronplcDebugAdapterDescriptorFactory(compilerDir, showProblem),
+    ),
   );
 }
 

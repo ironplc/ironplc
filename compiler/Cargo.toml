@@ -2,8 +2,10 @@
 members = [
     "analyzer",
     "benchmarks",
+    "cli-support",
     "codegen",
     "container",
+    "container_derive",
     "ironplc-cli",
     "mcp",
     "project",

@@ -11,7 +11,7 @@ use dsl::core::{FileId, Located, SourceSpan};
 #[derive(Debug, Clone)]
 pub struct DeclarationSummary {
     /// One of `"program"`, `"function"`, `"function_block"`, `"type"`,
-    /// or `"configuration"`.
+    /// `"configuration"`, or `"interface"`.
     pub kind: &'static str,
     /// The name of the declaration, or `None` if the parser could not
     /// recover one.
@@ -93,6 +93,16 @@ fn element_to_summary(element: &LibraryElementKind) -> Option<DeclarationSummary
             })
         }
         LibraryElementKind::GlobalVarDeclarations(_) => None,
+        LibraryElementKind::InterfaceDeclaration(decl) => {
+            let span = decl.name.span();
+            Some(DeclarationSummary {
+                kind: "interface",
+                name: Some(decl.name.to_string()),
+                file_id: span.file_id.clone(),
+                start: span.start,
+                end: span.end,
+            })
+        }
     }
 }
 

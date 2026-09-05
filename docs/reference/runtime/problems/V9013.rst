@@ -12,5 +12,4 @@ This error should not occur during normal operation. It indicates a bug in the
 IronPLC compiler or VM, or that the bytecode has been corrupted or
 hand-modified.
 
-Report this as a bug at https://github.com/ironplc/ironplc/issues with the
-``.iplc`` file and the source program that produced it.
+.. include:: ../../../includes/report-internal-vm-error.rst

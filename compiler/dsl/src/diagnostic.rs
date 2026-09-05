@@ -140,6 +140,12 @@ pub struct Diagnostic {
     pub source_line: Option<u32>,
 }
 
+/// Formats the label message for a "not implemented" diagnostic from the
+/// compiler location that produced it.
+fn not_implemented_message(caller: &std::panic::Location<'_>) -> String {
+    format!("Not implemented at {}#L{}", caller.file(), caller.line())
+}
+
 impl Diagnostic {
     /// Creates a diagnostic from the problem code and with the specified label.
     ///
@@ -163,16 +169,18 @@ impl Diagnostic {
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
+    ///
+    /// The location is captured via `#[track_caller]`, so no `file!()`/`line!()`
+    /// need to be passed.
+    #[track_caller]
     #[allow(deprecated)]
-    pub fn todo(file: &str, line: u32) -> Self {
+    pub fn todo() -> Self {
+        let caller = std::panic::Location::caller();
         Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(
-                SourceSpan::default(),
-                format!("Not implemented at {file}#L{line}"),
-            ),
+            Label::span(SourceSpan::default(), not_implemented_message(caller)),
         )
-        .with_source(file, line)
+        .with_source(caller.file(), caller.line())
     }
 
     /// Creates a "todo" diagnostic associated with a file and line in the Rust
@@ -181,13 +189,18 @@ impl Diagnostic {
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
+    ///
+    /// The location is captured via `#[track_caller]`, so no `file!()`/`line!()`
+    /// need to be passed.
+    #[track_caller]
     #[allow(deprecated)]
-    pub fn todo_with_id(id: &Id, file: &str, line: u32) -> Self {
+    pub fn todo_with_id(id: &Id) -> Self {
+        let caller = std::panic::Location::caller();
         Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(id.span(), format!("Not implemented at {file}#L{line}")),
+            Label::span(id.span(), not_implemented_message(caller)),
         )
-        .with_source(file, line)
+        .with_source(caller.file(), caller.line())
     }
 
     /// Creates a "todo" diagnostic associated with a file and line in the Rust
@@ -196,13 +209,18 @@ impl Diagnostic {
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
+    ///
+    /// The location is captured via `#[track_caller]`, so no `file!()`/`line!()`
+    /// need to be passed.
+    #[track_caller]
     #[allow(deprecated)]
-    pub fn todo_with_type(ty: &TypeName, file: &str, line: u32) -> Self {
+    pub fn todo_with_type(ty: &TypeName) -> Self {
+        let caller = std::panic::Location::caller();
         Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(ty.span(), format!("Not implemented at {file}#L{line}")),
+            Label::span(ty.span(), not_implemented_message(caller)),
         )
-        .with_source(file, line)
+        .with_source(caller.file(), caller.line())
     }
 
     /// Creates a "todo" diagnostic associated with a file and line in the Rust
@@ -211,13 +229,18 @@ impl Diagnostic {
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
+    ///
+    /// The location is captured via `#[track_caller]`, so no `file!()`/`line!()`
+    /// need to be passed.
+    #[track_caller]
     #[allow(deprecated)]
-    pub fn todo_with_span(span: SourceSpan, file: &str, line: u32) -> Self {
+    pub fn todo_with_span(span: SourceSpan) -> Self {
+        let caller = std::panic::Location::caller();
         Diagnostic::problem(
             Problem::NotImplemented,
-            Label::span(span, format!("Not implemented at {file}#L{line}")),
+            Label::span(span, not_implemented_message(caller)),
         )
-        .with_source(file, line)
+        .with_source(caller.file(), caller.line())
     }
 
     /// Creates a P9999 (NotImplemented) diagnostic that automatically records
@@ -239,21 +262,49 @@ impl Diagnostic {
             .with_source(caller.file(), caller.line())
     }
 
+    /// Creates a P9997 (NotSupported) diagnostic that automatically records
+    /// the compiler `file#Lline` of the call site as its source location.
+    ///
+    /// Use this — rather than [`Diagnostic::not_implemented`] — for a capability
+    /// the compiler deliberately does not offer: a fixed limit of the bytecode
+    /// format, or a construct that is not planned. P9999 promises "not yet";
+    /// P9997 does not, so a program that hits it needs to change rather than
+    /// wait for a later release.
+    ///
+    /// The location is captured via `#[track_caller]`, so no `file!()`/`line!()`
+    /// need to be passed.
+    #[track_caller]
+    #[allow(deprecated)]
+    pub fn not_supported(primary: Label) -> Self {
+        let caller = std::panic::Location::caller();
+        Diagnostic::problem(Problem::NotSupported, primary)
+            .with_source(caller.file(), caller.line())
+    }
+
     /// Creates an "internal error" diagnostic associated with a file and line in the Rust
     /// source code.
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
+    ///
+    /// The location is captured via `#[track_caller]`, so no `file!()`/`line!()`
+    /// need to be passed.
+    #[track_caller]
     #[allow(deprecated)]
-    pub fn internal_error(file: &str, line: u32) -> Self {
+    pub fn internal_error() -> Self {
+        let caller = std::panic::Location::caller();
         Diagnostic::problem(
             Problem::InternalError,
             Label::span(
                 SourceSpan::default(),
-                format!("Internal error at {file}#L{line} indicates a bug in the compiler"),
+                format!(
+                    "Internal error at {}#L{} indicates a bug in the compiler",
+                    caller.file(),
+                    caller.line()
+                ),
             ),
         )
-        .with_source(file, line)
+        .with_source(caller.file(), caller.line())
     }
 
     /// Creates a P9998 (InternalError) diagnostic that automatically records
@@ -261,8 +312,8 @@ impl Diagnostic {
     /// letting the caller supply a descriptive primary label.
     ///
     /// Prefer this over `Diagnostic::problem(Problem::InternalError, …)` (which
-    /// no longer compiles). Use `internal_error(file, line)` instead when no
-    /// custom label is needed.
+    /// no longer compiles). Use `internal_error()` instead when no custom label
+    /// is needed.
     ///
     /// The location is captured via `#[track_caller]`, so no `file!()`/`line!()`
     /// need to be passed.
@@ -362,49 +413,81 @@ impl Diagnostic {
     }
 }
 
+/// The www.ironplc.com reference section that documents a problem code, derived
+/// from its leading letter: `P####` → `compiler`, `V####` → `runtime`,
+/// `E####` → `editor`.
+///
+/// Returns `"unknown"` for any unrecognized prefix rather than guessing a
+/// section: a `…/reference/unknown/problems/…` URL 404s honestly instead of
+/// confidently pointing at the wrong docs. The `docs_section_covers_every_documented_code`
+/// test in this module walks the docs tree and fails if any documented code's
+/// prefix is left unmapped, so adding a new code family without updating this
+/// function is caught at test time rather than shipping a broken link.
+pub fn docs_section(code: &str) -> &'static str {
+    match code.chars().next() {
+        Some('P') => "compiler",
+        Some('V') => "runtime",
+        Some('E') => "editor",
+        _ => "unknown",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn todo_when_called_then_creates_not_implemented_diagnostic() {
-        let diag = Diagnostic::todo("test.rs", 42);
+        let line = line!() + 1;
+        let diag = Diagnostic::todo();
         assert_eq!(diag.code, "P9999");
-        assert!(diag.primary.message.contains("test.rs"));
-        assert!(diag.source_file.is_some());
-        assert_eq!(diag.source_line, Some(42));
+        assert!(diag.primary.message.contains(file!()));
+        assert_eq!(diag.source_file.as_deref(), Some(file!()));
+        assert_eq!(diag.source_line, Some(line));
     }
 
     #[test]
     fn todo_with_id_when_called_then_includes_id_location() {
         let id = Id::from("my_var");
-        let diag = Diagnostic::todo_with_id(&id, "foo.rs", 10);
+        let line = line!() + 1;
+        let diag = Diagnostic::todo_with_id(&id);
         assert_eq!(diag.code, "P9999");
-        assert!(diag.primary.message.contains("foo.rs"));
+        assert!(diag.primary.message.contains(file!()));
+        assert_eq!(diag.source_file.as_deref(), Some(file!()));
+        assert_eq!(diag.source_line, Some(line));
     }
 
     #[test]
     fn todo_with_type_when_called_then_includes_type_location() {
         let ty = TypeName::from("MY_TYPE");
-        let diag = Diagnostic::todo_with_type(&ty, "bar.rs", 20);
+        let line = line!() + 1;
+        let diag = Diagnostic::todo_with_type(&ty);
         assert_eq!(diag.code, "P9999");
-        assert!(diag.primary.message.contains("bar.rs"));
+        assert!(diag.primary.message.contains(file!()));
+        assert_eq!(diag.source_file.as_deref(), Some(file!()));
+        assert_eq!(diag.source_line, Some(line));
     }
 
     #[test]
     fn todo_with_span_when_called_then_includes_span() {
         let span = SourceSpan::default();
-        let diag = Diagnostic::todo_with_span(span, "baz.rs", 30);
+        let line = line!() + 1;
+        let diag = Diagnostic::todo_with_span(span);
         assert_eq!(diag.code, "P9999");
-        assert!(diag.primary.message.contains("baz.rs"));
+        assert!(diag.primary.message.contains(file!()));
+        assert_eq!(diag.source_file.as_deref(), Some(file!()));
+        assert_eq!(diag.source_line, Some(line));
     }
 
     #[test]
     fn internal_error_when_called_then_creates_diagnostic() {
-        let diag = Diagnostic::internal_error("err.rs", 99);
+        let line = line!() + 1;
+        let diag = Diagnostic::internal_error();
         assert_eq!(diag.code, "P9998");
-        assert!(diag.primary.message.contains("err.rs"));
+        assert!(diag.primary.message.contains(file!()));
         assert!(diag.primary.message.contains("bug in the compiler"));
+        assert_eq!(diag.source_file.as_deref(), Some(file!()));
+        assert_eq!(diag.source_line, Some(line));
     }
 
     #[test]
@@ -483,5 +566,76 @@ mod tests {
         assert_eq!(ids.len(), 2);
         assert!(ids.contains(&primary_file));
         assert!(ids.contains(&secondary_file));
+    }
+
+    #[test]
+    fn docs_section_when_known_prefix_then_matches_reference_section() {
+        assert_eq!(docs_section("P0001"), "compiler");
+        assert_eq!(docs_section("V6008"), "runtime");
+        assert_eq!(docs_section("E0001"), "editor");
+    }
+
+    #[test]
+    fn docs_section_when_unknown_prefix_then_unknown() {
+        // A future code family must not be silently attributed to an existing
+        // section; it falls back to "unknown" (a 404) until mapped.
+        assert_eq!(docs_section("D0001"), "unknown");
+        assert_eq!(docs_section(""), "unknown");
+    }
+
+    // Guards against a new documented code family (a new
+    // docs/reference/<section>/problems/ directory) slipping past `docs_section`
+    // and shipping a wrong or 404 problem-code link. Walks the real docs tree
+    // and asserts every documented code's prefix maps to the section directory
+    // that actually contains its page. If this fails, add the new prefix to
+    // `docs_section`.
+    #[test]
+    fn docs_section_covers_every_documented_code() {
+        use std::path::Path;
+
+        let reference = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/reference");
+        let mut checked = 0;
+
+        for section_entry in std::fs::read_dir(&reference)
+            .unwrap_or_else(|e| panic!("read {}: {e}", reference.display()))
+            .flatten()
+        {
+            let section = section_entry.file_name().to_string_lossy().to_string();
+            let problems_dir = section_entry.path().join("problems");
+            let Ok(files) = std::fs::read_dir(&problems_dir) else {
+                continue; // Not every reference section has a problems/ dir.
+            };
+
+            for file in files.flatten() {
+                let name = file.file_name().to_string_lossy().to_string();
+                let Some(code) = name.strip_suffix(".rst") else {
+                    continue;
+                };
+                // Problem-code files are <LETTER><digits> (e.g. P0001); skip
+                // index.rst and any other prose pages.
+                let mut chars = code.chars();
+                let is_code = matches!(chars.next(), Some(c) if c.is_ascii_uppercase())
+                    && !code[1..].is_empty()
+                    && code[1..].chars().all(|c| c.is_ascii_digit());
+                if !is_code {
+                    continue;
+                }
+
+                assert_eq!(
+                    docs_section(code),
+                    section,
+                    "docs_section({code}) should be {section:?} (its page lives in \
+                     docs/reference/{section}/problems/); a new code family needs a \
+                     matching arm in docs_section",
+                );
+                checked += 1;
+            }
+        }
+
+        assert!(
+            checked > 0,
+            "found no documented problem codes under {} — test wiring is broken",
+            reference.display()
+        );
     }
 }

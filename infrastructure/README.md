@@ -5,7 +5,11 @@ Terraform that provisions:
 - 14 GitHub workflow labels (`status/*`, `review/*`, `flag/*`) — `main.tf`.
 - The PostHog **"IronPLC — Adoption & Success"** product-analytics dashboard
   and its insights — `posthog.tf`.
+- The PostHog **"IronPLC — Problem-code reach"** dashboard and its insights —
+  `posthog-problem-code.tf`.
 - The PostHog project's **Authorized URLs** (`app_urls`) — `posthog.tf`.
+- A PostHog **managed reverse proxy** record for first-party analytics
+  ingestion (`hog.ironplc.com`) — `proxy.tf`.
 
 This directory does **not** deploy app code.
 
@@ -32,12 +36,31 @@ used.
   scopes (Settings → Personal API keys). This is *not* the public `phc_…`
   ingestion key — that one cannot create dashboards.
 
+## Commands
+
+`just` wraps the terraform invocations — run these from `infrastructure/`:
+
+| Recipe | Does | Needs credentials? |
+|---|---|---|
+| `just` / `just plan` | Show pending changes | yes |
+| `just login` | Authenticate to HCP; one-time, opens a browser | — |
+| `just init` | Initialize workspace, download providers | yes |
+| `just apply` | Apply, then remind you to verify the tiles | yes |
+| `just outputs` | Reverse-proxy CNAME target and status | yes |
+| `just validate` | Validate config (run `just init` first) | yes |
+| `just lint` | Check formatting | **no** |
+| `just format` | Auto-fix formatting | **no** |
+| `just ci` | Everything that runs without credentials | **no** |
+
+A bare `just` maps to `plan`, never `apply`, so it cannot mutate live
+infrastructure by accident. `just ci` is not wired into any workflow yet.
+
 ## First apply
 
 ```bash
 cd infrastructure
-terraform login           # browser flow; one-time per machine
-terraform init            # creates the workspace in your HCP org
+just login           # browser flow; one-time per machine
+just init            # creates the workspace in your HCP org
 ```
 
 Then set the three input variables on the workspace. Two options:
@@ -56,13 +79,15 @@ and add each one as a **Terraform variable**:
 | `posthog_api_key` | ✅ yes | `phx_…` (personal key) |
 | `posthog_project_id` | no | `12345` |
 | `posthog_host` | no | `https://us.posthog.com` (default) |
+| `posthog_proxy_domain` | no | `hog.ironplc.com` (default) |
+| `posthog_organization_id` | no | `@current` (default) |
 
 Then run the plan + apply from your laptop — it executes remotely in
 HCP, output streams back to your terminal:
 
 ```bash
-terraform plan      # 14 labels + 1 dashboard + its insights the first time
-terraform apply
+just plan      # 14 labels + 2 dashboards + their insights the first time
+just apply
 ```
 
 ### Option 2 — Local execution
@@ -74,8 +99,8 @@ workspace's **Execution Mode** to *Local* in HCP
 ```bash
 cp terraform.tfvars.example terraform.tfvars   # gitignored
 $EDITOR terraform.tfvars
-terraform plan
-terraform apply
+just plan
+just apply
 ```
 
 State is still stored remotely in HCP; only the plan/apply runs
@@ -105,6 +130,19 @@ Install-adoption tiles (`install_completed`, `release_downloads`, Open VSX)
 are left as commented stubs at the bottom of `posthog.tf`; they light up once
 the collectors that emit those events exist.
 
+`posthog-problem-code.tf` defines the **"IronPLC — Problem-code reach"**
+dashboard. Problem-code documentation links carry two plain query params added
+by every client — `channel` (playground / cli / extension / mcp) and `version`
+(the client version). These are intentionally *not* utm_* names (which read as
+tracking and are stripped by ad-blockers); `docs/_static/posthog-init.js`
+registers them via `custom_campaign_params` so PostHog captures them as event
+properties anyway. These tiles re-cut the docs `$pageview` stream to show *from
+where* and *on which version* people reach problem-code docs — a channel-adoption
+signal that needs no new telemetry. Tiles: total arrivals, reach by channel,
+channel trend, top problem codes, version freshness, and referrers. This
+dashboard's insights only appear once a release ships the client-side URL
+changes (the docs `$pageview` already flows).
+
 ## PostHog Authorized URLs
 
 `posthog.tf` also manages the project's **Authorized URLs** via a
@@ -122,15 +160,92 @@ settings may need a settings/`project:write` scope on the personal API key in
 addition to `insight:write` + `dashboard:write`; if `apply` returns 403, add
 that scope in PostHog → Settings → Personal API keys.
 
-Each insight's `query_json` is the raw PostHog query node. Exact field values
-(boolean property filters, `breakdownFilter` shape, display enums) can vary by
-PostHog version, so if `terraform plan`/`apply` reports a rejected query,
-adjust the offending field and re-apply — the resources are additive and do
-not affect the GitHub labels.
+### Verifying a dashboard after `apply`
+
+Each insight's `query_json` is the raw PostHog query node, and it is **opaque
+to Terraform** — a string as far as the provider is concerned.
+
+A wrong value in it is *not* rejected by the API. PostHog accepts the query and
+the tile silently reads **0**, forever. So `terraform apply` succeeding proves
+only that the insight in PostHog matches this directory; it proves nothing
+about whether the tile counts the right events. Those are two different
+things, and Terraform can only ever check the first.
+
+**Always open the affected tiles after an apply and check the numbers against
+the raw event data.** This is the only thing that closes the loop today. A tile
+that has quietly read 0 since it was created looks exactly like a feature
+nobody uses.
+
+Known encodings that matter:
+
+- **Booleans must be strings.** Property filter values are compared as strings,
+  so write `value = ["false"]`, never `value = [false]`. The latter matches
+  nothing. This zeroed six tiles — including both P9xxx tiles — until it was
+  found by querying the events by hand.
+- **Array properties do not break down elementwise.** `error_codes` and
+  `error_locations` are emitted as string arrays, so a breakdown buckets on the
+  serialized array: `["P9999"]` and `["P9999","P0012"]` are two unrelated rows.
+
+Fixes here are additive and do not affect the GitHub labels.
+
+## PostHog managed reverse proxy
+
+`proxy.tf` provisions a `posthog_proxy_record` — PostHog's **managed** reverse
+proxy. PostHog runs the proxy and terminates TLS on a first-party subdomain, so
+analytics traffic looks like requests to our own site instead of to
+`us.i.posthog.com`. That's what stops ad blockers (which recognise PostHog's
+ingestion hosts from their filter lists) from silently dropping pageviews and
+product events.
+
+**Pick a neutral domain.** Filter lists (EasyPrivacy, uBlock) block hostnames
+containing `analytics`, `track`, `telemetry`, `posthog`, or `stats` — using one
+of those would defeat the proxy. The default is `hog.ironplc.com`
+(`posthog_proxy_domain`).
+
+### Bringing it up
+
+1. `just apply`. The record is created immediately and exposes two
+   outputs, both printed by `just outputs`:
+
+   ```bash
+   terraform output posthog_proxy_target_cname   # PostHog-managed CNAME target
+   terraform output posthog_proxy_status          # provisioning status
+   ```
+
+2. Create a DNS **CNAME**: `hog.ironplc.com` → the `target_cname` value.
+3. PostHog verifies the CNAME and issues a certificate. `status` converges to
+   `valid` **outside** Terraform — a later `terraform apply`/`refresh` reflects
+   it. This can take a few minutes.
+
+The record is **immutable**: changing `posthog_proxy_domain` replaces it and
+mints a new `target_cname`, so the CNAME must be repointed. Creating a proxy
+record may need an `organization:write` (or proxy) scope on the personal API
+key; if `apply` returns 403, add it in PostHog → Settings → Personal API keys.
+
+The proxy endpoint is **organization-level**, not project-level, so the key
+must also not be restricted to specific projects. A key scoped to one project
+fails here with `API keys with scoped projects are only supported on
+project-based endpoints` while resolving `@current` — even when it holds the
+right scopes. Set the key's project access to all projects, or supply an
+explicit `posthog_organization_id` instead of the `@current` default.
+
+### Follow-up: point the SDK at the proxy
+
+The proxy is inert until the browser SDKs actually send events through it. This
+is **deliberately not wired up yet** — flipping the client host before the
+CNAME resolves would 404 every event. Once `status` is `valid`, update the two
+loaders to send through `https://hog.ironplc.com`:
+
+- `docs/_static/posthog-init.js` — set `api_host` to the proxy domain.
+- `playground/posthog-init.js` — set `api_host` to the proxy domain and add
+  `ui_host: 'https://us.posthog.com'` so toolbar/session links still resolve to
+  the PostHog app.
 
 ## What is NOT managed here
 
 - Application code, deployment, or process supervision.
+- The browser SDK loaders (`docs/_static/posthog-init.js`,
+  `playground/posthog-init.js`) — see the follow-up above.
 - The issue template (checked in at
   `.github/ISSUE_TEMPLATE/compatibility_gap.md`).
 

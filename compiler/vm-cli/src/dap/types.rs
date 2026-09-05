@@ -1,7 +1,7 @@
 //! Hand-rolled Debug Adapter Protocol message types for the v1 server.
 //!
-//! These model only the small v1 surface (see
-//! `specs/plans/2026-06-25-dap-server-scaffold.md`): the handshake, line
+//! These model only the small v1 surface (see `specs/design/debugger-support.md`
+//! §"v1 Scope Decisions"): the handshake, line
 //! breakpoints, one synthetic thread, stack/scope/variable inspection, and the
 //! four execution-control commands. Everything wider — logpoints, `evaluate`,
 //! custom `ironplc/*` requests, variable forcing — is deferred and not modelled
@@ -11,16 +11,69 @@
 //! effectively unmaintained, and used by nothing mainstream; the established
 //! Rust DAP implementations (Helix, Lapce, probe-rs) all define their own
 //! types. Our v1 surface is a handful of small `serde` structs — trivial to own
-//! and not worth an alpha dependency on the public build. See the plan's
-//! "DAP types: hand-rolled" section for the full rationale.
+//! and not worth an alpha dependency on the public build.
 //!
-//! The types are consumed by the request-dispatch loop that lands in a later
-//! commit (Phase 4.4); for this commit they are exercised only by the wire
-//! round-trip unit tests below.
+//! The types are consumed by the request-dispatch loop in [`super::server`].
 #![allow(dead_code)]
 
+use ironplc_container::{SourceColumn, SourceLine};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// Serde glue between DAP's JSON numbers and the container's source-coordinate
+/// newtypes.
+///
+/// DAP carries line and column numbers as JSON numbers; the debug section
+/// stores them as `u16`. Converting here — in the (de)serialization layer, and
+/// only here — means every other module holds a [`SourceLine`] or
+/// [`SourceColumn`], which the compiler will not let you swap for each other
+/// or for a plain count the way two bare `i64` fields would.
+mod source_coords {
+    use super::{SourceColumn, SourceLine};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize_line<S: Serializer>(line: &SourceLine, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_u16(line.raw())
+    }
+
+    pub fn serialize_column<S: Serializer>(column: &SourceColumn, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_u16(column.raw())
+    }
+
+    pub fn serialize_opt_line<S: Serializer>(
+        line: &Option<SourceLine>,
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
+        match line {
+            Some(line) => s.serialize_u16(line.raw()),
+            None => s.serialize_none(),
+        }
+    }
+
+    /// Narrows an incoming line to [`SourceLine`], yielding `None` when it
+    /// falls outside what the debug section can represent.
+    ///
+    /// Deliberately lenient rather than an error: a hard failure here would
+    /// reject the entire `setBreakpoints` request, taking the valid
+    /// breakpoints down with the malformed one. `None` instead marks just
+    /// that breakpoint unverified. Rejecting also beats an `as` cast, which
+    /// would silently fold 65546 into a plausible-looking line 10.
+    pub fn deserialize_opt_line<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<Option<SourceLine>, D::Error> {
+        let raw = i64::deserialize(d)?;
+        Ok(u16::try_from(raw).ok().map(SourceLine::new))
+    }
+
+    /// The column counterpart of [`deserialize_opt_line`]; absent and
+    /// out-of-range both yield `None`.
+    pub fn deserialize_opt_column<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<Option<SourceColumn>, D::Error> {
+        let raw = Option::<i64>::deserialize(d)?;
+        Ok(raw.and_then(|raw| u16::try_from(raw).ok().map(SourceColumn::new)))
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Base protocol messages
@@ -155,9 +208,21 @@ pub struct LaunchRequestArguments {
     #[serde(default)]
     pub stop_on_entry: bool,
     /// Upper bound on scan cycles, to bound a runaway program (the
-    /// single-threaded loop has no interactive `pause`).
+    /// single-threaded loop has no interactive `pause`). Absent means no
+    /// bound; there is no sentinel value that spells "unlimited".
+    ///
+    /// Signed so a negative value parses and can be rejected by name in
+    /// `launch::check_scan_limit`. Deserializing straight into an unsigned
+    /// count would fail the *whole* argument parse on `-1`, which the server
+    /// can only report as the missing-`program` case.
     #[serde(default)]
-    pub scan_limit: Option<u64>,
+    pub scan_limit: Option<i64>,
+    /// Cycle time to assume for a program whose task declares no `INTERVAL`,
+    /// in milliseconds. Defaults to 100 ms. A freewheeling task has no rate of
+    /// its own, so the debugger has nothing to advance program time by; the
+    /// session reports whichever value it used.
+    #[serde(default)]
+    pub freewheeling_interval_ms: Option<f64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -178,9 +243,13 @@ pub struct Source {
 /// deferred out of the first phase.
 #[derive(Debug, Deserialize)]
 pub struct SourceBreakpoint {
-    pub line: i64,
-    #[serde(default)]
-    pub column: Option<i64>,
+    /// The requested line, narrowed to the container's representation.
+    /// `None` when the client sent a value the debug section cannot hold —
+    /// such a breakpoint is answered unverified.
+    #[serde(deserialize_with = "source_coords::deserialize_opt_line")]
+    pub line: Option<SourceLine>,
+    #[serde(default, deserialize_with = "source_coords::deserialize_opt_column")]
+    pub column: Option<SourceColumn>,
 }
 
 /// Arguments to `setBreakpoints`: replace all breakpoints in one `source`.
@@ -196,8 +265,11 @@ pub struct SetBreakpointsArguments {
 pub struct Breakpoint {
     /// Whether the breakpoint could be bound to an executable location.
     pub verified: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub line: Option<i64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "source_coords::serialize_opt_line"
+    )]
+    pub line: Option<SourceLine>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
     /// Present when `verified` is false: why the location was rejected.
@@ -251,8 +323,10 @@ pub struct StackTraceArguments {
 pub struct StackFrame {
     pub id: i64,
     pub name: String,
-    pub line: i64,
-    pub column: i64,
+    #[serde(serialize_with = "source_coords::serialize_line")]
+    pub line: SourceLine,
+    #[serde(serialize_with = "source_coords::serialize_column")]
+    pub column: SourceColumn,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
 }
@@ -461,6 +535,16 @@ mod tests {
     }
 
     #[test]
+    fn launch_arguments_when_scan_limit_negative_then_parses_for_validation_to_reject() {
+        // A negative `scanLimit` must not fail the whole argument parse: the
+        // server would then report it as a missing `program` (see #1515).
+        let args: LaunchRequestArguments =
+            serde_json::from_value(json!({ "program": "demo.iplc", "scanLimit": -1 })).unwrap();
+        assert_eq!(args.program, "demo.iplc");
+        assert_eq!(args.scan_limit, Some(-1));
+    }
+
+    #[test]
     fn set_breakpoints_arguments_when_camel_case_then_maps_to_fields() {
         let args: SetBreakpointsArguments = serde_json::from_value(json!({
             "source": { "path": "/x/demo.st" },
@@ -469,8 +553,60 @@ mod tests {
         .unwrap();
         assert_eq!(args.source.path.as_deref(), Some("/x/demo.st"));
         assert_eq!(args.breakpoints.len(), 2);
-        assert_eq!(args.breakpoints[1].line, 20);
-        assert_eq!(args.breakpoints[1].column, Some(3));
+        assert_eq!(args.breakpoints[1].line, Some(SourceLine::new(20)));
+        assert_eq!(args.breakpoints[1].column, Some(SourceColumn::new(3)));
+    }
+
+    #[test]
+    fn set_breakpoints_arguments_when_line_out_of_range_then_none_without_failing_request() {
+        // A line the debug section cannot represent narrows to `None` (an
+        // unverified breakpoint) rather than erroring, so the valid
+        // breakpoints in the same request still resolve. Truncating instead
+        // would have folded 65546 into a plausible-looking line 10.
+        let args: SetBreakpointsArguments = serde_json::from_value(json!({
+            "source": { "path": "/x/demo.st" },
+            "breakpoints": [{ "line": -1 }, { "line": 65546 }, { "line": 7 }]
+        }))
+        .unwrap();
+        assert_eq!(args.breakpoints[0].line, None);
+        assert_eq!(args.breakpoints[1].line, None);
+        assert_eq!(args.breakpoints[2].line, Some(SourceLine::new(7)));
+    }
+
+    #[test]
+    fn breakpoint_when_serialized_then_line_is_a_plain_number() {
+        let value = serde_json::to_value(Breakpoint {
+            verified: true,
+            line: Some(SourceLine::new(12)),
+            source: None,
+            message: None,
+        })
+        .unwrap();
+        assert_eq!(value["line"], 12);
+
+        // An unresolvable line is omitted entirely rather than sent as 0.
+        let value = serde_json::to_value(Breakpoint {
+            verified: false,
+            line: None,
+            source: None,
+            message: Some("nope".to_string()),
+        })
+        .unwrap();
+        assert!(value.get("line").is_none());
+    }
+
+    #[test]
+    fn stack_frame_when_serialized_then_line_and_column_are_plain_numbers() {
+        let value = serde_json::to_value(StackFrame {
+            id: 0,
+            name: "MAIN".to_string(),
+            line: SourceLine::new(42),
+            column: SourceColumn::new(7),
+            source: None,
+        })
+        .unwrap();
+        assert_eq!(value["line"], 42);
+        assert_eq!(value["column"], 7);
     }
 
     #[test]
@@ -479,8 +615,8 @@ mod tests {
             stack_frames: vec![StackFrame {
                 id: 1,
                 name: "main".to_string(),
-                line: 5,
-                column: 1,
+                line: SourceLine::new(5),
+                column: SourceColumn::new(1),
                 source: Some(Source {
                     name: Some("demo.st".to_string()),
                     path: Some("/x/demo.st".to_string()),

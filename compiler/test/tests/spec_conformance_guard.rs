@@ -161,21 +161,14 @@ fn every_requirement_slug_is_claimed_by_a_listing_crate() {
     // is the crate directory name (which equals CARGO_PKG_NAME minus `ironplc-`).
     let mut listings: BTreeSet<(String, String)> = BTreeSet::new();
     let mut listed_docs: BTreeSet<String> = BTreeSet::new();
-    for entry in fs::read_dir(&compiler_dir)
-        .expect("read compiler dir")
-        .flatten()
-    {
+    for entry in fs::read_dir(&compiler_dir).unwrap().flatten() {
         let dir = entry.path();
         let build_rs = dir.join("build.rs");
         if !build_rs.is_file() {
             continue;
         }
-        let slug = dir
-            .file_name()
-            .expect("crate dir name")
-            .to_string_lossy()
-            .to_string();
-        let src = fs::read_to_string(&build_rs).expect("read build.rs");
+        let slug = dir.file_name().unwrap().to_string_lossy().to_string();
+        let src = fs::read_to_string(&build_rs).unwrap();
         for md in listed_specs(&src) {
             listings.insert((slug.clone(), md.clone()));
             listed_docs.insert(md);

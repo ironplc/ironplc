@@ -18,6 +18,19 @@ transform.rs (Schema Structs → DSL Library)
 ironplc_dsl::Library (shared AST)
 ```
 
+XML and ST sources lower to the same `ironplc_dsl::Library`, so a project may
+mix both formats and references resolve across them: an XML POU can call an ST
+POU and an ST POU can use a type declared in XML. Everything downstream of the
+transform is format-blind.
+
+## Editor Language Detection
+
+The VS Code extension detects PLCopen XML by a `firstLine` pattern, not by
+registering the `.xml` extension. Claiming `.xml` would hijack every XML file
+in a user's workspace -- most of which are not PLCopen. The cost is that
+detection cannot be tested through `openTextDocument`, which is why
+`checkInvariants.ts` carries an exception for it.
+
 ## Module Structure
 
 ### `schema.rs`
@@ -56,7 +69,11 @@ Key patterns:
 Transforms schema structs into IronPLC DSL:
 
 ```rust
-pub fn transform_project(project: &Project, file_id: &FileId) -> Result<Library, Diagnostic>
+pub fn transform_project(
+    project: &Project,
+    file_id: &FileId,
+    compiler_options: &CompilerOptions,
+) -> Result<Library, Diagnostic>
 ```
 
 Key patterns:
@@ -163,10 +180,16 @@ fn parse_st_body(
     file_id: &FileId,
     line_offset: usize,   // XML line where ST starts
     col_offset: usize,    // XML column where ST starts
+    compiler_options: &CompilerOptions,
 ) -> Result<Vec<StmtKind>, Diagnostic>
 ```
 
 The offsets ensure error positions in ST code point to correct XML file locations.
+
+The `<ST>` element holds its text either inside an `<xhtml>` child or directly.
+Look for the child first and fall back to the direct text. Pass the text on
+raw: the ST parser owns leading whitespace, so this module must not trim it or
+the offsets stop lining up.
 
 ## Testing Patterns
 

@@ -1,0 +1,29 @@
+=====
+E0006
+=====
+
+.. problem-summary:: E0006
+
+The program could not be compiled for debugging.
+
+Before debugging a Structured Text file, the extension compiles it to an
+:file:`.iplc` container. This error appears when that compilation fails. The
+"IronPLC Debug" output channel shows the compiler command and its full
+diagnostics.
+
+A common cause is compiling a file that depends on definitions in other files:
+the debugger compiles the single file you point at, so a program that
+references function blocks or types declared elsewhere fails analysis on its
+own.
+
+**Solutions**:
+
+1. **Read the diagnostics**: Open the "IronPLC Debug" output channel (it opens
+   automatically on failure) and fix the reported problems.
+
+2. **Compile a self-contained file**: Make sure the file you debug declares (or
+   directly includes) everything it references, or debug a container built from
+   the whole project instead.
+
+3. **Compile from a terminal**: Run :program:`ironplcc compile main.st -o out.iplc`
+   to reproduce the failure outside the editor.

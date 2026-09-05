@@ -61,6 +61,11 @@ pub(crate) struct ArrayVarInfo {
     pub string_max_len: u16,
     /// For STRING/WSTRING arrays, the per-code-unit byte width of each element.
     pub string_char_width: CharWidth,
+    /// True when this entry describes a `REF_TO ARRAY` parameter rather than a
+    /// real array. Such a slot holds the target's variable index, not a
+    /// data-region offset, and no region is allocated for it -- so it must
+    /// never be used as the source or destination of a whole-value copy.
+    pub is_ref: bool,
 }
 
 /// The resolved target of a variable access.
@@ -159,7 +164,20 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                         levels.reverse();
                         let all_subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
                         let info = ctx.array_vars.get(&named.name).ok_or_else(|| {
-                            Diagnostic::todo_with_span(named.name.span(), file!(), line!())
+                            // An element of an array of structures spans
+                            // several slots, so it has no single-value load or
+                            // store; only its fields are addressable.
+                            if ctx.struct_array_vars.contains_key(&named.name) {
+                                Diagnostic::not_implemented(Label::span(
+                                    named.name.span(),
+                                    format!(
+                                        "Whole-element access of '{}' -- select a field of the element instead",
+                                        named.name
+                                    ),
+                                ))
+                            } else {
+                                Diagnostic::todo_with_span(named.name.span())
+                            }
                         })?;
                         return Ok(ResolvedAccess::ArrayElement {
                             info,
@@ -178,33 +196,53 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                                 levels.reverse();
                                 let all_subscripts: Vec<&Expr> =
                                     levels.into_iter().flatten().collect();
-                                let info = ctx.array_vars.get(&named.name).ok_or_else(|| {
-                                    Diagnostic::todo_with_span(named.name.span(), file!(), line!())
-                                })?;
+                                let info = ctx
+                                    .array_vars
+                                    .get(&named.name)
+                                    .ok_or_else(|| Diagnostic::todo_with_span(named.name.span()))?;
                                 return Ok(ResolvedAccess::DerefArrayElement {
                                     info,
                                     subscripts: all_subscripts,
                                 });
                             }
                             other => {
-                                return Err(Diagnostic::todo_with_span(
-                                    other.span(),
-                                    file!(),
-                                    line!(),
-                                ));
+                                return Err(Diagnostic::todo_with_span(other.span()));
                             }
                         }
                     }
                     SymbolicVariableKind::Structured(structured) => {
                         levels.reverse();
                         let all_subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
+                        // `a[i].values[j]` -- the record is itself an array
+                        // element, so the subscripts collected here index the
+                        // *field*, and the element index is still inside the
+                        // record. The array-of-struct path combines the two.
+                        if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
+                            return crate::compile_array_struct::resolve_struct_array_element_field(
+                                ctx,
+                                structured,
+                                all_subscripts,
+                            );
+                        }
                         return resolve_struct_field_array(ctx, structured, all_subscripts);
                     }
                     other => {
-                        return Err(Diagnostic::todo_with_span(other.span(), file!(), line!()));
+                        return Err(Diagnostic::todo_with_span(other.span()));
                     }
                 }
             }
+        }
+        // `s.arr[i].field` -- a field selected from an element of an
+        // array-of-struct. The record is an array element rather than a
+        // fixed-offset struct field, so it resolves through the array path.
+        Variable::Symbolic(SymbolicVariableKind::Structured(structured))
+            if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
+        {
+            crate::compile_array_struct::resolve_struct_array_element_field(
+                ctx,
+                structured,
+                Vec::new(),
+            )
         }
         _ => {
             // Fall through to existing resolve_variable() for scalars.
@@ -304,7 +342,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
 ///
 /// Strides follow row-major order: the last dimension has stride 1, each
 /// preceding dimension's stride is the product of all subsequent dimension sizes.
-fn dimensions_from_intermediate(dims: &[ArrayDimension]) -> Vec<DimensionInfo> {
+pub(crate) fn dimensions_from_intermediate(dims: &[ArrayDimension]) -> Vec<DimensionInfo> {
     let sizes: Vec<u32> = dims
         .iter()
         .map(|d| (d.upper as i64 - d.lower as i64 + 1).max(0) as u32)
@@ -348,7 +386,7 @@ pub(crate) fn array_spec_from_inline(
                 .length
                 .as_ref()
                 .and_then(|l| l.as_integer().map(|i| i.value as u16))
-                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
+                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH);
             (Some(len), Some(CharWidth::Narrow))
         }
         ironplc_dsl::common::ArrayElementType::WString(spec) => {
@@ -356,7 +394,7 @@ pub(crate) fn array_spec_from_inline(
                 .length
                 .as_ref()
                 .and_then(|l| l.as_integer().map(|i| i.value as u16))
-                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
+                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH);
             (Some(len), Some(CharWidth::Wide))
         }
         _ => (None, None),
@@ -368,6 +406,47 @@ pub(crate) fn array_spec_from_inline(
         string_max_len,
         string_char_width,
     })
+}
+
+/// Normalizes an array variable declaration -- inline or by named type -- into
+/// an [`ArraySpec`].
+///
+/// Element types that are structures are laid out differently and register
+/// through `compile_array_struct` instead; callers route those away first.
+pub(crate) fn array_spec_for_declaration(
+    types: &ironplc_analyzer::TypeEnvironment,
+    spec: &ironplc_dsl::common::SpecificationKind<ironplc_dsl::common::ArraySubranges>,
+    span: &SourceSpan,
+) -> Result<ArraySpec, Diagnostic> {
+    match spec {
+        ironplc_dsl::common::SpecificationKind::Inline(subranges) => {
+            array_spec_from_inline(subranges, span)
+        }
+        ironplc_dsl::common::SpecificationKind::Named(type_name) => {
+            // The caller reaches this arm only for a declaration the type
+            // environment already resolved to an array, so a miss here is a
+            // compiler invariant rather than anything the program did.
+            let array_type = types.resolve_array_type(type_name).ok_or_else(|| {
+                Diagnostic::internal_error_at(Label::span(
+                    type_name.span(),
+                    "Array type is absent from the type environment",
+                ))
+            })?;
+            let IntermediateType::Array {
+                element_type,
+                dimensions,
+            } = array_type
+            else {
+                // `resolve_array_type` returns only the Array variant, so this
+                // is a compiler invariant rather than anything the program did.
+                return Err(Diagnostic::internal_error_at(Label::span(
+                    type_name.span(),
+                    "Array type resolved to a non-array representation",
+                )));
+            };
+            array_spec_from_named(element_type, dimensions)
+        }
+    }
 }
 
 /// Converts a named array type (from the TypeEnvironment) to a normalized ArraySpec.
@@ -390,7 +469,7 @@ pub(crate) fn array_spec_from_named(
         } => {
             let len = max_len
                 .map(|v| v as u16)
-                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
+                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH);
             (Some(len), Some(*char_width))
         }
         _ => (None, None),
@@ -405,8 +484,8 @@ pub(crate) fn array_spec_from_named(
 }
 
 /// Maps an IntermediateType to the IEC 61131-3 type name (as an Id) that
-/// `resolve_type_name()` in compile.rs can look up. Only primitive types
-/// are supported (arrays of complex types are out of scope).
+/// `type_info::resolve_type_name()` can look up. Only primitive types are
+/// supported (arrays of complex types are out of scope).
 fn intermediate_type_to_name(ty: &IntermediateType) -> Result<Id, Diagnostic> {
     let name = match ty {
         IntermediateType::Bool => "BOOL",
@@ -459,7 +538,7 @@ fn intermediate_type_to_name(ty: &IntermediateType) -> Result<Id, Diagnostic> {
             size: ByteSized::B64,
         } => "LTIME",
         IntermediateType::String { .. } => "STRING",
-        _ => return Err(Diagnostic::todo(file!(), line!())),
+        _ => return Err(Diagnostic::todo()),
     };
     Ok(Id::from(name))
 }
@@ -516,7 +595,7 @@ pub(crate) fn register_array_variable(
             storage_bits: 0,
         }
     } else {
-        super::compile_setup::resolve_type_name(&spec.element_type_name).ok_or_else(|| {
+        super::type_info::resolve_type_name(&spec.element_type_name).ok_or_else(|| {
             Diagnostic::not_implemented(Label::span(span.clone(), "Unsupported array element type"))
         })?
     };
@@ -613,10 +692,11 @@ pub(crate) fn register_array_variable(
             is_string_element: is_string,
             string_max_len,
             string_char_width,
+            is_ref: false,
         },
     );
 
-    let type_tag = ironplc_container::debug_section::iec_type_tag::OTHER;
+    let type_tag = ironplc_container::debug_section::iec_type_tag::ARRAY;
     let type_name_str = if spec.ref_to {
         format!(
             "ARRAY OF REF_TO {}",
@@ -653,13 +733,11 @@ pub(crate) fn register_ref_to_array_metadata(
                 storage_bits: 64,
             }
         } else {
-            super::compile_setup::resolve_type_name(&spec.element_type_name).unwrap_or(
-                VarTypeInfo {
-                    op_width: OpWidth::W32,
-                    signedness: Signedness::Unsigned,
-                    storage_bits: 32,
-                },
-            )
+            super::type_info::resolve_type_name(&spec.element_type_name).unwrap_or(VarTypeInfo {
+                op_width: OpWidth::W32,
+                signedness: Signedness::Unsigned,
+                storage_bits: 32,
+            })
         };
         let element_type_byte = var_type_info_to_type_byte(&element_vti);
         let mut dimensions = Vec::new();
@@ -693,6 +771,7 @@ pub(crate) fn register_ref_to_array_metadata(
                 is_string_element: false,
                 string_max_len: 0,
                 string_char_width: CharWidth::Narrow,
+                is_ref: true,
             },
         );
     }
@@ -711,7 +790,7 @@ pub(crate) fn flatten_array_initial_values(
                 result.push(value.clone());
             }
             ArrayInitialElementKind::EnumValue(_) => {
-                return Err(Diagnostic::todo(file!(), line!()));
+                return Err(Diagnostic::todo());
             }
             ArrayInitialElementKind::Repeated(repeated) => {
                 let count = repeated.size.value as usize;

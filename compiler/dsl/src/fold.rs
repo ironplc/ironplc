@@ -10,6 +10,7 @@
 use crate::common::*;
 use crate::configuration::*;
 use crate::core::*;
+use crate::scope::ScopeNode;
 use crate::sfc::*;
 use crate::textual::*;
 use crate::time::*;
@@ -49,6 +50,24 @@ pub trait Fold<E> {
     fn fold_library(&mut self, node: Library) -> Result<Library, E> {
         node.recurse_fold(self)
     }
+
+    /// Called when the fold enters a declaration that opens a scope.
+    ///
+    /// See [`Visitor::enter_scope`] for the contract, which is identical.
+    /// The declaration is borrowed before the fold consumes it, so `node`
+    /// is valid for the duration of the call only.
+    ///
+    /// [`Visitor::enter_scope`]: crate::visitor::Visitor::enter_scope
+    fn enter_scope(&mut self, _node: ScopeNode<'_>) -> Result<(), E> {
+        Ok(())
+    }
+
+    /// Called when the fold leaves a declaration that opens a scope.
+    ///
+    /// See [`Visitor::exit_scope`].
+    ///
+    /// [`Visitor::exit_scope`]: crate::visitor::Visitor::exit_scope
+    fn exit_scope(&mut self) {}
 
     // Declarations from Core
 
@@ -179,7 +198,7 @@ pub trait Fold<E> {
     // 2.4.3.2
     dispatch!(SimpleInitializer);
 
-    // CODESYS/TwinCAT vendor extension
+    // Expression-valued initializer (extension)
     dispatch!(SimpleExprInitializer);
 
     // 2.4.3.1 and 2.4.3.2
@@ -219,7 +238,14 @@ pub trait Fold<E> {
     // 2.5.2
     dispatch!(FunctionBlockDeclaration);
 
+    // OOP extension
+    dispatch!(FunctionBlockOop);
+    dispatch!(MethodDeclaration);
+
     dispatch!(FunctionBlockBodyKind);
+
+    // OOP extension
+    dispatch!(InterfaceDeclaration);
 
     // 2.5.3
     dispatch!(ProgramDeclaration);
@@ -306,6 +332,9 @@ pub trait Fold<E> {
 
     // 3.2.3
     dispatch!(FbCall);
+    dispatch!(MethodCall);
+
+    dispatch!(MethodReceiver);
 
     // 3.2.3
     dispatch!(PositionalInput);
@@ -371,4 +400,6 @@ pub trait Fold<E> {
     dispatch!(PartialAccessVariable);
 
     dispatch!(DerefVariable);
+
+    dispatch!(SelfRefVariable);
 }

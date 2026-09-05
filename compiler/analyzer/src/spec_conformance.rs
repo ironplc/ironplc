@@ -9,10 +9,12 @@
 //!
 //! See `specs/design/reference-to-twincat.md`.
 
-use ironplc_dsl::common::{FunctionBlockBodyKind, Library, LibraryElementKind};
+use ironplc_dsl::common::{
+    ConstantKind, FunctionBlockBodyKind, InitialValueAssignmentKind, Library, LibraryElementKind,
+};
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::textual::{Assignment, StmtKind};
-use ironplc_parser::options::CompilerOptions;
+use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_parser::parse_program;
 use ironplc_problems::Problem;
 use spec_test_macro::spec_test;
@@ -37,8 +39,8 @@ fn reference_to_options() -> CompilerOptions {
 
 /// Analyze a program and return the set of problem codes it produced.
 fn analyze_codes(program: &str, options: &CompilerOptions) -> Vec<String> {
-    let library = parse_program(program, &FileId::default(), options).expect("program parses");
-    let (_library, context) = analyze(&[&library], options).expect("analysis returns a context");
+    let library = parse_program(program, &FileId::default(), options).unwrap();
+    let (_library, context) = analyze(&[&library], options).unwrap();
     context
         .diagnostics()
         .iter()
@@ -112,10 +114,9 @@ END_VAR
     r REF= x;
     r := 5;
 END_PROGRAM";
-    let library =
-        parse_program(source, &FileId::default(), &reference_to_options()).expect("program parses");
-    let folded = crate::xform_insert_implicit_deref::apply(library, &reference_to_options())
-        .expect("transform succeeds");
+    let library = parse_program(source, &FileId::default(), &reference_to_options()).unwrap();
+    let folded =
+        crate::xform_insert_implicit_deref::apply(library, &reference_to_options()).unwrap();
     let statements = program_statements(&folded);
     let assignments: Vec<&Assignment> = statements
         .iter()
@@ -179,5 +180,192 @@ END_PROGRAM";
             .iter()
             .any(|c| c.as_str() == Problem::FunctionCallUndeclared.code()),
         "with the flag __ISVALIDREF must be recognized (lowered), got {codes:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Compatibility libraries (analyzer-owned requirements): an activated library
+// is an additional `Library` merged ahead of user source, so its declarations
+// resolve exactly like user source under their exact vendor names.
+//
+// See `specs/design/compatibility-libraries.md`.
+// ---------------------------------------------------------------------------
+
+/// Options that let a top-level `VAR_GLOBAL` constant provide `PI` and let a
+/// `VAR` initializer be a constant expression (e.g. `PI/180.0`).
+fn library_options() -> CompilerOptions {
+    CompilerOptions {
+        allow_top_level_var_global: true,
+        allow_constant_initializer_expressions: true,
+        ..CompilerOptions::default()
+    }
+}
+
+/// The `Tc2_System`-style compatibility library providing the global `PI`.
+fn pi_library(options: &CompilerOptions) -> Library {
+    parse_program(
+        "VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979; END_VAR",
+        &FileId::default(),
+        options,
+    )
+    .unwrap()
+}
+
+/// The folded `LREAL` initializer value of `var_name` in `fb_name`, if it
+/// reduced to a real literal.
+fn folded_lreal(library: &Library, fb_name: &str, var_name: &str) -> Option<f64> {
+    for element in &library.elements {
+        let LibraryElementKind::FunctionBlockDeclaration(fb) = element else {
+            continue;
+        };
+        if fb.name.to_string() != fb_name {
+            continue;
+        }
+        for var in &fb.variables {
+            let is_match = var
+                .identifier
+                .symbolic_id()
+                .is_some_and(|id| id.original() == var_name);
+            if !is_match {
+                continue;
+            }
+            if let InitialValueAssignmentKind::Simple(simple) = &var.initializer {
+                if let Some(ConstantKind::RealLiteral(real)) = &simple.initial_value {
+                    return Some(real.value);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// REQ-CL-analyzer-001: A compatibility library is dormant by default — its
+/// declarations are in scope only when the library is activated.
+#[spec_test(REQ_CL_analyzer_001)]
+fn analyzer_spec_req_cl_001_library_dormant_until_activated() {
+    let options = library_options();
+    let user = parse_program(
+        "FUNCTION_BLOCK FB_Example VAR d2r : LREAL := PI/180.0; END_VAR END_FUNCTION_BLOCK",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+
+    // Not activated: PI is not in scope, so the initializer cannot resolve.
+    let (_lib, ctx) = analyze(&[&user], &options).unwrap();
+    assert!(
+        ctx.has_diagnostics(),
+        "PI must be undefined when the library is dormant"
+    );
+
+    // Activated: injecting the library makes PI resolve cleanly.
+    let library = pi_library(&options);
+    let (_lib, ctx) = analyze(&[&library, &user], &options).unwrap();
+    assert!(
+        !ctx.has_diagnostics(),
+        "unexpected diagnostics once activated: {:?}",
+        ctx.diagnostics()
+    );
+}
+
+/// REQ-CL-analyzer-002: An activated library's symbols resolve under their exact
+/// vendor names (flat), with no compiler-injected namespace qualifier.
+#[spec_test(REQ_CL_analyzer_002)]
+fn analyzer_spec_req_cl_002_symbols_resolve_flat() {
+    let options = library_options();
+    let library = pi_library(&options);
+    // The source writes the bare, unqualified name `PI` (not `Tc2_System.PI`).
+    let user = parse_program(
+        "FUNCTION_BLOCK FB_Example VAR half : LREAL := PI/2.0; END_VAR END_FUNCTION_BLOCK",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    let (analyzed, ctx) = analyze(&[&library, &user], &options).unwrap();
+    assert!(
+        !ctx.has_diagnostics(),
+        "bare `PI` must resolve flat: {:?}",
+        ctx.diagnostics()
+    );
+    let value = folded_lreal(&analyzed, "FB_Example", "half").unwrap();
+    assert!(
+        (value - std::f64::consts::PI / 2.0).abs() < 1e-9,
+        "flat `PI` did not resolve to the library value, got {value}"
+    );
+}
+
+/// REQ-CL-analyzer-003: When a math library is active, `PI` resolves as a
+/// constant and folds at compile time, so it is usable in a `VAR` initializer.
+#[spec_test(REQ_CL_analyzer_003)]
+fn analyzer_spec_req_cl_003_pi_folds_in_initializer() {
+    let options = library_options();
+    let library = pi_library(&options);
+    let user = parse_program(
+        "FUNCTION_BLOCK FB_Example VAR d2r : LREAL := PI/180.0; END_VAR END_FUNCTION_BLOCK",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    let (analyzed, ctx) = analyze(&[&library, &user], &options).unwrap();
+    assert!(
+        !ctx.has_diagnostics(),
+        "unexpected diagnostics: {:?}",
+        ctx.diagnostics()
+    );
+    let value = folded_lreal(&analyzed, "FB_Example", "d2r").unwrap();
+    assert!(
+        (value - std::f64::consts::PI / 180.0).abs() < 1e-9,
+        "PI/180.0 did not fold to the expected value, got {value}"
+    );
+}
+
+/// REQ-CL-analyzer-004: A user declaration shadows an activated library
+/// declaration of the same name.
+#[spec_test(REQ_CL_analyzer_004)]
+fn analyzer_spec_req_cl_004_user_declaration_shadows_library() {
+    let options = library_options();
+    let library = pi_library(&options); // library global PI = 3.14159...
+                                        // The FB declares its own local CONSTANT PI, which must win.
+    let user = parse_program(
+        "FUNCTION_BLOCK FB_Example \
+         VAR CONSTANT PI : LREAL := 2.0; END_VAR \
+         VAR d2r : LREAL := PI/180.0; END_VAR \
+         END_FUNCTION_BLOCK",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    let (analyzed, ctx) = analyze(&[&library, &user], &options).unwrap();
+    assert!(
+        !ctx.has_diagnostics(),
+        "a user declaration shadowing a library one must not error: {:?}",
+        ctx.diagnostics()
+    );
+    let value = folded_lreal(&analyzed, "FB_Example", "d2r").unwrap();
+    // The local PI (2.0) shadowed the library global (3.14159...).
+    assert!(
+        (value - 2.0 / 180.0).abs() < 1e-12,
+        "expected the local PI (2.0) to shadow the library global, got {value}"
+    );
+}
+
+/// REQ-CL-analyzer-006: Selecting a dialect does not activate any compatibility
+/// library; library activation comes only from the activation channels.
+#[spec_test(REQ_CL_analyzer_006)]
+fn analyzer_spec_req_cl_006_dialect_does_not_activate_library() {
+    // The TwinCAT dialect enables top-level VAR_GLOBAL and more, but it must NOT
+    // make `PI` resolve on its own — no library has been activated.
+    let mut options = CompilerOptions::from_dialect(Dialect::TwinCat);
+    options.allow_constant_initializer_expressions = true;
+    let user = parse_program(
+        "FUNCTION_BLOCK FB_Example VAR d2r : LREAL := PI/180.0; END_VAR END_FUNCTION_BLOCK",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    let (_lib, ctx) = analyze(&[&user], &options).unwrap();
+    assert!(
+        ctx.has_diagnostics(),
+        "selecting a dialect must not activate the library"
     );
 }

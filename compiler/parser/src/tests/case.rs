@@ -6,7 +6,7 @@ use super::common::*;
 fn parse_when_case_branch_empty_and_followed_by_another_label_then_ok() {
     // An empty CASE branch isn't strict IEC 61131-3 (the standard only
     // allows an explicit empty statement, `5: ;`) -- this is the
-    // `--allow-missing-semicolon` vendor extension filling in the
+    // `--allow-missing-semicolon` extension filling in the
     // dropped `;`, so it must be gated behind that flag.
     let source = "
 FUNCTION_BLOCK FB_Example
@@ -20,8 +20,8 @@ CASE x OF
     10: y := 3;
 END_CASE;
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &with_missing_semicolon_flag())
-        .expect("empty CASE branch followed by another label must parse");
+    let library =
+        parse_program(source, &FileId::default(), &with_missing_semicolon_flag()).unwrap();
     let case = extract_case(&library);
     assert_eq!(case.statement_groups.len(), 3);
     assert!(case.statement_groups[1].statements.is_empty());
@@ -40,8 +40,8 @@ CASE x OF
     5: (* no statement here *)
 END_CASE;
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &with_missing_semicolon_flag())
-        .expect("empty CASE branch as the last one must parse");
+    let library =
+        parse_program(source, &FileId::default(), &with_missing_semicolon_flag()).unwrap();
     let case = extract_case(&library);
     assert_eq!(case.statement_groups.len(), 2);
     assert!(case.statement_groups[1].statements.is_empty());
@@ -80,8 +80,7 @@ CASE x OF
     5: y := 2;
 END_CASE;
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
-        .expect("populated CASE branch must still parse");
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
     let case = extract_case(&library);
     assert_eq!(case.statement_groups.len(), 2);
     assert_eq!(case.statement_groups[1].statements.len(), 1);
@@ -92,8 +91,7 @@ END_FUNCTION_BLOCK";
 // dialect-agnostic: the parser always produces a
 // CaseSelectionKind::BitStringLiteral for these; the
 // --allow-bit-string-case-labels flag is enforced later, by the
-// analyzer (see rule_case_bit_string_label). See
-// specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+// analyzer (see rule_case_bit_string_label).
 // -----------------------------------------------------------------
 
 #[test]
@@ -111,8 +109,7 @@ CASE x OF
     2#1010: y := 2;
 END_CASE;
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
-        .expect("hex/binary CASE labels must parse");
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
     let case = extract_case(&library);
     assert_eq!(case.statement_groups.len(), 2);
 
@@ -137,8 +134,7 @@ CASE x OF
     8#17: y := 1;
 END_CASE;
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
-        .expect("octal CASE label must parse");
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
     let case = extract_case(&library);
     let selector = &case.statement_groups[0].selectors[0];
     let lit = cast!(selector, CaseSelectionKind::BitStringLiteral);
@@ -159,8 +155,7 @@ CASE x OF
     5: y := 1;
 END_CASE;
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
-        .expect("plain decimal CASE label must still parse");
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
     let case = extract_case(&library);
     let selector = &case.statement_groups[0].selectors[0];
     assert!(matches!(selector, CaseSelectionKind::SignedInteger(_)));

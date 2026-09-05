@@ -5,11 +5,10 @@
 
 use ironplc_parser::options::{CompilerOptions, Dialect};
 
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_global_var_with_initial_value_then_external_reads_value() {
-    let source = "
+// shared is at index 0 (global), result is at index 1 (program local)
+e2e_i32!(
+    end_to_end_when_global_var_with_initial_value_then_external_reads_value,
+    "
 CONFIGURATION config
   VAR_GLOBAL
     shared : INT := 42;
@@ -29,17 +28,14 @@ PROGRAM main
   END_VAR
   result := shared;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 42), (1, 42)],
+);
 
-    // shared is at index 0 (global), result is at index 1 (program local)
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_global_var_written_via_external_then_value_updated() {
-    let source = "
+// counter starts at 0, after one scan: 0 + 10 = 10
+e2e_i32!(
+    end_to_end_when_global_var_written_via_external_then_value_updated,
+    "
 CONFIGURATION config
   VAR_GLOBAL
     counter : DINT := 0;
@@ -56,16 +52,13 @@ PROGRAM main
   END_VAR
   counter := counter + 10;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 10)],
+);
 
-    // counter starts at 0, after one scan: 0 + 10 = 10
-    assert_eq!(bufs.vars[0].as_i32(), 10);
-}
-
-#[test]
-fn end_to_end_when_global_var_no_initial_value_then_defaults_to_zero() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_global_var_no_initial_value_then_defaults_to_zero,
+    "
 CONFIGURATION config
   VAR_GLOBAL
     value : INT;
@@ -85,16 +78,14 @@ PROGRAM main
   END_VAR
   result := value;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 0), (1, 0)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 0);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_multiple_globals_then_all_accessible() {
-    let source = "
+// a=10, b=20, c=TRUE(1), sum=30
+e2e_i32!(
+    end_to_end_when_multiple_globals_then_all_accessible,
+    "
 CONFIGURATION config
   VAR_GLOBAL
     a : INT := 10;
@@ -118,19 +109,13 @@ PROGRAM main
   END_VAR
   sum := a + b;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 10), (1, 20), (2, 1), (3, 30)],
+);
 
-    // a=10, b=20, c=TRUE(1), sum=30
-    assert_eq!(bufs.vars[0].as_i32(), 10);
-    assert_eq!(bufs.vars[1].as_i32(), 20);
-    assert_eq!(bufs.vars[2].as_i32(), 1);
-    assert_eq!(bufs.vars[3].as_i32(), 30);
-}
-
-#[test]
-fn end_to_end_when_global_constant_then_readable() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_global_constant_then_readable,
+    "
 CONFIGURATION config
   VAR_GLOBAL CONSTANT
     max_value : INT := 100;
@@ -150,16 +135,14 @@ PROGRAM main
   END_VAR
   result := max_value;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 100), (1, 100)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 100);
-    assert_eq!(bufs.vars[1].as_i32(), 100);
-}
-
-#[test]
-fn end_to_end_when_global_array_then_external_can_read_elements() {
-    let source = "
+// readings is at index 0 (global array), first/second/third at 1/2/3
+e2e_i32!(
+    end_to_end_when_global_array_then_external_can_read_elements,
+    "
 CONFIGURATION config
   VAR_GLOBAL
     readings : ARRAY[1..3] OF INT := [10, 20, 30];
@@ -183,18 +166,14 @@ PROGRAM main
   second := readings[2];
   third := readings[3];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(1, 10), (2, 20), (3, 30)],
+);
 
-    // readings is at index 0 (global array), first/second/third at 1/2/3
-    assert_eq!(bufs.vars[1].as_i32(), 10);
-    assert_eq!(bufs.vars[2].as_i32(), 20);
-    assert_eq!(bufs.vars[3].as_i32(), 30);
-}
-
-#[test]
-fn end_to_end_when_global_array_then_external_can_write_elements() {
-    let source = "
+// result should be 100 + 200 + 300 = 600
+e2e_i32!(
+    end_to_end_when_global_array_then_external_can_write_elements,
+    "
 CONFIGURATION config
   VAR_GLOBAL
     data : ARRAY[1..3] OF DINT := [0, 0, 0];
@@ -217,31 +196,30 @@ PROGRAM main
   data[3] := 300;
   result := data[1] + data[2] + data[3];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(1, 600)],
+);
 
-    // result should be 100 + 200 + 300 = 600
-    assert_eq!(bufs.vars[1].as_i32(), 600);
-}
-
-#[test]
-fn end_to_end_when_no_configuration_then_program_still_works() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_no_configuration_then_program_still_works,
+    "
 PROGRAM main
   VAR
     x : DINT;
   END_VAR
   x := 99;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 99)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 99);
-}
-
-#[test]
-fn end_to_end_when_top_level_global_struct_then_field_readable_from_program() {
-    let source = "
+// Rusty dialect prepends 2 system uptime globals, so:
+// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+// var 2: phys (global struct), var 3: result (program local)
+e2e_i32_with!(
+    end_to_end_when_top_level_global_struct_then_field_readable_from_program,
+    CompilerOptions::from_dialect(Dialect::Rusty),
+    "
 TYPE MY_CONSTANTS :
   STRUCT
     T0 : DINT;
@@ -261,18 +239,16 @@ PROGRAM main
   phys.T1 := 200;
   result := phys.T0 + phys.T1;
 END_PROGRAM
-";
-    // Rusty dialect prepends 2 system uptime globals, so:
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: phys (global struct), var 3: result (program local)
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+",
+    &[(3, 300)],
+);
 
-    assert_eq!(bufs.vars[3].as_i32(), 300);
-}
-
-#[test]
-fn end_to_end_when_top_level_global_struct_then_field_readable_from_function() {
-    let source = "
+// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+// var 2: phys (global struct), var 3: result (program local)
+e2e_i32_with!(
+    end_to_end_when_top_level_global_struct_then_field_readable_from_function,
+    CompilerOptions::from_dialect(Dialect::Rusty),
+    "
 TYPE MY_CONSTANTS :
   STRUCT
     T0 : DINT;
@@ -297,17 +273,16 @@ PROGRAM main
   phys.T0 := 273;
   result := GET_T0(dummy := 0);
 END_PROGRAM
-";
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: phys (global struct), var 3: result (program local)
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+",
+    &[(3, 273)],
+);
 
-    assert_eq!(bufs.vars[3].as_i32(), 273);
-}
-
-#[test]
-fn end_to_end_when_top_level_global_scalar_then_readable_from_program() {
-    let source = "
+// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+// var 2: counter (global), var 3: result (program local)
+e2e_i32_with!(
+    end_to_end_when_top_level_global_scalar_then_readable_from_program,
+    CompilerOptions::from_dialect(Dialect::Rusty),
+    "
 VAR_GLOBAL
   counter : DINT := 42;
 END_VAR
@@ -318,18 +293,16 @@ PROGRAM main
   END_VAR
   result := counter;
 END_PROGRAM
-";
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: counter (global), var 3: result (program local)
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+",
+    &[(2, 42), (3, 42)],
+);
 
-    assert_eq!(bufs.vars[2].as_i32(), 42);
-    assert_eq!(bufs.vars[3].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_top_level_global_scalar_then_readable_from_function() {
-    let source = "
+// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+// var 2: counter (global), var 3: result (program local)
+e2e_i32_with!(
+    end_to_end_when_top_level_global_scalar_then_readable_from_function,
+    CompilerOptions::from_dialect(Dialect::Rusty),
+    "
 VAR_GLOBAL
   counter : DINT := 42;
 END_VAR
@@ -344,18 +317,16 @@ PROGRAM main
   END_VAR
   result := read_counter();
 END_PROGRAM
-";
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: counter (global), var 3: result (program local)
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+",
+    &[(2, 42), (3, 42)],
+);
 
-    assert_eq!(bufs.vars[2].as_i32(), 42);
-    assert_eq!(bufs.vars[3].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_top_level_global_constant_then_readable_from_function() {
-    let source = "
+// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+// var 2: MY_CONST (global constant), var 3: result (program local)
+e2e_i32_with!(
+    end_to_end_when_top_level_global_constant_then_readable_from_function,
+    CompilerOptions::from_dialect(Dialect::Rusty),
+    "
 VAR_GLOBAL CONSTANT
   MY_CONST : DINT := 100;
 END_VAR
@@ -370,18 +341,17 @@ PROGRAM main
   END_VAR
   result := use_const();
 END_PROGRAM
-";
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: MY_CONST (global constant), var 3: result (program local)
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+",
+    &[(2, 100), (3, 100)],
+);
 
-    assert_eq!(bufs.vars[2].as_i32(), 100);
-    assert_eq!(bufs.vars[3].as_i32(), 100);
-}
-
-#[test]
-fn end_to_end_when_top_level_global_then_writable_from_function_block() {
-    let source = "
+// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+// var 2: scale_factor (global), var 3: fb_result (global), var 4: s
+// After FB call: fb_result = 10 * 5 = 50
+e2e_i32_with!(
+    end_to_end_when_top_level_global_then_writable_from_function_block,
+    CompilerOptions::from_dialect(Dialect::Rusty),
+    "
 VAR_GLOBAL
   scale_factor : DINT := 5;
   fb_result : DINT := 0;
@@ -400,19 +370,17 @@ PROGRAM main
   END_VAR
   s(value := 10);
 END_PROGRAM
-";
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: scale_factor (global), var 3: fb_result (global), var 4: s
-    // After FB call: fb_result = 10 * 5 = 50
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+",
+    &[(2, 5), (3, 50)],
+);
 
-    assert_eq!(bufs.vars[2].as_i32(), 5);
-    assert_eq!(bufs.vars[3].as_i32(), 50);
-}
-
-#[test]
-fn end_to_end_when_global_struct_field_used_as_condition_then_branch_works() {
-    let source = "
+// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+// var 2: setup (global struct), var 3: result (program local)
+// setup.FLAG is set to TRUE, so the IF branch returns x=42
+e2e_i32_with!(
+    end_to_end_when_global_struct_field_used_as_condition_then_branch_works,
+    CompilerOptions::from_dialect(Dialect::Rusty),
+    "
 TYPE SETUP_DATA :
 STRUCT
     FLAG : BOOL;
@@ -441,11 +409,6 @@ END_VAR
     setup.FLAG := TRUE;
     result := USE_GLOBAL_STRUCT(x := 42);
 END_PROGRAM
-";
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: setup (global struct), var 3: result (program local)
-    // setup.FLAG is set to TRUE, so the IF branch returns x=42
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
-
-    assert_eq!(bufs.vars[3].as_i32(), 42);
-}
+",
+    &[(3, 42)],
+);

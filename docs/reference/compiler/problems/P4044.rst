@@ -1,0 +1,50 @@
+=====
+P4044
+=====
+
+.. problem-summary:: P4044
+
+This error occurs when a derived function block (using the
+CODESYS/TwinCAT ``EXTENDS`` extension) redeclares a field that is
+already declared on its base function block, or any ancestor further up
+the ``EXTENDS`` chain. Real TwinCAT rejects this as a duplicate
+definition even when the redeclared field has a different type.
+
+Example
+-------
+
+The following code will generate error P4044:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Base
+   VAR
+       state : INT;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+   FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+   VAR
+       state : BOOL;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+To fix this error, rename the field in the derived function block (or
+remove it, if the inherited field already serves the purpose):
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Base
+   VAR
+       state : INT;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+   FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+   VAR
+       derivedState : BOOL;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+This applies transitively: a field declared on any ancestor in the
+``EXTENDS`` chain (not just the immediate base) cannot be redeclared.

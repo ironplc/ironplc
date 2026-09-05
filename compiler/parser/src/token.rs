@@ -203,6 +203,31 @@ pub enum TokenType {
     #[token("END_FUNCTION_BLOCK", ignore(case))]
     EndFunctionBlock,
 
+    // Function-block inheritance syntax. Demoted to
+    // Identifier unless `allow_fb_inheritance` is set — see
+    // xform_demote_keywords.rs.
+    #[token("EXTENDS", ignore(case))]
+    Extends,
+    #[token("IMPLEMENTS", ignore(case))]
+    Implements,
+    #[token("INTERFACE", ignore(case))]
+    Interface,
+    #[token("END_INTERFACE", ignore(case))]
+    EndInterface,
+    #[token("ABSTRACT", ignore(case))]
+    Abstract,
+    #[token("METHOD", ignore(case))]
+    Method,
+    #[token("END_METHOD", ignore(case))]
+    EndMethod,
+    // `THIS^` / `SUPER^` -- the self-reference and base-reference forms.
+    // The caret is the ordinary dereference operator. Identifiers unless
+    // `allow_fb_inheritance` is set -- see xform_demote_keywords.rs.
+    #[token("THIS", ignore(case))]
+    This,
+    #[token("SUPER", ignore(case))]
+    Super,
+
     #[token("IF", ignore(case))]
     If,
     #[token("THEN", ignore(case))]
@@ -346,6 +371,10 @@ pub enum TokenType {
     // (`--allow-reference-to`). Longest-match keeps this distinct from `REF`.
     #[token("REFERENCE", ignore(case))]
     Reference,
+    // Beckhoff TwinCAT / CODESYS `POINTER TO` pointer types
+    // (`--allow-pointer-to`).
+    #[token("POINTER", ignore(case))]
+    Pointer,
 
     #[token("DATE", ignore(case))]
     Date,
@@ -407,7 +436,7 @@ pub enum TokenType {
     DirectAddress,
     /// Partial-access bit selector: `%X<digits>` (case-insensitive), used as
     /// `var.%Xn` to access bit `n` of an integer variable. IEC 61131-3:2013
-    /// equivalent of the vendor short form `var.n`. Gated behind
+    /// equivalent of the dialect short form `var.n`. Gated behind
     /// `--allow-partial-access-syntax`.
     #[regex(r"%[Xx]\d+")]
     PartialAccessBit,
@@ -436,11 +465,13 @@ pub enum TokenType {
     #[token("AND", ignore(case))]
     #[token("&")]
     And,
-    // CODESYS/TwinCAT short-circuit boolean operator (Beckhoff/CODESYS
+    // CODESYS/TwinCAT short-circuit boolean operators (Beckhoff/CODESYS
     // origin). Demoted to Identifier unless `allow_short_circuit_operators`
-    // is set -- see xform_demote_short_circuit_operators.rs.
+    // is set -- see xform_demote_keywords.rs.
     #[token("AND_THEN", ignore(case))]
     AndThen,
+    #[token("OR_ELSE", ignore(case))]
+    OrElse,
     #[token("=")]
     Equal,
     #[token("<>")]
@@ -530,6 +561,15 @@ impl TokenType {
             TokenType::EndFunction => "'END_FUNCTION'",
             TokenType::FunctionBlock => "'FUNCTION_BLOCK'",
             TokenType::EndFunctionBlock => "'END_FUNCTION_BLOCK'",
+            TokenType::Extends => "'EXTENDS'",
+            TokenType::Implements => "'IMPLEMENTS'",
+            TokenType::Interface => "'INTERFACE'",
+            TokenType::EndInterface => "'END_INTERFACE'",
+            TokenType::Abstract => "'ABSTRACT'",
+            TokenType::Method => "'METHOD'",
+            TokenType::EndMethod => "'END_METHOD'",
+            TokenType::This => "'THIS'",
+            TokenType::Super => "'SUPER'",
             TokenType::If => "'IF'",
             TokenType::Then => "'THEN'",
             TokenType::Elsif => "'ELSIF'",
@@ -591,6 +631,7 @@ impl TokenType {
             TokenType::Ref => "'REF'",
             TokenType::Null => "'NULL'",
             TokenType::Reference => "'REFERENCE'",
+            TokenType::Pointer => "'POINTER'",
             TokenType::Date => "'DATE' | 'D'",
             TokenType::TimeOfDay => "'TIME_OF_DAY' | 'TOD'",
             TokenType::DateAndTime => "'DATE_AND_TIME' | 'DT'",
@@ -624,6 +665,7 @@ impl TokenType {
             TokenType::Xor => "'XOR'",
             TokenType::And => "'AND' | '&'",
             TokenType::AndThen => "'AND_THEN'",
+            TokenType::OrElse => "'OR_ELSE'",
             TokenType::Equal => "'='",
             TokenType::NotEqual => "'<>'",
             TokenType::Less => "'<'",
@@ -746,6 +788,15 @@ mod tests {
             (EndFunction, "END_FUNCTION"),
             (FunctionBlock, "FUNCTION_BLOCK"),
             (EndFunctionBlock, "END_FUNCTION_BLOCK"),
+            (Extends, "EXTENDS"),
+            (Implements, "IMPLEMENTS"),
+            (Interface, "INTERFACE"),
+            (EndInterface, "END_INTERFACE"),
+            (Abstract, "ABSTRACT"),
+            (Method, "METHOD"),
+            (EndMethod, "END_METHOD"),
+            (This, "THIS"),
+            (Super, "SUPER"),
             (If, "IF"),
             (Then, "THEN"),
             (Elsif, "ELSIF"),
@@ -832,6 +883,7 @@ mod tests {
             (Xor, "XOR"),
             (And, "AND"),
             (AndThen, "AND_THEN"),
+            (OrElse, "OR_ELSE"),
             (Equal, "="),
             (NotEqual, "<>"),
             (Less, "<"),

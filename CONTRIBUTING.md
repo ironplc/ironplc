@@ -24,6 +24,7 @@ steering files under `specs/steering/`. These apply to all contributors:
 * **[Compiler Architecture](specs/steering/compiler-architecture.md)** - Patterns for implementing language features and semantic analysis
 * **[Problem Code Management](specs/steering/problem-code-management.md)** - Guidelines for error handling and diagnostic creation
 * **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules
+* **[Compatibility Library Authoring](specs/steering/compatibility-library-authoring.md)** - Licensing risk tiers, allowed/forbidden inputs, and the clean-room provenance record required for bundled compatibility libraries
 * **[Common Tasks](specs/steering/common-tasks.md)** - Full command reference for day-to-day development
 
 The steering files provide the detailed implementation guidance; this
@@ -72,8 +73,8 @@ environment.
 
 ## Planning Non-Trivial Changes
 
-**Non-trivial changes must start with a plan committed to `specs/plans/`.**
-This keeps design discussion in the open and makes review easier.
+**Non-trivial changes must start with a plan.** The plan is committed so it can
+be reviewed as a file diff, then deleted before merge.
 
 Workflow:
 
@@ -82,10 +83,29 @@ Workflow:
    naming convention used by existing files there).
 1. Commit the plan to the feature branch before the implementation code.
 1. Implement the changes following the plan.
+1. Land any decision worth keeping as an ADR (`specs/adrs/`) or a design
+   document (`specs/design/`) in the same pull request.
+1. Open an issue for anything the plan describes that this pull request does
+   not deliver — a comment saying "follow-up" is not tracking, and the plan
+   that recorded it is about to be deleted.
+1. `git rm` the plan file. Because the repository squash-merges, the add and
+   the delete cancel, so no plan content reaches `main`; the plan stays
+   viewable on the pull request.
 1. Run the pre-PR checks described below.
 1. Push the branch and open a pull request.
 
-You may **skip the plan** for mechanical changes: typo fixes, formatting,
+Do not reference `specs/plans/` from code, comments, workflows, the `justfile`,
+design documents or ADRs. A plan is deleted before its pull request merges, so
+it is never a stable link target — cite an ADR or a design document instead.
+`cd specs && just` fails the build on a violation.
+
+**Work that spans more than one pull request must have an issue.** It holds the
+slice breakdown, stays open until every slice lands, and is where each slice's
+undelivered work goes. Every plan in the series references it. A single
+self-contained pull request needs no issue — the plan is reviewed, the work
+lands, and nothing is left to track.
+
+You SHOULD **skip the plan** for mechanical changes: typo fixes, formatting,
 dependency bumps, single-line bug fixes, or documentation-only edits.
 
 ## Before You Open a PR

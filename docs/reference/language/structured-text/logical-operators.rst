@@ -68,5 +68,8 @@ See Also
 --------
 
 - :doc:`/reference/language/data-types/elementary/bool` — boolean data type
+- :doc:`/explanation/enabling-dialects-and-features` — ``AND_THEN`` and
+  ``OR_ELSE``, the short-circuit forms of ``AND`` and ``OR``, available as a
+  dialect extension
 - :doc:`comparison-operators` — relational operators producing BOOL
 - :doc:`arithmetic-operators` — numeric operators

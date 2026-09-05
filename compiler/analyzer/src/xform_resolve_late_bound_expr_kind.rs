@@ -6,10 +6,13 @@
 //!
 //! The transformation succeeds when all ambiguous expression elements
 //! resolve to a declared type.
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::*;
-use ironplc_dsl::{common::*, core::Id};
+use ironplc_dsl::{
+    common::*,
+    core::{Id, Located},
+};
 use std::collections::{HashMap, HashSet};
 
 use crate::type_environment::TypeEnvironment;
@@ -17,7 +20,7 @@ use crate::type_environment::TypeEnvironment;
 pub fn apply(
     lib: Library,
     type_environment: &mut TypeEnvironment,
-) -> Result<Library, Vec<Diagnostic>> {
+) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
     let enum_values = collect_enum_values(&lib);
 
     // Resolve the types. This is a single fold of the library
@@ -28,13 +31,12 @@ pub fn apply(
         type_environment,
         enum_values,
     };
-    let result = resolver.fold_library(lib).map_err(|e| vec![e]);
+    // A resolution failure on one declaration is diagnosed but does not
+    // stop the fold, so unrelated declarations still resolve. Only a
+    // genuine fold failure (a compiler bug) discards the result.
+    let result = resolver.fold_library(lib).map_err(|e| vec![e])?;
 
-    if !resolver.diagnostics.is_empty() {
-        return Err(resolver.diagnostics);
-    }
-
-    result
+    Ok((result, resolver.diagnostics))
 }
 
 /// Pre-scans the library to collect all known enumeration value names.
@@ -123,7 +125,7 @@ impl DeclarationResolver<'_> {
             InitialValueAssignmentKind::LateResolvedType(type_name) => {
                 VariableType::LateResolvedType(type_name.clone())
             }
-            // Not yet folded to a literal (vendor extension, folded by a
+            // Not yet folded to a literal (extension, folded by a
             // later pass); treat like `Simple` for type-inference purposes.
             InitialValueAssignmentKind::SimpleExpr(_) => VariableType::Simple,
         };
@@ -219,6 +221,22 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                         // declaration which isn't available here. Default to None.
                         self.current_type = VariableType::None;
                     }
+                    SymbolicVariableKind::SelfRef(self_ref) => {
+                        // Assignment through THIS^/SUPER^. The target's type
+                        // comes from the enclosing function block's members,
+                        // which are not resolved yet -- report instead of
+                        // defaulting to None, which would silently bind any
+                        // late-bound value on the right-hand side to the
+                        // wrong type once the construct is supported.
+                        // See issue #1406.
+                        return Err(Diagnostic::not_implemented(Label::span(
+                            self_ref.span(),
+                            format!(
+                                "{} is recognized but its members are not yet resolved by IronPLC",
+                                self_ref.kind.spelling()
+                            ),
+                        )));
+                    }
                     SymbolicVariableKind::BitAccess(_ba) => {
                         // Assignment to a bit access like w.0 := value
                         // Determining the type requires looking up the variable
@@ -305,7 +323,7 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                 VariableType::FunctionBlock => {
                     // Function block variables are parsed as LateResolvedType, not FunctionBlock.
                     // If we reach this branch, it indicates an internal error.
-                    Err(Diagnostic::internal_error(file!(), line!()))
+                    Err(Diagnostic::internal_error())
                 }
                 VariableType::Subrange => Ok(self.resolve_late_bound(node.value)),
                 VariableType::Structure => Ok(self.resolve_late_bound(node.value)),

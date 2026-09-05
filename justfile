@@ -223,30 +223,62 @@ _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"
   exit 1
 
-# Install script smoke test - Unix only.
+# Install script smoke test against a published release - Unix only.
 #
 # Runs compiler/install.sh against a real GitHub release, verifies that the
 # installed binaries run, then re-runs the installer (without clearing state)
-# to confirm idempotency.
+# to confirm idempotency. This is the deployment-time check: it proves the
+# published script installs the release that was just published.
+#
+# For pull requests use `install-script-smoke-local`, which installs the
+# tarball built from the working tree. install.sh requires every binary in the
+# archive, so a release that predates one of them is not installable and this
+# recipe cannot stand in for testing the current revision.
 #
 # compiler-version: empty to use the latest release; otherwise a bare version
 #                   like "0.201.0" (without the leading "v").
 [unix]
 install-script-smoke compiler-version="":
   @just _install-script-smoke-clean
-  @just _install-script-smoke-run "{{compiler-version}}"
+  @just _install-script-smoke-run "{{compiler-version}}" ""
   @just _install-script-smoke-verify
-  @just _install-script-smoke-run "{{compiler-version}}"
+  @just _install-script-smoke-run "{{compiler-version}}" ""
   @just _install-script-smoke-verify
+
+# Install script smoke test against this revision's own tarball - Unix only.
+#
+# Installs from a local directory laid out like the GitHub release download
+# tree (<release-dir>/v<version>/<artifact>, beside its .sha256) rather than
+# from a published release, so the script is exercised against the artifacts
+# this revision produces. Checksum verification is unchanged -- install.sh
+# reads the .sha256 from the same directory and still refuses a mismatch.
+#
+# release-dir: directory holding v<version>/<artifact>; may be relative.
+# compiler-version: the bare version those artifacts were packaged with.
+[unix]
+install-script-smoke-local release-dir compiler-version:
+  #!/usr/bin/env sh
+  set -eu
+  # install.sh joins this onto "/v<version>/<artifact>", so it has to be an
+  # absolute file:// URL however the caller spelled the directory.
+  _url="file://$(cd "{{release-dir}}" && pwd)"
+  just _install-script-smoke-clean
+  just _install-script-smoke-run "{{compiler-version}}" "$_url"
+  just _install-script-smoke-verify
+  just _install-script-smoke-run "{{compiler-version}}" "$_url"
+  just _install-script-smoke-verify
 
 [unix]
 _install-script-smoke-clean:
   rm -rf "$HOME/.ironplc"
 
 [unix]
-_install-script-smoke-run compiler-version:
+_install-script-smoke-run compiler-version release-url:
   #!/usr/bin/env sh
   set -eu
+  export IRONPLC_RELEASE_URL="{{release-url}}"
+  # An empty override means "use the script's own default".
+  [ -n "$IRONPLC_RELEASE_URL" ] || unset IRONPLC_RELEASE_URL
   if [ -n "{{compiler-version}}" ]; then
     IRONPLC_VERSION="v{{compiler-version}}" sh ./compiler/install.sh --no-modify-path
   else
@@ -261,21 +293,176 @@ _install-script-smoke-verify:
   "$BIN/ironplcc" version
   "$BIN/ironplcc" help
 
-  # ironplcvm and ironplcmcp are optional (older releases may not include them).
-  if [ -x "$BIN/ironplcmcp" ]; then
-    # MCP handshake: initialize -> notifications/initialized -> tools/list.
-    # The response should contain a known tool name (list_options).
-    printf '%s\n%s\n%s\n' \
-      '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"0.1"}}}' \
-      '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
-      '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-      | "$BIN/ironplcmcp" | grep -q list_options
+  # Compatibility libraries ship beside the binaries so the loader finds them at
+  # <bindir>/resources/libs. When present, verify a program reading the bundled
+  # Tc2_System `PI` constant actually compiles -- this exercises the shipped
+  # files, not the dev-tree fallback. The files are optional here because this
+  # recipe also runs against the latest published release, which predates library
+  # shipping; a release that ships them makes this a hard check on every later run.
+  if [ -f "$BIN/resources/libs/Tc2_System/library.toml" ]; then
+    _pi_src="$(mktemp -d)/pi.st"
+    printf '%s\n' 'FUNCTION_BLOCK FB_Angle VAR d2r : LREAL := PI/180.0; END_VAR END_FUNCTION_BLOCK' > "$_pi_src"
+    "$BIN/ironplcc" check --dialect twincat --allow-constant-initializer-expressions --library Tc2_System "$_pi_src"
+  else
+    echo "warning: compatibility libraries not installed (release predates library shipping); skipping PI check" >&2
   fi
+
+  # The SBOM ships beside the binaries. Every release install.sh can install
+  # carries it, so a missing file here means the installer regressed.
+  test -f "$BIN/bom.cdx.json"
+
+  # install.sh installs every binary or fails, so each one below is checked
+  # unconditionally: a missing server here means the installer regressed.
+
+  # MCP handshake: initialize -> notifications/initialized -> tools/list.
+  # The response should contain a known tool name (list_options).
+  printf '%s\n%s\n%s\n' \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"0.1"}}}' \
+    '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
+    '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+    | "$BIN/ironplcmcp" | grep -q list_options
+
+  # DAP handshake over Content-Length framing: a single `initialize` request,
+  # then end-of-stream. The debug server answers with the response and the
+  # `initialized` event, so the reply carries that event name. This is what the
+  # editor does first (see docs E0007), and it fails if the binary was installed
+  # but cannot run.
+  _dap_req='{"seq":1,"type":"request","command":"initialize","arguments":{"adapterID":"ironplc"}}'
+  printf 'Content-Length: %d\r\n\r\n%s' "${#_dap_req}" "$_dap_req" \
+    | "$BIN/ironplcvmd" | grep -q '"event":"initialized"'
 
 [windows]
 install-script-smoke compiler-version="":
   @echo "install-script-smoke is Unix-only; use endtoend-smoke on Windows"
   exit 1
+
+# Library installer end-to-end test.
+#
+# Installs the published compiler with the *real* OS installer, then compiles AND
+# runs programs that depend on the bundled compatibility libraries. This is the
+# one test that proves the installer ships resources/libs beside the binary, the
+# compiler resolves library symbols from the *installed* location (not the
+# dev-tree fallback), and the whole toolchain (compile -> run) works on the
+# shipped binaries. Each OS installs differently, so the install runs per OS:
+#   [unix]      -- tarball + install.sh          -> $HOME/.ironplc/bin
+#   [windows]   -- NSIS installer                -> %LOCALAPPDATA%\...\bin
+#   [macos]     -- Homebrew formula (library-e2e-brew) -> libexec (symlinked)
+#
+# The *verification* does not differ per OS, and is deliberately not written per
+# OS either: every leg below hands two binary paths to the single shared script
+# tests/e2e/library/verify.sh. It used to exist twice -- once in sh, once in
+# PowerShell -- and the copies drifted, so a green Linux run said nothing about
+# Windows. Windows runs the
+# same script through Git for Windows' bash. Keep new assertions in the script,
+# never in a recipe.
+#
+# Structured like endtoend-smoke: the top recipe orchestrates a `-download`
+# (acquire + install) step and a `-test` (compile + run + verify) step. Splitting
+# them lets you reinstall once and re-run the verification repeatedly. Install
+# lives in the download step because the Unix install.sh fuses fetch and install.
+#
+# Unlike install-script-smoke (which stays green against older releases), the
+# library check here is a HARD assertion: this test exists to catch a release
+# that fails to ship the libraries, so the target release must be one that does.
+#
+# Runs in deployment.yaml (via partial_library_e2e.yaml) alongside the other
+# end-to-end tests. Also runnable manually, or from the Actions tab via
+# partial_library_e2e.yaml's workflow_dispatch.
+#
+# compiler-version: a required, bare release version like "0.234.0" (no leading
+#                   "v"). The version is always explicit -- never resolved to
+#                   "latest" -- so a run always targets a known release.
+[unix]
+library-e2e compiler-version:
+  @just library-e2e-download "{{compiler-version}}"
+  @just library-e2e-test
+
+# Download + install the published compiler via the tarball installer (install.sh).
+[unix]
+library-e2e-download compiler-version:
+  @just _install-script-smoke-clean
+  @just _install-script-smoke-run "{{compiler-version}}"
+
+# Verify against the tarball layout: binaries and resources/libs in ~/.ironplc/bin.
+[unix]
+library-e2e-test:
+  sh tests/e2e/library/verify.sh "$HOME/.ironplc/bin/ironplcc" "$HOME/.ironplc/bin/ironplcvm"
+
+# macOS additionally ships through Homebrew, whose formula installs to libexec and
+# symlinks the executables onto the PATH -- a different layout from the tarball.
+# This variant tests that path. It is named separately so macOS can run both the
+# tarball (library-e2e) and Homebrew (library-e2e-brew) installers.
+[macos]
+library-e2e-brew compiler-version:
+  @just library-e2e-brew-download "{{compiler-version}}"
+  @just library-e2e-brew-test
+
+# Fill the repository's Homebrew formula for the requested release and install it.
+# Homebrew has no way to pin a version on a plain tap, so we fill the formula
+# template with the release's tarball + checksum and install that. `sed` (not
+# `just publish`) avoids an envsubst/gettext dependency on macOS. The mac tarball
+# matches the runner architecture; the install logic under test is arch-agnostic.
+#
+# Homebrew refuses to install a formula that is not in a tap ("Homebrew requires
+# formulae to be in a tap"), so the filled-in formula goes into a throwaway local
+# tap. The tap name is intentionally NOT the published ironplc/brew tap, so a
+# local run cannot shadow or clobber the real one.
+[macos]
+library-e2e-brew-download compiler-version:
+  #!/usr/bin/env sh
+  set -eu
+  case "$(uname -m)" in
+    arm64|aarch64) MAC="ironplcc-aarch64-macos.tar.gz" ;;
+    *)             MAC="ironplcc-x86_64-macos.tar.gz" ;;
+  esac
+  URL="https://github.com/ironplc/ironplc/releases/download/v{{compiler-version}}"
+  SHA="$(curl -fsSL "$URL/$MAC.sha256" | cut -d' ' -f1)"
+  # Start from a clean slate so the recipe can be re-run locally.
+  brew uninstall --force ironplc >/dev/null 2>&1 || true
+  brew untap --force ironplc/e2e >/dev/null 2>&1 || true
+  brew tap-new --no-git ironplc/e2e
+  TAP="$(brew --repository ironplc/e2e)"
+  mkdir -p "$TAP/Formula"
+  # The file name must match the formula's class name (Ironplc).
+  sed -e "s#\${VERSION}#{{compiler-version}}#g" -e "s#\${MACFILENAME}#$MAC#g" \
+      -e "s#\${MACSHA256}#$SHA#g" -e "s#\${LINUXFILENAME}#$MAC#g" -e "s#\${LINUXSHA256}#$SHA#g" \
+      compiler/homebrew/Formula/ironplc.rb > "$TAP/Formula/ironplc.rb"
+  brew install --formula ironplc/e2e/ironplc
+
+# Compile + run against the Homebrew keg: binaries are symlinked into the keg bin
+# and current_exe() resolves them back to libexec, where resources/libs lives.
+[macos]
+library-e2e-brew-test:
+  PREFIX="$(brew --prefix ironplc)"; sh tests/e2e/library/verify.sh "$PREFIX/bin/ironplcc" "$PREFIX/bin/ironplcvm"
+
+# Windows uses the NSIS installer, which installs to a fixed Program Files path.
+# Each line is a separate PowerShell process (set windows-shell), so each step is
+# a self-contained statement.
+[windows]
+library-e2e compiler-version:
+  @just library-e2e-download "{{compiler-version}}"
+  @just library-e2e-test
+
+# Download + install the published compiler via the NSIS installer. The x86_64
+# asset name is hard-coded because the GitHub runner is x86_64.
+[windows]
+library-e2e-download compiler-version:
+  # Download the NSIS installer for the requested release.
+  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/v{{compiler-version}}/ironplcc-x86_64-windows.exe" -OutFile ironplcc-setup.exe
+  # Install silently.
+  Start-Process ironplcc-setup.exe -ArgumentList "/S" -PassThru | Wait-Process -Timeout 120
+
+# Verify against the NSIS layout, running the same shared script as the other
+# platforms through Git for Windows' bash (always present on a machine that can
+# clone this repository, and on the GitHub windows runners).
+#
+# The install path is spelled with forward slashes so it needs no backslash
+# escaping inside the script's quoting, and the only PowerShell left is the
+# $LASTEXITCODE propagation -- without it a failing script would be reported as a
+# passing job. Assertions belong in verify.sh, not here.
+[windows]
+library-e2e-test:
+  bash tests/e2e/library/verify.sh "{{ replace(env_var('LOCALAPPDATA'), '\', '/') }}/Programs/IronPLC Compiler/bin/ironplcc.exe" "{{ replace(env_var('LOCALAPPDATA'), '\', '/') }}/Programs/IronPLC Compiler/bin/ironplcvm.exe"; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # OpenCode integration end-to-end test - Unix only.
 #

@@ -125,9 +125,10 @@ END_PROGRAM
     assert_eq!(read_wstring(&bufs.data_region, 0), "world");
 }
 
-#[test]
-fn wstring_when_compared_equal_then_eq_true_and_ne_false() {
-    let source = "
+// a = var0, b = var1, eq = var2, ne = var3. BOOL true = 1, false = 0.
+e2e_i32!(
+    wstring_when_compared_equal_then_eq_true_and_ne_false,
+    "
 PROGRAM main
   VAR
     a : WSTRING[10] := \"abc\";
@@ -138,17 +139,13 @@ PROGRAM main
   eq := a = b;
   ne := a <> b;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(2, 1), (3, 0)],
+);
 
-    // a = var0, b = var1, eq = var2, ne = var3. BOOL true = 1, false = 0.
-    assert_eq!(bufs.vars[2].as_i32(), 1);
-    assert_eq!(bufs.vars[3].as_i32(), 0);
-}
-
-#[test]
-fn wstring_when_compared_different_then_eq_false_and_ne_true() {
-    let source = "
+e2e_i32!(
+    wstring_when_compared_different_then_eq_false_and_ne_true,
+    "
 PROGRAM main
   VAR
     a : WSTRING[10] := \"abc\";
@@ -159,16 +156,14 @@ PROGRAM main
   eq := a = b;
   ne := a <> b;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(2, 0), (3, 1)],
+);
 
-    assert_eq!(bufs.vars[2].as_i32(), 0);
-    assert_eq!(bufs.vars[3].as_i32(), 1);
-}
-
-#[test]
-fn wstring_when_len_then_returns_code_unit_count() {
-    let source = "
+// ws = var0, n = var1. LEN counts code units, not bytes.
+e2e_i32!(
+    wstring_when_len_then_returns_code_unit_count,
+    "
 PROGRAM main
   VAR
     ws : WSTRING[10] := \"hello\";
@@ -176,12 +171,9 @@ PROGRAM main
   END_VAR
   n := LEN(ws);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // ws = var0, n = var1. LEN counts code units, not bytes.
-    assert_eq!(bufs.vars[1].as_i32(), 5);
-}
+",
+    &[(1, 5)],
+);
 
 #[test]
 fn wstring_when_concat_then_joins_code_units() {
@@ -202,6 +194,46 @@ END_PROGRAM
     assert_eq!(read_char_width(&bufs.data_region, out_offset), 2);
     assert_eq!(read_cur_length(&bufs.data_region, out_offset), 6);
     assert_eq!(read_wstring(&bufs.data_region, out_offset), "foobar");
+}
+
+#[test]
+fn wstring_when_concat_with_literal_then_literal_is_utf16le() {
+    // The literal is encoded at the width the source spells, so it stores into
+    // a wide destination without an encoding mismatch (ADR-0034).
+    let source = "
+PROGRAM main
+  VAR
+    a : WSTRING[10] := \"foo\";
+    out : WSTRING[20];
+  END_VAR
+  out := CONCAT(a, \"€\");
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    let out_offset = wstring_region(10);
+    assert_eq!(read_char_width(&bufs.data_region, out_offset), 2);
+    assert_eq!(read_cur_length(&bufs.data_region, out_offset), 4);
+    assert_eq!(read_wstring(&bufs.data_region, out_offset), "foo€");
+}
+
+#[test]
+fn wstring_when_concat_of_literals_only_then_result_is_utf16le() {
+    // No WSTRING variable participates in the expression, so the wide temp
+    // buffer sizing has to come from the literals themselves.
+    let source = "
+PROGRAM main
+  VAR
+    out : WSTRING[20];
+  END_VAR
+  out := CONCAT(\"é\", \"€\");
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
+    assert_eq!(read_cur_length(&bufs.data_region, 0), 2);
+    assert_eq!(read_wstring(&bufs.data_region, 0), "é€");
 }
 
 #[test]
@@ -231,9 +263,10 @@ END_PROGRAM
     assert_eq!(read_wstring(&bufs.data_region, m_offset), "bcd");
 }
 
-#[test]
-fn wstring_when_find_substring_then_returns_code_unit_position() {
-    let source = "
+// hay = var0, needle = var1, pos = var2. FIND is 1-based by code unit.
+e2e_i32!(
+    wstring_when_find_substring_then_returns_code_unit_position,
+    "
 PROGRAM main
   VAR
     hay : WSTRING[20] := \"abcdef\";
@@ -242,12 +275,9 @@ PROGRAM main
   END_VAR
   pos := FIND(hay, needle);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // hay = var0, needle = var1, pos = var2. FIND is 1-based by code unit.
-    assert_eq!(bufs.vars[2].as_i32(), 3);
-}
+",
+    &[(2, 3)],
+);
 
 #[test]
 fn wstring_array_when_assigned_and_read_back_then_values_match() {

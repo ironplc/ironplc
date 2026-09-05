@@ -219,6 +219,21 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
     ),
 ];
 
+/// Returns what an elementary type is, by name.
+///
+/// The elementary type table above is the compiler's statement of what each
+/// elementary type is -- `INT` is a signed 16-bit integer. This reads that
+/// statement without building a [`TypeEnvironment`], so that code outside the
+/// analyzer works from it rather than from a copy of it.
+///
+/// Returns `None` for any name that is not an elementary type.
+pub fn elementary_type(type_name: &TypeName) -> Option<&'static IntermediateType> {
+    ELEMENTARY_TYPES_LOWER_CASE
+        .iter()
+        .find(|(name, _)| type_name.name.lower_case == *name)
+        .map(|(_, elem_type)| elem_type)
+}
+
 #[derive(Debug)]
 pub struct TypeEnvironment {
     table: HashMap<TypeName, crate::type_attributes::TypeAttributes>,
@@ -349,6 +364,21 @@ impl TypeEnvironment {
             it @ IntermediateType::Structure { .. } => Some(it),
             _ => None,
         }
+    }
+
+    /// Returns the intermediate type for a named type that exposes members
+    /// reachable with `.` access.
+    ///
+    /// Returns `Some` with the `IntermediateType::Structure` or
+    /// `IntermediateType::FunctionBlock` if the type is found and has named
+    /// members, or `None` otherwise. Use [`TypeEnvironment::resolve_struct_type`]
+    /// instead when the caller needs a structure specifically.
+    pub fn resolve_member_access_type(&self, type_name: &TypeName) -> Option<&IntermediateType> {
+        let attrs = self.get(type_name)?;
+        attrs
+            .representation
+            .has_members()
+            .then_some(&attrs.representation)
     }
 
     /// An iterator for all types in the environment
@@ -1074,6 +1104,61 @@ mod tests {
         assert!(env.resolve_struct_type(&TypeName::from("MY_INT")).is_none());
         assert!(env
             .resolve_struct_type(&TypeName::from("NOT_FOUND"))
+            .is_none());
+    }
+
+    #[test]
+    fn resolve_member_access_type_when_function_block_then_returns_type() {
+        // Unlike resolve_struct_type, member access must also see function
+        // block instances so `timer.Q` resolves.
+        let mut env = TypeEnvironment::new();
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "MyFB".to_string(),
+            fields: vec![],
+        };
+        env.insert_type(
+            &TypeName::from("MY_FB"),
+            TypeAttributes::new(SourceSpan::default(), fb_type.clone()),
+        )
+        .unwrap();
+
+        assert!(env.resolve_struct_type(&TypeName::from("MY_FB")).is_none());
+        assert_eq!(
+            env.resolve_member_access_type(&TypeName::from("MY_FB")),
+            Some(&fb_type)
+        );
+    }
+
+    #[test]
+    fn resolve_member_access_type_when_structure_then_returns_type() {
+        let mut env = TypeEnvironment::new();
+        let struct_type = IntermediateType::Structure { fields: vec![] };
+        env.insert_type(
+            &TypeName::from("MY_STRUCT"),
+            TypeAttributes::new(SourceSpan::default(), struct_type.clone()),
+        )
+        .unwrap();
+
+        assert_eq!(
+            env.resolve_member_access_type(&TypeName::from("MY_STRUCT")),
+            Some(&struct_type)
+        );
+    }
+
+    #[test]
+    fn resolve_member_access_type_when_no_members_then_returns_none() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("MY_BOOL"),
+            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
+        )
+        .unwrap();
+
+        assert!(env
+            .resolve_member_access_type(&TypeName::from("MY_BOOL"))
+            .is_none());
+        assert!(env
+            .resolve_member_access_type(&TypeName::from("NOT_FOUND"))
             .is_none());
     }
 }

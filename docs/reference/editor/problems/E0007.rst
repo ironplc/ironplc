@@ -1,0 +1,31 @@
+=====
+E0007
+=====
+
+.. problem-summary:: E0007
+
+The IronPLC debug server (:program:`ironplcvmd`) could not be found.
+
+Debugging is driven by the :program:`ironplcvmd` server, a separate executable
+that speaks the Debug Adapter Protocol and is distributed alongside the
+:program:`ironplcc` compiler. This error appears when the extension cannot
+locate that executable, so it has no debug server to launch.
+
+The extension looks for the server in this order: the ``IRONPLCVMD``
+environment variable, then the ``ironplc.debugServerPath`` setting, and finally
+next to the discovered :program:`ironplcc` compiler. The first location that
+contains the executable wins; if none do, you see this error.
+
+**Solutions**:
+
+1. **Install alongside the compiler**: Ensure :program:`ironplcvmd`
+   (:program:`ironplcvmd.exe` on Windows) sits in the same directory as
+   :program:`ironplcc`. Official installers place both together.
+
+2. **Set the path manually**: Set the ``ironplc.debugServerPath`` setting to the
+   full path of the :program:`ironplcvmd` executable if it lives in a
+   non-standard location.
+
+3. **Use the environment variable**: Set ``IRONPLCVMD`` to the full path of the
+   executable, for example when running a locally built server from a
+   :file:`target/debug` directory.

@@ -18,12 +18,17 @@ export interface DialectOption {
   is_default: boolean;
 }
 
+// A JSON array of plain-text compatibility-library sources to activate — the
+// served `.st` files the browser fetched. Omitted (or "") activates none.
+export type Libraries = string;
+
 export interface CompileRequest {
   id: number;
   command: "compile";
   source: string;
   dialect?: Dialect;
   allows?: string;
+  libraries?: Libraries;
 }
 
 export interface RunRequest {
@@ -40,6 +45,7 @@ export interface RunSourceRequest {
   scans: number;
   dialect?: Dialect;
   allows?: string;
+  libraries?: Libraries;
 }
 
 export interface LoadProgramRequest {
@@ -49,6 +55,7 @@ export interface LoadProgramRequest {
   cycleTimeUs: number;
   dialect?: Dialect;
   allows?: string;
+  libraries?: Libraries;
 }
 
 export interface StepRequest {
@@ -125,8 +132,19 @@ export interface RunResultOk {
  */
 export interface RunError {
   message: string;
-  /** The faulting trap's stable v-code (e.g. "V4001"). Absent for non-trap errors. */
+  /**
+   * The error's stable code — a faulting trap's v-code (e.g. "V4001"), or
+   * "P9998" for a host illegal state. Absent only on legacy payloads.
+   */
   code?: string;
+  /**
+   * For a P9998 host illegal state, the WASM host file/line where it was
+   * detected — the same contract a P9xxx {@link Diagnostic} carries. Absent for
+   * VM traps.
+   */
+  compiler_file?: string;
+  /** Host source line paired with `compiler_file`. */
+  compiler_line?: number;
 }
 
 export interface RunResultErr {

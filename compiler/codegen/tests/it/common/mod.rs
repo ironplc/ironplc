@@ -435,6 +435,15 @@ pub mod bc {
     pub fn load_array(var_idx: u16, desc_idx: u16) -> Vec<u8> {
         op_u16_u16(opcode::LOAD_ARRAY, var_idx, desc_idx)
     }
+
+    // --- 7-byte instructions: opcode + u16 + u16 + u16. -------------------
+
+    pub fn copy_region(dst_var: u16, dst_desc: u16, src_desc: u16) -> Vec<u8> {
+        let a = dst_var.to_le_bytes();
+        let b = dst_desc.to_le_bytes();
+        let c = src_desc.to_le_bytes();
+        vec![opcode::COPY_REGION, a[0], a[1], b[0], b[1], c[0], c[1]]
+    }
     pub fn store_array(var_idx: u16, desc_idx: u16) -> Vec<u8> {
         op_u16_u16(opcode::STORE_ARRAY, var_idx, desc_idx)
     }
@@ -599,8 +608,7 @@ pub fn try_parse_and_compile(
 /// Parses, analyzes, compiles, and runs one scan cycle.
 /// Returns the container and buffers so callers can inspect variable values.
 pub fn parse_and_run(source: &str, options: &CompilerOptions) -> (Container, VmBuffers) {
-    let (container, bufs) =
-        parse_and_try_run(source, options).expect("VM execution trapped unexpectedly");
+    let (container, bufs) = parse_and_try_run(source, options).unwrap();
     (container, bufs)
 }
 
@@ -624,9 +632,33 @@ pub fn parse_and_try_run(
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs)?;
+        assert_stack_balanced(&vm, "after init");
         vm.run_round(0)?;
+        assert_stack_balanced(&vm, "after scan round");
     }
     Ok((container, bufs))
+}
+
+/// Asserts the VM's operand stack is empty.
+///
+/// Every function body is stack-balanced, so a completed scan must leave
+/// the operand stack exactly as it found it. Nothing truncates that buffer
+/// between rounds (`compiler/vm/src/stack.rs` has no `clear`, and
+/// `run_round` does not call `truncate_by`), so a single leaked slot
+/// survives every subsequent round and accumulates until the stack
+/// overflows -- surfacing as a `Trap::StackOverflow` arbitrarily far in
+/// time and code from the codegen path that leaked it.
+///
+/// Calling this from the shared harness makes every end-to-end test in
+/// this suite a balance regression test, including tests written long
+/// after this check was added.
+pub fn assert_stack_balanced(vm: &ironplc_vm::VmRunning<'_>, phase: &str) {
+    assert_eq!(
+        vm.operand_stack_depth(),
+        0,
+        "operand stack not empty {phase}: {} value(s) left behind",
+        vm.operand_stack_depth()
+    );
 }
 
 /// Parses, analyzes, compiles, and runs a multi-round test scenario.
@@ -651,7 +683,73 @@ pub fn parse_and_run_rounds(
     .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = load_and_start(&container, &mut bufs).unwrap();
+    assert_stack_balanced(&vm, "after init");
     f(&mut vm);
+    // The closure may have run any number of rounds. Each individual round
+    // is covered by the `debug_assert` at the end of `VmRunning::run_round`;
+    // this catches the final state even when that assertion is compiled out.
+    assert_stack_balanced(&vm, "after scenario");
+}
+
+/// A single step in a function-block (`TON`/`CTU`/`R_TRIG`/`RS`/…) driver
+/// scenario.
+///
+/// The timer/counter/edge/bistable end-to-end tests all share the same shape:
+/// build a program, then drive the VM across several scan rounds, writing
+/// inputs and asserting outputs along the way. Rather than repeat that
+/// `load_and_start` + `run_round` + `read_variable` scaffold in every test,
+/// each scenario is expressed as a `&[FbStep]` table and executed by
+/// [`drive_fb`]. This keeps every original scenario as one `rstest` `#[case]`
+/// while the driver lives in exactly one place.
+#[derive(Clone, Copy)]
+pub enum FbStep {
+    /// Write `value` into the variable at `index` (no scan round runs).
+    Write(u16, i32),
+    /// Run one scan round at absolute VM time `time_us` (microseconds).
+    Run(u64),
+    /// Assert the variable at `index` currently reads `value`.
+    Expect(u16, i32),
+    /// Feed `n` rising edges on the variable at `var`: for each edge, write 1
+    /// and run a round, then write 0 and run a round. Rounds run at
+    /// `time_base + i*2` and `+1`. Edge/counter FBs are edge-triggered, so the
+    /// exact time values only need to increase monotonically.
+    Pulse { var: u16, n: u64, time_base: u64 },
+}
+
+/// Compiles `source` and drives the VM through `steps`, executing each
+/// [`FbStep`] in order. See [`FbStep`] for the step semantics.
+pub fn drive_fb(source: &str, options: &CompilerOptions, steps: &[FbStep]) {
+    use ironplc_container::VarIndex;
+    parse_and_run_rounds(source, options, |vm| {
+        for step in steps {
+            match *step {
+                FbStep::Write(index, value) => {
+                    vm.write_variable(VarIndex::new(index), value).unwrap();
+                }
+                FbStep::Run(time_us) => {
+                    vm.run_round(time_us).unwrap();
+                    assert_stack_balanced(&*vm, "after scan round");
+                }
+                FbStep::Expect(index, value) => {
+                    assert_eq!(
+                        vm.read_variable(VarIndex::new(index)).unwrap(),
+                        value,
+                        "vars[{index}] mismatch"
+                    );
+                }
+                FbStep::Pulse { var, n, time_base } => {
+                    for i in 0..n {
+                        vm.write_variable(VarIndex::new(var), 1).unwrap();
+                        vm.run_round(time_base + i * 2).unwrap();
+                        assert_stack_balanced(&*vm, "after rising-edge round");
+                        vm.write_variable(VarIndex::new(var), 0).unwrap();
+                        vm.run_round(time_base + i * 2 + 1).unwrap();
+                        assert_stack_balanced(&*vm, "after falling-edge round");
+                    }
+                }
+            }
+        }
+    });
 }
 
 /// Runs `source` with default options and asserts each `(var_index, expected)`
@@ -684,6 +782,30 @@ pub fn assert_run_i32_with(source: &str, options: &CompilerOptions, asserts: &[(
     let (_c, bufs) = parse_and_run(source, options);
     for (idx, expected) in asserts {
         assert_eq!(bufs.vars[*idx].as_i32(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
+/// Like [`assert_run_i64`] but with explicit [`CompilerOptions`].
+pub fn assert_run_i64_with(source: &str, options: &CompilerOptions, asserts: &[(usize, i64)]) {
+    let (_c, bufs) = parse_and_run(source, options);
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_i64(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
+/// Like [`assert_run_f32`] but with explicit [`CompilerOptions`].
+pub fn assert_run_f32_with(source: &str, options: &CompilerOptions, asserts: &[(usize, f32)]) {
+    let (_c, bufs) = parse_and_run(source, options);
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_f32(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
+/// Like [`assert_run_f64`] but with explicit [`CompilerOptions`].
+pub fn assert_run_f64_with(source: &str, options: &CompilerOptions, asserts: &[(usize, f64)]) {
+    let (_c, bufs) = parse_and_run(source, options);
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_f64(), *expected, "vars[{idx}] mismatch");
     }
 }
 
@@ -778,6 +900,39 @@ macro_rules! e2e_i32_with {
         #[test]
         fn $name() {
             $crate::common::assert_run_i32_with($source, &$opts, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_i32_with`] but reads slots as i64 (LINT/ULINT).
+macro_rules! e2e_i64_with {
+    ($(#[$meta:meta])* $name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run_i64_with($source, &$opts, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_i32_with`] but reads slots as f32 (REAL).
+macro_rules! e2e_f32_with {
+    ($(#[$meta:meta])* $name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run_f32_with($source, &$opts, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_i32_with`] but reads slots as f64 (LREAL).
+macro_rules! e2e_f64_with {
+    ($(#[$meta:meta])* $name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run_f64_with($source, &$opts, $asserts);
         }
     };
 }

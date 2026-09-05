@@ -8,7 +8,7 @@ use std::{hash::Hash, hash::Hasher};
 
 use crate::fold::Fold;
 use crate::visitor::Visitor;
-use dsl_macro_derive::Recurse;
+use dsl_macro_derive::{Located, Recurse};
 
 // Static singletons for common FileId values to avoid repeated allocations.
 // This is particularly beneficial for test code which frequently uses FileId::default(),
@@ -96,9 +96,12 @@ impl fmt::Display for FileId {
 pub struct SourceSpan {
     /// The position of the starting character (0-indexed).
     pub start: usize,
-    /// The position of the ending character (0-indexed).
+    /// The position one past the last character (0-indexed, exclusive).
     ///
-    /// Equals the start position for a length of 1 character.
+    /// Equals `start + 1` for a length of 1 character. The range is
+    /// half-open: the lexer emits exclusive-end spans and the diagnostic
+    /// renderer reads them that way, so a span built as though `end` were
+    /// the last character underlines one character too few.
     pub end: usize,
     pub file_id: FileId,
 }
@@ -178,12 +181,13 @@ pub trait Located {
 /// and can use containers as appropriate.
 ///
 /// See section 2.1.2.
-#[derive(Recurse)]
+#[derive(Recurse, Located)]
 pub struct Id {
     #[recurse(ignore)]
     pub original: String,
     #[recurse(ignore)]
     pub lower_case: String,
+    #[located(position)]
     pub span: SourceSpan,
 }
 
@@ -243,15 +247,67 @@ impl fmt::Display for Id {
     }
 }
 
-impl Located for Id {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Uses `#[located(position)]` on a `SourceSpan` field so the derived
+    /// `span` clones that field.
+    #[derive(Located)]
+    struct PositionNode {
+        #[located(position)]
+        span: SourceSpan,
+    }
+
+    /// Uses `#[located(delegate)]` on a sub-node so the derived `span`
+    /// delegates to the sub-node's `span`.
+    #[derive(Located)]
+    struct DelegateNode {
+        #[located(delegate)]
+        inner: Id,
+    }
+
+    /// Uses the default rule: no attribute but a field named `position`.
+    #[derive(Located)]
+    struct DefaultPositionNode {
+        position: SourceSpan,
+    }
+
+    #[test]
+    fn span_when_position_attribute_then_clones_field() {
+        let node = PositionNode {
+            span: SourceSpan::range(3, 7),
+        };
+
+        let span = node.span();
+
+        assert_eq!(span.start, 3);
+        assert_eq!(span.end, 7);
+    }
+
+    #[test]
+    fn span_when_delegate_attribute_then_delegates_to_field() {
+        let node = DelegateNode {
+            inner: Id::from("example").with_position(SourceSpan::range(5, 9)),
+        };
+
+        let span = node.span();
+
+        assert_eq!(span.start, 5);
+        assert_eq!(span.end, 9);
+    }
+
+    #[test]
+    fn span_when_no_attribute_and_position_field_then_clones_position() {
+        let node = DefaultPositionNode {
+            position: SourceSpan::range(2, 4),
+        };
+
+        let span = node.span();
+
+        assert_eq!(span.start, 2);
+        assert_eq!(span.end, 4);
+    }
 
     #[test]
     fn file_id_when_clone_then_same_underlying_data() {

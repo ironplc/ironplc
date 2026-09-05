@@ -29,6 +29,7 @@ use crate::vars::*;
 use ironplc_dsl::common::*;
 use ironplc_dsl::configuration::*;
 use ironplc_dsl::core::Id;
+use ironplc_dsl::core::Located;
 use ironplc_dsl::sfc::*;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::time::*;
@@ -67,7 +68,7 @@ fn negate_literal_constant(c: ConstantKind) -> Result<ConstantKind, ConstantKind
 
 /// Collapses an initializer expression to `Simple` when it is exactly a
 /// literal (optionally with one leading unary minus, e.g. `-123`), and
-/// otherwise wraps it as `SimpleExpr` (the constant-expression vendor
+/// otherwise wraps it as `SimpleExpr` (the constant-expression dialect
 /// extension, folded by `xform_fold_initializer_expressions`).
 fn resolve_initializer_expr(type_name: TypeName, e: ExprKind) -> InitialValueAssignmentKind {
     match e {
@@ -284,12 +285,16 @@ parser! {
     rule pragma() -> () = tok(TokenType::Pragma) ()
     rule _ = (whitespace() / comment() / pragma())*
 
-    // Lists of separated items with required ending separator
+    // Lists of separated items. The `periodsep`/`semisep` forms consume a
+    // trailing separator; the `_no_trailing` variants and `commasep_oneplus`
+    // do not, because IEC 61131-3 forbids a trailing comma in the lists that
+    // use them. `commasep_oneplus` once required one, which silently made a
+    // trailing comma legal everywhere it was used.
     rule periodsep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) _ period() {v}
-    rule periodsep_oneplus_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ++ period()) {v}
+    rule periodsep_oneplus_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ period() _)) {v}
     rule periodsep_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) {v}
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
-    rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
+    rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) _ semicolon() {v}
     rule semisep_or_empty<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v} / { vec![] }
     rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) {v}
 
@@ -306,6 +311,7 @@ parser! {
       / pd:program_declaration() { vec![LibraryElementKind::ProgramDeclaration(pd)] }
       / cd:configuration_declaration() { vec![LibraryElementKind::ConfigurationDeclaration(cd)] }
       / gv:global_var_declarations() { vec![LibraryElementKind::GlobalVarDeclarations(gv)] }
+      / id:interface_declaration() { vec![LibraryElementKind::InterfaceDeclaration(id)] }
 
     // B.1.1 Letters, digits and identifier
     rule identifier() -> Id = i:tok(TokenType::Identifier) {
@@ -334,7 +340,7 @@ parser! {
     rule constant() -> ConstantKind =
         real:real_literal() { ConstantKind::RealLiteral(real) }
         / integer:integer_literal() { ConstantKind::IntegerLiteral(integer) }
-        / c:character_string() { ConstantKind::CharacterString(CharacterStringLiteral::new(c)) }
+        / c:character_string_literal() { ConstantKind::CharacterString(c) }
         / duration:duration() { ConstantKind::Duration(duration) }
         / t:time_of_day() { ConstantKind::TimeOfDay(t) }
         / d:date() { ConstantKind::Date(d) }
@@ -355,12 +361,12 @@ parser! {
       / tok(TokenType::Udint) { IntegerTypeName::UDINT }
       / tok(TokenType::Ulint) { IntegerTypeName::ULINT }
     rule integer_literal() -> IntegerLiteral = data_type:(t:integer_literal_type() tok(TokenType::Hash) {t})? value:(bi:binary_integer() { bi.into() } / oi:octal_integer() { oi.into() } / hi:hex_integer() { hi.into() } / si:signed_integer() { si }) { IntegerLiteral { value, data_type } }
-    rule signed_integer__positive() -> SignedInteger = tok(TokenType::Plus)? digits:tok(TokenType::Digits) {? SignedInteger::positive(digits.text.as_str()) }
-    rule signed_integer__negative() -> SignedInteger = tok(TokenType::Minus) digits:tok(TokenType::Digits) {? SignedInteger::negative(digits.text.as_str()) }
+    rule signed_integer__positive() -> SignedInteger = tok(TokenType::Plus)? digits:tok(TokenType::Digits) {? SignedInteger::positive(digits.text.as_str(), digits.span.clone()) }
+    rule signed_integer__negative() -> SignedInteger = sign:tok(TokenType::Minus) digits:tok(TokenType::Digits) {? SignedInteger::negative(digits.text.as_str(), SourceSpan::join(&sign.span, &digits.span)) }
     rule signed_integer() -> SignedInteger = signed_integer__positive() / signed_integer__negative()
     rule integer__string() -> &'input str = n:tok(TokenType::Digits) { n.text.as_str() }
     rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
-    rule integer() -> Integer = n:integer__string() {? Integer::new(n, SourceSpan::default()) }
+    rule integer() -> Integer = n:tok(TokenType::Digits) {? Integer::new(n.text.as_str(), n.span.clone()) }
     rule binary_integer() -> Integer =  n:tok(TokenType::BinDigits) {? Integer::try_binary(n.text.as_str()) }
     rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()) }
     rule hex_integer() -> Integer = n:tok(TokenType::HexDigits) {? Integer::try_hex(n.text.as_str()) }
@@ -403,6 +409,12 @@ parser! {
 
     // B.1.2.2 Character strings
     rule character_string() -> Vec<char> = single_byte_character_string() / double_byte_character_string()
+    // The literal keeps which of the two spellings the source used. A
+    // declaration does not need this because its own STRING/WSTRING keyword
+    // says the width, but a literal in a statement body has no such keyword.
+    rule character_string_literal() -> CharacterStringLiteral =
+      c:single_byte_character_string() { CharacterStringLiteral::new(c) }
+      / c:double_byte_character_string() { CharacterStringLiteral::new_wide(c) }
     rule single_byte_character_string() -> Vec<char>  = (tok(TokenType::String) tok(TokenType::Hash))? t:tok(TokenType::SingleByteString) {
       // The token includes the surrounding single quotes, so remove those when generating the literal
       let mut chars = t.text.chars();
@@ -552,7 +564,7 @@ parser! {
     rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {
       // A bare literal parses as ExprKind::Const via expression() too (it's
       // one of its own alternatives), so this single rule handles both the
-      // standard literal-only case and the constant-expression vendor
+      // standard literal-only case and the constant-expression dialect
       // extension (e.g. PI/180.0) without ambiguity — trying constant()
       // first and falling back to expression() doesn't work here because
       // constant() greedily matches a leading literal and stops, without
@@ -660,12 +672,16 @@ parser! {
     rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ ref_to:ref_to_keyword()? _ type_name:array_element_type() {
       SpecificationKind::Inline(ArraySubranges { ranges, type_name, ref_to } )
     }
+    // The length delimiter comes from string_length_spec() so that the array
+    // element type accepts the same spellings as every other string position
+    // -- standard `STRING[n]` brackets and the `STRING(n)` parenthesis
+    // extension, the latter gated by rule_token_no_paren_string_length.
     rule array_element_type() -> ArrayElementType =
-      tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() _ tok(TokenType::RightBracket) { l })? { ArrayElementType::String(StringSpecification { width: StringType::String, length, keyword_span: tok.span.clone() }) }
-      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() _ tok(TokenType::RightBracket) { l })? { ArrayElementType::WString(StringSpecification { width: StringType::WString, length, keyword_span: tok.span.clone() }) }
+      tok:tok(TokenType::String) length:(_ l:string_length_spec() { l })? { ArrayElementType::String(StringSpecification { width: StringType::String, length, keyword_span: tok.span.clone() }) }
+      / tok:tok(TokenType::WString) length:(_ l:string_length_spec() { l })? { ArrayElementType::WString(StringSpecification { width: StringType::WString, length, keyword_span: tok.span.clone() }) }
       / tn:non_generic_type_name() { ArrayElementType::Named(tn) }
     rule array_initialization() -> Vec<ArrayInitialElementKind> = tok(TokenType::LeftBracket) _ init:array_initial_elements() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) { init }
-    rule array_initial_elements() -> ArrayInitialElementKind = size:integer() _ tok(TokenType::LeftParen) ai:array_initial_element()? tok(TokenType::RightParen) { ArrayInitialElementKind::repeated(size, ai) } / array_initial_element()
+    rule array_initial_elements() -> ArrayInitialElementKind = size:integer() _ tok(TokenType::LeftParen) _ ai:array_initial_element()? _ tok(TokenType::RightParen) { ArrayInitialElementKind::repeated(size, ai) } / array_initial_element()
     // TODO array_initial_element requires structure_initialization | array_initialization
     rule array_initial_element() -> ArrayInitialElementKind = c:constant() { ArrayInitialElementKind::Constant(c) } / e:enumerated_value() { ArrayInitialElementKind::EnumValue(e) }
     rule structure_type_declaration__with_constant() -> DataTypeDeclarationKind =
@@ -768,7 +784,7 @@ parser! {
     rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {?
       // A bare literal parses as ExprKind::Const via expression() too (it's
       // one of its own alternatives), so this handles both the standard
-      // literal-only case and the constant-expression vendor extension
+      // literal-only case and the constant-expression extension
       // (e.g. PI/180.0) — see allow_constant_initializer_expressions and
       // xform_fold_initializer_expressions, which folds SimpleExpr back to
       // Simple or diagnoses it.
@@ -847,9 +863,42 @@ parser! {
     //rule symbolic_variable() -> SymbolicVariableKind =
     //  multi_element_variable()
     //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
-    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessBit) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(Element::Bit) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessByte) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Byte, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Word, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessDWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::DWord, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessLWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::LWord, i)) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)} / tok(TokenType::Caret) &(tok(TokenType::LeftBracket) / tok(TokenType::Period)) { Element::Deref })* {
-      // Start by assuming that the top is just a named variable
-      let mut head = SymbolicVariableKind::Named(NamedVariable { name });
+    // OOP extension: `THIS^` / `SUPER^`. The caret is mandatory -- `THIS`
+    // and `SUPER` are pointers to an instance in the dialects that define
+    // them -- and optional whitespace/comments are accepted between the
+    // keyword and the caret, since nothing in the grammar joins them into
+    // one token. The `This`/`Super` tokens only reach the parser when
+    // `allow_fb_inheritance` is set (they demote to identifiers otherwise),
+    // so this rule is gated at the token level.
+    rule self_ref() -> SelfRefVariable =
+      t:tok(TokenType::This) _ c:tok(TokenType::Caret) {
+        SelfRefVariable { kind: SelfRefKind::This, position: SourceSpan::join(&t.span, &c.span) }
+      }
+      / t:tok(TokenType::Super) _ c:tok(TokenType::Caret) {
+        SelfRefVariable { kind: SelfRefKind::Super, position: SourceSpan::join(&t.span, &c.span) }
+      }
+    rule symbolic_variable_head() -> SymbolicVariableKind =
+      s:self_ref() { SymbolicVariableKind::SelfRef(s) }
+      / name:variable_identifier() { SymbolicVariableKind::Named(NamedVariable { name }) }
+    rule symbolic_variable_element() -> Element =
+      tok(TokenType::Period) _ n:integer() { Element::Bit(n) }
+      / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessBit) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(Element::Bit) }
+      / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessByte) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Byte, i)) }
+      / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Word, i)) }
+      / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessDWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::DWord, i)) }
+      / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessLWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::LWord, i)) }
+      / tok(TokenType::Period) _ id:identifier() { Element::Struct(id) }
+      / sub:subscript_list() { Element::Array(sub) }
+      // A caret is only a dereference *within* the chain -- a trailing one is
+      // the deref operator, handled by `unary_expression`.
+      / tok(TokenType::Caret) &(_ (tok(TokenType::LeftBracket) / tok(TokenType::Period))) { Element::Deref }
+    // IEC 61131-3 is free-format, so each element in the chain may be
+    // separated from what precedes it by whitespace or a comment: `s . x`,
+    // `refs [0]` and `THIS^ .count` are the same variable references as their
+    // tight spellings. See https://github.com/ironplc/ironplc/issues/1437.
+    rule symbolic_variable() -> SymbolicVariableKind = head:symbolic_variable_head() elements:(_ e:symbolic_variable_element() { e })* {
+      // Start from whatever the head matched (a plain name, or THIS^/SUPER^)
+      let mut head = head;
 
       // Then consume additional items
       for elem in elements {
@@ -895,7 +944,7 @@ parser! {
     // There is no location_prefix or size_prefix rule because it would be ambiguous when the % prefix normally
     // resolved ambiguity. Therefore, the lexer matches the entire direct variable.
     pub rule direct_variable() -> AddressAssignment = t:tok(TokenType::DirectAddress) {?
-      AddressAssignment::try_from(t.text.as_str())
+      AddressAssignment::try_from(t.text.as_str()).map(|address| address.with_position(t.span.clone()))
     }
     // B.1.4.2 Multi-element variables
     // TODO support these
@@ -916,7 +965,7 @@ parser! {
     rule subscripted_variable() -> SymbolicVariableKind = symbolic_variable()
     rule subscript_list() -> Vec<Expr> = tok(TokenType::LeftBracket) _ list:subscript()++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightBracket) { list }
     rule subscript() -> Expr = e:expression() { Expr::new(e) }
-    rule structured_variable() -> (SymbolicVariableKind, Id) = r:record_variable() tok(TokenType::Period) f:field_selector() { (r, f) }
+    rule structured_variable() -> (SymbolicVariableKind, Id) = r:record_variable() _ tok(TokenType::Period) _ f:field_selector() { (r, f) }
     rule record_variable() -> SymbolicVariableKind = symbolic_variable()
     rule field_selector() -> Id = identifier()
 
@@ -938,8 +987,16 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
+    //
+    // Do not add a rule here that decides at parse time that a bare type name
+    // names a function block. One existed (`fb_name_decl`) and was removed: it
+    // cannot be sound, because whether an identifier is a function-block type
+    // is not knowable until declarations are resolved. That is precisely why
+    // the `LateResolvedType` placeholder and
+    // `xform_resolve_late_bound_type_initializer` exist -- the ambiguity is
+    // deferred to the analyzer on purpose.
     rule var_init_decl() -> Vec<UntypedVarDecl> = located_var1_init_decl() / structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() / fb_call_style_var_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
-    // CODESYS/TwinCAT vendor extension: a located variable (complete or
+    // Extension: a located variable (complete or
     // incomplete/wildcard address) declared inside an otherwise plain
     // VAR/VAR_INPUT/VAR_OUTPUT block, instead of requiring its own
     // dedicated located_var_declarations()/incompl_located_var_declarations()
@@ -1033,12 +1090,14 @@ parser! {
         }
       }).collect()
     }
-    // Matches either the IEC `REF_TO` keyword or the TwinCAT/CODESYS
-    // `REFERENCE TO` keyword pair, returning which surface syntax matched.
-    // See `specs/design/reference-to-twincat.md`.
+    // Matches the IEC `REF_TO` keyword or one of the TwinCAT/CODESYS
+    // `REFERENCE TO` / `POINTER TO` keyword pairs, returning which surface
+    // syntax matched. See `specs/design/reference-to-twincat.md` and
+    // `specs/design/adr-and-pointer-to.md`.
     rule ref_to_keyword() -> RefSyntax =
       tok(TokenType::RefTo) { RefSyntax::RefTo }
       / tok(TokenType::Reference) _ tok(TokenType::To) { RefSyntax::ReferenceTo }
+      / tok(TokenType::Pointer) _ tok(TokenType::To) { RefSyntax::PointerTo }
     // Matches the TwinCAT/CODESYS `REF=` binding operator, returning the `=`
     // token (used for the assignment span). The `=` must immediately follow
     // `REF` with no intervening whitespace (no `_`), so `REF =` is not a binding
@@ -1223,7 +1282,7 @@ parser! {
     }
     // CODESYS/TwinCAT accept STRING(n)/WSTRING(n) with parentheses as an
     // alternate delimiter to the standard STRING[n]/WSTRING[n] brackets.
-    // The parenthesis form is a vendor extension (not standard IEC
+    // The parenthesis form is an extension (not standard IEC
     // 61131-3), so the grammar accepts it permissively here and
     // rule_token_no_paren_string_length rejects it (P4042) unless
     // allow_paren_string_length is set.
@@ -1254,7 +1313,7 @@ parser! {
       }
     }
     rule incompl_location() -> AddressAssignment = tok(TokenType::At) _ t:tok(TokenType::DirectAddressIncomplete) {?
-      AddressAssignment::try_from(t.text.as_str())
+      AddressAssignment::try_from(t.text.as_str()).map(|address| address.with_position(t.span.clone()))
     }
     rule var_spec() -> VariableSpecificationKind =
       sr:subrange_specification__with_range() { VariableSpecificationKind::Subrange(sr) }
@@ -1299,18 +1358,91 @@ parser! {
     // but we don't need that distinction here.
     rule function_block_type_name() -> TypeName = type_name()
     rule derived_function_block_name() -> TypeName = type_name()
-    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
+    // OOP extension: comma-separated list of type names,
+    // e.g. `IMPLEMENTS I_Hydraulics, I_Brake`. Only produced when EXTENDS
+    // or IMPLEMENTS tokens are recognized (allow_fb_inheritance), since
+    // both are demoted to identifiers otherwise.
+    rule type_name_list() -> Vec<TypeName> = names:type_name() ++ (_ tok(TokenType::Comma) _) { names }
+
+    // OOP extension: METHOD ... END_METHOD, declared on a function block.
+    // TwinCAT's `.TcPOU` XML form stores each method as a separate `<Method>`
+    // element; `ironplc-sources` reconstructs the textual form from that
+    // element and appends it after the function block body, so the XML form
+    // reaches `MethodDeclaration` through this rule as well. See ADR-0041
+    // Phase 1.
+    rule method_declaration() -> MethodDeclaration = start:tok(TokenType::Method) _ name:identifier() _ rt:(tok(TokenType::Colon) _ rt:function_return_type() {rt})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body() _ end:tok(TokenType::EndMethod) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
-      FunctionBlockDeclaration {
+      MethodDeclaration {
         name,
+        return_type: rt,
         variables,
         edge_variables,
         body,
         span: SourceSpan::join(&start.span, &end.span),
       }
     }
+
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ is_abstract:(t:tok(TokenType::Abstract) {t})? _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ methods:(_ m:method_declaration() {m}) ** _ _ end:tok(TokenType::EndFunctionBlock) {
+      let decls = VarDeclarations::flatten(decls);
+      let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
+      let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
+
+      let base = extends.as_ref().map(|(_, t)| t.clone());
+      let implements_list = implements.as_ref().map(|(_, names)| names.clone()).unwrap_or_default();
+      let is_abstract_present = is_abstract.is_some();
+      let oop = if is_abstract_present || base.is_some() || !implements_list.is_empty() {
+        let mut oop_spans: Vec<SourceSpan> = Vec::new();
+        if let Some(t) = &is_abstract {
+          oop_spans.push(t.span.clone());
+        }
+        if let Some((e, t)) = &extends {
+          oop_spans.push(e.span.clone());
+          oop_spans.push(t.span());
+        }
+        if let Some((i, names)) = &implements {
+          oop_spans.push(i.span.clone());
+          if let Some(last) = names.last() {
+            oop_spans.push(last.span());
+          }
+        }
+        let oop_span = oop_spans
+          .into_iter()
+          .reduce(|acc, span| SourceSpan::join(&acc, &span))
+          .expect("at least one OOP token present");
+        Some(FunctionBlockOop {
+          base,
+          implements: implements_list,
+          is_abstract: is_abstract_present,
+          span: oop_span,
+        })
+      } else {
+        None
+      };
+
+      FunctionBlockDeclaration {
+        name,
+        variables,
+        edge_variables,
+        body,
+        span: SourceSpan::join(&start.span, &end.span),
+        oop,
+        methods,
+      }
+    }
+
+    // OOP extension: INTERFACE ... END_INTERFACE. Only the
+    // header (name + optional EXTENDS list) is parsed — method/property
+    // signatures are not yet supported (see
+    // specs/design/beckhoff-twincat-dialect.md §1.3).
+    rule interface_declaration() -> InterfaceDeclaration = tok(TokenType::Interface) _ name:identifier() _ extends:(tok(TokenType::Extends) _ names:type_name_list() {names})? _ tok(TokenType::EndInterface) {
+      InterfaceDeclaration {
+        name,
+        extends: extends.unwrap_or_default(),
+      }
+    }
+
     rule other_var_declarations() -> VarDeclarations = external_var_declarations() / var_declarations() / retentive_var_declarations() / non_retentive_var_declarations() / incompl_located_var_declarations()
     rule temp_var_decls() -> VarDeclarations = tok(TokenType::VarTemp) _ declarations:semisep_or_empty(<var2_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::VarTemp, None))
@@ -1510,13 +1642,13 @@ parser! {
       }
     }
     rule access_path() -> AccessPathKind =
-      resource_name:(r:resource_name() tok(TokenType::Period) { r })? var:direct_variable() {
+      resource_name:(r:resource_name() _ tok(TokenType::Period) _ { r })? var:direct_variable() {
         AccessPathKind::Direct(DirectAccessPath { resource_name, variable: var })
       }
-      / resource_name:(r:resource_name() tok(TokenType::Period) { r })? program_name:(p:program_name() tok(TokenType::Period) { p })? fb_name:periodsep(<fb_name()>) variable:symbolic_variable() {
+      / resource_name:(r:resource_name() _ tok(TokenType::Period) _ { r })? program_name:(p:program_name() _ tok(TokenType::Period) _ { p })? fb_name:periodsep(<fb_name()>) _ variable:symbolic_variable() {
         AccessPathKind::Symbolic(SymbolicAccessPath { resource_name, program_name, fb_name, variable })
       }
-    rule global_var_reference() -> GlobalVarReference =  resource_name:(r:resource_name() tok(TokenType::Period) { r })? name:global_var_name() s:(tok(TokenType::Period) s:structure_element_name() { s } )? {
+    rule global_var_reference() -> GlobalVarReference =  resource_name:(r:resource_name() _ tok(TokenType::Period) _ { r })? name:global_var_name() s:(_ tok(TokenType::Period) _ s:structure_element_name() { s } )? {
       GlobalVarReference {
         resource_name,
         global_var_name: name,
@@ -1606,7 +1738,7 @@ parser! {
       / dv:direct_variable() { ProgramConnectionSinkKind::DirectVariable(dv) }
     rule instance_specific_initializations() -> Vec<InstanceInitKind> = tok(TokenType::VarConfig) _ init:semisep_oneplus(<instance_specific_init()>) _ tok(TokenType::EndVar) { init }
     rule instance_specific_init() -> InstanceInitKind = instance_specific_init__fb_init() / instance_specific_init__located()
-    rule instance_specific_init__located() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_no_trailing(<identifier()>) _ address:location()? _ tok(TokenType::Colon) _ initializer:located_var_spec_init() {
+    rule instance_specific_init__located() -> InstanceInitKind = resource_name:resource_name() _ tok(TokenType::Period) _ program_name:program_name() _ tok(TokenType::Period) _ fb_path:periodsep_no_trailing(<identifier()>) _ address:location()? _ tok(TokenType::Colon) _ initializer:located_var_spec_init() {
       InstanceInitKind::LocatedVarInit(Box::new(LocatedVarInit {
         resource_name,
         program_name,
@@ -1615,7 +1747,7 @@ parser! {
         initializer,
       }))
     }
-    rule instance_specific_init__fb_init() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_oneplus_no_trailing(<identifier()>) _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ tok(TokenType::Assignment) _ initializer:structure_initialization() {
+    rule instance_specific_init__fb_init() -> InstanceInitKind = resource_name:resource_name() _ tok(TokenType::Period) _ program_name:program_name() _ tok(TokenType::Period) _ fb_path:periodsep_oneplus_no_trailing(<identifier()>) _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ tok(TokenType::Assignment) _ initializer:structure_initialization() {
       InstanceInitKind::FunctionBlockInit(Box::new(FunctionBlockInit {
         resource_name,
         program_name,
@@ -1634,6 +1766,7 @@ parser! {
     pub rule expression() -> ExprKind = precedence!{
       // or_expression
       x:(@) _ tok(TokenType::Or) _ y:@ { ExprKind::compare(CompareOp::Or, x, y) }
+      x:(@) _ tok(TokenType::OrElse) _ y:@ { ExprKind::compare(CompareOp::OrElse, x, y) }
       --
       // xor_expression
       x:(@) _ tok(TokenType::Xor) _ y:@ { ExprKind::compare(CompareOp::Xor, x, y) }
@@ -1675,7 +1808,7 @@ parser! {
       tok(TokenType::LeftParen) _ e:expression() _ tok(TokenType::RightParen) { ExprKind::Expression(Box::new(Expr::new(e))) }
       f:function_expression() { f }
     }
-    rule unary_expression() -> ExprKind = unary:unary_operator()? _ expr:primary_expression() carets:(tok(TokenType::Caret))* {
+    rule unary_expression() -> ExprKind = unary:unary_operator()? _ expr:primary_expression() carets:(_ c:tok(TokenType::Caret) { c })* {
       let mut result = expr;
       for _ in &carets {
         result = ExprKind::Deref(Box::new(Expr::new(result)));
@@ -1758,11 +1891,29 @@ parser! {
       }
 
     // B.3.2.2 Subprogram control statements
-    rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb } / tok(TokenType::Return) { StmtKind::Return }
+    rule subprogram_control_statement() -> StmtKind = m:method_invocation() { m } / fb:fb_invocation() { fb } / tok(TokenType::Return) { StmtKind::Return }
     rule fb_invocation() -> StmtKind = name:fb_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
       let span = SourceSpan::join(&name.span, &end.span);
       StmtKind::FbCall(FbCall {
         var_name: name,
+        params,
+        position: span,
+      })
+    }
+    // OOP extension: `instance.MethodName(args);` (ADR-0041 Phase 1).
+    // Statement position only; a previously-syntax-error shape
+    // (identifier-dot-identifier followed directly by a call), so this
+    // is purely additive and needs no dialect gating of its own -- the
+    // METHOD declarations that would make such a call resolve are
+    // already gated by `allow_fb_inheritance` at the token level.
+    rule method_receiver() -> MethodReceiver =
+      s:self_ref() { MethodReceiver::SelfRef(s) }
+      / id:identifier() { MethodReceiver::Instance(id) }
+    rule method_invocation() -> StmtKind = receiver:method_receiver() _ period() _ method:identifier() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
+      let span = SourceSpan::join(&receiver.span(), &end.span);
+      StmtKind::MethodCall(MethodCall {
+        receiver,
+        method,
         params,
         position: span,
       })
@@ -1822,8 +1973,7 @@ parser! {
     // BitStringLiteral instead of a SignedInteger). Radix-prefixed
     // literals are already lexically distinct tokens from plain decimal
     // digits, so this alternative can only ever fire for the genuinely
-    // new shape. See
-    // specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+    // new shape.
     rule case_bit_string_literal() -> BitStringLiteral = value:(bi:binary_integer() { bi } / oi:octal_integer() { oi } / hi:hex_integer() { hi }) {
       BitStringLiteral { value, data_type: None }
     }

@@ -3,11 +3,10 @@
 //! These tests verify the complete pipeline: parse IEC 61131-3 source with
 //! a CTUD function block instance, compile to bytecode, and execute on the VM.
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
-use crate::common::parse_and_run;
-use crate::common::parse_and_run_rounds;
+use crate::common::{drive_fb, FbStep, FbStep::*};
 
 const CTUD_PROGRAM: &str = "
 PROGRAM main
@@ -26,97 +25,7 @@ PROGRAM main
 END_PROGRAM
 ";
 
-/// Generates `n` rising edges on variable `var_idx` starting at `time_base`.
-fn pulse_n(vm: &mut ironplc_vm::VmRunning<'_>, var_idx: VarIndex, n: u64, time_base: u64) {
-    for i in 0..n {
-        vm.write_variable(var_idx, 1).unwrap();
-        vm.run_round(time_base + i * 2).unwrap();
-        vm.write_variable(var_idx, 0).unwrap();
-        vm.run_round(time_base + i * 2 + 1).unwrap();
-    }
-}
-
-#[test]
-fn end_to_end_when_ctud_not_triggered_then_outputs_at_defaults() {
-    // CV=0, PV=3: QU = (0 >= 3) = FALSE, QD = (0 <= 0) = TRUE
-    let (_container, bufs) = parse_and_run(CTUD_PROGRAM, &CompilerOptions::default());
-    assert_eq!(bufs.vars[5].as_i32(), 0, "QU should be FALSE");
-    assert_eq!(bufs.vars[6].as_i32(), 1, "QD should be TRUE (CV=0 <= 0)");
-}
-
-#[test]
-fn end_to_end_when_ctud_counts_up_to_pv_then_qu_is_true() {
-    parse_and_run_rounds(CTUD_PROGRAM, &CompilerOptions::default(), |vm| {
-        pulse_n(vm, VarIndex::new(1), 3, 0); // 3 rising edges on CU
-        assert_eq!(
-            vm.read_variable(VarIndex::new(7)).unwrap(),
-            3,
-            "CV should be 3"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(5)).unwrap(),
-            1,
-            "QU should be TRUE (CV >= PV)"
-        );
-    });
-}
-
-#[test]
-fn end_to_end_when_ctud_counts_down_then_qd_is_true() {
-    parse_and_run_rounds(CTUD_PROGRAM, &CompilerOptions::default(), |vm| {
-        // CV starts at 0, counting down goes to -1
-        vm.write_variable(VarIndex::new(2), 1).unwrap();
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(7)).unwrap(),
-            -1,
-            "CV should be -1"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(6)).unwrap(),
-            1,
-            "QD should be TRUE (CV <= 0)"
-        );
-    });
-}
-
-#[test]
-fn end_to_end_when_ctud_reset_then_cv_is_zero() {
-    parse_and_run_rounds(CTUD_PROGRAM, &CompilerOptions::default(), |vm| {
-        pulse_n(vm, VarIndex::new(1), 2, 0); // Count up twice
-        assert_eq!(
-            vm.read_variable(VarIndex::new(7)).unwrap(),
-            2,
-            "CV should be 2 after 2 counts"
-        );
-
-        // Reset
-        vm.write_variable(VarIndex::new(3), 1).unwrap();
-        vm.run_round(4).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(7)).unwrap(),
-            0,
-            "CV should be 0 after reset"
-        );
-    });
-}
-
-#[test]
-fn end_to_end_when_ctud_load_then_cv_equals_pv() {
-    parse_and_run_rounds(CTUD_PROGRAM, &CompilerOptions::default(), |vm| {
-        vm.write_variable(VarIndex::new(4), 1).unwrap(); // LD = TRUE
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(7)).unwrap(),
-            3,
-            "CV should be PV (3) after load"
-        );
-    });
-}
-
-#[test]
-fn end_to_end_when_ctud_dint_variant_then_compiles_and_runs() {
-    let source = "
+const CTUD_DINT_PROGRAM: &str = "
 PROGRAM main
   VAR
     counter : CTUD_DINT;
@@ -126,17 +35,28 @@ PROGRAM main
   counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 1, QU => qu_out, CV => cv_out);
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(1)).unwrap(),
-            1,
-            "QU should be TRUE"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            1,
-            "CV should be 1"
-        );
-    });
+
+#[rstest]
+// CV=0, PV=3: QU = (0 >= 3) FALSE, QD = (0 <= 0) TRUE.
+#[case::not_triggered(CTUD_PROGRAM, &[Run(0), Expect(5, 0), Expect(6, 1)])]
+// Three up-counts reach PV: CV=3, QU TRUE.
+#[case::counts_up(CTUD_PROGRAM, &[
+    Pulse { var: 1, n: 3, time_base: 0 },
+    Expect(7, 3), Expect(5, 1),
+])]
+// One down-count from 0: CV=-1, QD TRUE.
+#[case::counts_down(CTUD_PROGRAM, &[
+    Write(2, 1), Run(0), Expect(7, -1), Expect(6, 1),
+])]
+// Reset zeroes CV after two up-counts.
+#[case::reset(CTUD_PROGRAM, &[
+    Pulse { var: 1, n: 2, time_base: 0 }, Expect(7, 2),
+    Write(3, 1), Run(4), Expect(7, 0),
+])]
+// Load sets CV=PV=3.
+#[case::load(CTUD_PROGRAM, &[Write(4, 1), Run(0), Expect(7, 3)])]
+// CTUD_DINT variant compiles and runs; one up-count reaches PV=1.
+#[case::dint_variant(CTUD_DINT_PROGRAM, &[Run(0), Expect(1, 1), Expect(2, 1)])]
+fn end_to_end_fb_ctud(#[case] source: &str, #[case] steps: &[FbStep]) {
+    drive_fb(source, &CompilerOptions::default(), steps);
 }

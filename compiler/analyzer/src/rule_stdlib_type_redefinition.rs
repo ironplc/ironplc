@@ -21,9 +21,12 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
-    intermediates::stdlib_function_block::is_stdlib_function_block, result::SemanticResult,
+    intermediates::stdlib_function_block::is_stdlib_function_block,
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -33,28 +36,25 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleStdlibTypeRedefinition {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleStdlibTypeRedefinition {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleStdlibTypeRedefinition {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl Visitor<Diagnostic> for RuleStdlibTypeRedefinition {
+impl Visitor<Infallible> for RuleStdlibTypeRedefinition {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         if is_stdlib_function_block(&node.name.name) {
             self.diagnostics.push(
                 Diagnostic::problem(
@@ -65,6 +65,12 @@ impl Visitor<Diagnostic> for RuleStdlibTypeRedefinition {
             );
         }
         node.recurse_visit(self)
+    }
+}
+
+impl DiagnosticVisitor for RuleStdlibTypeRedefinition {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
     }
 }
 

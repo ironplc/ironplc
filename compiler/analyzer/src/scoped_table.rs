@@ -70,7 +70,7 @@ impl<'a, K: Key, V: 'a + Value> Scope<'a, K, V> {
         }
     }
 
-    fn find(&mut self, name: &K) -> Option<&V> {
+    fn find(&self, name: &K) -> Option<&V> {
         self.table.get(name)
     }
 
@@ -149,8 +149,13 @@ impl<'a, K: Key, V: 'a + Value> ScopedTable<'a, K, V> {
     }
 
     /// Returns the value for the given name.
-    pub fn find(&mut self, name: &K) -> Option<&V> {
-        self.stack.iter_mut().find_map(|scope| scope.find(name))
+    ///
+    /// Takes `&self`: looking a name up does not change the table, and a
+    /// caller that only reads it should not need exclusive access. That
+    /// matters for a pass whose own lookup helpers borrow `&self` and
+    /// return a reference derived from the table.
+    pub fn find(&self, name: &K) -> Option<&V> {
+        self.stack.iter().find_map(|scope| scope.find(name))
     }
 
     /// Returns all keys across all scopes.
@@ -176,6 +181,26 @@ impl<'a, K: Key, V: 'a + Value> ScopedTable<'a, K, V> {
             None => None,
             Some(scope) => scope.remove(name),
         }
+    }
+}
+
+impl<'a, K: Key, V: 'a + Value> Drop for ScopedTable<'a, K, V> {
+    /// Asserts the scope stack unwound.
+    ///
+    /// The traversal pairs every `enter` with an `exit`, including on the
+    /// error path, so a table that outlives its walk at any depth but its
+    /// base opened a scope nothing closed. That does not fail visibly --
+    /// it resolves later names against a scope that should have ended --
+    /// so assert it in debug and let the existing suite find it.
+    ///
+    /// Skipped while panicking: asserting during unwind would abort and
+    /// bury the original failure.
+    fn drop(&mut self) {
+        debug_assert!(
+            std::thread::panicking() || self.stack.len() == 1,
+            "scope stack unbalanced: ended at depth {}, expected 1",
+            self.stack.len()
+        );
     }
 }
 

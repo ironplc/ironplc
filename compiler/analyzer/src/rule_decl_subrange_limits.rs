@@ -24,8 +24,13 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -33,25 +38,28 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleDeclSubrangeLimits {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleDeclSubrangeLimits {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleDeclSubrangeLimits {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
+impl DiagnosticVisitor for RuleDeclSubrangeLimits {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+impl Visitor<Infallible> for RuleDeclSubrangeLimits {
     type Value = ();
 
-    fn visit_subrange(&mut self, node: &Subrange) -> Result<(), Diagnostic> {
+    fn visit_subrange(&mut self, node: &Subrange) -> Result<(), Infallible> {
         let start = match node.start.as_signed_integer() {
             Some(si) => si,
             None => return Ok(()),
@@ -80,24 +88,13 @@ impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
-
-    use super::*;
-
-    #[test]
-    fn apply_when_subrange_valid_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_subrange_valid_then_ok,
+        "
 TYPE
     VALID_RANGE : INT(-10..10);
-END_TYPE";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
+END_TYPE"
+    );
 
     #[test]
     fn apply_when_subrange_invalid_then_error() {

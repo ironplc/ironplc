@@ -21,8 +21,13 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 use std::collections::HashSet;
+use std::convert::Infallible;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -30,13 +35,7 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleProgramTaskDefinitionExists::new();
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(RuleProgramTaskDefinitionExists::new(), lib)
 }
 
 struct RuleProgramTaskDefinitionExists {
@@ -50,13 +49,13 @@ impl RuleProgramTaskDefinitionExists {
     }
 }
 
-impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
+impl Visitor<Infallible> for RuleProgramTaskDefinitionExists {
     type Value = ();
 
     fn visit_resource_declaration(
         &mut self,
         node: &ResourceDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let mut task_names = HashSet::new();
 
         // Collect all task names for easy lookup
@@ -84,41 +83,32 @@ impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
     }
 }
 
+impl DiagnosticVisitor for RuleProgramTaskDefinitionExists {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
-
-    use super::*;
-
-    #[test]
-    fn apply_when_task_not_defined_then_return_error() {
-        let program = "
+    rule_err!(
+        apply_when_task_not_defined_then_return_error,
+        "
         CONFIGURATION config
             RESOURCE resource1 ON PLC
                PROGRAM plc_task_instance WITH plc_task : plc_prg;
             END_RESOURCE
-        END_CONFIGURATION";
+        END_CONFIGURATION"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_task_defined_then_return_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_task_defined_then_return_ok,
+        "
         CONFIGURATION config
             RESOURCE resource1 ON PLC
                TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
                PROGRAM plc_task_instance WITH plc_task : plc_prg;
             END_RESOURCE
-        END_CONFIGURATION";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+        END_CONFIGURATION"
+    );
 }

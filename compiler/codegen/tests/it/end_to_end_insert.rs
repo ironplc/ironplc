@@ -4,6 +4,7 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
+use proptest::prelude::*;
 
 /// Reads a STRING value from the data region at the given byte offset.
 fn read_string(data_region: &[u8], data_offset: usize) -> String {
@@ -23,6 +24,20 @@ fn string_offset(preceding_max_lengths: &[u16]) -> usize {
         .map(|&ml| STRING_HEADER_BYTES + ml as usize)
         .sum()
 }
+
+/// Generates printable ASCII strings safe for IEC 61131-3 string literals.
+/// Excludes single quote (0x27) and dollar sign (0x24, the escape character).
+/// Length is bounded to 0..=127 so a combined two-string result stays <= 254
+/// and never triggers the STRING[254] truncation branch.
+fn safe_string_strategy() -> impl Strategy<Value = String> {
+    proptest::collection::vec(
+        (0x20u8..=0x7Eu8).prop_filter("exclude quote and dollar", |&b| b != b'\'' && b != b'$'),
+        0..=127,
+    )
+    .prop_map(|bytes| bytes.into_iter().map(|b| b as char).collect())
+}
+
+// --- Deterministic anchors ---
 
 #[test]
 fn end_to_end_when_insert_in_middle_then_correct_result() {
@@ -44,101 +59,6 @@ END_PROGRAM
 }
 
 #[test]
-fn end_to_end_when_insert_at_start_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'World';
-    s2 : STRING := 'Hello ';
-    result : STRING;
-  END_VAR
-  result := INSERT(s1, s2, 0);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Insert 'Hello ' at position 0 (before everything): 'Hello World'
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
-}
-
-#[test]
-fn end_to_end_when_insert_at_end_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello';
-    s2 : STRING := ' World';
-    result : STRING;
-  END_VAR
-  result := INSERT(s1, s2, 5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Insert ' World' after position 5 (end of string): 'Hello World'
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
-}
-
-#[test]
-fn end_to_end_when_insert_empty_string_then_unchanged() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    s2 : STRING;
-    result : STRING;
-  END_VAR
-  result := INSERT(s1, s2, 3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Inserting empty string changes nothing.
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABCDE");
-}
-
-#[test]
-fn end_to_end_when_insert_into_empty_string_then_returns_inserted() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING;
-    s2 : STRING := 'Hello';
-    result : STRING;
-  END_VAR
-  result := INSERT(s1, s2, 0);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello");
-}
-
-#[test]
-fn end_to_end_when_insert_with_integer_var_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    s2 : STRING := 'XY';
-    n_pos : INT := 2;
-    result : STRING;
-  END_VAR
-  result := INSERT(s1, s2, n_pos);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Insert 'XY' after position 2: AB + XY + CDE = 'ABXYCDE'
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABXYCDE");
-}
-
-#[test]
 fn end_to_end_when_insert_result_truncated_by_short_destination_then_truncates() {
     let source = "
 PROGRAM main
@@ -156,4 +76,41 @@ END_PROGRAM
     // But result is STRING[6], so it truncates to 'ABXXXX' (6 chars).
     let result_offset = string_offset(&[254, 254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "ABXXXX");
+}
+
+// --- Property test: INSERT(s1, s2, p) == insert s2 after 1-based position p ---
+// Inputs are bounded so the combined result stays <= 254 (no truncation), and p
+// is a valid 0..=len(s1) insertion point. Oracle is pure Rust. The truncation
+// branch is pinned by the deterministic anchor above.
+proptest! {
+    #[test]
+    fn end_to_end_when_insert_of_arbitrary_strings_then_splices(
+        (s1, s2, p) in (safe_string_strategy(), safe_string_strategy())
+            .prop_flat_map(|(s1, s2)| {
+                let len = s1.chars().count();
+                (Just(s1), Just(s2), 0usize..=len)
+            }),
+    ) {
+        let expected: String = s1
+            .chars()
+            .take(p)
+            .chain(s2.chars())
+            .chain(s1.chars().skip(p))
+            .collect();
+        let source = format!(
+            "
+PROGRAM main
+  VAR
+    s1 : STRING := '{s1}';
+    s2 : STRING := '{s2}';
+    result : STRING;
+  END_VAR
+  result := INSERT(s1, s2, {p});
+END_PROGRAM
+"
+        );
+        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+        let result_offset = string_offset(&[254, 254]);
+        prop_assert_eq!(read_string(&bufs.data_region, result_offset), expected);
+    }
 }

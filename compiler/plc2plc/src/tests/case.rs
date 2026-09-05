@@ -4,11 +4,6 @@ use super::common::*;
 
 #[test]
 fn write_to_string_when_case_branch_empty_then_round_trips() {
-    // The source's dropped `;` needs `--allow-missing-semicolon` to
-    // parse at all, but the renderer always writes an explicit `(*
-    // empty *) ;` for an empty branch, so the re-parse of the
-    // rendered output is already strict-grammar-valid and needs no
-    // flag.
     let source = "
 FUNCTION_BLOCK FB_Example
 VAR
@@ -22,17 +17,18 @@ CASE x OF
 END_CASE;
 END_FUNCTION_BLOCK
 ";
+    // The source's dropped `;` needs `--allow-missing-semicolon` to parse at
+    // all, so the round trip runs under that flag.
     let options = CompilerOptions {
         allow_missing_semicolon: true,
         ..CompilerOptions::default()
     };
-    let library_original = parse_program(source, &FileId::default(), &options).unwrap();
-    let rendered = write_to_string(&library_original).unwrap();
+    let rendered = assert_round_trips(source, &options);
 
-    let library_rendered =
-        parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
-            .expect("rendered output must parse");
-    assert_eq!(library_original, library_rendered);
+    // The renderer always writes an explicit `(* empty *) ;` for an empty
+    // branch, so the rendering is strict-grammar-valid and needs no flag.
+    parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
+        .expect("rendered empty CASE branch must parse without allow_missing_semicolon");
 }
 
 #[test]
@@ -60,16 +56,8 @@ CASE x OF
 END_CASE;
 END_FUNCTION_BLOCK
 ";
-    let library_original =
-        parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
-    let rendered = write_to_string(&library_original).unwrap();
+    let rendered = assert_round_trips_idempotently(source, &CompilerOptions::default());
 
     assert!(rendered.contains("53266"));
     assert!(rendered.contains("10"));
-
-    let library_rendered =
-        parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
-            .expect("rendered output must parse");
-    let rendered_again = write_to_string(&library_rendered).unwrap();
-    assert_eq!(rendered, rendered_again);
 }
