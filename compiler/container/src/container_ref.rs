@@ -330,27 +330,12 @@ mod tests {
     use std::vec;
     use std::vec::Vec;
 
+    use crate::opcode;
+    use crate::test_support::{container_bytes, steel_thread_single_function_container};
+    use crate::ContainerBuilder;
+
     fn steel_thread_bytes() -> Vec<u8> {
-        use crate::ContainerBuilder;
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]
-            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]
-            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
-            0x20,                   // ADD_I32
-            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]
-            0x8C,                   // RET_VOID
-        ];
-        let container = ContainerBuilder::new()
-            .num_variables(2)
-            .add_i32_constant(10)
-            .add_i32_constant(32)
-            .add_function(FunctionId::INIT, &bytecode, 2, 2, 0)
-            .build();
-        let mut buf = Vec::new();
-        container.write_to(&mut buf).unwrap();
-        buf
+        container_bytes(&steel_thread_single_function_container())
     }
 
     #[test]
@@ -499,31 +484,23 @@ mod tests {
         assert_eq!(prog.var_table_count, 2);
     }
 
+    /// A do-nothing program (`RET_VOID`) with whatever constant pool the
+    /// caller's builder carries.
+    fn ret_void_bytes(builder: ContainerBuilder) -> Vec<u8> {
+        container_bytes(
+            &builder
+                .num_variables(0)
+                .add_function(FunctionId::INIT, &[opcode::RET_VOID], 0, 0, 0)
+                .build(),
+        )
+    }
+
     fn f32_constant_bytes() -> Vec<u8> {
-        use crate::ContainerBuilder;
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![0x8C];
-        let container = ContainerBuilder::new()
-            .num_variables(0)
-            .add_f32_constant(1.5)
-            .add_function(FunctionId::INIT, &bytecode, 0, 0, 0)
-            .build();
-        let mut buf = Vec::new();
-        container.write_to(&mut buf).unwrap();
-        buf
+        ret_void_bytes(ContainerBuilder::new().add_f32_constant(1.5))
     }
 
     fn empty_pool_bytes() -> Vec<u8> {
-        use crate::ContainerBuilder;
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![0x8C];
-        let container = ContainerBuilder::new()
-            .num_variables(0)
-            .add_function(FunctionId::INIT, &bytecode, 0, 0, 0)
-            .build();
-        let mut buf = Vec::new();
-        container.write_to(&mut buf).unwrap();
-        buf
+        ret_void_bytes(ContainerBuilder::new())
     }
 
     #[test]

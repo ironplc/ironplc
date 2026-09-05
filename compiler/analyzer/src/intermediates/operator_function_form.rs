@@ -33,6 +33,9 @@ enum Arity {
     Unary,
     /// Exactly two operands, `IN1` and `IN2` (`SUB`, `GT`).
     Binary,
+    /// Two or more operands, `IN1`, `IN2`, ..., `INn` (`ADD`, `AND`): what
+    /// IEC 61131-3 calls an extensible function.
+    Extensible,
 }
 
 /// How the result type of a function form follows from its operands.
@@ -93,7 +96,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
     form(
         "ADD",
         FormOf::Arithmetic(Operator::Add),
-        Arity::Binary,
+        Arity::Extensible,
         "ANY_NUM",
         FormResult::Operand,
     ),
@@ -107,7 +110,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
     form(
         "MUL",
         FormOf::Arithmetic(Operator::Mul),
-        Arity::Binary,
+        Arity::Extensible,
         "ANY_NUM",
         FormResult::Operand,
     ),
@@ -178,21 +181,21 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
     form(
         "AND",
         FormOf::Compare(CompareOp::And),
-        Arity::Binary,
+        Arity::Extensible,
         "ANY_BIT",
         FormResult::Operand,
     ),
     form(
         "OR",
         FormOf::Compare(CompareOp::Or),
-        Arity::Binary,
+        Arity::Extensible,
         "ANY_BIT",
         FormResult::Operand,
     ),
     form(
         "XOR",
         FormOf::Compare(CompareOp::Xor),
-        Arity::Binary,
+        Arity::Extensible,
         "ANY_BIT",
         FormResult::Operand,
     ),
@@ -218,20 +221,30 @@ impl OperatorFunctionForm {
 
     /// Derives the function's signature from the row.
     ///
-    /// A unary form takes `IN`; a binary form takes `IN1` and `IN2`. Every
-    /// parameter has the row's operand category, and so does the return type
-    /// unless the row says the result is `BOOL`.
+    /// A unary form takes `IN`; a binary form takes `IN1` and `IN2`; an
+    /// extensible form declares `IN1` and `IN2` and accepts any number more.
+    /// Every parameter has the row's operand category, and so does the
+    /// return type unless the row says the result is `BOOL`.
     pub(crate) fn signature(&self) -> FunctionSignature {
         let operand = |name: &str| input_param(name, self.operands);
-        let parameters = match self.arity {
-            Arity::Unary => vec![operand("IN")],
-            Arity::Binary => vec![operand("IN1"), operand("IN2")],
-        };
         let return_type = match self.result {
             FormResult::Operand => self.operand_type(),
             FormResult::Bool => TypeName::from("BOOL"),
         };
-        FunctionSignature::stdlib(self.name, return_type, parameters)
+        match self.arity {
+            Arity::Unary => FunctionSignature::stdlib(self.name, return_type, vec![operand("IN")]),
+            Arity::Binary => FunctionSignature::stdlib(
+                self.name,
+                return_type,
+                vec![operand("IN1"), operand("IN2")],
+            ),
+            Arity::Extensible => FunctionSignature::stdlib_extensible(
+                self.name,
+                return_type,
+                vec![operand("IN1"), operand("IN2")],
+                None,
+            ),
+        }
     }
 }
 
@@ -268,32 +281,35 @@ mod tests {
     use rstest::rstest;
 
     /// Every row of the operator-form table, pinned. A change to what an
-    /// operator accepts shows up as a change to the row's cell and to its
-    /// case here, and nowhere else.
+    /// operator accepts, or to how many operands, shows up as a change to
+    /// the row's cell and to its case here, and nowhere else.
     #[rstest]
-    #[case::add("ADD", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
-    #[case::sub("SUB", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
-    #[case::mul("MUL", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
-    #[case::div("DIV", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
-    #[case::modulo("MOD", &["IN1", "IN2"], "ANY_INT", "ANY_INT")]
-    #[case::gt("GT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::ge("GE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::eq("EQ", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::le("LE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::lt("LT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::ne("NE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::and("AND", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT")]
-    #[case::or("OR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT")]
-    #[case::xor("XOR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT")]
-    #[case::not("NOT", &["IN"], "ANY_BIT", "ANY_BIT")]
+    #[case::add("ADD", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", true)]
+    #[case::sub("SUB", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", false)]
+    #[case::mul("MUL", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", true)]
+    #[case::div("DIV", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", false)]
+    #[case::modulo("MOD", &["IN1", "IN2"], "ANY_INT", "ANY_INT", false)]
+    #[case::gt("GT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
+    #[case::ge("GE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
+    #[case::eq("EQ", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
+    #[case::le("LE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
+    #[case::lt("LT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
+    #[case::ne("NE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
+    #[case::and("AND", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT", true)]
+    #[case::or("OR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT", true)]
+    #[case::xor("XOR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT", true)]
+    #[case::not("NOT", &["IN"], "ANY_BIT", "ANY_BIT", false)]
     fn operator_function_form_when_row_then_signature_is_derived_from_it(
         #[case] name: &str,
         #[case] param_names: &[&str],
         #[case] operands: &str,
         #[case] return_type: &str,
+        #[case] extensible: bool,
     ) {
         let signature = operator_function_form(name).unwrap().signature();
         assert_eq!(signature.name, Id::from(name));
+        assert_eq!(signature.is_extensible, extensible);
+        assert!(signature.max_inputs.is_none());
         assert_eq!(
             signature.return_type.unwrap().to_type_name(),
             TypeName::from(return_type)
