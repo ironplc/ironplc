@@ -52,9 +52,9 @@ use ironplc_dsl::sfc::ActionAssociation;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::visitor::Visitor;
 
-use crate::function_environment::{FunctionEnvironment, FunctionSignature};
-use crate::intermediate_type::{FunctionBlockVarType, IntermediateStructField, IntermediateType};
-use crate::intermediates::inherited_fields::collect_inherited_fields;
+use crate::call_assignment_check::bind_inputs;
+use crate::callee_resolution::{FunctionBlocks, InstanceTypes};
+use crate::function_environment::FunctionEnvironment;
 use crate::type_environment::TypeEnvironment;
 
 /// Marks every never-written variable in `lib` as `CONSTANT`.
@@ -66,9 +66,18 @@ pub fn apply(
     type_environment: &TypeEnvironment,
     function_environment: &FunctionEnvironment,
 ) -> Library {
-    let declarations = Declarations::collect(&lib, type_environment);
-    let written = WriteCollector::collect(&lib, &declarations, function_environment);
-    let mut marker = Marker::new(&declarations, &written);
+    let function_blocks = FunctionBlocks::from_library(&lib);
+    let mut collector = WriteCollector {
+        function_blocks: &function_blocks,
+        type_environment,
+        function_environment,
+        instances: InstanceTypes::default(),
+        written: HashSet::new(),
+        globals: HashMap::new(),
+        externals: HashSet::new(),
+    };
+    let Ok(()) = collector.walk(&lib);
+    let mut marker = Marker::new(&collector);
     let Ok(lib) = marker.fold_library(lib);
     lib
 }
@@ -100,95 +109,28 @@ fn has_constant_initializer(init: &InitialValueAssignmentKind) -> bool {
     }
 }
 
-/// The input-compatible parameters of a callee in declaration order, each
-/// flagged with whether it is `VAR_IN_OUT` (and so writes its argument).
-#[derive(Clone, Debug)]
-struct CalleeParams {
-    params: Vec<(Id, bool)>,
-    /// An extensible callee accepts further inputs beyond the declared ones
-    /// (`ADD(a, b, c)`); those are always plain inputs.
-    extensible: bool,
-}
-
-impl CalleeParams {
-    fn from_var_decls<'a>(decls: impl Iterator<Item = &'a VarDecl>) -> Self {
-        let params = decls
-            .filter(|d| d.var_type.is_input_compatible())
-            .filter_map(|d| {
-                d.identifier
-                    .symbolic_id()
-                    .map(|name| (name.clone(), d.var_type == VariableType::InOut))
-            })
-            .collect();
-        CalleeParams {
-            params,
-            extensible: false,
-        }
-    }
-
-    fn from_signature(signature: &FunctionSignature) -> Self {
-        let params = signature
-            .parameters
-            .iter()
-            .filter(|p| p.is_input_compatible())
-            .map(|p| (p.name.clone(), p.is_inout))
-            .collect();
-        CalleeParams {
-            params,
-            extensible: signature.is_extensible,
-        }
-    }
-
-    fn from_fields(fields: &[IntermediateStructField]) -> Self {
-        let params = fields
-            .iter()
-            .filter_map(|f| match f.var_type {
-                Some(FunctionBlockVarType::Input) => Some((f.name.clone(), false)),
-                Some(FunctionBlockVarType::InOut) => Some((f.name.clone(), true)),
-                Some(FunctionBlockVarType::Output)
-                | Some(FunctionBlockVarType::Internal)
-                | None => None,
-            })
-            .collect();
-        CalleeParams {
-            params,
-            extensible: false,
-        }
-    }
-
-    /// Whether the positional argument at `index` binds to a `VAR_IN_OUT`
-    /// parameter. `None` when there is no such parameter.
-    fn positional_is_in_out(&self, index: usize) -> Option<bool> {
-        self.params
-            .get(index)
-            .map(|(_, in_out)| *in_out)
-            .or(self.extensible.then_some(false))
-    }
-
-    /// Whether the argument named `name` binds to a `VAR_IN_OUT` parameter.
-    /// `None` when there is no such parameter.
-    fn named_is_in_out(&self, name: &Id) -> Option<bool> {
-        self.params
-            .iter()
-            .find(|(param, _)| param == name)
-            .map(|(_, in_out)| *in_out)
-            .or(self.extensible.then_some(false))
+/// The variable a call argument passes, when it passes one.
+fn argument_variable(param: &ParamAssignmentKind) -> Option<&Variable> {
+    let expr = match param {
+        ParamAssignmentKind::PositionalInput(input) => &input.expr,
+        ParamAssignmentKind::NamedInput(input) => &input.expr,
+        ParamAssignmentKind::Output(_) => return None,
+    };
+    match &expr.kind {
+        ExprKind::Variable(variable) => Some(variable),
+        _ => None,
     }
 }
 
-/// What the library declares, gathered before writes are collected so that a
-/// use can be interpreted whether it comes before or after the declaration.
-struct Declarations<'a> {
+/// Gathers the name of every variable the library can write, and the global
+/// and external declarations the marking has to keep consistent.
+struct WriteCollector<'a> {
+    function_blocks: &'a FunctionBlocks<'a>,
     type_environment: &'a TypeEnvironment,
-    /// Function-block instance name to the types it is declared with.
-    /// Name-only, so one name may have several types across units.
-    fb_instances: HashMap<Id, Vec<TypeName>>,
-    /// Parameters of every function block declared in the library, its
-    /// `EXTENDS` ancestors' parameters included.
-    fb_params: HashMap<TypeName, CalleeParams>,
-    /// Parameters of every method, by method name, across all function
-    /// blocks that declare one of that name.
-    method_params: HashMap<Id, Vec<CalleeParams>>,
+    function_environment: &'a FunctionEnvironment,
+    /// The function-block instances of the unit being walked.
+    instances: InstanceTypes,
+    written: HashSet<Id>,
     /// `VAR_GLOBAL` names, with whether every declaration of that name
     /// qualifies to be marked.
     globals: HashMap<Id, bool>,
@@ -196,138 +138,7 @@ struct Declarations<'a> {
     externals: HashSet<Id>,
 }
 
-impl<'a> Declarations<'a> {
-    fn collect(lib: &Library, type_environment: &'a TypeEnvironment) -> Self {
-        let mut declarations = Declarations {
-            type_environment,
-            fb_instances: HashMap::new(),
-            fb_params: HashMap::new(),
-            method_params: HashMap::new(),
-            globals: HashMap::new(),
-            externals: HashSet::new(),
-        };
-        let inherited = collect_inherited_fields(lib);
-        for element in &lib.elements {
-            if let LibraryElementKind::FunctionBlockDeclaration(fb) = element {
-                let ancestors = inherited.get(&fb.name).map(Vec::as_slice).unwrap_or(&[]);
-                declarations.fb_params.insert(
-                    fb.name.clone(),
-                    CalleeParams::from_var_decls(ancestors.iter().chain(fb.variables.iter())),
-                );
-                for method in &fb.methods {
-                    declarations
-                        .method_params
-                        .entry(method.name.clone())
-                        .or_default()
-                        .push(CalleeParams::from_var_decls(method.variables.iter()));
-                }
-            }
-        }
-        let Ok(()) = declarations.walk(lib);
-        declarations
-    }
-
-    /// Whether `type_name` names a function block, declared in the library
-    /// or supplied by the standard library.
-    fn is_function_block(&self, type_name: &TypeName) -> bool {
-        self.fb_params.contains_key(type_name)
-            || self
-                .type_environment
-                .get(type_name)
-                .is_some_and(|attrs| attrs.representation.is_function_block())
-    }
-
-    /// The parameters of the function block `type_name`, or `None` when it
-    /// is not a known function block.
-    fn callee_params(&self, type_name: &TypeName) -> Option<CalleeParams> {
-        if let Some(params) = self.fb_params.get(type_name) {
-            return Some(params.clone());
-        }
-        match &self.type_environment.get(type_name)?.representation {
-            IntermediateType::FunctionBlock { fields, .. } => {
-                Some(CalleeParams::from_fields(fields))
-            }
-            _ => None,
-        }
-    }
-
-    fn qualifies_as_global(decl: &VarDecl) -> bool {
-        decl.qualifier == DeclarationQualifier::Unspecified
-            && matches!(decl.identifier, VariableIdentifier::Symbol(_))
-            && has_constant_initializer(&decl.initializer)
-    }
-}
-
-impl Visitor<Infallible> for Declarations<'_> {
-    type Value = ();
-
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-        let Some(name) = node.identifier.symbolic_id() else {
-            return Ok(());
-        };
-        // An instance with a member initializer, `inst : FB := (x := 1)`,
-        // keeps the structure-shaped initializer after type resolution, so
-        // the type decides whether this is an instance.
-        let fb_type = match &node.initializer {
-            InitialValueAssignmentKind::FunctionBlock(init) => Some(&init.type_name),
-            InitialValueAssignmentKind::FunctionBlockCall(init) => Some(&init.type_name),
-            InitialValueAssignmentKind::Structure(init)
-                if self.is_function_block(&init.type_name) =>
-            {
-                Some(&init.type_name)
-            }
-            _ => None,
-        };
-        if let Some(fb_type) = fb_type {
-            self.fb_instances
-                .entry(name.clone())
-                .or_default()
-                .push(fb_type.clone());
-        }
-        match node.var_type {
-            VariableType::Global => {
-                let qualifies = Self::qualifies_as_global(node);
-                self.globals
-                    .entry(name.clone())
-                    .and_modify(|all| *all &= qualifies)
-                    .or_insert(qualifies);
-            }
-            VariableType::External => {
-                self.externals.insert(name.clone());
-            }
-            VariableType::Var
-            | VariableType::VarTemp
-            | VariableType::Input
-            | VariableType::Output
-            | VariableType::InOut
-            | VariableType::Access => {}
-        }
-        Ok(())
-    }
-}
-
-/// Gathers the name of every variable the library can write.
-struct WriteCollector<'a> {
-    declarations: &'a Declarations<'a>,
-    function_environment: &'a FunctionEnvironment,
-    written: HashSet<Id>,
-}
-
-impl<'a> WriteCollector<'a> {
-    fn collect(
-        lib: &Library,
-        declarations: &'a Declarations<'a>,
-        function_environment: &'a FunctionEnvironment,
-    ) -> HashSet<Id> {
-        let mut collector = WriteCollector {
-            declarations,
-            function_environment,
-            written: HashSet::new(),
-        };
-        let Ok(()) = collector.walk(lib);
-        collector.written
-    }
-
+impl WriteCollector<'_> {
     fn mark(&mut self, name: &Id) {
         self.written.insert(name.clone());
     }
@@ -360,71 +171,47 @@ impl<'a> WriteCollector<'a> {
     }
 
     /// Whether a field accessed on `record` may belong to a function block.
-    /// Only a plain variable that is not a known instance is ruled out; any
-    /// other record (an array element, a nested field, `THIS^`) is assumed
-    /// to be one.
+    /// Only a plain variable that is not an instance is ruled out; any other
+    /// record (an array element, a nested field, `THIS^`) is assumed to be
+    /// one.
     fn may_be_fb_member(&self, record: &SymbolicVariableKind) -> bool {
         match record {
-            SymbolicVariableKind::Named(named) => {
-                self.declarations.fb_instances.contains_key(&named.name)
-            }
+            SymbolicVariableKind::Named(named) => self.instances.type_of(&named.name).is_some(),
             _ => true,
         }
     }
 
-    /// The parameters of every type `instance` is declared with, or `None`
-    /// when the instance or one of its types is unknown.
-    fn fb_params(&self, instance: &Id) -> Option<Vec<CalleeParams>> {
-        let types = self.declarations.fb_instances.get(instance)?;
-        types
-            .iter()
-            .map(|type_name| self.declarations.callee_params(type_name))
-            .collect()
+    /// Whether `type_name` names a function block, declared in the library
+    /// or supplied by the standard library.
+    fn is_function_block(&self, type_name: &TypeName) -> bool {
+        self.function_blocks.contains(type_name)
+            || self
+                .type_environment
+                .get(type_name)
+                .is_some_and(|attrs| attrs.representation.is_function_block())
     }
 
-    /// Marks each variable argument that a `VAR_IN_OUT` parameter of the
-    /// callee writes. With no way to tell the parameter's direction --
-    /// `candidates` is `None`, or the argument matches no parameter -- the
-    /// argument is taken to be written.
-    fn mark_arguments(
-        &mut self,
-        candidates: Option<&[CalleeParams]>,
-        args: &[ParamAssignmentKind],
-    ) {
-        let mut position = 0;
-        for arg in args {
-            let (expr, in_out) = match arg {
-                ParamAssignmentKind::PositionalInput(input) => {
-                    let in_out = candidates.map(|c| {
-                        c.iter()
-                            .any(|params| params.positional_is_in_out(position).unwrap_or(true))
-                    });
-                    position += 1;
-                    (&input.expr, in_out)
-                }
-                ParamAssignmentKind::NamedInput(input) => {
-                    let in_out = candidates.map(|c| {
-                        c.iter()
-                            .any(|params| params.named_is_in_out(&input.name).unwrap_or(true))
-                    });
-                    (&input.expr, in_out)
-                }
-                // Outputs are writes regardless of the callee; `visit_output`
-                // records them as the walk reaches them.
-                ParamAssignmentKind::Output(_) => continue,
-            };
-            if in_out.unwrap_or(true) {
-                if let ExprKind::Variable(variable) = &expr.kind {
+    /// Marks every variable argument that a `VAR_IN_OUT` parameter of
+    /// `owner` writes. An argument that binds to no parameter is taken to be
+    /// written: with no declaration to consult, nothing rules a write out.
+    fn mark_bound_arguments(&mut self, owner: &dyn HasVariables, params: &[ParamAssignmentKind]) {
+        for (param, declared) in bind_inputs(owner, params) {
+            let in_out = declared.is_none_or(|decl| decl.var_type == VariableType::InOut);
+            if in_out {
+                if let Some(variable) = argument_variable(param) {
                     self.mark_variable(variable);
                 }
             }
         }
     }
 
-    /// Marks every access path the communication services may write through.
-    fn mark_access_path(&mut self, direction: &Option<Direction>, variable: &SymbolicVariableKind) {
-        if *direction != Some(Direction::ReadOnly) {
-            self.mark_symbolic(variable);
+    /// Marks every variable argument of a call whose callee cannot be
+    /// resolved: any of them may be written.
+    fn mark_all_arguments(&mut self, params: &[ParamAssignmentKind]) {
+        for param in params {
+            if let Some(variable) = argument_variable(param) {
+                self.mark_variable(variable);
+            }
         }
     }
 
@@ -437,10 +224,76 @@ impl<'a> WriteCollector<'a> {
             }
         }
     }
+
+    /// Marks every access path the communication services may write through.
+    fn mark_access_path(&mut self, direction: &Option<Direction>, variable: &SymbolicVariableKind) {
+        if *direction != Some(Direction::ReadOnly) {
+            self.mark_symbolic(variable);
+        }
+    }
+
+    fn record_global_or_external(&mut self, node: &VarDecl, name: &Id) {
+        match node.var_type {
+            VariableType::Global => {
+                let qualifies = node.qualifier == DeclarationQualifier::Unspecified
+                    && matches!(node.identifier, VariableIdentifier::Symbol(_))
+                    && has_constant_initializer(&node.initializer);
+                self.globals
+                    .entry(name.clone())
+                    .and_modify(|all| *all &= qualifies)
+                    .or_insert(qualifies);
+            }
+            VariableType::External => {
+                self.externals.insert(name.clone());
+            }
+            VariableType::Var
+            | VariableType::VarTemp
+            | VariableType::Input
+            | VariableType::Output
+            | VariableType::InOut
+            | VariableType::Access => {}
+        }
+    }
 }
 
 impl Visitor<Infallible> for WriteCollector<'_> {
     type Value = ();
+
+    fn visit_function_block_declaration(
+        &mut self,
+        node: &FunctionBlockDeclaration,
+    ) -> Result<(), Infallible> {
+        let result = node.recurse_visit(self);
+        self.instances.clear();
+        result
+    }
+
+    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Infallible> {
+        let result = node.recurse_visit(self);
+        self.instances.clear();
+        result
+    }
+
+    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Infallible> {
+        let result = node.recurse_visit(self);
+        self.instances.clear();
+        result
+    }
+
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
+        let function_blocks = self.function_blocks;
+        let type_environment = self.type_environment;
+        self.instances.declare(node, &|type_name| {
+            function_blocks.contains(type_name)
+                || type_environment
+                    .get(type_name)
+                    .is_some_and(|attrs| attrs.representation.is_function_block())
+        });
+        if let Some(name) = node.identifier.symbolic_id() {
+            self.record_global_or_external(node, name);
+        }
+        node.recurse_visit(self)
+    }
 
     fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
         self.mark_variable(&node.target);
@@ -465,31 +318,69 @@ impl Visitor<Infallible> for WriteCollector<'_> {
     }
 
     fn visit_function(&mut self, node: &Function) -> Result<(), Infallible> {
-        let candidates = self
-            .function_environment
-            .get(&node.name)
-            .map(|signature| vec![CalleeParams::from_signature(signature)]);
-        self.mark_arguments(candidates.as_deref(), &node.param_assignment);
+        let Some(signature) = self.function_environment.get(&node.name) else {
+            self.mark_all_arguments(&node.param_assignment);
+            return node.recurse_visit(self);
+        };
+        // Positional arguments occupy the input-compatible parameters in
+        // declaration order, which is the order
+        // `xform_named_to_positional_args` laid them out in. A named input
+        // still present was never rewritten, so it bound to nothing.
+        let mut declared = signature
+            .parameters
+            .iter()
+            .filter(|param| param.is_input_compatible());
+        for param in &node.param_assignment {
+            let written = match param {
+                ParamAssignmentKind::PositionalInput(_) => match declared.next() {
+                    Some(declared) => declared.is_inout,
+                    // Past the declared parameters an extensible function
+                    // takes further inputs; anything else is unbound.
+                    None => !signature.is_extensible,
+                },
+                ParamAssignmentKind::NamedInput(_) => true,
+                ParamAssignmentKind::Output(_) => false,
+            };
+            if written {
+                if let Some(variable) = argument_variable(param) {
+                    self.mark_variable(variable);
+                }
+            }
+        }
         node.recurse_visit(self)
     }
 
     fn visit_fb_call(&mut self, node: &FbCall) -> Result<(), Infallible> {
         self.mark(&node.var_name);
-        let candidates = self.fb_params(&node.var_name);
-        self.mark_arguments(candidates.as_deref(), &node.params);
+        let fb_type = self.instances.type_of(&node.var_name).cloned();
+        match fb_type {
+            Some(fb_type) => match self.function_blocks.get(&fb_type) {
+                Some(fb) => self.mark_bound_arguments(fb, &node.params),
+                // A standard-library function block declares no VAR_IN_OUT,
+                // so its inputs are reads. Anything else is unknown.
+                None if self.is_function_block(&fb_type) => {}
+                None => self.mark_all_arguments(&node.params),
+            },
+            None => self.mark_all_arguments(&node.params),
+        }
         node.recurse_visit(self)
     }
 
     fn visit_method_call(&mut self, node: &MethodCall) -> Result<(), Infallible> {
-        if let MethodReceiver::Instance(instance) = &node.receiver {
-            self.mark(instance);
+        let method = match &node.receiver {
+            MethodReceiver::Instance(instance) => {
+                self.mark(instance);
+                self.instances
+                    .type_of(instance)
+                    .and_then(|fb_type| self.function_blocks.resolve_method(fb_type, &node.method))
+                    .map(|(_, method)| method)
+            }
+            MethodReceiver::SelfRef(_) => None,
+        };
+        match method {
+            Some(method) => self.mark_bound_arguments(method, &node.params),
+            None => self.mark_all_arguments(&node.params),
         }
-        let candidates = self
-            .declarations
-            .method_params
-            .get(&node.method)
-            .map(Vec::as_slice);
-        self.mark_arguments(candidates, &node.params);
         node.recurse_visit(self)
     }
 
@@ -508,7 +399,7 @@ impl Visitor<Infallible> for WriteCollector<'_> {
         // A member initializer on a function-block instance sets the
         // block's variables; one on a structure sets fields, which are not
         // variables and are left alone.
-        if self.declarations.is_function_block(&node.type_name) {
+        if self.is_function_block(&node.type_name) {
             self.mark_element_inits(&node.elements_init);
         }
         node.recurse_visit(self)
@@ -594,17 +485,18 @@ struct Marker {
 }
 
 impl Marker {
-    fn new(declarations: &Declarations, written: &HashSet<Id>) -> Self {
-        let constant_globals: HashSet<Id> = declarations
+    fn new(collected: &WriteCollector<'_>) -> Self {
+        let constant_globals: HashSet<Id> = collected
             .globals
             .iter()
-            .filter(|(name, qualifies)| **qualifies && !written.contains(*name))
+            .filter(|(name, qualifies)| **qualifies && !collected.written.contains(*name))
             .map(|(name, _)| name.clone())
             .collect();
-        let blocked = written
+        let blocked = collected
+            .written
             .iter()
-            .chain(declarations.globals.keys())
-            .chain(declarations.externals.iter())
+            .chain(collected.globals.keys())
+            .chain(collected.externals.iter())
             .filter(|name| !constant_globals.contains(*name))
             .cloned()
             .collect();

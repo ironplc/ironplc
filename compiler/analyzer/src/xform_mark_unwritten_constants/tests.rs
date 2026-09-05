@@ -159,18 +159,82 @@ END_PROGRAM";
 #[test]
 fn apply_when_fb_call_names_unknown_param_then_arg_unchanged() {
     let program = "
+FUNCTION_BLOCK FB_Wait
+VAR_INPUT
+    PT : TIME;
+END_VAR
+END_FUNCTION_BLOCK
 PROGRAM main
 VAR
-    timer : TON;
+    waiter : FB_Wait;
     delay : TIME := T#1s;
 END_VAR
-    timer(NOPE := delay);
+    waiter(NOPE := delay);
 END_PROGRAM";
     let library = parse_and_resolve_types(program);
     assert_eq!(
         DeclarationQualifier::Unspecified,
         qualifier(&library, "delay")
     );
+}
+
+#[test]
+fn apply_when_member_initialized_instance_called_with_in_out_then_arg_unchanged() {
+    let program = "
+FUNCTION_BLOCK FB_Bump
+VAR
+    inc : INT := 1;
+END_VAR
+VAR_IN_OUT
+    total : INT;
+END_VAR
+    total := total + inc;
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR
+    inst : FB_Bump := (inc := 2);
+    acc : INT := 0;
+END_VAR
+    inst(total := acc);
+END_PROGRAM";
+    let library = parse_and_resolve_types(program);
+    assert_eq!(
+        DeclarationQualifier::Unspecified,
+        qualifier(&library, "acc")
+    );
+    assert_eq!(
+        DeclarationQualifier::Unspecified,
+        qualifier(&library, "inc")
+    );
+}
+
+#[test]
+fn apply_when_function_in_out_precedes_input_then_positional_in_out_arg_unchanged() {
+    let program = "
+FUNCTION Bump : INT
+VAR_IN_OUT
+    io : INT;
+END_VAR
+VAR_INPUT
+    n : INT;
+END_VAR
+    io := io + n;
+    Bump := io;
+END_FUNCTION
+PROGRAM main
+VAR
+    acc : INT := 0;
+    step : INT := 1;
+    result : INT;
+END_VAR
+    result := Bump(acc, step);
+END_PROGRAM";
+    let library = parse_and_resolve_types(program);
+    assert_eq!(
+        DeclarationQualifier::Unspecified,
+        qualifier(&library, "acc")
+    );
+    assert_eq!(DeclarationQualifier::Constant, qualifier(&library, "step"));
 }
 
 #[test]
@@ -390,28 +454,4 @@ END_VAR
 END_PROGRAM";
     let library = parse_and_resolve_types(program);
     assert_eq!(DeclarationQualifier::Constant, qualifier(&library, "limit"));
-}
-
-// -----------------------------------------------------------------
-// Callee parameter binding
-// -----------------------------------------------------------------
-
-#[test]
-fn positional_is_in_out_when_beyond_extensible_params_then_input() {
-    let params = CalleeParams {
-        params: vec![(Id::from("IN1"), false)],
-        extensible: true,
-    };
-    assert_eq!(Some(false), params.positional_is_in_out(3));
-    assert_eq!(Some(false), params.named_is_in_out(&Id::from("IN4")));
-}
-
-#[test]
-fn positional_is_in_out_when_beyond_fixed_params_then_unknown() {
-    let params = CalleeParams {
-        params: vec![(Id::from("IN1"), false)],
-        extensible: false,
-    };
-    assert_eq!(None, params.positional_is_in_out(1));
-    assert_eq!(None, params.named_is_in_out(&Id::from("IN2")));
 }
