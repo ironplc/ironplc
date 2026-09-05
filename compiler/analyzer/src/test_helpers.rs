@@ -61,3 +61,34 @@ pub fn resolve_fresh_with(
     let context = SemanticContextBuilder::new().build().unwrap();
     (library, context)
 }
+
+/// The qualifier of every declaration named `name`, in library order.
+///
+/// Transforms and rules that add or check `DeclarationQualifier`s assert on
+/// this rather than each re-walking the library.
+#[cfg(test)]
+pub fn declaration_qualifiers(library: &Library, name: &str) -> Vec<DeclarationQualifier> {
+    use ironplc_dsl::core::Id;
+    use ironplc_dsl::visitor::Visitor;
+    use std::convert::Infallible;
+
+    struct Finder {
+        name: Id,
+        found: Vec<DeclarationQualifier>,
+    }
+    impl Visitor<Infallible> for Finder {
+        type Value = ();
+        fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
+            if node.identifier.symbolic_id() == Some(&self.name) {
+                self.found.push(node.qualifier.clone());
+            }
+            Ok(())
+        }
+    }
+    let mut finder = Finder {
+        name: Id::from(name),
+        found: vec![],
+    };
+    let Ok(()) = finder.walk(library);
+    finder.found
+}
