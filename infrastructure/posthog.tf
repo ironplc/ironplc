@@ -27,9 +27,19 @@
 # depend on collectors not built yet and are left as commented stubs at the
 # bottom.
 #
-# NOTE: query_json field values (boolean property filters, breakdownFilter
-# shape, display enums) can vary by PostHog version. Validate with
-# `terraform plan` / `terraform apply` and adjust anything the API rejects.
+# NOTE: query_json is opaque to Terraform — it is a string as far as the
+# provider is concerned. A wrong field value is NOT rejected by the API: PostHog
+# accepts the query and the tile silently reads 0 forever. `terraform apply`
+# succeeding therefore proves only that the insight matches this file, never
+# that it counts the right events. After every apply, open the affected tiles
+# and confirm the numbers against the raw event data.
+#
+# Property filter values are compared as strings, so boolean properties must be
+# written as ["true"] / ["false"], not [true] / [false] — the latter is the
+# encoding that silently zeroed every `success`-filtered tile below.
+#
+# `description` is capped at 400 characters by the PostHog API (a hard 400
+# validation_error, not a silent truncation). Keep some headroom.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -195,7 +205,7 @@ resource "posthog_insight" "successful_compiles" {
         event      = "compile_finished"
         name       = "compile_finished"
         math       = "dau"
-        properties = [{ key = "success", type = "event", operator = "exact", value = [true] }]
+        properties = [{ key = "success", type = "event", operator = "exact", value = ["true"] }]
       }]
       interval     = "week"
       dateRange    = { date_from = local.ph_date_from }
@@ -220,7 +230,7 @@ resource "posthog_insight" "compile_success_rate" {
           event      = "compile_finished"
           name       = "compile_finished (success)"
           math       = "total"
-          properties = [{ key = "success", type = "event", operator = "exact", value = [true] }]
+          properties = [{ key = "success", type = "event", operator = "exact", value = ["true"] }]
         },
         {
           kind  = "EventsNode"
@@ -274,9 +284,9 @@ resource "posthog_insight" "broken_docs_examples" {
         name  = "compile_finished"
         math  = "total"
         properties = [
-          { key = "success", type = "event", operator = "exact", value = [false] },
+          { key = "success", type = "event", operator = "exact", value = ["false"] },
           { key = "program_origin", type = "event", operator = "exact", value = ["docs"] },
-          { key = "program_modified", type = "event", operator = "exact", value = [false] },
+          { key = "program_modified", type = "event", operator = "exact", value = ["false"] },
         ]
       }]
       interval        = "week"
@@ -302,7 +312,7 @@ resource "posthog_insight" "top_compile_error_codes" {
         event      = "compile_finished"
         name       = "compile_finished"
         math       = "total"
-        properties = [{ key = "success", type = "event", operator = "exact", value = [false] }]
+        properties = [{ key = "success", type = "event", operator = "exact", value = ["false"] }]
       }]
       interval        = "week"
       dateRange       = { date_from = local.ph_date_from }
@@ -314,7 +324,7 @@ resource "posthog_insight" "top_compile_error_codes" {
 
 resource "posthog_insight" "todo_report_submissions" {
   name          = "Code submissions"
-  description   = "Programs users chose to submit (via the playground \"Submit Code\" button) after a P9xxx compiler error or a non-user runtime stop (VM trap or cycle overrun). Each event carries the program source so the problem can be reproduced; the report_kind property splits compiler vs runtime. Unlike the error-code tiles, this event intentionally includes source, transmitted only on explicit, consented user action."
+  description   = "Programs users chose to submit (via the playground \"Submit Code\" button) after a P9xxx compiler error or a non-user runtime stop (VM trap or cycle overrun). Each event carries the program source so the problem can be reproduced; report_kind splits compiler vs runtime. Unlike the error-code tiles, this one intentionally carries source — only on explicit, consented user action."
   dashboard_ids = [posthog_dashboard.adoption.id]
   tags          = local.ph_tags
 
@@ -351,7 +361,7 @@ resource "posthog_insight" "top_compiler_error_locations" {
         event      = "compile_finished"
         name       = "compile_finished"
         math       = "total"
-        properties = [{ key = "success", type = "event", operator = "exact", value = [false] }]
+        properties = [{ key = "success", type = "event", operator = "exact", value = ["false"] }]
       }]
       interval        = "week"
       dateRange       = { date_from = local.ph_date_from }
@@ -445,7 +455,7 @@ resource "posthog_insight" "visitor_success_funnel" {
           kind       = "EventsNode"
           event      = "compile_finished"
           name       = "compile_finished (success)"
-          properties = [{ key = "success", type = "event", operator = "exact", value = [true] }]
+          properties = [{ key = "success", type = "event", operator = "exact", value = ["true"] }]
         },
         { kind = "EventsNode", event = "run_started", name = "run_started" },
       ]
