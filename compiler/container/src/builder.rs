@@ -420,28 +420,14 @@ mod tests {
     use super::*;
     use crate::id_types::ConstantIndex;
     use crate::id_types::{SourceColumn, SourceFileId, SourceLine};
+    use crate::test_support::{steel_thread_bytecode, steel_thread_single_function_container};
     use std::vec;
     use std::vec::Vec;
 
     #[test]
     fn builder_when_steel_thread_program_then_builds_valid_container() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]
-            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]
-            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]
-            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]
-            0x20,                   // ADD_I32
-            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]
-            0x8C,                   // RET_VOID
-        ];
-
-        let container = ContainerBuilder::new()
-            .num_variables(2)
-            .add_i32_constant(10)
-            .add_i32_constant(32)
-            .add_function(FunctionId::INIT, &bytecode, 2, 2, 0)
-            .build();
+        let bytecode = steel_thread_bytecode();
+        let container = steel_thread_single_function_container();
 
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.header.max_stack_depth, 2);

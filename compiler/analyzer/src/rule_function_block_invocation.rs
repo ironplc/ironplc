@@ -33,16 +33,16 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{Id, Located},
+    core::Located,
     diagnostic::{Diagnostic, Label},
     textual::*,
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
-use std::collections::HashMap;
 use std::convert::Infallible;
 
 use crate::{
+    callee_resolution::{FunctionBlocks, InstanceTypes},
     intermediates::stdlib_function_block::is_stdlib_function_block,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
@@ -55,34 +55,25 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    // Collect the names from the library into a map so that
-    // we can quickly look up invocations
-    let mut function_blocks = HashMap::new();
-    for x in lib.elements.iter() {
-        if let LibraryElementKind::FunctionBlockDeclaration(fb) = x {
-            function_blocks.insert(fb.name.clone(), fb);
-        }
-    }
+    let function_blocks = FunctionBlocks::from_library(lib);
 
     // Walk the library to find all references to function blocks
     run_rule(RuleFunctionBlockUse::new(&function_blocks), lib)
 }
 
 struct RuleFunctionBlockUse<'a> {
-    // Map of the name of a function block declaration to the
-    // declaration itself.
-    function_blocks: &'a HashMap<TypeName, &'a FunctionBlockDeclaration>,
+    function_blocks: &'a FunctionBlocks<'a>,
 
-    // Map of variable name to the function block name that is the implementation
-    var_to_fb: HashMap<Id, TypeName>,
+    /// The instances declared in the unit being walked.
+    instances: InstanceTypes,
 
     diagnostics: Vec<Diagnostic>,
 }
 impl<'a> RuleFunctionBlockUse<'a> {
-    fn new(decls: &'a HashMap<TypeName, &'a FunctionBlockDeclaration>) -> Self {
+    fn new(function_blocks: &'a FunctionBlocks<'a>) -> Self {
         Self {
-            function_blocks: decls,
-            var_to_fb: HashMap::new(),
+            function_blocks,
+            instances: InstanceTypes::default(),
             diagnostics: Vec::new(),
         }
     }
@@ -130,7 +121,7 @@ impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
         let res = node.recurse_visit(self);
 
         // Remove all items from var init decl since we have left this context
-        self.var_to_fb.clear();
+        self.instances.clear();
         res
     }
 
@@ -141,7 +132,7 @@ impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
         let res = node.recurse_visit(self);
 
         // Remove all items from var init decl since we have left this context
-        self.var_to_fb.clear();
+        self.instances.clear();
         res
     }
 
@@ -152,25 +143,21 @@ impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
         let res = node.recurse_visit(self);
 
         // Remove all items from var init decl since we have left this context
-        self.var_to_fb.clear();
+        self.instances.clear();
         res
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        if let InitialValueAssignmentKind::FunctionBlock(fbi) = &node.initializer {
-            if let Some(id) = node.identifier.symbolic_id() {
-                self.var_to_fb.insert(id.clone(), fbi.type_name.clone());
-            }
-        }
+        self.instances.declare(node);
         Ok(())
     }
 
     fn visit_fb_call(&mut self, fb_call: &FbCall) -> Result<Self::Value, Infallible> {
         // Check if function block is defined because you cannot
         // call a function block that doesn't exist
-        // Cloned so that the borrow of `var_to_fb` ends here: the arms below
+        // Cloned so that the borrow of `instances` ends here: the arms below
         // push onto `self.diagnostics`, which borrows `self` mutably.
-        let function_block_name = self.var_to_fb.get(&fb_call.var_name).cloned();
+        let function_block_name = self.instances.type_of(&fb_call.var_name).cloned();
         let Some(function_block_name) = function_block_name else {
             self.diagnostics.push(Self::not_in_scope(fb_call));
             return Ok(());

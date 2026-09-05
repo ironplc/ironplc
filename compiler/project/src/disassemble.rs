@@ -474,9 +474,9 @@ fn hex_string(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironplc_container::test_support::{round_trip, steel_thread_single_function_container};
     use ironplc_container::{ContainerBuilder, FunctionId};
     use rstest::rstest;
-    use std::io::Cursor;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
@@ -496,13 +496,11 @@ mod tests {
             .data_region_bytes(32);
         builder.add_array_descriptor(0, 2, 0);
         builder.add_array_descriptor(2, 2, 0);
-        let container = builder
-            .add_function(FunctionId::new(0), &bytecode, 2, 2, 0)
-            .build();
-
-        let mut buf = Vec::new();
-        container.write_to(&mut buf).unwrap();
-        Container::read_from(&mut Cursor::new(buf)).unwrap()
+        round_trip(
+            &builder
+                .add_function(FunctionId::new(0), &bytecode, 2, 2, 0)
+                .build(),
+        )
     }
 
     /// Pins both the decoded name and the alignment: an operand layout that
@@ -533,29 +531,10 @@ mod tests {
     }
 
     /// Builds the steel thread test container (x := 10; y := x + 32).
+    ///
+    /// Round-trips through serialization to fill in section offsets.
     fn steel_thread_container() -> Container {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]
-            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]
-            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
-            0x20,                   // ADD_I32
-            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]
-            0x8C,                   // RET_VOID
-        ];
-
-        let container = ContainerBuilder::new()
-            .num_variables(2)
-            .add_i32_constant(10)
-            .add_i32_constant(32)
-            .add_function(FunctionId::new(0), &bytecode, 2, 2, 0)
-            .build();
-
-        // Round-trip through serialization to fill in offsets
-        let mut buf = Vec::new();
-        container.write_to(&mut buf).unwrap();
-        Container::read_from(&mut Cursor::new(&buf)).unwrap()
+        round_trip(&steel_thread_single_function_container())
     }
 
     /// Builds a minimal container whose single function contains the given bytecode.
@@ -564,15 +543,14 @@ mod tests {
     /// resolve to a value -- and no variables. Round-trips through
     /// serialization so all section offsets are populated correctly.
     fn container_with_bytecode(bytecode: Vec<u8>) -> Container {
-        let container = ContainerBuilder::new()
-            .add_i32_constant(10)
-            .add_i32_constant(32)
-            .add_i32_constant(99)
-            .add_function(FunctionId::new(0), &bytecode, 4, 0, 0)
-            .build();
-        let mut buf = Vec::new();
-        container.write_to(&mut buf).unwrap();
-        Container::read_from(&mut Cursor::new(&buf)).unwrap()
+        round_trip(
+            &ContainerBuilder::new()
+                .add_i32_constant(10)
+                .add_i32_constant(32)
+                .add_i32_constant(99)
+                .add_function(FunctionId::new(0), &bytecode, 4, 0, 0)
+                .build(),
+        )
     }
 
     /// Returns the first decoded instruction from a container built with the
@@ -1176,16 +1154,15 @@ mod tests {
     fn decode_when_call_and_debug_section_names_callee_then_comment_shows_name() {
         // CALL func_id=1, param base 4.
         let bytecode = vec![opcode::CALL, 0x01, 0x00, 0x04, 0x00, opcode::RET_VOID];
-        let container = ContainerBuilder::new()
-            .add_function(FunctionId::new(0), &bytecode, 2, 0, 0)
-            .add_func_name(ironplc_container::FuncNameEntry {
-                function_id: FunctionId::new(1),
-                name: "COMPUTE".to_string(),
-            })
-            .build();
-        let mut buf = Vec::new();
-        container.write_to(&mut buf).unwrap();
-        let container = Container::read_from(&mut Cursor::new(&buf)).unwrap();
+        let container = round_trip(
+            &ContainerBuilder::new()
+                .add_function(FunctionId::new(0), &bytecode, 2, 0, 0)
+                .add_func_name(ironplc_container::FuncNameEntry {
+                    function_id: FunctionId::new(1),
+                    name: "COMPUTE".to_string(),
+                })
+                .build(),
+        );
         let instr = &disassemble(&container)["functions"][0]["instructions"][0];
         assert_eq!(instr["opcode"], "CALL");
         assert_eq!(instr["operands"], "func[1], params[4]");
@@ -1289,13 +1266,12 @@ mod tests {
     fn decode_when_const_pool_index_out_of_range_then_comment_shows_invalid() {
         // pool[99] but the pool only has one entry
         let bytecode = vec![opcode::LOAD_CONST_I32, 0x63, 0x00, opcode::RET_VOID];
-        let container = ContainerBuilder::new()
-            .add_i32_constant(42)
-            .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 0, 0)
-            .build();
-        let mut buf = Vec::new();
-        container.write_to(&mut buf).unwrap();
-        let container = Container::read_from(&mut Cursor::new(&buf)).unwrap();
+        let container = round_trip(
+            &ContainerBuilder::new()
+                .add_i32_constant(42)
+                .add_function(FunctionId::new(0), &bytecode, 2, 0, 0)
+                .build(),
+        );
         let result = disassemble(&container);
         let instr = &result["functions"][0]["instructions"][0];
         assert_eq!(instr["comment"], "= <invalid pool index 99>");
