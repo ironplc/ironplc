@@ -26,6 +26,15 @@ pub enum FormOf {
     Not,
 }
 
+/// How many operands a function form takes.
+#[derive(Debug, Clone, PartialEq)]
+enum Arity {
+    /// One operand, `IN` (`NOT`).
+    Unary,
+    /// Exactly two operands, `IN1` and `IN2` (`SUB`, `GT`).
+    Binary,
+}
+
 /// How the result type of a function form follows from its operands.
 #[derive(Debug, Clone, PartialEq)]
 enum FormResult {
@@ -47,6 +56,8 @@ pub struct OperatorFunctionForm {
     pub name: &'static str,
     /// The operator this function is a form of.
     pub operator: FormOf,
+    /// How many operands the function takes.
+    arity: Arity,
     /// The type category of every operand.
     operands: &'static str,
     /// How the result type follows from the operands.
@@ -57,12 +68,14 @@ pub struct OperatorFunctionForm {
 const fn form(
     name: &'static str,
     operator: FormOf,
+    arity: Arity,
     operands: &'static str,
     result: FormResult,
 ) -> OperatorFunctionForm {
     OperatorFunctionForm {
         name,
         operator,
+        arity,
         operands,
         result,
     }
@@ -80,24 +93,28 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
     form(
         "ADD",
         FormOf::Arithmetic(Operator::Add),
+        Arity::Binary,
         "ANY_NUM",
         FormResult::Operand,
     ),
     form(
         "SUB",
         FormOf::Arithmetic(Operator::Sub),
+        Arity::Binary,
         "ANY_NUM",
         FormResult::Operand,
     ),
     form(
         "MUL",
         FormOf::Arithmetic(Operator::Mul),
+        Arity::Binary,
         "ANY_NUM",
         FormResult::Operand,
     ),
     form(
         "DIV",
         FormOf::Arithmetic(Operator::Div),
+        Arity::Binary,
         "ANY_NUM",
         FormResult::Operand,
     ),
@@ -106,6 +123,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
     form(
         "MOD",
         FormOf::Arithmetic(Operator::Mod),
+        Arity::Binary,
         "ANY_INT",
         FormResult::Operand,
     ),
@@ -115,36 +133,42 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
     form(
         "GT",
         FormOf::Compare(CompareOp::Gt),
+        Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
     form(
         "GE",
         FormOf::Compare(CompareOp::GtEq),
+        Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
     form(
         "EQ",
         FormOf::Compare(CompareOp::Eq),
+        Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
     form(
         "LE",
         FormOf::Compare(CompareOp::LtEq),
+        Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
     form(
         "LT",
         FormOf::Compare(CompareOp::Lt),
+        Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
     form(
         "NE",
         FormOf::Compare(CompareOp::Ne),
+        Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
@@ -154,22 +178,31 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
     form(
         "AND",
         FormOf::Compare(CompareOp::And),
+        Arity::Binary,
         "ANY_BIT",
         FormResult::Operand,
     ),
     form(
         "OR",
         FormOf::Compare(CompareOp::Or),
+        Arity::Binary,
         "ANY_BIT",
         FormResult::Operand,
     ),
     form(
         "XOR",
         FormOf::Compare(CompareOp::Xor),
+        Arity::Binary,
         "ANY_BIT",
         FormResult::Operand,
     ),
-    form("NOT", FormOf::Not, "ANY_BIT", FormResult::Operand),
+    form(
+        "NOT",
+        FormOf::Not,
+        Arity::Unary,
+        "ANY_BIT",
+        FormResult::Operand,
+    ),
 ];
 
 impl OperatorFunctionForm {
@@ -190,9 +223,9 @@ impl OperatorFunctionForm {
     /// unless the row says the result is `BOOL`.
     pub(crate) fn signature(&self) -> FunctionSignature {
         let operand = |name: &str| input_param(name, self.operands);
-        let parameters = match self.operator {
-            FormOf::Not => vec![operand("IN")],
-            FormOf::Arithmetic(_) | FormOf::Compare(_) => vec![operand("IN1"), operand("IN2")],
+        let parameters = match self.arity {
+            Arity::Unary => vec![operand("IN")],
+            Arity::Binary => vec![operand("IN1"), operand("IN2")],
         };
         let return_type = match self.result {
             FormResult::Operand => self.operand_type(),
