@@ -137,12 +137,55 @@ struct TypeResolver<'a> {
     diagnostics: Vec<Diagnostic>,
 }
 
+impl TypeResolver<'_> {
+    /// Returns whether `name` names a function block type.
+    ///
+    /// Covers all three places a function block type can come from: the
+    /// type environment (standard library blocks such as `TON`), the set of
+    /// standard types recognized but not yet supported, and the `FUNCTION_BLOCK`
+    /// declarations collected from this compilation unit.
+    fn is_function_block_type(&self, name: &TypeName) -> bool {
+        if let Some(ty) = self.type_environment.get(name) {
+            if ty.representation.is_function_block() {
+                return true;
+            }
+        }
+        if is_unsupported_standard_type(name) {
+            return true;
+        }
+        matches!(
+            self.types.find(name),
+            Some(TypeDefinitionKind::FunctionBlock)
+        )
+    }
+}
+
 impl Fold<Diagnostic> for TypeResolver<'_> {
     fn fold_initial_value_assignment_kind(
         &mut self,
         node: InitialValueAssignmentKind,
     ) -> Result<InitialValueAssignmentKind, Diagnostic> {
         match node {
+            // `x : T := (a := 1)` always parses as a structure initializer:
+            // the parser cannot know whether `T` names a STRUCT or a
+            // function block, because no type declaration is in scope yet.
+            // A function-block type makes it an instance with member
+            // initial values -- `StructureInitializationDeclaration` and
+            // `FunctionBlockInitialValueAssignment` carry the same
+            // `Vec<StructureElementInit>` precisely because the two are
+            // the same construct. Without this the variable stays a
+            // structure, so it can be neither invoked (P4012) nor laid out
+            // (there is no such structure type).
+            InitialValueAssignmentKind::Structure(decl)
+                if self.is_function_block_type(&decl.type_name) =>
+            {
+                Ok(InitialValueAssignmentKind::FunctionBlock(
+                    FunctionBlockInitialValueAssignment {
+                        type_name: decl.type_name,
+                        init: decl.elements_init,
+                    },
+                ))
+            }
             // TODO this needs to handle struct definitions
             InitialValueAssignmentKind::LateResolvedType(name) => {
                 // Check the type environment for known types (elementary types and stdlib FBs)
@@ -256,7 +299,7 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::type_environment::TypeEnvironment;
+    use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
 
     use super::apply;
     use ironplc_dsl::{
@@ -570,5 +613,125 @@ END_FUNCTION_BLOCK
             InitialValueAssignmentKind::FunctionBlock(fb_init)
             if fb_init.type_name == TypeName::from("FB_Callee")
         ));
+    }
+
+    /// A standard library function block declared with a parenthesized member
+    /// initializer is an *instance* of that block, not a structure -- the
+    /// remedy `docs/reference/compiler/problems/P4043.rst` offers for P4043.
+    #[test]
+    fn apply_when_stdlib_fb_type_has_member_initializer_then_resolves_to_instance() {
+        let program = "
+FUNCTION_BLOCK FB_Example
+VAR
+    tonDelta : TON := (PT := T#100MS);
+END_VAR
+END_FUNCTION_BLOCK
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .with_stdlib_function_blocks()
+            .build()
+            .unwrap();
+        let (result, diagnostics) = apply(input, &mut type_environment).unwrap();
+        assert!(diagnostics.is_empty());
+
+        let fb = first_function_block(&result);
+        let initializer = &fb.variables[0].initializer;
+        let InitialValueAssignmentKind::FunctionBlock(fb_init) = initializer else {
+            panic!("expected a function block instance, got {initializer:?}");
+        };
+        assert_eq!(TypeName::from("TON"), fb_init.type_name);
+        assert_eq!(1, fb_init.init.len());
+        assert_eq!(Id::from("PT"), fb_init.init[0].name);
+    }
+
+    /// The same holds for a user-declared function block.
+    #[test]
+    fn apply_when_user_fb_type_has_member_initializer_then_resolves_to_instance() {
+        let program = "
+FUNCTION_BLOCK SCALER
+VAR_INPUT
+    factor : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK caller
+VAR
+    scaler : SCALER := (factor := 3);
+END_VAR
+END_FUNCTION_BLOCK
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let (result, diagnostics) = apply(input, &mut type_environment).unwrap();
+        assert!(diagnostics.is_empty());
+
+        let caller = result
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                LibraryElementKind::FunctionBlockDeclaration(fb)
+                    if fb.name == TypeName::from("caller") =>
+                {
+                    Some(fb)
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!(matches!(
+            &caller.variables[0].initializer,
+            InitialValueAssignmentKind::FunctionBlock(fb_init)
+            if fb_init.type_name == TypeName::from("SCALER") && fb_init.init.len() == 1
+        ));
+    }
+
+    /// A genuine STRUCT type with the same initializer shape stays a structure.
+    #[test]
+    fn apply_when_struct_type_has_member_initializer_then_stays_a_structure() {
+        let program = "
+TYPE the_struct : STRUCT x : INT; END_STRUCT; END_TYPE
+
+FUNCTION_BLOCK caller
+VAR
+    the_var : the_struct := (x := 3);
+END_VAR
+END_FUNCTION_BLOCK
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let (result, diagnostics) = apply(input, &mut type_environment).unwrap();
+        assert!(diagnostics.is_empty());
+
+        let caller = first_function_block(&result);
+        assert!(matches!(
+            &caller.variables[0].initializer,
+            InitialValueAssignmentKind::Structure(decl)
+            if decl.type_name == TypeName::from("the_struct")
+        ));
+    }
+
+    /// Returns the first function block declaration in the library.
+    fn first_function_block(library: &Library) -> &FunctionBlockDeclaration {
+        library
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                LibraryElementKind::FunctionBlockDeclaration(fb) => Some(fb),
+                _ => None,
+            })
+            .unwrap()
     }
 }

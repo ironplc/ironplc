@@ -166,6 +166,39 @@ impl DeclarationResolver<'_> {
 }
 
 impl Fold<Diagnostic> for DeclarationResolver<'_> {
+    /// Reclassifies a bare identifier used as a structure or function-block
+    /// member initializer value.
+    ///
+    /// `structure_element_initialization()` offers `enumerated_value()`
+    /// before `expression()`, and a bare identifier is a complete match for
+    /// the former, so the PEG ordered choice locks in `EnumeratedValue` for
+    /// `(x := g)` whether `g` names an enumeration value or a variable. The
+    /// trailing lookahead that keeps a longer value like `pDevice^.Delta`
+    /// falling through to `expression()` cannot help here -- at parse time
+    /// the two spellings are the same single token in the same position.
+    ///
+    /// The decision belongs where declarations are known, which is here:
+    /// `resolve_late_bound` already makes exactly this call for every other
+    /// bare identifier. A variable reference becomes an `Expression`, which
+    /// is what it is -- a value read at instantiation time, gated by
+    /// `--allow-struct-initializer-expressions` (P4043). A qualified
+    /// `Type#VALUE` is unambiguous and is left alone.
+    fn fold_struct_initial_value_assignment_kind(
+        &mut self,
+        node: StructInitialValueAssignmentKind,
+    ) -> Result<StructInitialValueAssignmentKind, Diagnostic> {
+        if let StructInitialValueAssignmentKind::EnumeratedValue(value) = &node {
+            if value.type_name.is_none() {
+                if let ExprKind::Variable(variable) = self.resolve_late_bound(value.value.clone()) {
+                    return Ok(StructInitialValueAssignmentKind::Expression(Expr::new(
+                        ExprKind::Variable(variable),
+                    )));
+                }
+            }
+        }
+        node.recurse_fold(self)
+    }
+
     fn fold_function_declaration(
         &mut self,
         node: FunctionDeclaration,

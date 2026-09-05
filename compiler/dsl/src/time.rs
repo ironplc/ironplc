@@ -146,11 +146,16 @@ impl fmt::Display for DurationLiteral {
 #[derive(Debug, PartialEq, Clone)]
 pub struct TimeOfDayLiteral {
     value: Time,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl TimeOfDayLiteral {
     pub fn new(value: Time) -> Self {
-        Self { value }
+        Self {
+            value,
+            span: SourceSpan::default(),
+        }
     }
 
     /// Returns the hour, minute, second and microsecond from the literal.
@@ -179,11 +184,16 @@ impl fmt::Display for TimeOfDayLiteral {
 #[derive(Debug, PartialEq, Clone)]
 pub struct DateLiteral {
     pub value: Date,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl DateLiteral {
     pub fn new(value: Date) -> Self {
-        Self { value }
+        Self {
+            value,
+            span: SourceSpan::default(),
+        }
     }
 
     /// Returns the year, month, day from the literal.
@@ -219,11 +229,16 @@ impl fmt::Display for DateLiteral {
 #[derive(Debug, PartialEq, Clone)]
 pub struct DateAndTimeLiteral {
     value: PrimitiveDateTime,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl DateAndTimeLiteral {
     pub fn new(value: PrimitiveDateTime) -> Self {
-        Self { value }
+        Self {
+            value,
+            span: SourceSpan::default(),
+        }
     }
 
     /// Returns the year, month, day from the literal.
