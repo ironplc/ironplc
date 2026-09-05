@@ -248,12 +248,6 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
         let func_sig = self.context.functions.get(&node.name);
 
         if let Some(signature) = func_sig {
-            // Check each positional argument type against the parameter type.
-            // Standard-library functions are checked too: their parameters use
-            // generic ANY_* categories (or concrete types for the conversion
-            // functions), all handled by `are_types_compatible`.
-            let input_params: Vec<_> = signature.parameters.iter().filter(|p| p.is_input).collect();
-
             // Emit NotImplemented for output arguments on user-defined functions.
             // Standard-library functions do not take output arguments.
             if !signature.is_stdlib() {
@@ -279,12 +273,13 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                 })
                 .collect();
 
-            for (i, arg_expr) in positional_args.iter().enumerate() {
-                if i >= input_params.len() {
-                    break;
-                }
-                let param = &input_params[i];
-
+            // Check each positional argument type against the parameter type.
+            // Standard-library functions are checked too: their parameters use
+            // generic ANY_* categories (or concrete types for the conversion
+            // functions), all handled by `are_types_compatible`. The parameter
+            // list continues past the declared ones for an extensible
+            // function, so every input of `ADD(a, b, c)` is checked.
+            for (param, arg_expr) in signature.input_parameters().zip(&positional_args) {
                 if let Some(ref arg_type) = arg_expr.resolved_type {
                     if !are_types_compatible(&param.param_type, arg_type, self.options) {
                         self.diagnostics.push(
@@ -426,6 +421,51 @@ END_VAR
     result := AND(a, b);
 END_PROGRAM",
         2,
+        Problem::FunctionCallArgTypeMismatch
+    );
+
+    // An extensible call is checked past its declared parameters, so the
+    // third input of ADD is checked like the first two (#1618).
+    rule_ctx_ok!(
+        apply_when_extensible_call_third_arg_matches_then_ok,
+        "
+PROGRAM main
+VAR
+    a : DINT;
+    b : DINT;
+    c : DINT;
+    result : DINT;
+END_VAR
+    result := ADD(a, b, c);
+END_PROGRAM"
+    );
+
+    rule_ctx_err1!(
+        apply_when_extensible_call_third_arg_mismatch_then_error,
+        "
+PROGRAM main
+VAR
+    a : DINT;
+    b : DINT;
+    c : STRING;
+    result : DINT;
+END_VAR
+    result := ADD(a, b, c);
+END_PROGRAM",
+        Problem::FunctionCallArgTypeMismatch
+    );
+
+    rule_ctx_err1!(
+        apply_when_mux_fourth_input_mismatch_then_error,
+        "
+PROGRAM main
+VAR
+    a : DINT;
+    s : STRING;
+    result : DINT;
+END_VAR
+    result := MUX(0, a, a, a, s);
+END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 

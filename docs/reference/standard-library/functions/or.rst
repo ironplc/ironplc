@@ -2,7 +2,7 @@
 OR
 ==
 
-Returns the bitwise OR of two inputs.
+Returns the bitwise OR of two or more inputs.
 
 Signature
 ---------
@@ -11,8 +11,8 @@ Signature
 
             ┌─────────┐
        IN1 ─┤         │
-            │   OR    ├─ OUT
-       IN2 ─┤         │
+       IN2 ─┤   OR    ├─ OUT
+       IN3 ─┤         │
             └─────────┘
 
 .. code-block:: text
@@ -21,11 +21,12 @@ Signature
      VAR_INPUT
        IN1 : ANY_BIT;
        IN2 : ANY_BIT;
+       (* ... additional inputs ... *)
      END_VAR
    END_FUNCTION
 
 The return type matches the input type. ``OR`` accepts ``BOOL``,
-``BYTE``, ``WORD``, ``DWORD``, ``LWORD``. Both inputs must share the same
+``BYTE``, ``WORD``, ``DWORD``, ``LWORD``. All inputs must share the same
 type.
 
 .. rubric:: Inputs
@@ -57,16 +58,16 @@ type.
      - Description
    * - Return value
      - ``ANY_BIT``
-     - Each bit set in either IN1 or IN2. Same type as the inputs.
+     - Each bit set in any input. Same type as the inputs.
 
 Description
 -----------
 
 On ``BOOL`` inputs, returns ``TRUE`` when at least one input is ``TRUE``.
 On ``BYTE``, ``WORD``, ``DWORD`` and ``LWORD`` inputs, each bit of the
-result is set when the same bit is set in either input. ``OR(a, b)`` is the
+result is set when the same bit is set in any input. ``OR(a, b)`` is the
 functional form of the ``OR`` operator: ``a OR b``. Both forms are
-equivalent.
+equivalent, and ``OR(a, b, c)`` is ``a OR b OR c``.
 
 Example
 -------
@@ -76,6 +77,7 @@ Example
 
    result := OR(WORD#16#F0F0, WORD#16#FF00);    (* result = 16#FFF0 *)
    result := WORD#16#F0F0 OR WORD#16#FF00;      (* operator form *)
+   result := OR(WORD#16#F0F0, WORD#16#FF00, WORD#16#000F);    (* result = 16#FFFF *)
 
 See Also
 --------
