@@ -227,7 +227,15 @@ fn function_char_width(
 /// The encoding an expression's analyzer-assigned type names.
 ///
 /// Every remaining call in a string position is one whose result the analyzer
-/// typed, so this answers for all of them. Failing to answer means the
+/// typed, so this answers for all of them. In practice they are all narrow:
+/// the calls that reach here are the ones that are neither a width-preserving
+/// standard function nor a user function with a declared string return, which
+/// leaves the `*_TO_STRING` conversions, and every one of those builds
+/// Latin-1. `WSTRING` is mapped because it is what the name means, not
+/// because a program can currently produce it -- `parse_string_conversion`
+/// has no `*_TO_WSTRING` form, and `SEL`/`MUX` reject a string argument. A
+/// wide result reaches its caller through the user-function branch above,
+/// which `end_to_end_wstring` covers. Failing to answer means the
 /// analyzer typed a string-position expression as something that is not a
 /// string, which is a defect in the compiler rather than in the program being
 /// compiled -- so it is reported as one, and the diagnostic names what was
