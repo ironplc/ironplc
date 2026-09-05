@@ -272,42 +272,49 @@ pub(crate) use declare_instruction_set;
 
 #[cfg(test)]
 mod tests {
-    use std::vec;
-    use std::vec::Vec;
-
     use super::*;
     use crate::opcode;
 
-    /// `STR_INIT data_offset=32, max_len=4, char_width=2` — one operand of
-    /// each width the instruction set uses.
-    fn str_init() -> Vec<u8> {
-        let mut bytes = vec![opcode::STR_INIT];
-        bytes.extend_from_slice(&32u32.to_le_bytes());
-        bytes.extend_from_slice(&4u16.to_le_bytes());
-        bytes.push(2);
-        bytes
-    }
+    /// `STR_INIT data_offset=32, max_len=4, char_width=2` followed by
+    /// `RET_VOID` — one operand of each width the instruction set uses, and a
+    /// second instruction to walk on to.
+    ///
+    /// Written as a fixed array rather than built with `vec!`: this module is
+    /// part of the crate's `no_std` surface, so its tests do not reach for
+    /// `std` either.
+    const STR_INIT_THEN_RET: [u8; 9] = [
+        opcode::STR_INIT,
+        32,
+        0,
+        0,
+        0, // data_offset: u32
+        4,
+        0, // max_length: u16
+        2, // char_width: u8
+        opcode::RET_VOID,
+    ];
 
     #[test]
     fn decode_body_when_two_instructions_then_yields_both_with_offsets() {
-        let mut bytecode = str_init();
-        bytecode.push(opcode::RET_VOID);
+        let mut walk = decode_body(&STR_INIT_THEN_RET);
 
-        let decoded: Vec<_> = decode_body(&bytecode).map(Result::unwrap).collect();
+        let first = walk.next().unwrap().unwrap();
+        assert_eq!(first.offset, 0);
+        assert_eq!(first.opcode, opcode::STR_INIT);
+        assert_eq!(first.size(), 8);
+        assert_eq!(first.next_offset(), 8);
 
-        assert_eq!(decoded.len(), 2);
-        assert_eq!(decoded[0].offset, 0);
-        assert_eq!(decoded[0].opcode, opcode::STR_INIT);
-        assert_eq!(decoded[0].size(), 8);
-        assert_eq!(decoded[0].next_offset(), 8);
-        assert_eq!(decoded[1].offset, 8);
-        assert_eq!(decoded[1].opcode, opcode::RET_VOID);
+        let second = walk.next().unwrap().unwrap();
+        assert_eq!(second.offset, 8);
+        assert_eq!(second.opcode, opcode::RET_VOID);
+        assert_eq!(second.size(), 1);
+
+        assert!(walk.next().is_none());
     }
 
     #[test]
     fn operand_when_read_by_index_then_matches_declared_width() {
-        let bytecode = str_init();
-        let decoded = decode_body(&bytecode).next().unwrap().unwrap();
+        let decoded = decode_body(&STR_INIT_THEN_RET).next().unwrap().unwrap();
 
         assert_eq!(decoded.operand(0), Some(32)); // DataOffset (u32)
         assert_eq!(decoded.operand(1), Some(4)); // MaxLength (u16)
@@ -317,18 +324,16 @@ mod tests {
 
     #[test]
     fn operands_with_kinds_when_walked_then_pairs_each_kind_with_its_bytes() {
-        let bytecode = str_init();
-        let decoded = decode_body(&bytecode).next().unwrap().unwrap();
+        let decoded = decode_body(&STR_INIT_THEN_RET).next().unwrap().unwrap();
+        let mut operands = decoded.operands_with_kinds();
 
-        let kinds: Vec<_> = decoded.operands_with_kinds().collect();
         assert_eq!(
-            kinds,
-            vec![
-                (Operand::DataOffset, &[32u8, 0, 0, 0][..]),
-                (Operand::MaxLength, &[4u8, 0][..]),
-                (Operand::CharWidth, &[2u8][..]),
-            ]
+            operands.next(),
+            Some((Operand::DataOffset, &[32u8, 0, 0, 0][..]))
         );
+        assert_eq!(operands.next(), Some((Operand::MaxLength, &[4u8, 0][..])));
+        assert_eq!(operands.next(), Some((Operand::CharWidth, &[2u8][..])));
+        assert_eq!(operands.next(), None);
     }
 
     #[test]
@@ -336,34 +341,33 @@ mod tests {
         // An unassigned byte has no length of its own, so the walk continues
         // at the next byte rather than ending -- which is what lets a
         // disassembler render every row of a corrupt body.
-        let bytecode = vec![0xFE, opcode::RET_VOID];
-
-        let decoded: Vec<_> = decode_body(&bytecode).collect();
+        let bytecode = [0xFE, opcode::RET_VOID];
+        let mut walk = decode_body(&bytecode);
 
         assert_eq!(
-            decoded[0],
-            Err(DecodeStop::UnknownOpcode {
+            walk.next(),
+            Some(Err(DecodeStop::UnknownOpcode {
                 offset: 0,
                 byte: 0xFE
-            })
+            }))
         );
-        assert_eq!(decoded[1].unwrap().opcode, opcode::RET_VOID);
+        assert_eq!(walk.next().unwrap().unwrap().opcode, opcode::RET_VOID);
+        assert!(walk.next().is_none());
     }
 
     #[test]
     fn decode_body_when_operands_run_past_the_end_then_truncated_and_ends() {
-        let mut bytecode = str_init();
-        bytecode.truncate(bytecode.len() - 1);
-
-        let decoded: Vec<_> = decode_body(&bytecode).collect();
+        let truncated = &STR_INIT_THEN_RET[..7];
+        let mut walk = decode_body(truncated);
 
         assert_eq!(
-            decoded,
-            vec![Err(DecodeStop::Truncated {
+            walk.next(),
+            Some(Err(DecodeStop::Truncated {
                 offset: 0,
                 opcode: opcode::STR_INIT
-            })]
+            }))
         );
+        assert!(walk.next().is_none());
     }
 
     #[test]
