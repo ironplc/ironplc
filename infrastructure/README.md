@@ -36,12 +36,31 @@ used.
   scopes (Settings → Personal API keys). This is *not* the public `phc_…`
   ingestion key — that one cannot create dashboards.
 
+## Commands
+
+`just` wraps the terraform invocations — run these from `infrastructure/`:
+
+| Recipe | Does | Needs credentials? |
+|---|---|---|
+| `just` / `just plan` | Show pending changes | yes |
+| `just login` | Authenticate to HCP; one-time, opens a browser | — |
+| `just init` | Initialize workspace, download providers | yes |
+| `just apply` | Apply, then remind you to verify the tiles | yes |
+| `just outputs` | Reverse-proxy CNAME target and status | yes |
+| `just validate` | Validate config (run `just init` first) | yes |
+| `just lint` | Check formatting | **no** |
+| `just format` | Auto-fix formatting | **no** |
+| `just ci` | Everything that runs without credentials | **no** |
+
+A bare `just` maps to `plan`, never `apply`, so it cannot mutate live
+infrastructure by accident. `just ci` is not wired into any workflow yet.
+
 ## First apply
 
 ```bash
 cd infrastructure
-terraform login           # browser flow; one-time per machine
-terraform init            # creates the workspace in your HCP org
+just login           # browser flow; one-time per machine
+just init            # creates the workspace in your HCP org
 ```
 
 Then set the three input variables on the workspace. Two options:
@@ -67,8 +86,8 @@ Then run the plan + apply from your laptop — it executes remotely in
 HCP, output streams back to your terminal:
 
 ```bash
-terraform plan      # 14 labels + 2 dashboards + their insights the first time
-terraform apply
+just plan      # 14 labels + 2 dashboards + their insights the first time
+just apply
 ```
 
 ### Option 2 — Local execution
@@ -80,8 +99,8 @@ workspace's **Execution Mode** to *Local* in HCP
 ```bash
 cp terraform.tfvars.example terraform.tfvars   # gitignored
 $EDITOR terraform.tfvars
-terraform plan
-terraform apply
+just plan
+just apply
 ```
 
 State is still stored remotely in HCP; only the plan/apply runs
@@ -185,8 +204,8 @@ of those would defeat the proxy. The default is `hog.ironplc.com`
 
 ### Bringing it up
 
-1. `terraform apply`. The record is created immediately and exposes two
-   outputs:
+1. `just apply`. The record is created immediately and exposes two
+   outputs, both printed by `just outputs`:
 
    ```bash
    terraform output posthog_proxy_target_cname   # PostHog-managed CNAME target
@@ -202,6 +221,13 @@ The record is **immutable**: changing `posthog_proxy_domain` replaces it and
 mints a new `target_cname`, so the CNAME must be repointed. Creating a proxy
 record may need an `organization:write` (or proxy) scope on the personal API
 key; if `apply` returns 403, add it in PostHog → Settings → Personal API keys.
+
+The proxy endpoint is **organization-level**, not project-level, so the key
+must also not be restricted to specific projects. A key scoped to one project
+fails here with `API keys with scoped projects are only supported on
+project-based endpoints` while resolving `@current` — even when it holds the
+right scopes. Set the key's project access to all projects, or supply an
+explicit `posthog_organization_id` instead of the `@current` default.
 
 ### Follow-up: point the SDK at the proxy
 

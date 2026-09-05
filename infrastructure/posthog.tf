@@ -37,6 +37,9 @@
 # Property filter values are compared as strings, so boolean properties must be
 # written as ["true"] / ["false"], not [true] / [false] — the latter is the
 # encoding that silently zeroed every `success`-filtered tile below.
+#
+# `description` is capped at 400 characters by the PostHog API (a hard 400
+# validation_error, not a silent truncation). Keep some headroom.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -321,7 +324,7 @@ resource "posthog_insight" "top_compile_error_codes" {
 
 resource "posthog_insight" "todo_report_submissions" {
   name          = "Code submissions"
-  description   = "Programs users chose to submit (via the playground \"Submit Code\" button) after a P9xxx compiler error or a non-user runtime stop (VM trap or cycle overrun). Each event carries the program source so the problem can be reproduced; the report_kind property splits compiler vs runtime. Unlike the error-code tiles, this event intentionally includes source, transmitted only on explicit, consented user action."
+  description   = "Programs users chose to submit (via the playground \"Submit Code\" button) after a P9xxx compiler error or a non-user runtime stop (VM trap or cycle overrun). Each event carries the program source so the problem can be reproduced; report_kind splits compiler vs runtime. Unlike the error-code tiles, this one intentionally carries source — only on explicit, consented user action."
   dashboard_ids = [posthog_dashboard.adoption.id]
   tags          = local.ph_tags
 

@@ -35,6 +35,9 @@
 # Property filter values are compared as strings, so a boolean property must be
 # written as ["true"] / ["false"], never [true] / [false] — that encoding
 # silently zeroed six tiles in posthog.tf before it was caught by hand.
+#
+# `description` is capped at 400 characters by the PostHog API (a hard 400
+# validation_error, not a silent truncation). Keep some headroom.
 # ---------------------------------------------------------------------------
 
 locals {
