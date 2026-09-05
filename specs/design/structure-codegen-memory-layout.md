@@ -532,4 +532,4 @@ The following items are explicitly deferred and should be tracked as TODOs:
 4. **Structure literals in expressions** — requires temporary structure allocation on the stack or in the data region
 5. **Packed byte-level layout** — ADR-0026 migration path
 6. **Direct data-region load/store opcodes** — Approach C from section 5.2, to eliminate array descriptor overhead for constant-offset access
-7. **Structure type descriptors in the container** — for debugger/verifier support
+7. ~~**Structure type descriptors in the container** — for debugger/verifier support~~ — resolved for the debugger by the COMPOSITE_TYPE debug sub-table ([Variable Inspection Model](variable-inspection-model.md), [ADR-0049](../adrs/0049-type-directed-debug-layout-for-aggregates.md)); the verifier continues to see a structure as a flat SLOT array
