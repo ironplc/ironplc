@@ -53,9 +53,9 @@ write to any part of a variable is a write to the whole variable.
 | **REQ-CVI-analyzer-010** | Assignment `v := e`, including to an array element, structure field, bit or partial access of `v` | The root variable `v` of the access chain |
 | **REQ-CVI-analyzer-011** | `FOR i := ...` | The control variable `i` |
 | **REQ-CVI-analyzer-012** | Output binding `Q => v` on a function, function block or method call | `v` |
-| **REQ-CVI-analyzer-013** | A variable argument bound to a `VAR_IN_OUT` parameter of a function, function block or method, by name or by position | The argument |
+| **REQ-CVI-analyzer-013** | A variable argument bound to a `VAR_IN_OUT` parameter of a function, function block or method: by name, or by position for a function (a positional function-block argument occupies a `VAR_INPUT` only) | The argument |
 | **REQ-CVI-analyzer-014** | `REF(v)` or `ADR(v)`, including the `REF=` binding | `v` (its address is taken, so it may be written through the reference) |
-| **REQ-CVI-analyzer-015** | A variable argument to a callee whose parameter directions cannot be determined (an undeclared function, an instance of an unknown type, an unknown parameter name) | The argument |
+| **REQ-CVI-analyzer-015** | A variable argument to a callee whose parameter directions cannot be determined (an undeclared function, an instance of an unknown type, an argument the callee declares no parameter for) | The argument |
 | **REQ-CVI-analyzer-016** | A function-block instance initializer or configuration `VAR_CONFIG` that sets a member value: `inst : FB := (count := 5)` | The member `count` |
 | **REQ-CVI-analyzer-017** | A configuration program connection sink `prog(Q => g)` | The global `g` |
 | **REQ-CVI-analyzer-018** | A `VAR_ACCESS` path with direction `READ_WRITE` or no direction | The variable at the end of the path |
@@ -63,7 +63,14 @@ write to any part of a variable is a write to the whole variable.
 
 A variable argument bound to a `VAR_INPUT` parameter is **not** a write
 (part of REQ-CVI-analyzer-013): `LEN(msg)` and `timer(PT := delay)` leave
-`msg` and `delay` constant.
+`msg` and `delay` constant. A standard-library function block declares no
+`VAR_IN_OUT`, so every argument to one is a read.
+
+The callee is found the way the invocation rules find it: the instance's
+declared type from the declarations of the unit being walked, the block or
+method from the library (`callee_resolution`), and the argument-to-parameter
+binding from `call_assignment_check`. The transform adds no lookup of its
+own.
 
 **REQ-CVI-analyzer-020** An assignment to a member of a function-block
 instance from outside the block, `inst.count := 5`, writes the member
