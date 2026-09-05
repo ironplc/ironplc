@@ -10,17 +10,15 @@
 //!
 //! See `specs/design/constant-variable-inference.md`.
 
-use std::convert::Infallible;
-
-use ironplc_dsl::common::{DeclarationQualifier, Library, VarDecl};
-use ironplc_dsl::core::{FileId, Id};
-use ironplc_dsl::visitor::Visitor;
+use ironplc_dsl::common::{DeclarationQualifier, Library};
+use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
 use rstest::rstest;
 use spec_test_macro::spec_test;
 
 use crate::stages::analyze;
+use crate::test_helpers::declaration_qualifiers;
 
 /// Analyze `program` with the default options and return the library and the
 /// problem codes analysis produced.
@@ -39,32 +37,9 @@ fn analyze_default(program: &str) -> (Library, Vec<String>) {
     analyze_with(program, &CompilerOptions::default())
 }
 
-/// The qualifier of every declaration named `name`, in library order.
-fn qualifiers(library: &Library, name: &str) -> Vec<DeclarationQualifier> {
-    struct Finder {
-        name: Id,
-        found: Vec<DeclarationQualifier>,
-    }
-    impl Visitor<Infallible> for Finder {
-        type Value = ();
-        fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-            if node.identifier.symbolic_id() == Some(&self.name) {
-                self.found.push(node.qualifier.clone());
-            }
-            Ok(())
-        }
-    }
-    let mut finder = Finder {
-        name: Id::from(name),
-        found: vec![],
-    };
-    let Ok(()) = finder.walk(library);
-    finder.found
-}
-
 /// The qualifier of the one declaration named `name`.
 fn qualifier(library: &Library, name: &str) -> DeclarationQualifier {
-    let mut found = qualifiers(library, name);
+    let mut found = declaration_qualifiers(library, name);
     assert_eq!(1, found.len(), "expected one declaration of {name}");
     found.remove(0)
 }
@@ -530,7 +505,7 @@ END_FUNCTION_BLOCK",
             DeclarationQualifier::Unspecified,
             DeclarationQualifier::Unspecified
         ],
-        qualifiers(&library, "shared")
+        declaration_qualifiers(&library, "shared")
     );
     assert_eq!(DeclarationQualifier::Constant, qualifier(&library, "own"));
 }
@@ -580,7 +555,7 @@ fn analyzer_spec_req_cvi_030_unwritten_global_and_its_externals_are_marked() {
             DeclarationQualifier::Constant,
             DeclarationQualifier::Constant,
         ],
-        qualifiers(&library, "limit")
+        declaration_qualifiers(&library, "limit")
     );
     assert!(codes.is_empty(), "unexpected diagnostics {codes:?}");
 }
@@ -603,7 +578,7 @@ fn analyzer_spec_req_cvi_031_unmarkable_global_leaves_externals_and_locals_alone
         .replace("limit_shadow", "limit");
     let (library, codes) = analyze_default(&program);
     assert!(
-        qualifiers(&library, "limit")
+        declaration_qualifiers(&library, "limit")
             .iter()
             .all(|q| *q == DeclarationQualifier::Unspecified),
         "no declaration of a written global may be marked"
