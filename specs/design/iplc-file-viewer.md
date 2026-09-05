@@ -215,7 +215,3 @@ This viewer is the foundation for a source-level debugger. Future work:
   bytecode on the right, with linked highlighting.
 - **Step debugging:** Integrate with VS Code's Debug Adapter Protocol to
   highlight the current instruction during execution.
-
-## Implementation Plan
-
-See [Implementation Plan: IPLC File Viewer](../plans/iplc-file-viewer-impl.md) for the file changes and testing plan.

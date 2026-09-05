@@ -581,7 +581,7 @@ fn end_to_end_when_struct_init_value_is_expression_then_returns_not_implemented(
     // plus member access -- fully parses and analyzes, but codegen does
     // not yet implement evaluating it at instance construction time.
     // `ironplcc check` already fully supports this; only codegen refuses.
-    // See specs/plans/2026-07-26-twincat-struct-init-expression-value.md.
+    // See issue #1477.
     let source = "
 FUNCTION_BLOCK FB_Device
 VAR_INPUT
@@ -621,7 +621,7 @@ END_PROGRAM
 }
 
 // --- Field access on array-of-struct elements ---
-// `s.arr[i].field`. See specs/plans/2026-08-16-array-of-struct-field-codegen.md.
+// `s.arr[i].field`.
 
 // h is var 0, result is var 1.
 e2e_i32!(

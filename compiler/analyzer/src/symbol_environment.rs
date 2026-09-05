@@ -1,15 +1,48 @@
+use indexmap::IndexMap;
 use ironplc_dsl::common::{TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
-use std::collections::HashMap;
+
+/// A scope's position in the nesting tree: the chain of declaration
+/// names from the library root.
+///
+/// A function block is `⟨FB_Motor⟩`; a method declared on it is
+/// `⟨FB_Motor, GetSpeed⟩`. Scopes are nameable, which is why this is a
+/// path of names rather than an id assigned to an AST node.
+///
+/// Never empty: an empty path would be the global scope, which
+/// [`ScopeKind::Global`] already represents.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ScopePath(Vec<Id>);
+
+impl ScopePath {
+    pub fn new(segments: Vec<Id>) -> Self {
+        debug_assert!(
+            !segments.is_empty(),
+            "a scope path is never empty; the empty scope is ScopeKind::Global"
+        );
+        Self(segments)
+    }
+
+    pub fn segments(&self) -> &[Id] {
+        &self.0
+    }
+}
+
+impl From<Id> for ScopePath {
+    /// A scope directly inside the library, such as a function block.
+    fn from(name: Id) -> Self {
+        Self::new(vec![name])
+    }
+}
 
 /// Represents the kind of scope a symbol belongs to
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ScopeKind {
     /// Global scope (library level)
     Global,
-    /// Named scope (function, function block, program, etc.)
-    Named(Id),
+    /// Named scope (function, function block, program, method, etc.)
+    Named(ScopePath),
 }
 
 /// Represents the kind of symbol
@@ -84,20 +117,8 @@ impl SymbolInfo {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn with_data_type(mut self, data_type: String) -> Self {
-        self.data_type = Some(data_type);
-        self
-    }
-
     pub fn with_external(mut self, is_external: bool) -> Self {
         self.is_external = is_external;
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn with_visibility_scope(mut self, visibility_scope: ScopeKind) -> Self {
-        self.visibility_scope = visibility_scope;
         self
     }
 
@@ -124,22 +145,22 @@ impl SymbolInfo {
     }
 }
 
-/// The main symbol environment that tracks all symbols across the library
+/// The main symbol environment that tracks all symbols across the library.
+///
+/// Symbols are kept in insertion order so that every accessor that returns
+/// a list reports symbols in declaration order, run after run.
 pub struct SymbolEnvironment {
     /// Global symbols (types, functions, function blocks, programs)
-    global_symbols: HashMap<Id, SymbolInfo>,
+    global_symbols: IndexMap<Id, SymbolInfo>,
     /// Scoped symbols (variables within functions, function blocks, etc.)
-    scoped_symbols: HashMap<ScopeKind, HashMap<Id, SymbolInfo>>,
-    /// Symbol resolution cache for performance
-    resolution_cache: HashMap<(Id, ScopeKind), Option<&'static SymbolInfo>>,
+    scoped_symbols: IndexMap<ScopeKind, IndexMap<Id, SymbolInfo>>,
 }
 
 impl SymbolEnvironment {
     pub fn new() -> Self {
         Self {
-            global_symbols: HashMap::new(),
-            scoped_symbols: HashMap::new(),
-            resolution_cache: HashMap::new(),
+            global_symbols: IndexMap::new(),
+            scoped_symbols: IndexMap::new(),
         }
     }
 
@@ -161,11 +182,8 @@ impl SymbolEnvironment {
                 }
                 self.global_symbols.insert(name.clone(), symbol_info);
             }
-            ScopeKind::Named(scope_name) => {
-                let scope_symbols = self
-                    .scoped_symbols
-                    .entry(ScopeKind::Named(scope_name.clone()))
-                    .or_default();
+            ScopeKind::Named(_) => {
+                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
 
                 // Check for duplicate symbols in the same scope
                 if let Some(_existing) = scope_symbols.get(name) {
@@ -202,11 +220,8 @@ impl SymbolEnvironment {
             ScopeKind::Global => {
                 self.global_symbols.insert(name.clone(), symbol_info);
             }
-            ScopeKind::Named(scope_name) => {
-                let scope_symbols = self
-                    .scoped_symbols
-                    .entry(ScopeKind::Named(scope_name.clone()))
-                    .or_default();
+            ScopeKind::Named(_) => {
+                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
                 scope_symbols.insert(name.clone(), symbol_info);
             }
         }
@@ -228,11 +243,8 @@ impl SymbolEnvironment {
             ScopeKind::Global => {
                 self.global_symbols.insert(name.clone(), symbol_info);
             }
-            ScopeKind::Named(scope_name) => {
-                let scope_symbols = self
-                    .scoped_symbols
-                    .entry(ScopeKind::Named(scope_name.clone()))
-                    .or_default();
+            ScopeKind::Named(_) => {
+                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
 
                 scope_symbols.insert(name.clone(), symbol_info);
             }
@@ -255,11 +267,8 @@ impl SymbolEnvironment {
             ScopeKind::Global => {
                 self.global_symbols.insert(name.clone(), symbol_info);
             }
-            ScopeKind::Named(scope_name) => {
-                let scope_symbols = self
-                    .scoped_symbols
-                    .entry(ScopeKind::Named(scope_name.clone()))
-                    .or_default();
+            ScopeKind::Named(_) => {
+                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
 
                 scope_symbols.insert(name.clone(), symbol_info);
             }
@@ -323,12 +332,23 @@ impl SymbolEnvironment {
         Ok(())
     }
 
-    /// Find a symbol in the given scope, with fallback to global scope
+    /// Finds a symbol visible from the given scope.
+    ///
+    /// Walks outward through the enclosing scopes and then the global
+    /// scope, so a method body sees its function block's fields and an
+    /// inner declaration shadows an outer one of the same name.
     pub fn find(&self, name: &Id, scope: &ScopeKind) -> Option<&SymbolInfo> {
-        // First try to find in the specified scope
-        if let Some(scope_symbols) = self.scoped_symbols.get(scope) {
-            if let Some(symbol) = scope_symbols.get(name) {
-                return Some(symbol);
+        if let ScopeKind::Named(path) = scope {
+            let segments = path.segments();
+            for depth in (1..=segments.len()).rev() {
+                let enclosing = ScopeKind::Named(ScopePath::new(segments[..depth].to_vec()));
+                if let Some(symbol) = self
+                    .scoped_symbols
+                    .get(&enclosing)
+                    .and_then(|symbols| symbols.get(name))
+                {
+                    return Some(symbol);
+                }
             }
         }
 
@@ -336,161 +356,10 @@ impl SymbolEnvironment {
         self.global_symbols.get(name)
     }
 
-    /// Find a symbol in the current scope, searching outward through parent scopes
-    #[allow(dead_code)]
-    pub fn find_in_scope_hierarchy(
-        &self,
-        name: &Id,
-        current_scope: &ScopeKind,
-    ) -> Option<&SymbolInfo> {
-        // Start with current scope
-        if let Some(symbol) = self.find(name, current_scope) {
-            return Some(symbol);
-        }
-
-        // If current scope is named, also check global scope
-        if let ScopeKind::Named(_) = current_scope {
-            return self.global_symbols.get(name);
-        }
-
-        None
-    }
-
-    /// Get all symbols in a specific scope
-    #[allow(dead_code)]
-    pub fn get_scope_symbols(&self, scope: &ScopeKind) -> Option<&HashMap<Id, SymbolInfo>> {
-        match scope {
-            ScopeKind::Global => Some(&self.global_symbols),
-            ScopeKind::Named(_) => self.scoped_symbols.get(scope),
-        }
-    }
-
-    /// Check if a symbol exists in the given scope
-    #[allow(dead_code)]
-    pub fn contains(&self, name: &Id, scope: &ScopeKind) -> bool {
-        self.find(name, scope).is_some()
-    }
-
     /// Get a symbol by name and scope (alias for find)
     #[allow(dead_code)]
     pub fn get(&self, name: &Id, scope: &ScopeKind) -> Option<&SymbolInfo> {
         self.find(name, scope)
-    }
-
-    /// Get all global symbols
-    #[allow(dead_code)]
-    pub fn get_global_symbols(&self) -> &HashMap<Id, SymbolInfo> {
-        &self.global_symbols
-    }
-
-    /// Get all scoped symbols
-    #[allow(dead_code)]
-    pub fn get_scoped_symbols(&self) -> &HashMap<ScopeKind, HashMap<Id, SymbolInfo>> {
-        &self.scoped_symbols
-    }
-
-    /// Clear the resolution cache (useful after modifications)
-    #[allow(dead_code)]
-    pub fn clear_cache(&mut self) {
-        self.resolution_cache.clear();
-    }
-
-    /// Get the total number of symbols in the environment
-    #[allow(dead_code)]
-    pub fn total_symbols(&self) -> usize {
-        let global_count = self.global_symbols.len();
-        let scoped_count: usize = self.scoped_symbols.values().map(|scope| scope.len()).sum();
-        global_count + scoped_count
-    }
-
-    /// Generate a comprehensive summary of the symbol table
-    #[allow(dead_code)]
-    pub fn generate_summary(&self) -> String {
-        let mut summary = String::new();
-
-        // Global symbols summary
-        summary.push_str(&format!(
-            "📚 Global Symbols ({}):\n",
-            self.global_symbols.len()
-        ));
-        for (name, symbol) in &self.global_symbols {
-            summary.push_str(&format!(
-                "  • {}: {:?} at {:?}\n",
-                name.original(),
-                symbol.kind,
-                symbol.span
-            ));
-        }
-
-        // Scoped symbols summary
-        summary.push_str(&format!(
-            "\n🔧 Scoped Symbols ({} scopes):\n",
-            self.scoped_symbols.len()
-        ));
-        for (scope, symbols) in &self.scoped_symbols {
-            let scope_name = match scope {
-                ScopeKind::Global => "Global".to_string(),
-                ScopeKind::Named(id) => format!("Named({})", id.original()),
-            };
-            summary.push_str(&format!(
-                "  📍 {} ({} symbols):\n",
-                scope_name,
-                symbols.len()
-            ));
-            for (name, symbol) in symbols {
-                summary.push_str(&format!(
-                    "    • {}: {:?} at {:?}\n",
-                    name.original(),
-                    symbol.kind,
-                    symbol.span
-                ));
-            }
-        }
-
-        // Statistics
-        let total_symbols = self.total_symbols();
-        let global_count = self.global_symbols.len();
-        let scoped_count: usize = self.scoped_symbols.values().map(|scope| scope.len()).sum();
-
-        summary.push_str("\n📊 Summary Statistics:\n");
-        summary.push_str(&format!("  • Total symbols: {total_symbols}\n"));
-        summary.push_str(&format!("  • Global symbols: {global_count}\n"));
-        summary.push_str(&format!("  • Scoped symbols: {scoped_count}\n"));
-        summary.push_str(&format!(
-            "  • Number of scopes: {}\n",
-            self.scoped_symbols.len()
-        ));
-
-        summary
-    }
-
-    /// Get detailed information about a specific symbol
-    #[allow(dead_code)]
-    pub fn get_symbol_details(&self, name: &Id, scope: &ScopeKind) -> Option<String> {
-        if let Some(symbol) = self.find(name, scope) {
-            let scope_name = match &symbol.scope {
-                ScopeKind::Global => "Global".to_string(),
-                ScopeKind::Named(id) => format!("Named({})", id.original()),
-            };
-
-            let visibility_name = match &symbol.visibility_scope {
-                ScopeKind::Global => "Global".to_string(),
-                ScopeKind::Named(id) => format!("Named({})", id.original()),
-            };
-
-            Some(format!(
-                "Symbol: {}\n  Kind: {:?}\n  Scope: {}\n  Visibility: {}\n  External: {}\n  Data Type: {:?}\n  Location: {:?}",
-                name.original(),
-                symbol.kind,
-                scope_name,
-                visibility_name,
-                symbol.is_external,
-                symbol.data_type,
-                symbol.span
-            ))
-        } else {
-            None
-        }
     }
 
     /// Returns all program declarations from the global scope.
@@ -527,26 +396,6 @@ impl SymbolEnvironment {
                 )
             })
             .collect()
-    }
-
-    /// Get all symbols that are accessible from a given scope
-    #[allow(dead_code)]
-    pub fn get_accessible_symbols(&self, scope: &ScopeKind) -> Vec<(&Id, &SymbolInfo)> {
-        let mut accessible = Vec::new();
-
-        // Add global symbols (always accessible)
-        for (name, symbol) in &self.global_symbols {
-            accessible.push((name, symbol));
-        }
-
-        // Add symbols from the current scope
-        if let Some(scope_symbols) = self.scoped_symbols.get(scope) {
-            for (name, symbol) in scope_symbols {
-                accessible.push((name, symbol));
-            }
-        }
-
-        accessible
     }
 
     /// Iterate over every symbol in the environment: the global symbols
@@ -625,7 +474,7 @@ mod tests {
         assert_eq!(symbol2.kind, SymbolKind::Program);
 
         // Test scoped symbols
-        let scope = ScopeKind::Named(Id::from("FUNCTION_BLOCK"));
+        let scope = ScopeKind::Named(Id::from("FUNCTION_BLOCK").into());
         let id3 = Id::from("LOCAL_VAR");
 
         env.insert(&id3, SymbolKind::Variable, &scope).unwrap();
@@ -634,7 +483,7 @@ mod tests {
         assert_eq!(symbol3.kind, SymbolKind::Variable);
 
         // Test scope hierarchy (local scope should find global symbols)
-        let symbol1_in_scope = env.find_in_scope_hierarchy(&id1, &scope).unwrap();
+        let symbol1_in_scope = env.find(&id1, &scope).unwrap();
         assert_eq!(symbol1_in_scope.kind, SymbolKind::Variable);
     }
 
@@ -656,7 +505,7 @@ mod tests {
             .unwrap();
 
         // Insert local symbol in function scope
-        let function_scope = ScopeKind::Named(function_id.clone());
+        let function_scope = ScopeKind::Named(function_id.clone().into());
         env.insert(&local_id, SymbolKind::Variable, &function_scope)
             .unwrap();
 
@@ -669,92 +518,11 @@ mod tests {
         assert!(env.find(&local_id, &ScopeKind::Global).is_none());
 
         // Verify global symbols are visible from local scope
-        assert!(env
-            .find_in_scope_hierarchy(&global_id, &function_scope)
-            .is_some());
+        assert!(env.find(&global_id, &function_scope).is_some());
     }
 
     #[test]
-    fn symbol_info_builder_methods_when_using_builder_pattern_then_creates_correct_symbol_info() {
-        let span = ironplc_dsl::core::SourceSpan::default();
-        let mut symbol_info = SymbolInfo::new(SymbolKind::Variable, ScopeKind::Global, span);
-
-        // Test with_data_type
-        symbol_info = symbol_info.with_data_type("INT".to_string());
-        assert_eq!(symbol_info.data_type, Some("INT".to_string()));
-
-        // Test with_external
-        symbol_info = symbol_info.with_external(true);
-        assert!(symbol_info.is_external);
-
-        // Test with_visibility_scope
-        let named_scope = ScopeKind::Named(Id::from("FUNCTION"));
-        symbol_info = symbol_info.with_visibility_scope(named_scope.clone());
-        assert_eq!(symbol_info.visibility_scope, named_scope);
-    }
-
-    #[test]
-    fn total_symbols_count_when_counting_symbols_then_returns_correct_total() {
-        let mut env = SymbolEnvironment::new();
-
-        // Initially empty
-        assert_eq!(env.total_symbols(), 0);
-
-        // Add global symbols
-        let id1 = Id::from("GLOBAL1");
-        let id2 = Id::from("GLOBAL2");
-        env.insert(&id1, SymbolKind::Variable, &ScopeKind::Global)
-            .unwrap();
-        env.insert(&id2, SymbolKind::Program, &ScopeKind::Global)
-            .unwrap();
-        assert_eq!(env.total_symbols(), 2);
-
-        // Add scoped symbols
-        let scope = ScopeKind::Named(Id::from("FUNCTION"));
-        let id3 = Id::from("LOCAL1");
-        let id4 = Id::from("LOCAL2");
-        env.insert(&id3, SymbolKind::Variable, &scope).unwrap();
-        env.insert(&id4, SymbolKind::Parameter, &scope).unwrap();
-        assert_eq!(env.total_symbols(), 4);
-    }
-
-    #[test]
-    fn get_scope_symbols_when_getting_symbols_from_scope_then_returns_correct_symbols() {
-        let mut env = SymbolEnvironment::new();
-
-        // Test global scope
-        let global_symbols = env.get_scope_symbols(&ScopeKind::Global).unwrap();
-        assert_eq!(global_symbols.len(), 0); // Initially empty
-
-        // Add global symbols
-        let id1 = Id::from("GLOBAL1");
-        let id2 = Id::from("GLOBAL2");
-        env.insert(&id1, SymbolKind::Variable, &ScopeKind::Global)
-            .unwrap();
-        env.insert(&id2, SymbolKind::Program, &ScopeKind::Global)
-            .unwrap();
-
-        let global_symbols = env.get_scope_symbols(&ScopeKind::Global).unwrap();
-        assert_eq!(global_symbols.len(), 2);
-        assert!(global_symbols.contains_key(&id1));
-        assert!(global_symbols.contains_key(&id2));
-
-        // Test named scope
-        let scope = ScopeKind::Named(Id::from("FUNCTION"));
-        let named_symbols = env.get_scope_symbols(&scope);
-        assert!(named_symbols.is_none()); // Scope doesn't exist yet
-
-        // Add symbols to named scope
-        let id3 = Id::from("LOCAL1");
-        env.insert(&id3, SymbolKind::Variable, &scope).unwrap();
-
-        let named_symbols = env.get_scope_symbols(&scope).unwrap();
-        assert_eq!(named_symbols.len(), 1);
-        assert!(named_symbols.contains_key(&id3));
-    }
-
-    #[test]
-    fn contains_and_get_methods_when_checking_symbol_existence_then_returns_correct_results() {
+    fn get_when_checking_symbol_existence_then_returns_correct_results() {
         let mut env = SymbolEnvironment::new();
 
         let id1 = Id::from("GLOBAL_VAR");
@@ -763,12 +531,6 @@ mod tests {
         // Insert global symbol
         env.insert(&id1, SymbolKind::Variable, &ScopeKind::Global)
             .unwrap();
-
-        // Test contains method
-        assert!(env.contains(&id1, &ScopeKind::Global));
-        // Global symbols are accessible from any scope, so this should be true
-        assert!(env.contains(&id1, &ScopeKind::Named(Id::from("FUNCTION"))));
-        assert!(!env.contains(&id2, &ScopeKind::Global));
 
         // Test get method (alias for find)
         let symbol1 = env.get(&id1, &ScopeKind::Global).unwrap();
@@ -779,190 +541,15 @@ mod tests {
     }
 
     #[test]
-    fn get_global_and_scoped_symbols_when_getting_all_symbols_then_returns_correct_symbols() {
-        let mut env = SymbolEnvironment::new();
-
-        // Initially empty
-        let global_symbols = env.get_global_symbols();
-        assert_eq!(global_symbols.len(), 0);
-
-        let scoped_symbols = env.get_scoped_symbols();
-        assert_eq!(scoped_symbols.len(), 0);
-
-        // Add global symbols
-        let id1 = Id::from("GLOBAL1");
-        let id2 = Id::from("GLOBAL2");
-        env.insert(&id1, SymbolKind::Variable, &ScopeKind::Global)
-            .unwrap();
-        env.insert(&id2, SymbolKind::Program, &ScopeKind::Global)
-            .unwrap();
-
-        let global_symbols = env.get_global_symbols();
-        assert_eq!(global_symbols.len(), 2);
-        assert!(global_symbols.contains_key(&id1));
-        assert!(global_symbols.contains_key(&id2));
-
-        // Add scoped symbols
-        let scope1 = ScopeKind::Named(Id::from("FUNCTION1"));
-        let scope2 = ScopeKind::Named(Id::from("FUNCTION2"));
-
-        let id3 = Id::from("LOCAL1");
-        let id4 = Id::from("LOCAL2");
-        env.insert(&id3, SymbolKind::Variable, &scope1).unwrap();
-        env.insert(&id4, SymbolKind::Parameter, &scope2).unwrap();
-
-        let scoped_symbols = env.get_scoped_symbols();
-        assert_eq!(scoped_symbols.len(), 2);
-        assert!(scoped_symbols.contains_key(&scope1));
-        assert!(scoped_symbols.contains_key(&scope2));
-
-        let scope1_symbols = &scoped_symbols[&scope1];
-        assert_eq!(scope1_symbols.len(), 1);
-        assert!(scope1_symbols.contains_key(&id3));
-
-        let scope2_symbols = &scoped_symbols[&scope2];
-        assert_eq!(scope2_symbols.len(), 1);
-        assert!(scope2_symbols.contains_key(&id4));
-    }
-
-    #[test]
-    fn clear_cache_when_clearing_cache_then_symbols_are_removed() {
-        let mut env = SymbolEnvironment::new();
-
-        // clear_cache should not panic even when empty
-        env.clear_cache();
-
-        // Add some symbols and clear cache again
-        let id = Id::from("TEST_VAR");
-        env.insert(&id, SymbolKind::Variable, &ScopeKind::Global)
-            .unwrap();
-        env.clear_cache();
-
-        // Symbols should still be accessible after clearing cache
-        assert!(env.contains(&id, &ScopeKind::Global));
-    }
-
-    #[test]
     fn default_implementation_when_creating_default_then_creates_empty_environment() {
         let env = SymbolEnvironment::default();
 
         // Default should create an empty environment
-        assert_eq!(env.total_symbols(), 0);
-        assert_eq!(env.get_global_symbols().len(), 0);
-        assert_eq!(env.get_scoped_symbols().len(), 0);
+        assert_eq!(env.all_symbols().count(), 0);
 
         // Should be equivalent to new()
         let env2 = SymbolEnvironment::new();
-        assert_eq!(env.total_symbols(), env2.total_symbols());
-    }
-
-    #[test]
-    fn get_accessible_symbols_when_getting_accessible_symbols_then_returns_correct_symbols() {
-        let mut env = SymbolEnvironment::new();
-
-        // Add global symbols
-        let global_id1 = Id::from("GLOBAL1");
-        let global_id2 = Id::from("GLOBAL2");
-        env.insert(&global_id1, SymbolKind::Variable, &ScopeKind::Global)
-            .unwrap();
-        env.insert(&global_id2, SymbolKind::Program, &ScopeKind::Global)
-            .unwrap();
-
-        // Add scoped symbols
-        let scope = ScopeKind::Named(Id::from("FUNCTION"));
-        let local_id1 = Id::from("LOCAL1");
-        let local_id2 = Id::from("LOCAL2");
-        env.insert(&local_id1, SymbolKind::Variable, &scope)
-            .unwrap();
-        env.insert(&local_id2, SymbolKind::Parameter, &scope)
-            .unwrap();
-
-        // Test accessible symbols from global scope
-        let global_accessible = env.get_accessible_symbols(&ScopeKind::Global);
-        assert_eq!(global_accessible.len(), 2); // Only global symbols
-        assert!(global_accessible.iter().any(|(id, _)| **id == global_id1));
-        assert!(global_accessible.iter().any(|(id, _)| **id == global_id2));
-
-        // Test accessible symbols from named scope
-        let scope_accessible = env.get_accessible_symbols(&scope);
-        assert_eq!(scope_accessible.len(), 4); // Global + local symbols
-        assert!(scope_accessible.iter().any(|(id, _)| **id == global_id1));
-        assert!(scope_accessible.iter().any(|(id, _)| **id == global_id2));
-        assert!(scope_accessible.iter().any(|(id, _)| **id == local_id1));
-        assert!(scope_accessible.iter().any(|(id, _)| **id == local_id2));
-    }
-
-    #[test]
-    fn generate_summary_when_generating_summary_then_returns_correct_summary() {
-        let mut env = SymbolEnvironment::new();
-
-        // Test empty summary
-        let empty_summary = env.generate_summary();
-        assert!(empty_summary.contains("Global Symbols (0)"));
-        assert!(empty_summary.contains("Scoped Symbols (0 scopes)"));
-        assert!(empty_summary.contains("Total symbols: 0"));
-
-        // Add some symbols and test populated summary
-        let global_id = Id::from("GLOBAL_VAR");
-        let function_id = Id::from("TEST_FUNCTION");
-        let local_id = Id::from("LOCAL_VAR");
-
-        env.insert(&global_id, SymbolKind::Variable, &ScopeKind::Global)
-            .unwrap();
-        env.insert(&function_id, SymbolKind::Program, &ScopeKind::Global)
-            .unwrap();
-
-        let scope = ScopeKind::Named(function_id.clone());
-        env.insert(&local_id, SymbolKind::Parameter, &scope)
-            .unwrap();
-
-        let summary = env.generate_summary();
-        assert!(summary.contains("Global Symbols (2)"));
-        assert!(summary.contains("Scoped Symbols (1 scopes)"));
-        assert!(summary.contains("Total symbols: 3"));
-        assert!(summary.contains("GLOBAL_VAR"));
-        assert!(summary.contains("TEST_FUNCTION"));
-        assert!(summary.contains("LOCAL_VAR"));
-        assert!(summary.contains("Named(TEST_FUNCTION)"));
-    }
-
-    #[test]
-    fn get_symbol_details_when_getting_symbol_details_then_returns_correct_details() {
-        let mut env = SymbolEnvironment::new();
-
-        // Test getting details for non-existent symbol
-        let non_existent_id = Id::from("NON_EXISTENT");
-        let details = env.get_symbol_details(&non_existent_id, &ScopeKind::Global);
-        assert!(details.is_none());
-
-        // Test getting details for existing global symbol
-        let global_id = Id::from("GLOBAL_VAR");
-        env.insert(&global_id, SymbolKind::Variable, &ScopeKind::Global)
-            .unwrap();
-
-        let details = env
-            .get_symbol_details(&global_id, &ScopeKind::Global)
-            .unwrap();
-        assert!(details.contains("Symbol: GLOBAL_VAR"));
-        assert!(details.contains("Kind: Variable"));
-        assert!(details.contains("Scope: Global"));
-        assert!(details.contains("Visibility: Global"));
-        assert!(details.contains("External: false"));
-        assert!(details.contains("Data Type: None"));
-
-        // Test getting details for scoped symbol
-        let function_id = Id::from("TEST_FUNCTION");
-        let scope = ScopeKind::Named(function_id.clone());
-        let local_id = Id::from("LOCAL_PARAM");
-
-        env.insert(&local_id, SymbolKind::Parameter, &scope)
-            .unwrap();
-
-        let details = env.get_symbol_details(&local_id, &scope).unwrap();
-        assert!(details.contains("Symbol: LOCAL_PARAM"));
-        assert!(details.contains("Kind: Parameter"));
-        assert!(details.contains("Scope: Named(TEST_FUNCTION)"));
-        assert!(details.contains("Visibility: Named(TEST_FUNCTION)"));
+        assert_eq!(env.all_symbols().count(), env2.all_symbols().count());
     }
 
     #[test]
@@ -994,8 +581,8 @@ mod tests {
 
         // Test Named scope
         let function_id = Id::from("TEST_FUNCTION");
-        let named_scope = ScopeKind::Named(function_id.clone());
-        assert_eq!(named_scope, ScopeKind::Named(function_id));
+        let named_scope = ScopeKind::Named(function_id.clone().into());
+        assert_eq!(named_scope, ScopeKind::Named(function_id.into()));
 
         // Test scope comparison
         assert_ne!(global_scope, named_scope);
@@ -1021,23 +608,15 @@ mod tests {
         env.insert(&global_id, SymbolKind::Variable, &ScopeKind::Global)
             .unwrap();
 
-        let wrong_scope = ScopeKind::Named(Id::from("WRONG_FUNCTION"));
+        let wrong_scope = ScopeKind::Named(Id::from("WRONG_FUNCTION").into());
         let found = env.find(&global_id, &wrong_scope);
         // Global symbols are accessible from any scope, so this should find the symbol
         assert!(found.is_some());
 
         // Test scope hierarchy with non-existent scope
-        let non_existent_scope = ScopeKind::Named(Id::from("NON_EXISTENT"));
-        let found = env.find_in_scope_hierarchy(&global_id, &non_existent_scope);
+        let non_existent_scope = ScopeKind::Named(Id::from("NON_EXISTENT").into());
+        let found = env.find(&global_id, &non_existent_scope);
         assert!(found.is_some()); // Should find in global scope
-
-        // Test empty scopes
-        let empty_scope = ScopeKind::Named(Id::from("EMPTY_FUNCTION"));
-        let scope_symbols = env.get_scope_symbols(&empty_scope);
-        assert!(scope_symbols.is_none());
-
-        let accessible = env.get_accessible_symbols(&empty_scope);
-        assert_eq!(accessible.len(), 2); // Both global symbols (DUPLICATE_VAR and GLOBAL_ONLY)
     }
 
     #[test]
@@ -1051,7 +630,7 @@ mod tests {
         env.insert_enumeration_value(&Id::from("RED"), &enum_type, &ScopeKind::Global)
             .unwrap();
         // Scoped enumeration value of the requested type.
-        let scope = ScopeKind::Named(Id::from("FB"));
+        let scope = ScopeKind::Named(Id::from("FB").into());
         env.insert_enumeration_value(&Id::from("GREEN"), &enum_type, &scope)
             .unwrap();
         // Enumeration value of a different type (should be excluded).
@@ -1087,7 +666,7 @@ mod tests {
         env.insert_structure_field(&Id::from("X"), &struct_type, &ScopeKind::Global)
             .unwrap();
         // Scoped structure field of the requested type.
-        let scope = ScopeKind::Named(Id::from("FB"));
+        let scope = ScopeKind::Named(Id::from("FB").into());
         env.insert_structure_field(&Id::from("Y"), &struct_type, &scope)
             .unwrap();
         // Structure field of a different type (should be excluded).
@@ -1116,7 +695,7 @@ mod tests {
     #[test]
     fn symbol_info_span_and_scope_when_creating_symbol_info_then_has_correct_span_and_scope() {
         let span = ironplc_dsl::core::SourceSpan::default();
-        let scope = ScopeKind::Named(Id::from("TEST_FUNCTION"));
+        let scope = ScopeKind::Named(Id::from("TEST_FUNCTION").into());
 
         let symbol_info = SymbolInfo::new(SymbolKind::Variable, scope.clone(), span);
 
@@ -1126,5 +705,134 @@ mod tests {
         assert_eq!(symbol_info.span, ironplc_dsl::core::SourceSpan::default());
         assert!(!symbol_info.is_external);
         assert!(symbol_info.data_type.is_none());
+    }
+
+    /// A scope path nests, so a symbol declared in an enclosing scope is
+    /// visible from an inner one -- how a method body sees the fields of
+    /// the function block it is declared on.
+    #[test]
+    fn find_when_symbol_is_in_enclosing_scope_then_found_from_inner_scope() {
+        let mut env = SymbolEnvironment::new();
+
+        let outer = ScopeKind::Named(Id::from("FB_Motor").into());
+        let inner = ScopeKind::Named(ScopePath::new(vec![
+            Id::from("FB_Motor"),
+            Id::from("GetSpeed"),
+        ]));
+
+        let field = Id::from("speed");
+        env.insert(&field, SymbolKind::Variable, &outer).unwrap();
+
+        assert!(
+            env.find(&field, &inner).is_some(),
+            "an enclosing scope's symbol should be visible from the inner scope"
+        );
+    }
+
+    /// The innermost declaration of a name wins, so a method local
+    /// shadows a function block field of the same name.
+    #[test]
+    fn find_when_inner_scope_redeclares_name_then_inner_symbol_shadows_outer() {
+        let mut env = SymbolEnvironment::new();
+
+        let outer = ScopeKind::Named(Id::from("FB_Motor").into());
+        let inner = ScopeKind::Named(ScopePath::new(vec![
+            Id::from("FB_Motor"),
+            Id::from("GetSpeed"),
+        ]));
+
+        let name = Id::from("v");
+        env.insert(&name, SymbolKind::Variable, &outer).unwrap();
+        env.insert(&name, SymbolKind::Parameter, &inner).unwrap();
+
+        assert_eq!(env.find(&name, &inner).unwrap().kind, SymbolKind::Parameter);
+        assert_eq!(env.find(&name, &outer).unwrap().kind, SymbolKind::Variable);
+    }
+
+    /// A name declared only in an inner scope does not leak outward.
+    #[test]
+    fn find_when_symbol_is_in_inner_scope_then_not_found_from_enclosing_scope() {
+        let mut env = SymbolEnvironment::new();
+
+        let outer = ScopeKind::Named(Id::from("FB_Motor").into());
+        let inner = ScopeKind::Named(ScopePath::new(vec![
+            Id::from("FB_Motor"),
+            Id::from("GetSpeed"),
+        ]));
+
+        let local = Id::from("q");
+        env.insert(&local, SymbolKind::Variable, &inner).unwrap();
+
+        assert!(env.find(&local, &outer).is_none());
+    }
+
+    /// Enough names that a hash-seeded order almost never matches the
+    /// declaration order by chance.
+    fn names(prefix: &str) -> Vec<Id> {
+        (0..16).map(|i| Id::from(&format!("{prefix}{i}"))).collect()
+    }
+
+    #[test]
+    fn get_programs_when_several_declared_then_returns_declaration_order() {
+        let mut env = SymbolEnvironment::new();
+        let programs = names("prog");
+        for name in &programs {
+            env.insert(name, SymbolKind::Program, &ScopeKind::Global)
+                .unwrap();
+        }
+
+        let actual: Vec<&Id> = env.get_programs().into_iter().map(|(id, _)| id).collect();
+        let expected: Vec<&Id> = programs.iter().collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn get_variables_in_scope_when_several_declared_then_returns_declaration_order() {
+        let mut env = SymbolEnvironment::new();
+        let scope = ScopeKind::Named(Id::from("main").into());
+        let variables = names("var");
+        for name in &variables {
+            env.insert_variable(name, SymbolKind::Variable, &scope, VariableType::Var, None)
+                .unwrap();
+        }
+
+        let actual: Vec<&Id> = env
+            .get_variables_in_scope(&scope)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        let expected: Vec<&Id> = variables.iter().collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn get_enumeration_values_for_type_when_several_declared_then_returns_declaration_order() {
+        let mut env = SymbolEnvironment::new();
+        let enum_type = TypeName::from("Color");
+        let values = names("value");
+        for name in &values {
+            env.insert_enumeration_value(name, &enum_type, &ScopeKind::Global)
+                .unwrap();
+        }
+
+        let actual = env.get_enumeration_values_for_type(&enum_type);
+        let expected: Vec<&Id> = values.iter().collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn insert_when_symbol_redefined_then_keeps_first_declared_position() {
+        let mut env = SymbolEnvironment::new();
+        let first = Id::from("first");
+        let second = Id::from("second");
+        env.insert(&first, SymbolKind::Program, &ScopeKind::Global)
+            .unwrap();
+        env.insert(&second, SymbolKind::Program, &ScopeKind::Global)
+            .unwrap();
+        env.insert(&first, SymbolKind::Program, &ScopeKind::Global)
+            .unwrap();
+
+        let actual: Vec<&Id> = env.get_programs().into_iter().map(|(id, _)| id).collect();
+        assert_eq!(actual, vec![&first, &second]);
     }
 }

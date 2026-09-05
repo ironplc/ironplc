@@ -8,7 +8,7 @@
 //! booleans) and complex types (like structures, arrays, and function blocks) found in
 //! IEC 61131-3 standard and similar PLC programming languages.
 
-use ironplc_container::CharWidth;
+use ironplc_container::{string_region_size, CharWidth, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::core::Id;
 
 /// Bounds for a single dimension of an array type.
@@ -82,10 +82,12 @@ pub enum IntermediateType {
     /// Stored as unsigned seconds since 1970-01-01.
     Date { size: ByteSized },
     /// Time-of-day type (TIME_OF_DAY/TOD is 32-bit, LTOD is 64-bit).
-    /// TOD: unsigned milliseconds since midnight. LTOD: unsigned nanoseconds.
+    /// Both store unsigned milliseconds since midnight; LTOD is the wider
+    /// variant, not a higher-resolution one (ADR-0025 amendment).
     TimeOfDay { size: ByteSized },
     /// Combined date-and-time type (DATE_AND_TIME/DT is 32-bit, LDT is 64-bit).
-    /// DT: unsigned seconds since 1970-01-01. LDT: unsigned nanoseconds since 1970-01-01.
+    /// Both store unsigned seconds since 1970-01-01; LDT is the wider
+    /// variant, not a higher-resolution one (ADR-0025 amendment).
     DateAndTime { size: ByteSized },
 
     /// Variable-length string with an optional maximum length and a
@@ -662,15 +664,19 @@ impl IntermediateType {
                     .ok_or(SlotCountError::Overflow)
             }
 
-            // STRING: header (4 bytes) + character data, rounded up to 8-byte slots.
-            // IEC 61131-3 default max length is 254 characters.
-            IntermediateType::String { max_len, .. } => {
-                const DEFAULT_STRING_MAX_LEN: u128 = 254;
-                const HEADER_BYTES: u128 = 4; // [max_len: u16][cur_len: u16]
-                let len = max_len.unwrap_or(DEFAULT_STRING_MAX_LEN);
-                let total_bytes = HEADER_BYTES + len;
-                let slots = total_bytes.div_ceil(8);
-                u32::try_from(slots).map_err(|_| SlotCountError::Overflow)
+            // STRING/WSTRING: the data-region layout (header plus
+            // `max_len * char_width` payload bytes, per ADR-0035), rounded up
+            // to whole 8-byte slots. A WSTRING needs twice the payload of a
+            // STRING of the same declared length, so `char_width` is part of
+            // the sizing and not discarded.
+            IntermediateType::String {
+                max_len,
+                char_width,
+            } => {
+                let len = max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128);
+                let len = u16::try_from(len).map_err(|_| SlotCountError::Overflow)?;
+                let total_bytes = string_region_size(len, *char_width);
+                Ok(total_bytes.div_ceil(8))
             }
 
             // Not yet supported in data region
@@ -733,7 +739,7 @@ mod tests {
     use crate::intermediate_type::{
         ArrayDimension, ByteSized, IntermediateStructField, IntermediateType, SlotCountError,
     };
-    use ironplc_container::CharWidth;
+    use ironplc_container::{CharWidth, STRING_HEADER_BYTES};
     use ironplc_dsl::core::Id;
 
     #[test]
@@ -2152,7 +2158,7 @@ mod tests {
 
     #[test]
     fn slot_count_when_string_with_explicit_len_then_returns_ceil_slots() {
-        // STRING[255]: ceil((4 + 255) / 8) = ceil(259/8) = 33 slots
+        // STRING[255]: ceil((6 + 255 * 1) / 8) = ceil(261/8) = 33 slots
         let s = IntermediateType::String {
             max_len: Some(255),
             char_width: CharWidth::Narrow,
@@ -2162,7 +2168,7 @@ mod tests {
 
     #[test]
     fn slot_count_when_string_with_default_len_then_returns_ceil_slots() {
-        // STRING (default 254): ceil((4 + 254) / 8) = ceil(258/8) = 33 slots
+        // STRING (default 254): ceil((6 + 254 * 1) / 8) = ceil(260/8) = 33 slots
         let s = IntermediateType::String {
             max_len: None,
             char_width: CharWidth::Narrow,
@@ -2171,13 +2177,83 @@ mod tests {
     }
 
     #[test]
-    fn slot_count_when_string_small_then_returns_1() {
-        // STRING[4]: ceil((4 + 4) / 8) = ceil(8/8) = 1 slot
+    fn slot_count_when_string_small_then_returns_2() {
+        // STRING[4]: ceil((6 + 4 * 1) / 8) = ceil(10/8) = 2 slots.
+        // The 6-byte header does not leave a 4-character string inside one slot.
         let s = IntermediateType::String {
             max_len: Some(4),
             char_width: CharWidth::Narrow,
         };
-        assert_eq!(s.slot_count(), Ok(1));
+        assert_eq!(s.slot_count(), Ok(2));
+    }
+
+    #[test]
+    fn slot_count_when_wstring_with_explicit_len_then_scales_by_char_width() {
+        // WSTRING[255]: ceil((6 + 255 * 2) / 8) = ceil(516/8) = 65 slots
+        let s = IntermediateType::String {
+            max_len: Some(255),
+            char_width: CharWidth::Wide,
+        };
+        assert_eq!(s.slot_count(), Ok(65));
+    }
+
+    #[test]
+    fn slot_count_when_wstring_with_default_len_then_scales_by_char_width() {
+        // WSTRING (default 254): ceil((6 + 254 * 2) / 8) = ceil(514/8) = 65 slots
+        let s = IntermediateType::String {
+            max_len: None,
+            char_width: CharWidth::Wide,
+        };
+        assert_eq!(s.slot_count(), Ok(65));
+    }
+
+    #[test]
+    fn slot_count_when_wstring_then_returns_more_slots_than_same_length_string() {
+        let narrow = IntermediateType::String {
+            max_len: Some(64),
+            char_width: CharWidth::Narrow,
+        };
+        let wide = IntermediateType::String {
+            max_len: Some(64),
+            char_width: CharWidth::Wide,
+        };
+        // ceil(70/8) = 9 vs ceil(134/8) = 17 — the wide payload is twice as big.
+        assert_eq!(narrow.slot_count(), Ok(9));
+        assert_eq!(wide.slot_count(), Ok(17));
+    }
+
+    #[test]
+    fn slot_count_when_string_matches_size_in_bytes_payload() {
+        // The two sizing methods must agree about the payload: slot_count is
+        // size_in_bytes plus the header, rounded up to whole slots.
+        for char_width in [CharWidth::Narrow, CharWidth::Wide] {
+            for max_len in [0u128, 1, 4, 80, 254, 255, 4096] {
+                let s = IntermediateType::String {
+                    max_len: Some(max_len),
+                    char_width,
+                };
+                let payload = s.size_in_bytes().unwrap();
+                let expected = (payload + STRING_HEADER_BYTES as u32).div_ceil(8);
+                assert_eq!(
+                    s.slot_count(),
+                    Ok(expected),
+                    "{:?} [{}]",
+                    char_width,
+                    max_len
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn slot_count_when_string_len_exceeds_u16_then_returns_overflow() {
+        // max_length is a u16 field in the data-region header, so a longer
+        // declared length has no representable layout.
+        let s = IntermediateType::String {
+            max_len: Some(u16::MAX as u128 + 1),
+            char_width: CharWidth::Narrow,
+        };
+        assert_eq!(s.slot_count(), Err(SlotCountError::Overflow));
     }
 
     #[test]

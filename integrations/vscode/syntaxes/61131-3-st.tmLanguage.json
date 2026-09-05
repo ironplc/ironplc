@@ -209,7 +209,7 @@
         },
         {
           "name": "keyword.operator.logical.st",
-          "match": "(?i)\\b(?:OR|XOR|AND|NOT)\\b|&"
+          "match": "(?i)\\b(?:AND_THEN|OR_ELSE|OR|XOR|AND|NOT)\\b|&"
         },
         {
           "name": "keyword.operator.arithmetic.st",

@@ -1,6 +1,7 @@
 //! VAR_TEMP and mixed located / non-located variable blocks.
 
 use super::common::*;
+use dsl::core::Located;
 
 #[test]
 fn parse_when_function_with_var_temp_then_succeeds() {
@@ -77,6 +78,52 @@ END_PROGRAM",
         &prog.variables[2].identifier,
         VariableIdentifier::Direct(_)
     ));
+}
+
+#[test]
+fn parse_when_located_var_has_name_then_identifier_span_is_the_name() {
+    let source = "PROGRAM main
+VAR
+    Motor : BOOL;
+    xStart AT %IX0.0 : BOOL;
+END_VAR
+END_PROGRAM";
+    let lib = parse_text(source);
+
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let span = prog.variables[1].identifier.span();
+    assert_eq!(&source[span.start..span.end], "xStart");
+}
+
+#[test]
+fn parse_when_located_var_has_no_name_then_identifier_span_is_the_address() {
+    let source = "PROGRAM main
+VAR
+    AT %IX0.0 : BOOL;
+END_VAR
+END_PROGRAM";
+    let lib = parse_text(source);
+
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let span = prog.variables[0].identifier.span();
+    assert_eq!(&source[span.start..span.end], "%IX0.0");
+}
+
+#[test]
+fn parse_when_incomplete_located_var_then_identifier_span_is_the_name() {
+    let source = "FUNCTION_BLOCK FB_Example
+VAR
+    tempSensor AT %I* : INT;
+END_VAR
+END_FUNCTION_BLOCK";
+    let lib = parse_text(source);
+
+    let fb = cast!(
+        &lib.elements[0],
+        LibraryElementKind::FunctionBlockDeclaration
+    );
+    let span = fb.variables[0].identifier.span();
+    assert_eq!(&source[span.start..span.end], "tempSensor");
 }
 
 #[test]
@@ -171,7 +218,6 @@ END_PROGRAM",
 
 // ---------------------------------------------------------------------
 // CODESYS/TwinCAT FB-instance call-style initializer (distinct node).
-// See specs/plans/2026-08-01-fb-call-style-initializer-distinct-node.md.
 // ---------------------------------------------------------------------
 
 #[test]

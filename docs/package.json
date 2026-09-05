@@ -1,0 +1,8 @@
+{
+  "name": "ironplc-docs",
+  "private": true,
+  "description": "Tooling for the IronPLC documentation website.",
+  "devDependencies": {
+    "jscpd": "5.0.16"
+  }
+}

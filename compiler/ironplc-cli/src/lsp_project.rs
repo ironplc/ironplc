@@ -529,6 +529,8 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::EndInterface => Some(KEYWORD_INDEX),
             TokenType::Abstract => Some(KEYWORD_INDEX),
             TokenType::Method => Some(KEYWORD_INDEX),
+            TokenType::This => Some(KEYWORD_INDEX),
+            TokenType::Super => Some(KEYWORD_INDEX),
             TokenType::EndMethod => Some(KEYWORD_INDEX),
             TokenType::Configuration => Some(KEYWORD_INDEX),
             TokenType::EndConfiguration => Some(KEYWORD_INDEX),
@@ -544,6 +546,7 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::Xor => Some(OPERATOR_INDEX),
             TokenType::And => Some(OPERATOR_INDEX),
             TokenType::AndThen => Some(OPERATOR_INDEX),
+            TokenType::OrElse => Some(OPERATOR_INDEX),
             TokenType::Equal => Some(OPERATOR_INDEX),
             TokenType::NotEqual => Some(OPERATOR_INDEX),
             TokenType::Less => Some(OPERATOR_INDEX),
@@ -770,7 +773,6 @@ mod test {
 
     // -----------------------------------------------------------------
     // Multi-workspace-folder initialization.
-    // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
     // -----------------------------------------------------------------
 
     fn workspace_folder(dir: &std::path::Path) -> lsp_types::WorkspaceFolder {

@@ -219,6 +219,21 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
     ),
 ];
 
+/// Returns what an elementary type is, by name.
+///
+/// The elementary type table above is the compiler's statement of what each
+/// elementary type is -- `INT` is a signed 16-bit integer. This reads that
+/// statement without building a [`TypeEnvironment`], so that code outside the
+/// analyzer works from it rather than from a copy of it.
+///
+/// Returns `None` for any name that is not an elementary type.
+pub fn elementary_type(type_name: &TypeName) -> Option<&'static IntermediateType> {
+    ELEMENTARY_TYPES_LOWER_CASE
+        .iter()
+        .find(|(name, _)| type_name.name.lower_case == *name)
+        .map(|(_, elem_type)| elem_type)
+}
+
 #[derive(Debug)]
 pub struct TypeEnvironment {
     table: HashMap<TypeName, crate::type_attributes::TypeAttributes>,

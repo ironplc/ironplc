@@ -116,11 +116,7 @@ impl LibraryRenderer {
         match node {
             FunctionReturnType::Named(tn) => self.visit_type_name(tn)?,
             FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
-                let kw = match spec.width {
-                    StringType::String => "STRING",
-                    StringType::WString => "WSTRING",
-                };
-                self.write_ws(kw);
+                self.write_ws(spec.width.keyword());
                 if let Some(len) = &spec.length {
                     self.write_ws("[");
                     self.visit_integer(len.as_integer().unwrap())?;
@@ -175,7 +171,11 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &ironplc_dsl::common::SignedInteger,
     ) -> Result<Self::Value, Diagnostic> {
         if node.is_neg {
-            self.write("-");
+            // The sign belongs to the literal, so the separating space goes
+            // before it, never between it and the digits.
+            self.write_ws("-");
+            self.write(node.value.value.to_string().as_str());
+            return Ok(());
         }
         self.visit_integer(&node.value)
     }
@@ -186,7 +186,13 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             val.push_str(data_type.as_id().original());
             val.push('#');
         }
-        val.push_str(node.value.to_string().as_str());
+        // A real literal always carries a decimal point; `f64::to_string`
+        // drops it for whole values.
+        let mut value = node.value.to_string();
+        if node.value.is_finite() && !value.contains(['.', 'e', 'E']) {
+            value.push_str(".0");
+        }
+        val.push_str(value.as_str());
 
         self.write_ws(val.as_str());
         Ok(())
@@ -205,21 +211,30 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &CharacterStringLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        // Single-byte character strings use single quotes per IEC 61131-3 section 2.2.2
-        // Special characters must be escaped with $ prefix
-        let mut val = String::from("'");
-        for c in &node.value {
-            match c {
-                '$' => val.push_str("$$"),
-                '\'' => val.push_str("$'"),
-                '\n' => val.push_str("$N"),
-                '\r' => val.push_str("$R"),
-                '\t' => val.push_str("$T"),
-                '\x0C' => val.push_str("$P"), // form feed
-                _ => val.push(*c),
-            }
-        }
-        val.push('\'');
+        // Single quotes delimit a STRING, double quotes a WSTRING, per
+        // IEC 61131-3 section 2.2.2.
+        //
+        // The value is written out exactly as it was read in, because
+        // `node.value` holds the source characters *as written* -- the parser
+        // does not decode `$` escapes on the way in. Every re-encoding here is
+        // therefore a corruption:
+        //
+        //   - `$` is already an escape introducer, so escaping it turned the
+        //     one line feed `$L` into the two characters `$` and `L`, and
+        //     compounded on each pass (`$L`, `$$L`, `$$$$L`).
+        //   - a raw tab, which the lexer does admit inside a literal, has no
+        //     `$T` in the source to correspond to, so emitting one turned that
+        //     one tab into the two characters `$` and `T`.
+        //
+        // Both directions changed the value; a raw control character passed
+        // through verbatim merely looks unusual, and re-parses as itself.
+        // Escaping can only become correct once the parser decodes escapes and
+        // `value` holds decoded characters -- see the character-string arm of
+        // the round-trip tests.
+        let delimiter = node.width.delimiter();
+        let mut val = String::from(delimiter);
+        val.extend(node.value.iter());
+        val.push(delimiter);
         self.write_ws(&val);
         Ok(())
     }
@@ -496,27 +511,20 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         self.write_ws(":");
 
-        let typ = match node.width {
-            StringType::String => "STRING",
-            StringType::WString => "WSTRING",
-        };
-        self.write_ws(typ);
+        self.write_ws(node.width.keyword());
 
         self.write_ws("[");
         self.visit_integer(node.length.as_integer().unwrap())?;
         self.write_ws("]");
 
         if let Some(init) = &node.init {
-            let char = match node.width {
-                StringType::String => "\"",
-                StringType::WString => "'",
-            };
+            let delimiter = node.width.delimiter();
 
             self.write_ws(":=");
 
-            self.write(char);
+            self.write_char(delimiter);
             self.write(init);
-            self.write(char)
+            self.write_char(delimiter);
         }
 
         Ok(())
@@ -551,11 +559,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         match &node.type_name {
             ArrayElementType::Named(tn) => self.visit_type_name(tn)?,
             ArrayElementType::String(spec) | ArrayElementType::WString(spec) => {
-                let kw = match spec.width {
-                    StringType::String => "STRING",
-                    StringType::WString => "WSTRING",
-                };
-                self.write_ws(kw);
+                self.write_ws(spec.width.keyword());
                 if let Some(len) = &spec.length {
                     self.write_ws("[");
                     self.visit_integer(len.as_integer().unwrap())?;
@@ -763,11 +767,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &StringInitializer,
     ) -> Result<Self::Value, Diagnostic> {
-        let kw = match node.width {
-            StringType::String => "STRING",
-            StringType::WString => "WSTRING",
-        };
-        self.write_ws(kw);
+        self.write_ws(node.width.keyword());
 
         if let Some(len) = &node.length {
             self.write_ws("[");
@@ -778,16 +778,13 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         if let Some(init) = &node.initial_value {
             self.write_ws(":=");
 
-            let quote = match node.width {
-                StringType::String => "'",
-                StringType::WString => "\"",
-            };
+            let delimiter = node.width.delimiter();
 
-            self.write(quote);
+            self.write_char(delimiter);
             for c in init.iter() {
                 self.write_char(*c);
             }
-            self.write(quote);
+            self.write_char(delimiter);
         }
 
         Ok(())
@@ -843,9 +840,25 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         if !node.initial_values.is_empty() {
             self.write_ws(":=");
 
+            self.write_ws("[");
             visit_comma_separated!(self, node.initial_values.iter(), ArrayInitialElementKind);
+            self.write_ws("]");
         }
 
+        Ok(())
+    }
+
+    /// Renders a repeated array element, `count(value)`.
+    fn visit_repeated(
+        &mut self,
+        node: &ironplc_dsl::common::Repeated,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_integer(&node.size)?;
+        self.write_ws("(");
+        if let Some(init) = node.init.as_ref() {
+            self.visit_array_initial_element_kind(init)?;
+        }
+        self.write_ws(")");
         Ok(())
     }
 
@@ -1008,7 +1021,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
     // OOP extension: INTERFACE ... END_INTERFACE. Only the
     // header renders — method/property signatures are not yet parsed (see
-    // specs/plans/2026-07-18-twincat-extends-implements-interface.md).
+    // specs/design/beckhoff-twincat-dialect.md §1.3).
     fn visit_interface_declaration(
         &mut self,
         node: &InterfaceDeclaration,
@@ -1233,18 +1246,27 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         }
         self.outdent();
 
-        self.indent();
-        for fb_init in node.fb_inits.iter() {
-            self.visit_function_block_init(fb_init)?;
-        }
-        self.outdent();
+        // A configuration has a single VAR_CONFIG block holding every
+        // instance-specific initialization.
+        if !node.fb_inits.is_empty() || !node.located_var_inits.is_empty() {
+            self.indent();
+            self.write_ws("VAR_CONFIG");
+            self.newline();
 
-        self.indent();
-        for loc_var_init in node.located_var_inits.iter() {
-            self.visit_located_var_init(loc_var_init)?;
+            self.indent();
+            for fb_init in node.fb_inits.iter() {
+                self.visit_function_block_init(fb_init)?;
+            }
+            for loc_var_init in node.located_var_inits.iter() {
+                self.visit_located_var_init(loc_var_init)?;
+            }
+            self.outdent();
+
+            self.write_ws("END_VAR");
+            self.newline();
+            self.outdent();
         }
 
-        self.outdent();
         self.newline();
 
         self.write_ws("END_CONFIGURATION");
@@ -1252,15 +1274,12 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    /// Renders one initializer line; the enclosing `VAR_CONFIG` block is
+    /// written once by `visit_configuration_declaration`.
     fn visit_function_block_init(
         &mut self,
         node: &dsl::configuration::FunctionBlockInit,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_ws("VAR_CONFIG");
-        self.newline();
-
-        self.indent();
-
         let mut vars: Vec<&String> = Vec::new();
         vars.push(node.resource_name.original());
         vars.push(node.program_name.original());
@@ -1278,22 +1297,15 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         visit_comma_separated!(self, node.initializer.iter(), StructureElementInit);
 
-        self.write_ws(");");
-
-        self.outdent();
+        self.write_ws(")");
+        self.write_ws(";");
         self.newline();
 
-        self.write_ws("END_VAR");
-        self.newline();
         Ok(())
     }
 
+    /// Renders one initializer line; see `visit_function_block_init`.
     fn visit_located_var_init(&mut self, node: &LocatedVarInit) -> Result<Self::Value, Diagnostic> {
-        self.write_ws("VAR_CONFIG");
-
-        self.indent();
-        self.newline();
-
         let mut vars: Vec<&String> = Vec::new();
         vars.push(node.resource_name.original());
         vars.push(node.program_name.original());
@@ -1311,12 +1323,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_initial_value_assignment_kind(&node.initializer)?;
 
         self.write_ws(";");
-
-        self.outdent();
         self.newline();
 
-        self.write_ws("END_VAR");
-        self.newline();
         Ok(())
     }
 
@@ -1368,12 +1376,13 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    // OOP extension: `instance.MethodName(args)` (ADR-0041 Phase 1).
+    // OOP extension: `instance.MethodName(args)`, `THIS^.MethodName(args)`
+    // (ADR-0041 Phase 1).
     fn visit_method_call(
         &mut self,
         node: &dsl::textual::MethodCall,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_id(&node.instance)?;
+        self.visit_method_receiver(&node.receiver)?;
         self.write(".");
         self.visit_id(&node.method)?;
 
@@ -1423,19 +1432,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("(");
         self.visit_expr(&node.left)?;
 
-        let op = match node.op {
-            dsl::textual::CompareOp::Or => "OR",
-            dsl::textual::CompareOp::Xor => "XOR",
-            dsl::textual::CompareOp::And => "AND",
-            dsl::textual::CompareOp::AndThen => "AND_THEN",
-            dsl::textual::CompareOp::Eq => "=",
-            dsl::textual::CompareOp::Ne => "<>",
-            dsl::textual::CompareOp::Lt => "<",
-            dsl::textual::CompareOp::Gt => ">",
-            dsl::textual::CompareOp::LtEq => "<=",
-            dsl::textual::CompareOp::GtEq => ">=",
-        };
-        self.write_ws(op);
+        self.write_ws(node.op.as_str());
 
         self.visit_expr(&node.right)?;
         self.write_ws(")");
@@ -1678,7 +1675,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             }
             dsl::textual::ExprKind::Deref(expr) => {
                 self.visit_expr(expr)?;
-                self.write_ws("^");
+                // No separating space: the parser's `unary_expression`
+                // rule allows no whitespace between the operand and the
+                // `^`, so `myRef ^` would not re-parse.
+                self.write("^");
                 Ok(())
             }
             dsl::textual::ExprKind::Null(_) => {
@@ -1696,6 +1696,30 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_symbolic_variable_kind(&node.variable)?;
         self.write("^");
         Ok(())
+    }
+
+    // OOP extension: `THIS^` / `SUPER^`. The caret is part of the node's
+    // spelling, so it can never be split from the keyword, and whatever
+    // element follows (`.field`, `[i]`) is written with no gap -- which is
+    // what the parser requires after a caret.
+    fn visit_self_ref_variable(
+        &mut self,
+        node: &dsl::textual::SelfRefVariable,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws(node.kind.spelling());
+        Ok(())
+    }
+
+    fn visit_method_receiver(
+        &mut self,
+        node: &dsl::textual::MethodReceiver,
+    ) -> Result<Self::Value, Diagnostic> {
+        match node {
+            dsl::textual::MethodReceiver::Instance(name) => self.visit_id(name),
+            dsl::textual::MethodReceiver::SelfRef(self_ref) => {
+                self.visit_self_ref_variable(self_ref)
+            }
+        }
     }
 
     fn visit_reference_declaration(
@@ -1775,7 +1799,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_symbolic_variable_kind(&node.subscripted_variable)?;
 
-        self.write_ws("[");
+        // No space before `[`: the parser's `symbolic_variable` rule admits
+        // none between a variable and its subscript. Inside the brackets is
+        // fine -- `subscript_list` allows it.
+        self.write("[");
         visit_comma_separated!(self, node.subscripts.iter(), Expr);
         self.write_ws("]");
 

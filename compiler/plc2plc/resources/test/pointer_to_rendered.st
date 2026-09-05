@@ -19,7 +19,7 @@ VAR
    value : INT;
 END_VAR
 p := REF( counter ) ;
-value := p ^ ;
+value := p^ ;
 p^ := 99 ;
 p := NULL ;
 END_PROGRAM

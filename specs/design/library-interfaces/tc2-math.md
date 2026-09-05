@@ -45,9 +45,9 @@ function is a fully-defined ST body.
 All four signatures are **`LREAL`-only**, matching Beckhoff (whose
 `Tc2_Math` signatures are not generic). A call with `REAL` arguments is
 not this library's concern: TwinCAT accepts it by implicitly widening the
-argument REAL→LREAL at the call site, which is separately planned work
-([2026-07-27-twincat-real-to-lreal-widening.md](../../plans/2026-07-27-twincat-real-to-lreal-widening.md))
-and serves every LREAL-taking function uniformly.
+argument REAL→LREAL at the call site — implicit widening is handled separately
+(see [ADR-0031](../../adrs/0031-expanded-implicit-type-widening.md)) and serves
+every LREAL-taking function uniformly.
 
 Formal parameter names are normalized to IronPLC's stdlib `IN`/`IN1`/`IN2`
 convention, consistent with how IronPLC records every other function
@@ -60,8 +60,7 @@ builtin, no func_id, no manifest binding. The two semantics IEC 61131-3
 source cannot express (real-preserving truncation, floating modulo) are
 reached through the typed compiler intrinsics `__TRUNC(ANY_REAL): ANY_REAL`
 and `__MOD(IN1, IN2: ANY_REAL): ANY_REAL`
-(merged in [#1348](https://github.com/ironplc/ironplc/pull/1348); see
-`specs/plans/2026-08-11-compiler-intrinsic-trunc-mod.md`), which library
+(merged in [#1348](https://github.com/ironplc/ironplc/pull/1348)), which library
 bodies may call. `MODABS` and `FRAC` are math-dictated compositions.
 
 The intrinsics obey IEEE-754 double-precision (binary64) arithmetic. All

@@ -45,14 +45,20 @@ use ironplc_container::debug_section::{
     EnumDefEntry, FuncNameEntry, StringLayoutEntry, VarNameEntry,
 };
 use ironplc_container::{
-    CharWidth, Container, ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex,
-    STRING_HEADER_BYTES,
+    CharWidth, Container, ContainerBuilder, FbTypeId, FunctionId, TaskType, UserFbDescriptor,
+    VarIndex,
 };
+// The string data-region layout lives in `ironplc-container` so the analyzer
+// and codegen size strings the same way. Re-exported here because the rest of
+// codegen reaches for these through `compile`.
+pub(crate) use ironplc_container::{string_region_size, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, Library,
     LibraryElementKind, ProgramDeclaration, StringType, VarDecl, VariableType,
 };
-use ironplc_dsl::configuration::ConfigurationDeclaration;
+use ironplc_dsl::configuration::{
+    ConfigurationDeclaration, ProgramConfiguration, TaskConfiguration,
+};
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_problems::Problem;
@@ -62,11 +68,12 @@ use ironplc_analyzer::{FunctionEnvironment, SemanticContext, TypeEnvironment};
 use crate::emit::Emitter;
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
-use super::compile_setup::{assign_variables, emit_initial_values, resolve_type_name};
+use super::compile_setup::{assign_variables, emit_initial_values};
 use super::compile_stmt::compile_body;
+use super::type_info::resolve_type_name;
 
 /// The native operation width used for arithmetic and comparisons.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum OpWidth {
     /// 32-bit integer operations (for SINT, INT, DINT, USINT, UINT, UDINT).
     W32,
@@ -79,7 +86,7 @@ pub(crate) enum OpWidth {
 }
 
 /// Whether a type uses signed or unsigned semantics for division and comparison.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Signedness {
     Signed,
     Unsigned,
@@ -111,6 +118,7 @@ pub(crate) const MAX_DATA_REGION_SLOTS: u32 = 32768;
 /// `Str` holds Latin-1 bytes (narrow STRING); `WStr` holds UTF-16LE bytes
 /// (wide WSTRING). The encoding is tagged per pool entry so the VM can verify
 /// it against the destination (ADR-0034).
+#[derive(Debug, PartialEq)]
 pub(crate) enum PoolConstant {
     I32(i32),
     I64(i64),
@@ -119,9 +127,6 @@ pub(crate) enum PoolConstant {
     Str(Vec<u8>),
     WStr(Vec<u8>),
 }
-
-/// The IEC 61131-3 default maximum length for STRING (254 characters).
-pub(crate) const DEFAULT_STRING_MAX_LENGTH_U16: u16 = 254;
 
 /// Metadata for a STRING/WSTRING variable allocated in the data region.
 #[derive(Clone)]
@@ -146,13 +151,6 @@ pub(crate) fn char_width_for_string_type(width: &StringType) -> CharWidth {
         StringType::String => NARROW_CHAR_WIDTH,
         StringType::WString => WIDE_CHAR_WIDTH,
     }
-}
-
-/// Total bytes needed in the data region for a STRING/WSTRING value with the
-/// given maximum length (in code units) and `char_width`: header plus
-/// `max_length * char_width` payload bytes.
-pub(crate) fn string_region_size(max_length: u16, char_width: CharWidth) -> u32 {
-    STRING_HEADER_BYTES as u32 + (max_length as u32) * (char_width.byte_width() as u32)
 }
 
 /// Encode a character-string literal into bytes for the constant pool.
@@ -219,6 +217,9 @@ pub fn compile(
 ) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
     let config = find_configuration(library);
+    if let Some(config) = config {
+        check_single_program_instance(config)?;
+    }
     let user_globals: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
 
     // Prepend system uptime globals when the feature is enabled.
@@ -231,7 +232,6 @@ pub fn compile(
     }
 
     // Collect top-level VAR_GLOBAL declarations (outside CONFIGURATION blocks).
-    // These are common in the RuSTy dialect and OSCAT libraries.
     for element in &library.elements {
         if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
             synthetic_globals.extend_from_slice(decls);
@@ -290,23 +290,235 @@ pub fn compile(
         container.header.flags |= ironplc_container::FLAG_HAS_SYSTEM_UPTIME;
     }
 
+    if let Some(config) = config {
+        apply_task_configuration(&mut container, config, &program.name)?;
+    }
+
     Ok(container)
 }
 
-/// Finds the first PROGRAM declaration in the library.
-fn find_program(library: &Library) -> Result<&ProgramDeclaration, Diagnostic> {
-    for element in &library.elements {
-        if let LibraryElementKind::ProgramDeclaration(program) = element {
-            return Ok(program);
-        }
+/// Applies the `TASK` that the configuration binds to the compiled program.
+///
+/// `ContainerBuilder` synthesizes a freewheeling task and a single program
+/// instance. The VM is single-instance in v1; [`find_program`] and
+/// [`check_single_program_instance`] reject a second `PROGRAM` or instance
+/// before this runs, so the table keeps that one task and one instance —
+/// only the task entry's scheduling fields change. A program with no
+/// `CONFIGURATION`, or one that no resource instantiates, or an instance
+/// declared without a `WITH` clause, keeps the synthesized freewheeling task.
+fn apply_task_configuration(
+    container: &mut Container,
+    config: &ConfigurationDeclaration,
+    program_name: &Id,
+) -> Result<(), Diagnostic> {
+    let Some(task) = find_bound_task(config, program_name) else {
+        return Ok(());
+    };
+
+    // The VM stubs event-triggered tasks out of `collect_ready_tasks`, so
+    // emitting one would produce a program whose task body never runs. Reject
+    // it rather than compile something that silently does nothing.
+    if task.single.is_some() {
+        return Err(Diagnostic::problem(
+            Problem::TaskSingleNotSupported,
+            Label::span(task.name.span(), "Task declares SINGLE"),
+        ));
     }
-    Err(Diagnostic::problem(
-        Problem::NoProgramDeclaration,
-        Label::file(
-            FileId::default(),
-            "Source does not contain a PROGRAM declaration",
+
+    let priority = u16::try_from(task.priority).map_err(|_| {
+        Diagnostic::problem(
+            Problem::TaskParameterOutOfRange,
+            Label::span(
+                task.name.span(),
+                format!(
+                    "Task declares PRIORITY := {}, which exceeds the maximum of {}",
+                    task.priority,
+                    u16::MAX
+                ),
+            ),
+        )
+    })?;
+
+    let interval_us = task_interval_us(task)?;
+
+    if let Some(entry) = container.task_table.tasks.first_mut() {
+        entry.priority = priority;
+        entry.interval_us = interval_us;
+        // A zero interval means "as fast as possible", which is what a
+        // freewheeling task already does. A cyclic task with `interval_us` of
+        // zero would instead be permanently overdue, inflating `overrun_count`
+        // on every round.
+        entry.task_type = if interval_us > 0 {
+            TaskType::Cyclic
+        } else {
+            TaskType::Freewheeling
+        };
+    }
+
+    Ok(())
+}
+
+/// Converts a task's `INTERVAL` to microseconds, or 0 when it declares none.
+fn task_interval_us(task: &TaskConfiguration) -> Result<u64, Diagnostic> {
+    let Some(interval) = &task.interval else {
+        return Ok(0);
+    };
+
+    let micros = interval.interval.whole_microseconds();
+    u64::try_from(micros).map_err(|_| {
+        Diagnostic::problem(
+            Problem::TaskParameterOutOfRange,
+            Label::span(
+                interval.span.clone(),
+                format!("Task declares an INTERVAL of {micros} microseconds"),
+            ),
+        )
+    })
+}
+
+/// Finds the `TASK` that `config` binds to the program type `program_name`.
+///
+/// `PROGRAM <instance> WITH <task> : <type>` names the program *type*, so the
+/// match is on `type_name`. Returns `None` when no resource instantiates the
+/// program or the instance has no `WITH` clause. A `WITH` naming a task that
+/// does not exist cannot reach here — the analyzer rejects it first (see
+/// `rule_program_task_definition_exists`).
+fn find_bound_task<'a>(
+    config: &'a ConfigurationDeclaration,
+    program_name: &Id,
+) -> Option<&'a TaskConfiguration> {
+    config.resource_decl.iter().find_map(|resource| {
+        let program = resource
+            .programs
+            .iter()
+            .find(|program| &program.type_name == program_name)?;
+        let task_name = program.task_name.as_ref()?;
+        resource.tasks.iter().find(|task| &task.name == task_name)
+    })
+}
+
+/// Finds the one PROGRAM declaration that the container runs.
+///
+/// The VM runs a single program instance, so a library with two or more
+/// `PROGRAM` declarations cannot be compiled faithfully. Keeping one of them
+/// silently is worse than refusing: which one survived depended on the
+/// analyzer's toposort order rather than on the source (issue #1588). Every
+/// declaration beyond the first is therefore reported as not yet implemented.
+fn find_program(library: &Library) -> Result<&ProgramDeclaration, Diagnostic> {
+    let mut programs: Vec<&ProgramDeclaration> = library
+        .elements
+        .iter()
+        .filter_map(|element| match element {
+            LibraryElementKind::ProgramDeclaration(program) => Some(program),
+            _ => None,
+        })
+        .collect();
+    sort_by_source_position(&mut programs, |program| &program.name);
+
+    match programs.as_slice() {
+        [] => Err(Diagnostic::problem(
+            Problem::NoProgramDeclaration,
+            Label::file(
+                FileId::default(),
+                "Source does not contain a PROGRAM declaration",
+            ),
+        )),
+        [program] => Ok(program),
+        _ => Err(multiple_programs_not_implemented(
+            "PROGRAM declaration",
+            &programs
+                .iter()
+                .map(|program| &program.name)
+                .collect::<Vec<_>>(),
+        )),
+    }
+}
+
+/// Rejects a configuration that instantiates more than one program.
+///
+/// `PROGRAM <instance> WITH <task> : <type>` lines are counted across every
+/// `RESOURCE` in the configuration. Two instances of the same program type
+/// are as unsupported as two different types: the VM has one variable table
+/// and one program instance, so the second instance would be dropped.
+fn check_single_program_instance(config: &ConfigurationDeclaration) -> Result<(), Diagnostic> {
+    let mut instances: Vec<&ProgramConfiguration> = config
+        .resource_decl
+        .iter()
+        .flat_map(|resource| resource.programs.iter())
+        .collect();
+    if instances.len() < 2 {
+        return Ok(());
+    }
+    sort_by_source_position(&mut instances, |instance| &instance.name);
+
+    Err(multiple_programs_not_implemented(
+        "program instance",
+        &instances
+            .iter()
+            .map(|instance| &instance.name)
+            .collect::<Vec<_>>(),
+    ))
+}
+
+/// Orders `items` by where their identifier appears in the source.
+///
+/// The analyzer's toposort reorders library elements, and for POUs with no
+/// dependency edges between them the order comes out reversed. Sorting by
+/// file and offset lets a diagnostic call a program "the second" in the sense
+/// the reader expects: the second one in the file.
+fn sort_by_source_position<T>(items: &mut [&T], id: impl Fn(&T) -> &Id) {
+    items.sort_by_key(|item| {
+        let span = &id(item).span;
+        (span.file_id.to_string(), span.start)
+    });
+}
+
+/// Builds the P9999 diagnostic for a second (or later) program.
+///
+/// `names` are in source order. The primary label sits on the second name,
+/// the first one the compiler cannot honour. The first name and any later
+/// ones get secondary labels so the diagnostic points at every program it is
+/// about, not only the one that tipped the count.
+fn multiple_programs_not_implemented(what: &str, names: &[&Id]) -> Diagnostic {
+    let Some(second) = names.get(1) else {
+        return Diagnostic::internal_error();
+    };
+    let mut diagnostic = Diagnostic::not_implemented(Label::span(
+        second.span(),
+        format!(
+            "{} {what}; the compiler currently runs only one PROGRAM",
+            ordinal(2)
         ),
     ))
+    .with_help(
+        "Compile a single PROGRAM for now. Support for more than one PROGRAM is tracked in \
+         https://github.com/ironplc/ironplc/issues/1613",
+    );
+    for (index, name) in names.iter().enumerate() {
+        if index == 1 {
+            continue;
+        }
+        diagnostic = diagnostic.with_secondary(Label::span(
+            name.span(),
+            format!("{} {what}", ordinal(index + 1)),
+        ));
+    }
+    diagnostic
+}
+
+/// Formats a 1-based position as an English ordinal: `1st`, `2nd`, `3rd`, `11th`.
+fn ordinal(position: usize) -> String {
+    let suffix = if (11..=13).contains(&(position % 100)) {
+        "th"
+    } else {
+        match position % 10 {
+            1 => "st",
+            2 => "nd",
+            3 => "rd",
+            _ => "th",
+        }
+    };
+    format!("{position}{suffix}")
 }
 
 /// Finds the first CONFIGURATION declaration in the library, if any.
@@ -370,13 +582,31 @@ pub(crate) struct CompiledFunction {
     pub(crate) line_map: Vec<crate::emit::EmittedLineMapEntry>,
 }
 
+/// Returns the index of `value` in `constants`, appending it if absent.
+///
+/// Free-standing rather than a `CompileContext` method because the peephole
+/// optimizer interns constants while holding only the pool — it has no
+/// context to reach through. `CompileContext::add_i32_constant` delegates
+/// here so both paths dedupe against the same pool.
+pub(crate) fn intern_i32_constant(constants: &mut Vec<PoolConstant>, value: i32) -> u16 {
+    if let Some(i) = constants
+        .iter()
+        .position(|c| matches!(c, PoolConstant::I32(v) if *v == value))
+    {
+        return i as u16;
+    }
+    let index = constants.len() as u16;
+    constants.push(PoolConstant::I32(value));
+    index
+}
+
 /// Holds the finalized bytecode and stack depth for a single emitted function.
 ///
 /// Returned by [`finalize_function`] to centralize the
-/// `emitter.bytecode()` → optimize → `max_stack_depth()` sequence shared by
-/// every code path that emits a function (init, scan, user functions, FB
-/// bodies). Centralizing this makes future cross-cutting additions (e.g.
-/// source-map plumbing) a one-site change.
+/// optimize → patch jumps → `max_stack_depth()` sequence shared by every
+/// code path that emits a function (init, scan, user functions, FB bodies).
+/// Centralizing this makes future cross-cutting additions (e.g. source-map
+/// plumbing) a one-site change.
 pub(crate) struct FinalizedFunction {
     pub(crate) bytecode: Vec<u8>,
     pub(crate) max_stack_depth: u16,
@@ -390,19 +620,27 @@ pub(crate) struct FinalizedFunction {
 
 /// Finalizes an emitter into ready-to-store bytecode plus stack depth.
 ///
-/// `emitter.bytecode()` must be called before `max_stack_depth()` because the
-/// peephole optimizer (run inside `bytecode()`) may increase max_stack_depth.
-pub(crate) fn finalize_function(emitter: &mut Emitter, ctx: &CompileContext) -> FinalizedFunction {
+/// The optimizer runs before the emitter patches its jumps, so it works on
+/// symbolic edges: it is told which offsets the jumps target and reports
+/// where every instruction moved, and the emitter then resolves each jump
+/// against the new positions.
+pub(crate) fn finalize_function(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+) -> Result<FinalizedFunction, Diagnostic> {
     let raw_line_map = emitter.take_line_map();
-    let (bytecode, offset_map) = crate::optimize::optimize(emitter.bytecode(), &ctx.constants);
+    let (optimized, offset_map) =
+        crate::optimize::optimize(emitter.unpatched_code(), &mut ctx.constants);
+    emitter.apply_optimized(optimized, &offset_map);
+    let bytecode = emitter.bytecode().to_vec();
     let max_stack_depth = emitter.max_stack_depth();
     let line_map =
-        crate::optimize::remap_line_map(raw_line_map, &offset_map, bytecode.len() as u16);
-    FinalizedFunction {
+        crate::optimize::remap_line_map(raw_line_map, &offset_map, bytecode.len() as u16)?;
+    Ok(FinalizedFunction {
         bytecode,
         max_stack_depth,
         line_map,
-    }
+    })
 }
 
 /// The AST inputs that [`compile_program_with_functions`] operates on,
@@ -517,8 +755,61 @@ fn compile_program_with_functions(
                 function_id: FunctionId::new(next_function_id),
                 var_offset: 0, // updated after program vars are assigned
                 field_op_types,
+                methods: HashMap::new(),
             },
         );
+    }
+
+    // Pre-scan METHOD declarations (OOP extension, ADR-0041 Phase 1) to
+    // register their function IDs, parameter shapes, and return-value
+    // presence -- all knowable from the AST alone, same reasoning as the
+    // FB pre-scan above. Method function IDs continue the sequence after
+    // every FB body and every user FUNCTION, so they must be registered
+    // only after both counts are known; `param_var_off`/`max_stack_depth`
+    // stay `0` until the method is actually compiled (mirrors
+    // `UserFbTypeInfo::var_offset`).
+    let mut next_method_function_id = 2_u16 + fb_decls.len() as u16 + func_decls.len() as u16;
+    for fb_decl in fb_decls.iter() {
+        let fb_name = fb_decl.name.name.to_string().to_uppercase();
+        for method in &fb_decl.methods {
+            let method_name = method.name.to_string().to_lowercase();
+            let mut param_names_in_order: Vec<String> = Vec::new();
+            let mut param_op_types: Vec<OpType> = Vec::new();
+            for decl in &method.variables {
+                if !decl.var_type.is_input_compatible() {
+                    continue;
+                }
+                if let Some(id) = decl.identifier.symbolic_id() {
+                    param_names_in_order.push(id.to_string().to_lowercase());
+                }
+                let op_type = if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer
+                {
+                    resolve_type_name(&simple.type_name.name)
+                        .map_or(DEFAULT_OP_TYPE, |vti| (vti.op_width, vti.signedness))
+                } else {
+                    DEFAULT_OP_TYPE
+                };
+                param_op_types.push(op_type);
+            }
+
+            let function_id = FunctionId::new(next_method_function_id);
+            next_method_function_id += 1;
+
+            if let Some(fb_info) = ctx.user_fb_types.get_mut(&fb_name) {
+                fb_info.methods.insert(
+                    method_name,
+                    UserMethodInfo {
+                        function_id,
+                        param_var_off: 0, // updated once the method is compiled
+                        num_params: param_names_in_order.len() as u16,
+                        param_names_in_order,
+                        param_op_types,
+                        has_return_value: method.return_type.is_some(),
+                        max_stack_depth: 0, // updated once the method is compiled
+                    },
+                );
+            }
+        }
     }
 
     // Collect program-local variables, skipping VAR_EXTERNAL declarations
@@ -565,17 +856,19 @@ fn compile_program_with_functions(
         compiled_functions.push(compiled);
     }
 
+    let mut compiled_methods: Vec<CompiledFunction> = Vec::new();
     for fb_decl in fb_decls {
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let fb_func_id = ctx.user_fb_types[&fb_name].function_id;
+        let field_var_off = var_offset.raw();
 
         // Update the var_offset in the registered type info.
-        ctx.user_fb_types.get_mut(&fb_name).unwrap().var_offset = var_offset.raw();
+        ctx.user_fb_types.get_mut(&fb_name).unwrap().var_offset = field_var_off;
 
-        let compiled = compile_user_function_block(
+        let (compiled, saved_scope) = compile_user_function_block(
             fb_decl,
             fb_func_id,
-            var_offset.raw(),
+            field_var_off,
             &mut ctx,
             &mut builder,
             types,
@@ -583,6 +876,30 @@ fn compile_program_with_functions(
         )?;
         var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
         compiled_fb_bodies.push(compiled);
+
+        // Compile this type's methods (OOP extension, ADR-0041 Phase 1)
+        // while `ctx.variables` still holds this type's field mappings
+        // (that's the whole reason `compile_user_function_block` didn't
+        // restore them itself -- see its doc comment).
+        let methods = crate::compile_method::compile_user_fb_methods(
+            fb_decl,
+            &fb_name,
+            field_var_off,
+            &mut var_offset,
+            &mut ctx,
+            &mut builder,
+            types,
+        )?;
+        compiled_methods.extend(methods);
+
+        // Now restore the program-level view for the next FB type.
+        ctx.variables = saved_scope.variables;
+        ctx.var_types = saved_scope.var_types;
+        ctx.string_vars = saved_scope.string_vars;
+        ctx.array_vars = saved_scope.array_vars;
+        ctx.struct_vars = saved_scope.struct_vars;
+        ctx.struct_array_vars = saved_scope.struct_array_vars;
+        ctx.fb_instances = saved_scope.fb_instances;
     }
 
     let total_variables = var_offset;
@@ -625,29 +942,19 @@ fn compile_program_with_functions(
         }
     }
 
-    // Add constants to the pool.
-    for constant in &ctx.constants {
-        match constant {
-            PoolConstant::I32(v) => builder = builder.add_i32_constant(*v),
-            PoolConstant::I64(v) => builder = builder.add_i64_constant(*v),
-            PoolConstant::F32(v) => builder = builder.add_f32_constant(*v),
-            PoolConstant::F64(v) => builder = builder.add_f64_constant(*v),
-            PoolConstant::Str(v) => builder = builder.add_str_constant(v),
-            PoolConstant::WStr(v) => builder = builder.add_wstr_constant(v),
-        }
-    }
-
-    // Compute the max stack depth needed by any user-defined FB body.
-    // The scan function's reported max_stack_depth must include the FB body's
-    // depth because FB_CALL recursively enters execute() on the shared stack.
+    // Compute the max stack depth needed by any user-defined FB body or
+    // METHOD. The scan function's reported max_stack_depth must include
+    // it because FB_CALL / METHOD_CALL recursively enter execute() on
+    // the shared stack.
     let max_fb_body_stack: u16 = compiled_fb_bodies
         .iter()
+        .chain(compiled_methods.iter())
         .map(|c| c.max_stack_depth)
         .max()
         .unwrap_or(0);
 
     // Function 0: init, Function 1: scan
-    let init = finalize_function(&mut init_emitter, &ctx);
+    let init = finalize_function(&mut init_emitter, &mut ctx)?;
     builder = builder.add_function(
         FunctionId::INIT,
         &init.bytecode,
@@ -657,7 +964,7 @@ fn compile_program_with_functions(
     );
     builder = add_line_map_entries(builder, FunctionId::INIT, &init.line_map);
 
-    let scan = finalize_function(&mut scan_emitter, &ctx);
+    let scan = finalize_function(&mut scan_emitter, &mut ctx)?;
     builder = builder.add_function(
         FunctionId::SCAN,
         &scan.bytecode,
@@ -694,6 +1001,21 @@ fn compile_program_with_functions(
 
     // Add user-defined functions.
     for compiled in &compiled_functions {
+        builder = builder.add_function(
+            compiled.function_id,
+            &compiled.bytecode,
+            compiled.max_stack_depth,
+            compiled.num_locals,
+            compiled.num_params,
+        );
+        builder = add_line_map_entries(builder, compiled.function_id, &compiled.line_map);
+    }
+
+    // Add METHOD bodies (OOP extension, ADR-0041 Phase 1). Function IDs
+    // are positional in the container, so these must be added last --
+    // registration assigned them `2 + fb_decls.len() + func_decls.len()..`,
+    // continuing directly after the user functions just added above.
+    for compiled in &compiled_methods {
         builder = builder.add_function(
             compiled.function_id,
             &compiled.bytecode,
@@ -752,6 +1074,12 @@ fn compile_program_with_functions(
             name: compiled.name.clone(),
         });
     }
+    for compiled in &compiled_methods {
+        builder = builder.add_func_name(FuncNameEntry {
+            function_id: compiled.function_id,
+            name: compiled.name.clone(),
+        });
+    }
     for entry in ctx.debug_var_names {
         builder = builder.add_var_name(entry);
     }
@@ -763,6 +1091,25 @@ fn compile_program_with_functions(
             type_name: type_name.clone(),
             values: values.clone(),
         });
+    }
+
+    // Add constants to the pool.
+    //
+    // This must come after every `finalize_function` call, not merely after
+    // the last `compile_*` one: the peephole optimizer interns constants of
+    // its own (folding `LOAD_CONST_I32; TRUNC_*` to an already-truncated
+    // value), so the pool is still growing until the final function has been
+    // finalized. Emitting it earlier leaves those loads pointing past the end
+    // of the emitted pool, which the VM rejects as `InvalidConstantIndex`.
+    for constant in &ctx.constants {
+        match constant {
+            PoolConstant::I32(v) => builder = builder.add_i32_constant(*v),
+            PoolConstant::I64(v) => builder = builder.add_i64_constant(*v),
+            PoolConstant::F32(v) => builder = builder.add_f32_constant(*v),
+            PoolConstant::F64(v) => builder = builder.add_f64_constant(*v),
+            PoolConstant::Str(v) => builder = builder.add_str_constant(v),
+            PoolConstant::WStr(v) => builder = builder.add_wstr_constant(v),
+        }
     }
 
     let container = builder.build();
@@ -817,8 +1164,30 @@ pub(crate) struct UserFunctionInfo {
     /// in the data region. Used at call sites to initialize the return string
     /// header before CALL.
     pub(crate) return_string_info: Option<StringReturnInfo>,
+    /// If the function returns a structure, the array descriptor index of its
+    /// return variable's data region. A call site assigning the result to a
+    /// whole variable (`s := f()`) needs it to emit `COPY_REGION`, whose
+    /// source size comes from the descriptor rather than an operand.
+    pub(crate) return_struct_desc_index: Option<u16>,
     /// Maximum stack depth used by this function's body.
     pub(crate) max_stack_depth: u16,
+}
+
+/// Snapshot of the program-level variable-mapping state, captured by
+/// `compile_user_function_block` before it repopulates `CompileContext`
+/// for a single FB type's own body (and, in the same scope, that type's
+/// methods -- OOP extension, ADR-0041 Phase 1). The caller restores from
+/// this once *both* the body and its methods have been compiled, since
+/// method bodies need the type's field mappings to still be visible in
+/// `ctx.variables` after the FB body compile returns.
+pub(crate) struct SavedFbScope {
+    pub(crate) variables: HashMap<Id, VarIndex>,
+    pub(crate) var_types: HashMap<Id, VarTypeInfo>,
+    pub(crate) string_vars: HashMap<Id, StringVarInfo>,
+    pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
+    pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
+    pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
+    pub(crate) fb_instances: HashMap<Id, FbInstanceInfo>,
 }
 
 /// Tracks state during compilation of a single program.
@@ -848,6 +1217,40 @@ pub(crate) struct UserFbTypeInfo {
     pub(crate) var_offset: u16,
     /// Maps field name (lowercase) to its op type for codegen at call sites.
     pub(crate) field_op_types: HashMap<String, OpType>,
+    /// Maps method name (lowercase) to compilation metadata (OOP
+    /// extension, ADR-0041 Phase 1). Populated in two steps: `function_id`,
+    /// `num_params`, `param_op_types`, and `has_return_value` are known
+    /// from the AST alone and set during the pre-scan registration pass;
+    /// `param_var_off` is set once the method body is actually compiled
+    /// and its scratch region is known (mirrors `var_offset` above).
+    pub(crate) methods: HashMap<String, UserMethodInfo>,
+}
+
+/// Compilation metadata for a single `METHOD` declared on a user-defined
+/// function block type (OOP extension, ADR-0041 Phase 1: static
+/// dispatch). A method shares its owning type's field scratch region
+/// (`UserFbTypeInfo::var_offset`/`num_fields`) for `self` access, and has
+/// its own additional, non-shared param/local scratch region allocated
+/// immediately after -- see `compile_method::compile_user_method`.
+pub(crate) struct UserMethodInfo {
+    /// Function ID of the compiled method body in the container.
+    pub(crate) function_id: FunctionId,
+    /// Variable table offset where this method's own param/local slots
+    /// start (immediately after the owning type's field region, or after
+    /// a previously-compiled sibling method's own region). `0` until the
+    /// method is actually compiled.
+    pub(crate) param_var_off: u16,
+    /// Number of VAR_INPUT/VAR_IN_OUT parameters, in declaration order.
+    pub(crate) num_params: u16,
+    /// Parameter names (lowercase) and op types, in declaration order --
+    /// used to resolve both positional and named call-site arguments.
+    pub(crate) param_names_in_order: Vec<String>,
+    pub(crate) param_op_types: Vec<OpType>,
+    pub(crate) has_return_value: bool,
+    /// Max operand-stack depth used by the method body. `0` until the
+    /// method is actually compiled; used for the scan function's
+    /// worst-case stack accounting, same as `max_fb_body_stack`.
+    pub(crate) max_stack_depth: u16,
 }
 
 pub(crate) struct CompileContext {
@@ -868,6 +1271,9 @@ pub(crate) struct CompileContext {
     pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
     /// Maps structure variable identifiers to their metadata.
     pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
+    /// Maps top-level `ARRAY OF <struct>` variable identifiers to their metadata.
+    /// Kept apart from `array_vars`, whose elements occupy a single slot each.
+    pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
     /// Pre-computed ordinal mappings for named enumeration types.
     pub(crate) enum_map: crate::compile_enum::EnumOrdinalMap,
     /// Next available byte offset in the data region.
@@ -877,7 +1283,13 @@ pub(crate) struct CompileContext {
     /// True when any WSTRING (wide) string is declared. Temp buffers are then
     /// sized in wide bytes so an intermediate wide value fits (ADR-0035).
     pub(crate) has_wide_string: bool,
-    /// Number of temp buffers needed (one per string load in the init function).
+    /// Number of temp buffers needed: one per string-operation call site,
+    /// counted across every function, not just the init function.
+    ///
+    /// This is a count of *static* sites, but the VM rewinds its allocator only
+    /// on function return, so a site inside a loop consumes one buffer per
+    /// iteration. A loop over a string operation therefore exhausts the pool
+    /// and traps `V9009`.
     pub(crate) num_temp_bufs: u16,
     /// Debug info: variable name entries collected during assign_variables.
     pub(crate) debug_var_names: Vec<VarNameEntry>,
@@ -939,6 +1351,7 @@ impl CompileContext {
             fb_instances: HashMap::new(),
             array_vars: HashMap::new(),
             struct_vars: HashMap::new(),
+            struct_array_vars: HashMap::new(),
             data_region_offset: 0,
             max_string_capacity: 0,
             has_wide_string: false,
@@ -1025,10 +1438,7 @@ impl CompileContext {
 
     /// Adds an i32 constant to the pool and returns its index.
     pub(crate) fn add_i32_constant(&mut self, value: i32) -> u16 {
-        self.intern_constant(
-            |c| matches!(c, PoolConstant::I32(v) if *v == value),
-            PoolConstant::I32(value),
-        )
+        intern_i32_constant(&mut self.constants, value)
     }
 
     /// Adds an f32 constant to the pool and returns its index.
@@ -1203,6 +1613,149 @@ END_FUNCTION_BLOCK
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
         assert_eq!(diagnostic.code, Problem::NoProgramDeclaration.code());
+    }
+
+    /// Builds a program whose CONFIGURATION declares one task with the given
+    /// initialization parameters and binds the program to it.
+    fn program_with_task(task_init: &str) -> String {
+        format!(
+            "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    TASK task1({task_init});
+    PROGRAM instance1 WITH task1 : main;
+  END_RESOURCE
+END_CONFIGURATION
+"
+        )
+    }
+
+    fn compile_source(source: &str) -> Result<Container, Diagnostic> {
+        let (library, context) = parse(source);
+        compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+    }
+
+    #[test]
+    fn compile_when_task_has_interval_then_cyclic_task_with_interval_us() {
+        let source = program_with_task("INTERVAL := T#100ms, PRIORITY := 3");
+        let container = compile_source(&source).unwrap();
+
+        let task = &container.task_table.tasks[0];
+        assert_eq!(task.task_type, TaskType::Cyclic);
+        assert_eq!(task.interval_us, 100_000);
+        assert_eq!(task.priority, 3);
+    }
+
+    #[test]
+    fn compile_when_task_interval_is_sub_millisecond_then_interval_us_keeps_precision() {
+        let source = program_with_task("INTERVAL := T#0.5ms, PRIORITY := 0");
+        let container = compile_source(&source).unwrap();
+
+        assert_eq!(container.task_table.tasks[0].interval_us, 500);
+    }
+
+    #[test]
+    fn compile_when_no_configuration_then_freewheeling_task() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+";
+        let container = compile_source(source).unwrap();
+
+        let task = &container.task_table.tasks[0];
+        assert_eq!(task.task_type, TaskType::Freewheeling);
+        assert_eq!(task.interval_us, 0);
+    }
+
+    #[test]
+    fn compile_when_program_instance_has_no_task_then_freewheeling_task() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    TASK task1(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM instance1 : main;
+  END_RESOURCE
+END_CONFIGURATION
+";
+        let container = compile_source(source).unwrap();
+
+        let task = &container.task_table.tasks[0];
+        assert_eq!(task.task_type, TaskType::Freewheeling);
+        assert_eq!(task.interval_us, 0);
+    }
+
+    #[test]
+    fn compile_when_task_interval_is_zero_then_freewheeling_task() {
+        let source = program_with_task("INTERVAL := T#0ms, PRIORITY := 1");
+        let container = compile_source(&source).unwrap();
+
+        let task = &container.task_table.tasks[0];
+        assert_eq!(task.task_type, TaskType::Freewheeling);
+        assert_eq!(task.interval_us, 0);
+    }
+
+    #[test]
+    fn compile_when_task_has_single_then_p4047_error() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+
+CONFIGURATION config
+  VAR_GLOBAL
+    Trigger : BOOL;
+  END_VAR
+  RESOURCE resource1 ON PLC
+    TASK task1(SINGLE := Trigger, PRIORITY := 1);
+    PROGRAM instance1 WITH task1 : main;
+  END_RESOURCE
+END_CONFIGURATION
+";
+        let result = compile_source(source);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().code,
+            Problem::TaskSingleNotSupported.code()
+        );
+    }
+
+    #[test]
+    fn compile_when_task_priority_exceeds_u16_then_p4048_error() {
+        let source = program_with_task("INTERVAL := T#100ms, PRIORITY := 100000");
+        let result = compile_source(&source);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().code,
+            Problem::TaskParameterOutOfRange.code()
+        );
     }
 
     #[test]

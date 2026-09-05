@@ -455,7 +455,7 @@ fn mcp_spec_req_tol_031_compile_returns_diagnostics_on_failure() {
 fn mcp_spec_req_tol_032_compile_returns_tasks_array() {
     use std::sync::Mutex;
 
-    use crate::cache::ContainerCache;
+    use crate::cache::{ContainerCache, TaskKind};
     use crate::tools::common::SourceInput;
 
     let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
@@ -469,7 +469,19 @@ fn mcp_spec_req_tol_032_compile_returns_tasks_array() {
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
     assert!(!resp.tasks.is_empty());
     assert_eq!(resp.tasks[0].name, "plc_task");
-    assert_eq!(resp.tasks[0].kind, "cyclic");
+    assert_eq!(resp.tasks[0].kind, TaskKind::Cyclic);
+    assert_eq!(resp.tasks[0].interval_ms, Some(100.0));
+
+    // `kind` reports the task the container carries: a program with no
+    // CONFIGURATION compiles to the freewheeling task the builder synthesizes.
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM".into(),
+    }];
+    let resp = tools::compile::build_response(&sources, &options, false, &cache);
+    assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+    assert_eq!(resp.tasks[0].kind, TaskKind::Freewheeling);
+    assert_eq!(resp.tasks[0].interval_ms, None);
 }
 
 /// REQ-TOL-mcp-033: The `compile` tool returns a `programs` array with metadata
@@ -619,6 +631,73 @@ fn mcp_spec_req_tol_047_resource_limits() {}
 #[spec_test(REQ_TOL_mcp_048)]
 #[ignore]
 fn mcp_spec_req_tol_048_run_returns_summary() {}
+
+/// REQ-TOL-mcp-049: a freewheeling task needs a caller-supplied cycle time;
+/// without one the run is rejected rather than run at an invented rate.
+#[spec_test(REQ_TOL_mcp_049)]
+fn mcp_spec_req_tol_049_freewheeling_task_needs_a_supplied_cycle_time() {
+    use std::sync::Mutex;
+
+    use crate::cache::{ContainerCache, TaskKind};
+    use crate::tools::common::SourceInput;
+    use crate::tools::run::RunInput;
+
+    let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
+    // No CONFIGURATION, so the compiled container carries a freewheeling task.
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content:
+            "PROGRAM Main\nVAR\n  Counter : INT;\nEND_VAR\n  Counter := Counter + 1;\nEND_PROGRAM"
+                .into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let compiled = tools::compile::build_response(&sources, &options, false, &cache);
+    assert!(compiled.ok, "diagnostics: {:?}", compiled.diagnostics);
+    assert_eq!(compiled.tasks[0].kind, TaskKind::Freewheeling);
+
+    let run = |freewheeling_interval_ms| {
+        let input = RunInput {
+            container_id: compiled.container_id.clone(),
+            container_base64: None,
+            duration_ms: 1_000,
+            freewheeling_interval_ms,
+            variables: vec!["Main.Counter".into()],
+            trace_outputs: false,
+            stimuli: vec![],
+            trace: None,
+            limits: None,
+            tasks: None,
+        };
+        tools::run::build_response(&input, &cache)
+    };
+
+    // Omitted: rejected, naming the task and what to set.
+    let omitted = run(None);
+    assert!(!omitted.ok);
+    assert!(omitted.diagnostics.iter().any(|d| d["message"]
+        .as_str()
+        .unwrap_or("")
+        .contains("freewheeling_interval_ms")));
+
+    // Supplied: the caller's cycle time is what the run uses, and what it
+    // reports back.
+    let supplied = run(Some(200.0));
+    assert!(supplied.ok, "diagnostics: {:?}", supplied.diagnostics);
+    assert_eq!(
+        supplied.summary.completed_cycles["Main"],
+        serde_json::Value::from(5u64)
+    );
+    assert_eq!(supplied.summary.interval_ms, 200.0);
+
+    // Out of range: rejected before the VM starts.
+    let rejected = run(Some(0.0));
+    assert!(!rejected.ok);
+    assert!(rejected.diagnostics.iter().any(|d| d["message"]
+        .as_str()
+        .unwrap_or("")
+        .contains("freewheeling_interval_ms")));
+}
 
 // ===========================================================================
 // `symbols` tool (REQ-TOL-mcp-050..055) — Milestone 1 (later)
@@ -1113,10 +1192,12 @@ fn mcp_spec_req_tol_221_pou_scope_unknown_pou() {
 // ===========================================================================
 
 /// REQ-TOL-mcp-230: `pou_lineage` returns `pou`, `upstream`, and `downstream`
-/// adjacency lists derived from the project dependency DAG.
+/// adjacency lists derived from the project dependency DAG, each entry
+/// carrying its `name` and `source`.
 #[spec_test(REQ_TOL_mcp_230)]
 fn mcp_spec_req_tol_230_pou_lineage_returns_dependencies() {
     use crate::tools::common::SourceInput;
+    use crate::tools::pou_lineage::PouSource;
 
     let sources = vec![SourceInput {
         name: "main.st".into(),
@@ -1128,10 +1209,12 @@ fn mcp_spec_req_tol_230_pou_lineage_returns_dependencies() {
     let main_resp = tools::pou_lineage::build_response(&sources, &options, "Main");
     assert!(main_resp.ok, "diagnostics: {:?}", main_resp.diagnostics);
     assert!(main_resp.found);
-    assert!(main_resp
+    let counter = main_resp
         .upstream
         .iter()
-        .any(|n| n.eq_ignore_ascii_case("Counter")));
+        .find(|e| e.name.eq_ignore_ascii_case("Counter"))
+        .expect("Counter is upstream of Main");
+    assert_eq!(counter.source, PouSource::User);
 
     // Counter has Main as downstream.
     let counter_resp = tools::pou_lineage::build_response(&sources, &options, "Counter");
@@ -1140,7 +1223,39 @@ fn mcp_spec_req_tol_230_pou_lineage_returns_dependencies() {
     assert!(counter_resp
         .downstream
         .iter()
-        .any(|n| n.eq_ignore_ascii_case("Main")));
+        .any(|e| e.name.eq_ignore_ascii_case("Main")));
+}
+
+/// REQ-TOL-mcp-232: standard library POUs appear in lineage tagged
+/// `source: "stdlib"` and are addressable as the queried POU.
+#[spec_test(REQ_TOL_mcp_232)]
+fn mcp_spec_req_tol_232_pou_lineage_reports_stdlib_pous() {
+    use crate::tools::common::SourceInput;
+    use crate::tools::pou_lineage::PouSource;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM MotorStartStop\nVAR Star_Timer : TON; Run : BOOL; END_VAR\nStar_Timer(IN := Run, PT := T#5s);\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::pou_lineage::build_response(&sources, &options, "MotorStartStop");
+    assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+    assert!(resp.found);
+    let timer = resp
+        .upstream
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case("TON"))
+        .expect("TON is upstream of MotorStartStop");
+    assert_eq!(timer.source, PouSource::Stdlib);
+
+    // The standard library POU is itself addressable.
+    let ton_resp = tools::pou_lineage::build_response(&sources, &options, "TON");
+    assert!(ton_resp.found);
+    assert!(ton_resp
+        .downstream
+        .iter()
+        .any(|e| e.name.eq_ignore_ascii_case("MotorStartStop")));
 }
 
 /// REQ-TOL-mcp-231: `pou_lineage` returns `ok:false`, `found:false`, empty

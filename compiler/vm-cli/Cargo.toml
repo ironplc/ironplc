@@ -1,7 +1,7 @@
 [package]
 name = "ironplc-vm-cli"
 description = "Command line interface for the IronPLC bytecode virtual machine"
-version = "0.239.0"
+version = "0.241.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -23,9 +23,9 @@ name = "ironplcvmd"
 path = "src/dap_main.rs"
 
 [dependencies]
-ironplc-vm = { path = "../vm", version = "0.239.0" }
-ironplc-container = { path = "../container", version = "0.239.0" }
-ironplc-cli-support = { path = "../cli-support", version = "0.239.0" }
+ironplc-vm = { path = "../vm", version = "0.241.0" }
+ironplc-container = { path = "../container", version = "0.241.0" }
+ironplc-cli-support = { path = "../cli-support", version = "0.241.0" }
 clap = { version = "4.6", features = ["derive", "wrap_help"] }
 ctrlc = "3"
 env_logger = "0.11.10"
@@ -41,9 +41,16 @@ ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
 assert_cmd = { version = "2.2" }
 # `test-support` gives the tests the shared container fixtures. Enabling it
 # here (dev-dependencies only) keeps it out of the shipped binaries.
-ironplc-container = { path = "../container", version = "0.239.0", features = [
+ironplc-container = { path = "../container", version = "0.241.0", features = [
   "test-support",
 ] }
+# The debugger's timing regression test (issue #1397) needs a real compiled
+# program: a TASK with an INTERVAL and a TON whose PT spans several cycles.
+# Hand-writing that container would test the test's arithmetic, not codegen's.
+ironplc-analyzer = { path = "../analyzer", version = "0.241.0" }
+ironplc-codegen = { path = "../codegen", version = "0.241.0" }
+ironplc-dsl = { path = "../dsl", version = "0.241.0" }
+ironplc-parser = { path = "../parser", version = "0.241.0" }
 blake3 = "1"
 predicates = { version = "3.1" }
 tempfile = "3"

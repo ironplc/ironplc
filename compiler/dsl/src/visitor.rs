@@ -35,6 +35,7 @@
 use crate::common::*;
 use crate::configuration::*;
 use crate::core::{Id, SourceSpan};
+use crate::scope::ScopeNode;
 use crate::sfc::*;
 use crate::textual::*;
 use crate::time::*;
@@ -98,6 +99,30 @@ pub trait Visitor<E> {
     fn walk(&mut self, node: &Library) -> Result<Self::Value, E> {
         node.recurse_visit(self)
     }
+
+    /// Called when the traversal enters a declaration that opens a scope.
+    ///
+    /// The derived `recurse_visit` of a `#[recurse(scope)]` declaration
+    /// calls this before visiting the declaration's contents and calls
+    /// `exit_scope` after, including when the contents return an error,
+    /// so the pair can never be left unbalanced by an early return. The
+    /// pair fires if and only if the traversal recurses: a visitor that
+    /// overrides the declaration's `visit_*` and returns without calling
+    /// `recurse_visit` opens no scope, which is correct, because it
+    /// visited nothing.
+    ///
+    /// `node` borrows the declaration for the duration of the call only;
+    /// copy out what the scope needs rather than retaining it.
+    fn enter_scope(&mut self, _node: ScopeNode<'_>) -> Result<(), E> {
+        Ok(())
+    }
+
+    /// Called when the traversal leaves a declaration that opens a scope.
+    ///
+    /// Takes no argument and cannot fail: it runs on the error path, and
+    /// a visitor that needs to know what it is closing already has the
+    /// stack it pushed in `enter_scope`.
+    fn exit_scope(&mut self) {}
 
     // Declarations from Core
 
@@ -366,6 +391,8 @@ pub trait Visitor<E> {
     dispatch!(FbCall);
     dispatch!(MethodCall);
 
+    dispatch!(MethodReceiver);
+
     // 3.2.3
     dispatch!(PositionalInput);
 
@@ -430,6 +457,8 @@ pub trait Visitor<E> {
     dispatch!(PartialAccessVariable);
 
     dispatch!(DerefVariable);
+
+    dispatch!(SelfRefVariable);
 }
 
 #[cfg(test)]

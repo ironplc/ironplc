@@ -27,3 +27,5 @@ terraform.tfvars
 
 # Local env
 .env
+docs/node_modules/**
+docs/_duplication/**

@@ -54,7 +54,7 @@ The agent is the sole owner of project state. It holds the files (in its own con
 
 **REQ-STL-mcp-003** The server holds no per-client state across tool calls other than the process-level container cache (see Container Cache under Architecture). Two successive calls from the same MCP client that supply identical `sources` and `options` produce identical responses up to non-determinism in wall-clock fields such as log timestamps.
 
-**REQ-STL-mcp-004** File identity inside a single call is carried by the `name` field of each `sources` entry. Names must be valid UTF-8, non-empty, at most 256 bytes, and must not contain NUL, `/`, or `\`. Duplicate names within a single `sources` array are rejected with a diagnostic before any analysis runs. The server does not interpret names as filesystem paths and never touches the filesystem with them; they exist so that diagnostics can cite a file identifier the agent already recognizes in its own context.
+**REQ-STL-mcp-004** File identity inside a single call is carried by the `name` field of each `sources` entry. Names must be valid UTF-8, non-empty, at most 256 bytes, and consist only of printable ASCII (`0x20`-`0x7E`). The allowlist excludes NUL, tabs and control characters; it admits `/` and `\`, which are meaningless to the server -- a name is an opaque key, never a filesystem path. Duplicate names within a single `sources` array are rejected with a diagnostic before any analysis runs. The server does not interpret names as filesystem paths and never touches the filesystem with them; they exist so that diagnostics can cite a file identifier the agent already recognizes in its own context.
 
 **REQ-STL-mcp-005** Every tool response includes a top-level `ok: boolean` field. `ok` is `true` when the tool produced its primary result (for analysis tools, a diagnostics array with no `error`-severity entries; for `compile`, a non-null `container_id`; for `run`, a completed trace) and `false` when it did not. The `ok` field never replaces a tool's specific result fields; it exists as a single uniform success predicate so that agent code handling many tools can share one success check.
 
@@ -236,7 +236,7 @@ This tool lets an agent discover what flags exist without memorizing them and wi
 
 ### `explain_diagnostic`
 
-Returns the human-readable explanation for a compiler problem code (e.g. `P0001`). This is the same text published under `docs/compiler/problems/P####.rst` and is already maintained as part of the project.
+Returns the human-readable explanation for a compiler problem code (e.g. `P0001`). This is the same text published under `docs/reference/compiler/problems/P####.rst` and is already maintained as part of the project.
 
 The self-healing loop depends on this: without it, an agent sees `P0042` in a diagnostic and has no way to understand why the compiler flagged the code, leading to guessed or destructive fixes.
 
@@ -247,7 +247,7 @@ The self-healing loop depends on this: without it, an agent sees `P0042` in a di
 
 **REQ-TOL-mcp-071** The `explain_diagnostic` tool returns `ok: false`, `found: false`, and a populated `diagnostics` array when the code is unknown, rather than raising an MCP-level error.
 
-**REQ-TOL-mcp-072** The text returned by `explain_diagnostic` is embedded in the server binary at build time via `include_str!` from the same problem-code documentation published under `docs/compiler/problems/`. The tool handler performs no filesystem I/O.
+**REQ-TOL-mcp-072** The text returned by `explain_diagnostic` is embedded in the server binary at build time via `include_str!` from the same problem-code documentation published under `docs/reference/compiler/problems/`. The tool handler performs no filesystem I/O.
 
 **Output:**
 ```json
@@ -360,9 +360,11 @@ Returns the upstream and downstream dependencies of the named POU, derived from 
 - `options`: required object; same schema as `check`
 - `pou`: required string — the POU name to query
 
-**REQ-TOL-mcp-230** The `pou_lineage` tool returns a JSON object with three fields: `pou` (the requested POU name), `upstream` (an array of POU names that the requested POU depends on, directly or transitively), and `downstream` (an array of POU names that depend on the requested POU, directly or transitively). JSON adjacency-list is the only format this tool produces; callers that want a DOT rendering should convert client-side.
+**REQ-TOL-mcp-230** The `pou_lineage` tool returns a JSON object with three fields: `pou` (the requested POU name), `upstream` (the POUs the requested POU depends on, directly or transitively), and `downstream` (the POUs that depend on the requested POU, directly or transitively). Each `upstream` and `downstream` entry is an object with `name` and `source`, sorted case-insensitively by `name`. JSON adjacency-list is the only format this tool produces; callers that want a DOT rendering should convert client-side.
 
 **REQ-TOL-mcp-231** When no POU with the given name exists, the tool returns `ok: false`, `found: false`, empty `upstream` and `downstream` arrays, and a diagnostic.
+
+**REQ-TOL-mcp-232** Standard library POUs — the function blocks and functions the compiler supplies itself, such as `TON` and `MAX` — participate in lineage like any other POU: they appear in `upstream` with `source: "stdlib"`, they are addressable as the requested `pou` and then report their users as `downstream`, and they have no `upstream` of their own. Every other POU, including one declared by an activated compatibility library, has `source: "user"` — a compatibility library is source the caller can supply, so it needs no separate origin.
 
 **Output:**
 ```json
@@ -370,8 +372,14 @@ Returns the upstream and downstream dependencies of the named POU, derived from 
   "ok": true,
   "found": true,
   "pou": "Motor",
-  "upstream":   ["PID", "Scale"],
-  "downstream": ["Main"],
+  "upstream": [
+    { "name": "PID",   "source": "user" },
+    { "name": "Scale", "source": "user" },
+    { "name": "TON",   "source": "stdlib" }
+  ],
+  "downstream": [
+    { "name": "Main", "source": "user" }
+  ],
   "diagnostics": []
 }
 ```
@@ -417,7 +425,7 @@ The container handle is the primary transport: agents pass it back to `run` with
 
 **REQ-TOL-mcp-031** The `compile` tool returns `ok: false`, `container_id: null`, and a populated `diagnostics` array on failure.
 
-**REQ-TOL-mcp-032** The `compile` tool returns a `tasks` array describing each task declared in the program. Each entry contains `name`, `priority`, `kind` (one of `"cyclic"`, `"single"`, `"event"`), and `interval_ms` (the cyclic interval in milliseconds when `kind == "cyclic"`, otherwise `null`).
+**REQ-TOL-mcp-032** The `compile` tool returns a `tasks` array describing each task declared in the program. Each entry contains `name`, `priority`, `kind` (one of `"cyclic"`, `"single"`, `"freewheeling"`), and `interval_ms` (the cyclic interval in milliseconds when `kind == "cyclic"`, otherwise `null`). `kind` describes the task the *container* carries rather than the syntax the source declares: a task whose `INTERVAL` is absent or zero is reported as `"freewheeling"`, because that is what the compiler emits and what `run` will schedule. A program with no `CONFIGURATION` is reported as a single freewheeling task named for the program.
 
 **REQ-TOL-mcp-033** The `compile` tool returns a `programs` array listing each program name and the task it is bound to. When a program is not bound to any task, its `task` field is `null`.
 
@@ -465,6 +473,7 @@ This enables the agent to verify logical correctness, not just syntactic validit
 - `container_id: string` — the handle returned by `compile` (preferred)
 - `container_base64: string` — inline `.iplc` bytes; exactly one of `container_id` and `container_base64` must be present
 - `duration_ms: number` — simulated time to run in milliseconds
+- `freewheeling_interval_ms: number` — the cycle time for tasks that declare no `INTERVAL`. Required when the container has such a task; there is no default (see REQ-TOL-mcp-049). Ignored by containers whose tasks all declare an `INTERVAL`
 - `variables: [string]` — list of fully-qualified variable names to include in the trace (see Variable Naming in Architecture). May be empty when combined with `trace_outputs: true`.
 - `trace_outputs: boolean` — optional (default `false`); when `true`, the server expands the trace set to include every externally observable variable in the container (same set as `project_io.outputs`), in addition to any explicit `variables`. The combined set is still subject to `max_variables_per_run`.
 - `stimuli: [Stimulus]` — optional time-ordered schedule of writes applied to externally-drivable variables; an empty or omitted schedule runs the program with declared initial values only
@@ -486,7 +495,7 @@ A `TraceOptions` object has these fields (all optional):
 }
 ```
 
-**REQ-TOL-mcp-040** The `run` tool executes the referenced `.iplc` container in the IronPLC VM for the simulated duration specified by `duration_ms`, deriving the number of scan cycles from the task intervals declared in the container. Exactly one of `container_id` and `container_base64` must be present; when `container_id` is supplied, the server looks up the compiled bytes in the process container cache (see REQ-TOL-mcp-035). When a container declares no tasks at all, the `run` tool returns `ok: false` and a diagnostic instructing the caller to declare at least one task; it does not attempt to invent a cycle schedule.
+**REQ-TOL-mcp-040** The `run` tool executes the referenced `.iplc` container in the IronPLC VM for the simulated duration specified by `duration_ms`, deriving the number of scan cycles from the cycle time of each task in the container — its declared `INTERVAL`, or the assumed cycle time of REQ-TOL-mcp-049 for a task that declares none. Exactly one of `container_id` and `container_base64` must be present; when `container_id` is supplied, the server looks up the compiled bytes in the process container cache (see REQ-TOL-mcp-035). When a container declares no tasks at all, the `run` tool returns `ok: false` and a diagnostic instructing the caller to declare at least one task; it does not attempt to invent a cycle schedule.
 
 **REQ-TOL-mcp-041** The `run` tool returns a `trace` array. Each entry contains `time_ms` (simulated milliseconds since start of run), `task` (the name of the task whose cycle end produced the entry), and `variables` (a map from the fully-qualified names in the effective trace set to their values at that instant). Entries are time-ordered by `time_ms`; ties are broken by task priority (lower priority number first), then by task name. Each requested variable name must be fully qualified and must resolve against the loaded container (see REQ-ARC-mcp-020 and REQ-ARC-mcp-021); unresolved or ambiguous names cause the run to return `ok: false` with a diagnostic before the VM starts. Wildcard names (for example `"*"`, `"Main.*"`) are rejected with a diagnostic — agents that want to trace many variables set `trace_outputs: true` or enumerate the names explicitly. The effective trace set (the union of `variables` and the expansion of `trace_outputs`) is capped at the server-configured `max_variables_per_run` limit (see VM Sandboxing); a request that exceeds the cap is rejected with a diagnostic that reports the limit and the request size.
 
@@ -518,6 +527,8 @@ A `TraceOptions` object has these fields (all optional):
 **REQ-TOL-mcp-047** The `run` tool enforces the resource limits described under VM Sandboxing (maximum simulated `duration_ms`, VM fuel, wall-clock time). When a limit is exceeded, or when the VM encounters a trap, the run terminates early. In all early-termination cases the response carries the partial trace up to the last cycle that completed before termination, a populated `diagnostics` entry identifying the cause, and `terminated_reason` set to one of `"duration"`, `"fuel"`, `"wall_clock"`, `"sample_cap"`, `"error"`, or — for a run that finished cleanly — `"completed"`. An agent-supplied `limits` override may only tighten the server-configured bounds, never loosen them. `ok` is `true` only when `terminated_reason == "completed"`.
 
 **REQ-TOL-mcp-048** The `run` tool's response always includes a `summary` object with at least: `final_values` (a map of every variable in the effective trace set to its value at the last simulated instant, regardless of `trace.mode`), `completed_cycles` (a map from task name to the number of cycles that completed for that task), and `terminated_reason`. `summary` is populated even when the trace is empty because of `"final_only"` mode or because `"on_change"` never fired.
+
+**REQ-TOL-mcp-049** A task that declares no `INTERVAL` is freewheeling: it has no cycle rate of its own, so under simulated time there is nothing to advance the clock by. The `run` tool does not choose one on the caller's behalf — a scan time is a property of the hardware the program would run on, and a trace built on a rate the caller never chose reads as fact. A container with a freewheeling task therefore requires `freewheeling_interval_ms`; without it the run returns `ok: false` and a diagnostic naming the task and what to supply, before the VM starts. A supplied value must be finite, greater than zero, and no greater than 3,600,000 (one hour); a value outside that range is rejected the same way. The value applies only to tasks that declare no `INTERVAL` — a task that declares one always runs at the declared rate, and supplying `freewheeling_interval_ms` for a container with no freewheeling task changes nothing. The response always reports the cycle time the run executed at as `summary.interval_ms` — the declared `INTERVAL` or the supplied one, whichever applied — so that a trace is self-describing without the caller having to work out which it was. (The VM schedules a single task today; a container with several tasks at different rates would need this reported per task.) The `compile` tool reports such a task with `kind: "freewheeling"` (see REQ-TOL-mcp-032), which is how a caller knows the value is required. The debugger takes the same input but not the same rule: a launch that refuses to start is a poor answer to a missing setting, so it assumes a documented default and reports it on the debug console. See `specs/design/debugger-support.md`.
 
 **Output:**
 ```json
@@ -651,9 +662,9 @@ Because the server holds no session state, the "unit of observation" is a single
 
 ### Diagnostic Mapping
 
-The existing `Diagnostic` type (from `ironplc-dsl`) carries file ID, source span (byte offsets), problem code, and message. The MCP server converts byte offsets to line/column numbers using the source text supplied in the same call, before serializing to JSON. This is the same conversion the LSP server already performs, and once both servers mature they should share a single implementation (see Future Work).
+The existing `Diagnostic` type (from `ironplc-dsl`) carries file ID, source span (byte offsets), problem code, and message. The MCP server serializes those byte offsets directly, as REQ-TOL-mcp-023 requires; it performs no line/column conversion. The caller holds the source text it supplied and can convert if it wants line and column.
 
-Line numbers in the serialized diagnostic are 1-indexed. Columns are 1-indexed and count Unicode scalar values — not bytes, not UTF-16 code units — so that a diagnostic's span is identical regardless of how the agent's MCP client encodes strings internally. A tab counts as one column; the server does not interpret tab stops. `end_line`/`end_col` refer to the character immediately after the last character of the span, so an empty span has `start == end`. These are the same semantics as REQ-TOL-mcp-023.
+This deliberately differs from the LSP server, which converts to 0-indexed UTF-16 columns for the editor protocol. An agent does not need editor coordinates, and byte offsets index the exact source text the caller just supplied, so they cannot disagree with it.
 
 ### Error Handling
 
@@ -715,4 +726,3 @@ These items are intentionally out of scope for this design. They are listed here
 - **Streaming traces.** Long `run` calls currently return the complete trace in a single response. A future revision may offer incremental trace delivery via MCP's streaming facilities, which would let the agent react to intermediate values without extending `duration_ms` conservatively.
 - **On-disk workspace management.** The server never touches disk in this design. An agent that wants to persist an edit writes it through its own filesystem tools. A future companion tool or MCP client helper could formalize the "write these sources back to a project directory" workflow, but it deliberately lives outside the MCP boundary — the server itself stays stateless and file-system-free.
 - **IEC 61131-3 Edition 3 dialect semantics.** The `dialect` preset exists but the precise set of Ed. 3 features supported by the MCP server should be documented once the compiler's Ed. 3 support is complete. A future revision of this doc should link directly to a compatibility matrix.
-- **LSP parity for the byte-offset-to-line-column conversion.** The LSP server already converts byte offsets to line/column diagnostics (see Diagnostic Mapping). The MCP server borrows that code; once both mature, they should share a single implementation so that a diagnostic seen in an editor and a diagnostic seen by an agent are byte-identical.

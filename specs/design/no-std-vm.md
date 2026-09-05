@@ -163,7 +163,3 @@ Note: `ironplc-vm` needs no `--no-default-features` flag because it has no featu
 1. **Caller-provided slices** — the VM accepts `&mut [Slot]` slices rather than const generics. The container header determines sizes at runtime, so const generics would add type noise without real safety benefit. Slices keep VM types simple (`VmRunning<'a>` — one lifetime) and let each caller choose its allocation strategy.
 
 2. **Feature flags confined to the container crate** — the container crate uses `#[cfg(feature = "std")]` to gate its I/O and builder modules. The shared types (`FileHeader`, opcodes, `ContainerError`) make a crate split awkward, and the `#[cfg]` usage is minimal and contained. The VM crate and CLI crate have zero conditional compilation.
-
-## Implementation Plan
-
-See [Implementation Plan: no_std VM](../plans/no-std-vm-impl.md) for the phased implementation.

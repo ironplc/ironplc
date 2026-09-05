@@ -4,13 +4,79 @@ V6008
 
 .. problem-summary:: V6008
 
-The Debug Adapter Protocol ``launch`` request did not include a ``program``
-path, so the debugger has no bytecode container to load and run.
+An argument in the Debug Adapter Protocol ``launch`` request is missing or
+outside the range the debug server accepts, so the debug session does not
+start. The message names the argument and what was expected of it, for
+example:
+
+.. code-block:: text
+
+   V6008 - launch argument 'program' is required: the path to a compiled .iplc container
+   V6008 - launch argument 'scanLimit' must be a whole number of at least 1, but was 0; omit it to run without a bound
+
+Every bad launch argument reports this one code. A container that cannot be
+debugged as built reports its own: :doc:`V6009` when it carries no debug
+information, :doc:`V6010` when it declares several program instances.
+
+Launch Arguments
+----------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Argument
+     - Accepted values
+   * - ``program``
+     - **Required.** A path to a compiled ``.iplc`` container.
+   * - ``stopOnEntry``
+     - ``true`` or ``false``. Defaults to ``false``.
+   * - ``scanLimit``
+     - A whole number of at least ``1``. Omit the argument to run without a
+       bound.
+   * - ``freewheelingIntervalMs``
+     - A cycle time in milliseconds, for a program whose task declares no
+       ``INTERVAL``. Defaults to ``100``.
+
+``scanLimit`` has no value that means unlimited. The debug server rejects both
+``0`` and ``-1``. Omit the argument instead.
+
+Example
+-------
+
+The following launch configuration produces error V6008:
+
+.. code-block:: json
+   :caption: .vscode/launch.json
+
+   {
+     "type": "ironplc",
+     "request": "launch",
+     "name": "IronPLC: Debug Active File",
+     "program": "${file}",
+     "scanLimit": 0
+   }
+
+Deleting the ``scanLimit`` line fixes it. The session then scans until you
+stop it or a breakpoint pauses it.
+
+To stop after a fixed number of cycles instead, give the count you want:
+
+.. code-block:: json
+
+   "scanLimit": 1
 
 Solutions
 ---------
 
-1. Ensure the launch configuration sets ``program`` to a compiled ``.iplc`` container
-2. In VS Code, check the ``program`` field of the IronPLC debug configuration in ``launch.json``
-3. Confirm the path is a string and is not empty after variable substitution
-4. Recompile the source program if the ``.iplc`` container has not been produced yet
+1. Read the error message for the name of the argument that was rejected and the values it accepts
+2. Set ``program`` to a compiled ``.iplc`` container, checking the path survives variable substitution
+3. Remove ``scanLimit`` to run until you stop the session, or set it to ``1`` or more
+4. Set a breakpoint instead of a scan bound when you want the session to stop at a particular line
+
+See Also
+--------
+
+- :doc:`/reference/runtime/ironplcvmd` --- the ``launch`` request arguments the debug server accepts
+- :doc:`/reference/editor/debugging` --- the launch configuration in Visual Studio Code
+- :doc:`/how-to-guides/getting-started/debug-a-program` --- debugging a program step by step

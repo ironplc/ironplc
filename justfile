@@ -223,30 +223,62 @@ _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"
   exit 1
 
-# Install script smoke test - Unix only.
+# Install script smoke test against a published release - Unix only.
 #
 # Runs compiler/install.sh against a real GitHub release, verifies that the
 # installed binaries run, then re-runs the installer (without clearing state)
-# to confirm idempotency.
+# to confirm idempotency. This is the deployment-time check: it proves the
+# published script installs the release that was just published.
+#
+# For pull requests use `install-script-smoke-local`, which installs the
+# tarball built from the working tree. install.sh requires every binary in the
+# archive, so a release that predates one of them is not installable and this
+# recipe cannot stand in for testing the current revision.
 #
 # compiler-version: empty to use the latest release; otherwise a bare version
 #                   like "0.201.0" (without the leading "v").
 [unix]
 install-script-smoke compiler-version="":
   @just _install-script-smoke-clean
-  @just _install-script-smoke-run "{{compiler-version}}"
+  @just _install-script-smoke-run "{{compiler-version}}" ""
   @just _install-script-smoke-verify
-  @just _install-script-smoke-run "{{compiler-version}}"
+  @just _install-script-smoke-run "{{compiler-version}}" ""
   @just _install-script-smoke-verify
+
+# Install script smoke test against this revision's own tarball - Unix only.
+#
+# Installs from a local directory laid out like the GitHub release download
+# tree (<release-dir>/v<version>/<artifact>, beside its .sha256) rather than
+# from a published release, so the script is exercised against the artifacts
+# this revision produces. Checksum verification is unchanged -- install.sh
+# reads the .sha256 from the same directory and still refuses a mismatch.
+#
+# release-dir: directory holding v<version>/<artifact>; may be relative.
+# compiler-version: the bare version those artifacts were packaged with.
+[unix]
+install-script-smoke-local release-dir compiler-version:
+  #!/usr/bin/env sh
+  set -eu
+  # install.sh joins this onto "/v<version>/<artifact>", so it has to be an
+  # absolute file:// URL however the caller spelled the directory.
+  _url="file://$(cd "{{release-dir}}" && pwd)"
+  just _install-script-smoke-clean
+  just _install-script-smoke-run "{{compiler-version}}" "$_url"
+  just _install-script-smoke-verify
+  just _install-script-smoke-run "{{compiler-version}}" "$_url"
+  just _install-script-smoke-verify
 
 [unix]
 _install-script-smoke-clean:
   rm -rf "$HOME/.ironplc"
 
 [unix]
-_install-script-smoke-run compiler-version:
+_install-script-smoke-run compiler-version release-url:
   #!/usr/bin/env sh
   set -eu
+  export IRONPLC_RELEASE_URL="{{release-url}}"
+  # An empty override means "use the script's own default".
+  [ -n "$IRONPLC_RELEASE_URL" ] || unset IRONPLC_RELEASE_URL
   if [ -n "{{compiler-version}}" ]; then
     IRONPLC_VERSION="v{{compiler-version}}" sh ./compiler/install.sh --no-modify-path
   else
@@ -275,16 +307,29 @@ _install-script-smoke-verify:
     echo "warning: compatibility libraries not installed (release predates library shipping); skipping PI check" >&2
   fi
 
-  # ironplcvm and ironplcmcp are optional (older releases may not include them).
-  if [ -x "$BIN/ironplcmcp" ]; then
-    # MCP handshake: initialize -> notifications/initialized -> tools/list.
-    # The response should contain a known tool name (list_options).
-    printf '%s\n%s\n%s\n' \
-      '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"0.1"}}}' \
-      '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
-      '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-      | "$BIN/ironplcmcp" | grep -q list_options
-  fi
+  # The SBOM ships beside the binaries. Every release install.sh can install
+  # carries it, so a missing file here means the installer regressed.
+  test -f "$BIN/bom.cdx.json"
+
+  # install.sh installs every binary or fails, so each one below is checked
+  # unconditionally: a missing server here means the installer regressed.
+
+  # MCP handshake: initialize -> notifications/initialized -> tools/list.
+  # The response should contain a known tool name (list_options).
+  printf '%s\n%s\n%s\n' \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"0.1"}}}' \
+    '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
+    '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+    | "$BIN/ironplcmcp" | grep -q list_options
+
+  # DAP handshake over Content-Length framing: a single `initialize` request,
+  # then end-of-stream. The debug server answers with the response and the
+  # `initialized` event, so the reply carries that event name. This is what the
+  # editor does first (see docs E0007), and it fails if the binary was installed
+  # but cannot run.
+  _dap_req='{"seq":1,"type":"request","command":"initialize","arguments":{"adapterID":"ironplc"}}'
+  printf 'Content-Length: %d\r\n\r\n%s' "${#_dap_req}" "$_dap_req" \
+    | "$BIN/ironplcvmd" | grep -q '"event":"initialized"'
 
 [windows]
 install-script-smoke compiler-version="":
@@ -307,7 +352,7 @@ install-script-smoke compiler-version="":
 # OS either: every leg below hands two binary paths to the single shared script
 # tests/e2e/library/verify.sh. It used to exist twice -- once in sh, once in
 # PowerShell -- and the copies drifted, so a green Linux run said nothing about
-# Windows (see specs/plans/library-e2e-cross-platform-fix.md). Windows runs the
+# Windows. Windows runs the
 # same script through Git for Windows' bash. Keep new assertions in the script,
 # never in a recipe.
 #

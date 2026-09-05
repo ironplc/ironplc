@@ -40,6 +40,7 @@
 //! END_PROGRAM
 //! ```
 use std::collections::{HashMap, HashSet};
+use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::*,
@@ -50,7 +51,11 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -65,8 +70,7 @@ pub fn apply(
         }
     }
 
-    let mut visitor = RuleMethodCallDeclared::new(&function_blocks);
-    visitor.walk(lib).map_err(|e| vec![e])
+    run_rule(RuleMethodCallDeclared::new(&function_blocks), lib)
 }
 
 struct RuleMethodCallDeclared<'a> {
@@ -77,6 +81,8 @@ struct RuleMethodCallDeclared<'a> {
     // Map of variable name to the function block name that is the
     // declared type of that variable.
     var_to_fb: HashMap<Id, TypeName>,
+
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> RuleMethodCallDeclared<'a> {
@@ -84,6 +90,7 @@ impl<'a> RuleMethodCallDeclared<'a> {
         Self {
             function_blocks: decls,
             var_to_fb: HashMap::new(),
+            diagnostics: Vec::new(),
         }
     }
 
@@ -127,7 +134,7 @@ impl<'a> RuleMethodCallDeclared<'a> {
         owner_label: &str,
         method: &MethodDeclaration,
         call: &MethodCall,
-    ) -> Result<(), Diagnostic> {
+    ) -> Vec<Diagnostic> {
         crate::call_assignment_check::check_assignments(
             method,
             method.span(),
@@ -141,15 +148,32 @@ impl<'a> RuleMethodCallDeclared<'a> {
             },
         )
     }
+
+    /// The diagnostic for a method call whose receiver is not a variable of a
+    /// known function block type. Both the unknown-variable and the
+    /// unknown-type cases report it, against the same instance name.
+    fn not_in_scope(call: &MethodCall, instance: &Id) -> Diagnostic {
+        Diagnostic::problem(
+            Problem::FunctionBlockNotInScope,
+            Label::span(call.span(), "Method invocation"),
+        )
+        .with_context_id("invocation", instance)
+    }
 }
 
-impl Visitor<Diagnostic> for RuleMethodCallDeclared<'_> {
+impl DiagnosticVisitor for RuleMethodCallDeclared<'_> {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
         self.var_to_fb.clear();
         res
@@ -158,7 +182,7 @@ impl Visitor<Diagnostic> for RuleMethodCallDeclared<'_> {
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
         self.var_to_fb.clear();
         res
@@ -167,13 +191,13 @@ impl Visitor<Diagnostic> for RuleMethodCallDeclared<'_> {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
         self.var_to_fb.clear();
         res
     }
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let InitialValueAssignmentKind::FunctionBlock(fbi) = &node.initializer {
             if let Some(id) = node.identifier.symbolic_id() {
                 self.var_to_fb.insert(id.clone(), fbi.type_name.clone());
@@ -182,38 +206,57 @@ impl Visitor<Diagnostic> for RuleMethodCallDeclared<'_> {
         Ok(())
     }
 
-    fn visit_method_call(&mut self, call: &MethodCall) -> Result<Self::Value, Diagnostic> {
-        let fb_type = match self.var_to_fb.get(&call.instance) {
-            Some(t) => t,
-            None => {
-                return Err(Diagnostic::problem(
-                    Problem::FunctionBlockNotInScope,
-                    Label::span(call.span(), "Method invocation"),
-                )
-                .with_context_id("invocation", &call.instance))
+    fn visit_method_call(&mut self, call: &MethodCall) -> Result<Self::Value, Infallible> {
+        // `THIS^.M()` / `SUPER^.M()` resolve against the enclosing function
+        // block (and, for SUPER^, its base) rather than a variable's declared
+        // type. That resolution is not implemented yet, so say so rather than
+        // skipping the call: a silent skip would keep quietly passing once
+        // the receiver becomes resolvable. Tracked in issue #1406.
+        let instance = match &call.receiver {
+            MethodReceiver::Instance(id) => id,
+            MethodReceiver::SelfRef(self_ref) => {
+                self.diagnostics
+                    .push(Diagnostic::not_implemented(Label::span(
+                        self_ref.span(),
+                        format!(
+                            "{} method invocation is recognized but not yet resolved by IronPLC",
+                            self_ref.kind.spelling()
+                        ),
+                    )));
+                return Ok(());
             }
         };
 
-        if !self.function_blocks.contains_key(fb_type) {
-            return Err(Diagnostic::problem(
-                Problem::FunctionBlockNotInScope,
-                Label::span(call.span(), "Method invocation"),
-            )
-            .with_context_id("invocation", &call.instance));
+        // Cloned so that the borrow of `var_to_fb` ends here: the arms below
+        // push onto `self.diagnostics`, which borrows `self` mutably.
+        let fb_type = self.var_to_fb.get(instance).cloned();
+        let Some(fb_type) = fb_type else {
+            self.diagnostics.push(Self::not_in_scope(call, instance));
+            return Ok(());
+        };
+
+        if !self.function_blocks.contains_key(&fb_type) {
+            self.diagnostics.push(Self::not_in_scope(call, instance));
+            return Ok(());
         }
 
-        match self.resolve_method(fb_type, &call.method) {
-            None => Err(Diagnostic::problem(
-                Problem::MethodNotFound,
-                Label::span(call.span(), "Method invocation"),
-            )
-            .with_context_type("function block", fb_type)
-            .with_context_id("method", &call.method)),
+        match self.resolve_method(&fb_type, &call.method) {
+            None => self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::MethodNotFound,
+                    Label::span(call.span(), "Method invocation"),
+                )
+                .with_context_type("function block", &fb_type)
+                .with_context_id("method", &call.method),
+            ),
             Some((owning_fb, method)) => {
                 let owner_label = format!("{}.{}", owning_fb.name, method.name);
-                Self::check_assignments(&owner_label, method, call)
+                let diagnostics = Self::check_assignments(&owner_label, method, call);
+                self.diagnostics.extend(diagnostics);
             }
         }
+
+        Ok(())
     }
 }
 
@@ -333,5 +376,26 @@ END_VAR
 m.SetSpeed(1.0, 2.0);
 END_PROGRAM",
         Problem::FunctionInvocationRequiresFormal
+    );
+
+    rule_errn_with!(
+        apply_when_two_undeclared_methods_called_then_reports_both,
+        opts_with_fb_inheritance(),
+        "
+FUNCTION_BLOCK FB_Motor
+METHOD Start
+    ;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    m : FB_Motor;
+END_VAR
+m.NopeOne();
+m.NopeTwo();
+END_PROGRAM",
+        2,
+        Problem::MethodNotFound
     );
 }

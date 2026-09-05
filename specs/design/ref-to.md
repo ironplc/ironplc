@@ -10,7 +10,6 @@ Related documents:
 - [ADR-0022: Edition 3 compiler flag](../adrs/0022-edition-3-compiler-flag.md) — gating mechanism for Edition 3 features
 - [Beckhoff TwinCAT dialect](beckhoff-twincat-dialect.md) — `REFERENCE TO` syntax (maps to same AST)
 - [Siemens SCL dialect](siemens-scl-dialect.md) — `REF_TO` as dialect keyword (superseded by this design)
-- Implementation plan: [specs/plans/ref-to.md](../plans/ref-to.md)
 
 ## Scope
 
@@ -451,5 +450,5 @@ Programs migrating to Edition 3 that use `NULL` or `REF` as identifiers will nee
 REF_TO tokens are added to the logos lexer as standard keywords (same pattern as LTIME), gated by `rule_token_no_std_2013.rs`. This means:
 
 - **Siemens SCL**: The `DIALECT_KEYWORDS` entry for `REF_TO` in the [Siemens SCL design](siemens-scl-dialect.md) becomes unnecessary — `REF_TO` is already a keyword token from the lexer. The Siemens design should be updated to note this.
-- **Beckhoff TwinCAT**: `REFERENCE TO` still needs dialect promotion for the `Reference` token. The parser would map both `RefTo type_spec` and `Reference To type_spec` to the same AST node (`ReferenceDeclaration` / `ReferenceInitializer`). **This is deferred** — the Beckhoff parser production is not part of this implementation plan. The standard `REF_TO` syntax is sufficient for OSCAT compatibility.
+- **Beckhoff TwinCAT**: `REFERENCE TO` shipped. `RefTo type_spec` and `Reference To type_spec` map to the same AST node, distinguished by a `RefSyntax` tag, and the keyword is gated by demotion rather than promotion. See [reference-to-twincat.md](reference-to-twincat.md).
 - **Standard mode without Edition 3 flag**: `REF_TO` is lexed as a token but rejected by the validation rule with a clear diagnostic pointing to `--std-iec-61131-3=2013`.

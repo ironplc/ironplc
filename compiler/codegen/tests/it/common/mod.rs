@@ -435,6 +435,15 @@ pub mod bc {
     pub fn load_array(var_idx: u16, desc_idx: u16) -> Vec<u8> {
         op_u16_u16(opcode::LOAD_ARRAY, var_idx, desc_idx)
     }
+
+    // --- 7-byte instructions: opcode + u16 + u16 + u16. -------------------
+
+    pub fn copy_region(dst_var: u16, dst_desc: u16, src_desc: u16) -> Vec<u8> {
+        let a = dst_var.to_le_bytes();
+        let b = dst_desc.to_le_bytes();
+        let c = src_desc.to_le_bytes();
+        vec![opcode::COPY_REGION, a[0], a[1], b[0], b[1], c[0], c[1]]
+    }
     pub fn store_array(var_idx: u16, desc_idx: u16) -> Vec<u8> {
         op_u16_u16(opcode::STORE_ARRAY, var_idx, desc_idx)
     }

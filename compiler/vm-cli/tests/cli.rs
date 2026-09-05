@@ -71,8 +71,8 @@ fn write_steel_thread_container(path: &Path) {
     write_container(&steel_thread_debug_builder().build(), path);
 }
 
-/// Builds a container exercising the new debug section features added in
-/// `specs/plans/2026-05-22-debug-source-file-table.md`:
+/// Builds a container exercising the debug section features described in
+/// `specs/design/debugger-support.md` §"Tag Registry":
 ///
 /// - `SOURCE_FILE_TABLE` (tag 6) with two entries (`main.st`, `lib.st`)
 ///   whose `content_hash` fields are real BLAKE3 digests of synthetic
@@ -224,9 +224,8 @@ fn run_when_golden_container_file_then_ok() -> Result<(), Box<dyn std::error::Er
     // still loads and runs is itself the backwards-compatibility check —
     // bytes 40-71 (formerly `source_hash`) are silently accepted by the
     // new reader as `reserved_hash_slot`, and every other field offset is
-    // unchanged. See `specs/plans/2026-05-22-debug-source-file-table.md`.
-    // Its `max_call_depth` field (offset 194) was bumped 0 -> 1 when zero
-    // call depth became invalid; every other byte is preserved.
+    // unchanged. Its `max_call_depth` field (offset 194) was bumped 0 -> 1
+    // when zero call depth became invalid; every other byte is preserved.
     assert_eq!(contents, "x: 10\ny: 42\n");
 
     Ok(())
@@ -760,6 +759,239 @@ fn run_without_scans_then_stops_on_sigint() -> Result<(), Box<dyn std::error::Er
         status.success(),
         "expected clean exit 0 after SIGINT, got {status:?}"
     );
+
+    Ok(())
+}
+
+/// Compiles IEC 61131-3 source and writes the container to `path`.
+///
+/// The hand-built containers above pin the CLI's own behaviour, but they only
+/// ever carried `BOOL` and `DINT` variables — which is why a `STRING` printing
+/// as its unused slot (issue #1558) went unnoticed. Rendering a real compiled
+/// program is the leg that covers the type tags and the data-region layout
+/// codegen actually emits.
+fn write_compiled_container(path: &Path, source: &str) {
+    let options = ironplc_parser::options::CompilerOptions::default();
+    let library =
+        ironplc_parser::parse_program(source, &ironplc_dsl::core::FileId::default(), &options)
+            .unwrap();
+    let (analyzed, context) =
+        ironplc_analyzer::stages::resolve_types(&[&library], &options).unwrap();
+    let container = ironplc_codegen::compile(
+        &analyzed,
+        &context,
+        &ironplc_codegen::CodegenOptions::default(),
+        &ironplc_codegen::EmptyLookup,
+    )
+    .unwrap();
+
+    let mut buf = Vec::new();
+    container.write_to(&mut buf).unwrap();
+    std::fs::write(path, &buf).unwrap();
+}
+
+/// REQ-VC-vm-cli-009: every declared type renders as its own IEC form. A
+/// `STRING`'s variable slot is unused, so reading it prints a plausible `0`
+/// rather than the string — the defect this covers.
+#[spec_test(REQ_VC_vm_cli_009)]
+fn run_when_dump_vars_and_every_type_then_renders_each_per_its_type(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("types.iplc");
+    write_compiled_container(
+        &container_path,
+        "
+PROGRAM main
+  VAR
+    msg   : STRING[20] := 'hello';
+    flag  : BOOL := TRUE;
+    n     : DINT := 42;
+    ratio : REAL := 1.5;
+    mask  : WORD := 16#ABCD;
+    span  : TIME := T#1500ms;
+    day   : DATE := D#2024-01-15;
+    clock : TIME_OF_DAY := TOD#14:30:00;
+    stamp : DATE_AND_TIME := DT#2024-01-15-14:30:00;
+  END_VAR
+  flag := flag;
+END_PROGRAM
+",
+    );
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run")
+        .arg(&container_path)
+        .arg("--scans")
+        .arg("1")
+        .arg("--dump-vars");
+    let out = cmd.assert().success();
+    let dump = String::from_utf8(out.get_output().stdout.clone())?;
+
+    assert!(dump.contains("msg: 'hello'\n"), "dump was:\n{dump}");
+    assert!(dump.contains("flag: TRUE\n"), "dump was:\n{dump}");
+    assert!(dump.contains("n: 42\n"), "dump was:\n{dump}");
+    assert!(dump.contains("ratio: 1.5\n"), "dump was:\n{dump}");
+    assert!(dump.contains("mask: 16#ABCD\n"), "dump was:\n{dump}");
+    assert!(dump.contains("span: T#1500ms\n"), "dump was:\n{dump}");
+    assert!(dump.contains("day: D#2024-01-15\n"), "dump was:\n{dump}");
+    assert!(dump.contains("clock: TOD#14:30:00\n"), "dump was:\n{dump}");
+    assert!(
+        dump.contains("stamp: DT#2024-01-15-14:30:00\n"),
+        "dump was:\n{dump}"
+    );
+
+    Ok(())
+}
+
+/// REQ-VC-vm-cli-009: a `WSTRING` renders its content as a double-quoted IEC
+/// literal, from the same data-region reader as `STRING`.
+#[spec_test(REQ_VC_vm_cli_009)]
+fn run_when_dump_vars_and_wstring_then_renders_double_quoted_content(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("wide.iplc");
+    write_compiled_container(
+        &container_path,
+        "
+PROGRAM main
+  VAR
+    wide : WSTRING[20] := \"hello\";
+  END_VAR
+END_PROGRAM
+",
+    );
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run")
+        .arg(&container_path)
+        .arg("--scans")
+        .arg("1")
+        .arg("--dump-vars");
+    let out = cmd.assert().success();
+    let dump = String::from_utf8(out.get_output().stdout.clone())?;
+
+    assert!(dump.contains("wide: \"hello\"\n"), "dump was:\n{dump}");
+
+    Ok(())
+}
+
+/// REQ-VC-vm-cli-007: a dump taken after a trap reaches STRING content too —
+/// the faulted VM keeps the data region its variables point into.
+#[spec_test(REQ_VC_vm_cli_007)]
+fn run_when_fault_and_dump_vars_then_string_content_still_rendered(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("fault.iplc");
+    write_compiled_container(
+        &container_path,
+        "
+PROGRAM main
+  VAR
+    msg   : STRING[20] := 'hello';
+    zero  : DINT := 0;
+    boom  : DINT;
+  END_VAR
+  boom := 10 / zero;
+END_PROGRAM
+",
+    );
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run")
+        .arg(&container_path)
+        .arg("--scans")
+        .arg("1")
+        .arg("--dump-vars");
+    let out = cmd.assert().code(1);
+    let dump = String::from_utf8(out.get_output().stdout.clone())?;
+
+    assert!(dump.contains("msg: 'hello'\n"), "dump was:\n{dump}");
+
+    Ok(())
+}
+
+/// REQ-VC-vm-cli-009: a structure, array or function-block variable keeps its
+/// contents in the data region, and its slot holds the byte offset of them.
+/// Dumping the slot printed that offset as if it were the value — and a
+/// convincing one, since it moves when an unrelated declaration changes size.
+#[spec_test(REQ_VC_vm_cli_009)]
+fn run_when_dump_vars_and_aggregates_then_names_type_instead_of_offset(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("agg.iplc");
+    write_compiled_container(
+        &container_path,
+        "
+TYPE Point : STRUCT
+    X : DINT;
+    Y : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+VAR
+    origin : Point;
+    counts : ARRAY[1..3] OF DINT;
+    timer  : TON;
+    plain  : DINT := 7;
+END_VAR
+    origin.X := 11;
+    counts[1] := 100;
+END_PROGRAM
+",
+    );
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run")
+        .arg(&container_path)
+        .arg("--scans")
+        .arg("1")
+        .arg("--dump-vars");
+    let out = cmd.assert().success();
+    let dump = String::from_utf8(out.get_output().stdout.clone())?;
+
+    assert!(dump.contains("origin: <POINT>\n"), "dump was:\n{dump}");
+    assert!(
+        dump.contains("counts: <ARRAY OF DINT>\n"),
+        "dump was:\n{dump}"
+    );
+    assert!(dump.contains("timer: <TON>\n"), "dump was:\n{dump}");
+    // The scalar alongside them still shows its value.
+    assert!(dump.contains("plain: 7\n"), "dump was:\n{dump}");
+
+    Ok(())
+}
+
+/// A named subrange also reaches the renderer without an elementary type tag,
+/// but its slot *does* hold its value. It must keep showing it.
+#[spec_test(REQ_VC_vm_cli_009)]
+fn run_when_dump_vars_and_named_subrange_then_shows_value() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("sub.iplc");
+    write_compiled_container(
+        &container_path,
+        "
+TYPE Level : INT (0..100); END_TYPE
+
+PROGRAM main
+VAR
+    lvl : Level := 75;
+END_VAR
+END_PROGRAM
+",
+    );
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run")
+        .arg(&container_path)
+        .arg("--scans")
+        .arg("1")
+        .arg("--dump-vars");
+    let out = cmd.assert().success();
+    let dump = String::from_utf8(out.get_output().stdout.clone())?;
+
+    assert!(dump.contains("lvl: 75\n"), "dump was:\n{dump}");
 
     Ok(())
 }

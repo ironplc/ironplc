@@ -18,7 +18,7 @@ use ironplc_problems::Problem;
 
 use super::compile::{
     emit_string_literal_load, CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness,
-    VarTypeInfo, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH_U16,
+    VarTypeInfo, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_expr::{
     compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
@@ -41,7 +41,7 @@ pub(crate) fn compile_body(
             compile_statements(emitter, ctx, statements)
         }
         FunctionBlockBodyKind::Empty => Ok(()),
-        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::todo(file!(), line!())),
+        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::todo()),
     }
 }
 
@@ -110,7 +110,7 @@ fn compile_statement(
                 let target_name = resolve_variable_name(&assignment.target);
                 let target_index = target_name
                     .and_then(|name| ctx.variables.get(name).copied())
-                    .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+                    .ok_or_else(|| Diagnostic::todo())?;
 
                 // Compile the value expression (use DEFAULT_OP_TYPE; the referenced
                 // type determines the actual width at runtime).
@@ -219,38 +219,11 @@ fn compile_statement(
                 return Ok(());
             }
 
-            // Check if the target is a struct variable (whole-struct assignment).
-            if let Some(target_name) = resolve_variable_name(&assignment.target) {
-                if let Some(dst_info) = ctx.struct_vars.get(target_name).cloned() {
-                    let dst_var = ctx.var_index(target_name)?;
-                    // Compile RHS (for struct-returning functions, leaves
-                    // the source struct's data_offset on the stack).
-                    compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
-
-                    // Copy protocol: temporarily point dst_var to source data,
-                    // load all fields, restore dst_var, store all fields.
-                    emit_store_var(emitter, dst_var, DEFAULT_OP_TYPE);
-
-                    let total = dst_info.total_slots.raw();
-                    for i in 0..total {
-                        let idx = ctx.add_i32_constant(i as i32);
-                        emitter.emit_load_const_i32(idx);
-                        emitter.emit_load_array(dst_var, dst_info.desc_index);
-                    }
-
-                    // Restore dst_var's own data_offset.
-                    let dst_offset = ctx.add_i32_constant(dst_info.data_offset as i32);
-                    emitter.emit_load_const_i32(dst_offset);
-                    emit_store_var(emitter, dst_var, DEFAULT_OP_TYPE);
-
-                    // Store fields in reverse order (LIFO stack consumption).
-                    for i in (0..total).rev() {
-                        let idx = ctx.add_i32_constant(i as i32);
-                        emitter.emit_load_const_i32(idx);
-                        emitter.emit_store_array(dst_var, dst_info.desc_index);
-                    }
-                    return Ok(());
-                }
+            // Whole-aggregate assignment (`x := y` where x is an array or a
+            // structure). Emits COPY_REGION, which moves the bytes rather
+            // than the data-region offset the scalar arm below would copy.
+            if crate::compile_aggregate::try_compile_whole_assignment(emitter, ctx, assignment)? {
+                return Ok(());
             }
 
             // Look up the target variable's type info.
@@ -435,18 +408,7 @@ fn compile_statement(
             Ok(())
         }
         StmtKind::FbCall(fb_call) => compile_fb_call(emitter, ctx, fb_call),
-        StmtKind::MethodCall(method_call) => {
-            // Method call codegen (receiver-pointer parameter, mangled
-            // symbol, call-site compilation) is a follow-up slice -- see
-            // specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md.
-            // Parsing, resolution, and diagnostics already work; only
-            // execution is not yet implemented.
-            Err(Diagnostic::todo_with_span(
-                method_call.position.clone(),
-                file!(),
-                line!(),
-            ))
-        }
+        StmtKind::MethodCall(method_call) => compile_method_call(emitter, ctx, method_call),
         StmtKind::If(if_stmt) => compile_if(emitter, ctx, if_stmt),
         StmtKind::Case(case_stmt) => compile_case(emitter, ctx, case_stmt),
         StmtKind::For(for_stmt) => compile_for(emitter, ctx, for_stmt),
@@ -513,7 +475,7 @@ fn compile_fb_call(
     let fb_info = ctx
         .fb_instances
         .get(&fb_call.var_name)
-        .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span(), file!(), line!()))?;
+        .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span()))?;
     let type_id = fb_info.type_id;
     let field_indices = fb_info.field_indices.clone();
     let var_index = fb_info.var_index;
@@ -527,7 +489,7 @@ fn compile_fb_call(
             let field_name = input.name.to_string().to_lowercase();
             let field_idx = field_indices
                 .get(&field_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(input.name.span(), file!(), line!()))?;
+                .ok_or_else(|| Diagnostic::todo_with_span(input.name.span()))?;
             let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
             compile_expr(emitter, ctx, &input.expr, op_type)?;
             emitter.emit_fb_store_param(*field_idx);
@@ -552,7 +514,7 @@ fn compile_fb_call(
             let field_name = output.src.to_string().to_lowercase();
             let field_idx = field_indices
                 .get(&field_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(output.src.span(), file!(), line!()))?;
+                .ok_or_else(|| Diagnostic::todo_with_span(output.src.span()))?;
             emitter.emit_fb_load_param(*field_idx);
             let target_index = resolve_variable(ctx, &output.tgt)?;
             let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
@@ -562,6 +524,119 @@ fn compile_fb_call(
 
     // Discard fb_ref.
     emitter.emit_pop();
+    Ok(())
+}
+
+/// Compiles a method call (`instance.MethodName(args)`, OOP extension,
+/// ADR-0041 Phase 1 static dispatch). See `METHOD_CALL`'s doc comment in
+/// `ironplc_container::opcode` for the calling convention.
+///
+/// Scoped to methods declared directly on the instance's own function
+/// block type. A method reached only via the instance type's `EXTENDS`
+/// chain (already accepted by `rule_method_call_declared` at the
+/// semantic-analysis level) is not yet supported here: a derived type's
+/// data-region layout doesn't currently reserve storage for a base
+/// type's fields at all (`compile_user_function_block`'s field list
+/// comes from `fb_decl.variables` only, never flattened with inherited
+/// fields), so there is nothing correct to copy-in/copy-out from.
+fn compile_method_call(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    call: &ironplc_dsl::textual::MethodCall,
+) -> Result<(), Diagnostic> {
+    // `THIS^.M()` / `SUPER^.M()` receivers parse but are rejected earlier by
+    // `rule_method_call_declared`, so codegen only ever sees a named instance.
+    let instance = match &call.receiver {
+        ironplc_dsl::textual::MethodReceiver::Instance(id) => id,
+        ironplc_dsl::textual::MethodReceiver::SelfRef(self_ref) => {
+            return Err(Diagnostic::todo_with_span(self_ref.span()))
+        }
+    };
+
+    let fb_info = ctx
+        .fb_instances
+        .get(instance)
+        .ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
+    let type_id = fb_info.type_id;
+    let var_index = fb_info.var_index;
+
+    let fb_name = ctx
+        .user_fb_types
+        .iter()
+        .find(|(_, info)| info.type_id == type_id)
+        .map(|(name, _)| name.clone())
+        .ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
+    let fb_type_info = &ctx.user_fb_types[&fb_name];
+
+    let method_name = call.method.to_string().to_lowercase();
+    let method_info = fb_type_info
+        .methods
+        .get(&method_name)
+        .ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
+
+    let function_id = method_info.function_id;
+    let field_var_off = ironplc_container::VarIndex::new(fb_type_info.var_offset);
+    let num_fields = fb_type_info.num_fields as u8;
+    let param_var_off = ironplc_container::VarIndex::new(method_info.param_var_off);
+    let num_params = method_info.num_params;
+    let param_names_in_order = method_info.param_names_in_order.clone();
+    let param_op_types = method_info.param_op_types.clone();
+    let has_return_value = method_info.has_return_value;
+    let max_stack_depth = method_info.max_stack_depth;
+
+    emitter.emit_fb_load_instance(var_index);
+
+    // Resolve named/positional args to the method's declared VAR_INPUT
+    // order (arity and name validity already checked by
+    // rule_method_call_declared, so any argument that doesn't line up
+    // here indicates a codegen bug, not a user error -- hence `todo`
+    // rather than a user-facing diagnostic).
+    let mut ordered_args: Vec<Option<&Expr>> = vec![None; param_names_in_order.len()];
+    for param in &call.params {
+        match param {
+            ParamAssignmentKind::PositionalInput(p) => {
+                if let Some(slot) = ordered_args.iter_mut().find(|s| s.is_none()) {
+                    *slot = Some(&p.expr);
+                }
+            }
+            ParamAssignmentKind::NamedInput(n) => {
+                let name = n.name.to_string().to_lowercase();
+                if let Some(idx) = param_names_in_order.iter().position(|p| *p == name) {
+                    ordered_args[idx] = Some(&n.expr);
+                }
+            }
+            ParamAssignmentKind::Output(_) => {
+                // Methods have no VAR_OUTPUT `=>` call syntax in this slice.
+            }
+        }
+    }
+
+    for (i, arg) in ordered_args.iter().enumerate() {
+        let expr = arg.ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
+        let op_type = param_op_types.get(i).copied().unwrap_or(DEFAULT_OP_TYPE);
+        compile_expr(emitter, ctx, expr, op_type)?;
+    }
+
+    // Record a call-graph edge; unlike FB_CALL, a method call is always
+    // user-defined (no intrinsic-FB branch), so this is unconditional.
+    ctx.record_call_edge(function_id);
+
+    emitter.emit_method_call(
+        function_id,
+        field_var_off,
+        num_fields,
+        param_var_off,
+        num_params,
+        has_return_value,
+        max_stack_depth,
+    );
+
+    // Statement-position call: discard any return value, then fb_ref.
+    if has_return_value {
+        emitter.emit_pop();
+    }
+    emitter.emit_pop();
+
     Ok(())
 }
 
@@ -716,7 +791,7 @@ fn compile_case(
 ///
 /// - `SignedInteger`: `selector == value`
 /// - `Subrange`: `(selector >= start) AND (selector <= end)`
-/// - `EnumeratedValue`: not yet supported (returns todo diagnostic)
+/// - `EnumeratedValue`: `selector == ordinal` (REQ-EN-codegen-040)
 /// - `BitStringLiteral`: `selector == value` (same shape as `SignedInteger`)
 fn compile_case_selector(
     emitter: &mut Emitter,
@@ -742,7 +817,7 @@ fn compile_case_selector(
                     emitter.emit_eq_i64();
                 }
                 // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo(file!(), line!())),
+                _ => return Err(Diagnostic::todo()),
             }
             Ok(())
         }
@@ -779,7 +854,7 @@ fn compile_case_selector(
                     emit_le(emitter, op_type);
                 }
                 // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo(file!(), line!())),
+                _ => return Err(Diagnostic::todo()),
             }
 
             emitter.emit_bool_and();
@@ -827,7 +902,7 @@ fn compile_case_selector(
                     emitter.emit_eq_i64();
                 }
                 // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo(file!(), line!())),
+                _ => return Err(Diagnostic::todo()),
             }
             Ok(())
         }
@@ -841,9 +916,9 @@ pub(crate) fn resolve_string_max_length(
     string_init: &StringInitializer,
 ) -> Result<u16, Diagnostic> {
     match &string_init.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH_U16),
+        None => Ok(DEFAULT_STRING_MAX_LENGTH),
         Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
-        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
+        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
     }
 }
 
@@ -854,9 +929,9 @@ pub(crate) fn resolve_string_spec_max_length(
     spec: &StringSpecification,
 ) -> Result<u16, Diagnostic> {
     match &spec.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH_U16),
+        None => Ok(DEFAULT_STRING_MAX_LENGTH),
         Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
-        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
+        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
     }
 }
 
@@ -865,7 +940,7 @@ pub(crate) fn resolve_string_spec_max_length(
 fn resolve_signed_integer_ref(sir: &SignedIntegerRef) -> Result<&SignedInteger, Diagnostic> {
     match sir {
         SignedIntegerRef::Literal(si) => Ok(si),
-        SignedIntegerRef::Constant(id) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
+        SignedIntegerRef::Constant(id) => Err(Diagnostic::todo_with_id(id)),
     }
 }
 
@@ -1022,12 +1097,18 @@ fn try_constant_i64(expr: &Expr) -> Option<i64> {
 
 /// Returns the `(min, max)` value range for a narrow integer type, or `None`
 /// for 32- and 64-bit types where `emit_truncation` is already a no-op.
+///
+/// The bounds come from `value_range`, which is where the range a type can
+/// hold is stated; "narrow" is this caller's own concern.
 fn narrow_type_range(type_info: VarTypeInfo) -> Option<(i64, i64)> {
-    match (type_info.signedness, type_info.storage_bits) {
-        (Signedness::Signed, 8) => Some((i8::MIN as i64, i8::MAX as i64)),
-        (Signedness::Signed, 16) => Some((i16::MIN as i64, i16::MAX as i64)),
-        (Signedness::Unsigned, 8) => Some((0, u8::MAX as i64)),
-        (Signedness::Unsigned, 16) => Some((0, u16::MAX as i64)),
+    match type_info.storage_bits {
+        bits @ (8 | 16) => {
+            let (minimum, maximum) = ironplc_analyzer::value_range::for_integer(
+                u32::from(bits),
+                type_info.signedness == Signedness::Signed,
+            );
+            Some((minimum as i64, maximum as i64))
+        }
         _ => None,
     }
 }
@@ -1155,7 +1236,7 @@ fn try_classify_for_head(
 /// The continuation predicate is `i <= to` (positive step) / `i >= to`
 /// (negative step). Inverting the predicate lets the body fall through
 /// from the conditional branch, eliminating one `JMP` dispatch per
-/// iteration. See `specs/plans/2026-04-30-elide-for-loop-exit-jmp.md`.
+/// iteration.
 fn compile_for(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -1180,7 +1261,8 @@ fn compile_for(
     };
 
     // Decide whether the per-loop TRUNC can be elided based on a local interval
-    // check over the constant bounds. See specs/plans/2026-04-30-elide-for-loop-trunc.md.
+    // check over the constant bounds. See `specs/design/vm-performance.md`
+    // §13 "Layer 1: Abstract Interpretation with Richer Domains".
     let elide_trunc = match type_info {
         Some(ti) => {
             for_loop_trunc_can_be_elided(&for_stmt.from, &for_stmt.to, for_stmt.step.as_ref(), ti)

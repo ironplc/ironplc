@@ -5,30 +5,24 @@ use rstest::rstest;
 
 #[test]
 fn write_to_string_when_reference_to_then_round_trips() {
-    let source = read_shared_resource("reference_to.st");
     let options = CompilerOptions {
         allow_reference_to: true,
         ..CompilerOptions::default()
     };
-    let library = parse_program(&source, &FileId::default(), &options).unwrap();
-    let rendered = write_to_string(&library).unwrap();
-    let expected = read_resource("reference_to_rendered.st");
-    assert_eq!(rendered, expected);
+    assert_resource_renders_to("reference_to.st", "reference_to_rendered.st", &options);
 }
 
 #[test]
 fn write_to_string_ref() {
-    let rendered = parse_and_render_resource_edition3("ref.st");
-    let expected = read_resource("ref_rendered.st");
-    assert_eq!(rendered, expected);
+    assert_resource_renders_to("ref.st", "ref_rendered.st", &edition3());
 }
 
-/// Edition-3 render preserves the given reference-related fragment.
+/// Edition-3 render round-trips and preserves the given fragment.
 ///
 /// Each case parses a small program under the edition-3 dialect, renders it
-/// back to text, and checks the rendering contains the expected fragment.
-/// Collapses the single-`contains` reference round-trip tests into one table;
-/// each row still runs as an individually-named test.
+/// back to text, re-parses the rendering (same AST required), and checks the
+/// rendering contains the expected fragment. The re-parse is what catches a
+/// stray space the fragment check would miss.
 #[rstest]
 #[case::ref_to_var_decl(
     "PROGRAM main
@@ -80,7 +74,7 @@ VAR
 END_VAR
     value := myRef^;
 END_PROGRAM",
-    "myRef ^"
+    "myRef^"
 )]
 #[case::ref_expression(
     "PROGRAM main
@@ -101,11 +95,77 @@ END_VAR
 END_PROGRAM",
     "NULL"
 )]
+// Array subscripts, in expression and assignment-target position. A
+// subscript renders tight against its variable -- `symbolic_variable`
+// chains its elements with no whitespace rule between them.
+#[case::subscript_expression(
+    "PROGRAM main
+VAR
+    refs : ARRAY[0..2] OF INT;
+    value : INT;
+END_VAR
+    value := refs[0];
+END_PROGRAM",
+    "refs[ 0 ]"
+)]
+#[case::subscript_assignment_target(
+    "PROGRAM main
+VAR
+    refs : ARRAY[0..2] OF INT;
+END_VAR
+    refs[1] := 5;
+END_PROGRAM",
+    "refs[ 1 ] :="
+)]
+#[case::deref_of_subscript(
+    "PROGRAM main
+VAR
+    refs : ARRAY[0..2] OF REF_TO INT;
+    value : INT;
+END_VAR
+    value := refs[0]^;
+END_PROGRAM",
+    "refs[ 0 ]^"
+)]
+#[case::subscript_of_deref(
+    "FUNCTION my_func : BYTE
+VAR_INPUT
+    PT : REF_TO ARRAY[0..10] OF BYTE;
+END_VAR
+    my_func := PT^[0];
+END_FUNCTION",
+    "PT^[ 0 ]"
+)]
+#[case::subscript_of_field(
+    "TYPE
+S : STRUCT
+    items : ARRAY[0..2] OF INT;
+END_STRUCT;
+END_TYPE
+PROGRAM main
+VAR
+    s : S;
+    value : INT;
+END_VAR
+    value := s.items[0];
+END_PROGRAM",
+    "s.items[ 0 ]"
+)]
+#[case::multi_dimensional_subscript(
+    "PROGRAM main
+VAR
+    grid : ARRAY[0..2, 0..2] OF INT;
+    value : INT;
+END_VAR
+    value := grid[1, 2];
+END_PROGRAM",
+    "grid[ 1 , 2 ]"
+)]
 fn write_to_string_when_reference_source_then_preserves(
     #[case] source: &str,
     #[case] needle: &str,
 ) {
-    let rendered = parse_and_render_edition3(source);
+    let rendered = assert_round_trips(source, &edition3());
     assert!(
         rendered.contains(needle),
         "Expected {needle} in output, got: {rendered}"
@@ -113,28 +173,8 @@ fn write_to_string_when_reference_source_then_preserves(
 }
 
 #[test]
-fn write_to_string_when_deref_array_expression_then_preserves() {
-    let rendered = parse_and_render_edition3(
-        "FUNCTION my_func : BYTE
-VAR_INPUT
-    PT : REF_TO ARRAY[0..10] OF BYTE;
-END_VAR
-    my_func := PT^[0];
-END_FUNCTION",
-    );
-    assert!(
-        rendered.contains("PT^"),
-        "Expected PT^ in output, got: {rendered}"
-    );
-    assert!(
-        rendered.contains("[ 0 ]"),
-        "Expected array subscript in output, got: {rendered}"
-    );
-}
-
-#[test]
 fn write_to_string_when_ref_to_type_decl_then_preserves() {
-    let rendered = parse_and_render_edition3("TYPE IntRef : REF_TO INT; END_TYPE");
+    let rendered = assert_round_trips("TYPE IntRef : REF_TO INT; END_TYPE", &edition3());
     let expected = "TYPE\n   IntRef : REF_TO INT ;\nEND_TYPE\n";
     assert_eq!(rendered, expected);
 }

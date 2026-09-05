@@ -52,6 +52,9 @@ impl From<SymbolicVariableKind> for Variable {
             SymbolicVariableKind::Deref(deref) => {
                 Variable::Symbolic(SymbolicVariableKind::Deref(deref))
             }
+            SymbolicVariableKind::SelfRef(self_ref) => {
+                Variable::Symbolic(SymbolicVariableKind::SelfRef(self_ref))
+            }
         }
     }
 }
@@ -73,6 +76,7 @@ pub enum SymbolicVariableKind {
     BitAccess(BitAccessVariable),
     PartialAccess(PartialAccessVariable),
     Deref(DerefVariable),
+    SelfRef(SelfRefVariable),
 }
 
 impl fmt::Display for SymbolicVariableKind {
@@ -88,6 +92,7 @@ impl fmt::Display for SymbolicVariableKind {
             }
             SymbolicVariableKind::PartialAccess(partial) => f.write_fmt(format_args!("{partial}")),
             SymbolicVariableKind::Deref(deref) => f.write_fmt(format_args!("{deref}")),
+            SymbolicVariableKind::SelfRef(self_ref) => f.write_fmt(format_args!("{self_ref}")),
         }
     }
 }
@@ -101,6 +106,7 @@ impl Located for SymbolicVariableKind {
             SymbolicVariableKind::BitAccess(bit_access) => bit_access.span(),
             SymbolicVariableKind::PartialAccess(partial) => partial.span(),
             SymbolicVariableKind::Deref(deref) => deref.span(),
+            SymbolicVariableKind::SelfRef(self_ref) => self_ref.span(),
         }
     }
 }
@@ -286,6 +292,64 @@ impl fmt::Display for DerefVariable {
     }
 }
 
+/// Which implicit instance a [`SelfRefVariable`] names.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum SelfRefKind {
+    /// `THIS^` — the function block instance currently executing.
+    This,
+    /// `SUPER^` — the same instance, viewed as its base type.
+    Super,
+}
+
+impl SelfRefKind {
+    /// The source spelling, including the mandatory dereference caret.
+    pub fn spelling(&self) -> &'static str {
+        match self {
+            SelfRefKind::This => "THIS^",
+            SelfRefKind::Super => "SUPER^",
+        }
+    }
+}
+
+/// `THIS^` or `SUPER^` at the head of a variable reference (OOP extension).
+///
+/// This is the head of a symbolic variable rather than an expression
+/// because `THIS^.count := 1;` puts it in assignment-target position,
+/// where the AST is a [`Variable`]. Placing it at the head means the
+/// ordinary element chain — `.field`, `[i]`, `.%X0` — composes with it
+/// for free, in both read and write position.
+///
+/// The dereference caret is part of this node rather than a wrapping
+/// [`DerefVariable`]: `THIS`/`SUPER` have no pointer type to be given,
+/// so an un-dereferenced form would be a node nothing could type, and
+/// folding the caret in makes "the caret is mandatory" structural.
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
+pub struct SelfRefVariable {
+    #[recurse(ignore)]
+    pub kind: SelfRefKind,
+    /// Spans the keyword through the caret.
+    pub position: SourceSpan,
+}
+
+impl fmt::Display for SelfRefVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.kind.spelling())
+    }
+}
+
+impl crate::extension::LanguageExtension for SelfRefVariable {
+    fn extension_name(&self) -> &'static str {
+        match self.kind {
+            SelfRefKind::This => "THIS^ self reference",
+            SelfRefKind::Super => "SUPER^ base reference",
+        }
+    }
+
+    fn extension_span(&self) -> SourceSpan {
+        self.position.clone()
+    }
+}
+
 /// Function block invocation.
 ///
 /// See section 3.2.3.
@@ -302,13 +366,38 @@ pub struct FbCall {
 /// (OOP extension, ADR-0041 Phase 1). Any return value is discarded, same
 /// restriction as `FbCall` for a plain FB invocation. Method calls in
 /// expression position (e.g. `IF fb.IsMoving() THEN`) are a follow-up
-/// slice — see
-/// `specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md`.
+/// slice.
+/// The instance a [`MethodCall`] is invoked on.
+#[derive(Debug, PartialEq, Clone, Recurse)]
+pub enum MethodReceiver {
+    /// A function block instance named by a variable: `instance.M()`.
+    Instance(Id),
+    /// The enclosing instance itself: `THIS^.M()` or `SUPER^.M()`.
+    SelfRef(SelfRefVariable),
+}
+
+impl fmt::Display for MethodReceiver {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MethodReceiver::Instance(name) => f.write_fmt(format_args!("{name}")),
+            MethodReceiver::SelfRef(self_ref) => f.write_fmt(format_args!("{self_ref}")),
+        }
+    }
+}
+
+impl Located for MethodReceiver {
+    fn span(&self) -> SourceSpan {
+        match self {
+            MethodReceiver::Instance(name) => name.span(),
+            MethodReceiver::SelfRef(self_ref) => self_ref.span(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct MethodCall {
-    /// Name of the variable holding the function-block instance the
-    /// method is called on.
-    pub instance: Id,
+    /// The function block instance the method is called on.
+    pub receiver: MethodReceiver,
     /// Name of the method being called.
     pub method: Id,
     pub params: Vec<ParamAssignmentKind>,
@@ -603,6 +692,8 @@ pub enum CompareOp {
     /// short-circuit vs. eager evaluation distinction is real and
     /// externally-visible in TwinCAT/CODESYS itself.
     AndThen,
+    /// CODESYS/TwinCAT short-circuit `OR`, the dual of [`CompareOp::AndThen`].
+    OrElse,
     Eq,
     Ne,
     Lt,
@@ -611,21 +702,32 @@ pub enum CompareOp {
     GtEq,
 }
 
-impl fmt::Display for CompareOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let symbol = match self {
+impl CompareOp {
+    /// The operator's source spelling.
+    ///
+    /// This is the single definition of how a `CompareOp` is written: both
+    /// [`fmt::Display`] and the `plc2plc` renderer read it, so an operator
+    /// added to this enum is spelled once.
+    pub fn as_str(&self) -> &'static str {
+        match self {
             CompareOp::Or => "OR",
             CompareOp::Xor => "XOR",
             CompareOp::And => "AND",
             CompareOp::AndThen => "AND_THEN",
+            CompareOp::OrElse => "OR_ELSE",
             CompareOp::Eq => "=",
             CompareOp::Ne => "<>",
             CompareOp::Lt => "<",
             CompareOp::Gt => ">",
             CompareOp::LtEq => "<=",
             CompareOp::GtEq => ">=",
-        };
-        write!(f, "{symbol}")
+        }
+    }
+}
+
+impl fmt::Display for CompareOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -885,8 +987,7 @@ pub enum CaseSelectionKind {
     SignedInteger(SignedInteger),
     EnumeratedValue(EnumeratedValue),
     /// A radix-prefixed bit-string literal used as a `CASE` label (e.g.
-    /// `16#D012:`, `2#1010:`). See
-    /// specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+    /// `16#D012:`, `2#1010:`).
     BitStringLiteral(BitStringLiteral),
 }
 

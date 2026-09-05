@@ -17,8 +17,12 @@
 //! * **Homebrew**: `libexec.install` and `bin.install_symlink` in
 //!   `compiler/homebrew/Formula/ironplc.rb`, checked separately, because a
 //!   binary that is installed but not symlinked never reaches the PATH.
+//! * **`curl … | sh`**: the `BINARIES="…"` list in `compiler/install.sh`, which
+//!   is the only documented Linux install path. A binary the script does not
+//!   name is extracted from the archive and then deleted with the temp
+//!   directory, so omission here is silent at both build and install time.
 //!
-//! The guard asserts all four agree. Adding a binary therefore fails here until
+//! The guard asserts all five agree. Adding a binary therefore fails here until
 //! every installer carries it.
 
 use std::collections::BTreeSet;
@@ -94,19 +98,40 @@ fn bin_names(cargo_toml: &str) -> Vec<String> {
     out
 }
 
-/// The `binaries := "…"` packaging list from the justfile.
-fn just_binaries(justfile: &str) -> Vec<String> {
-    for line in justfile.lines() {
+/// The whitespace-separated names inside the quoted value assigned to `name` on
+/// the first non-comment line that assigns it.
+///
+/// Both packaging lists have this shape — the justfile's `binaries := "a b c"`
+/// and the install script's `BINARIES="a b c"` — so one parser reads both. The
+/// assignment operator has to follow the name, so a longer identifier that ends
+/// in it is not mistaken for it.
+fn whitespace_list_assignment(text: &str, name: &str) -> Vec<String> {
+    for line in text.lines() {
         if is_comment(line, "#") {
             continue;
         }
-        if line.trim_start().starts_with("binaries") && line.contains(":=") {
-            if let Some(list) = quoted_strings(line).into_iter().next() {
-                return list.split_whitespace().map(str::to_string).collect();
-            }
+        let Some(after_name) = line.trim_start().strip_prefix(name) else {
+            continue;
+        };
+        let operator = after_name.trim_start();
+        if !operator.starts_with(":=") && !operator.starts_with('=') {
+            continue;
+        }
+        if let Some(list) = quoted_strings(line).into_iter().next() {
+            return list.split_whitespace().map(str::to_string).collect();
         }
     }
     Vec::new()
+}
+
+/// The `binaries := "…"` packaging list from the justfile.
+fn just_binaries(justfile: &str) -> Vec<String> {
+    whitespace_list_assignment(justfile, "binaries")
+}
+
+/// The `BINARIES="…"` install list from `install.sh`.
+fn install_sh_binaries(install_sh: &str) -> Vec<String> {
+    whitespace_list_assignment(install_sh, "BINARIES")
 }
 
 /// The name a `${VAR}` reference points at, if `token` contains exactly one.
@@ -258,11 +283,13 @@ fn every_built_binary_is_shipped_by_every_installer() {
     let justfile = fs::read_to_string(compiler_dir.join("justfile")).unwrap();
     let nsi = fs::read_to_string(compiler_dir.join("setup.nsi")).unwrap();
     let formula = fs::read_to_string(compiler_dir.join("homebrew/Formula/ironplc.rb")).unwrap();
+    let install_sh = fs::read_to_string(compiler_dir.join("install.sh")).unwrap();
 
     let unix: BTreeSet<String> = just_binaries(&justfile).into_iter().collect();
     let windows: BTreeSet<String> = nsis_installed_binaries(&nsi).into_iter().collect();
     let brew_install: BTreeSet<String> = formula_installed_binaries(&formula).into_iter().collect();
     let brew_path: BTreeSet<String> = formula_symlinked_binaries(&formula).into_iter().collect();
+    let curl_sh: BTreeSet<String> = install_sh_binaries(&install_sh).into_iter().collect();
 
     let mut problems = Vec::new();
     problems.extend(compare(
@@ -273,6 +300,11 @@ fn every_built_binary_is_shipped_by_every_installer() {
     problems.extend(compare("setup.nsi (Windows installer)", &built, &windows));
     problems.extend(compare("Homebrew libexec.install", &built, &brew_install));
     problems.extend(compare("Homebrew bin.install_symlink", &built, &brew_path));
+    problems.extend(compare(
+        "install.sh `BINARIES` (curl | sh)",
+        &built,
+        &curl_sh,
+    ));
 
     assert!(
         problems.is_empty(),
@@ -392,6 +424,21 @@ fn just_binaries_when_assignment_present_then_splits_on_whitespace() {
 #[test]
 fn just_binaries_when_assignment_missing_then_empty() {
     assert!(just_binaries("compile:\n  cargo build\n").is_empty());
+}
+
+#[test]
+fn install_sh_binaries_when_assignment_present_then_splits_on_whitespace() {
+    let script = "# BINARIES=\"commented\"\nBINARIES=\"ironplcc ironplcvmd\"\n";
+    assert_eq!(install_sh_binaries(script), vec!["ironplcc", "ironplcvmd"]);
+}
+
+#[test]
+fn install_sh_binaries_when_name_is_a_suffix_of_another_then_reads_the_right_one() {
+    // A prefix match that did not require the assignment to follow the name
+    // would read the first line as the install list, and the guard would pass
+    // on a script that installs nothing it names.
+    let script = "OTHER_BINARIES=\"decoy\"\nBINARIES=\"ironplcc ironplcvmd\"\n";
+    assert_eq!(install_sh_binaries(script), vec!["ironplcc", "ironplcvmd"]);
 }
 
 #[test]

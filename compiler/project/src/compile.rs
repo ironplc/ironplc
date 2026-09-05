@@ -80,7 +80,7 @@ pub fn compile(
     else {
         // A clean analysis always caches its artifacts, so this is a compiler
         // defect rather than a problem with the input.
-        diagnostics.push(Diagnostic::internal_error(file!(), line!()));
+        diagnostics.push(Diagnostic::internal_error());
         return CompileOutput {
             diagnostics,
             container: None,

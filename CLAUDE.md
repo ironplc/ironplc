@@ -7,8 +7,11 @@ This file provides entry points for Claude Code when working on the IronPLC proj
 Before making changes, read the relevant steering files in `specs/steering/`:
 
 - **[Glossary](specs/steering/glossary.md)** - Authoritative definitions of core vocabulary (dialect, vendor, extension, edition); resolve terminology questions here before coining a new term
-- **[Development Standards](specs/steering/development-standards.md)** - Core project conventions, testing patterns, error handling, and documentation standards
-- **[Compiler Architecture](specs/steering/compiler-architecture.md)** - Patterns for implementing language features, module organization, and semantic analysis
+- **[Development Standards](specs/steering/development-standards.md)** - Cross-component process and conventions that apply to all work: specs directory structure, planning, prefactoring, and duplication rules
+- **[Compiler Standards](specs/steering/compiler-standards.md)** - Rust coding standards: module structure, testing, error handling, performance, `unsafe`/clippy rules (especially relevant for `compiler/**` files)
+- **[Documentation Standards](specs/steering/doc-standards.md)** - Documentation website standards: quadrants, writing style, RST roles, playground directives (especially relevant for `docs/**` files)
+- **[Extension Standards](specs/steering/extension-standards.md)** - VS Code extension coding standards: README sync, testing gates, `E####` error codes (especially relevant for `integrations/vscode/**` files)
+- **[Compiler Architecture](specs/steering/compiler-architecture.md)** - Patterns for implementing language features, module organization, and semantic analysis (especially relevant for `compiler/**` files)
 - **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules (especially relevant for `**/analyzer/**` files)
 - **[PLCopen XML Module](specs/steering/plcopen-xml-module.md)** - Architecture and patterns for the PLCopen XML parsing module (especially relevant for `compiler/sources/src/xml/` files)
 - **[Syntax Support Guide](specs/steering/syntax-support-guide.md)** - Checklist and patterns for adding new syntax support, including `--allow-x` flags, plc2plc round-trip tests, and end-to-end execution tests (especially relevant for `**/parser/**`, `**/codegen/**`, `**/plc2plc/**` files)
@@ -34,10 +37,13 @@ For full details, see [specs/steering/common-tasks.md](specs/steering/common-tas
 ### Workflow
 
 1. Create a feature branch from `main`
-2. **Write an implementation plan** in `specs/plans/` and commit it to the branch (see [Development Standards — Planning Requirement](specs/steering/development-standards.md#planning-requirement))
-3. Implement the changes following the plan
-4. Run the full CI pipeline: `cd compiler && just`
-5. Push the feature branch and create a PR via `gh pr create`
+2. **Write an implementation plan** in `specs/plans/` and commit it as the first commit on the branch. If the work spans more than one PR, open an issue first and reference it from the plan (see [Development Standards — Planning Requirement](specs/steering/development-standards.md#planning-requirement))
+3. **Prefactor first** — simplify the existing code so the change drops in, in its own commit, before adding new behaviour (see [Development Standards — Prefactoring](specs/steering/development-standards.md#prefactoring))
+4. Implement the changes following the plan
+5. Land any decision worth keeping as an ADR or `specs/design/` update, and open an issue for anything the plan describes that you are not delivering — it is about to be deleted
+6. **`git rm` the plan file** — plans are deleted before merge, so no plan content reaches `main`
+7. Run the full CI pipeline: `cd compiler && just`
+8. Push the feature branch and create a PR via `gh pr create`
 
 > **Skip the plan** for mechanical changes: typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits.
 
@@ -81,9 +87,11 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 
 ### Critical Rules
 1. **NEVER push directly to `main`** - Always use a feature branch and pull request
-2. **Plan first** - Non-trivial changes must start with a plan in `specs/plans/` committed before implementation code
-3. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
-4. **BDD-style test names**: `function_when_condition_then_result`
-5. **Module size limit**: Max 1000 lines per module
-6. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
-7. **Version numbers**: Automatically managed - do not edit manually
+2. **Plan first, then delete it** - Non-trivial changes start with a plan in `specs/plans/`, committed before implementation code and removed before merge; work spanning more than one PR must also have an issue; never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
+3. **Prefactor before adding** - Every change looks for a simplification to make first; the plan says what it is, or why none is needed
+4. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
+5. **BDD-style test names**: `function_when_condition_then_result`
+6. **Module size limit**: Max 1000 lines per module
+7. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
+8. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
+9. **Version numbers**: Automatically managed - do not edit manually
