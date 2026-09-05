@@ -9,22 +9,19 @@
 //! - [`reset_session`] - Clear the stepping session
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::io::Cursor;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
-use ironplc_analyzer::stages::analyze;
-use ironplc_codegen::compile as codegen_compile;
-use ironplc_container::debug_format::{build_var_debug_map, VarDebugInfo};
-use ironplc_container::debug_section::iec_type_tag;
-use ironplc_container::{Container, STRING_HEADER_BYTES};
+use ironplc_container::debug_format::VariableRenderer;
+use ironplc_container::Container;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, LineColumn};
 use ironplc_parser::options::{CompilerOptions, Dialect, FeatureDescriptor};
+use ironplc_project::MemoryBackedProject;
 use ironplc_sources::{parse_source, FileType};
-use ironplc_vm::{Slot, Vm, VmBuffers};
+use ironplc_vm::{Slot, VariableView, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -233,7 +230,7 @@ fn internal_run_error(message: String) -> RunError {
     let loc = std::panic::Location::caller();
     // Derive the stable code from the shared diagnostic constructor rather than
     // hard-coding "P9998", so it tracks the compiler's internal-error code.
-    let code = Diagnostic::internal_error(loc.file(), loc.line()).code;
+    let code = Diagnostic::internal_error().code;
     RunError {
         message,
         code: Some(code),
@@ -256,7 +253,7 @@ fn fallback_error_json(err: &RunError) -> String {
 #[track_caller]
 fn internal_diagnostic(message: String) -> DiagnosticInfo {
     let loc = std::panic::Location::caller();
-    let code = Diagnostic::internal_error(loc.file(), loc.line()).code;
+    let code = Diagnostic::internal_error().code;
     DiagnosticInfo {
         code,
         message,
@@ -304,225 +301,6 @@ fn default_true() -> bool {
 
 fn is_true(b: &bool) -> bool {
     *b
-}
-
-/// Maps (type_name, ordinal) → value_name for enum display.
-type EnumValueMap = HashMap<(String, i32), String>;
-
-/// Builds a lookup map from enum definitions in the container's debug section.
-fn build_enum_value_map(container: &Container) -> EnumValueMap {
-    let mut map = HashMap::new();
-    if let Some(debug) = &container.debug_section {
-        for entry in &debug.enum_defs {
-            for (ordinal, value_name) in entry.values.iter().enumerate() {
-                map.insert(
-                    (entry.type_name.clone(), ordinal as i32),
-                    value_name.clone(),
-                );
-            }
-        }
-    }
-    map
-}
-
-/// Maps STRING var_index → data_region offset.
-type StringLayoutMap = HashMap<u16, u32>;
-
-/// Builds a lookup map of STRING variable layouts from the container's debug section.
-fn build_string_layout_map(container: &Container) -> StringLayoutMap {
-    let mut map = HashMap::new();
-    if let Some(debug) = &container.debug_section {
-        for entry in &debug.string_layouts {
-            map.insert(entry.var_index.raw(), entry.data_offset);
-        }
-    }
-    map
-}
-
-/// Reasons a STRING variable's bytes could not be read from the data region.
-#[derive(Debug, PartialEq, Eq)]
-enum StringReadError {
-    /// The recorded `data_offset` plus the string header would read past the
-    /// end of the data region.
-    OffsetOutOfBounds,
-    /// The header was readable but `cur_len` plus the data start would read
-    /// past the end of the data region.
-    LengthOutOfBounds,
-}
-
-/// Reads a STRING value from the data region at the given offset and renders
-/// it as a single-quoted IEC literal with IEC 61131-3 `$`-escape sequences
-/// for non-printable bytes, `$`, and `'`.
-///
-/// Returns an error variant (rather than a sentinel string) so the caller
-/// can mark the value as invalid and the UI can render it differently from
-/// real string content like `'<invalid>'`.
-fn read_string_value(data_region: &[u8], data_offset: u32) -> Result<String, StringReadError> {
-    let off = data_offset as usize;
-    if off + STRING_HEADER_BYTES > data_region.len() {
-        return Err(StringReadError::OffsetOutOfBounds);
-    }
-    let cur_len = u16::from_le_bytes([data_region[off + 2], data_region[off + 3]]) as usize;
-    let start = off + STRING_HEADER_BYTES;
-    let end = start + cur_len;
-    if end > data_region.len() {
-        return Err(StringReadError::LengthOutOfBounds);
-    }
-    Ok(format_iec_string_literal(&data_region[start..end]))
-}
-
-/// Renders raw STRING bytes as an IEC 61131-3 single-quoted string literal.
-/// Each byte is either passed through as printable ASCII, replaced with one
-/// of the named `$`-escapes (`$T`, `$L`, `$P`, `$R`, `$$`, `$'`), or emitted
-/// as a `$XX` two-digit hex escape.
-fn format_iec_string_literal(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() + 2);
-    out.push('\'');
-    for &b in bytes {
-        match b {
-            b'$' => out.push_str("$$"),
-            b'\'' => out.push_str("$'"),
-            0x09 => out.push_str("$T"),
-            0x0A => out.push_str("$L"),
-            0x0C => out.push_str("$P"),
-            0x0D => out.push_str("$R"),
-            0x20..=0x7E => out.push(b as char),
-            _ => out.push_str(&format!("${b:02X}")),
-        }
-    }
-    out.push('\'');
-    out
-}
-
-/// Formats a raw 64-bit slot value according to the IEC type tag,
-/// with optional enum value name lookup.
-fn format_variable_value_with_enum(
-    raw: u64,
-    tag: u8,
-    type_name: &str,
-    enum_map: &EnumValueMap,
-) -> String {
-    // Check if this variable is an enum type with a known value name.
-    if !type_name.is_empty() {
-        let ordinal = raw as i32;
-        if let Some(value_name) = enum_map.get(&(type_name.to_string(), ordinal)) {
-            return format!("{value_name} ({ordinal})");
-        }
-    }
-    // Fall back to standard formatting.
-    format_variable_value(raw, tag)
-}
-
-/// Formats a raw 64-bit slot value according to the IEC type tag.
-fn format_variable_value(raw: u64, tag: u8) -> String {
-    match tag {
-        iec_type_tag::BOOL => {
-            if (raw as i32) != 0 {
-                "TRUE".into()
-            } else {
-                "FALSE".into()
-            }
-        }
-        iec_type_tag::SINT => format!("{}", raw as i32 as i8),
-        iec_type_tag::INT => format!("{}", raw as i32 as i16),
-        iec_type_tag::DINT => format!("{}", raw as i32),
-        iec_type_tag::LINT => format!("{}", raw as i64),
-        iec_type_tag::USINT => format!("{}", raw as u8),
-        iec_type_tag::UINT => format!("{}", raw as u16),
-        iec_type_tag::UDINT => format!("{}", raw as u32),
-        iec_type_tag::ULINT => format!("{}", raw),
-        iec_type_tag::REAL => format!("{}", f32::from_bits(raw as u32)),
-        iec_type_tag::LREAL => format!("{}", f64::from_bits(raw)),
-        iec_type_tag::BYTE => format!("16#{:02X}", raw as u8),
-        iec_type_tag::WORD => format!("16#{:04X}", raw as u16),
-        iec_type_tag::DWORD => format!("16#{:08X}", raw as u32),
-        iec_type_tag::LWORD => format!("16#{:016X}", raw),
-        iec_type_tag::TIME => format_time_value_ms(raw as i32),
-        iec_type_tag::LTIME => format_time_value_ms(raw as i64),
-        iec_type_tag::DATE => format_date_value(raw as u32),
-        iec_type_tag::TIME_OF_DAY => format_tod_value(raw as u32),
-        iec_type_tag::DATE_AND_TIME => format_dt_value(raw),
-        // STRING and WSTRING are handled at the call site so the result can
-        // also report whether the value is real or a placeholder.
-        _ => format!("{}", raw as i32), // fallback
-    }
-}
-
-/// Formats a TIME/LTIME value (stored as milliseconds) as an IEC 61131-3 duration.
-///
-/// Uses `T#<value>ms` for values under 1 second, `T#<value>s` for values at or
-/// above 1 second (with decimal for sub-millisecond precision).
-fn format_time_value_ms<T: Into<i64>>(ms: T) -> String {
-    let ms: i64 = ms.into();
-    if ms == 0 {
-        return "T#0ms".to_string();
-    }
-    let abs_ms = ms.unsigned_abs();
-    let sign = if ms < 0 { "-" } else { "" };
-    if abs_ms < 1000 {
-        format!("{sign}T#{abs_ms}ms")
-    } else {
-        let secs = abs_ms / 1000;
-        let frac_ms = abs_ms % 1000;
-        if frac_ms == 0 {
-            format!("{sign}T#{secs}s")
-        } else {
-            let total_s = secs as f64 + frac_ms as f64 / 1000.0;
-            let formatted = format!("{total_s}");
-            format!("{sign}T#{formatted}s")
-        }
-    }
-}
-
-/// Formats a DATE value (stored as seconds since 1970-01-01) as D#YYYY-MM-DD.
-///
-/// Uses the inverse Julian day algorithm to convert the internal second count
-/// back into year/month/day components without requiring the `time` crate.
-fn format_date_value(secs: u32) -> String {
-    // Convert seconds since 1970-01-01 to Julian day number.
-    const UNIX_EPOCH_JULIAN_DAY: i64 = 2_440_588; // 1970-01-01
-    let days = secs as i64 / 86_400;
-    let j = UNIX_EPOCH_JULIAN_DAY + days;
-
-    // Richards' algorithm (Meeus, Astronomical Algorithms) for Julian day → calendar date.
-    let f = j + 1401 + ((4 * j + 274277) / 146097) * 3 / 4 - 38;
-    let e = 4 * f + 3;
-    let g = (e % 1461) / 4;
-    let h = 5 * g + 2;
-    let d = (h % 153) / 5 + 1;
-    let m = (h / 153 + 2) % 12 + 1;
-    let y = e / 1461 - 4716 + (12 + 2 - m) / 12;
-
-    format!("D#{y}-{m:02}-{d:02}")
-}
-
-/// Formats a TIME_OF_DAY value (stored as ms since midnight) as TOD#HH:MM:SS.mmm.
-fn format_tod_value(ms: u32) -> String {
-    let h = ms / 3_600_000;
-    let m = (ms % 3_600_000) / 60_000;
-    let s = (ms % 60_000) / 1_000;
-    let frac = ms % 1_000;
-    if frac == 0 {
-        format!("TOD#{h:02}:{m:02}:{s:02}")
-    } else {
-        format!("TOD#{h:02}:{m:02}:{s:02}.{frac:03}")
-    }
-}
-
-/// Formats a DATE_AND_TIME value (stored as u32 seconds since 1970-01-01) as DT#YYYY-MM-DD-HH:MM:SS.
-///
-/// The raw u64 parameter is the zero-extended u32 value from the VM slot.
-fn format_dt_value(raw: u64) -> String {
-    let secs = raw as u32;
-    let date_secs = secs - (secs % 86_400);
-    let tod_secs = secs % 86_400;
-    let date_part = format_date_value(date_secs);
-    // Extract date portion (after "D#")
-    let date_str = &date_part[2..];
-    let h = tod_secs / 3_600;
-    let m = (tod_secs % 3_600) / 60;
-    let s = tod_secs % 60;
-    format!("DT#{date_str}-{h:02}:{m:02}:{s:02}")
 }
 
 /// Result of compile-and-run (combines both).
@@ -635,69 +413,32 @@ fn compile_inner(source: &str, dialect: &str, allows: &str, libraries: &str) -> 
         Err(result) => return result,
     };
 
-    let library = match parse_source(file_type, source, &FileId::default(), &options) {
-        Ok(lib) => lib,
-        Err(diag) => {
-            return CompileResult {
-                ok: false,
-                bytecode: None,
-                diagnostics: vec![diagnostic_info(&diag, source)],
-            };
-        }
-    };
+    // The pipeline (parse -> analysis -> codegen) is owned by
+    // `ironplc-project`, which compiles for wasm32 -- the playground supplies
+    // the editor buffer and the fetched library text, and does nothing with
+    // the filesystem-backed half of that crate. The editor buffer has no
+    // filename, so its type comes from the content rather than an extension.
+    let mut project = MemoryBackedProject::new(options);
+    project.set_preparsed_libraries(compat_libraries);
+    project.add_source_with_file_type(FileId::default(), source.to_owned(), file_type);
 
-    // Run the full analysis pipeline: type resolution + semantic checks.
-    // Type resolution populates expr.resolved_type so codegen can select
-    // correct opcodes. Semantic checks catch errors like undeclared variables,
-    // wrong argument counts, type mismatches, etc.
-    let analyze_input: Vec<&Library> = compat_libraries
-        .iter()
-        .chain(std::iter::once(&library))
-        .collect();
-    let (library, context) = match analyze(&analyze_input, &options) {
-        Ok((resolved_lib, ctx)) => (resolved_lib, ctx),
-        Err(diagnostics) => {
-            return CompileResult {
-                ok: false,
-                bytecode: None,
-                diagnostics: diagnostics
-                    .iter()
-                    .map(|d| diagnostic_info(d, source))
-                    .collect(),
-            };
-        }
-    };
+    let output = ironplc_project::compile(
+        &mut project,
+        &options,
+        &ironplc_codegen::EmptyLookup,
+        vec![],
+    );
 
-    // Report any semantic diagnostics (non-fatal errors found during analysis).
-    if context.has_diagnostics() {
+    let Some(container) = output.container else {
         return CompileResult {
             ok: false,
             bytecode: None,
-            diagnostics: context
-                .diagnostics()
+            diagnostics: output
+                .diagnostics
                 .iter()
                 .map(|d| diagnostic_info(d, source))
                 .collect(),
         };
-    }
-
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        system_uptime_global: options.allow_system_uptime_global,
-    };
-    let container = match codegen_compile(
-        &library,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    ) {
-        Ok(c) => c,
-        Err(diag) => {
-            return CompileResult {
-                ok: false,
-                bytecode: None,
-                diagnostics: vec![diagnostic_info(&diag, source)],
-            };
-        }
     };
 
     let mut buf = Vec::new();
@@ -785,24 +526,13 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
         }
     };
 
-    let debug_map = build_var_debug_map(&container);
-    let enum_map = build_enum_value_map(&container);
-    let string_layouts = build_string_layout_map(&container);
+    let renderer = VariableRenderer::new(&container);
 
     for round in 0..scans {
-        let current_us = (round as u64) * 1000;
-        if let Err(ctx) = running.run_round(current_us) {
-            // Snapshot variables (incl. data-region strings) before consuming
-            // `running` via `fault`, which releases its borrow on the buffers.
-            let num_vars = running.num_variables();
-            let variables = read_all_variables_running(
-                &running,
-                num_vars,
-                &debug_map,
-                &enum_map,
-                &string_layouts,
-            );
+        let uptime_us = (round as u64) * 1000;
+        if let Err(ctx) = running.run_round(uptime_us) {
             let faulted = running.fault(ctx);
+            let variables = read_all_variables(&faulted, &renderer);
             return RunResult {
                 ok: false,
                 variables,
@@ -821,9 +551,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
         }
     }
 
-    let num_vars = running.num_variables();
-    let variables =
-        read_all_variables_running(&running, num_vars, &debug_map, &enum_map, &string_layouts);
+    let variables = read_all_variables(&running, &renderer);
     let scans_completed = running.scan_count();
     running.stop();
 
@@ -886,78 +614,40 @@ fn run_source_inner(
     }
 }
 
-fn read_all_variables_running(
-    vm: &ironplc_vm::VmRunning,
-    num_vars: u16,
-    debug_map: &HashMap<u16, VarDebugInfo>,
-    enum_map: &EnumValueMap,
-    string_layouts: &StringLayoutMap,
-) -> Vec<VariableInfo> {
+/// Snapshots every variable slot with its debug name, type and formatted value.
+///
+/// Takes the VM as a [`VariableView`] so a running and a faulted VM share one
+/// body: the caller's lifecycle state does not change how a value is read.
+///
+/// Rendering goes through [`VariableRenderer`], the one place that formats a
+/// variable for display (`specs/design/variable-value-rendering.md`), so the
+/// playground agrees with `--dump-vars`, the debugger and the VS Code run
+/// panel — the playground previously carried its own near-copy of that logic,
+/// and the two disagreed on STRING, on the date types and on TIME's unit.
+fn read_all_variables(vm: &dyn VariableView, renderer: &VariableRenderer) -> Vec<VariableInfo> {
     let data_region = vm.data_region();
-    (0..num_vars)
+    (0..vm.num_variables())
         .filter_map(|i| {
             vm.read_variable_raw(ironplc_container::VarIndex::new(i))
                 .ok()
                 .map(|raw| {
-                    let (name, type_name, value, valid) = if let Some(info) = debug_map.get(&i) {
-                        let (value, valid) = format_value(
-                            raw,
-                            info.iec_type_tag,
-                            &info.type_name,
-                            enum_map,
-                            string_layouts.get(&i).copied(),
-                            data_region,
-                        );
-                        (info.name.clone(), info.type_name.clone(), value, valid)
-                    } else {
-                        (
-                            String::new(),
-                            String::new(),
-                            format!("{}", raw as i32),
-                            true,
-                        )
-                    };
+                    let rendered = renderer.render(i, raw, data_region);
                     VariableInfo {
                         index: i,
-                        value,
-                        name,
-                        type_name,
-                        valid,
+                        value: rendered.text,
+                        name: renderer
+                            .var(i)
+                            .map(|info| info.name.clone())
+                            .unwrap_or_default(),
+                        type_name: renderer
+                            .var(i)
+                            .map(|info| info.type_name.clone())
+                            .unwrap_or_default(),
+                        valid: rendered.valid,
                     }
                 })
         })
         .collect()
-}
-
-/// Render a variable's value as `(text, valid)`. STRING bytes are read from
-/// the data region; WSTRING returns a placeholder; everything else uses the
-/// slot-based formatter.
-fn format_value(
-    raw: u64,
-    tag: u8,
-    type_name: &str,
-    enum_map: &EnumValueMap,
-    string_offset: Option<u32>,
-    data_region: &[u8],
-) -> (String, bool) {
-    if tag == iec_type_tag::STRING {
-        return match string_offset {
-            Some(off) => match read_string_value(data_region, off) {
-                Ok(text) => (text, true),
-                Err(_) => ("<invalid>".into(), false),
-            },
-            // STRING tag with no layout entry: container was built before the
-            // layout sub-table existed (or the variable didn't get one).
-            None => ("<unknown>".into(), false),
-        };
-    }
-    if tag == iec_type_tag::WSTRING {
-        return ("<WSTRING>".into(), false);
-    }
-    (
-        format_variable_value_with_enum(raw, tag, type_name, enum_map),
-        true,
-    )
 }
 
 /// Compile IEC 61131-3 source and create a stepping session.
@@ -1179,23 +869,11 @@ fn run_vm_scans(
     let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
 
     for _ in 0..scans {
-        let current_us = running.scan_count() * cycle_time_us;
-        if let Err(ctx) = running.run_round(current_us) {
+        let uptime_us = running.scan_count() * cycle_time_us;
+        if let Err(ctx) = running.run_round(uptime_us) {
             let total_scans = running.scan_count();
-            let debug_map = build_var_debug_map(container);
-            let enum_map = build_enum_value_map(container);
-            let string_layouts = build_string_layout_map(container);
-            // Snapshot variables (incl. data-region strings) before consuming
-            // `running` via `fault`, which releases its borrow on the buffers.
-            let num_vars = running.num_variables();
-            let variables = read_all_variables_running(
-                &running,
-                num_vars,
-                &debug_map,
-                &enum_map,
-                &string_layouts,
-            );
             let faulted = running.fault(ctx);
+            let variables = read_all_variables(&faulted, &VariableRenderer::new(container));
             let error = RunError {
                 message: format!(
                     "VM trap: {} (task {}, instance {})",
@@ -1210,12 +888,7 @@ fn run_vm_scans(
         }
     }
 
-    let debug_map = build_var_debug_map(container);
-    let enum_map = build_enum_value_map(container);
-    let string_layouts = build_string_layout_map(container);
-    let num_vars = running.num_variables();
-    let variables =
-        read_all_variables_running(&running, num_vars, &debug_map, &enum_map, &string_layouts);
+    let variables = read_all_variables(&running, &VariableRenderer::new(container));
     let total_scans = running.scan_count();
     running.stop();
     (variables, total_scans, None)
@@ -1790,20 +1463,11 @@ END_PROGRAM
         assert!(diag.compiler_line > 0, "expected a non-zero compiler line");
     }
 
-    #[test]
-    fn compile_when_undeclared_variable_then_returns_diagnostic() {
-        let source = "
-PROGRAM main
-  VAR
-    x : INT;
-  END_VAR
-  x := undeclared_var;
-END_PROGRAM
-";
-        let result: CompileResult = serde_json::from_str(&compile(source, "", "", "")).unwrap();
-        assert!(!result.ok);
-        assert!(!result.diagnostics.is_empty());
-    }
+    // A semantic error failing the compile is owned by
+    // `ironplc_project::compile::compile_when_semantic_error_then_no_container`;
+    // that a failed compile becomes `ok: false` with diagnostics attached is
+    // this binding's own contract, asserted by
+    // `compile_when_syntax_error_then_returns_diagnostics` above.
 
     #[test]
     fn step_when_ton_then_q_transitions_to_true() {
@@ -1881,64 +1545,6 @@ END_PROGRAM
     }
 
     #[test]
-    fn read_string_value_when_valid_header_then_decodes_bytes() {
-        let mut data = vec![0u8; 16];
-        data[0..2].copy_from_slice(&10u16.to_le_bytes());
-        data[2..4].copy_from_slice(&5u16.to_le_bytes());
-        // data[4..6] is the char_width field; string bytes follow the
-        // STRING_HEADER_BYTES-wide header.
-        data[STRING_HEADER_BYTES..STRING_HEADER_BYTES + 5].copy_from_slice(b"hello");
-        assert_eq!(read_string_value(&data, 0).unwrap(), "'hello'");
-    }
-
-    #[test]
-    fn read_string_value_when_zero_length_then_empty_quotes() {
-        let data = vec![0u8; 16];
-        assert_eq!(read_string_value(&data, 0).unwrap(), "''");
-    }
-
-    #[test]
-    fn read_string_value_when_offset_beyond_region_then_offset_error() {
-        let data = vec![0u8; 4];
-        assert_eq!(
-            read_string_value(&data, 8),
-            Err(StringReadError::OffsetOutOfBounds)
-        );
-    }
-
-    #[test]
-    fn read_string_value_when_cur_len_overruns_then_length_error() {
-        let mut data = vec![0u8; 8];
-        data[0..2].copy_from_slice(&10u16.to_le_bytes());
-        data[2..4].copy_from_slice(&100u16.to_le_bytes());
-        assert_eq!(
-            read_string_value(&data, 0),
-            Err(StringReadError::LengthOutOfBounds)
-        );
-    }
-
-    #[test]
-    fn format_iec_string_literal_when_named_escapes_then_iec_form() {
-        assert_eq!(
-            format_iec_string_literal(b"a\tb\nc\rd\x0Ce"),
-            "'a$Tb$Lc$Rd$Pe'"
-        );
-    }
-
-    #[test]
-    fn format_iec_string_literal_when_dollar_or_quote_then_doubled() {
-        assert_eq!(format_iec_string_literal(b"$1.50 'hi'"), "'$$1.50 $'hi$''");
-    }
-
-    #[test]
-    fn format_iec_string_literal_when_null_or_high_byte_then_hex_escape() {
-        assert_eq!(
-            format_iec_string_literal(&[0x00, 0x01, 0xFF]),
-            "'$00$01$FF'"
-        );
-    }
-
-    #[test]
     fn run_source_when_string_assignment_then_value_displays() {
         let source = "
 PROGRAM main
@@ -1959,34 +1565,39 @@ END_PROGRAM
         assert!(s.valid, "expected s.valid == true for a real STRING value");
     }
 
+    /// The playground used to render durations as `T#1.5s` while the CLI dump
+    /// rendered the same variable as `T#1500ms`. Both now come from the shared
+    /// renderer, so this asserts the playground shows the shared form.
     #[test]
-    fn format_time_value_ms_when_zero_then_returns_zero_ms() {
-        assert_eq!(format_time_value_ms(0i32), "T#0ms");
-    }
-
-    #[test]
-    fn format_time_value_ms_when_whole_milliseconds_then_no_decimal() {
-        assert_eq!(format_time_value_ms(5i32), "T#5ms");
-    }
-
-    #[test]
-    fn format_time_value_ms_when_whole_seconds_then_no_decimal() {
-        assert_eq!(format_time_value_ms(3000i32), "T#3s");
-    }
-
-    #[test]
-    fn format_time_value_ms_when_fractional_seconds_then_shows_decimal() {
-        assert_eq!(format_time_value_ms(1500i32), "T#1.5s");
-    }
-
-    #[test]
-    fn format_time_value_ms_when_negative_then_shows_sign() {
-        assert_eq!(format_time_value_ms(-2000i32), "-T#2s");
-    }
-
-    #[test]
-    fn format_time_value_ms_when_i64_ltime_then_formats_correctly() {
-        assert_eq!(format_time_value_ms(5000i64), "T#5s");
+    fn run_source_when_duration_and_date_then_shared_rendering() {
+        let source = "
+PROGRAM main
+  VAR
+    t : TIME := T#1500ms;
+    d : DATE := D#2024-01-15;
+    clock : TIME_OF_DAY := TOD#14:30:00;
+  END_VAR
+END_PROGRAM
+";
+        let result: RunSourceResult =
+            serde_json::from_str(&run_source(source, 1, "", "", "")).unwrap();
+        assert!(
+            result.ok,
+            "Expected ok but got diagnostics: {:?}, error: {:?}",
+            result.diagnostics, result.error
+        );
+        let value = |name: &str| {
+            result
+                .variables
+                .iter()
+                .find(|v| v.name == name)
+                .unwrap()
+                .value
+                .clone()
+        };
+        assert_eq!(value("t"), "T#1500ms");
+        assert_eq!(value("d"), "D#2024-01-15");
+        assert_eq!(value("clock"), "TOD#14:30:00");
     }
 
     // Whether a given dialect or `--allow-` flag accepts a construct is owned

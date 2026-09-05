@@ -23,6 +23,7 @@ use std::{
 };
 
 use ironplc_parser::options::CompilerOptions;
+use ironplc_sources::discovery::DiscoveredProject;
 use ironplc_sources::LibraryName;
 
 use ironplc_project::tokenizer;
@@ -110,59 +111,52 @@ pub fn compile(
         ));
     }
 
-    // Run full analysis: parse, type resolution and semantic checks (e.g.
-    // undeclared function calls, type mismatches). Analysis goes as far as it
-    // can; codegen requires a project with no problems at all.
-    diagnostics.extend(project.semantic());
+    // Build a SourceLookup that hands codegen the exact bytes the parser saw
+    // for each FileId. The container's debug section SOURCE_FILE_TABLE (tag 6)
+    // records a BLAKE3 hash over these so a debugger can detect drift between
+    // the .iplc and the user's working copy.
+    let source_lookup = HashMapSourceLookup::from_project(&project);
 
-    if diagnostics.is_empty() {
-        let (Some(analyzed), Some(context)) =
-            (project.analyzed_library(), project.semantic_context())
-        else {
-            // A clean analysis always caches its artifacts; reaching this
-            // branch is a compiler defect, not a problem with the input.
-            return Err(String::from(
-                "Internal error: analysis produced no artifacts",
-            ));
-        };
+    // The pipeline (parse, analysis, codegen) is owned by `ironplc-project`.
+    // Handing it the diagnostics collected so far is what makes a
+    // discovery-time problem suppress the container while still letting
+    // analysis run against the files that did resolve.
+    let output_result =
+        ironplc_project::compile(&mut project, &compiler_options, &source_lookup, diagnostics);
 
-        // Generate bytecode, skipping user-defined functions not reachable from
-        // the PROGRAM root to reduce container size.
-        let codegen_options = ironplc_codegen::CodegenOptions {
-            system_uptime_global: compiler_options.allow_system_uptime_global,
-        };
-        // Build a SourceLookup that hands codegen the exact bytes the
-        // parser saw for each FileId. The container's debug section
-        // SOURCE_FILE_TABLE (tag 6) records a BLAKE3 hash over these so a
-        // debugger can detect drift between the .iplc and the user's
-        // working copy.
-        let mut source_bytes: std::collections::HashMap<ironplc_dsl::core::FileId, Vec<u8>> =
-            std::collections::HashMap::new();
-        for src in project.sources() {
-            source_bytes.insert(src.file_id().clone(), src.as_string().as_bytes().to_vec());
-        }
-        let source_lookup = HashMapSourceLookup(source_bytes);
-
-        match ironplc_codegen::compile(analyzed, context, &codegen_options, &source_lookup) {
-            Ok(container) => {
-                // Write the container to the output file
-                let mut out_file = std::fs::File::create(output)
-                    .map_err(|e| format!("Failed to create output file: {e}"))?;
-                container
-                    .write_to(&mut out_file)
-                    .map_err(|e| format!("Failed to write output file: {e}"))?;
-            }
-            Err(err) => diagnostics.push(err),
-        }
+    if let Some(container) = output_result.container {
+        // Write the container to the output file
+        let mut out_file = std::fs::File::create(output)
+            .map_err(|e| format!("Failed to create output file: {e}"))?;
+        container
+            .write_to(&mut out_file)
+            .map_err(|e| format!("Failed to write output file: {e}"))?;
     }
 
-    finish("Compile", diagnostics, Some(&project), suppress_output)
+    finish(
+        "Compile",
+        output_result.diagnostics,
+        Some(&project),
+        suppress_output,
+    )
 }
 
 /// Codegen [`SourceLookup`](ironplc_codegen::SourceLookup) backed by an
 /// in-memory map populated from the project's loaded sources. The map
 /// owns the bytes so the lookup can outlive any borrow on the project.
 struct HashMapSourceLookup(std::collections::HashMap<ironplc_dsl::core::FileId, Vec<u8>>);
+
+impl HashMapSourceLookup {
+    fn from_project(project: &FileBackedProject) -> Self {
+        HashMapSourceLookup(
+            project
+                .sources()
+                .iter()
+                .map(|src| (src.file_id().clone(), src.as_string().as_bytes().to_vec()))
+                .collect(),
+        )
+    }
+}
 
 impl ironplc_codegen::SourceLookup for HashMapSourceLookup {
     fn source_bytes(&self, file_id: &ironplc_dsl::core::FileId) -> Option<&[u8]> {
@@ -246,9 +240,11 @@ fn create_project(
 
 /// Enumerates all files at the path.
 ///
-/// If the path is a file, then returns the file. If the path is a directory,
-/// then uses project discovery to detect the project structure and return
-/// the appropriate set of files.
+/// Project discovery decides what the path means -- a `.sln`/`.plcproj`
+/// or the folder holding one is a TwinCAT project, a `plc.xml` or its
+/// folder is a Beremiz project, and anything else is enumerated as loose
+/// source files. Naming a manifest is how a user says which project they
+/// mean when a folder holds more than one.
 ///
 /// Discovery problems that shouldn't stop the rest of the project from
 /// being enumerated (e.g. a `.plcproj` `<Compile Include="...">` entry
@@ -284,25 +280,6 @@ fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<LibraryName>, Vec<Diagn
             );
         }
     };
-    if metadata.is_dir() {
-        return match ironplc_sources::discovery::discover(&path) {
-            Ok(project) => {
-                // Auto-activate the libraries a discovered project file
-                // references, alongside any files it declares. Referenced but
-                // unshipped libraries contribute a diagnostic naming them.
-                let (libraries, library_diagnostics) =
-                    ironplc_sources::libraries::LibraryRegistry::bundled()
-                        .resolve_references(&project.library_references);
-                let mut diagnostics = project.errors;
-                diagnostics.extend(library_diagnostics);
-                (project.files, libraries, diagnostics)
-            }
-            Err(e) => (vec![], vec![], vec![e]),
-        };
-    }
-    if metadata.is_file() {
-        return (vec![path.to_path_buf()], vec![], vec![]);
-    }
     if metadata.is_symlink() {
         return (
             vec![],
@@ -310,7 +287,30 @@ fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<LibraryName>, Vec<Diagn
             diagnostic(Problem::SymlinkUnsupported, &path, String::from("")),
         );
     }
-    (vec![], vec![], vec![])
+
+    enumerate_project(ironplc_sources::discovery::discover(&path))
+}
+
+/// Flattens a discovered project into the files, libraries, and problems
+/// [`enumerate_files`] reports.
+///
+/// Auto-activates the libraries a discovered project file references,
+/// alongside any files it declares. Referenced but unshipped libraries
+/// contribute a diagnostic naming them.
+fn enumerate_project(
+    discovered: Result<DiscoveredProject, Diagnostic>,
+) -> (Vec<PathBuf>, Vec<LibraryName>, Vec<Diagnostic>) {
+    match discovered {
+        Ok(project) => {
+            let (libraries, library_diagnostics) =
+                ironplc_sources::libraries::LibraryRegistry::bundled()
+                    .resolve_references(&project.library_references);
+            let mut diagnostics = project.errors;
+            diagnostics.extend(library_diagnostics);
+            (project.files, libraries, diagnostics)
+        }
+        Err(e) => (vec![], vec![], vec![e]),
+    }
 }
 
 /// Converts an IronPLC diagnostic into the
@@ -443,6 +443,11 @@ fn map_label(
 /// Paths are canonicalized before comparison so relative-vs-absolute
 /// differences and symbolic links resolve to the same target. When `output`
 /// does not yet exist its canonicalization fails, so there is no conflict.
+///
+/// Hard-link aliasing is NOT caught: two names for one inode are genuinely
+/// distinct paths with nothing for `canonicalize` to resolve, so writing
+/// through one destroys a source reached by the other. Comparing device and
+/// inode instead of canonical paths would close that hole.
 fn output_conflicts_with_source(project: &FileBackedProject, output: &Path) -> bool {
     let Ok(output) = canonicalize(output) else {
         return false;
@@ -536,6 +541,70 @@ mod tests {
         let paths = vec![dir.path().to_path_buf()];
         let result = check(&paths, CompilerOptions::default(), &[], true);
         assert!(result.is_err())
+    }
+
+    #[test]
+    fn check_when_plcproj_named_as_file_argument_then_loads_its_sources() {
+        // A manifest given by name resolves as a project rather than
+        // being read as source text -- this is how a user says which
+        // project they mean when a directory holds more than one.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("A.st"),
+            "PROGRAM A\nVAR\n    x : INT;\nEND_VAR\n    x := UNDECLARED_VAR;\nEND_PROGRAM",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="A.st" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let paths = vec![dir.path().join("project.plcproj")];
+        let err = check(&paths, CompilerOptions::default(), &[], true).unwrap_err();
+
+        // Exactly the semantic error in A.st: the .plcproj resolved to
+        // its sources instead of being parsed as Structured Text, which
+        // would have produced a syntax error against the XML itself.
+        assert_eq!(problem_count(&err), 1, "{err}");
+    }
+
+    #[test]
+    fn check_when_ambiguous_plcproj_directory_then_naming_one_resolves_it() {
+        // Two .plcproj in one folder name no single project, so the
+        // folder is enumerated as loose sources -- MISSING.TcPOU is never
+        // looked for, because no project file was followed. Naming one
+        // resolves that project, and its missing entry then fails.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("A.st"), "PROGRAM A\nEND_PROGRAM").unwrap();
+        for name in ["AAA.plcproj", "ZZZ.plcproj"] {
+            std::fs::write(
+                dir.path().join(name),
+                r#"<Project>
+  <ItemGroup>
+    <Compile Include="A.st" />
+    <Compile Include="MISSING.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+            )
+            .unwrap();
+        }
+
+        assert!(check(
+            &[dir.path().to_path_buf()],
+            CompilerOptions::default(),
+            &[],
+            true
+        )
+        .is_ok());
+
+        let named = vec![dir.path().join("ZZZ.plcproj")];
+        let err = check(&named, CompilerOptions::default(), &[], true).unwrap_err();
+        assert_eq!(problem_count(&err), 1, "{err}");
     }
 
     #[test]

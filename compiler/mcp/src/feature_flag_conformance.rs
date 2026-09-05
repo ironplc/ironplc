@@ -239,7 +239,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &["allow_ref_to"],
         source: "FUNCTION_BLOCK FB_Device\nVAR_INPUT\nDelta : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nTYPE MyStruct :\nSTRUCT\nx : INT;\nEND_STRUCT;\nEND_TYPE\nPROGRAM main\nVAR\npDevice : REF_TO FB_Device;\ns : MyStruct := (x := pDevice^.Delta);\nEND_VAR\nEND_PROGRAM",
     },
-    // The CODESYS/TwinCAT EXTENDS clause on a FUNCTION_BLOCK header. With the
+    // The IEC 61131-3:2013 EXTENDS clause on a FUNCTION_BLOCK header. With the
     // flag off, EXTENDS demotes to a plain identifier, so two consecutive
     // identifiers after the FB name is a parse error. With the flag on, it
     // parses as the inheritance clause.

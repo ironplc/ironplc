@@ -3,9 +3,11 @@ import * as os from 'os';
 import { existsSync } from 'fs';
 import { execFile } from 'child_process';
 import {
+  CONFIG_SECTION,
   DapEnvironment,
   DapDiscoveryResult,
   containerOutputPath,
+  debugServerNotFoundHint,
   findDapServerPath,
   firstLine,
   isDebuggableProgram,
@@ -147,9 +149,9 @@ implements vscode.DebugConfigurationProvider {
 }
 
 /**
- * Produces the DAP adapter executable. The `ironplcdap` binary speaks DAP over
- * stdin/stdout and takes no arguments — the program under debug is delivered by
- * the `launch` request, not the command line.
+ * Produces the DAP adapter executable. The debug server speaks DAP over
+ * stdin/stdout and takes no arguments — the program under debug is delivered
+ * by the `launch` request, not the command line.
  */
 export class IronplcDebugAdapterDescriptorFactory
 implements vscode.DebugAdapterDescriptorFactory {
@@ -163,7 +165,7 @@ implements vscode.DebugAdapterDescriptorFactory {
   ): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
     const server = this.resolveServer();
     if (!server) {
-      this.reportProblem(ProblemCode.DebugServerNotFound, 'Set "ironplc.dapServerPath" or install the IronPLC compiler alongside ironplcdap.');
+      this.reportProblem(ProblemCode.DebugServerNotFound, debugServerNotFoundHint());
       return undefined;
     }
     return new vscode.DebugAdapterExecutable(server.path, []);
@@ -174,7 +176,7 @@ implements vscode.DebugAdapterDescriptorFactory {
       platform: process.platform,
       existsSync: existsSync,
       getEnv: name => process.env[name],
-      getConfig: key => vscode.workspace.getConfiguration('ironplc').get<string>(key),
+      getConfig: key => vscode.workspace.getConfiguration(CONFIG_SECTION).get<string>(key),
     };
     return findDapServerPath(env, this.compilerDir);
   }

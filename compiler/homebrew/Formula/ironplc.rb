@@ -33,9 +33,10 @@ class Ironplc < Formula
       # compatibility libraries from <exedir>/resources/libs at runtime, and
       # current_exe() resolves the bin symlink back to libexec -- so the
       # libraries must sit beside the real binaries here, not in bin.
-      libexec.install "ironplcc", "ironplcvm", "ironplcmcp", "resources"
+      libexec.install "ironplcc", "ironplcvm", "ironplcmcp", "ironplcvmd", "resources"
       bin.install_symlink libexec/"ironplcc"
       bin.install_symlink libexec/"ironplcvm"
       bin.install_symlink libexec/"ironplcmcp"
+      bin.install_symlink libexec/"ironplcvmd"
     end
   end

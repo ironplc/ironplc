@@ -195,9 +195,9 @@ Options
    extension supported by CODESYS, TwinCAT, and RuSTy.
 
 ``--allow-partial-access-syntax``
-   Allow IEC 61131-3:2013 partial-access bit syntax (``.%Xn``) as an alias
-   for the short form ``.n``. Byte/word/dword/lword partial access (``.%Bn``,
-   ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
+   Allow IEC 61131-3:2013 partial-access syntax: the bit form ``.%Xn`` (an
+   alias for the short form ``.n``) and the byte, word, double word, and
+   long word forms ``.%Bn``, ``.%Wn``, ``.%Dn``, and ``.%Ln``.
 
 ``--allow-pragmas``
    Allow curly-brace pragmas such as ``{attribute 'qualified_only'}``. This
@@ -206,11 +206,11 @@ Options
    not interpreted.
 
 ``--allow-short-circuit-operators``
-   Allow the ``AND_THEN`` short-circuit boolean operator, a Beckhoff/CODESYS
-   extension that only evaluates its right operand when the left operand is
-   ``TRUE``. ``ironplcc check`` fully supports it; codegen
-   (``ironplcc compile``) does not yet implement short-circuit evaluation and
-   refuses to compile it.
+   Allow the ``AND_THEN`` and ``OR_ELSE`` short-circuit boolean operators, a
+   Beckhoff/CODESYS extension. ``AND_THEN`` evaluates its right operand only
+   when the left operand is ``TRUE``; ``OR_ELSE`` only when the left operand
+   is ``FALSE``. Bit-string operands have nothing to short-circuit on and
+   evaluate both operands, matching ``AND`` and ``OR``.
 
 ``--allow-mixed-located-var-declarations``
    Allow an ``AT``-located variable (e.g. ``AT %I*``) inside an otherwise
@@ -254,12 +254,15 @@ Options
    flag.
 
 ``--allow-fb-inheritance``
-   Allow function-block inheritance syntax: ``EXTENDS``/``IMPLEMENTS`` on
-   ``FUNCTION_BLOCK`` and ``INTERFACE`` declarations. Parsed and registered
-   as known types; inheritance, interface dispatch, and method/property
-   declarations are not yet semantically supported (produces
-   :doc:`P9999 </reference/compiler/problems/P9999>`). Enabled by
-   ``--dialect=rusty`` and ``--dialect=codesys``.
+   Allow the IEC 61131-3:2013 object-oriented syntax:
+   ``EXTENDS``/``IMPLEMENTS``/``ABSTRACT`` on ``FUNCTION_BLOCK``
+   declarations, ``INTERFACE`` declarations, ``METHOD`` declarations, and
+   ``THIS``/``SUPER``. Support beyond parsing varies by keyword — see
+   :doc:`/reference/language/object-orientation/index`; the parts that are
+   parsed but not yet analyzed produce
+   :doc:`P9999 </reference/compiler/problems/P9999>`. Enabled by
+   ``--dialect=iec61131-3-ed3``, ``--dialect=rusty``, ``--dialect=codesys``,
+   and ``--dialect=twincat``.
 
 Examples
 ========

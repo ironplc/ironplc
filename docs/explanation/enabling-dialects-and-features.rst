@@ -2,7 +2,7 @@
 Enabling Dialects and Features
 ==============================
 
-IronPLC aims to let you take code from another PLC environment and use it
+IronPLC lets you take code from another PLC environment and use it
 without changes. To support this, IronPLC uses **dialects** — named presets
 that select the IEC 61131-3 edition and a default set of extensions.
 Individual ``--allow-*`` flags provide fine-grained control on top of the
@@ -25,11 +25,15 @@ Supported Dialects
    :doc:`LTIME_OF_DAY </reference/language/data-types/elementary/ltime-of-day>`,
    :doc:`LDATE_AND_TIME </reference/language/data-types/elementary/ldate-and-time>`,
    :doc:`REF_TO </reference/language/data-types/derived/reference-types>`,
-   :doc:`REF </reference/language/data-types/derived/reference-types>`, and
-   :doc:`NULL </reference/language/data-types/derived/reference-types>`. No extensions.
+   :doc:`REF </reference/language/data-types/derived/reference-types>`,
+   :doc:`NULL </reference/language/data-types/derived/reference-types>`, and the
+   :doc:`object-oriented keywords </reference/language/object-orientation/index>`
+   (``EXTENDS``, ``IMPLEMENTS``, ``ABSTRACT``, ``INTERFACE``, ``METHOD``,
+   ``THIS``, and ``SUPER``). No extensions.
 
-   **Enables:** ``--allow-long-time-types`` and ``--allow-ref-to`` (the
-   Edition 3 keywords), plus ``--allow-partial-access-syntax``.
+   **Enables:** ``--allow-long-time-types``, ``--allow-ref-to`` (the
+   Edition 3 keywords), ``--allow-partial-access-syntax``, and
+   ``--allow-fb-inheritance``.
 
 **rusty**
    RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
@@ -86,8 +90,8 @@ Supported Dialects
    (:doc:`LTIME </reference/language/data-types/elementary/ltime>`,
    :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>`, etc.)
    along with the extensions TwinCAT shares with CODESYS,
-   such as curly-brace pragmas, C-style comments, and the ``AND_THEN``
-   short-circuit operator. Unlike ``codesys``, it does **not** enable the
+   such as curly-brace pragmas, C-style comments, and the ``AND_THEN`` /
+   ``OR_ELSE`` short-circuit operators. Unlike ``codesys``, it does **not** enable the
    ``REF_TO`` / ``REF()`` / ``NULL`` reference extensions: TwinCAT spells
    references ``REFERENCE TO`` (bound with ``REF=``) and pointers
    ``POINTER TO`` (bound with ``ADR()``), which this dialect enables instead
@@ -287,10 +291,12 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    TwinCAT, and RuSTy.
 
 ``--allow-partial-access-syntax``
-   Allow IEC 61131-3:2013 partial-access bit syntax ``.%Xn`` (e.g.,
-   ``myByte.%X3`` to access bit 3 of a ``BYTE``). Semantically equivalent to
-   the short form ``.n``. Byte/word/dword/lword partial access (``.%Bn``,
-   ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
+   Allow IEC 61131-3:2013 partial-access syntax: the bit form ``.%Xn``
+   (e.g., ``myByte.%X3`` to access bit 3 of a ``BYTE``, equivalent to the
+   short form ``.n``) and the byte, word, double word, and long word forms
+   ``.%Bn``, ``.%Wn``, ``.%Dn``, and ``.%Ln`` (e.g., ``myDword.%B2`` to
+   access byte 2 of a ``DWORD``). See
+   :doc:`/reference/language/structured-text/bit-access`.
 
 ``--allow-pragmas``
    Allow curly-brace pragmas such as ``{attribute 'qualified_only'}`` and
@@ -302,19 +308,23 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    error.
 
 ``--allow-short-circuit-operators``
-   Allow the ``AND_THEN`` short-circuit boolean operator, a
-   Beckhoff/CODESYS extension. Unlike plain ``AND`` (which always
-   evaluates both operands), ``AND_THEN`` only evaluates its right
-   operand when the left operand is ``TRUE`` — commonly used to guard a
-   dereference (``ptr <> 0 AND_THEN ptr^ = 99``). ``ironplcc check``
-   fully supports ``AND_THEN`` (parsing, type-checking, and
-   round-tripping through plc2plc with its spelling preserved — it is
-   *not* normalized to ``AND``, since the short-circuit behavior is a
-   real, externally-visible difference in TwinCAT/CODESYS). Codegen
-   (``ironplcc compile``) does not yet implement the short-circuit
-   evaluation this operator requires and refuses to compile it
-   (problem :doc:`P9999 </reference/compiler/problems/P9999>`) rather
-   than silently emitting eager (behaviorally incorrect) bytecode.
+   Allow the ``AND_THEN`` and ``OR_ELSE`` short-circuit boolean
+   operators, a Beckhoff/CODESYS extension. Unlike plain ``AND`` and
+   ``OR`` (which always evaluate both operands), ``AND_THEN`` only
+   evaluates its right operand when the left operand is ``TRUE``, and
+   ``OR_ELSE`` only when the left operand is ``FALSE`` — commonly used
+   to guard a dereference (``ptr <> 0 AND_THEN ptr^ = 99``). The
+   spelling is preserved end to end: the operators are *not* normalized
+   to ``AND``/``OR``, since the short-circuit behavior is a real,
+   externally-visible difference in TwinCAT/CODESYS. Compiled code
+   branches around the right operand, so the guarded expression above
+   never dereferences a null pointer.
+
+   Short-circuiting applies to ``BOOL`` operands. ``AND`` and ``OR`` are
+   also the bit-string operators, and skipping an operand has no meaning
+   for a bit-string result, so ``AND_THEN``/``OR_ELSE`` on bit-string
+   operands evaluate both operands and produce the same value ``AND``
+   and ``OR`` produce.
 
 ``--allow-mixed-located-var-declarations``
    Allow an ``AT``-located variable (complete address like ``AT %IX0.0``,
@@ -359,7 +369,10 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    :doc:`P4042 </reference/compiler/problems/P4042>`. The bracket form is
    standard syntax and is always allowed, and the delimiters must match
    (``STRING[255)`` is always a syntax error). The renderer normalizes the
-   parenthesis form to brackets.
+   parenthesis form to brackets. The flag applies in every position a string
+   type can appear, including as an array element type
+   (``ARRAY[1..10] OF STRING(255)``), a function return type, and a
+   ``TYPE`` alias.
 
 ``--allow-struct-initializer-expressions``
    Allow a general (non-constant) expression — such as a pointer
@@ -374,15 +387,17 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    standard syntax and is always allowed.
 
 ``--allow-fb-inheritance``
-   Allow function-block inheritance syntax: ``EXTENDS``/
-   ``IMPLEMENTS``/``ABSTRACT`` on ``FUNCTION_BLOCK`` declarations, and
-   ``INTERFACE`` declarations. These are parsed and the
-   ``EXTENDS``/``IMPLEMENTS``/``INTERFACE`` names are recognized as valid
-   types, but inheritance, interface dispatch, method/property
-   declarations, and abstract-instantiation checking are not yet
-   semantically supported — using them produces problem
+   Allow the IEC 61131-3:2013 :doc:`object-oriented syntax
+   </reference/language/object-orientation/index>`:
+   ``EXTENDS``/``IMPLEMENTS``/``ABSTRACT`` on ``FUNCTION_BLOCK``
+   declarations, ``INTERFACE`` declarations, ``METHOD`` declarations, and
+   ``THIS``/``SUPER``. Support beyond parsing varies by keyword — see
+   :doc:`/reference/language/object-orientation/index` for what each one
+   analyzes and executes today; the parts that are parsed but not yet
+   analyzed produce problem
    :doc:`P9999 </reference/compiler/problems/P9999>` rather than a parse
-   error. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
+   error. Enabled by ``--dialect=iec61131-3-ed3``, ``--dialect=rusty``,
+   ``--dialect=codesys``, and ``--dialect=twincat``.
 
 Pass the flag when running :program:`ironplcc`:
 

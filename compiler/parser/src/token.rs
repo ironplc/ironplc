@@ -216,6 +216,17 @@ pub enum TokenType {
     EndInterface,
     #[token("ABSTRACT", ignore(case))]
     Abstract,
+    #[token("METHOD", ignore(case))]
+    Method,
+    #[token("END_METHOD", ignore(case))]
+    EndMethod,
+    // `THIS^` / `SUPER^` -- the self-reference and base-reference forms.
+    // The caret is the ordinary dereference operator. Identifiers unless
+    // `allow_fb_inheritance` is set -- see xform_demote_keywords.rs.
+    #[token("THIS", ignore(case))]
+    This,
+    #[token("SUPER", ignore(case))]
+    Super,
 
     #[token("IF", ignore(case))]
     If,
@@ -454,11 +465,13 @@ pub enum TokenType {
     #[token("AND", ignore(case))]
     #[token("&")]
     And,
-    // CODESYS/TwinCAT short-circuit boolean operator (Beckhoff/CODESYS
+    // CODESYS/TwinCAT short-circuit boolean operators (Beckhoff/CODESYS
     // origin). Demoted to Identifier unless `allow_short_circuit_operators`
     // is set -- see xform_demote_keywords.rs.
     #[token("AND_THEN", ignore(case))]
     AndThen,
+    #[token("OR_ELSE", ignore(case))]
+    OrElse,
     #[token("=")]
     Equal,
     #[token("<>")]
@@ -553,6 +566,10 @@ impl TokenType {
             TokenType::Interface => "'INTERFACE'",
             TokenType::EndInterface => "'END_INTERFACE'",
             TokenType::Abstract => "'ABSTRACT'",
+            TokenType::Method => "'METHOD'",
+            TokenType::EndMethod => "'END_METHOD'",
+            TokenType::This => "'THIS'",
+            TokenType::Super => "'SUPER'",
             TokenType::If => "'IF'",
             TokenType::Then => "'THEN'",
             TokenType::Elsif => "'ELSIF'",
@@ -648,6 +665,7 @@ impl TokenType {
             TokenType::Xor => "'XOR'",
             TokenType::And => "'AND' | '&'",
             TokenType::AndThen => "'AND_THEN'",
+            TokenType::OrElse => "'OR_ELSE'",
             TokenType::Equal => "'='",
             TokenType::NotEqual => "'<>'",
             TokenType::Less => "'<'",
@@ -775,6 +793,10 @@ mod tests {
             (Interface, "INTERFACE"),
             (EndInterface, "END_INTERFACE"),
             (Abstract, "ABSTRACT"),
+            (Method, "METHOD"),
+            (EndMethod, "END_METHOD"),
+            (This, "THIS"),
+            (Super, "SUPER"),
             (If, "IF"),
             (Then, "THEN"),
             (Elsif, "ELSIF"),
@@ -861,6 +883,7 @@ mod tests {
             (Xor, "XOR"),
             (And, "AND"),
             (AndThen, "AND_THEN"),
+            (OrElse, "OR_ELSE"),
             (Equal, "="),
             (NotEqual, "<>"),
             (Less, "<"),

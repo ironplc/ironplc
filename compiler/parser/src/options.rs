@@ -93,7 +93,9 @@ impl Dialect {
 
 impl fmt::Display for Dialect {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.cli_name())
+        // `pad` rather than `write_str`: the latter bypasses the formatter's
+        // width, so a `{:<20}` in a caller would silently do nothing.
+        f.pad(self.cli_name())
     }
 }
 
@@ -319,7 +321,7 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_pragmas,
 
-    "Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension)",
+    "Allow the AND_THEN and OR_ELSE short-circuit boolean operators (Beckhoff/CODESYS extension)",
     "--allow-short-circuit-operators",
     [Rusty, Codesys, TwinCat],
     allow_short_circuit_operators,
@@ -349,9 +351,9 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_struct_initializer_expressions,
 
-    "Allow function-block inheritance syntax: EXTENDS/IMPLEMENTS on FUNCTION_BLOCK and INTERFACE declarations",
+    "Allow IEC 61131-3:2013 object-oriented syntax: EXTENDS/IMPLEMENTS/ABSTRACT on FUNCTION_BLOCK declarations, INTERFACE declarations, METHOD declarations, and THIS/SUPER",
     "--allow-fb-inheritance",
-    [Rusty, Codesys, TwinCat],
+    [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
     allow_fb_inheritance,
 }
 
@@ -383,6 +385,8 @@ pub fn describe_dialects() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     /// Collect the dialect-flag `option_key`s that `from_dialect(dialect)`
     /// turns on, sorted for order-independent comparison.
@@ -420,7 +424,9 @@ mod tests {
 
     /// IEC 61131-3 Ed. 3 is a preset assembled from the descriptors tagged with
     /// `Iec61131_3Ed3`: the long-time-type keywords, the `REF_TO`/`REF`/`NULL`
-    /// reference keywords, and partial-access syntax.
+    /// reference keywords, partial-access syntax, and the object-oriented
+    /// syntax (`allow_fb_inheritance`) that is the headline addition of the
+    /// 2013 edition.
     #[test]
     fn ed3_dialect_enables_edition3_descriptors() {
         assert_enabled_flags(
@@ -429,6 +435,7 @@ mod tests {
                 "allow_long_time_types",
                 "allow_ref_to",
                 "allow_partial_access_syntax",
+                "allow_fb_inheritance",
             ],
         );
     }
@@ -552,17 +559,30 @@ mod tests {
         );
     }
 
-    /// REQ-PAB-051: The `rusty` dialect preset enables partial-access syntax.
-    #[test]
+    /// REQ-PAB-parser-051: The `rusty` dialect preset enables partial-access syntax.
+    #[spec_test(REQ_PAB_parser_051)]
     fn options_spec_req_pab_051_rusty_dialect_enables_partial_access_syntax() {
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
         assert!(options.allow_partial_access_syntax);
     }
 
-    /// REQ-PAB-052: The `iec61131-3-ed3` dialect preset enables partial-access syntax.
-    #[test]
+    /// REQ-PAB-parser-052: The `iec61131-3-ed3` dialect preset enables partial-access syntax.
+    #[spec_test(REQ_PAB_parser_052)]
     fn options_spec_req_pab_052_ed3_dialect_enables_partial_access_syntax() {
         let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+        assert!(options.allow_partial_access_syntax);
+    }
+
+    /// REQ-PAB-parser-141: The `codesys` and `twincat` dialect presets enable
+    /// partial-access syntax.
+    #[spec_test(REQ_PAB_parser_141)]
+    #[rstest]
+    #[case::codesys(Dialect::Codesys)]
+    #[case::twincat(Dialect::TwinCat)]
+    fn options_spec_req_pab_141_vendor_dialects_enable_partial_access_syntax(
+        #[case] dialect: Dialect,
+    ) {
+        let options = CompilerOptions::from_dialect(dialect);
         assert!(options.allow_partial_access_syntax);
     }
 

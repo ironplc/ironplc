@@ -528,6 +528,10 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::Interface => Some(KEYWORD_INDEX),
             TokenType::EndInterface => Some(KEYWORD_INDEX),
             TokenType::Abstract => Some(KEYWORD_INDEX),
+            TokenType::Method => Some(KEYWORD_INDEX),
+            TokenType::This => Some(KEYWORD_INDEX),
+            TokenType::Super => Some(KEYWORD_INDEX),
+            TokenType::EndMethod => Some(KEYWORD_INDEX),
             TokenType::Configuration => Some(KEYWORD_INDEX),
             TokenType::EndConfiguration => Some(KEYWORD_INDEX),
             TokenType::Resource => Some(KEYWORD_INDEX),
@@ -542,6 +546,7 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::Xor => Some(OPERATOR_INDEX),
             TokenType::And => Some(OPERATOR_INDEX),
             TokenType::AndThen => Some(OPERATOR_INDEX),
+            TokenType::OrElse => Some(OPERATOR_INDEX),
             TokenType::Equal => Some(OPERATOR_INDEX),
             TokenType::NotEqual => Some(OPERATOR_INDEX),
             TokenType::Less => Some(OPERATOR_INDEX),
@@ -744,7 +749,8 @@ mod test {
     use std::path::PathBuf;
     use std::str::FromStr;
 
-    use ironplc_dsl::core::SourceSpan;
+    use ironplc_dsl::core::{FileId, SourceSpan};
+    use ironplc_dsl::diagnostic::Diagnostic;
     use ironplc_parser::token::{Token, TokenType};
     use ironplc_test::cast;
     use ironplc_test::read_shared_resource;
@@ -767,7 +773,6 @@ mod test {
 
     // -----------------------------------------------------------------
     // Multi-workspace-folder initialization.
-    // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
     // -----------------------------------------------------------------
 
     fn workspace_folder(dir: &std::path::Path) -> lsp_types::WorkspaceFolder {
@@ -1621,6 +1626,83 @@ INVALID_SYNTAX"
         );
         assert!(!by_key[&key_a].is_empty());
         assert!(!by_key[&key_b].is_empty());
+    }
+
+    /// A project whose analysis reports one diagnostic attributed to
+    /// `FileId::BuiltIn` -- a stdlib declaration, which has no file behind it
+    /// and so no URI an editor could open.
+    struct BuiltInDiagnosticProject;
+
+    impl ironplc_project::Project for BuiltInDiagnosticProject {
+        fn initialize(&mut self, _dir: &std::path::Path) -> Vec<Diagnostic> {
+            vec![]
+        }
+
+        fn change_text_document(&mut self, _file_id: &FileId, _content: String) {}
+
+        fn tokenize(&self, _file_id: &FileId) -> (Vec<Token>, Vec<Diagnostic>) {
+            (vec![], vec![])
+        }
+
+        fn semantic(&mut self) -> Vec<Diagnostic> {
+            vec![Diagnostic::problem(
+                ironplc_problems::Problem::UnsupportedStdLibType,
+                ironplc_dsl::diagnostic::Label::span(
+                    SourceSpan::default().with_file_id(&FileId::builtin()),
+                    "a stdlib declaration the user cannot open",
+                ),
+            )]
+        }
+
+        fn semantic_context(&self) -> Option<&ironplc_analyzer::SemanticContext> {
+            None
+        }
+
+        fn analyzed_library(&self) -> Option<&ironplc_dsl::common::Library> {
+            None
+        }
+
+        fn sources(&self) -> Vec<&ironplc_sources::Source> {
+            vec![]
+        }
+
+        fn sources_mut(&mut self) -> Vec<&mut ironplc_sources::Source> {
+            vec![]
+        }
+
+        fn find(&self, _file_id: &FileId) -> Option<&ironplc_sources::Source> {
+            None
+        }
+    }
+
+    /// A diagnostic with no openable file is attributed to the last edited
+    /// document rather than dropped -- otherwise the editor shows nothing at
+    /// all and the user is left with a command that failed for no visible
+    /// reason.
+    #[test]
+    fn semantic_all_when_diagnostic_has_no_openable_file_then_falls_back_to_last_changed() {
+        use super::UriKey;
+
+        let mut proj = LspProject::new(Box::new(BuiltInDiagnosticProject));
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        proj.change_text_document(&url, "PROGRAM Main\nEND_PROGRAM".to_owned());
+
+        let by_key = proj.semantic_all();
+
+        assert_eq!(
+            by_key.keys().collect::<Vec<_>>(),
+            vec![&UriKey::from_uri(&url)]
+        );
+        assert_eq!(by_key[&UriKey::from_uri(&url)].len(), 1);
+    }
+
+    /// With nothing edited yet there is no document to attribute it to, so the
+    /// diagnostic has nowhere to go.
+    #[test]
+    fn semantic_all_when_diagnostic_has_no_openable_file_and_no_last_changed_then_dropped() {
+        let mut proj = LspProject::new(Box::new(BuiltInDiagnosticProject));
+
+        assert!(proj.semantic_all().is_empty());
     }
 
     #[test]

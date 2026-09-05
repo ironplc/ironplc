@@ -21,5 +21,6 @@ concepts.
    How a PLC Program Works <sense-control-actuate>
    Your First Program <helloworld>
    Configuring Your Application <configuring>
+   Debugging Your Program <debugging>
    Working with Multiple Files <multiple-files>
    Connecting to Hardware <compiling-and-running>

@@ -20,7 +20,7 @@
 //! x := 5;
 //! ```
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::*;
@@ -33,6 +33,19 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
 }
 
 struct ConstantFolder;
+
+/// Gives a folded integer literal the span of the expression it replaces.
+///
+/// Only an integer literal has a span to give: a real literal carries none.
+fn with_span(kind: ExprKind, span: SourceSpan) -> ExprKind {
+    match kind {
+        ExprKind::Const(ConstantKind::IntegerLiteral(mut literal)) => {
+            literal.value.value.span = span;
+            ExprKind::Const(ConstantKind::IntegerLiteral(literal))
+        }
+        other => other,
+    }
+}
 
 impl Fold<Diagnostic> for ConstantFolder {
     fn fold_expr(&mut self, node: Expr) -> Result<Expr, Diagnostic> {
@@ -49,7 +62,10 @@ impl Fold<Diagnostic> for ConstantFolder {
 
         match folded_kind {
             Some(kind) => Ok(Expr {
-                kind,
+                // The folded literal is a new node, so it carries the span of
+                // the expression it replaces. Without this a diagnostic about
+                // `255 + 1` has nowhere to point.
+                kind: with_span(kind, node.span()),
                 resolved_type: node.resolved_type,
             }),
             None => Ok(node),
@@ -168,6 +184,30 @@ mod tests {
         let exprs = collect_exprs(&lib);
         assert_has_integer_const(&exprs, 2);
         assert_no_binary_ops(&exprs);
+    }
+
+    #[test]
+    fn fold_expr_when_mod_two_reals_then_left_unfolded() {
+        // MOD is defined over ANY_INT only, so a real MOD is left for the
+        // operand-type rule to reject rather than folded into a remainder.
+        let lib = apply_fold("PROGRAM main VAR x : REAL; END_VAR x := 7.5 MOD 2.0; END_PROGRAM");
+        let exprs = collect_exprs(&lib);
+        assert!(
+            exprs.iter().any(|e| matches!(e, ExprKind::BinaryOp(_))),
+            "Expected the MOD expression to remain: {:?}",
+            exprs
+        );
+    }
+
+    #[test]
+    fn fold_expr_when_mod_int_by_real_then_left_unfolded() {
+        let lib = apply_fold("PROGRAM main VAR x : REAL; END_VAR x := 7 MOD 2.0; END_PROGRAM");
+        let exprs = collect_exprs(&lib);
+        assert!(
+            exprs.iter().any(|e| matches!(e, ExprKind::BinaryOp(_))),
+            "Expected the MOD expression to remain: {:?}",
+            exprs
+        );
     }
 
     #[test]

@@ -1,61 +1,20 @@
 //! Provides configuration of a logger.
-use env_logger::Builder;
-use log::trace;
-use log::LevelFilter;
-use std::fs::File;
-use std::io::Write;
+//!
+//! The logger itself is shared with the other IronPLC command line programs
+//! (see `ironplc_cli_support::logger`). This module owns only how a
+//! configuration failure is reported to the user of `ironplcc`.
+use ironplc_cli_support::logger::LogError;
 use std::path::PathBuf;
-use time::OffsetDateTime;
 
 /// Configures the log with the specified verbosity.
 ///
 /// Higher verbosity results in additional log messages
 /// up to a maximum verbosity level.
 pub fn configure(verbosity: u8, log_file: Option<PathBuf>) -> Result<(), String> {
-    let log_level = match verbosity {
-        0 => LevelFilter::Error,
-        1 => LevelFilter::Warn,
-        2 => LevelFilter::Info,
-        3 => LevelFilter::Debug,
-        4 => LevelFilter::Trace,
-        _ => return Err(String::from("Don't be crazy with verbose")),
-    };
-
-    trace!("Logger verbosity {log_level}");
-
-    let mut builder = Builder::new();
-
-    if let Some(log_location) = log_file {
-        let file = File::create(&log_location).map_err(|e| {
-            format!(
-                "Unable to create log file {}. {}",
-                log_location.display(),
-                e
-            )
-        })?;
-
-        // Configure the logger with this file as the output target
-        let target = Box::new(file);
-
-        builder.target(env_logger::Target::Pipe(target));
-    }
-
-    builder
-        .format(|buf, record| {
-            writeln!(
-                buf,
-                "[{} {}:{} {:?}] {}",
-                record.level(),
-                record.file().unwrap_or("unknown"),
-                record.line().unwrap_or(0),
-                OffsetDateTime::now_utc(),
-                record.args()
-            )
-        })
-        .filter_level(log_level)
-        .init();
-
-    Ok(())
+    ironplc_cli_support::logger::configure(verbosity, log_file).map_err(|err| match err {
+        LogError::VerbosityOutOfRange(_) => String::from("Don't be crazy with verbose"),
+        LogError::LogFileCreate(..) => err.to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -66,6 +25,6 @@ mod test {
     fn configure_when_verbosity_is_5_then_return_err() {
         let result = configure(5, None);
 
-        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Don't be crazy with verbose");
     }
 }

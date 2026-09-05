@@ -17,18 +17,18 @@ use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use super::compile::{
     char_width_for_string_type, finalize_function, string_region_size, CompileContext,
-    CompiledFunction, CurrentFunctionReturn, OpType, OpWidth, Signedness, StringParamInfo,
-    StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
-    NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
+    CompiledFunction, CurrentFunctionReturn, OpType, OpWidth, SavedFbScope, Signedness,
+    StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo,
+    DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{
     debug_type_for_decl, debug_type_for_return, emit_function_local_prologue, map_var_section,
-    resolve_type_name,
 };
 use super::compile_stmt::{
     compile_body, compile_statements, resolve_string_max_length, resolve_string_spec_max_length,
 };
+use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
 /// Records a debug [`VarNameEntry`] for a function- or FB-local variable
@@ -80,6 +80,7 @@ pub(crate) fn compile_user_function(
     let saved_string_vars = std::mem::take(&mut ctx.string_vars);
     let saved_array_vars = std::mem::take(&mut ctx.array_vars);
     let saved_struct_vars = std::mem::take(&mut ctx.struct_vars);
+    let saved_struct_array_vars = std::mem::take(&mut ctx.struct_array_vars);
 
     // Re-insert global variable mappings so the function body can access them.
     for (id, index) in &saved_variables {
@@ -109,6 +110,14 @@ pub(crate) fn compile_user_function(
             .is_some_and(|i| i.raw() < num_globals)
         {
             ctx.struct_vars.insert(id.clone(), info.clone());
+        }
+    }
+    for (id, info) in &saved_struct_array_vars {
+        if saved_variables
+            .get(id)
+            .is_some_and(|i| i.raw() < num_globals)
+        {
+            ctx.struct_array_vars.insert(id.clone(), info.clone());
         }
     }
 
@@ -285,7 +294,7 @@ pub(crate) fn compile_user_function(
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+                .ok_or_else(|| Diagnostic::todo())?;
 
             if max_length > ctx.max_string_capacity {
                 ctx.max_string_capacity = max_length;
@@ -326,6 +335,9 @@ pub(crate) fn compile_user_function(
             None
         }
     };
+    // Captured here because `ctx.struct_vars` is restored to the caller's
+    // scope at the end of this function, losing the return variable's entry.
+    let return_struct_desc_index = ctx.struct_vars.get(&return_id).map(|info| info.desc_index);
     current_index = VarIndex::new(current_index.raw() + 1);
 
     let num_locals = current_index.raw() - var_offset.raw();
@@ -341,12 +353,13 @@ pub(crate) fn compile_user_function(
 
     // Emit initialization prologue: IEC 61131-3 functions are stateless, so
     // local variables must be re-initialized on every call. The flat variable
-    // table (ADR-0021) retains stale values between calls, so the prologue
+    // table (ADR-0046) retains stale values between calls, so the prologue
     // resets non-parameter locals to their declared initial values (or zero).
     emit_function_local_prologue(
         &mut func_emitter,
         ctx,
-        func_decl,
+        &func_decl.variables,
+        &func_decl.name,
         return_var_index,
         return_op_type,
     )?;
@@ -392,7 +405,7 @@ pub(crate) fn compile_user_function(
     }
     func_emitter.emit_ret();
 
-    let finalized = finalize_function(&mut func_emitter, ctx);
+    let finalized = finalize_function(&mut func_emitter, ctx)?;
 
     // Record function metadata for use at call sites.
     let func_name = func_decl.name.lower_case();
@@ -458,6 +471,7 @@ pub(crate) fn compile_user_function(
             param_op_types,
             param_string_info,
             return_string_info,
+            return_struct_desc_index,
             max_stack_depth: finalized.max_stack_depth,
         },
     );
@@ -468,6 +482,7 @@ pub(crate) fn compile_user_function(
     ctx.string_vars = saved_string_vars;
     ctx.array_vars = saved_array_vars;
     ctx.struct_vars = saved_struct_vars;
+    ctx.struct_array_vars = saved_struct_array_vars;
 
     Ok(CompiledFunction {
         function_id,
@@ -496,7 +511,7 @@ pub(crate) fn compile_user_function_block(
     builder: &mut ContainerBuilder,
     _types: &TypeEnvironment,
     num_globals: u16,
-) -> Result<CompiledFunction, Diagnostic> {
+) -> Result<(CompiledFunction, SavedFbScope), Diagnostic> {
     let fb_name = fb_decl.name.name.to_string().to_uppercase();
 
     // Collect fields in a stable order: inputs first, then outputs, then locals.
@@ -524,6 +539,7 @@ pub(crate) fn compile_user_function_block(
     let saved_string_vars = std::mem::take(&mut ctx.string_vars);
     let saved_array_vars = std::mem::take(&mut ctx.array_vars);
     let saved_struct_vars = std::mem::take(&mut ctx.struct_vars);
+    let saved_struct_array_vars = std::mem::take(&mut ctx.struct_array_vars);
     let saved_fb_instances = std::mem::take(&mut ctx.fb_instances);
 
     // Re-insert global variable mappings so the FB body can access them.
@@ -554,6 +570,14 @@ pub(crate) fn compile_user_function_block(
             .is_some_and(|i| i.raw() < num_globals)
         {
             ctx.struct_vars.insert(id.clone(), info.clone());
+        }
+    }
+    for (id, info) in &saved_struct_array_vars {
+        if saved_variables
+            .get(id)
+            .is_some_and(|i| i.raw() < num_globals)
+        {
+            ctx.struct_array_vars.insert(id.clone(), info.clone());
         }
     }
 
@@ -636,23 +660,35 @@ pub(crate) fn compile_user_function_block(
 
     ctx.current_function_id = saved_current_fn;
 
-    let finalized = finalize_function(&mut fb_emitter, ctx);
+    let finalized = finalize_function(&mut fb_emitter, ctx)?;
 
-    // Restore the program's variable mappings.
-    ctx.variables = saved_variables;
-    ctx.var_types = saved_var_types;
-    ctx.string_vars = saved_string_vars;
-    ctx.array_vars = saved_array_vars;
-    ctx.struct_vars = saved_struct_vars;
-    ctx.fb_instances = saved_fb_instances;
+    // Note: `ctx`'s variable mappings are intentionally NOT restored
+    // here (unlike `compile_user_function`). This type's METHODs (OOP
+    // extension, ADR-0041 Phase 1) are compiled next, right after this
+    // function returns, and need `ctx.variables` to still hold this
+    // type's field mappings for `self` access. The caller
+    // (`compile_program_with_functions`) restores from the returned
+    // `SavedFbScope` once both this body and its methods are compiled.
+    let saved = SavedFbScope {
+        variables: saved_variables,
+        var_types: saved_var_types,
+        string_vars: saved_string_vars,
+        array_vars: saved_array_vars,
+        struct_vars: saved_struct_vars,
+        struct_array_vars: saved_struct_array_vars,
+        fb_instances: saved_fb_instances,
+    };
 
-    Ok(CompiledFunction {
-        function_id,
-        bytecode: finalized.bytecode,
-        max_stack_depth: finalized.max_stack_depth,
-        num_locals,
-        num_params: 0,
-        name: fb_name,
-        line_map: finalized.line_map,
-    })
+    Ok((
+        CompiledFunction {
+            function_id,
+            bytecode: finalized.bytecode,
+            max_stack_depth: finalized.max_stack_depth,
+            num_locals,
+            num_params: 0,
+            name: fb_name,
+            line_map: finalized.line_map,
+        },
+        saved,
+    ))
 }

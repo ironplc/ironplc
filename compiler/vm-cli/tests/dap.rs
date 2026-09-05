@@ -1,12 +1,12 @@
-//! End-to-end handshake tests for the `ironplcdap` Debug Adapter Protocol
+//! End-to-end handshake tests for the `ironplcvmd` Debug Adapter Protocol
 //! server (Phase 4.3). These spawn the real binary and drive the
 //! `initialize` → `launch` → `disconnect` path over stdin/stdout, asserting
 //! the framed responses and events, plus the two launch-precondition failures
 //! (`NoDebugInfo`, `MultiInstanceUnsupported`).
 //!
-//! Gated on the `dap` feature: the `ironplcdap` binary only exists when the
-//! feature is enabled (CI builds it via `--features ironplc-vm-cli/dap`).
-#![cfg(feature = "dap")]
+//! These spawn `ironplcvmd`, so they also serve as the regression test for the
+//! binary being built at all: it is no longer behind a feature gate, and a
+//! change that stops building it stops this file from running.
 
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
@@ -140,10 +140,10 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
-/// Spawns `ironplcdap`, sends each request framed, closes stdin, and returns
+/// Spawns `ironplcvmd`, sends each request framed, closes stdin, and returns
 /// the decoded response/event stream.
 fn run_dap(requests: &[Value]) -> Vec<Value> {
-    let mut child = Command::new(cargo::cargo_bin!("ironplcdap"))
+    let mut child = Command::new(cargo::cargo_bin!("ironplcvmd"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -167,7 +167,7 @@ fn run_dap(requests: &[Value]) -> Vec<Value> {
 }
 
 #[test]
-fn ironplcdap_when_initialize_launch_disconnect_then_handshake_succeeds() {
+fn ironplcvmd_when_initialize_launch_disconnect_then_handshake_succeeds() {
     let container = single_instance_debug_container();
     let path = container.path().to_string_lossy().into_owned();
 
@@ -179,7 +179,9 @@ fn ironplcdap_when_initialize_launch_disconnect_then_handshake_succeeds() {
         json!({"seq": 3, "type": "request", "command": "disconnect"}),
     ]);
 
-    assert_eq!(messages.len(), 4, "messages: {messages:?}");
+    // The container's task is freewheeling, so the session also writes the
+    // assumed-cycle-time notice to the debug console after the launch response.
+    assert_eq!(messages.len(), 5, "messages: {messages:?}");
 
     // initialize response with the single advertised capability.
     assert_eq!(messages[0]["type"], "response");
@@ -199,13 +201,21 @@ fn ironplcdap_when_initialize_launch_disconnect_then_handshake_succeeds() {
     assert_eq!(messages[2]["success"], true);
     assert_eq!(messages[2]["request_seq"], 2);
 
+    // The assumed-cycle-time notice, naming the value the run used.
+    assert_eq!(messages[3]["event"], "output");
+    assert_eq!(messages[3]["body"]["category"], "console");
+    assert!(messages[3]["body"]["output"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("100 ms"));
+
     // disconnect response.
-    assert_eq!(messages[3]["command"], "disconnect");
-    assert_eq!(messages[3]["success"], true);
+    assert_eq!(messages[4]["command"], "disconnect");
+    assert_eq!(messages[4]["success"], true);
 }
 
 #[test]
-fn ironplcdap_when_launch_container_without_debug_then_no_debug_info() {
+fn ironplcvmd_when_launch_container_without_debug_then_no_debug_info() {
     let container = no_debug_container();
     let path = container.path().to_string_lossy().into_owned();
 
@@ -222,7 +232,7 @@ fn ironplcdap_when_launch_container_without_debug_then_no_debug_info() {
 }
 
 #[test]
-fn ironplcdap_when_launch_multi_instance_then_multi_instance_unsupported() {
+fn ironplcvmd_when_launch_multi_instance_then_multi_instance_unsupported() {
     let container = multi_instance_container();
     let path = container.path().to_string_lossy().into_owned();
 
@@ -238,4 +248,120 @@ fn ironplcdap_when_launch_multi_instance_then_multi_instance_unsupported() {
     let message = launch["message"].as_str().unwrap();
     assert!(message.starts_with("V6010 - "));
     assert!(message.contains("MultiInstanceUnsupported"));
+}
+
+// --- Timing: the debugger follows the task's INTERVAL (issue #1397). --------
+
+/// The issue's reproduction: a 100 ms task driving a `TON` whose `PT` spans
+/// five cycles. Under a flat 1 ms per scan the timer needed 500 scans.
+const TON_ON_A_100MS_TASK: &str = "
+PROGRAM plc_prg
+  VAR
+    timer : TON;
+    q : BOOL;
+  END_VAR
+  timer(IN := TRUE, PT := T#500ms, Q => q);
+END_PROGRAM
+
+CONFIGURATION config
+  RESOURCE res ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM inst WITH plc_task : plc_prg;
+  END_RESOURCE
+END_CONFIGURATION
+";
+
+fn compile_to_container(source: &str) -> Container {
+    let options = ironplc_parser::options::CompilerOptions::default();
+    let library =
+        ironplc_parser::parse_program(source, &ironplc_dsl::core::FileId::default(), &options)
+            .unwrap();
+    let (analyzed, context) =
+        ironplc_analyzer::stages::resolve_types(&[&library], &options).unwrap();
+    ironplc_codegen::compile(
+        &analyzed,
+        &context,
+        &ironplc_codegen::CodegenOptions::default(),
+        &ironplc_codegen::EmptyLookup,
+    )
+    .unwrap()
+}
+
+/// Walks the session one scan at a time, returning `(scanCount, systemUptime,
+/// q)` at the start of each scan.
+fn scan_by_scan(path: &str, scans: usize) -> Vec<(i64, i64, String)> {
+    let mut requests = vec![
+        json!({"seq": 1, "type": "request", "command": "initialize"}),
+        json!({"seq": 2, "type": "request", "command": "launch",
+               "arguments": {"program": path, "stopOnEntry": true}}),
+        json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+    ];
+    let mut seq = 4;
+    for _ in 0..scans {
+        requests.push(
+            json!({"seq": seq, "type": "request", "command": "variables",
+                             "arguments": {"variablesReference": 2}}),
+        );
+        requests.push(
+            json!({"seq": seq + 1, "type": "request", "command": "variables",
+                             "arguments": {"variablesReference": 1}}),
+        );
+        requests.push(
+            json!({"seq": seq + 2, "type": "request", "command": "ironplc/stepScan",
+                             "arguments": {"threadId": 1}}),
+        );
+        seq += 3;
+    }
+    requests.push(json!({"seq": seq, "type": "request", "command": "disconnect"}));
+
+    let messages = run_dap(&requests);
+    let scopes: Vec<&Value> = messages
+        .iter()
+        .filter(|m| m["type"] == "response" && m["command"] == "variables")
+        .collect();
+
+    scopes
+        .chunks(2)
+        .filter(|pair| pair.len() == 2)
+        .map(|pair| {
+            let runtime = &pair[0]["body"]["variables"];
+            let program = &pair[1]["body"]["variables"];
+            let num = |v: &Value| -> i64 { v["value"].as_str().unwrap().parse().unwrap() };
+            let q = program
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|v| v["name"] == "q")
+                .map(|v| v["value"].as_str().unwrap().to_string())
+                .unwrap_or_default();
+            (num(&runtime[0]), num(&runtime[1]), q)
+        })
+        .collect()
+}
+
+#[test]
+fn ironplcvmd_when_task_declares_interval_then_timers_follow_it() {
+    // Issue #1397: program time advanced a flat 1 ms per scan, so this TON
+    // elapsed at scan 500 rather than after the five 100 ms cycles its PT
+    // actually spans.
+    let container = write_container(&compile_to_container(TON_ON_A_100MS_TASK));
+    let path = container.path().to_string_lossy().into_owned();
+
+    let observed = scan_by_scan(&path, 8);
+
+    let uptimes: Vec<i64> = observed.iter().map(|(_, uptime, _)| *uptime).collect();
+    assert_eq!(
+        uptimes,
+        vec![0, 100, 200, 300, 400, 500, 600, 700],
+        "each scan of a 100 ms task is 100 ms of program time"
+    );
+
+    let elapsed_at = observed
+        .iter()
+        .position(|(_, _, q)| q == "TRUE")
+        .unwrap_or_else(|| panic!("Q never became TRUE within 8 scans: {observed:?}"));
+    assert_eq!(
+        observed[elapsed_at].0, 6,
+        "PT := T#500ms spans five 100 ms cycles: {observed:?}"
+    );
 }

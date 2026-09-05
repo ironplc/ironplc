@@ -239,3 +239,69 @@ END_PROGRAM",
     let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
     assert_eq!(prog.variables.len(), 1);
 }
+
+/// Parses a function block whose single statement assigns `literal` to a
+/// variable, and returns the character string literal that was parsed.
+fn parse_assigned_character_string(source: &'static str) -> CharacterStringLiteral {
+    let library = parse_text(source);
+    let value = extract_assignment_value(&library);
+    let constant = cast!(&value.kind, ExprKind::Const);
+    cast!(constant, ConstantKind::CharacterString).clone()
+}
+
+#[test]
+fn parse_program_when_single_quoted_literal_then_narrow_width() {
+    let literal = parse_assigned_character_string(
+        "
+FUNCTION_BLOCK fb
+VAR
+    s : STRING[10];
+END_VAR
+s := 'abc';
+END_FUNCTION_BLOCK",
+    );
+
+    assert_eq!(literal.value, vec!['a', 'b', 'c']);
+    assert_eq!(literal.width, StringType::String);
+}
+
+#[test]
+fn parse_program_when_double_quoted_literal_then_wide_width() {
+    let literal = parse_assigned_character_string(
+        "
+FUNCTION_BLOCK fb
+VAR
+    w : WSTRING[10];
+END_VAR
+w := \"abc\";
+END_FUNCTION_BLOCK",
+    );
+
+    assert_eq!(literal.value, vec!['a', 'b', 'c']);
+    assert_eq!(literal.width, StringType::WString);
+}
+
+#[test]
+fn parse_program_when_typed_string_prefix_then_width_from_delimiter() {
+    let narrow = parse_assigned_character_string(
+        "
+FUNCTION_BLOCK fb
+VAR
+    s : STRING[10];
+END_VAR
+s := STRING#'abc';
+END_FUNCTION_BLOCK",
+    );
+    assert_eq!(narrow.width, StringType::String);
+
+    let wide = parse_assigned_character_string(
+        "
+FUNCTION_BLOCK fb
+VAR
+    w : WSTRING[10];
+END_VAR
+w := WSTRING#\"abc\";
+END_FUNCTION_BLOCK",
+    );
+    assert_eq!(wide.width, StringType::WString);
+}

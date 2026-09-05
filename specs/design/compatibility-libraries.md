@@ -18,11 +18,9 @@ by the same machinery user source does.
 > **Requirement markers.** This document carries `REQ-CL-*` requirement markers
 > (area `CL` = compatibility libraries) for each testable claim, per the
 > [design requirement](../steering/development-standards.md). They become
-> build-enforced only once a crate's `build.rs` lists this doc; the
-> [implementation plan](../plans/2026-08-04-compatibility-libraries.md) wires
-> each owning crate and adds the matching `#[spec_test]` conformance tests
-> (using `#[ignore]` for claims not yet implemented). Until then the markers are
-> inert.
+> build-enforced: the owning crates — `sources`, `analyzer`, `plc2plc` and
+> `playground` — list this document in their `build.rs` and carry the matching
+> `#[spec_test]` conformance tests.
 
 ## The Portability Promise
 
@@ -157,7 +155,7 @@ library provides some mix of:
 
 - **Constants** — e.g. `PI`, `e`, expressed as ordinary
   `VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979;`. This folds at compile
-  time and satisfies [ADR-0024](../adrs/0024-function-local-reinit-via-init-template.md)
+  time and satisfies [ADR-0024](../adrs/0024-function-local-reinit-via-bytecode-prologue.md)
   (initializers must constant-fold) with no new keyword and no codegen change.
 - **Function signatures** — e.g. TwinCAT `FLOOR` declared with an `LREAL`
   parameter (matching Beckhoff, which differs from the base IEC signature).
@@ -451,10 +449,9 @@ No open questions remain for the first increment.
 ## Implementation
 
 The on-disk package format and installation/discovery are specified separately in
-[Compatibility Library Format](compatibility-library-format.md) (`REQ-LF-*`). The
-[implementation plan](../plans/2026-08-04-compatibility-libraries.md) delivers
-`.plcproj` library-list reading and the `Tc2_System` library (defining `PI`) in its
-early phases and wires each `REQ-CL-*` / `REQ-LF-*` marker to a `#[spec_test]`.
+[Compatibility Library Format](compatibility-library-format.md) (`REQ-LF-*`).
+`.plcproj` library-list reading and the bundled libraries have shipped, and each
+`REQ-CL-*` / `REQ-LF-*` marker is wired to a `#[spec_test]` in its owning crate.
 
 ## Appendix: `.plcproj` library-reference shapes
 
@@ -501,7 +498,7 @@ Implications for this design:
   and [one with a pinned `LibraryReference`](https://github.com/hiroMTB/n5TC/blob/master/sample/PTP/PTP/TwinCAT_NC_Sample_PTP_Move/TwinCAT_NC_Sample_PTP_Move.plcproj)
   — grounding for the appendix.
 - [Beckhoff InfoSys: PLC libraries and placeholders](https://infosys.beckhoff.com/content/1033/tc3_plc_intro/41891384434359666059.html)
-- [ADR-0024: Function-local re-init via init template](../adrs/0024-function-local-reinit-via-init-template.md)
+- [ADR-0024: Function-local re-init via bytecode prologue](../adrs/0024-function-local-reinit-via-bytecode-prologue.md)
   — initializers must constant-fold; `PI`-as-constant complies.
 - [ADR-0036: No IronPLC dialect](../adrs/0036-no-ironplc-dialect.md)
 - [ADR-0038: No restrictions on flag combinations](../adrs/0038-no-restrictions-on-flag-combinations.md)

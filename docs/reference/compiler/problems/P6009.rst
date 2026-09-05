@@ -38,6 +38,10 @@ to the source through a symbolic link, therefore does not bypass the check.
 Existing output files that do not refer to an input source are still
 overwritten as usual.
 
+The check does not detect hard links. Two names for the same file are distinct
+paths that both resolve to themselves, so writing output through one name can
+still overwrite a source read through the other.
+
 Directory Projects
 ------------------
 

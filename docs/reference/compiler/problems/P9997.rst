@@ -1,0 +1,71 @@
+=====
+P9997
+=====
+
+.. problem-summary:: P9997
+
+Compiling the IEC 61131-3 source failed because the program needs a capability
+that the IronPLC compiler does not offer and does not plan to offer. This is
+usually a fixed limit of the bytecode format rather than a missing feature.
+
+This differs from :doc:`P9999 <P9999>`, which reports a capability that is not
+implemented *yet*. A later release is expected to accept a program that
+produces P9999. A program that produces P9997 has to change, because the limit
+it reached is part of the design.
+
+Example
+-------
+
+Each variable occupies a run of 8-byte slots in the data region, and the
+compiler addresses a slot with a 32-bit index. A single variable may therefore
+occupy at most 32768 slots. The following declaration asks for far more, so it
+produces error P9997:
+
+.. code-block::
+
+   TYPE Item : STRUCT
+     a : DINT;
+     b : DINT;
+   END_STRUCT;
+   END_TYPE
+
+   PROGRAM main
+     VAR
+       readings : ARRAY[1..40000] OF Item;
+     END_VAR
+   END_PROGRAM
+
+Each ``Item`` occupies 2 slots, so the array needs 80000 slots — more than
+twice the limit.
+
+To fix this error, reduce the amount of data the variable holds. Splitting the
+data across several variables works because the limit applies to each variable
+separately:
+
+.. code-block::
+
+   TYPE Item : STRUCT
+     a : DINT;
+     b : DINT;
+   END_STRUCT;
+   END_TYPE
+
+   PROGRAM main
+     VAR
+       readings : ARRAY[1..8000] OF Item;
+     END_VAR
+   END_PROGRAM
+
+Limits that produce this error
+------------------------------
+
+* a single variable occupying more than 32768 slots
+* a data region larger than 2 GiB
+* an array whose element count, slot count, or byte size overflows the
+  compiler's internal arithmetic
+
+If your program needs more than one of these limits allows, please describe
+what you are building in a `GitHub issue`_ — the limits are design choices, and
+a concrete use case is what would prompt revisiting one.
+
+.. _GitHub issue: https://github.com/ironplc/ironplc/issues/new?template=bug_report.md

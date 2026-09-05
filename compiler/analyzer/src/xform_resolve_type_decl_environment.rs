@@ -102,7 +102,7 @@ impl TypeEnvironment {
                 // not TYPE declarations, so they should never appear in the type environment.
                 // If we reach this branch, it indicates a bug in the compiler.
                 IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. } => {
-                    Err(Diagnostic::internal_error(file!(), line!()))
+                    Err(Diagnostic::internal_error())
                 }
                 // Primitive types are handled by the is_primitive() check above,
                 // so reaching this branch indicates a bug in the compiler
@@ -115,9 +115,7 @@ impl TypeEnvironment {
                 | IntermediateType::Date { .. }
                 | IntermediateType::TimeOfDay { .. }
                 | IntermediateType::DateAndTime { .. }
-                | IntermediateType::String { .. } => {
-                    Err(Diagnostic::internal_error(file!(), line!()))
-                }
+                | IntermediateType::String { .. } => Err(Diagnostic::internal_error()),
             }
         }
     }
@@ -241,13 +239,13 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // Reference types are not resolved through simple declarations
             }
             InitialValueAssignmentKind::LateResolvedType(_type_name) => {
-                return Err(Diagnostic::internal_error(file!(), line!()));
+                return Err(Diagnostic::internal_error());
             }
             InitialValueAssignmentKind::SimpleExpr(_) => {
                 // Constant-expression initializers are a VAR-declaration
                 // extension; they never appear in a TYPE alias's
                 // spec_and_init (that grammar path is unchanged).
-                return Err(Diagnostic::internal_error(file!(), line!()));
+                return Err(Diagnostic::internal_error());
             }
         }
 
@@ -364,7 +362,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                     array::IntermediateResult::Type(attrs) => attrs.representation,
                     array::IntermediateResult::Alias(base_type_name) => self
                         .get(&base_type_name)
-                        .ok_or_else(|| Diagnostic::internal_error(file!(), line!()))?
+                        .ok_or_else(|| Diagnostic::internal_error())?
                         .representation
                         .clone(),
                 }
@@ -474,7 +472,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         //
         // Modeled as an empty structure: interfaces have no fields in
         // IronPLC's model today (method/property signatures are not yet
-        // parsed — see specs/plans/2026-07-18-twincat-extends-implements-interface.md).
+        // parsed — see specs/design/beckhoff-twincat-dialect.md §1.3).
         // This is intentionally a placeholder representation, not a claim
         // that interface field/method access works. Any real use beyond
         // "declare a variable of this type" is unreachable: the
@@ -1084,7 +1082,7 @@ END_TYPE
 
     // ---------------------------------------------------------------------
     // OOP extension: INTERFACE registers as a known type.
-    // See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
+    // See specs/design/beckhoff-twincat-dialect.md §1.3.
     // ---------------------------------------------------------------------
 
     #[test]

@@ -19,15 +19,19 @@
 //! surfacing a `stopped{reason:"exception"}`.
 
 use std::io::{self, BufRead, Write};
+use std::num::NonZeroU64;
 use std::path::Path;
+use std::time::Duration;
 
 use ironplc_container::debug_section::DebugSection;
 use ironplc_container::{Container, VarIndex};
 use ironplc_vm::{
-    BreakpointTable, DebuggerHook, PauseReason, RoundOutcome, StepMode, VmBuffers, VmRunning,
+    has_freewheeling_task, interval_from_ms, interval_us, resolve_cycle_time, BreakpointTable,
+    DebuggerHook, PauseReason, RoundOutcome, StepMode, VmBuffers, VmRunning,
+    DEFAULT_FREEWHEELING_INTERVAL,
 };
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use super::debug_info;
 use super::framing;
@@ -36,18 +40,24 @@ use super::state::{self, Command, Phase};
 use super::types::{
     Breakpoint, Capabilities, ContinueResponseBody, Event, LaunchRequestArguments, Request,
     Response, Scope, ScopesResponseBody, SetBreakpointsArguments, SetBreakpointsResponseBody,
-    StackFrame, StackTraceResponseBody, StoppedEventBody, Thread, ThreadsResponseBody,
-    VariablesResponseBody,
+    Source, StackFrame, StackTraceResponseBody, StoppedEventBody, Thread, ThreadsResponseBody,
+    Variable, VariablesArguments, VariablesResponseBody,
 };
 
 /// The id of the single synthetic thread the v1 server exposes.
 const THREAD_ID: i64 = 1;
 
-/// The `variablesReference` handle for the one variable scope. Non-zero so DAP
-/// treats it as expandable; the (flat) list of program variables is returned
-/// for it. Structured expansion (nested FB fields) is a later phase, so every
-/// returned [`Variable`](super::types::Variable) has `variablesReference: 0`.
-const VARIABLES_REF: i64 = 1;
+/// The `variablesReference` handle for the `Program` scope: the program's ST
+/// variables. Non-zero so DAP treats it as expandable; the (flat) list of
+/// program variables is returned for it. Structured expansion (nested FB fields)
+/// is a later phase, so every returned
+/// [`Variable`](super::types::Variable) has `variablesReference: 0`.
+const PROGRAM_REF: i64 = 1;
+
+/// The `variablesReference` handle for the `Runtime` scope: VM-level state that
+/// is not a program variable. Keeping it in its own scope means a synthetic
+/// entry can never collide with an ST variable of the same name.
+const RUNTIME_REF: i64 = 2;
 
 /// The DAP `message` returned for any request that is illegal in the current
 /// phase or not supported by this server slice.
@@ -109,11 +119,11 @@ pub fn serve<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> io::Result
             }
             Some(Command::Launch) if legal_here => {
                 match load_and_check(&request) {
-                    Ok((container, args)) => {
+                    Ok((container, args, scan_limit)) => {
                         // Preconditions hold: own the container and run the
                         // rest of the session against a live VM.
                         return launched_session(
-                            reader, writer, &mut seq, container, args, &request,
+                            reader, writer, &mut seq, container, args, scan_limit, &request,
                         );
                     }
                     Err(message) => {
@@ -144,18 +154,29 @@ pub fn serve<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> io::Result
 }
 
 /// Parses the `launch` arguments, loads the container, and checks the launch
-/// preconditions. Returns the loaded container and the parsed arguments (run
-/// bounds) on success, or the DAP error message to report on failure.
-fn load_and_check(request: &Request) -> Result<(Container, LaunchRequestArguments), String> {
+/// preconditions. Returns the loaded container, the parsed arguments, and the
+/// validated scan bound on success, or the DAP error message to report on
+/// failure.
+///
+/// The scan bound is validated here rather than in the session so an
+/// unsatisfiable `scanLimit` fails the `launch` request itself, before the VM
+/// starts and before any event is sent.
+fn load_and_check(
+    request: &Request,
+) -> Result<(Container, LaunchRequestArguments, Option<NonZeroU64>), String> {
+    // A value no argument's type can hold (a fractional `scanLimit`, say)
+    // fails the whole parse and lands here too. The VS Code schema types
+    // `scanLimit` as an integer, so the editor flags that before launch.
     let args: LaunchRequestArguments = request
         .arguments
         .as_ref()
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .ok_or_else(|| launch::LaunchError::ProgramArgMissing.to_string())?;
 
+    let scan_limit = launch::check_scan_limit(args.scan_limit).map_err(|e| e.to_string())?;
     let container = launch::load_container(Path::new(&args.program)).map_err(|e| e.to_string())?;
     launch::check_preconditions(&container).map_err(|e| e.to_string())?;
-    Ok((container, args))
+    Ok((container, args, scan_limit))
 }
 
 /// Owns the loaded `container`, starts the VM, answers the `launch` request,
@@ -175,13 +196,17 @@ fn load_and_check(request: &Request) -> Result<(Container, LaunchRequestArgument
 ///
 /// The loop keeps scanning: on `RoundOutcome::Completed` it runs the next scan
 /// (so breakpoints re-fire every cycle and variables evolve across cycles)
-/// rather than terminating after one scan. `scanLimit` bounds a runaway program
-/// — the session terminates once `scan_count` reaches it — and `stopOnEntry`
-/// pauses before the first instruction of the first scan.
+/// rather than terminating after one scan. `scan_limit` bounds a runaway
+/// program — the session terminates once `scan_count` reaches it, and `None`
+/// (the client sent no `scanLimit`) means no bound — and `stopOnEntry` pauses
+/// before the first instruction of the first scan.
 ///
-/// Execution control is `continue` plus single-stepping (`next`/`stepIn`/
-/// `stepOut`); a step is armed on the next round's hook, seeded from the paused
-/// frames so it measures from the real pause point.
+/// Execution control is `continue`, single-stepping (`next`/`stepIn`/
+/// `stepOut`), and scan stepping (`ironplc/stepScan`); a step is armed on the
+/// next round's hook, seeded from the paused frames so it measures from the
+/// real pause point. A scan step spans two rounds: the first runs the cycle out
+/// to `RoundOutcome::PausedAfterScan`, the second stops at the first
+/// instruction of the new scan so the stop has a frame to show.
 ///
 /// Current limitations: trap→`exception` is not yet implemented. A free-running
 /// program with no breakpoint and no `scanLimit` scans until the client
@@ -191,10 +216,28 @@ fn launched_session<R: BufRead, W: Write>(
     reader: &mut R,
     writer: &mut W,
     seq: &mut i64,
-    container: Container,
+    mut container: Container,
     args: LaunchRequestArguments,
+    scan_limit: Option<NonZeroU64>,
     launch_request: &Request,
 ) -> io::Result<()> {
+    // How far program time moves per scan. `run_round_debug` bypasses the
+    // scheduler, so this only feeds the uptime system variable -- but that is
+    // what timers read, so it decides when a TON elapses. Resolving it before
+    // the VM loads the container puts the rate in the task table rather than in
+    // this driver, through the same call `run` makes.
+    //
+    // The fallbacks are this session's policy, not the shared rule: a container
+    // naming no rate would otherwise freeze the clock and stop every timer
+    // without saying why.
+    let freewheeling = has_freewheeling_task(&container);
+    let scan_advance = resolve_cycle_time(
+        &mut container,
+        Some(assumed_freewheeling_interval(args.freewheeling_interval_ms)),
+    )
+    .filter(|interval| !interval.is_zero())
+    .unwrap_or(DEFAULT_FREEWHEELING_INTERVAL);
+
     let mut bufs = VmBuffers::from_container(&container);
 
     // Construct + start the VM. Buffer sizing (operand stack, variable table,
@@ -222,20 +265,27 @@ fn launched_session<R: BufRead, W: Write>(
     // The session opens in `Configuring`: the client sets breakpoints and then
     // sends `configurationDone` to begin the run.
     let mut phase = Phase::Configuring;
-    // A monotonic clock for the debug driver. `run_round_debug` bypasses the
-    // scheduler and watchdog, so the exact value only feeds the uptime system
-    // variable; a per-round bump keeps it non-decreasing.
-    let mut current_time_us: u64 = 0;
+    let mut uptime_us: u64 = 0;
+    if freewheeling {
+        // Report the rate actually used, not the one requested: an out-of-range
+        // or vanishingly small request lands on the fallback above.
+        send(
+            writer,
+            &console_output(take_seq(seq), &freewheeling_notice(scan_advance)),
+        )?;
+    }
     // Set after a breakpoint pause so the next resume skips that one location
     // instead of re-triggering in place.
     let mut suppress_bp = false;
-    // Upper bound on scan cycles (runaway prevention); `None` runs until the
-    // client disconnects.
-    let scan_limit = args.scan_limit;
     // Armed once, before the first scan, when the launch requested `stopOnEntry`.
     let mut pending_stop_on_entry = args.stop_on_entry;
-    // Set by a `next`/`stepIn`/`stepOut` request; armed on the next round's hook.
+    // Set by a `next`/`stepIn`/`stepOut`/`ironplc/stepScan` request; armed on
+    // the next round's hook.
     let mut pending_step: Option<StepMode> = None;
+    // Set when a scan step ran its cycle out: the next round stops before its
+    // first instruction, so the scan step lands at the start of the new scan
+    // rather than at the frame-less boundary between the two.
+    let mut pending_scan_landing = false;
 
     loop {
         if phase == Phase::Running {
@@ -249,6 +299,10 @@ fn launched_session<R: BufRead, W: Write>(
                     hook.stop_on_entry();
                     pending_stop_on_entry = false;
                 }
+                if pending_scan_landing {
+                    hook.land_scan_step();
+                    pending_scan_landing = false;
+                }
                 if let Some(mode) = pending_step.take() {
                     // Seed the hook to the paused position so the step's origin
                     // is where the VM actually stopped, not scan entry. Frames
@@ -261,22 +315,47 @@ fn launched_session<R: BufRead, W: Write>(
                         StepMode::Over => hook.step_over(),
                         StepMode::In => hook.step_in(),
                         StepMode::Out => hook.step_out(),
+                        StepMode::Scan => hook.step_scan(),
                         StepMode::None => {}
                     }
                 }
-                running.run_round_debug(current_time_us, &mut hook)
+                running.run_round_debug(uptime_us, &mut hook)
             };
-            current_time_us = current_time_us.saturating_add(1000);
+            // Program time moves one cycle per *completed* scan. A round that
+            // paused mid-scan ran no cycle, so advancing there would make a
+            // timer depend on how the user stepped — the clock would jump a
+            // cycle for every breakpoint hit, and the scan after a pause would
+            // start late. `PausedAfterScan` did finish its cycle and stops at
+            // the boundary, so it counts.
+            if matches!(
+                outcome,
+                Ok(RoundOutcome::Completed | RoundOutcome::PausedAfterScan)
+            ) {
+                uptime_us = uptime_us.saturating_add(interval_us(scan_advance));
+            }
 
             match outcome {
                 // A completed scan keeps the debugger scanning: run the next
                 // cycle unless a `scanLimit` bound has been reached.
-                Ok(RoundOutcome::Completed) | Ok(RoundOutcome::PausedAfterScan) => {
-                    if scan_limit.is_some_and(|limit| running.scan_count() >= limit) {
+                Ok(RoundOutcome::Completed) => {
+                    if scan_limit_reached(scan_limit, &running) {
                         send(writer, &Event::new(take_seq(seq), "terminated", None))?;
                         phase = Phase::Terminated;
                     }
                     // Otherwise stay in `Running`: the loop drives the next scan.
+                }
+                // A scan step ran its cycle out. The boundary itself has no
+                // frames to inspect, so run one more round with the landing
+                // armed and stop at the first instruction of the new scan --
+                // unless the finished cycle reached the `scanLimit`, in which
+                // case there is no next scan to land in.
+                Ok(RoundOutcome::PausedAfterScan) => {
+                    if scan_limit_reached(scan_limit, &running) {
+                        send(writer, &Event::new(take_seq(seq), "terminated", None))?;
+                        phase = Phase::Terminated;
+                    } else {
+                        pending_scan_landing = true;
+                    }
                 }
                 Ok(RoundOutcome::Paused(reason)) => {
                     let dap_reason = match reason {
@@ -285,8 +364,8 @@ fn launched_session<R: BufRead, W: Write>(
                             suppress_bp = true;
                             "breakpoint"
                         }
-                        // Neither is produced yet (no stepping, no
-                        // stop-on-entry), but map them so the loop is total.
+                        // A step landing, whether from `next`/`stepIn`/
+                        // `stepOut` or from a scan step's landing round.
                         PauseReason::Step => {
                             suppress_bp = true;
                             "step"
@@ -342,22 +421,51 @@ fn launched_session<R: BufRead, W: Write>(
                 send(writer, &Response::success(take_seq(seq), &request, body))?;
             }
             Some(Command::StackTrace) if legal_here => {
-                let body = stack_trace_body(&running);
+                let body = stack_trace_body(&running, debug);
                 send(writer, &Response::success(take_seq(seq), &request, body))?;
             }
             Some(Command::Scopes) if legal_here => {
+                // Two scopes: the program's own variables, and VM-level runtime
+                // state. The client re-requests both at every stop, so the
+                // runtime values track execution without any polling.
                 let body = serde_json::to_value(ScopesResponseBody {
-                    scopes: vec![Scope {
-                        name: "Variables".to_string(),
-                        variables_reference: VARIABLES_REF,
-                        expensive: false,
-                    }],
+                    scopes: vec![
+                        Scope {
+                            // Not "Variables": DAP clients render scopes inside
+                            // a pane already titled Variables, so that name
+                            // reads as Variables > Variables. The scope names
+                            // what kind of state it holds -- the program's, as
+                            // against the VM's.
+                            name: "Program".to_string(),
+                            variables_reference: PROGRAM_REF,
+                            expensive: false,
+                        },
+                        Scope {
+                            name: "Runtime".to_string(),
+                            variables_reference: RUNTIME_REF,
+                            expensive: false,
+                        },
+                    ],
                 })
                 .ok();
                 send(writer, &Response::success(take_seq(seq), &request, body))?;
             }
             Some(Command::Variables) if legal_here => {
-                let body = variables_body(&running, debug);
+                // Dispatch on the handle the client asked for. Before the
+                // `Runtime` scope existed this argument was ignored and the
+                // program variables were returned for *any* reference; a
+                // reference we never handed out now yields an empty list
+                // rather than a plausible-looking wrong answer.
+                let reference = request
+                    .arguments
+                    .as_ref()
+                    .and_then(|v| serde_json::from_value::<VariablesArguments>(v.clone()).ok())
+                    .map_or(PROGRAM_REF, |a| a.variables_reference);
+                let body = match reference {
+                    PROGRAM_REF => program_variables_body(&running, debug),
+                    RUNTIME_REF => runtime_variables_body(&running),
+                    _ => serde_json::to_value(VariablesResponseBody { variables: vec![] }).ok(),
+                };
                 send(writer, &Response::success(take_seq(seq), &request, body))?;
             }
             Some(Command::Continue) if legal_here => {
@@ -383,6 +491,11 @@ fn launched_session<R: BufRead, W: Write>(
                 pending_step = Some(StepMode::Out);
                 phase = Phase::Running;
             }
+            Some(Command::StepScan) if legal_here => {
+                send(writer, &Response::success(take_seq(seq), &request, None))?;
+                pending_step = Some(StepMode::Scan);
+                phase = Phase::Running;
+            }
             _ => {
                 // Illegal in this phase or an unknown command.
                 send(
@@ -392,6 +505,47 @@ fn launched_session<R: BufRead, W: Write>(
             }
         }
     }
+}
+
+/// The cycle time to assume for a freewheeling program.
+///
+/// An out-of-range `freewheelingIntervalMs` falls back to the default rather
+/// than failing the launch — a debug session that will not start is a poor
+/// answer to a typo in a launch configuration — and the notice reports the
+/// value actually used either way.
+fn assumed_freewheeling_interval(interval_ms: Option<f64>) -> Duration {
+    interval_ms
+        .and_then(|ms| interval_from_ms(ms).ok())
+        .unwrap_or(DEFAULT_FREEWHEELING_INTERVAL)
+}
+
+/// The console line telling the user which cycle time the session assumed.
+///
+/// Every timer in a freewheeling program elapses on this assumption, so a
+/// session that did not state it would leave the user unable to explain what
+/// they are watching. It points at the launch configuration rather than at a
+/// named setting, which would go stale the moment the setting is renamed.
+fn freewheeling_notice(interval: Duration) -> String {
+    format!(
+        "This program declares no INTERVAL, so it has no scan cycle time of its own. \
+         Assuming {} ms per scan; change it in the launch configuration.\n",
+        interval.as_secs_f64() * 1_000.0
+    )
+}
+
+/// A DAP `output` event carrying one line to the debug console.
+fn console_output(seq: i64, text: &str) -> Event {
+    Event::new(
+        seq,
+        "output",
+        Some(json!({ "category": "console", "output": text })),
+    )
+}
+
+/// Whether the launch's `scanLimit` bound (if any) has been reached, so the
+/// session should terminate rather than start another cycle.
+fn scan_limit_reached(scan_limit: Option<NonZeroU64>, running: &VmRunning) -> bool {
+    scan_limit.is_some_and(|limit| running.scan_count() >= limit.get())
 }
 
 /// Builds the `stopped` event for `reason`, scoped to the single thread.
@@ -411,8 +565,10 @@ fn stopped_event(seq: i64, reason: &'static str) -> Event {
 ///
 /// DAP `setBreakpoints` carries the full set for one source, so the table is
 /// cleared and rebuilt. v1 debugs a single source, so a table-wide clear is
-/// correct. Line→location resolution is delegated to [`debug_info`] (a
-/// passthrough until the Layer-1 line-map swap).
+/// correct. Line→location resolution is delegated to [`debug_info`], which
+/// snaps each breakpoint forward to the nearest executable line; the response
+/// echoes the *bound* line so the editor moves the marker to where the
+/// breakpoint actually took effect.
 fn set_breakpoints(
     request: &Request,
     debug: Option<&DebugSection>,
@@ -431,24 +587,30 @@ fn set_breakpoints(
         .breakpoints
         .iter()
         .map(|bp| {
-            let locations = debug_info::resolve_breakpoint(debug, &source_path, bp.line);
-            if locations.is_empty() {
-                Breakpoint {
+            // `bp.line` is already narrowed to the container's `SourceLine` by
+            // the serde layer; `None` means the client sent a line the debug
+            // section cannot represent, which resolves to nothing.
+            let resolved = bp
+                .line
+                .and_then(|line| debug_info::resolve_breakpoint(debug, &source_path, line));
+            match resolved {
+                Some(resolved) => {
+                    for (function_id, offset) in resolved.locations {
+                        breakpoints.add(function_id, offset);
+                    }
+                    Breakpoint {
+                        verified: true,
+                        line: Some(resolved.line),
+                        source: source.clone(),
+                        message: None,
+                    }
+                }
+                None => Breakpoint {
                     verified: false,
-                    line: Some(bp.line),
+                    line: bp.line,
                     source: source.clone(),
                     message: Some("no executable location for this line".to_string()),
-                }
-            } else {
-                for (function_id, offset) in locations {
-                    breakpoints.add(function_id, offset);
-                }
-                Breakpoint {
-                    verified: true,
-                    line: Some(bp.line),
-                    source: source.clone(),
-                    message: None,
-                }
+                },
             }
         })
         .collect();
@@ -461,20 +623,26 @@ fn set_breakpoints(
 
 /// Builds the `stackTrace` response body from the paused instance's live
 /// frames. DAP orders frames innermost-first; [`VmRunning::debug_frames`] is
-/// outermost-first, so the walk is reversed. Frame names and lines are
-/// passthrough (function id, bytecode offset) until the Layer-1 swap.
-fn stack_trace_body(running: &VmRunning) -> Option<Value> {
+/// outermost-first, so the walk is reversed. Each frame is resolved by
+/// [`debug_info`] to its POU name and source location (FUNC_NAME + line map).
+fn stack_trace_body(running: &VmRunning, debug: Option<&DebugSection>) -> Option<Value> {
     let frames = running.debug_frames();
     let stack_frames: Vec<StackFrame> = frames
         .iter()
         .enumerate()
         .rev()
-        .map(|(index, frame)| StackFrame {
-            id: index as i64,
-            name: format!("function {}", frame.function_id.raw()),
-            line: frame.pc as i64,
-            column: 0,
-            source: None,
+        .map(|(index, frame)| {
+            let info = debug_info::resolve_frame(debug, frame.function_id, frame.pc);
+            StackFrame {
+                id: index as i64,
+                name: info.name,
+                line: info.line,
+                column: info.column,
+                source: info.source.map(|(name, path)| Source {
+                    name: Some(name),
+                    path: Some(path),
+                }),
+            }
         })
         .collect();
     let total = stack_frames.len() as i64;
@@ -485,24 +653,63 @@ fn stack_trace_body(running: &VmRunning) -> Option<Value> {
     .ok()
 }
 
-/// Builds the `variables` response body: every program variable slot, rendered
-/// by [`debug_info`] (passthrough `var[i]` names until the Layer-1 swap).
-fn variables_body(running: &VmRunning, debug: Option<&DebugSection>) -> Option<Value> {
+/// Builds the `Program` scope's contents: every program variable slot, rendered
+/// by [`debug_info`] with its VAR_NAME name/type and a value formatted per its
+/// IEC type tag (STRING values are read from the data region).
+///
+/// The list is unfiltered — locals and globals together — which is why the scope
+/// is named `Program` rather than `Locals`. Splitting it by `var_section` into
+/// Locals / Inputs / Outputs / In-Out / Globals is the design's end state; the
+/// data for it is already in `VarNameEntry::var_section`.
+fn program_variables_body(running: &VmRunning, debug: Option<&DebugSection>) -> Option<Value> {
     let count = running.num_variables();
     let values: Vec<u64> = (0..count)
         .map(|i| running.read_variable_raw(VarIndex::new(i)).unwrap_or(0))
         .collect();
-    let variables = debug_info::render_variables(debug, &values);
+    let variables = debug_info::render_variables(debug, &values, running.data_region());
+    serde_json::to_value(VariablesResponseBody { variables }).ok()
+}
+
+/// Builds the `Runtime` scope's contents: VM-level state that is not a program
+/// variable — the completed-scan-cycle count and the VM's monotonic uptime,
+/// which the client re-reads at every stop, so they are simply on screen rather
+/// than behind a "show me" button. Cycle timing and next-due can join this list
+/// without adding another scope.
+fn runtime_variables_body(running: &VmRunning) -> Option<Value> {
+    let variables = vec![
+        Variable {
+            name: "scanCount".to_string(),
+            value: running.scan_count().to_string(),
+            // The VM counter is a u64; ULINT is its IEC 61131-3 spelling.
+            type_name: Some("ULINT".to_string()),
+            variables_reference: 0,
+        },
+        Variable {
+            name: "systemUptime".to_string(),
+            // How long the VM has run as of the current scan cycle, rendered in
+            // milliseconds. The VM tracks it whether or not the program
+            // declares the uptime globals, so this shows time even for a
+            // program compiled without `--allow-system-uptime-global`.
+            value: (running.uptime().as_millis() as i64).to_string(),
+            // The same i64 milliseconds `__SYSTEM_UP_LTIME` holds; LINT is its
+            // IEC 61131-3 spelling.
+            type_name: Some("LINT".to_string()),
+            variables_reference: 0,
+        },
+    ];
     serde_json::to_value(VariablesResponseBody { variables }).ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_container::debug_section::{iec_type_tag, var_section, VarNameEntry};
+    use ironplc_container::debug_section::{
+        iec_type_tag, var_section, VarNameEntry, SOURCE_FILE_HASH_LEN,
+    };
     use ironplc_container::{
-        ContainerBuilder, FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId,
-        TaskType, VarIndex,
+        ContainerBuilder, FuncNameEntry, FunctionId, InstanceId, LineMapEntry,
+        ProgramInstanceEntry, SourceColumn, SourceFileEntry, SourceFileId, SourceLine, TaskEntry,
+        TaskId, TaskType, VarIndex,
     };
     use serde_json::{json, Value};
     use std::io::Cursor;
@@ -515,6 +722,26 @@ mod tests {
             iec_type_tag: iec_type_tag::DINT,
             name: "x".into(),
             type_name: "DINT".into(),
+        }
+    }
+
+    /// The source file every fixture container claims to be compiled from.
+    fn demo_source_file() -> SourceFileEntry {
+        SourceFileEntry {
+            path: "demo.st".into(),
+            content_hash: [0u8; SOURCE_FILE_HASH_LEN],
+        }
+    }
+
+    /// A line-map entry for `demo.st` mapping `offset` in `function_id` to
+    /// `line` (column 1).
+    fn line_entry(function_id: FunctionId, offset: u16, line: u16) -> LineMapEntry {
+        LineMapEntry {
+            function_id,
+            bytecode_offset: offset,
+            file_id: SourceFileId::new(0),
+            source_line: SourceLine::new(line),
+            source_column: SourceColumn::new(1),
         }
     }
 
@@ -664,14 +891,14 @@ mod tests {
                    "arguments": {"program": path}}),
             json!({"seq": 3, "type": "request", "command": "disconnect"}),
         ]);
-        // initialize response, initialized event, launch response, disconnect response.
-        assert_eq!(out.len(), 4);
-        let launch = &out[2];
-        assert_eq!(launch["command"], "launch");
+        // initialize response, initialized event, launch response, the
+        // assumed-cycle-time notice (this container's task is freewheeling),
+        // disconnect response.
+        assert_eq!(out.len(), 5);
+        let launch = responses(&out, "launch")[0];
         assert_eq!(launch["success"], true);
         assert_eq!(launch["request_seq"], 2);
-        let disconnect = &out[3];
-        assert_eq!(disconnect["command"], "disconnect");
+        let disconnect = responses(&out, "disconnect")[0];
         assert_eq!(disconnect["success"], true);
     }
 
@@ -763,6 +990,63 @@ mod tests {
     }
 
     #[test]
+    fn serve_when_launch_scan_limit_zero_then_error_instead_of_one_scan_session() {
+        // Zero used to bound the run at the first completed scan -- the most
+        // restrictive setting reachable, and the one the docs called unlimited
+        // (#1515). It is now rejected before the VM starts, so no session runs.
+        let (_file, path) = single_instance_debug_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 0}}),
+        ]);
+        let launch = out.last().unwrap();
+        assert_eq!(launch["command"], "launch");
+        assert_eq!(launch["success"], false);
+        let message = launch["message"].as_str().unwrap();
+        // The same code as a missing `program`: one code for a bad argument,
+        // with the message naming which one.
+        assert!(message.starts_with("V6008 - "));
+        assert!(message.contains("'scanLimit'"));
+        assert!(message.contains("omit it"));
+        // The launch never reached the VM, so there is no terminated event.
+        assert!(events(&out, "terminated").is_empty());
+    }
+
+    #[test]
+    fn serve_when_launch_scan_limit_negative_then_scan_limit_error_not_missing_program() {
+        // `-1` is signed-parsed precisely so the response names the argument
+        // that is actually wrong rather than `program`.
+        let (_file, path) = single_instance_debug_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": -1}}),
+        ]);
+        let launch = out.last().unwrap();
+        assert_eq!(launch["success"], false);
+        let message = launch["message"].as_str().unwrap();
+        assert!(message.starts_with("V6008 - "));
+        assert!(message.contains("'scanLimit'"));
+    }
+
+    #[test]
+    fn serve_when_launch_omits_scan_limit_then_runs_unbounded_until_disconnect() {
+        // Absence is the only spelling of "no bound": the session keeps
+        // scanning and ends on the client's disconnect, not on its own.
+        let (_file, path) = single_instance_debug_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path}}),
+            json!({"seq": 3, "type": "request", "command": "disconnect"}),
+        ]);
+        assert_eq!(responses(&out, "launch")[0]["success"], true);
+        assert!(events(&out, "terminated").is_empty());
+        assert_eq!(responses(&out, "disconnect")[0]["success"], true);
+    }
+
+    #[test]
     fn serve_when_pause_after_initialize_then_request_not_applicable() {
         // `pause` is a modelled-but-cut request: always requestNotApplicable.
         let out = run_server(&[
@@ -777,10 +1061,26 @@ mod tests {
 
     #[test]
     fn serve_when_unknown_command_then_request_not_applicable() {
+        // A custom request in IronPLC's namespace that the server does not
+        // implement (unlike `ironplc/stepScan`, which it does).
         let out = run_server(&[json!({"seq": 1, "type": "request",
-                                      "command": "ironplc/stepScan"})]);
+                                      "command": "ironplc/forceVariable"})]);
         assert_eq!(out[0]["success"], false);
         assert_eq!(out[0]["message"], "requestNotApplicable");
+    }
+
+    #[test]
+    fn serve_when_step_scan_before_a_pause_then_request_not_applicable() {
+        // Scan stepping is execution control: it needs a live pause to step
+        // from, the same as `continue` or `next`.
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "ironplc/stepScan"}),
+        ]);
+        let step_scan = out.last().unwrap();
+        assert_eq!(step_scan["command"], "ironplc/stepScan");
+        assert_eq!(step_scan["success"], false);
+        assert_eq!(step_scan["message"], "requestNotApplicable");
     }
 
     #[test]
@@ -796,13 +1096,11 @@ mod tests {
             json!({"seq": 4, "type": "request", "command": "disconnect"}),
         ]);
         // Post-launch `threads` is refused for now.
-        let threads = &out[3];
-        assert_eq!(threads["command"], "threads");
+        let threads = responses(&out, "threads")[0];
         assert_eq!(threads["success"], false);
         assert_eq!(threads["message"], "requestNotApplicable");
         // Then disconnect is honored.
-        let disconnect = out.last().unwrap();
-        assert_eq!(disconnect["command"], "disconnect");
+        let disconnect = responses(&out, "disconnect")[0];
         assert_eq!(disconnect["success"], true);
     }
 
@@ -817,19 +1115,26 @@ mod tests {
     // -- run/stop loop ------------------------------------------------------
 
     /// A single-instance container whose **scan** entry function is
-    /// [`FunctionId::SCAN`], matching the passthrough breakpoint resolver
-    /// (which keys line→offset breakpoints to `SCAN`). `init` is a bare
-    /// `RET_VOID`; `scan` runs `scan_bytecode`.
+    /// [`FunctionId::SCAN`] (named `MAIN`), running `scan_bytecode`; `init`
+    /// is a bare `RET_VOID`. The debug section maps each `(offset, line)`
+    /// pair in `line_map` to `demo.st`, so tests set breakpoints by source
+    /// line against it.
     fn scan_container_file(
         scan_bytecode: &[u8],
         max_stack: u16,
+        line_map: &[(u16, u16)],
     ) -> (tempfile::NamedTempFile, String) {
-        let container = ContainerBuilder::new()
+        let mut builder = ContainerBuilder::new()
             .num_variables(1)
             .add_function(FunctionId::INIT, &[0x8C], 0, 1, 0)
             .add_function(FunctionId::SCAN, scan_bytecode, max_stack, 1, 0)
             .max_call_depth(1)
             .add_var_name(a_var_name())
+            .add_func_name(FuncNameEntry {
+                function_id: FunctionId::SCAN,
+                name: "MAIN".into(),
+            })
+            .add_source_file(demo_source_file())
             .add_task(a_task(TaskId::new(0)))
             .add_program_instance(ProgramInstanceEntry {
                 instance_id: InstanceId::new(0),
@@ -840,23 +1145,33 @@ mod tests {
                 fb_instance_offset: 0,
                 fb_instance_count: 0,
                 init_function_id: FunctionId::INIT,
-            })
-            .build();
+            });
+        for &(offset, line) in line_map {
+            builder = builder.add_line_map_entry(line_entry(FunctionId::SCAN, offset, line));
+        }
+        let container = builder.build();
         write_container_to_temp(&container)
     }
 
-    /// A single-instance container whose scan increments `var[0]` (a DINT) by
-    /// one each cycle, then `RET_VOID`. The store lands at bytecode offset 7 and
-    /// the `RET_VOID` at offset 10, so a breakpoint on line 10 pauses *after*
-    /// the increment — letting a test observe the variable evolve across scans.
+    /// A single-instance container whose scan increments `x` (`var[0]`, a
+    /// DINT) by one each cycle, then `RET_VOID`. The increment statement is
+    /// source line 10 (offset 0) and the `RET_VOID` line 11 (offset 10), so
+    /// a breakpoint on line 11 pauses *after* the increment — letting a test
+    /// observe the variable evolve across scans.
     fn incrementing_scan_container_file() -> (tempfile::NamedTempFile, String) {
+        incrementing_scan_container_with_task(a_task(TaskId::new(0)))
+    }
+
+    /// [`incrementing_scan_container_file`] with a caller-chosen task entry, so
+    /// a test can pick whether the program declares a cycle time.
+    fn incrementing_scan_container_with_task(task: TaskEntry) -> (tempfile::NamedTempFile, String) {
         #[rustfmt::skip]
         let scan: Vec<u8> = vec![
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32  var[0]
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32  var[0]   (offset 0, line 10)
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool[0] (1)
             0x20,             // ADD_I32
             0x10, 0x00, 0x00, // STORE_VAR_I32 var[0]   (offset 7)
-            0x8C,             // RET_VOID               (offset 10)
+            0x8C,             // RET_VOID               (offset 10, line 11)
         ];
         let container = ContainerBuilder::new()
             .num_variables(1)
@@ -865,7 +1180,14 @@ mod tests {
             .add_function(FunctionId::SCAN, &scan, 2, 1, 0)
             .max_call_depth(1)
             .add_var_name(a_var_name())
-            .add_task(a_task(TaskId::new(0)))
+            .add_func_name(FuncNameEntry {
+                function_id: FunctionId::SCAN,
+                name: "MAIN".into(),
+            })
+            .add_source_file(demo_source_file())
+            .add_line_map_entry(line_entry(FunctionId::SCAN, 0, 10))
+            .add_line_map_entry(line_entry(FunctionId::SCAN, 10, 11))
+            .add_task(task)
             .add_program_instance(ProgramInstanceEntry {
                 instance_id: InstanceId::new(0),
                 task_id: TaskId::new(0),
@@ -899,12 +1221,119 @@ mod tests {
         out.iter().position(pred).unwrap()
     }
 
+    /// The same container as [`scan_container_file`], but with a task that
+    /// declares an `INTERVAL` — so the session has a cycle time to work from
+    /// and assumes nothing.
+    fn cyclic_scan_container_file() -> (tempfile::NamedTempFile, String) {
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_function(FunctionId::INIT, &[0x8C], 0, 1, 0)
+            .add_function(FunctionId::SCAN, &[0x8C], 0, 1, 0)
+            .max_call_depth(1)
+            .add_var_name(a_var_name())
+            .add_func_name(FuncNameEntry {
+                function_id: FunctionId::SCAN,
+                name: "MAIN".into(),
+            })
+            .add_source_file(demo_source_file())
+            .add_line_map_entry(line_entry(FunctionId::SCAN, 0, 10))
+            .add_task(TaskEntry {
+                task_type: TaskType::Cyclic,
+                interval_us: 100_000,
+                ..a_task(TaskId::new(0))
+            })
+            .add_program_instance(a_program(InstanceId::new(0), TaskId::new(0)))
+            .build();
+        write_container_to_temp(&container)
+    }
+
+    /// The `output` event bodies the session wrote to the debug console.
+    fn console_lines(out: &[Value]) -> Vec<String> {
+        events(out, "output")
+            .iter()
+            .filter(|e| e["body"]["category"] == "console")
+            .map(|e| e["body"]["output"].as_str().unwrap_or("").to_string())
+            .collect()
+    }
+
+    #[test]
+    fn serve_when_freewheeling_program_then_reports_assumed_cycle_time() {
+        // A program with no INTERVAL has no cycle time of its own, so the
+        // session assumes one — and has to say so, because every timer in the
+        // program elapses on that assumption.
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let lines = console_lines(&out);
+        assert_eq!(lines.len(), 1, "console: {lines:?}");
+        assert!(lines[0].contains("100 ms"), "console: {lines:?}");
+        assert!(
+            lines[0].contains("launch configuration"),
+            "the notice says where to change it: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn serve_when_freewheeling_interval_supplied_then_reports_that_cycle_time() {
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1,
+                                 "freewheelingIntervalMs": 5}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let lines = console_lines(&out);
+        assert!(lines[0].contains("5 ms"), "console: {lines:?}");
+    }
+
+    #[test]
+    fn serve_when_freewheeling_interval_out_of_range_then_reports_the_default() {
+        // A typo in a launch configuration should not stop the session from
+        // starting, but the notice still reports what was actually used.
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1,
+                                 "freewheelingIntervalMs": 0}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "disconnect"}),
+        ]);
+
+        assert_eq!(responses(&out, "launch")[0]["success"], true);
+        let lines = console_lines(&out);
+        assert!(lines[0].contains("100 ms"), "console: {lines:?}");
+    }
+
+    #[test]
+    fn serve_when_cyclic_program_then_assumes_nothing() {
+        let (_file, path) = cyclic_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "disconnect"}),
+        ]);
+
+        assert!(console_lines(&out).is_empty());
+    }
+
     #[test]
     fn serve_when_no_breakpoints_and_scan_limit_then_runs_to_bound_and_terminates() {
         // With no breakpoint, `scanLimit` is what bounds the run: the loop keeps
         // scanning until `scan_count` reaches it (without a bound this program
         // would scan forever, as the single-threaded loop has no `pause`).
-        let (_file, path) = scan_container_file(&[0x8C], 0);
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
@@ -924,14 +1353,14 @@ mod tests {
 
     #[test]
     fn serve_when_breakpoint_then_stops_inspects_continues_and_terminates() {
-        let (_file, path) = scan_container_file(&[0x8C], 0);
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
                    "arguments": {"program": path, "scanLimit": 1}}),
             json!({"seq": 3, "type": "request", "command": "setBreakpoints",
                    "arguments": {"source": {"path": "demo.st"},
-                                 "breakpoints": [{"line": 0}]}}),
+                                 "breakpoints": [{"line": 10}]}}),
             json!({"seq": 4, "type": "request", "command": "configurationDone"}),
             json!({"seq": 5, "type": "request", "command": "threads"}),
             json!({"seq": 6, "type": "request", "command": "stackTrace",
@@ -945,10 +1374,10 @@ mod tests {
             json!({"seq": 10, "type": "request", "command": "disconnect"}),
         ]);
 
-        // The breakpoint is verified back to the client.
+        // The breakpoint is verified back to the client at its bound line.
         let sbp = responses(&out, "setBreakpoints");
         assert_eq!(sbp[0]["body"]["breakpoints"][0]["verified"], true);
-        assert_eq!(sbp[0]["body"]["breakpoints"][0]["line"], 0);
+        assert_eq!(sbp[0]["body"]["breakpoints"][0]["line"], 10);
 
         // The VM stops at the breakpoint before running to completion.
         let stopped = events(&out, "stopped");
@@ -959,21 +1388,26 @@ mod tests {
         // One synthetic thread.
         assert_eq!(responses(&out, "threads")[0]["body"]["threads"][0]["id"], 1);
 
-        // The stack has the single scan frame (function id 1 = SCAN).
+        // The stack has the single scan frame, resolved to its POU name and
+        // source location.
         let st = responses(&out, "stackTrace");
         assert_eq!(st[0]["body"]["stackFrames"].as_array().unwrap().len(), 1);
-        assert_eq!(st[0]["body"]["stackFrames"][0]["name"], "function 1");
+        assert_eq!(st[0]["body"]["stackFrames"][0]["name"], "MAIN");
+        assert_eq!(st[0]["body"]["stackFrames"][0]["line"], 10);
+        assert_eq!(st[0]["body"]["stackFrames"][0]["source"]["path"], "demo.st");
 
         // One scope, whose handle enumerates the variables.
         let sc = responses(&out, "scopes");
         assert_eq!(
             sc[0]["body"]["scopes"][0]["variablesReference"],
-            VARIABLES_REF
+            PROGRAM_REF
         );
 
-        // The single program variable is rendered (passthrough name).
+        // The single program variable is rendered with its source name and
+        // declared type.
         let vars = responses(&out, "variables");
-        assert_eq!(vars[0]["body"]["variables"][0]["name"], "var[0]");
+        assert_eq!(vars[0]["body"]["variables"][0]["name"], "x");
+        assert_eq!(vars[0]["body"]["variables"][0]["type"], "DINT");
 
         // Continue resumes, past the breakpoint, to completion.
         assert_eq!(
@@ -1000,10 +1434,10 @@ mod tests {
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
                    "arguments": {"program": path}}),
-            // Breakpoint on the RET_VOID (offset 10), after the increment store.
+            // Breakpoint on the RET_VOID line, after the increment statement.
             json!({"seq": 3, "type": "request", "command": "setBreakpoints",
                    "arguments": {"source": {"path": "demo.st"},
-                                 "breakpoints": [{"line": 10}]}}),
+                                 "breakpoints": [{"line": 11}]}}),
             json!({"seq": 4, "type": "request", "command": "configurationDone"}),
             // Scan 1 paused: inspect, then continue to scan 2.
             json!({"seq": 5, "type": "request", "command": "variables",
@@ -1060,21 +1494,301 @@ mod tests {
     }
 
     #[test]
-    fn serve_when_setbreakpoints_line_unresolvable_then_reports_unverified() {
-        // The passthrough resolver rejects a negative line (no location).
-        let (_file, path) = scan_container_file(&[0x8C], 0);
+    fn serve_when_runtime_scope_at_entry_then_reports_no_completed_scans() {
+        // `scan_count` counts *completed* cycles, so the entry stop -- which
+        // happens before the first cycle runs -- reports 0. A falsy check
+        // somewhere in the chain would render this as absent instead of zero.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 5, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let vars = responses(&out, "variables");
+        assert_eq!(vars.len(), 1);
+        assert_eq!(vars[0]["body"]["variables"][0]["name"], "scanCount");
+        assert_eq!(vars[0]["body"]["variables"][0]["value"], "0");
+    }
+
+    #[test]
+    fn serve_when_scopes_requested_then_offers_variables_and_runtime() {
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "scopes",
+                   "arguments": {"frameId": 0}}),
+            json!({"seq": 5, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let scopes = &responses(&out, "scopes")[0]["body"]["scopes"];
+        // Not "Variables" -- that would render as Variables > Variables inside
+        // the client's variables pane.
+        assert_eq!(scopes[0]["name"], "Program");
+        assert_eq!(scopes[1]["name"], "Runtime");
+        // The two scopes must be addressable independently.
+        assert_ne!(
+            scopes[0]["variablesReference"],
+            scopes[1]["variablesReference"]
+        );
+    }
+
+    #[test]
+    fn serve_when_runtime_scope_expanded_then_shows_scan_count_advancing() {
+        // The Runtime scope is what replaces the old "show scan count" button:
+        // the client re-reads it at each stop, so the value must track cycles.
+        let (_file, path) = incrementing_scan_container_file();
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
                    "arguments": {"program": path}}),
             json!({"seq": 3, "type": "request", "command": "setBreakpoints",
                    "arguments": {"source": {"path": "demo.st"},
-                                 "breakpoints": [{"line": -1}]}}),
+                                 "breakpoints": [{"line": 11}]}}),
+            json!({"seq": 4, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 5, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 6, "type": "request", "command": "continue",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 7, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 8, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let vars = responses(&out, "variables");
+        for scope in &vars {
+            assert_eq!(scope["body"]["variables"][0]["name"], "scanCount");
+            assert_eq!(scope["body"]["variables"][0]["type"], "ULINT");
+        }
+        let first: u64 = vars[0]["body"]["variables"][0]["value"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let second: u64 = vars[1]["body"]["variables"][0]["value"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(second, first + 1, "runtime scan count must advance a cycle");
+    }
+
+    #[test]
+    fn serve_when_runtime_scope_at_entry_then_reports_zero_uptime() {
+        // The container under test declares no uptime globals, so the program
+        // itself cannot read the clock -- the VM tracks it regardless, which is
+        // the whole point of the entry. At the entry stop no scan has started,
+        // so it is 0.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 5, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let uptime = &responses(&out, "variables")[0]["body"]["variables"][1];
+        assert_eq!(uptime["name"], "systemUptime");
+        assert_eq!(uptime["type"], "LINT");
+        assert_eq!(uptime["value"], "0");
+    }
+
+    #[test]
+    fn serve_when_runtime_scope_expanded_then_shows_system_uptime_advancing() {
+        // Time must be observable from one stop to the next; how *fast* it
+        // advances is the debug driver's business (issue #1397), so this only
+        // asserts that it moves forward.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path}}),
+            json!({"seq": 3, "type": "request", "command": "setBreakpoints",
+                   "arguments": {"source": {"path": "demo.st"},
+                                 "breakpoints": [{"line": 11}]}}),
+            json!({"seq": 4, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 5, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 6, "type": "request", "command": "continue",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 7, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 8, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let vars = responses(&out, "variables");
+        let uptime_of = |scope: &Value| -> i64 {
+            let entry = &scope["body"]["variables"][1];
+            assert_eq!(entry["name"], "systemUptime");
+            assert_eq!(entry["type"], "LINT");
+            entry["value"].as_str().unwrap().parse().unwrap()
+        };
+        assert!(
+            uptime_of(vars[1]) > uptime_of(vars[0]),
+            "runtime uptime must advance between stops"
+        );
+    }
+
+    /// Drives the incrementing container on a cyclic task at `interval_us`,
+    /// with a breakpoint on `line` and `body` between `configurationDone` and
+    /// `disconnect`.
+    ///
+    /// The container's scan maps offset 0 to line 10 and its `RET_VOID` to line
+    /// 11, so a breakpoint on line 11 puts each stop one whole scan after the
+    /// last, and one on line 10 stops before the cycle's work.
+    fn timed_session(interval_us: u64, line: i64, body: &[Value]) -> Vec<Value> {
+        let (_file, path) = incrementing_scan_container_with_task(TaskEntry {
+            task_type: TaskType::Cyclic,
+            interval_us,
+            ..a_task(TaskId::new(0))
+        });
+        let mut msgs = vec![
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path}}),
+            json!({"seq": 3, "type": "request", "command": "setBreakpoints",
+                   "arguments": {"source": {"path": "demo.st"},
+                                 "breakpoints": [{"line": line}]}}),
+            json!({"seq": 4, "type": "request", "command": "configurationDone"}),
+        ];
+        msgs.extend(body.iter().cloned());
+        msgs.push(json!({"seq": 90, "type": "request", "command": "disconnect"}));
+        run_server(&msgs)
+    }
+
+    /// A `continue` request, then a read of the Runtime scope at the next stop.
+    fn resume_and_read_uptime(seq: i64) -> [Value; 2] {
+        [
+            json!({"seq": seq, "type": "request", "command": "continue",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": seq + 1, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+        ]
+    }
+
+    /// The `systemUptime` value, in milliseconds, from each `variables`
+    /// response in order.
+    fn uptimes(out: &[Value]) -> Vec<i64> {
+        responses(out, "variables")
+            .iter()
+            .map(|scope| {
+                let entry = &scope["body"]["variables"][1];
+                assert_eq!(entry["name"], "systemUptime");
+                entry["value"].as_str().unwrap().parse().unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn serve_when_task_declares_interval_then_uptime_advances_by_that_interval() {
+        // Issue #1397: program time advanced a flat 1 ms per scan whatever the
+        // task declared, so a timer elapsed after a scan count unrelated to the
+        // configuration. The rate is the task's, which is also the rate `run`
+        // works from, so the two agree on when a timer elapses.
+        let mut body = vec![json!({"seq": 5, "type": "request", "command": "variables",
+                                   "arguments": {"variablesReference": 2}})];
+        body.extend(resume_and_read_uptime(6));
+        let out = timed_session(100_000, 11, &body);
+
+        assert_eq!(
+            uptimes(&out),
+            vec![0, 100],
+            "the first scan runs at time zero and each scan is one 100 ms cycle"
+        );
+    }
+
+    #[test]
+    fn serve_when_scan_pauses_midway_then_next_scan_advances_one_interval() {
+        // A round that paused mid-scan ran no cycle, so it must not move the
+        // clock: otherwise a timer would depend on how many times the user
+        // stopped, and the scan after a breakpoint would start late. The stop
+        // is on the scan's first line and the step lands on its second, so no
+        // cycle finishes between the two readings.
+        let mut body = vec![
+            json!({"seq": 5, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 6, "type": "request", "command": "next",
+                   "arguments": {"threadId": 1}}),
+        ];
+        body.extend(resume_and_read_uptime(7));
+        let out = timed_session(100_000, 10, &body);
+
+        assert_eq!(
+            uptimes(&out),
+            vec![0, 100],
+            "one cycle ran, so program time moved one interval; the breakpoint \
+             and the step in between moved it none"
+        );
+    }
+
+    #[test]
+    fn serve_when_task_interval_is_zero_then_falls_back_to_the_assumed_rate() {
+        // A task table that names no positive rate says nothing about how fast
+        // to scan, which is the freewheeling situation under another name. A
+        // frozen clock would stop every timer without saying why.
+        let out = timed_session(0, 11, &resume_and_read_uptime(5));
+
+        assert_eq!(
+            uptimes(&out),
+            vec![DEFAULT_FREEWHEELING_INTERVAL.as_millis() as i64]
+        );
+    }
+
+    #[test]
+    fn serve_when_variables_reference_unknown_then_returns_no_variables() {
+        // A handle the server never issued must not fall back to the program
+        // variables, which is what the pre-Runtime-scope code did.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 99}}),
+            json!({"seq": 5, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let vars = responses(&out, "variables");
+        assert_eq!(vars[0]["success"], true);
+        assert_eq!(vars[0]["body"]["variables"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn serve_when_setbreakpoints_line_unresolvable_then_reports_unverified() {
+        // A line past the last executable line has nothing to snap to.
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path}}),
+            json!({"seq": 3, "type": "request", "command": "setBreakpoints",
+                   "arguments": {"source": {"path": "demo.st"},
+                                 "breakpoints": [{"line": 9999}, {"line": 65546},
+                                                 {"line": 10}]}}),
             json!({"seq": 4, "type": "request", "command": "disconnect"}),
         ]);
         let sbp = responses(&out, "setBreakpoints");
-        assert_eq!(sbp[0]["body"]["breakpoints"][0]["verified"], false);
-        assert!(sbp[0]["body"]["breakpoints"][0]["message"].is_string());
+        let bps = &sbp[0]["body"]["breakpoints"];
+        assert_eq!(bps[0]["verified"], false);
+        assert!(bps[0]["message"].is_string());
+        // A line beyond what the debug section can represent is rejected at
+        // the serde boundary, and its line is omitted rather than truncated.
+        assert_eq!(bps[1]["verified"], false);
+        assert!(bps[1].get("line").is_none());
+        // The malformed entries do not sink the valid one alongside them.
+        assert_eq!(bps[2]["verified"], true);
+        assert_eq!(bps[2]["line"], 10);
     }
 
     /// A scan of four single-byte-operand statements at the same call depth,
@@ -1090,19 +1804,24 @@ mod tests {
         0x8C, // RET_VOID                          (offset 12)
     ];
 
+    /// Line map for [`MULTI_STATEMENT_SCAN`]: one source line per statement,
+    /// lines 10–14 of `demo.st`.
+    const MULTI_STATEMENT_LINES: [(u16, u16); 5] = [(0, 10), (3, 11), (6, 12), (9, 13), (12, 14)];
+
     #[test]
     fn serve_when_step_over_then_advances_paused_pc_statement_by_statement() {
-        // From a breakpoint at offset 0, each `next` lands on the next statement
-        // (no CALL to step over, so step-over lands on the immediately-following
-        // instruction). The paused pc is read back via `stackTrace`.
-        let (_file, path) = scan_container_file(&MULTI_STATEMENT_SCAN, 1);
+        // From a breakpoint on the first statement, each `next` lands on the
+        // next statement (no CALL to step over, so step-over lands on the
+        // immediately-following instruction). The paused source line is read
+        // back via `stackTrace`.
+        let (_file, path) = scan_container_file(&MULTI_STATEMENT_SCAN, 1, &MULTI_STATEMENT_LINES);
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
                    "arguments": {"program": path}}),
             json!({"seq": 3, "type": "request", "command": "setBreakpoints",
                    "arguments": {"source": {"path": "demo.st"},
-                                 "breakpoints": [{"line": 0}]}}),
+                                 "breakpoints": [{"line": 10}]}}),
             json!({"seq": 4, "type": "request", "command": "configurationDone"}),
             json!({"seq": 5, "type": "request", "command": "stackTrace",
                    "arguments": {"threadId": 1}}),
@@ -1124,11 +1843,11 @@ mod tests {
         assert_eq!(stopped[1]["body"]["reason"], "step");
         assert_eq!(stopped[2]["body"]["reason"], "step");
 
-        // The paused pc advances one statement per step: 0 → 3 → 6.
+        // The paused line advances one statement per step: 10 → 11 → 12.
         let st = responses(&out, "stackTrace");
-        assert_eq!(st[0]["body"]["stackFrames"][0]["line"], 0);
-        assert_eq!(st[1]["body"]["stackFrames"][0]["line"], 3);
-        assert_eq!(st[2]["body"]["stackFrames"][0]["line"], 6);
+        assert_eq!(st[0]["body"]["stackFrames"][0]["line"], 10);
+        assert_eq!(st[1]["body"]["stackFrames"][0]["line"], 11);
+        assert_eq!(st[2]["body"]["stackFrames"][0]["line"], 12);
 
         for n in responses(&out, "next") {
             assert_eq!(n["success"], true);
@@ -1142,14 +1861,14 @@ mod tests {
         // has no shallower frame to reach, so it runs the scan to completion.
         // `scanLimit: 1` bounds the run so completing that scan terminates the
         // session (rather than continuing into the next scan).
-        let (_file, path) = scan_container_file(&MULTI_STATEMENT_SCAN, 1);
+        let (_file, path) = scan_container_file(&MULTI_STATEMENT_SCAN, 1, &MULTI_STATEMENT_LINES);
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
                    "arguments": {"program": path, "scanLimit": 1}}),
             json!({"seq": 3, "type": "request", "command": "setBreakpoints",
                    "arguments": {"source": {"path": "demo.st"},
-                                 "breakpoints": [{"line": 0}]}}),
+                                 "breakpoints": [{"line": 10}]}}),
             json!({"seq": 4, "type": "request", "command": "configurationDone"}),
             json!({"seq": 5, "type": "request", "command": "stepIn",
                    "arguments": {"threadId": 1}}),
@@ -1160,18 +1879,188 @@ mod tests {
             json!({"seq": 8, "type": "request", "command": "disconnect"}),
         ]);
 
-        // Breakpoint stop, then a step stop from `stepIn` landing at offset 3.
+        // Breakpoint stop, then a step stop from `stepIn` landing on the
+        // second statement (line 11).
         let stopped = events(&out, "stopped");
         assert_eq!(stopped.len(), 2);
         assert_eq!(stopped[1]["body"]["reason"], "step");
         assert_eq!(
             responses(&out, "stackTrace")[0]["body"]["stackFrames"][0]["line"],
-            3
+            11
         );
 
         // stepOut from the top frame runs the scan to completion.
         assert_eq!(events(&out, "terminated").len(), 1);
         assert_eq!(responses(&out, "stepIn")[0]["success"], true);
         assert_eq!(responses(&out, "stepOut")[0]["success"], true);
+    }
+
+    // -- scan stepping (`ironplc/stepScan`) ---------------------------------
+
+    #[test]
+    fn serve_when_step_scan_then_stops_at_start_of_next_scan_with_cycle_complete() {
+        // The whole point of the command: one press runs the rest of the
+        // current cycle and stops at the top of the next, with the finished
+        // cycle's values on screen.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "ironplc/stepScan",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 5, "type": "request", "command": "stackTrace",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 6, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 1}}),
+            json!({"seq": 7, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 8, "type": "request", "command": "disconnect"}),
+        ]);
+
+        assert_eq!(responses(&out, "ironplc/stepScan")[0]["success"], true);
+
+        // The entry stop, then the scan step's landing -- reported as a step.
+        let stopped = events(&out, "stopped");
+        assert_eq!(stopped.len(), 2);
+        assert_eq!(stopped[0]["body"]["reason"], "entry");
+        assert_eq!(stopped[1]["body"]["reason"], "step");
+        assert!(events(&out, "terminated").is_empty());
+
+        // The stop has a live frame at the first statement of the new scan --
+        // not the frame-less scan boundary, where a client would show no call
+        // stack and no variables.
+        let st = responses(&out, "stackTrace");
+        assert_eq!(st[0]["body"]["stackFrames"].as_array().unwrap().len(), 1);
+        assert_eq!(st[0]["body"]["stackFrames"][0]["name"], "MAIN");
+        assert_eq!(st[0]["body"]["stackFrames"][0]["line"], 10);
+
+        // One full cycle ran: the increment landed and the count advanced.
+        let vars = responses(&out, "variables");
+        assert_eq!(vars[0]["body"]["variables"][0]["name"], "x");
+        assert_eq!(vars[0]["body"]["variables"][0]["value"], "1");
+        assert_eq!(vars[1]["body"]["variables"][0]["name"], "scanCount");
+        assert_eq!(vars[1]["body"]["variables"][0]["value"], "1");
+    }
+
+    #[test]
+    fn serve_when_step_scan_repeatedly_then_advances_exactly_one_cycle_each_time() {
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "ironplc/stepScan",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 5, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 6, "type": "request", "command": "ironplc/stepScan",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 7, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 8, "type": "request", "command": "ironplc/stepScan",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 9, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 10, "type": "request", "command": "disconnect"}),
+        ]);
+
+        // Entry stop plus one landing per press.
+        assert_eq!(events(&out, "stopped").len(), 4);
+        let counts: Vec<&str> = responses(&out, "variables")
+            .iter()
+            .map(|v| v["body"]["variables"][0]["value"].as_str().unwrap())
+            .collect();
+        assert_eq!(counts, ["1", "2", "3"], "one cycle per press, never two");
+    }
+
+    #[test]
+    fn serve_when_step_scan_lands_then_a_following_step_advances_one_statement() {
+        // The landing must leave a usable pause position. Stopping at the
+        // frame-less scan boundary instead would seed the next step from
+        // `(depth 0, offset 0)` -- the first statement -- so `next` would skip
+        // it and land on the second.
+        let (_file, path) = scan_container_file(&MULTI_STATEMENT_SCAN, 1, &MULTI_STATEMENT_LINES);
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "ironplc/stepScan",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 5, "type": "request", "command": "stackTrace",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 6, "type": "request", "command": "next",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 7, "type": "request", "command": "stackTrace",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 8, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let st = responses(&out, "stackTrace");
+        assert_eq!(st[0]["body"]["stackFrames"][0]["line"], 10);
+        assert_eq!(st[1]["body"]["stackFrames"][0]["line"], 11);
+    }
+
+    #[test]
+    fn serve_when_breakpoint_inside_stepped_scan_then_stops_at_the_breakpoint() {
+        // A breakpoint reached while running the cycle out wins and abandons
+        // the scan step, the same way one reached mid-`next` does.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            // Line 11 is the RET_VOID, after the increment statement.
+            json!({"seq": 3, "type": "request", "command": "setBreakpoints",
+                   "arguments": {"source": {"path": "demo.st"},
+                                 "breakpoints": [{"line": 11}]}}),
+            json!({"seq": 4, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 5, "type": "request", "command": "ironplc/stepScan",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 6, "type": "request", "command": "stackTrace",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 7, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 8, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let stopped = events(&out, "stopped");
+        assert_eq!(stopped.len(), 2);
+        assert_eq!(stopped[1]["body"]["reason"], "breakpoint");
+        assert_eq!(
+            responses(&out, "stackTrace")[0]["body"]["stackFrames"][0]["line"],
+            11
+        );
+        // The cycle never finished, so no scan has completed.
+        assert_eq!(
+            responses(&out, "variables")[0]["body"]["variables"][0]["value"],
+            "0"
+        );
+    }
+
+    #[test]
+    fn serve_when_step_scan_reaches_scan_limit_then_terminates_instead_of_landing() {
+        // With one scan left in the bound, the stepped cycle is the last one:
+        // there is no next scan to land in, so the session ends.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true,
+                                 "scanLimit": 1}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "ironplc/stepScan",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 5, "type": "request", "command": "disconnect"}),
+        ]);
+
+        // Only the entry stop: the scan step terminated rather than landing.
+        let stopped = events(&out, "stopped");
+        assert_eq!(stopped.len(), 1);
+        assert_eq!(stopped[0]["body"]["reason"], "entry");
+        assert_eq!(events(&out, "terminated").len(), 1);
     }
 }

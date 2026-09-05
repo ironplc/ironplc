@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use super::common::{
     parse_options, serialize_diagnostic, serialize_diagnostics, validate_sources, SourceInput,
 };
-use crate::cache::{CachedContainer, ContainerCache, InsertError, ProgramMeta, TaskMeta};
+use crate::cache::{CachedContainer, ContainerCache, InsertError, ProgramMeta, TaskKind, TaskMeta};
 
 /// Combined input accepted by `compile`.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -51,7 +51,7 @@ pub struct CompileResponse {
 pub struct TaskInfo {
     pub name: String,
     pub priority: u32,
-    pub kind: String,
+    pub kind: TaskKind,
     pub interval_ms: Option<f64>,
 }
 
@@ -105,17 +105,18 @@ pub fn build_response(
         project.add_source(FileId::from_string(&src.name), src.content.clone());
     }
 
-    // Run semantic analysis
-    let mut diagnostics = serialize_diagnostics(&project.semantic());
+    // Run the pipeline (parse, analysis, codegen) that `ironplc-project` owns.
+    // No sources come from disk here, so codegen gets no source bytes to hash
+    // into the container's debug section.
+    let output = ironplc_project::compile(
+        &mut project,
+        &compiler_options,
+        &ironplc_codegen::EmptyLookup,
+        vec![],
+    );
+    let mut diagnostics = serialize_diagnostics(&output.diagnostics);
 
-    // Check if we can proceed to codegen
-    let has_errors = diagnostics
-        .iter()
-        .any(|d| d["severity"].as_str() == Some("error"));
-    let library = project.analyzed_library();
-    let context = project.semantic_context();
-
-    if has_errors || library.is_none() || context.is_none() {
+    let Some(container) = output.container else {
         return CompileResponse {
             ok: false,
             container_id: None,
@@ -124,33 +125,22 @@ pub fn build_response(
             programs: vec![],
             diagnostics,
         };
-    }
-
-    let library = library.unwrap();
-    let context = context.unwrap();
-
-    // Run codegen
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        system_uptime_global: compiler_options.allow_system_uptime_global,
     };
-    let container = match ironplc_codegen::compile(
-        library,
-        context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    ) {
-        Ok(c) => c,
-        Err(err) => {
-            diagnostics.push(serialize_diagnostic(&err));
-            return CompileResponse {
-                ok: false,
-                container_id: None,
-                container_base64: None,
-                tasks: vec![],
-                programs: vec![],
-                diagnostics,
-            };
-        }
+
+    // The analyzed library and context stay cached on the project; a clean
+    // compile guarantees both.
+    let (Some(library), Some(context)) = (project.analyzed_library(), project.semantic_context())
+    else {
+        let err = Diagnostic::internal_error();
+        diagnostics.push(serialize_diagnostic(&err));
+        return CompileResponse {
+            ok: false,
+            container_id: None,
+            container_base64: None,
+            tasks: vec![],
+            programs: vec![],
+            diagnostics,
+        };
     };
 
     // Serialize container to bytes
@@ -180,7 +170,7 @@ pub fn build_response(
         .map(|t| TaskInfo {
             name: t.name.clone(),
             priority: t.priority,
-            kind: t.kind.clone(),
+            kind: t.kind,
             interval_ms: t.interval_ms,
         })
         .collect();
@@ -267,10 +257,13 @@ fn extract_task_program_metadata(library: &Library) -> (Vec<TaskMeta>, Vec<Progr
                 })
                 .unwrap_or_else(|| "default".to_string());
 
+            // No CONFIGURATION: codegen keeps the freewheeling task that
+            // `ContainerBuilder` synthesizes, so that is what `run` will
+            // schedule and what the caller needs to see.
             let tasks = vec![TaskMeta {
                 name: program_name.clone(),
                 priority: 0,
-                kind: "event".to_string(),
+                kind: TaskKind::Freewheeling,
                 interval_ms: None,
             }];
             let programs = vec![ProgramMeta {
@@ -300,24 +293,35 @@ fn extract_from_configuration(
     (tasks, programs)
 }
 
+/// Reports the kind of task the *container* will carry, which is not always
+/// the kind the source appears to declare: codegen compiles a task with no
+/// `INTERVAL` — and one whose `INTERVAL` is zero — to a freewheeling task,
+/// because a zero-interval cyclic task would be permanently overdue (see
+/// `codegen::compile::apply_task_configuration`). Reporting the declaration
+/// instead of the outcome would leave a caller unable to tell that `run` needs
+/// an assumed cycle time for this container.
 fn task_meta_from_config(task: &TaskConfiguration) -> TaskMeta {
-    let kind = if task.interval.is_some() {
-        "cyclic"
-    } else if task.single.is_some() {
-        "single"
-    } else {
-        "event"
-    };
-
-    let interval_ms = task
+    // Microseconds, matching what codegen writes to the task table: a
+    // sub-millisecond INTERVAL is a cyclic task, and rounding it to whole
+    // milliseconds would report it as 0 and misclassify it as freewheeling.
+    let interval_us = task
         .interval
         .as_ref()
-        .map(|d| d.interval.whole_milliseconds() as f64);
+        .map(|d| d.interval.whole_microseconds());
+    let interval_ms = interval_us.map(|us| us as f64 / 1_000.0);
+
+    let kind = if interval_us.is_some_and(|us| us > 0) {
+        TaskKind::Cyclic
+    } else if task.single.is_some() {
+        TaskKind::Single
+    } else {
+        TaskKind::Freewheeling
+    };
 
     TaskMeta {
         name: task.name.to_string(),
         priority: task.priority,
-        kind: kind.to_string(),
+        kind,
         interval_ms,
     }
 }
@@ -360,13 +364,16 @@ END_CONFIGURATION
         }]
     }
 
-    #[test]
-    fn build_response_when_valid_program_then_ok_true() {
-        let cache = make_cache();
-        let resp = build_response(&valid_program_source(), &ed2_options(), false, &cache);
-        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
-    }
+    // The valid-program happy path is asserted by
+    // `build_response_when_valid_then_container_id_present` below, which runs
+    // the same fixture and checks `ok` plus the container handle this tool
+    // exists to produce.
 
+    // A failing pipeline mapping to `ok: false` with no container handle is
+    // this tool's own contract, proven once here. Which *kinds* of input fail
+    // the pipeline -- syntax errors, semantic errors, codegen errors -- is
+    // owned by `ironplc_project::compile`, whose
+    // `compile_when_{syntax,semantic}_error_then_no_container` cover them.
     #[test]
     fn build_response_when_syntax_error_then_ok_false() {
         let cache = make_cache();
@@ -377,32 +384,6 @@ END_CONFIGURATION
         let resp = build_response(&sources, &ed2_options(), false, &cache);
         assert!(!resp.ok);
         assert!(resp.container_id.is_none());
-    }
-
-    #[test]
-    fn build_response_when_semantic_error_then_ok_false() {
-        let cache = make_cache();
-        let sources = vec![SourceInput {
-            name: "bad.st".into(),
-            content: r#"
-PROGRAM Main
-VAR
-  x : INT;
-END_VAR
-  x := undeclared_var;
-END_PROGRAM
-
-CONFIGURATION config
-  RESOURCE resource1 ON PLC
-    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
-    PROGRAM program1 WITH plc_task : Main;
-  END_RESOURCE
-END_CONFIGURATION
-"#
-            .into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), false, &cache);
-        assert!(!resp.ok);
     }
 
     #[test]
@@ -421,7 +402,7 @@ END_CONFIGURATION
         assert!(resp.ok);
         assert!(!resp.tasks.is_empty());
         assert_eq!(resp.tasks[0].name, "plc_task");
-        assert_eq!(resp.tasks[0].kind, "cyclic");
+        assert_eq!(resp.tasks[0].kind, TaskKind::Cyclic);
         assert_eq!(resp.tasks[0].priority, 1);
         assert!(resp.tasks[0].interval_ms.is_some());
     }

@@ -20,8 +20,9 @@ use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::VmBuffers;
 use spec_test_macro::spec_test;
 
-/// The plan's Goal example: a function-block instance binding a pointer to
-/// one of its own members and reading it back through `^`. The member value
+/// The Goal example from `specs/design/adr-and-pointer-to.md`: a function-block
+/// instance binding a pointer to one of its own members and reading it back
+/// through `^`. The member value
 /// is assigned in the body rather than by a `:= 5` member initializer:
 /// declared initial values are not yet applied to user FB instance fields (a
 /// pre-existing gap unrelated to `ADR`).

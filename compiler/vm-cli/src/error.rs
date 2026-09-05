@@ -7,7 +7,7 @@ use ironplc_vm::error::Trap;
 
 // V6xxx code constants are generated from resources/problem-codes.csv. Some
 // codes (the DAP launch codes V6008–V6010) are consumed only by the
-// `ironplcdap` binary, so they are dead in this binary — the allow keeps that
+// `ironplcvmd` binary, so they are dead in this binary — the allow keeps that
 // from warning while the constants stay re-exported at `error::*`.
 #[allow(dead_code)]
 mod io_codes {

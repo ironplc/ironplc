@@ -35,8 +35,10 @@ use crate::{
 /// * **`POINTER`** — demoted unless `allow_pointer_to` (TwinCAT/CODESYS
 ///   `POINTER TO`).
 /// * **OOP keywords** (`EXTENDS`, `IMPLEMENTS`, `INTERFACE`, `END_INTERFACE`,
-///   `ABSTRACT`) — demoted unless `allow_fb_inheritance`.
-/// * **`AND_THEN`** — demoted unless `allow_short_circuit_operators`.
+///   `ABSTRACT`, `METHOD`, `END_METHOD`, `THIS`, `SUPER`) — demoted unless
+///   `allow_fb_inheritance`.
+/// * **`AND_THEN`, `OR_ELSE`** — demoted unless
+///   `allow_short_circuit_operators`.
 ///
 /// The context-sensitive `TIME` keyword is handled by [`apply_time`].
 pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
@@ -46,7 +48,7 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     let demote_reference = !options.allow_reference_to;
     let demote_pointer = !options.allow_pointer_to;
     let demote_oop = !options.allow_fb_inheritance;
-    let demote_and_then = !options.allow_short_circuit_operators;
+    let demote_short_circuit = !options.allow_short_circuit_operators;
 
     for tok in tokens.iter_mut() {
         let demote = match tok.token_type {
@@ -60,8 +62,12 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
             | TokenType::Implements
             | TokenType::Interface
             | TokenType::EndInterface
-            | TokenType::Abstract => demote_oop,
-            TokenType::AndThen => demote_and_then,
+            | TokenType::Abstract
+            | TokenType::Method
+            | TokenType::EndMethod
+            | TokenType::This
+            | TokenType::Super => demote_oop,
+            TokenType::AndThen | TokenType::OrElse => demote_short_circuit,
             _ => false,
         };
         if demote {
@@ -450,7 +456,7 @@ mod tests {
         assert_eq!(tokens[0].token_type, TokenType::Abstract);
     }
 
-    // --- AND_THEN operator: demoted unless allow_short_circuit_operators ---
+    // --- AND_THEN / OR_ELSE: demoted unless allow_short_circuit_operators ---
 
     #[test]
     fn apply_when_and_then_and_disabled_then_demoted_to_identifier() {
@@ -465,6 +471,21 @@ mod tests {
         let mut tokens = vec![make_token(TokenType::AndThen, "AND_THEN")];
         apply(&mut tokens, &opts_short_circuit());
         assert_eq!(tokens[0].token_type, TokenType::AndThen);
+    }
+
+    #[test]
+    fn apply_when_or_else_and_disabled_then_demoted_to_identifier() {
+        let mut tokens = vec![make_token(TokenType::OrElse, "OR_ELSE")];
+        apply(&mut tokens, &opts_default());
+        assert_eq!(tokens[0].token_type, TokenType::Identifier);
+        assert_eq!(tokens[0].text, "OR_ELSE");
+    }
+
+    #[test]
+    fn apply_when_or_else_and_enabled_then_stays_keyword() {
+        let mut tokens = vec![make_token(TokenType::OrElse, "OR_ELSE")];
+        apply(&mut tokens, &opts_short_circuit());
+        assert_eq!(tokens[0].token_type, TokenType::OrElse);
     }
 
     #[test]

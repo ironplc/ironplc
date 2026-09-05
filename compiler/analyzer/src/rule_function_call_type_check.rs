@@ -5,7 +5,7 @@
 //! Both user-defined and standard-library function calls are checked. Standard
 //! library parameters use the IEC 61131-3 generic categories (ANY_REAL, ANY_NUM,
 //! etc.) or concrete types (for the `<SOURCE>_TO_<TARGET>` conversion functions);
-//! `are_types_compatible` handles both.
+//! [`are_types_compatible`] handles both.
 //!
 //! ## Passes
 //!
@@ -45,181 +45,25 @@
 //! END_PROGRAM
 //! ```
 
-use std::collections::HashMap;
-
 use ironplc_dsl::{
     common::*,
     core::{Id, Located},
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::*,
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
+    scoped_table::ScopedTable,
     semantic_context::SemanticContext,
+    type_compat::{are_types_compatible, is_checkable_type},
 };
 use ironplc_parser::options::CompilerOptions;
-
-/// Returns true if `actual` is type-compatible with `expected`.
-///
-/// Exact matches always pass. If `actual` is a generic type (ANY_INT,
-/// ANY_REAL, etc.) and `expected` is a concrete elementary type, delegates
-/// to `GenericTypeName::is_compatible_with`.
-///
-/// Bare integer literals (ANY_INT) are also accepted where REAL or LREAL
-/// is expected. This is type inference for untyped literals, not implicit
-/// widening of typed expressions (see ADR-0028).
-fn are_types_compatible(expected: &TypeName, actual: &TypeName, options: &CompilerOptions) -> bool {
-    if *expected == *actual {
-        return true;
-    }
-    // Generic expected type (a standard-library parameter such as ANY_REAL,
-    // ANY_NUM, or ANY_ELEMENTARY). The concrete or generic actual type must fall
-    // within the generic category. See `is_compatible_with_generic_param`.
-    if let Ok(expected_generic) = GenericTypeName::try_from(&expected.name) {
-        return is_compatible_with_generic_param(&expected_generic, actual, options);
-    }
-    if let Ok(generic) = GenericTypeName::try_from(&actual.name) {
-        if let Ok(elementary) = ElementaryTypeName::try_from(&expected.name) {
-            if generic.is_compatible_with(&elementary) {
-                return true;
-            }
-            // Bare integer literals (ANY_INT) can be inferred as REAL/LREAL.
-            // See ADR-0028 for rationale.
-            if generic == GenericTypeName::AnyInt
-                && matches!(
-                    elementary,
-                    ElementaryTypeName::REAL | ElementaryTypeName::LREAL
-                )
-            {
-                return true;
-            }
-            // Bare integer literals (ANY_INT) to ANY_BIT types (BYTE, WORD, etc.)
-            // requires --allow-cross-family-widening. See ADR-0031.
-            if options.allow_cross_family_widening
-                && generic == GenericTypeName::AnyInt
-                && matches!(
-                    elementary,
-                    ElementaryTypeName::BYTE
-                        | ElementaryTypeName::WORD
-                        | ElementaryTypeName::DWORD
-                        | ElementaryTypeName::LWORD
-                )
-            {
-                return true;
-            }
-        }
-    }
-    // Implicit widening: integer-to-integer, integer-to-real (lossless),
-    // bit-string-to-bit-string. See ADR-0029 and ADR-0031.
-    if let Ok(actual_elem) = ElementaryTypeName::try_from(&actual.name) {
-        if let Ok(expected_elem) = ElementaryTypeName::try_from(&expected.name) {
-            if actual_elem.can_widen_to(&expected_elem) {
-                return true;
-            }
-            // Cross-family widening (bit-string → integer) requires flag.
-            if options.allow_cross_family_widening
-                && actual_elem.can_widen_cross_family_to(&expected_elem)
-            {
-                return true;
-            }
-            // Temporal types come in a short and long form (TIME/LTIME,
-            // DATE/LDATE, etc.). Duration and date literals always resolve to
-            // the canonical short name regardless of the written form, so treat
-            // the two widths of a temporal family as interchangeable here.
-            if same_temporal_family(&actual_elem, &expected_elem) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Returns true if both types belong to the same temporal family (the short and
-/// long widths of TIME, DATE, TIME_OF_DAY, or DATE_AND_TIME).
-fn same_temporal_family(a: &ElementaryTypeName, b: &ElementaryTypeName) -> bool {
-    use ElementaryTypeName::*;
-    fn family(t: &ElementaryTypeName) -> Option<u8> {
-        match t {
-            TIME | LTIME => Some(0),
-            DATE | LDATE => Some(1),
-            TimeOfDay | LTimeOfDay => Some(2),
-            DateAndTime | LDateAndTime => Some(3),
-            _ => None,
-        }
-    }
-    matches!((family(a), family(b)), (Some(x), Some(y)) if x == y)
-}
-
-/// Returns true if `actual` is acceptable where a generic parameter type
-/// `expected` (e.g. `ANY_REAL`, `ANY_NUM`) is required.
-///
-/// Standard-library functions declare their parameters using the IEC 61131-3
-/// generic type categories. A concrete argument type is checked with
-/// [`GenericTypeName::is_compatible_with`]. A generic argument type (produced for
-/// untyped literals — an untyped integer literal is `ANY_INT`, an untyped real
-/// literal is `ANY_REAL`) is checked against the parameter category with
-/// [`generic_actual_satisfies`].
-fn is_compatible_with_generic_param(
-    expected: &GenericTypeName,
-    actual: &TypeName,
-    options: &CompilerOptions,
-) -> bool {
-    if let Ok(actual_elem) = ElementaryTypeName::try_from(&actual.name) {
-        return expected.is_compatible_with(&actual_elem);
-    }
-    if let Ok(actual_generic) = GenericTypeName::try_from(&actual.name) {
-        return generic_actual_satisfies(&actual_generic, expected, options);
-    }
-    false
-}
-
-/// Returns true if a value whose type is the generic category `actual` can be
-/// used where the generic category `expected` is required.
-///
-/// In practice `actual` originates from an untyped literal (`ANY_INT` for integer
-/// literals, `ANY_REAL` for real literals) or an unresolved generic function
-/// return. The relation models the IEC 61131-3 generic-type hierarchy plus the
-/// integer-literal-to-real inference from ADR-0028 and the flag-gated
-/// integer-literal-to-bit-string case from ADR-0031.
-fn generic_actual_satisfies(
-    actual: &GenericTypeName,
-    expected: &GenericTypeName,
-    options: &CompilerOptions,
-) -> bool {
-    use GenericTypeName::*;
-    if actual == expected {
-        return true;
-    }
-    match expected {
-        Any | AnyElementary => true,
-        AnyMagnitude => matches!(actual, AnyInt | AnyReal | AnyNum | AnyMagnitude),
-        AnyNum => matches!(actual, AnyInt | AnyReal | AnyNum),
-        // Integer literals infer as real (ADR-0028).
-        AnyReal => matches!(actual, AnyReal | AnyInt),
-        AnyInt => matches!(actual, AnyInt),
-        // Integer literals to bit-string require the widening flag (ADR-0031).
-        AnyBit => {
-            matches!(actual, AnyBit) || (options.allow_cross_family_widening && *actual == AnyInt)
-        }
-        AnyString => matches!(actual, AnyString),
-        AnyDate => matches!(actual, AnyDate),
-        AnyDerived => false,
-    }
-}
-
-/// Returns true if the type name is checkable in an assignment: an elementary
-/// type or a generic category (untyped literal). User-defined types (enums,
-/// structures, function blocks, arrays, sized strings, references) return false
-/// so that the assignment check skips them.
-fn is_checkable_assignment_type(type_name: &TypeName) -> bool {
-    ElementaryTypeName::try_from(&type_name.name).is_ok()
-        || GenericTypeName::try_from(&type_name.name).is_ok()
-}
-
 pub fn apply(
     lib: &Library,
     context: &SemanticContext,
@@ -230,7 +74,7 @@ pub fn apply(
             context,
             options,
             diagnostics: vec![],
-            var_types: HashMap::new(),
+            var_types: ScopedTable::new(),
         },
         lib,
     )
@@ -240,8 +84,12 @@ struct RuleFunctionCallTypeCheck<'a> {
     context: &'a SemanticContext,
     options: &'a CompilerOptions,
     diagnostics: Vec<Diagnostic>,
-    /// Maps variable name to declared type for the current scope.
-    var_types: HashMap<Id, TypeName>,
+    /// Maps variable name to declared type, scoped.
+    ///
+    /// Each declaration the traversal enters pushes a frame, so a
+    /// method's locals do not outlive the method and a local shadows a
+    /// field of the same name only within its own body.
+    var_types: ScopedTable<'static, Id, TypeName>,
 }
 
 impl DiagnosticVisitor for RuleFunctionCallTypeCheck<'_> {
@@ -260,7 +108,7 @@ impl RuleFunctionCallTypeCheck<'_> {
                     return;
                 }
                 if let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target {
-                    if let Some(target_type) = self.var_types.get(&nv.name) {
+                    if let Some(target_type) = self.var_types.find(&nv.name) {
                         if let Some(ref return_type) = value.resolved_type {
                             if !are_types_compatible(target_type, return_type, self.options) {
                                 self.diagnostics.push(
@@ -305,7 +153,7 @@ impl RuleFunctionCallTypeCheck<'_> {
         let Variable::Symbolic(SymbolicVariableKind::Named(nv)) = target else {
             return;
         };
-        let Some(declared) = self.var_types.get(&nv.name) else {
+        let Some(declared) = self.var_types.find(&nv.name) else {
             return;
         };
         // Resolve aliases/subranges to the underlying elementary type so the
@@ -315,14 +163,14 @@ impl RuleFunctionCallTypeCheck<'_> {
             .types()
             .resolve_elementary_type_name(declared)
             .unwrap_or_else(|| declared.clone());
-        if !is_checkable_assignment_type(&target_type) {
+        if !is_checkable_type(&target_type) {
             return;
         }
 
         let Some(value_type) = &value.resolved_type else {
             return;
         };
-        if !is_checkable_assignment_type(value_type) {
+        if !is_checkable_type(value_type) {
             return;
         }
 
@@ -340,58 +188,66 @@ impl RuleFunctionCallTypeCheck<'_> {
     }
 }
 
-impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
+impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
     type Value = ();
 
-    fn visit_function_declaration(
-        &mut self,
-        node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
-        self.var_types.clear();
-        node.recurse_visit(self)
+    /// Opens a declaration's scope.
+    ///
+    /// Replaces the per-POU `clear()` this rule used to do, which could
+    /// not express a method: clearing at a method boundary would discard
+    /// the enclosing function block's fields, and not clearing left a
+    /// method's locals shadowing those fields for every later method.
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
+        self.var_types.enter();
+
+        // A declaration's own name is its result variable, so assigning
+        // it is an assignment with a target type like any other. Without
+        // this the target lookup missed and the check returned early,
+        // leaving `Foo := <wrong type>` unreported -- for a FUNCTION as
+        // much as for a METHOD.
+        match node {
+            ScopeNode::Function(node) => {
+                self.var_types
+                    .add(&node.name, node.return_type.to_type_name());
+            }
+            // Only a method that declares a return type has a result to
+            // assign; `rule_use_declared_symbolic_var` rejects the
+            // assignment outright for one that does not.
+            ScopeNode::Method(node) => {
+                if let Some(return_type) = &node.return_type {
+                    self.var_types.add(&node.name, return_type.to_type_name());
+                }
+            }
+            // Neither has a result variable.
+            ScopeNode::FunctionBlock(_) | ScopeNode::Program(_) => {}
+        }
+
+        Ok(())
     }
 
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
-        self.var_types.clear();
-        node.recurse_visit(self)
+    fn exit_scope(&mut self) {
+        self.var_types.exit();
     }
 
-    fn visit_program_declaration(
-        &mut self,
-        node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
-        self.var_types.clear();
-        node.recurse_visit(self)
-    }
-
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let VariableIdentifier::Symbol(ref id) = node.identifier {
             if let TypeReference::Named(ref type_name) = node.type_name() {
-                self.var_types.insert(id.clone(), type_name.clone());
+                self.var_types.add(id, type_name.clone());
             }
         }
         node.recurse_visit(self)
     }
 
-    fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, Diagnostic> {
+    fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, Infallible> {
         self.check_return_type(&node.target, &node.value);
         self.check_assignment_type(&node.target, &node.value);
         node.recurse_visit(self)
     }
 
-    fn visit_function(&mut self, node: &Function) -> Result<Self::Value, Diagnostic> {
+    fn visit_function(&mut self, node: &Function) -> Result<Self::Value, Infallible> {
         let func_sig = self.context.functions.get(&node.name);
 
         if let Some(signature) = func_sig {
-            // Check each positional argument type against the parameter type.
-            // Standard-library functions are checked too: their parameters use
-            // generic ANY_* categories (or concrete types for the conversion
-            // functions), all handled by `are_types_compatible`.
-            let input_params: Vec<_> = signature.parameters.iter().filter(|p| p.is_input).collect();
-
             // Emit NotImplemented for output arguments on user-defined functions.
             // Standard-library functions do not take output arguments.
             if !signature.is_stdlib() {
@@ -417,12 +273,13 @@ impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
                 })
                 .collect();
 
-            for (i, arg_expr) in positional_args.iter().enumerate() {
-                if i >= input_params.len() {
-                    break;
-                }
-                let param = &input_params[i];
-
+            // Check each positional argument type against the parameter type.
+            // Standard-library functions are checked too: their parameters use
+            // generic ANY_* categories (or concrete types for the conversion
+            // functions), all handled by `are_types_compatible`. The parameter
+            // list continues past the declared ones for an extensible
+            // function, so every input of `ADD(a, b, c)` is checked.
+            for (param, arg_expr) in signature.input_parameters().zip(&positional_args) {
                 if let Some(ref arg_type) = arg_expr.resolved_type {
                     if !are_types_compatible(&param.param_type, arg_type, self.options) {
                         self.diagnostics.push(
@@ -519,6 +376,110 @@ VAR
     x : INT;
 END_VAR
     result := INT_TO_REAL(x);
+END_PROGRAM"
+    );
+
+    /// The function forms of the bitwise boolean operators accept every
+    /// ANY_BIT type, as the operators do (#1567).
+    #[rstest]
+    #[case::and_bool("AND", "BOOL")]
+    #[case::and_byte("AND", "BYTE")]
+    #[case::and_word("AND", "WORD")]
+    #[case::and_dword("AND", "DWORD")]
+    #[case::and_lword("AND", "LWORD")]
+    #[case::or_word("OR", "WORD")]
+    #[case::xor_word("XOR", "WORD")]
+    fn apply_when_bitwise_function_form_on_bit_string_then_ok(
+        #[case] function: &str,
+        #[case] type_name: &str,
+    ) {
+        let program = format!(
+            "
+PROGRAM main
+VAR
+    a : {type_name};
+    b : {type_name};
+    result : {type_name};
+END_VAR
+    result := {function}(a, b);
+END_PROGRAM"
+        );
+        let (library, context) = parse_and_resolve_types_with_context(&program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    rule_ctx_errn!(
+        apply_when_bitwise_function_form_on_int_then_error_per_argument,
+        "
+PROGRAM main
+VAR
+    a : INT;
+    b : INT;
+    result : INT;
+END_VAR
+    result := AND(a, b);
+END_PROGRAM",
+        2,
+        Problem::FunctionCallArgTypeMismatch
+    );
+
+    // An extensible call is checked past its declared parameters, so the
+    // third input of ADD is checked like the first two (#1618).
+    rule_ctx_ok!(
+        apply_when_extensible_call_third_arg_matches_then_ok,
+        "
+PROGRAM main
+VAR
+    a : DINT;
+    b : DINT;
+    c : DINT;
+    result : DINT;
+END_VAR
+    result := ADD(a, b, c);
+END_PROGRAM"
+    );
+
+    rule_ctx_err1!(
+        apply_when_extensible_call_third_arg_mismatch_then_error,
+        "
+PROGRAM main
+VAR
+    a : DINT;
+    b : DINT;
+    c : STRING;
+    result : DINT;
+END_VAR
+    result := ADD(a, b, c);
+END_PROGRAM",
+        Problem::FunctionCallArgTypeMismatch
+    );
+
+    rule_ctx_err1!(
+        apply_when_mux_fourth_input_mismatch_then_error,
+        "
+PROGRAM main
+VAR
+    a : DINT;
+    s : STRING;
+    result : DINT;
+END_VAR
+    result := MUX(0, a, a, a, s);
+END_PROGRAM",
+        Problem::FunctionCallArgTypeMismatch
+    );
+
+    // NOT(x) parses as the unary operator; the named-argument spelling is the
+    // one that reaches the function signature.
+    rule_ctx_ok!(
+        apply_when_not_function_form_on_word_then_ok,
+        "
+PROGRAM main
+VAR
+    a : WORD;
+    result : WORD;
+END_VAR
+    result := NOT(IN := a);
 END_PROGRAM"
     );
 
@@ -762,86 +723,6 @@ END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
-    #[test]
-    fn are_types_compatible_when_exact_match_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("INT"),
-            &TypeName::from("INT"),
-            &opts,
-        ));
-    }
-
-    #[test]
-    fn are_types_compatible_when_any_int_to_int_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("INT"),
-            &TypeName::from("ANY_INT"),
-            &opts,
-        ));
-    }
-
-    #[test]
-    fn are_types_compatible_when_any_int_to_dint_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("DINT"),
-            &TypeName::from("ANY_INT"),
-            &opts,
-        ));
-    }
-
-    #[test]
-    fn are_types_compatible_when_any_real_to_real_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("REAL"),
-            &TypeName::from("ANY_REAL"),
-            &opts,
-        ));
-    }
-
-    #[test]
-    fn are_types_compatible_when_any_real_to_lreal_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("LREAL"),
-            &TypeName::from("ANY_REAL"),
-            &opts,
-        ));
-    }
-
-    #[test]
-    fn are_types_compatible_when_any_int_to_real_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("REAL"),
-            &TypeName::from("ANY_INT"),
-            &opts,
-        ));
-    }
-
-    #[test]
-    fn are_types_compatible_when_any_int_to_lreal_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("LREAL"),
-            &TypeName::from("ANY_INT"),
-            &opts,
-        ));
-    }
-
-    #[test]
-    fn are_types_compatible_when_dint_to_int_then_false() {
-        let opts = CompilerOptions::default();
-        assert!(!are_types_compatible(
-            &TypeName::from("INT"),
-            &TypeName::from("DINT"),
-            &opts,
-        ));
-    }
-
     rule_ctx_ok!(
         apply_when_bare_int_literal_arg_to_real_param_then_ok,
         "
@@ -1071,58 +952,6 @@ END_VAR
     result := TAKES_INT(y);
 END_PROGRAM"
     );
-
-    #[test]
-    fn are_types_compatible_when_int_to_dint_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("DINT"),
-            &TypeName::from("INT"),
-            &opts,
-        ));
-    }
-
-    #[test]
-    fn are_types_compatible_when_usint_to_int_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("INT"),
-            &TypeName::from("USINT"),
-            &opts,
-        ));
-    }
-
-    // --- Standard widening tests (ADR-0031) ---
-
-    #[test]
-    fn are_types_compatible_when_int_to_real_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("REAL"),
-            &TypeName::from("INT"),
-            &opts,
-        ));
-    }
-
-    #[test]
-    fn are_types_compatible_when_dint_to_real_then_false() {
-        let opts = CompilerOptions::default();
-        assert!(!are_types_compatible(
-            &TypeName::from("REAL"),
-            &TypeName::from("DINT"),
-            &opts,
-        ));
-    }
-
-    #[test]
-    fn are_types_compatible_when_byte_to_word_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("WORD"),
-            &TypeName::from("BYTE"),
-            &opts,
-        ));
-    }
 
     // --- Integration tests for new widening cases ---
 
@@ -1475,8 +1304,10 @@ END_PROGRAM"
     /// on, and asserts the expected outcome; each row still runs as an
     /// individually-named test.
     #[rstest]
-    // Verified permissive against real TcXaeShell despite equal width -- see
-    // twincat-status.md, "Resolved: UDINT -> DWORD implicit conversion".
+    // UDINT -> DWORD is allowed even though the two are the same width, so it
+    // is a reinterpretation rather than a widening. Real TcXaeShell accepts it,
+    // which is why the rule is permissive here; ADR-0031 sets the cross-family
+    // policy but does not speak to the equal-width case.
     #[case::dword_target_assigned_udint_var_ok(
         "
 PROGRAM main
@@ -1550,56 +1381,178 @@ END_VAR
 END_PROGRAM"
     );
 
-    // --- are_types_compatible: generic expected (stdlib parameters) ---
+    // ---------------------------------------------------------------------
+    // METHOD scoping.
+    // ---------------------------------------------------------------------
+
+    fn apply_with_methods(program: &str) -> crate::result::SemanticResult {
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let (library, context) =
+            crate::test_helpers::parse_and_resolve_types_with_options(program, &options);
+        super::apply(&library, &context, &options)
+    }
+
+    /// A method's local belongs to the method. It used to be recorded
+    /// against the enclosing function block, so it overwrote a field of
+    /// the same name for every method compiled after it -- and the
+    /// mismatch below was accepted because `v` was still recorded as the
+    /// `REAL` from `A`.
+    #[test]
+    fn apply_when_method_local_shadows_field_then_sibling_method_uses_field_type() {
+        let errors = apply_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+VAR
+    v : INT;
+END_VAR
+METHOD A
+VAR
+    v : REAL;
+END_VAR
+    v := 1.5;
+END_METHOD
+METHOD B
+    v := 2.5;
+END_METHOD
+END_FUNCTION_BLOCK",
+        )
+        .unwrap_err();
+
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.code == Problem::AssignmentTypeMismatch.code()),
+            "expected an assignment type mismatch on the INT field, got {errors:?}"
+        );
+    }
+
+    /// A method's locals are still checked against their own declared
+    /// types once they live in the method's own scope.
+    #[test]
+    fn apply_when_method_local_assigned_wrong_type_then_error() {
+        let errors = apply_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+METHOD A
+VAR
+    b : BOOL;
+    i : INT;
+END_VAR
+    b := i;
+END_METHOD
+END_FUNCTION_BLOCK",
+        )
+        .unwrap_err();
+
+        assert!(errors
+            .iter()
+            .any(|d| d.code == Problem::AssignmentTypeMismatch.code()));
+    }
+
+    /// A method reading the instance's field is not a mismatch: the
+    /// method scope nests inside the function block's.
+    #[test]
+    fn apply_when_method_assigns_field_from_matching_local_then_ok() {
+        assert!(apply_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+VAR
+    speed : INT;
+END_VAR
+METHOD SetSpeed
+VAR_INPUT
+    newSpeed : INT;
+END_VAR
+    speed := newSpeed;
+END_METHOD
+END_FUNCTION_BLOCK",
+        )
+        .is_ok());
+    }
+
+    // ---------------------------------------------------------------------
+    // Result variables. A declaration's own name is an assignment target.
+    // ---------------------------------------------------------------------
+
+    rule_ctx_err_code!(
+        apply_when_function_result_assigned_wrong_type_then_error,
+        "
+FUNCTION GetFlag : BOOL
+VAR
+    n : INT;
+END_VAR
+    GetFlag := n;
+END_FUNCTION",
+        Problem::AssignmentTypeMismatch,
+    );
+
+    rule_ctx_ok!(
+        apply_when_function_result_assigned_correct_type_then_ok,
+        "
+FUNCTION GetN : INT
+VAR
+    n : INT;
+END_VAR
+    GetN := n;
+END_FUNCTION"
+    );
 
     #[test]
-    fn are_types_compatible_when_any_real_expected_real_actual_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("ANY_REAL"),
-            &TypeName::from("REAL"),
-            &opts,
-        ));
+    fn apply_when_method_result_assigned_wrong_type_then_error() {
+        let errors = apply_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+METHOD GetFlag : BOOL
+VAR
+    n : INT;
+END_VAR
+    GetFlag := n;
+END_METHOD
+END_FUNCTION_BLOCK",
+        )
+        .unwrap_err();
+
+        assert!(errors
+            .iter()
+            .any(|d| d.code == Problem::AssignmentTypeMismatch.code()));
     }
 
     #[test]
-    fn are_types_compatible_when_any_real_expected_bool_actual_then_false() {
-        let opts = CompilerOptions::default();
-        assert!(!are_types_compatible(
-            &TypeName::from("ANY_REAL"),
-            &TypeName::from("BOOL"),
-            &opts,
-        ));
+    fn apply_when_method_result_assigned_correct_type_then_ok() {
+        assert!(apply_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+METHOD GetN : INT
+VAR
+    n : INT;
+END_VAR
+    GetN := n;
+END_METHOD
+END_FUNCTION_BLOCK",
+        )
+        .is_ok());
     }
 
+    /// A method with no return type has no result variable, so its name
+    /// is not an assignment target here either. The assignment is
+    /// rejected earlier, by `rule_use_declared_symbolic_var`; this pins
+    /// that this rule adds no target type for it.
     #[test]
-    fn are_types_compatible_when_any_num_expected_int_actual_then_true() {
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("ANY_NUM"),
-            &TypeName::from("INT"),
-            &opts,
-        ));
-    }
-
-    #[test]
-    fn are_types_compatible_when_any_real_expected_any_int_actual_then_true() {
-        // Untyped integer literal (ANY_INT) inferred as real (ADR-0028).
-        let opts = CompilerOptions::default();
-        assert!(are_types_compatible(
-            &TypeName::from("ANY_REAL"),
-            &TypeName::from("ANY_INT"),
-            &opts,
-        ));
-    }
-
-    #[test]
-    fn are_types_compatible_when_any_int_expected_any_real_actual_then_false() {
-        let opts = CompilerOptions::default();
-        assert!(!are_types_compatible(
-            &TypeName::from("ANY_INT"),
-            &TypeName::from("ANY_REAL"),
-            &opts,
-        ));
+    fn apply_when_method_has_no_return_type_then_name_is_not_a_target() {
+        assert!(apply_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+METHOD DoThing
+VAR
+    n : INT;
+END_VAR
+    DoThing := n;
+END_METHOD
+END_FUNCTION_BLOCK",
+        )
+        .is_ok());
     }
 }

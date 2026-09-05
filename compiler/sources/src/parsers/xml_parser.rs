@@ -25,7 +25,7 @@ use crate::xml::{position::parse_plcopen_xml, transform::transform_project};
 /// Returns a `Diagnostic` if:
 /// - The XML is malformed (P0006)
 /// - The XML doesn't conform to PLCopen schema (P0007)
-/// - An unsupported body language is used (P9999 - not yet implemented)
+/// - An unsupported body language is used (P9003)
 pub fn parse(
     content: &str,
     file_id: &FileId,

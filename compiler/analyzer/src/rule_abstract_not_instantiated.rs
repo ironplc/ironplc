@@ -4,8 +4,6 @@
 //! An `ABSTRACT` function block exists only to be extended via
 //! `EXTENDS` -- it cannot be instantiated directly.
 //!
-//! See `specs/plans/2026-07-20-twincat-abstract-instantiation.md`.
-//!
 //! Deliberately works directly off the AST rather than threading
 //! `is_abstract` through `IntermediateType::FunctionBlock` -- by the
 //! time semantic rules run, a `VAR`'s initializer has already been
@@ -42,6 +40,7 @@
 //! ```
 
 use std::collections::HashSet;
+use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::*,
@@ -51,7 +50,11 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -76,16 +79,13 @@ pub fn apply(
         return Ok(());
     }
 
-    let mut visitor = RuleAbstractNotInstantiated {
-        abstract_fbs,
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleAbstractNotInstantiated {
+            abstract_fbs,
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleAbstractNotInstantiated {
@@ -93,10 +93,16 @@ struct RuleAbstractNotInstantiated {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl Visitor<Diagnostic> for RuleAbstractNotInstantiated {
+impl DiagnosticVisitor for RuleAbstractNotInstantiated {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+impl Visitor<Infallible> for RuleAbstractNotInstantiated {
     type Value = ();
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let InitialValueAssignmentKind::FunctionBlock(fb_init) = &node.initializer {
             if self.abstract_fbs.contains(&fb_init.type_name) {
                 self.diagnostics.push(Diagnostic::problem(

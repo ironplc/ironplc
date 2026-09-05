@@ -13,6 +13,7 @@ IronPLC uses [just](https://github.com/casey/just) as its command runner. All bu
 - **Root `justfile`**: Cross-component tasks (CI simulation, versioning, end-to-end tests)
 - **`compiler/justfile`**: Compiler build, test, coverage, lint, package
 - **`docs/justfile`**: Documentation build and publishing
+- **`specs/justfile`**: Checks over the specs themselves (ADR numbering, plan citations)
 - **`integrations/vscode/justfile`**: VS Code extension tasks
 - **`playground/justfile`**: Playground build, serve, and CI
 
@@ -83,6 +84,7 @@ Before creating a PR, verify:
 - [ ] For VS Code extension changes: `cd integrations/vscode && just ci`
 - [ ] For documentation changes: `cd docs && just`
 - [ ] For playground changes: `cd playground && just`
+- [ ] For changes under `specs/`: `cd specs && just`
 
 ## Most Common Commands
 

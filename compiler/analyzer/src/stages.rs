@@ -14,17 +14,18 @@ use crate::{
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
-    rule_abstract_not_instantiated, rule_bit_access_range, rule_case_bit_string_label,
+    rule_abstract_not_instantiated, rule_assignment_aggregate_type_compat,
+    rule_bit_and_partial_access_range, rule_case_bit_string_label, rule_constant_range,
     rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
     rule_enumeration_values_unique, rule_extends_field_duplicated,
     rule_function_block_call_unsupported, rule_function_block_invocation,
-    rule_function_call_declared, rule_function_call_type_check,
-    rule_mixed_located_var_declarations, rule_no_top_level_var_global, rule_pou_hierarchy,
-    rule_program_task_definition_exists, rule_ref_to, rule_stdlib_type_redefinition,
-    rule_string_encoding_compat, rule_struct_initializer_expression_allowed,
-    rule_task_names_unique, rule_unsupported_extension, rule_unsupported_stdlib_type,
-    rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
-    rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
+    rule_function_call_declared, rule_function_call_type_check, rule_method_call_declared,
+    rule_mixed_located_var_declarations, rule_no_top_level_var_global,
+    rule_operator_operand_type_check, rule_pou_hierarchy, rule_program_task_definition_exists,
+    rule_ref_to, rule_stdlib_type_redefinition, rule_string_encoding_compat,
+    rule_struct_initializer_expression_allowed, rule_task_names_unique, rule_unsupported_extension,
+    rule_unsupported_stdlib_type, rule_use_declared_enumerated_value,
+    rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
     semantic_context::SemanticContext,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
@@ -145,10 +146,10 @@ pub fn resolve_types(
     // which codegen uses to skip unused functions.
     let (mut library, reachable) = xform_toposort_declarations::apply(library)?;
 
-    // Hard failure: declaration ordering and type-environment population is
-    // required for all subsequent transforms, and a failure here reflects a
-    // fundamentally broken declaration (not an unrelated one), so reverting
-    // the whole library on error is correct.
+    // Recoverable: a failure is collected as a diagnostic and analysis
+    // continues. A failure here reflects a fundamentally broken declaration
+    // (not an unrelated one), so reverting the whole library to its
+    // pre-transform state on error is correct.
     let fallback = library.clone();
     match xform_resolve_type_decl_environment::apply(library, &mut type_environment) {
         Ok(result) => library = result,
@@ -160,7 +161,14 @@ pub fn resolve_types(
 
     // Recoverable: an unresolvable declaration is diagnosed but does not
     // discard the rest of the library's successfully resolved declarations.
-    // See specs/plans/2026-08-02-partial-resolution-revert-on-unrelated-error.md.
+    //
+    // The reason this distinction exists is not one failing test. Corpus
+    // testing showed what looked like merge-order or file-pairing
+    // sensitivity: a source that analyzed cleanly alone failed once merged
+    // with unrelated code. The cause was never ordering -- a transform that
+    // accumulates diagnostics and then discards its whole result throws away
+    // every unrelated resolution it had already completed. A new transform
+    // that returns `Err` after a user-level diagnostic reintroduces that.
     let recoverable_xforms: Vec<
         fn(Library, &mut TypeEnvironment) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>,
     > = vec![
@@ -218,8 +226,7 @@ pub fn resolve_types(
 
     // Fold constant-expression VAR initializers (e.g. `scaled : LREAL := SCALE*4.0;`)
     // back into ordinary literal initializers, or diagnose. Must run before
-    // any other pass touches `InitialValueAssignmentKind::SimpleExpr` — see
-    // specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
+    // any other pass touches `InitialValueAssignmentKind::SimpleExpr`.
     // Recoverable: a diagnosed initializer is still normalized, so the
     // transformed library must be kept even when diagnostics are present —
     // reverting would leak `SimpleExpr` nodes to later passes.
@@ -335,6 +342,7 @@ pub(crate) fn semantic(
 ) -> SemanticResult {
     let functions: Vec<fn(&Library, &SemanticContext, &CompilerOptions) -> SemanticResult> = vec![
         rule_abstract_not_instantiated::apply,
+        rule_assignment_aggregate_type_compat::apply,
         rule_decl_struct_element_unique_names::apply,
         rule_decl_subrange_limits::apply,
         rule_enumeration_values_unique::apply,
@@ -343,8 +351,10 @@ pub(crate) fn semantic(
         rule_function_block_invocation::apply,
         rule_function_call_declared::apply,
         rule_function_call_type_check::apply,
+        rule_method_call_declared::apply,
         rule_program_task_definition_exists::apply,
         rule_no_top_level_var_global::apply,
+        rule_operator_operand_type_check::apply,
         rule_task_names_unique::apply,
         rule_stdlib_type_redefinition::apply,
         rule_string_encoding_compat::apply,
@@ -359,8 +369,9 @@ pub(crate) fn semantic(
         rule_var_decl_global_const_requires_external_const::apply,
         rule_mixed_located_var_declarations::apply,
         rule_pou_hierarchy::apply,
-        rule_bit_access_range::apply,
+        rule_bit_and_partial_access_range::apply,
         rule_case_bit_string_label::apply,
+        rule_constant_range::apply,
         rule_ref_to::apply,
     ];
 
@@ -407,6 +418,46 @@ mod tests {
         assert!(context.has_diagnostics());
     }
 
+    /// Issue #1566: a second file must not displace the first file's
+    /// diagnostics. Every undefined variable across both files is reported.
+    #[test]
+    fn analyze_when_semantic_errors_in_two_files_then_reports_all() {
+        let file_a = "
+PROGRAM a
+VAR
+  x : INT;
+END_VAR
+  x := AAA_ONE;
+  x := AAA_TWO;
+END_PROGRAM";
+
+        let file_b = "
+PROGRAM b
+VAR
+  y : INT;
+END_VAR
+  y := BBB_ONE;
+END_PROGRAM";
+
+        let options = CompilerOptions::default();
+        let library_a = parse_program(file_a, &FileId::from_string("a.st"), &options).unwrap();
+        let library_b = parse_program(file_b, &FileId::from_string("b.st"), &options).unwrap();
+
+        let (_library, context) = analyze(&[&library_a, &library_b], &options).unwrap();
+
+        let reported: Vec<&String> = context
+            .diagnostics()
+            .iter()
+            .flat_map(|d| &d.described)
+            .collect();
+        for expected in ["variable=AAA_ONE", "variable=AAA_TWO", "variable=BBB_ONE"] {
+            assert!(
+                reported.iter().any(|d| d.as_str() == expected),
+                "expected {expected}, got {reported:?}"
+            );
+        }
+    }
+
     #[test]
     fn analyze_2() {
         let lib = parse_shared_library("main.st");
@@ -447,8 +498,7 @@ END_FUNCTION_BLOCK";
     // A diagnosed constant-expression initializer must report only its own
     // problem. The initializer-fold transform used to be reverted when it
     // diagnosed, leaking `SimpleExpr` nodes to later rules and raising a
-    // P9998 internal error after every legitimate P4037. See
-    // specs/plans/2026-08-06-twincat-initializer-dialect-and-fold-revert-fixes.md.
+    // P9998 internal error after every legitimate P4037.
     // ---------------------------------------------------------------------
 
     #[test]
@@ -480,7 +530,6 @@ END_FUNCTION";
     // ---------------------------------------------------------------------
     // Don't revert a whole library's type resolution because one unrelated
     // declaration failed to resolve.
-    // See specs/plans/2026-08-02-partial-resolution-revert-on-unrelated-error.md.
     // ---------------------------------------------------------------------
 
     #[test]
@@ -516,7 +565,6 @@ END_FUNCTION_BLOCK
 
     // ---------------------------------------------------------------------
     // Constant-expression VAR initializers.
-    // See specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
     // ---------------------------------------------------------------------
 
     fn opts_with_constant_initializer_expressions() -> CompilerOptions {
@@ -575,7 +623,6 @@ END_FUNCTION_BLOCK";
 
     // ---------------------------------------------------------------------
     // FB-instance call-style initializer (distinct node).
-    // See specs/plans/2026-08-01-fb-call-style-initializer-distinct-node.md.
     // ---------------------------------------------------------------------
 
     #[test]
@@ -616,5 +663,80 @@ END_FUNCTION_BLOCK";
             !codes.contains(&Problem::ParentTypeNotDeclared.code()),
             "unexpected spurious P2011: {codes:?}"
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // THIS^ / SUPER^ (parsed, not analyzed or executed).
+    // ---------------------------------------------------------------------
+
+    /// A program using `THIS^` is rejected, and P9999 is among the reasons.
+    ///
+    /// Deliberately asserts presence rather than an exact diagnostic set:
+    /// several passes meet the construct and each says so, and pinning the
+    /// set would turn every later improvement into a test edit. What must
+    /// hold is that no pass quietly accepts it.
+    #[rstest::rstest]
+    #[case::this_field_write("    THIS^.count := 1;")]
+    #[case::super_field_read("    count := SUPER^.count;")]
+    #[case::this_method_call("    THIS^.Start();")]
+    fn analyze_when_self_ref_then_rejected_with_not_implemented(#[case] body: &str) {
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let program = format!(
+            "
+FUNCTION_BLOCK FB_Motor
+VAR
+    count : INT;
+END_VAR
+METHOD Start
+    count := 1;
+END_METHOD
+METHOD Run
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        );
+        let lib = parse_program(&program, &FileId::default(), &options).unwrap();
+        let (_library, context) = analyze(&[&lib], &options).unwrap();
+
+        let codes: Vec<&str> = context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert!(
+            codes.contains(&"P9999"),
+            "expected P9999 among diagnostics, got: {codes:?}"
+        );
+    }
+
+    /// The same function block without `THIS^` analyzes cleanly -- the new
+    /// arms must not report anything for programs that do not use it.
+    #[test]
+    fn analyze_when_no_self_ref_then_no_not_implemented() {
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let program = "
+FUNCTION_BLOCK FB_Motor
+VAR
+    count : INT;
+END_VAR
+METHOD Start
+    count := 1;
+END_METHOD
+END_FUNCTION_BLOCK";
+        let lib = parse_program(program, &FileId::default(), &options).unwrap();
+        let (_library, context) = analyze(&[&lib], &options).unwrap();
+
+        let codes: Vec<&str> = context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert!(codes.is_empty(), "expected no diagnostics, got: {codes:?}");
     }
 }

@@ -6,10 +6,13 @@
 //!
 //! The transformation succeeds when all ambiguous expression elements
 //! resolve to a declared type.
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::*;
-use ironplc_dsl::{common::*, core::Id};
+use ironplc_dsl::{
+    common::*,
+    core::{Id, Located},
+};
 use std::collections::{HashMap, HashSet};
 
 use crate::type_environment::TypeEnvironment;
@@ -218,6 +221,22 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                         // declaration which isn't available here. Default to None.
                         self.current_type = VariableType::None;
                     }
+                    SymbolicVariableKind::SelfRef(self_ref) => {
+                        // Assignment through THIS^/SUPER^. The target's type
+                        // comes from the enclosing function block's members,
+                        // which are not resolved yet -- report instead of
+                        // defaulting to None, which would silently bind any
+                        // late-bound value on the right-hand side to the
+                        // wrong type once the construct is supported.
+                        // See issue #1406.
+                        return Err(Diagnostic::not_implemented(Label::span(
+                            self_ref.span(),
+                            format!(
+                                "{} is recognized but its members are not yet resolved by IronPLC",
+                                self_ref.kind.spelling()
+                            ),
+                        )));
+                    }
                     SymbolicVariableKind::BitAccess(_ba) => {
                         // Assignment to a bit access like w.0 := value
                         // Determining the type requires looking up the variable
@@ -304,7 +323,7 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                 VariableType::FunctionBlock => {
                     // Function block variables are parsed as LateResolvedType, not FunctionBlock.
                     // If we reach this branch, it indicates an internal error.
-                    Err(Diagnostic::internal_error(file!(), line!()))
+                    Err(Diagnostic::internal_error())
                 }
                 VariableType::Subrange => Ok(self.resolve_late_bound(node.value)),
                 VariableType::Structure => Ok(self.resolve_late_bound(node.value)),

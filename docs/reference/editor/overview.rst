@@ -131,3 +131,19 @@ While the program is running, the code lens changes to :guilabel:`Stop` and
    :width: 600px
 
    Stop and Pause controls replace Run Program while the program executes.
+
+Debugging
+=========
+
+The extension debugs Structured Text programs. Set a breakpoint in the gutter
+and press :kbd:`F5` to pause the program on that line, step through it, and
+inspect variables by name and type.
+
+:guilabel:`Run Program` and debugging answer different questions.
+:guilabel:`Run Program` executes the program and shows you what it produced.
+The debugger stops the program mid-scan and shows you what it is doing.
+
+.. include:: /includes/debugging-in-development.rst
+
+See :doc:`debugging` for the launch configuration, the supported debug
+actions, and the current limits.

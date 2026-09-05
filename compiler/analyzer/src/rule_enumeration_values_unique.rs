@@ -23,6 +23,7 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 use std::collections::HashSet;
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -54,13 +55,13 @@ impl DiagnosticVisitor for RuleEnumerationValuesUnique {
     }
 }
 
-impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
+impl Visitor<Infallible> for RuleEnumerationValuesUnique {
     type Value = ();
 
     fn visit_enumeration_declaration(
         &mut self,
         node: &EnumerationDeclaration,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         match &node.spec_init.spec {
             SpecificationKind::Named(_) => Ok(()),
             SpecificationKind::Inline(spec) => {
