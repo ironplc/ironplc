@@ -2,7 +2,7 @@
 //! [`DebugHook`], call/return depth callbacks, and the re-entrant
 //! `run_round_debug` driver.
 
-use crate::common::{single_function_container, VmBuffers};
+use crate::common::{single_function_container, steel_thread_container, VmBuffers};
 use core::time::Duration;
 use ironplc_container::{opcode, ContainerBuilder, FunctionId, VarIndex};
 use ironplc_vm::{
@@ -151,26 +151,12 @@ fn run_round_debug_when_call_then_call_and_return_callbacks_bracket_callee() {
     assert!(func2_instr_idxs.iter().all(|&i| i < return_to_scan_idx));
 }
 
-/// Steel-thread scan: x := 10; y := x + 32. Used for breakpoint tests.
-/// Offsets: LOAD_CONST\@0 STORE_VAR x\@3 LOAD_VAR x\@6 LOAD_CONST\@9
-/// ADD\@12 STORE_VAR y\@13 RET_VOID\@16.
-fn steel_thread_scan() -> Vec<u8> {
-    #[rustfmt::skip]
-    let bytecode = vec![
-        opcode::LOAD_CONST_I32, 0x00, 0x00,
-        opcode::STORE_VAR_I32,  0x00, 0x00,
-        opcode::LOAD_VAR_I32,   0x00, 0x00,
-        opcode::LOAD_CONST_I32, 0x01, 0x00,
-        opcode::ADD_I32,
-        opcode::STORE_VAR_I32,  0x01, 0x00,
-        opcode::RET_VOID,
-    ];
-    bytecode
-}
-
 #[test]
 fn run_round_debug_when_breakpoint_in_entry_then_pauses_there_and_resumes_to_completion() {
-    let c = single_function_container(&steel_thread_scan(), 2, &[10, 32]);
+    // Steel-thread scan: x := 10; y := x + 32. Its bytecode offsets
+    // (documented on `steel_thread_bytecode`) are what the breakpoint at 6
+    // below refers to.
+    let c = steel_thread_container();
     let mut b = VmBuffers::from_container(&c);
     let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
 
