@@ -58,13 +58,14 @@ The return type matches the input type. ``MUL`` accepts ``SINT``,
      - Description
    * - Return value
      - ``ANY_NUM``
-     - The product of IN1 and IN2. Same type as the inputs.
+     - The product of all inputs. Same type as the inputs.
 
 Description
 -----------
 
-Returns *IN1* multiplied by *IN2*. ``MUL(a, b)`` is the functional
-form of the ``*`` operator: ``a * b``. Both forms are equivalent.
+Returns the product of all inputs. ``MUL(a, b)`` is the functional form
+of the ``*`` operator: ``a * b``. Both forms are equivalent, and
+``MUL(a, b, c)`` is ``a * b * c``.
 
 For integer types, overflow behavior wraps around (modular arithmetic).
 
@@ -74,8 +75,9 @@ Example
 .. playground-with-program::
    :vars: result : DINT;
 
-   result := MUL(6, 7);   (* result = 42 *)
-   result := 6 * 7;       (* result = 42, operator form *)
+   result := MUL(6, 7);      (* result = 42 *)
+   result := MUL(2, 3, 7);   (* result = 42 *)
+   result := 6 * 7;          (* result = 42, operator form *)
 
 See Also
 --------
