@@ -7,7 +7,7 @@
 use ironplc_analyzer::IntermediateType;
 use ironplc_container::opcode;
 use ironplc_container::CharWidth;
-use ironplc_dsl::common::ConstantKind;
+use ironplc_dsl::common::{ConstantKind, ElementaryTypeName};
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
@@ -105,7 +105,7 @@ fn string_expr_char_width(ctx: &CompileContext, expr: &Expr) -> Result<CharWidth
         }
         ExprKind::Expression(inner) => string_expr_char_width(ctx, inner),
         ExprKind::Variable(variable) => variable_char_width(ctx, variable),
-        ExprKind::Function(func) => function_char_width(ctx, func),
+        ExprKind::Function(func) => function_char_width(ctx, expr, func),
         _ => Err(unknown_string_encoding(
             expr.span(),
             "a string expression of an unexpected kind",
@@ -193,8 +193,15 @@ fn string_char_width_of(field_type: &IntermediateType) -> Option<CharWidth> {
 /// Returns the encoding of a function call's string result.
 ///
 /// The standard string functions return the encoding of their first string
-/// argument; a user-defined function declares its return type.
-fn function_char_width(ctx: &CompileContext, func: &Function) -> Result<CharWidth, Diagnostic> {
+/// argument; a user-defined function declares its return type. Every other
+/// call that yields a string -- the conversions, which build a Latin-1 string
+/// -- says so in the return type the analyzer gave it, which is what
+/// `resolved_type` on the enclosing expression carries.
+fn function_char_width(
+    ctx: &CompileContext,
+    expr: &Expr,
+    func: &Function,
+) -> Result<CharWidth, Diagnostic> {
     let name = func.name.lower_case();
     match name.as_str() {
         "concat" | "left" | "right" | "mid" | "insert" | "delete" | "replace" => {
@@ -211,12 +218,27 @@ fn function_char_width(ctx: &CompileContext, func: &Function) -> Result<CharWidt
             .get(name.as_str())
             .and_then(|info| info.return_string_info.as_ref())
             .map(|info| info.char_width)
+            .or_else(|| resolved_string_char_width(expr))
             .ok_or_else(|| {
                 unknown_string_encoding(
                     func.name.span(),
                     "a function call that does not return a string",
                 )
             }),
+    }
+}
+
+/// The encoding an expression's analyzer-assigned type names, when it names a
+/// string type at all.
+fn resolved_string_char_width(expr: &Expr) -> Option<CharWidth> {
+    match expr
+        .resolved_type
+        .as_ref()
+        .and_then(|t| ElementaryTypeName::try_from(&t.name).ok())?
+    {
+        ElementaryTypeName::STRING => Some(CharWidth::Narrow),
+        ElementaryTypeName::WSTRING => Some(CharWidth::Wide),
+        _ => None,
     }
 }
 
