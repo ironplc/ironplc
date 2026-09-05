@@ -680,7 +680,6 @@ mod tests {
 
     // ---------------------------------------------------------------------
     // FUNCTION_BLOCK EXTENDS dependency edge.
-    // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
     // ---------------------------------------------------------------------
 
     fn parse_with_fb_inheritance(program: &str) -> Library {
@@ -1187,7 +1186,6 @@ END_TYPE";
 
     // ---------------------------------------------------------------------
     // Array element type dependency edge for array-typed struct fields.
-    // See specs/plans/2026-08-16-array-element-type-decl-order.md.
     // ---------------------------------------------------------------------
 
     /// Returns the position of the named structure declaration in the sorted

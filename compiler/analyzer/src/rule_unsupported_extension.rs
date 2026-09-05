@@ -1,11 +1,10 @@
 //! Semantic rule that flags non-standard language extensions that
 //! are parsed and represented in the AST but not yet semantically analyzed.
 //!
-//! See `ironplc_dsl::extension::LanguageExtension`,
-//! `specs/plans/2026-07-18-twincat-extends-implements-interface.md`, and
-//! `specs/plans/2026-07-20-twincat-extends-field-inheritance.md` (plain
-//! `EXTENDS` with no `IMPLEMENTS`/`ABSTRACT` no longer flags, since field
-//! inheritance is fully resolved).
+//! See `ironplc_dsl::extension::LanguageExtension` and
+//! `specs/design/beckhoff-twincat-dialect.md` §1.4. Plain `EXTENDS` with no
+//! `IMPLEMENTS`/`ABSTRACT` no longer flags, since field inheritance is
+//! fully resolved.
 //!
 //! ## Fails
 //!
@@ -24,6 +23,7 @@ use ironplc_dsl::{
     extension::LanguageExtension,
     visitor::Visitor,
 };
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -68,19 +68,18 @@ impl RuleUnsupportedExtension {
     }
 }
 
-impl Visitor<Diagnostic> for RuleUnsupportedExtension {
+impl Visitor<Infallible> for RuleUnsupportedExtension {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         // Most function blocks are standard IEC 61131-3 — only flag when
         // something genuinely unsupported is present. Plain EXTENDS (no
         // IMPLEMENTS, not ABSTRACT) is no longer flagged: field
-        // inheritance through the EXTENDS chain is fully resolved (see
-        // specs/plans/2026-07-20-twincat-extends-field-inheritance.md),
-        // so there's nothing left unsupported for that shape. IMPLEMENTS
+        // inheritance through the EXTENDS chain is fully resolved, so
+        // there's nothing left unsupported for that shape. IMPLEMENTS
         // (interface dispatch) and ABSTRACT (instantiation-legality
         // enforcement) remain unimplemented and still flag.
         if let Some(oop) = &node.oop {
@@ -94,7 +93,7 @@ impl Visitor<Diagnostic> for RuleUnsupportedExtension {
     fn visit_self_ref_variable(
         &mut self,
         node: &ironplc_dsl::textual::SelfRefVariable,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         // A SelfRefVariable only exists when THIS^/SUPER^ was written, so
         // it is always an extension. Parsed and rendered, but neither
         // analyzed nor executed.
@@ -105,7 +104,7 @@ impl Visitor<Diagnostic> for RuleUnsupportedExtension {
     fn visit_interface_declaration(
         &mut self,
         node: &InterfaceDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         // An InterfaceDeclaration only exists when INTERFACE syntax was
         // used, so it is always an extension.
         self.flag(node);
@@ -139,7 +138,6 @@ END_FUNCTION_BLOCK"
 
     // Plain EXTENDS (no IMPLEMENTS, not ABSTRACT) no longer flags --
     // field inheritance through the EXTENDS chain is fully resolved.
-    // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
     rule_ok_with!(
         apply_when_plain_extends_then_ok,
         opts_with_fb_inheritance(),

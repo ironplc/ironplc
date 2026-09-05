@@ -24,8 +24,9 @@ fn adr_options() -> CompilerOptions {
     }
 }
 
-/// The plan's Goal example: an FB instance binding a pointer to one of its
-/// own members and reading it back through `^`. The member value is assigned
+/// The Goal example from `specs/design/adr-and-pointer-to.md`: an FB instance
+/// binding a pointer to one of its own members and reading it back through
+/// `^`. The member value is assigned
 /// in the body because declared initial values are not yet applied to user
 /// FB instance fields (a pre-existing gap unrelated to `ADR`).
 ///

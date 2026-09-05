@@ -10,7 +10,9 @@ This design implements [ADR-0012](../adrs/0012-accept-vendor-dialect-files-as-is
 
 **In scope (parsing):** Accept all syntactically valid TwinCAT ST constructs within `.TcPOU`, `.TcGVL`, and `.TcDUT` files and represent them in the AST without parse errors.
 
-**Out of scope (future):** Semantic analysis of TwinCAT-specific constructs (e.g., resolving `EXTENDS` hierarchies, type checking `POINTER TO` dereferences, method dispatch). Standard IEC 61131-3 semantic analysis continues to run on the standard-compliant portions.
+**Out of scope (future):** Semantic analysis of the TwinCAT-specific constructs not listed below (e.g. type checking `POINTER TO` dereferences). Standard IEC 61131-3 semantic analysis continues to run on the standard-compliant portions.
+
+Two constructs originally listed here have since been implemented and are no longer out of scope. Field inheritance through the `EXTENDS` chain is fully resolved, so a plain `EXTENDS` with no `IMPLEMENTS` and no `ABSTRACT` is not flagged as an unsupported extension. Static method dispatch is implemented as Phase 1 of [ADR-0041](../adrs/0041-staged-method-and-interface-dispatch.md); dynamic dispatch through references, pointers, and interface values is Phase 2 and is not decided yet.
 
 ## Current State
 
@@ -129,9 +131,13 @@ INTERFACE I_Drivable
 END_INTERFACE
 ```
 
-In TwinCAT XML, interfaces are a separate object type (`<Itf>` element instead of `<POU>`).
+In TwinCAT XML, interfaces are a separate object type (`<Itf>` element instead of `<POU>`), stored in its own file with the `.TcIO` extension.
 
-**Design:** Add `Interface` and `EndInterface` as keyword tokens. The parser recognizes `INTERFACE name ... END_INTERFACE` as a top-level declaration containing method signatures (method declarations without bodies). In the AST, interfaces are a new `LibraryElementKind::Interface`.
+**Design:** Add `Interface` and `EndInterface` as keyword tokens. The parser recognizes `INTERFACE name ... END_INTERFACE` as a top-level declaration. In the AST, interfaces are a new `LibraryElementKind::Interface`.
+
+**As shipped — header only.** Only the interface header is parsed: the name and an optional `EXTENDS` list. Method and property signatures inside the interface body are not parsed, and TwinCAT stores each as a separate `<Method>`/`<Property>` XML element that is currently ignored.
+
+In the type-declaration environment an interface is modelled as an **empty structure**, because IronPLC has no representation for interface members today. This is deliberately a placeholder: it is enough for a variable declared with an interface type to resolve rather than failing with "type not declared", and it is not a claim that member or method access through an interface works. Dispatch through an interface value is Phase 2 of [ADR-0041](../adrs/0041-staged-method-and-interface-dispatch.md) and is not decided yet.
 
 The `twincat_parser.rs` module needs to handle `<Itf>` elements in addition to `<POU>`, `<GVL>`, and `<DUT>`.
 
@@ -309,7 +315,23 @@ IF (ptr <> 0 AND_THEN ptr^ = 99) THEN
 END_IF;
 ```
 
-**Design:** Add `AndThen` and `OrElse` as keyword tokens. These are binary operators with the same precedence as `AND` and `OR` respectively. In the AST, they map to new boolean operator variants. Semantically they are identical to `AND`/`OR` except for evaluation order, which is a code generation concern.
+**Design:** Add `AndThen` and `OrElse` as keyword tokens, demoted to identifiers unless `--allow-short-circuit-operators` is set. These are binary operators with the same precedence as `AND` and `OR` respectively. In the AST they are `CompareOp::AndThen` and `CompareOp::OrElse` — deliberately *not* normalized to `And`/`Or`, since the evaluation-order difference is real and externally visible. Type resolution treats them like `AND`/`OR`.
+
+**Code generation:** Each lowers to a conditional branch around the right operand, so the right operand is not evaluated when the left one already decides the answer:
+
+```text
+    <left>                  ; push left
+    JMP_IF_NOT alt          ; pops left
+    <then-arm>              ; AND_THEN: <right>     OR_ELSE: LOAD_TRUE
+    JMP end
+alt:
+    <else-arm>              ; AND_THEN: LOAD_FALSE  OR_ELSE: <right>
+end:
+```
+
+Exactly one arm runs, so exactly one value reaches the merge. The emitter tracks operand-stack depth in emission order and would otherwise charge for both arms, so it resets to the pre-arm depth between them; what ships is verified against the real control-flow graph by the stack-balance pass.
+
+Short-circuiting applies only when both operands are `BOOL`. `AND`/`OR` are also the bit-string operators, and skipping the right operand has no meaning for a bit-string result — short-circuiting `2#1010 AND_THEN 2#0110` would yield `2#0110` where the bitwise answer is `2#0010` — so non-`BOOL` operands compile to the same eager bitwise op `AND`/`OR` produce.
 
 #### 3.5 `OVERRIDE` and `CONTINUE` Keywords
 
@@ -705,8 +727,9 @@ pub enum StmtKind {
 ### New Operator Variants
 
 ```rust
-// For AND_THEN / OR_ELSE short-circuit operators:
-pub enum Operator {
+// For AND_THEN / OR_ELSE short-circuit operators. These join the other
+// boolean/bitwise combinators, which live in CompareOp rather than Operator:
+pub enum CompareOp {
     // ... existing variants ...
     AndThen,   // AND_THEN — short-circuit AND
     OrElse,    // OR_ELSE — short-circuit OR

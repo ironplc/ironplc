@@ -161,7 +161,7 @@ impl IronPlcMcp {
     /// Upstream and downstream POU dependencies.
     #[tool(
         name = "pou_lineage",
-        description = "Upstream and downstream POU dependencies. Use this to decide which other POUs to pull into context before editing one."
+        description = "Upstream and downstream POU dependencies, including standard library POUs, each tagged with whether it comes from the supplied sources or the standard library. Use this to decide which other POUs to pull into context before editing one."
     )]
     fn pou_lineage(
         &self,

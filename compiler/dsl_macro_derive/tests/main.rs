@@ -1,5 +1,5 @@
 #[test]
 fn tests() {
-    trybuild::TestCases::new();
-    //t.pass("tests/struct-buildins.rs")
+    let t = trybuild::TestCases::new();
+    t.compile_fail("tests/fail/*.rs");
 }

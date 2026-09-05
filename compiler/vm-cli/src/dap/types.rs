@@ -1,7 +1,7 @@
 //! Hand-rolled Debug Adapter Protocol message types for the v1 server.
 //!
-//! These model only the small v1 surface (see
-//! `specs/plans/2026-06-25-dap-server-scaffold.md`): the handshake, line
+//! These model only the small v1 surface (see `specs/design/debugger-support.md`
+//! §"v1 Scope Decisions"): the handshake, line
 //! breakpoints, one synthetic thread, stack/scope/variable inspection, and the
 //! four execution-control commands. Everything wider — logpoints, `evaluate`,
 //! custom `ironplc/*` requests, variable forcing — is deferred and not modelled
@@ -11,12 +11,9 @@
 //! effectively unmaintained, and used by nothing mainstream; the established
 //! Rust DAP implementations (Helix, Lapce, probe-rs) all define their own
 //! types. Our v1 surface is a handful of small `serde` structs — trivial to own
-//! and not worth an alpha dependency on the public build. See the plan's
-//! "DAP types: hand-rolled" section for the full rationale.
+//! and not worth an alpha dependency on the public build.
 //!
-//! The types are consumed by the request-dispatch loop that lands in a later
-//! commit (Phase 4.4); for this commit they are exercised only by the wire
-//! round-trip unit tests below.
+//! The types are consumed by the request-dispatch loop in [`super::server`].
 #![allow(dead_code)]
 
 use ironplc_container::{SourceColumn, SourceLine};
@@ -211,9 +208,21 @@ pub struct LaunchRequestArguments {
     #[serde(default)]
     pub stop_on_entry: bool,
     /// Upper bound on scan cycles, to bound a runaway program (the
-    /// single-threaded loop has no interactive `pause`).
+    /// single-threaded loop has no interactive `pause`). Absent means no
+    /// bound; there is no sentinel value that spells "unlimited".
+    ///
+    /// Signed so a negative value parses and can be rejected by name in
+    /// `launch::check_scan_limit`. Deserializing straight into an unsigned
+    /// count would fail the *whole* argument parse on `-1`, which the server
+    /// can only report as the missing-`program` case.
     #[serde(default)]
-    pub scan_limit: Option<u64>,
+    pub scan_limit: Option<i64>,
+    /// Cycle time to assume for a program whose task declares no `INTERVAL`,
+    /// in milliseconds. Defaults to 100 ms. A freewheeling task has no rate of
+    /// its own, so the debugger has nothing to advance program time by; the
+    /// session reports whichever value it used.
+    #[serde(default)]
+    pub freewheeling_interval_ms: Option<f64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -523,6 +532,16 @@ mod tests {
         assert_eq!(args.program, "demo.iplc");
         assert!(!args.stop_on_entry);
         assert!(args.scan_limit.is_none());
+    }
+
+    #[test]
+    fn launch_arguments_when_scan_limit_negative_then_parses_for_validation_to_reject() {
+        // A negative `scanLimit` must not fail the whole argument parse: the
+        // server would then report it as a missing `program` (see #1515).
+        let args: LaunchRequestArguments =
+            serde_json::from_value(json!({ "program": "demo.iplc", "scanLimit": -1 })).unwrap();
+        assert_eq!(args.program, "demo.iplc");
+        assert_eq!(args.scan_limit, Some(-1));
     }
 
     #[test]

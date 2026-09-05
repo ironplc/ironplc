@@ -465,11 +465,13 @@ pub enum TokenType {
     #[token("AND", ignore(case))]
     #[token("&")]
     And,
-    // CODESYS/TwinCAT short-circuit boolean operator (Beckhoff/CODESYS
+    // CODESYS/TwinCAT short-circuit boolean operators (Beckhoff/CODESYS
     // origin). Demoted to Identifier unless `allow_short_circuit_operators`
     // is set -- see xform_demote_keywords.rs.
     #[token("AND_THEN", ignore(case))]
     AndThen,
+    #[token("OR_ELSE", ignore(case))]
+    OrElse,
     #[token("=")]
     Equal,
     #[token("<>")]
@@ -663,6 +665,7 @@ impl TokenType {
             TokenType::Xor => "'XOR'",
             TokenType::And => "'AND' | '&'",
             TokenType::AndThen => "'AND_THEN'",
+            TokenType::OrElse => "'OR_ELSE'",
             TokenType::Equal => "'='",
             TokenType::NotEqual => "'<>'",
             TokenType::Less => "'<'",
@@ -880,6 +883,7 @@ mod tests {
             (Xor, "XOR"),
             (And, "AND"),
             (AndThen, "AND_THEN"),
+            (OrElse, "OR_ELSE"),
             (Equal, "="),
             (NotEqual, "<>"),
             (Less, "<"),

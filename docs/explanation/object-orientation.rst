@@ -13,8 +13,9 @@ the terminology the standard uses for them.
    The object-oriented syntax described here is recognized only when it is
    enabled; otherwise the keywords are ordinary identifiers. See
    :doc:`enabling-dialects-and-features` for the flag and dialects reference.
-   IronPLC currently *parses* this syntax but does not yet analyze or execute
-   it — a program that uses it reports
+   How far IronPLC takes each construct beyond parsing varies —
+   :doc:`/reference/language/object-orientation/index` gives the per-keyword
+   status, and what is not yet analyzed reports
    :doc:`P9999 </reference/compiler/problems/P9999>`. This page describes the
    language concepts; it is not a statement of what IronPLC executes today.
 
@@ -221,8 +222,12 @@ Terminology
        time.
 
 Beyond ``EXTENDS``, ``IMPLEMENTS``, ``ABSTRACT``, and ``INTERFACE``, Edition 3
-also defines ``METHOD``, ``PROPERTY``, ``OVERRIDE``, ``FINAL``, ``THIS``, and
-``SUPER`` for writing and refining methods. IronPLC does not parse those yet.
+also defines
+:doc:`METHOD </reference/language/object-orientation/method>`,
+:doc:`THIS and SUPER </reference/language/object-orientation/this-and-super>`,
+``PROPERTY``, ``OVERRIDE``, and ``FINAL`` for writing and refining methods.
+IronPLC parses ``METHOD``, ``THIS``, and ``SUPER``; it does not parse
+``PROPERTY``, ``OVERRIDE``, or ``FINAL`` yet.
 
 See Also
 ========

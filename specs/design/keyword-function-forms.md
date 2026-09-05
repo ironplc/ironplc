@@ -31,6 +31,49 @@ The PEG `expression()` precedence macro handles operator-vs-function disambiguat
 - **Analyzer:** No changes (signatures already registered).
 - **Codegen:** No changes (routing already exists).
 
+## Signatures and code generation
+
+Each function form is one row of the table in
+`compiler/analyzer/src/intermediates/operator_function_form.rs`: the function
+name, the operator it is a form of, the category every operand has, and whether
+the result is the operand type or `BOOL`. The analyzer derives the signature
+from the row, and codegen asks the row which operator to compile the call as.
+Neither side keeps a second copy, so the function form cannot accept a narrower
+set of operands than its operator, or compile to something other than it.
+
+The categories are those of IEC 61131-3. The bitwise boolean functions were
+once declared `BOOL`-only, which rejected `AND(w1, w2)` on `WORD` while
+`w1 AND w2` was accepted ([#1567](https://github.com/ironplc/ironplc/issues/1567)).
+`MOD` was once declared `ANY_NUM`, which let `MOD(r1, r2)` on `REAL` through
+analysis to fail in codegen, which has no floating-point remainder opcode
+([#1619](https://github.com/ironplc/ironplc/issues/1619)); IEC 61131-3 Table 24
+defines `MOD` over `ANY_INT` only.
+
+The operator spelling of `MOD` is held to the same row. The rule
+`rule_operator_operand_type_check` looks the row up by operator and checks each
+operand of `a MOD b` with the same type-compatibility predicate the
+function-call check applies to `MOD(a, b)`, so the two spellings agree by
+construction. It is the only operator checked this way: the operator spellings
+of `+`, `-`, `*` and `/` also compile for `TIME` and bit-string operands, and
+holding them to their rows is a separate decision
+([#1621](https://github.com/ironplc/ironplc/issues/1621)).
+
+**REQ-KF-analyzer-001** `ADD`, `SUB`, `MUL` and `DIV` accept two `ANY_NUM` operands and return the operand type.
+
+**REQ-KF-analyzer-002** `GT`, `GE`, `EQ`, `LE`, `LT` and `NE` accept two `ANY_ELEMENTARY` operands and return `BOOL`.
+
+**REQ-KF-analyzer-003** `AND`, `OR` and `XOR` accept two `ANY_BIT` operands (`BOOL`, `BYTE`, `WORD`, `DWORD`, `LWORD`) and return the operand type.
+
+**REQ-KF-analyzer-004** `NOT` accepts one `ANY_BIT` operand and returns the operand type.
+
+**REQ-KF-analyzer-005** An argument outside the category of the function form's operands is reported as P4026.
+
+**REQ-KF-analyzer-006** `MOD` accepts two `ANY_INT` operands and returns the operand type.
+
+**REQ-KF-analyzer-007** An operand of the `MOD` operator outside `ANY_INT` is reported as P4049, and an operand `MOD(a, b)` accepts, `a MOD b` accepts.
+
+**REQ-KF-codegen-001** A call to the function form of an operator, assigned to a variable of its result type, compiles to the same bytecode as the operator expression with the same operands.
+
 ## Testing
 
 - Add parser tests for each keyword-as-function-call (`MOD(a, b)`, `AND(a, b)`, `OR(a, b)`, `XOR(a, b)`).

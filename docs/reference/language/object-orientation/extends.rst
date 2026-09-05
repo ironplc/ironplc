@@ -3,9 +3,10 @@ EXTENDS
 =======
 
 ``EXTENDS`` derives a function block type from a single base type, so the
-derived type **inherits** the base type's variables (and, once supported,
-its methods). It also derives an interface from one or more base interfaces.
-This is the inheritance mechanism introduced in IEC 61131-3 Edition 3.
+derived type **inherits** the base type's variables and
+:doc:`methods <method>`. It also derives an interface from one or more base
+interfaces. This is the inheritance mechanism introduced in
+IEC 61131-3 Edition 3.
 
 .. |keyword| replace:: ``EXTENDS``
 .. |flag| replace:: ``--allow-fb-inheritance``
@@ -17,9 +18,12 @@ This is the inheritance mechanism introduced in IEC 61131-3 Edition 3.
    * - **IEC 61131-3**
      - Edition 3 (object-oriented programming)
    * - **Support**
-     - Parsed only — not yet analyzed or executed
-       (:doc:`P9999 </reference/compiler/problems/P9999>`). Enable with
-       ``--allow-fb-inheritance``; see
+     - Parsed and analyzed: an inherited variable resolves and type-checks
+       in the derived type. Code generation does not yet give a derived
+       type storage for what it inherits, so reading or writing an
+       inherited variable reports
+       :doc:`P4007 </reference/compiler/problems/P4007>` when compiled.
+       Enable with ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.
 
 Syntax
@@ -65,6 +69,7 @@ A function block type extends at most one base type.
 See Also
 --------
 
+- :doc:`method` — declare a method on a function block type
 - :doc:`implements` — provide the methods declared by an interface
 - :doc:`abstract` — mark a base type as not directly instantiable
 - :doc:`interface` — declare an interface

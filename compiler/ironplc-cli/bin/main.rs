@@ -165,9 +165,9 @@ struct FileArgs {
     #[arg(long)]
     allow_cross_family_widening: bool,
 
-    /// Allow IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) as an alias
-    /// for the short form `.n`. Enabled by `--dialect=iec61131-3-ed3` and
-    /// `--dialect=rusty`.
+    /// Allow IEC 61131-3:2013 partial-access syntax: the bit form `.%Xn` (an
+    /// alias for the short form `.n`) and the byte/word/dword/lword forms
+    /// `.%Bn`, `.%Wn`, `.%Dn`, `.%Ln`.
     #[arg(long)]
     allow_partial_access_syntax: bool,
 
@@ -176,7 +176,8 @@ struct FileArgs {
     #[arg(long)]
     allow_pragmas: bool,
 
-    /// Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension).
+    /// Allow the AND_THEN and OR_ELSE short-circuit boolean operators
+    /// (Beckhoff/CODESYS extension).
     /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_short_circuit_operators: bool,
@@ -212,9 +213,10 @@ struct FileArgs {
     #[arg(long)]
     allow_struct_initializer_expressions: bool,
 
-    /// Allow function-block inheritance syntax: EXTENDS/IMPLEMENTS on
-    /// FUNCTION_BLOCK and INTERFACE declarations. This is a dialect
-    /// extension not part of the IEC 61131-3 standard.
+    /// Allow IEC 61131-3:2013 object-oriented syntax: EXTENDS/IMPLEMENTS/
+    /// ABSTRACT on FUNCTION_BLOCK declarations, INTERFACE declarations,
+    /// METHOD declarations, and THIS/SUPER. Enabled by
+    /// `--dialect=iec61131-3-ed3` and by the vendor dialects.
     #[arg(long)]
     allow_fb_inheritance: bool,
 }

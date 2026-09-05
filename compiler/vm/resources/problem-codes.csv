@@ -21,3 +21,4 @@ V9014,EncodingMismatch,String operation operand encoding does not match expected
 V9015,InvalidCharWidth,String header or constant pool entry has an invalid char_width byte,tuple
 V9016,ProgramExceedsCallDepth,Container declares a call depth that exceeds the VM frame-stack buffer,struct
 V9017,ZeroCallDepth,Container declares a maximum call depth of zero which is invalid,none
+V9018,RegionSizeMismatch,Region copy source and destination differ in size,struct

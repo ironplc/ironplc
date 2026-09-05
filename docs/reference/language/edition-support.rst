@@ -44,10 +44,29 @@ Edition 3 introduced the following features, which require
    * - :ref:`NULL <ref-operator-null>`
      - Literal
      - Null reference value
-   * - :doc:`.%Xn <structured-text/bit-access>`
+   * - :doc:`.%Xn, .%Bn, .%Wn, .%Dn, .%Ln <structured-text/bit-access>`
      - Partial access
-     - Bit access via explicit partial-access syntax (equivalent to the
-       ``.n`` short form; byte/word/dword/lword forms are not yet supported)
+     - Select a bit (equivalent to the ``.n`` short form), byte, word,
+       double word, or long word of a wider value
+   * - :doc:`EXTENDS <object-orientation/extends>`
+     - Object orientation
+     - Derive a function block type or interface from a base type
+   * - :doc:`IMPLEMENTS <object-orientation/implements>`
+     - Object orientation
+     - Declare that a function block type provides one or more interfaces
+   * - :doc:`ABSTRACT <object-orientation/abstract>`
+     - Object orientation
+     - Mark a function block type as not directly instantiable
+   * - :doc:`INTERFACE <object-orientation/interface>`
+     - Object orientation
+     - Declare an interface — a named set of method signatures
+   * - :doc:`METHOD <object-orientation/method>`
+     - Object orientation
+     - Declare a method on a function block type
+   * - :doc:`THIS and SUPER <object-orientation/this-and-super>`
+     - Object orientation
+     - Name the instance a method runs on, or that instance seen as its
+       base type
 
 Edition 2 (2003) Features
 =========================

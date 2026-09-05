@@ -31,8 +31,13 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 
 pub fn apply(
     lib: &Library,
@@ -43,19 +48,22 @@ pub fn apply(
         return Ok(());
     }
 
-    let mut visitor = RuleMixedLocatedVarDeclarations {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleMixedLocatedVarDeclarations {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleMixedLocatedVarDeclarations {
     diagnostics: Vec<Diagnostic>,
+}
+
+impl DiagnosticVisitor for RuleMixedLocatedVarDeclarations {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 impl RuleMixedLocatedVarDeclarations {
@@ -69,13 +77,13 @@ impl RuleMixedLocatedVarDeclarations {
     }
 }
 
-impl Visitor<Diagnostic> for RuleMixedLocatedVarDeclarations {
+impl Visitor<Infallible> for RuleMixedLocatedVarDeclarations {
     type Value = ();
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.check(node);
         node.recurse_visit(self)
     }
@@ -83,7 +91,7 @@ impl Visitor<Diagnostic> for RuleMixedLocatedVarDeclarations {
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.check(node);
         node.recurse_visit(self)
     }
@@ -91,7 +99,7 @@ impl Visitor<Diagnostic> for RuleMixedLocatedVarDeclarations {
     fn visit_program_declaration(
         &mut self,
         node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         self.check(node);
         node.recurse_visit(self)
     }
@@ -111,7 +119,7 @@ mod tests {
         }
     }
 
-    rule_err!(
+    rule_err1_at!(
         apply_when_mixed_block_and_flag_disabled_then_error,
         "
 FUNCTION_BLOCK FB_Example
@@ -119,7 +127,50 @@ VAR
     tempSensor AT%I*: INT;
     fbComm     : BOOL;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::MixedLocatedVarDeclarationNotAllowed,
+        "tempSensor",
+    );
+
+    rule_err1_at!(
+        /// The located variable is in the third of four blocks, so a label
+        /// that named the declaration only by its enclosing POU -- or one
+        /// carrying a default span -- would leave the reader to find it.
+        apply_when_mixed_block_follows_other_blocks_then_error_points_at_located_variable,
+        "
+FUNCTION_BLOCK FB_Example
+VAR_INPUT
+    enable : BOOL;
+END_VAR
+VAR_OUTPUT
+    ready : BOOL;
+END_VAR
+VAR
+    counter    : INT;
+    tempSensor AT%I*: INT;
+END_VAR
+VAR
+    scratch : INT;
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::MixedLocatedVarDeclarationNotAllowed,
+        "tempSensor",
+    );
+
+    rule_err1_at!(
+        /// A complete address (`AT %IX0.0`) reaches the rule through a
+        /// different parser rule than the incomplete `AT %I*` above, so it
+        /// needs its own span assertion.
+        apply_when_mixed_block_has_complete_address_then_error_points_at_located_variable,
+        "
+FUNCTION_BLOCK FB_Example
+VAR
+    fbComm     : BOOL;
+    tempSensor AT %IX0.0 : BOOL;
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::MixedLocatedVarDeclarationNotAllowed,
+        "tempSensor",
     );
 
     #[test]

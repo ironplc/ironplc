@@ -6,15 +6,18 @@
 //! path the production `ironplcvm` binary uses in `cli.rs`), so there is no
 //! duplicated sizing logic here.
 //!
-//! The preconditions (see the plan,
-//! `specs/plans/2026-06-25-dap-server-scaffold.md` §"Launch preconditions"):
+//! The preconditions:
 //! 1. A debug section must be present, else [`LaunchError::NoDebugInfo`].
 //! 2. There must be exactly one program instance, else
 //!    [`LaunchError::MultiInstanceUnsupported`] (the v1 limitation described in
 //!    `specs/design/debugger-support.md` §"Multi-instance: not supported in v1").
+//!
+//! The `launch` arguments are checked here too: [`check_scan_limit`] validates
+//! the optional run bound before the VM is built.
 
 use std::fmt;
 use std::fs::File;
+use std::num::NonZeroU64;
 use std::path::Path;
 
 use ironplc_container::Container;
@@ -41,6 +44,9 @@ pub enum LaunchError {
     /// The container declares more than one program instance; v1 debugs
     /// single-instance programs only. Carries the declared instance count.
     MultiInstanceUnsupported(usize),
+    /// The `launch` arguments carried a `scanLimit` below one scan cycle.
+    /// Carries the value the client sent.
+    ScanLimitNotPositive(i64),
     /// The VM could not be started (an init function trapped). Carries the
     /// trap's own V-code and its description.
     VmStartFailed {
@@ -52,14 +58,24 @@ pub enum LaunchError {
 impl LaunchError {
     /// The stable V-code for this failure. File errors reuse the CLI's existing
     /// `V6001`/`V6002`; a start-time trap surfaces the trap's own `V4xxx`/
-    /// `V9xxx`; the launch-specific preconditions use the `V6008`–`V6010` codes.
+    /// `V9xxx`.
+    ///
+    /// Every bad *argument* shares `V6008`, whatever the argument: the code
+    /// names the category so the reader finds the right page, and the message
+    /// names which argument and what was expected of it. A code per argument
+    /// would grow the documented namespace with every option the `launch`
+    /// request gains, for pages that would differ only in one noun.
+    /// `V6009`/`V6010` stay distinct because they are not argument problems --
+    /// the arguments were fine and the container cannot be debugged as built,
+    /// which is a different fix.
     pub fn v_code(&self) -> &'static str {
         match self {
-            LaunchError::ProgramArgMissing => problem_codes::LAUNCH_NO_PROGRAM,
+            LaunchError::ProgramArgMissing => problem_codes::LAUNCH_ARGUMENT_INVALID,
             LaunchError::ContainerOpen(_) => problem_codes::FILE_OPEN,
             LaunchError::ContainerRead(_) => problem_codes::CONTAINER_READ,
             LaunchError::NoDebugInfo => problem_codes::LAUNCH_NO_DEBUG_INFO,
             LaunchError::MultiInstanceUnsupported(_) => problem_codes::LAUNCH_MULTI_INSTANCE,
+            LaunchError::ScanLimitNotPositive(_) => problem_codes::LAUNCH_ARGUMENT_INVALID,
             LaunchError::VmStartFailed { v_code, .. } => v_code,
         }
     }
@@ -69,9 +85,10 @@ impl LaunchError {
     /// (see `specs/design/debugger-support.md` §"Multi-instance").
     pub fn message(&self) -> String {
         match self {
-            LaunchError::ProgramArgMissing => {
-                "launch requires a 'program' path to a compiled .iplc container".to_string()
-            }
+            LaunchError::ProgramArgMissing => argument_message(
+                "program",
+                "is required: the path to a compiled .iplc container",
+            ),
             LaunchError::ContainerOpen(detail) => format!("unable to open container: {detail}"),
             LaunchError::ContainerRead(detail) => format!("unable to read container: {detail}"),
             LaunchError::NoDebugInfo => "compile with debug info enabled".to_string(),
@@ -80,11 +97,27 @@ impl LaunchError {
                  the v1 debugger supports single-instance programs only. Multi-instance \
                  debugging is planned for a future phase."
             ),
+            LaunchError::ScanLimitNotPositive(given) => argument_message(
+                "scanLimit",
+                &format!(
+                    "must be a whole number of at least 1, but was {given}; \
+                     omit it to run without a bound"
+                ),
+            ),
             LaunchError::VmStartFailed { detail, .. } => {
                 format!("launch failed to start the VM: {detail}")
             }
         }
     }
+}
+
+/// The shared wording for a bad `launch` argument.
+///
+/// Every argument failure carries the same V-code, so the message is the only
+/// thing that says which argument is wrong. Formatting them through one place
+/// keeps them reading as one family: `launch argument 'x' <what was expected>`.
+fn argument_message(argument: &str, expected: &str) -> String {
+    format!("launch argument '{argument}' {expected}")
 }
 
 impl fmt::Display for LaunchError {
@@ -105,8 +138,8 @@ pub fn load_container(path: &Path) -> Result<Container, LaunchError> {
 
 /// Checks the two v1 launch preconditions against a loaded container.
 ///
-/// Debug info is checked first (per the plan), then the single-instance limit,
-/// so a container that is both missing debug info and multi-instance reports
+/// Debug info is checked first, then the single-instance limit, so a
+/// container that is both missing debug info and multi-instance reports
 /// [`LaunchError::NoDebugInfo`].
 pub fn check_preconditions(container: &Container) -> Result<(), LaunchError> {
     if container.debug_section.is_none() {
@@ -117,6 +150,32 @@ pub fn check_preconditions(container: &Container) -> Result<(), LaunchError> {
         return Err(LaunchError::MultiInstanceUnsupported(instances));
     }
     Ok(())
+}
+
+/// Validates the `launch` request's optional `scanLimit` argument.
+///
+/// An absent argument is the only way to ask for an unbounded run: the session
+/// then scans until the client disconnects. A present value must be at least
+/// one scan cycle.
+///
+/// Zero and negative values are rejected rather than reinterpreted. Both are
+/// conventional "unlimited" sentinels, but this argument already spells
+/// unlimited by being absent, and a second spelling would leave the reader
+/// guessing which one a config meant. Zero read literally is "run no scans",
+/// which the debugger cannot honour either -- the bound is tested after a scan
+/// completes, so the shortest run it can produce is one cycle.
+///
+/// Returning [`NonZeroU64`] makes a bound of zero unrepresentable downstream
+/// rather than merely unreached.
+pub fn check_scan_limit(scan_limit: Option<i64>) -> Result<Option<NonZeroU64>, LaunchError> {
+    let Some(requested) = scan_limit else {
+        return Ok(None);
+    };
+    u64::try_from(requested)
+        .ok()
+        .and_then(NonZeroU64::new)
+        .map(Some)
+        .ok_or(LaunchError::ScanLimitNotPositive(requested))
 }
 
 /// Loads the container, starts the VM into the caller-owned `bufs`, and returns
@@ -277,6 +336,54 @@ mod tests {
     }
 
     #[test]
+    fn check_scan_limit_when_absent_then_no_bound() {
+        assert_eq!(check_scan_limit(None).unwrap(), None);
+    }
+
+    #[test]
+    fn check_scan_limit_when_positive_then_that_many_cycles() {
+        assert_eq!(check_scan_limit(Some(3)).unwrap(), NonZeroU64::new(3));
+    }
+
+    #[test]
+    fn check_scan_limit_when_zero_then_rejected_rather_than_unlimited() {
+        // Zero is not a second spelling of "unlimited": omitting the argument
+        // is (see #1515).
+        let err = check_scan_limit(Some(0)).unwrap_err();
+        assert!(matches!(err, LaunchError::ScanLimitNotPositive(0)));
+        assert!(err.message().contains("'scanLimit'"));
+        assert!(err.message().contains("was 0"));
+        // The message names the way to actually ask for an unbounded run.
+        assert!(err.message().contains("omit it"));
+    }
+
+    #[test]
+    fn check_scan_limit_when_negative_then_rejected() {
+        let err = check_scan_limit(Some(-1)).unwrap_err();
+        assert!(matches!(err, LaunchError::ScanLimitNotPositive(-1)));
+        assert!(err.message().contains("was -1"));
+    }
+
+    #[test]
+    fn v_code_when_any_bad_argument_then_shares_one_launch_argument_code() {
+        // The code names the category; the message names the argument. Adding
+        // an argument must not add a code (see the `v_code` doc comment).
+        assert_eq!(LaunchError::ProgramArgMissing.v_code(), "V6008");
+        assert_eq!(
+            check_scan_limit(Some(0)).unwrap_err().v_code(),
+            LaunchError::ProgramArgMissing.v_code()
+        );
+    }
+
+    #[test]
+    fn v_code_when_container_cannot_be_debugged_then_keeps_its_own_code() {
+        // Not argument problems: the arguments were fine and the fix is to
+        // rebuild the program, so these stay distinguishable from V6008.
+        assert_eq!(LaunchError::NoDebugInfo.v_code(), "V6009");
+        assert_eq!(LaunchError::MultiInstanceUnsupported(2).v_code(), "V6010");
+    }
+
+    #[test]
     fn load_container_when_missing_file_then_container_open_error() {
         let err = load_container(Path::new("does/not/exist.iplc")).unwrap_err();
         assert!(matches!(err, LaunchError::ContainerOpen(_)));
@@ -299,14 +406,11 @@ mod tests {
     }
 
     #[test]
-    fn message_when_program_arg_missing_then_mentions_program_path() {
-        assert!(LaunchError::ProgramArgMissing
-            .message()
-            .contains("'program' path"));
-        assert_eq!(LaunchError::ProgramArgMissing.v_code(), "V6008");
+    fn message_when_program_arg_missing_then_names_the_argument() {
         assert_eq!(
             LaunchError::ProgramArgMissing.to_string(),
-            "V6008 - launch requires a 'program' path to a compiled .iplc container"
+            "V6008 - launch argument 'program' is required: the path to a compiled \
+             .iplc container"
         );
     }
 }

@@ -29,6 +29,7 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
 use crate::{
     intermediate_type::IntermediateType,
@@ -98,10 +99,10 @@ fn is_compatible(constant: &ConstantKind, target: &IntermediateType) -> bool {
     }
 }
 
-impl Visitor<Diagnostic> for RuleInitializerTypeCompat<'_> {
+impl Visitor<Infallible> for RuleInitializerTypeCompat<'_> {
     type Value = ();
 
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
         // TODO: extend type compatibility checking to other InitialValueAssignmentKind
         // variants. Currently only Simple (literal constant) initializers are validated.
         // Other variants that could benefit from checking:

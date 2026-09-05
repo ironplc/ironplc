@@ -31,8 +31,13 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 
 pub fn apply(
     lib: &ironplc_dsl::common::Library,
@@ -43,28 +48,31 @@ pub fn apply(
         return Ok(());
     }
 
-    let mut visitor = RuleStructInitializerExpression {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleStructInitializerExpression {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleStructInitializerExpression {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl Visitor<Diagnostic> for RuleStructInitializerExpression {
+impl DiagnosticVisitor for RuleStructInitializerExpression {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+impl Visitor<Infallible> for RuleStructInitializerExpression {
     type Value = ();
 
     fn visit_struct_initial_value_assignment_kind(
         &mut self,
         node: &StructInitialValueAssignmentKind,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         if let StructInitialValueAssignmentKind::Expression(expr) = node {
             self.diagnostics.push(Diagnostic::problem(
                 Problem::StructInitializerExpressionNotAllowed,

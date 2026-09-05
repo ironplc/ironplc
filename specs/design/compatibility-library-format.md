@@ -101,10 +101,16 @@ format** and is defined separately when needed.
 ## Future
 
 - **Bindings.** A per-version table keyed by the version — e.g.
-  `[1.0.0.bindings]` — mapping a POU to a non-default implementation (a VM
-  intrinsic, or declare-only). The fail-if-unimplemented rule (a call to a
-  declare-only POU is a compile error) arrives with bindings; see
-  [Compatibility Libraries](compatibility-libraries.md).
+  `[1.0.0.bindings]` — marking a POU as declare-only. The fail-if-unimplemented
+  rule (a call to a declare-only POU is a compile error) arrives with bindings;
+  see [Compatibility Libraries](compatibility-libraries.md).
+
+  Binding a POU to a **VM builtin** is *not* part of this future: it was
+  rejected on security grounds, because it makes an on-disk data file an input
+  to code emission with nothing guaranteeing the declared signature matches the
+  builtin's stack behaviour. A library body reaches native behaviour by calling
+  a `__`-prefixed compiler intrinsic instead — see
+  [ADR-0042](../adrs/0042-library-functions-over-compiler-intrinsics.md).
 - **An `implicit` manifest marker.** Implicit (vendor built-in) libraries are
   currently a hard-coded list in the discovery module (see
   [Compatibility Libraries §Activation channels](compatibility-libraries.md)).

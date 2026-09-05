@@ -272,15 +272,14 @@ mod tests {
     }
 
     #[test]
-    fn validate_sources_when_name_contains_slash_then_error() {
+    fn validate_sources_when_name_contains_slash_then_accepted() {
         let sources = vec![SourceInput {
             name: "path/file.st".into(),
             content: String::new(),
         }];
-        // '/' is 0x2F which IS printable ASCII, but that's fine for the
-        // allowlist — the spec says printable ASCII is allowed. The old
-        // denylist rejected '/' but the new allowlist permits it.
-        // '/' is within 0x20-0x7E so it passes validation.
+        // A name is an opaque key, not a filesystem path, so a separator in
+        // it means nothing to the server. '/' is 0x2F, inside the printable
+        // ASCII range REQ-STL-mcp-004 allows, so it is accepted.
         let errs = validate_sources(&sources);
         assert!(errs.is_empty());
     }

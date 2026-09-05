@@ -7,6 +7,6 @@ FUNCTION MY_FUNC : BOOL
       stack : ARRAY [ 1.. 32 ] OF UINT;
    END_VAR
 
-   stack [ 1 ] := INT_TO_UINT ( x ) ;
+   stack[ 1 ] := INT_TO_UINT ( x ) ;
    MY_FUNC := BOOL#TRUE ;
 END_FUNCTION

@@ -469,7 +469,6 @@ mod test {
 
     // -----------------------------------------------------------------
     // Compatibility-library activation.
-    // See specs/plans/2026-08-04-compatibility-libraries.md (Phase 1).
     // -----------------------------------------------------------------
 
     fn library_options() -> CompilerOptions {
@@ -821,9 +820,13 @@ mod test {
     }
 
     #[test]
-    fn analyze_when_not_valid_then_err() {
+    fn semantic_when_source_is_not_valid_then_returns_diagnostics() {
         let mut project = FileBackedProject::default();
         project.change_text_document(&FileId::default(), "AAA".to_owned());
+
+        let result = project.semantic();
+
+        assert!(!result.is_empty());
     }
 
     #[test]
@@ -1006,7 +1009,6 @@ END_CONFIGURATION
 
     // -----------------------------------------------------------------
     // Multi-directory initialization.
-    // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
     // -----------------------------------------------------------------
 
     // Multi-directory merge semantics (clearing once, per-directory failures,

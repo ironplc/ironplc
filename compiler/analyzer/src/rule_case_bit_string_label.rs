@@ -31,8 +31,13 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
+use std::convert::Infallible;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 
 pub fn apply(
     lib: &ironplc_dsl::common::Library,
@@ -43,25 +48,28 @@ pub fn apply(
         return Ok(());
     }
 
-    let mut visitor = RuleCaseBitStringLabel {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleCaseBitStringLabel {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleCaseBitStringLabel {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl Visitor<Diagnostic> for RuleCaseBitStringLabel {
+impl DiagnosticVisitor for RuleCaseBitStringLabel {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+impl Visitor<Infallible> for RuleCaseBitStringLabel {
     type Value = ();
 
-    fn visit_case(&mut self, node: &Case) -> Result<Self::Value, Diagnostic> {
+    fn visit_case(&mut self, node: &Case) -> Result<Self::Value, Infallible> {
         for group in &node.statement_groups {
             for selector in &group.selectors {
                 if let CaseSelectionKind::BitStringLiteral(lit) = selector {

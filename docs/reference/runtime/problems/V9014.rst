@@ -18,4 +18,7 @@ so this trap is reached only via:
 The runtime check is the defense-in-depth layer: even if a static check
 slips, the trap fires before silently corrupting data.
 
+This error should not occur during normal operation. It indicates a bug in
+the IronPLC compiler or VM, or a corrupted ``.iplc`` file.
+
 .. include:: ../../../includes/report-internal-vm-error.rst

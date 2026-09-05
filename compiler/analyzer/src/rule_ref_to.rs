@@ -12,6 +12,7 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 use std::collections::HashMap;
+use std::convert::Infallible;
 
 use ironplc_parser::options::CompilerOptions;
 
@@ -268,7 +269,11 @@ impl RuleRefTo<'_> {
                     Label::span(span, "Ordering comparison on reference types"),
                 ));
             }
-            CompareOp::Or | CompareOp::Xor | CompareOp::And | CompareOp::AndThen => {}
+            CompareOp::Or
+            | CompareOp::Xor
+            | CompareOp::And
+            | CompareOp::AndThen
+            | CompareOp::OrElse => {}
         }
     }
 
@@ -334,10 +339,10 @@ fn expr_span(expr: &Expr) -> SourceSpan {
     }
 }
 
-impl Visitor<Diagnostic> for RuleRefTo<'_> {
+impl Visitor<Infallible> for RuleRefTo<'_> {
     type Value = ();
 
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Diagnostic> {
+    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Infallible> {
         self.clear_variables();
         self.pou_kind = PouKind::Function;
         self.collect_variables(&node.variables);
@@ -349,7 +354,7 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         self.clear_variables();
         self.pou_kind = PouKind::FunctionBlock;
         self.collect_variables(&node.variables);
@@ -358,7 +363,7 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
         ret
     }
 
-    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Diagnostic> {
+    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Infallible> {
         self.clear_variables();
         self.pou_kind = PouKind::Program;
         self.collect_variables(&node.variables);
@@ -370,7 +375,7 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
     fn visit_reference_declaration(
         &mut self,
         node: &ReferenceDeclaration,
-    ) -> Result<(), Diagnostic> {
+    ) -> Result<(), Infallible> {
         // P2036: Check for nested REF_TO (only applicable for named targets)
         if let ReferenceTarget::Named(referenced_type_name) = &node.target {
             if self.is_reference_type(referenced_type_name) {
@@ -383,7 +388,7 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
         node.recurse_visit(self)
     }
 
-    fn visit_expr(&mut self, node: &Expr) -> Result<(), Diagnostic> {
+    fn visit_expr(&mut self, node: &Expr) -> Result<(), Infallible> {
         match &node.kind {
             ExprKind::Ref(var) => {
                 self.check_ref_operand(var);
@@ -402,7 +407,7 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
         node.recurse_visit(self)
     }
 
-    fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Diagnostic> {
+    fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
         self.check_null_assignment(&node.target, &node.value);
         self.check_ref_assignment(&node.target, &node.value);
         node.recurse_visit(self)

@@ -96,9 +96,12 @@ impl fmt::Display for FileId {
 pub struct SourceSpan {
     /// The position of the starting character (0-indexed).
     pub start: usize,
-    /// The position of the ending character (0-indexed).
+    /// The position one past the last character (0-indexed, exclusive).
     ///
-    /// Equals the start position for a length of 1 character.
+    /// Equals `start + 1` for a length of 1 character. The range is
+    /// half-open: the lexer emits exclusive-end spans and the diagnostic
+    /// renderer reads them that way, so a span built as though `end` were
+    /// the last character underlines one character too few.
     pub end: usize,
     pub file_id: FileId,
 }

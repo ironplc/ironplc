@@ -4,8 +4,7 @@
 //! up the `EXTENDS` chain.
 //!
 //! A redeclaration is rejected as a duplicate definition even when the
-//! redeclared field has a different type. See
-//! `specs/plans/2026-07-20-twincat-extends-duplicate-field.md`.
+//! redeclared field has a different type.
 //!
 //! ## Passes
 //!

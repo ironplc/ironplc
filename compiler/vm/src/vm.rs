@@ -1,3 +1,4 @@
+use core::time::Duration;
 use ironplc_container::{
     CharWidth, ConstantIndex, Container, FbTypeId, FunctionId, InstanceId, TaskId, TaskType,
     VarIndex, STRING_HEADER_BYTES,
@@ -220,6 +221,7 @@ impl<'a> VmReady<'a> {
             frames: self.frames,
             shared_globals_size,
             scan_count: 0,
+            uptime: Duration::ZERO,
             stop_requested: false,
             phase: Phase::Ready,
             debug_frame_count: 0,
@@ -250,6 +252,7 @@ impl<'a> VmReady<'a> {
             frames: self.frames,
             shared_globals_size,
             scan_count: initial_scan_count,
+            uptime: Duration::ZERO,
             stop_requested: false,
             phase: Phase::Ready,
             debug_frame_count: 0,
@@ -330,6 +333,11 @@ pub struct VmRunning<'a> {
     frames: &'a mut [Frame],
     shared_globals_size: u16,
     scan_count: u64,
+    /// How long the VM has been running as of the most recently *started* scan
+    /// cycle. Recorded whether or not the container declares the uptime
+    /// globals, so an observer (the debugger) can read the time even for a
+    /// program compiled without them.
+    uptime: Duration,
     stop_requested: bool,
     /// Debug driver phase. `Ready` for the non-debug path.
     phase: Phase,
@@ -345,20 +353,20 @@ impl<'a> VmRunning<'a> {
     /// Executes one scheduling round: collects ready tasks, executes them
     /// in priority order, and updates timing.
     ///
-    /// The caller provides `current_time_us` (microseconds since VM start).
+    /// The caller provides `uptime_us` (microseconds since VM start).
     /// Sleep logic is the caller's responsibility.
     ///
     /// Returns `Ok(())` if the round completes. Returns `Err(FaultContext)` if
     /// a trap occurs during execution. The caller should transition to
     /// `VmFaulted` on trap.
-    pub fn run_round(&mut self, current_time_us: u64) -> Result<(), FaultContext> {
+    pub fn run_round(&mut self, uptime_us: u64) -> Result<(), FaultContext> {
         // Build a scheduler temporarily borrowing task_states.
         // We need to collect ready task indices into ready_buf, then drop the scheduler
         // before iterating, so we can mutably borrow task_states during record_execution.
         let ready_count;
         {
             let scheduler = TaskScheduler::new(self.task_states);
-            let ready = scheduler.collect_ready_tasks(current_time_us, self.ready_buf);
+            let ready = scheduler.collect_ready_tasks(uptime_us, self.ready_buf);
             ready_count = ready.len();
         }
 
@@ -366,8 +374,9 @@ impl<'a> VmRunning<'a> {
             return Ok(());
         }
 
-        // System variable injection: write monotonic uptime before task execution.
-        self.inject_system_uptime(current_time_us);
+        // Record this scan's clock, and inject the uptime system variables
+        // before task execution when the container declares them.
+        self.set_uptime(uptime_us);
 
         // Stub: INPUT_FREEZE (no-op)
 
@@ -390,7 +399,7 @@ impl<'a> VmRunning<'a> {
                 // Production scan: run the instance to completion with the
                 // zero-cost hook and fresh (non-resumable) frame state.
                 let (outcome, _, _) = self
-                    .run_instance(pi, current_time_us, 0, 0, &mut NoopDebugHook)
+                    .run_instance(pi, uptime_us, 0, 0, &mut NoopDebugHook)
                     .map_err(|trap| FaultContext {
                         trap,
                         task_id,
@@ -419,7 +428,7 @@ impl<'a> VmRunning<'a> {
             }
 
             let mut scheduler = TaskScheduler::new(self.task_states);
-            scheduler.record_execution(task_idx, elapsed_us, current_time_us);
+            scheduler.record_execution(task_idx, elapsed_us, uptime_us);
         }
 
         // Stub: OUTPUT_FLUSH (no-op)
@@ -469,7 +478,7 @@ impl<'a> VmRunning<'a> {
     /// scheduling/lifecycle policy around it differs between the two drivers.
     pub fn run_round_debug<H: DebugHook>(
         &mut self,
-        current_time_us: u64,
+        uptime_us: u64,
         hook: &mut H,
     ) -> Result<RoundOutcome, FaultContext> {
         // No program instance → nothing to debug; the scan is a no-op.
@@ -485,11 +494,12 @@ impl<'a> VmRunning<'a> {
         let task_id = self.program_instances[0].task_id;
 
         if !resuming {
-            // Fresh scan: inject system uptime, then reset the resume state so
+            // Fresh scan: record the clock (and inject the uptime system
+            // variables), then reset the resume state so
             // run_instance starts with an empty frame stack (the dispatch loop
             // pushes the entry frame). When resuming, the preserved frame count
             // is non-zero and the paused frames survive in place.
-            self.inject_system_uptime(current_time_us);
+            self.set_uptime(uptime_us);
             self.debug_frame_count = 0;
             self.debug_temp_alloc_next = 0;
         }
@@ -499,7 +509,7 @@ impl<'a> VmRunning<'a> {
         let frame_count_in = self.debug_frame_count;
         let temp_alloc_next_in = self.debug_temp_alloc_next;
         let (outcome, frame_count, temp_alloc_next) = self
-            .run_instance(0, current_time_us, frame_count_in, temp_alloc_next_in, hook)
+            .run_instance(0, uptime_us, frame_count_in, temp_alloc_next_in, hook)
             .map_err(|trap| {
                 self.phase = Phase::Faulted;
                 FaultContext {
@@ -533,14 +543,20 @@ impl<'a> VmRunning<'a> {
         }
     }
 
-    /// Writes the monotonic uptime system variables before task execution,
-    /// if the loaded container declares them. Shared by [`run_round`] and
-    /// [`run_round_debug`] so the injection lives in exactly one place.
-    fn inject_system_uptime(&mut self, current_time_us: u64) {
+    /// Records the uptime this scan cycle runs against and, if the loaded
+    /// container declares the uptime system variables, writes them before task
+    /// execution. Shared by [`run_round`] and [`run_round_debug`] so both the
+    /// recording and the injection live in exactly one place.
+    ///
+    /// The recording happens before the flag check: the program only *sees* the
+    /// uptime when it was compiled with the globals, but the VM knows it either
+    /// way, which is what [`uptime`](Self::uptime) reports.
+    fn set_uptime(&mut self, uptime_us: u64) {
+        self.uptime = Duration::from_micros(uptime_us);
         if self.container.header.flags & ironplc_container::FLAG_HAS_SYSTEM_UPTIME == 0 {
             return;
         }
-        let time_ms = (current_time_us / 1000) as i64;
+        let time_ms = (uptime_us / 1000) as i64;
         // __SYSTEM_UP_TIME at VarIndex(0): i32 milliseconds (wrapping)
         self.variables
             .store(VarIndex::new(0), Slot::from_i32(time_ms as i32))
@@ -570,7 +586,7 @@ impl<'a> VmRunning<'a> {
     fn run_instance<H: DebugHook>(
         &mut self,
         instance_index: usize,
-        current_time_us: u64,
+        uptime_us: u64,
         frame_count: usize,
         temp_alloc_next: u16,
         hook: &mut H,
@@ -596,7 +612,7 @@ impl<'a> VmRunning<'a> {
             self.max_temp_buf_bytes,
             self.frames,
             &scope,
-            current_time_us,
+            uptime_us,
             entry_function_id,
             &mut frame_count,
             &mut temp_alloc_next,
@@ -685,6 +701,21 @@ impl<'a> VmRunning<'a> {
         self.scan_count
     }
 
+    /// Returns how long the VM has been running as of the most recently started
+    /// scan cycle.
+    ///
+    /// In milliseconds this is the number the program reads from
+    /// `__SYSTEM_UP_LTIME`, and it is tracked whether or not the container
+    /// declares those globals — the VM always knows how long it has run, so a
+    /// debugger can show time for a program compiled without
+    /// `--allow-system-uptime-global`.
+    ///
+    /// Resuming a scan paused mid-cycle does not move it: the value stays the
+    /// one the paused code is executing against.
+    pub fn uptime(&self) -> Duration {
+        self.uptime
+    }
+
     /// Returns the earliest `next_due_us` across all enabled cyclic tasks,
     /// or `None` if no cyclic tasks exist (e.g. freewheeling only).
     pub fn next_due_us(&self) -> Option<u64> {
@@ -715,6 +746,7 @@ impl<'a> VmRunning<'a> {
     pub fn stop(self) -> VmStopped<'a> {
         VmStopped {
             variables: self.variables,
+            data_region: self.data_region,
             scan_count: self.scan_count,
             #[cfg(feature = "profiling")]
             profile: self.profile,
@@ -728,15 +760,80 @@ impl<'a> VmRunning<'a> {
             task_id: ctx.task_id,
             instance_id: ctx.instance_id,
             variables: self.variables,
+            data_region: self.data_region,
             #[cfg(feature = "profiling")]
             profile: self.profile,
         }
     }
 }
 
+/// Read access to the variable state of a VM, whichever lifecycle state it is
+/// in.
+///
+/// [`VmRunning`], [`VmStopped`] and [`VmFaulted`] all answer the same three
+/// questions a value-display surface asks — how many variables are there, what
+/// is in slot `i`, and where is the data region that backs STRING content.
+/// Without the trait every such surface needs one snapshot function per VM
+/// state with an otherwise identical body, which is how the `--dump-vars` and
+/// LSP paths came to have two copies each.
+pub trait VariableView {
+    /// The number of variable slots in the loaded container.
+    fn num_variables(&self) -> u16;
+
+    /// Reads a variable's raw 64-bit slot value.
+    fn read_variable_raw(&self, index: VarIndex) -> Result<u64, Trap>;
+
+    /// The data region, which backs STRING and WSTRING values (their variable
+    /// table slot is unused).
+    fn data_region(&self) -> &[u8];
+}
+
+impl VariableView for VmRunning<'_> {
+    fn num_variables(&self) -> u16 {
+        VmRunning::num_variables(self)
+    }
+
+    fn read_variable_raw(&self, index: VarIndex) -> Result<u64, Trap> {
+        VmRunning::read_variable_raw(self, index)
+    }
+
+    fn data_region(&self) -> &[u8] {
+        VmRunning::data_region(self)
+    }
+}
+
+impl VariableView for VmStopped<'_> {
+    fn num_variables(&self) -> u16 {
+        VmStopped::num_variables(self)
+    }
+
+    fn read_variable_raw(&self, index: VarIndex) -> Result<u64, Trap> {
+        VmStopped::read_variable_raw(self, index)
+    }
+
+    fn data_region(&self) -> &[u8] {
+        VmStopped::data_region(self)
+    }
+}
+
+impl VariableView for VmFaulted<'_> {
+    fn num_variables(&self) -> u16 {
+        VmFaulted::num_variables(self)
+    }
+
+    fn read_variable_raw(&self, index: VarIndex) -> Result<u64, Trap> {
+        VmFaulted::read_variable_raw(self, index)
+    }
+
+    fn data_region(&self) -> &[u8] {
+        VmFaulted::data_region(self)
+    }
+}
+
 /// A VM that has been cleanly stopped.
 pub struct VmStopped<'a> {
     variables: VariableTable<'a>,
+    data_region: &'a [u8],
     scan_count: u64,
     #[cfg(feature = "profiling")]
     profile: InstructionProfile,
@@ -760,6 +857,15 @@ impl<'a> VmStopped<'a> {
         self.variables.len()
     }
 
+    /// Returns a reference to the data region as it stood when the VM stopped.
+    ///
+    /// STRING and WSTRING values live here rather than in the variable table,
+    /// so a caller dumping variable values after a clean stop needs it to read
+    /// their content.
+    pub fn data_region(&self) -> &[u8] {
+        self.data_region
+    }
+
     /// Returns the total number of completed scheduling rounds.
     pub fn scan_count(&self) -> u64 {
         self.scan_count
@@ -778,6 +884,7 @@ pub struct VmFaulted<'a> {
     task_id: TaskId,
     instance_id: InstanceId,
     variables: VariableTable<'a>,
+    data_region: &'a [u8],
     #[cfg(feature = "profiling")]
     profile: InstructionProfile,
 }
@@ -813,6 +920,16 @@ impl<'a> VmFaulted<'a> {
     /// Returns the number of variable slots.
     pub fn num_variables(&self) -> u16 {
         self.variables.len()
+    }
+
+    /// Returns a reference to the data region as it stood when the trap
+    /// occurred.
+    ///
+    /// STRING and WSTRING values live here rather than in the variable table,
+    /// so a caller dumping the pre-fault variable state needs it to read their
+    /// content.
+    pub fn data_region(&self) -> &[u8] {
+        self.data_region
     }
 
     /// Returns a reference to the instruction profile.
@@ -889,7 +1006,7 @@ fn execute(
     max_temp_buf_bytes: usize,
     frames: &mut [Frame],
     entry_scope: &VariableScope,
-    current_time_us: u64,
+    uptime_us: u64,
     entry_function_id: FunctionId,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
 ) -> Result<(), Trap> {
@@ -908,7 +1025,7 @@ fn execute(
         max_temp_buf_bytes,
         frames,
         entry_scope,
-        current_time_us,
+        uptime_us,
         entry_function_id,
         &mut frame_count,
         &mut temp_alloc_next,
@@ -964,7 +1081,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     max_temp_buf_bytes: usize,
     frames: &mut [Frame],
     entry_scope: &VariableScope,
-    current_time_us: u64,
+    uptime_us: u64,
     entry_function_id: FunctionId,
     frame_count: &mut usize,
     temp_alloc_next: &mut u16,
@@ -1025,7 +1142,10 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
         if pc >= bytecode.len() {
             // Fell off the end of a function body without an explicit
-            // RET — treat as RET_VOID.
+            // RET — treat as RET_VOID (ADR-0044). `verify_stack_balance`
+            // checks this point as a return site, and codegen runs it over
+            // every container it emits, so an emitted body cannot reach here
+            // with a non-empty operand stack.
             handle_frame_return(
                 &mut temp_alloc,
                 &mut frame_stack,
@@ -2325,7 +2445,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
                         }
                         let slice = &mut data_region[instance_start..instance_end];
-                        let time = current_time_us as i64;
+                        let time = uptime_us as i64;
                         match type_id {
                             opcode::fb_type::TON => crate::intrinsic::ton(slice, time)?,
                             opcode::fb_type::TOF => crate::intrinsic::tof(slice, time)?,
@@ -2459,6 +2579,71 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     }
                 }
             }
+            opcode::METHOD_CALL => {
+                // OOP extension (ADR-0041 Phase 1 static dispatch).
+                // Deliberately simpler than FB_CALL: a method call is
+                // always user-defined, so no intrinsic-FB-type branch,
+                // and all addressing is given directly as operands (the
+                // caller already resolved the static type at compile
+                // time) rather than looked up by a type_id in the
+                // container's type_section.
+                let function_id = FunctionId::new(read_u16_le(bytecode, &mut pc)?);
+                let field_var_off = read_u16_le(bytecode, &mut pc)?;
+                let num_fields = read_u8(bytecode, &mut pc)?;
+                let param_var_off = read_u16_le(bytecode, &mut pc)?;
+
+                let func = container
+                    .code
+                    .get_function(function_id)
+                    .ok_or(Trap::InvalidFunctionId(function_id))?;
+
+                // Pop arguments into the method's own param slots (same
+                // convention as CALL) *before* reading fb_ref, since the
+                // args sit on top of fb_ref on the shared stack.
+                for i in (0..func.num_params).rev() {
+                    let val = stack.pop()?;
+                    variables.store(VarIndex::new(param_var_off + i), val)?;
+                }
+
+                let fb_ref = stack.peek()?.as_i32() as u32;
+                let instance_start = fb_ref as usize;
+
+                // Copy-in: data region fields -> the owning type's shared
+                // field scratch region (same mechanism FB_CALL uses).
+                for i in 0..num_fields as usize {
+                    let offset = instance_start + i * 8;
+                    if offset + 8 > data_region.len() {
+                        return Err(Trap::DataRegionOutOfBounds(offset as u32));
+                    }
+                    let mut buf = [0u8; 8];
+                    buf.copy_from_slice(&data_region[offset..offset + 8]);
+                    variables.store(
+                        VarIndex::new(field_var_off + i as u16),
+                        Slot::from_i64(i64::from_le_bytes(buf)),
+                    )?;
+                }
+
+                let func_scope = VariableScope {
+                    shared_globals_size: scope.shared_globals_size,
+                    instance_offset: field_var_off,
+                    instance_count: func.num_locals,
+                };
+
+                commit_pc(&mut frame_stack, pc);
+                hook.before_call(function_id);
+                frame_stack.push(Frame {
+                    function_id,
+                    pc: 0,
+                    scope: func_scope,
+                    temp_alloc_mark: temp_alloc.next(),
+                    fb_return: Some(FbCallReturn {
+                        instance_start,
+                        var_offset: field_var_off,
+                        num_fields,
+                    }),
+                })?;
+                pc_dirty = false;
+            }
             // --- Array opcodes ---
             opcode::LOAD_ARRAY => {
                 let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
@@ -2535,6 +2720,60 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 data_region[byte_offset..byte_offset + 8]
                     .copy_from_slice(&value_slot.as_i64().to_le_bytes());
+            }
+            opcode::COPY_REGION => {
+                let dst_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let dst_desc_index = read_u16_le(bytecode, &mut pc)?;
+                let src_desc_index = read_u16_le(bytecode, &mut pc)?;
+                let src_offset_slot = stack.pop()?;
+
+                // Both sizes come from the container's array descriptors
+                // rather than from an operand, so a codegen defect cannot ask
+                // for a copy that does not match the objects involved.
+                let descriptor_bytes = |desc_index: u16| {
+                    container
+                        .type_section
+                        .as_ref()
+                        .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
+                        .and_then(|d| d.byte_size())
+                };
+                let dst_bytes = descriptor_bytes(dst_desc_index)
+                    .ok_or(Trap::InvalidVariableIndex(dst_var_index))?;
+                let src_bytes = descriptor_bytes(src_desc_index)
+                    .ok_or(Trap::InvalidVariableIndex(dst_var_index))?;
+                if dst_bytes != src_bytes {
+                    return Err(Trap::RegionSizeMismatch {
+                        dst_bytes,
+                        src_bytes,
+                    });
+                }
+                let count = dst_bytes as usize;
+
+                scope.check_access(dst_var_index)?;
+
+                let dst_offset = variables.load(dst_var_index)?.as_i32() as u32 as usize;
+                let src_offset = src_offset_slot.as_i32() as u32 as usize;
+
+                // Confine both ends to the data region. Checked arithmetic so
+                // an offset near u32::MAX cannot wrap into a valid-looking
+                // range on a 32-bit target.
+                let dst_end = dst_offset
+                    .checked_add(count)
+                    .ok_or(Trap::DataRegionOutOfBounds(dst_offset as u32))?;
+                let src_end = src_offset
+                    .checked_add(count)
+                    .ok_or(Trap::DataRegionOutOfBounds(src_offset as u32))?;
+                if dst_end > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(dst_offset as u32));
+                }
+                if src_end > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(src_offset as u32));
+                }
+
+                // copy_within is defined for overlapping ranges, so a
+                // self-assignment (`x := x`, identical offsets) is a no-op
+                // rather than corruption.
+                data_region.copy_within(src_offset..src_end, dst_offset);
             }
             opcode::LOAD_ARRAY_DEREF => {
                 let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
@@ -3185,5 +3424,39 @@ mod tests {
         let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert!(vm.run_round(0).is_ok());
+    }
+
+    #[test]
+    fn uptime_when_no_round_run_then_zero() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        assert_eq!(vm.uptime(), Duration::ZERO);
+    }
+
+    #[test]
+    fn uptime_when_container_lacks_uptime_globals_then_reports_round_clock() {
+        // This container has no FLAG_HAS_SYSTEM_UPTIME, so nothing is written
+        // to the uptime globals -- the VM still knows the clock it ran with.
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        vm.run_round(2_500_000).unwrap();
+
+        assert_eq!(vm.uptime(), Duration::from_millis(2500));
+    }
+
+    #[test]
+    fn uptime_when_round_advances_then_follows_the_clock() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        vm.run_round(1_000).unwrap();
+        assert_eq!(vm.uptime(), Duration::from_millis(1));
+        vm.run_round(7_500).unwrap();
+        assert_eq!(vm.uptime(), Duration::from_micros(7_500));
     }
 }

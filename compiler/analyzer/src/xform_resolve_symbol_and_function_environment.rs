@@ -15,6 +15,7 @@ use ironplc_dsl::{
     },
     core::{Id, Located},
     diagnostic::Diagnostic,
+    scope::ScopeNode,
     visitor::Visitor,
 };
 use log::debug;
@@ -23,7 +24,7 @@ use crate::{
     function_environment::{FunctionEnvironment, FunctionSignature},
     intermediate_type::IntermediateFunctionParameter,
     result::SemanticResult,
-    symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
+    symbol_environment::{ScopeKind, ScopePath, SymbolEnvironment, SymbolKind},
 };
 
 pub fn apply(
@@ -44,7 +45,7 @@ pub fn apply_impl(
     let mut resolver = EnvironmentResolver {
         symbol_env,
         function_env,
-        scope: None,
+        scope: Vec::new(),
     };
     let result = resolver.walk(lib).map_err(|e| vec![e]);
 
@@ -59,20 +60,41 @@ pub fn apply_impl(
 struct EnvironmentResolver<'a> {
     symbol_env: &'a mut SymbolEnvironment,
     function_env: &'a mut FunctionEnvironment,
-    scope: Option<Id>,
+    /// The chain of declarations the traversal is currently inside,
+    /// outermost first. A stack rather than a single name because
+    /// declarations nest: a method is inside its function block.
+    scope: Vec<Id>,
 }
 
 impl<'a> EnvironmentResolver<'a> {
     fn current_scope(&self) -> ScopeKind {
-        match &self.scope {
-            Some(name) => ScopeKind::Named(name.clone()),
-            None => ScopeKind::Global,
+        if self.scope.is_empty() {
+            ScopeKind::Global
+        } else {
+            ScopeKind::Named(ScopePath::new(self.scope.clone()))
         }
     }
 }
 
 impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
     type Value = ();
+
+    /// Pushes the declaration the traversal is entering onto the scope
+    /// stack, so the variables it declares are recorded against its own
+    /// path rather than the enclosing declaration's.
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
+        self.scope.push(match node {
+            ScopeNode::Function(node) => node.name.clone(),
+            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
+            ScopeNode::Program(node) => node.name.clone(),
+            ScopeNode::Method(node) => node.name.clone(),
+        });
+        Ok(())
+    }
+
+    fn exit_scope(&mut self) {
+        self.scope.pop();
+    }
 
     // TODO fn visit_program_access_decl
 
@@ -129,8 +151,6 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::FunctionDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.scope = Some(node.name.clone());
-
         // Build function signature for function environment
         // (Functions are tracked in FunctionEnvironment, not SymbolEnvironment)
         // Collect parameters (INPUT, OUTPUT, INOUT variables)
@@ -191,39 +211,28 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
             FunctionSignature::new(node.name.clone(), return_type, parameters, node.name.span());
         self.function_env.insert(signature)?;
 
-        let result = node.recurse_visit(self);
-        self.scope = None;
-
-        result
+        node.recurse_visit(self)
     }
 
     fn visit_function_block_declaration(
         &mut self,
         node: &ironplc_dsl::common::FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.scope = Some(node.name.name.clone());
         self.symbol_env.insert(
             &node.name.name,
             SymbolKind::FunctionBlock,
             &ScopeKind::Global,
         )?;
-        let result = node.recurse_visit(self);
-        self.scope = None;
-
-        result
+        node.recurse_visit(self)
     }
 
     fn visit_program_declaration(
         &mut self,
         node: &ironplc_dsl::common::ProgramDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.scope = Some(node.name.clone());
         self.symbol_env
             .insert(&node.name, SymbolKind::Program, &ScopeKind::Global)?;
-        let result = node.recurse_visit(self);
-        self.scope = None;
-
-        result
+        node.recurse_visit(self)
     }
 
     fn visit_data_type_declaration_kind(
@@ -352,8 +361,8 @@ mod test {
 
     use crate::{
         function_environment::FunctionEnvironment,
-        symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
-        test_helpers::parse_and_resolve_types,
+        symbol_environment::{ScopeKind, ScopePath, SymbolEnvironment, SymbolKind},
+        test_helpers::{parse_and_resolve_types, parse_and_resolve_types_with_options},
         xform_resolve_symbol_and_function_environment::apply_impl,
     };
 
@@ -377,7 +386,10 @@ END_FUNCTION_BLOCK";
 
         assert!(result.is_ok());
         let attributes = symbol_env
-            .get(&Id::from("LEVEL"), &ScopeKind::Named(Id::from("LOGGER")))
+            .get(
+                &Id::from("LEVEL"),
+                &ScopeKind::Named(Id::from("LOGGER").into()),
+            )
             .unwrap();
         assert_eq!(attributes.kind, SymbolKind::Parameter);
 
@@ -412,24 +424,36 @@ END_FUNCTION_BLOCK";
 
         // Check that input parameters are captured
         let reset_symbol = symbol_env
-            .get(&Id::from("Reset"), &ScopeKind::Named(Id::from("Counter")))
+            .get(
+                &Id::from("Reset"),
+                &ScopeKind::Named(Id::from("Counter").into()),
+            )
             .unwrap();
         assert_eq!(reset_symbol.kind, SymbolKind::Parameter);
 
         let count_symbol = symbol_env
-            .get(&Id::from("Count"), &ScopeKind::Named(Id::from("Counter")))
+            .get(
+                &Id::from("Count"),
+                &ScopeKind::Named(Id::from("Counter").into()),
+            )
             .unwrap();
         assert_eq!(count_symbol.kind, SymbolKind::Parameter);
 
         // Check that output parameters are captured
         let out_symbol = symbol_env
-            .get(&Id::from("OUT"), &ScopeKind::Named(Id::from("Counter")))
+            .get(
+                &Id::from("OUT"),
+                &ScopeKind::Named(Id::from("Counter").into()),
+            )
             .unwrap();
         assert_eq!(out_symbol.kind, SymbolKind::OutputParameter);
 
         // Check that local variables are captured
         let cnt_symbol = symbol_env
-            .get(&Id::from("Cnt"), &ScopeKind::Named(Id::from("Counter")))
+            .get(
+                &Id::from("Cnt"),
+                &ScopeKind::Named(Id::from("Counter").into()),
+            )
             .unwrap();
         assert_eq!(cnt_symbol.kind, SymbolKind::Variable);
 
@@ -515,5 +539,125 @@ END_FUNCTION";
         // Check output parameters
         assert!(func_sig.parameters[1].is_output);
         assert!(func_sig.parameters[2].is_output);
+    }
+
+    // ---------------------------------------------------------------------
+    // METHOD scoping.
+    // See https://github.com/ironplc/ironplc/issues/1439.
+    // ---------------------------------------------------------------------
+
+    fn resolve_with_methods(program: &str) -> (SymbolEnvironment, FunctionEnvironment) {
+        let options = ironplc_parser::options::CompilerOptions {
+            allow_fb_inheritance: true,
+            ..ironplc_parser::options::CompilerOptions::default()
+        };
+        let (library, _context) = parse_and_resolve_types_with_options(program, &options);
+        let mut symbol_env = SymbolEnvironment::new();
+        let mut function_env = FunctionEnvironment::new();
+        apply_impl(&library, &mut symbol_env, &mut function_env).unwrap();
+        (symbol_env, function_env)
+    }
+
+    fn method_scope(function_block: &str, method: &str) -> ScopeKind {
+        ScopeKind::Named(ScopePath::new(vec![
+            Id::from(function_block),
+            Id::from(method),
+        ]))
+    }
+
+    /// A method's parameters belong to the method. They used to be
+    /// recorded against the enclosing function block, which is what made
+    /// them visible to its siblings.
+    #[test]
+    fn apply_when_method_has_parameter_then_recorded_in_method_scope() {
+        let (symbol_env, _) = resolve_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+VAR
+    speed : INT;
+END_VAR
+METHOD SetSpeed
+VAR_INPUT
+    newSpeed : INT;
+END_VAR
+    speed := newSpeed;
+END_METHOD
+END_FUNCTION_BLOCK",
+        );
+
+        let param = Id::from("newSpeed");
+        let fb_scope = ScopeKind::Named(Id::from("FB_Motor").into());
+
+        assert!(
+            symbol_env
+                .get_variables_in_scope(&method_scope("FB_Motor", "SetSpeed"))
+                .iter()
+                .any(|(name, _)| *name == &param),
+            "the parameter belongs to the method's own scope"
+        );
+        assert!(
+            !symbol_env
+                .get_variables_in_scope(&fb_scope)
+                .iter()
+                .any(|(name, _)| *name == &param),
+            "and not to the function block's"
+        );
+    }
+
+    /// Sibling methods are sibling scopes, so the same name in each is
+    /// two distinct symbols rather than one overwriting the other.
+    #[test]
+    fn apply_when_two_methods_declare_same_name_then_each_scope_has_its_own() {
+        let (symbol_env, _) = resolve_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+METHOD a
+VAR
+    q : INT;
+END_VAR
+    q := 1;
+END_METHOD
+METHOD b
+VAR
+    q : INT;
+END_VAR
+    q := 2;
+END_METHOD
+END_FUNCTION_BLOCK",
+        );
+
+        for method in ["a", "b"] {
+            assert!(
+                symbol_env
+                    .get_variables_in_scope(&method_scope("FB_Motor", method))
+                    .iter()
+                    .any(|(name, _)| *name == &Id::from("q")),
+                "method {method} should have its own q"
+            );
+        }
+    }
+
+    /// The method scope nests inside the function block's, so a lookup
+    /// from inside a method still reaches the instance's fields.
+    #[test]
+    fn apply_when_looking_up_field_from_method_scope_then_found() {
+        let (symbol_env, _) = resolve_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+VAR
+    speed : INT;
+END_VAR
+METHOD SetSpeed
+VAR_INPUT
+    newSpeed : INT;
+END_VAR
+    speed := newSpeed;
+END_METHOD
+END_FUNCTION_BLOCK",
+        );
+
+        assert!(symbol_env
+            .find(&Id::from("speed"), &method_scope("FB_Motor", "SetSpeed"))
+            .is_some());
     }
 }

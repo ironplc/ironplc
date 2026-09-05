@@ -3,6 +3,7 @@
 //! `run_round_debug` driver.
 
 use crate::common::{single_function_container, VmBuffers};
+use core::time::Duration;
 use ironplc_container::{opcode, ContainerBuilder, FunctionId, VarIndex};
 use ironplc_vm::{
     BreakpointTable, DebugHook, DebuggerHook, HookAction, PauseReason, Phase, RoundOutcome,
@@ -578,4 +579,41 @@ fn run_round_debug_when_no_step_scan_then_completed_scan_is_not_a_pause() {
         vm.run_round_debug(0, &mut hook).unwrap(),
         RoundOutcome::Completed
     );
+}
+
+#[test]
+fn uptime_when_scan_resumed_then_keeps_the_starting_clock() {
+    // The uptime a debugger shows is the one the paused code is executing
+    // against, so resuming a scan must not adopt the resume call's clock --
+    // only a fresh scan moves it.
+    let c = incrementing_scan_container();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+
+    let mut table = BreakpointTable::new();
+    table.add(FunctionId::SCAN, 7);
+    let mut hook = DebuggerHook::new(&table);
+
+    // Fresh scan at 5 ms: the pause reports that scan's clock.
+    assert!(matches!(
+        vm.run_round_debug(5_000, &mut hook).unwrap(),
+        RoundOutcome::Paused(PauseReason::Breakpoint(_))
+    ));
+    assert_eq!(vm.uptime(), Duration::from_millis(5));
+
+    // Resuming the same scan with a later clock leaves it where it was.
+    hook.suppress_next_breakpoint();
+    assert_eq!(
+        vm.run_round_debug(9_000, &mut hook).unwrap(),
+        RoundOutcome::Completed
+    );
+    assert_eq!(vm.uptime(), Duration::from_millis(5));
+
+    // The next scan is fresh, so it picks the new clock up.
+    let mut hook = DebuggerHook::new(&table);
+    assert!(matches!(
+        vm.run_round_debug(11_000, &mut hook).unwrap(),
+        RoundOutcome::Paused(PauseReason::Breakpoint(_))
+    ));
+    assert_eq!(vm.uptime(), Duration::from_millis(11));
 }

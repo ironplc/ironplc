@@ -472,7 +472,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         //
         // Modeled as an empty structure: interfaces have no fields in
         // IronPLC's model today (method/property signatures are not yet
-        // parsed — see specs/plans/2026-07-18-twincat-extends-implements-interface.md).
+        // parsed — see specs/design/beckhoff-twincat-dialect.md §1.3).
         // This is intentionally a placeholder representation, not a claim
         // that interface field/method access works. Any real use beyond
         // "declare a variable of this type" is unreachable: the
@@ -1082,7 +1082,7 @@ END_TYPE
 
     // ---------------------------------------------------------------------
     // OOP extension: INTERFACE registers as a known type.
-    // See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
+    // See specs/design/beckhoff-twincat-dialect.md §1.3.
     // ---------------------------------------------------------------------
 
     #[test]

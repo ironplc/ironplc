@@ -546,6 +546,7 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::Xor => Some(OPERATOR_INDEX),
             TokenType::And => Some(OPERATOR_INDEX),
             TokenType::AndThen => Some(OPERATOR_INDEX),
+            TokenType::OrElse => Some(OPERATOR_INDEX),
             TokenType::Equal => Some(OPERATOR_INDEX),
             TokenType::NotEqual => Some(OPERATOR_INDEX),
             TokenType::Less => Some(OPERATOR_INDEX),
@@ -772,7 +773,6 @@ mod test {
 
     // -----------------------------------------------------------------
     // Multi-workspace-folder initialization.
-    // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
     // -----------------------------------------------------------------
 
     fn workspace_folder(dir: &std::path::Path) -> lsp_types::WorkspaceFolder {

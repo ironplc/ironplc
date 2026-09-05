@@ -21,8 +21,10 @@ END_PROGRAM
 
     assert_eq!(container.header.num_variables, 2);
 
-    // x := BYTE#16#0F: LOAD_CONST_I32 pool:0, TRUNC_U8, STORE_VAR_I32 var:0
+    // x := BYTE#16#0F: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0 — the
+    //   constant is already in BYTE range, so its TRUNC_U8 is folded away.
     // y := SHL(x, 4):  LOAD_VAR_I32 var:0, LOAD_CONST_I32 pool:1, BUILTIN SHL_I32, TRUNC_U8, STORE_VAR_I32 var:1
+    //   — this TRUNC_U8 stays: the builtin's result is not a constant.
     // RET_VOID
     let bytecode = container
         .code
@@ -31,8 +33,7 @@ END_PROGRAM
     assert_bytecode!(
         bytecode,
         [
-            bc::load_const_i32(0), // pool:0 (0x0F)
-            bc::trunc_u8(),
+            bc::load_const_i32(0),                 // pool:0 (0x0F, already in BYTE range)
             bc::dup(),                             // (store-load optimization)
             bc::store_var_i32(0),                  // var:0
             bc::load_const_i32(1),                 // pool:1 (4)
@@ -66,8 +67,7 @@ END_PROGRAM
     assert_bytecode!(
         bytecode,
         [
-            bc::load_const_i32(0), // pool:0 (0x81)
-            bc::trunc_u8(),
+            bc::load_const_i32(0),                // pool:0 (0x81, already in BYTE range)
             bc::dup(),                            // (store-load optimization)
             bc::store_var_i32(0),                 // var:0
             bc::load_const_i32(1),                // pool:1 (1)
@@ -101,8 +101,7 @@ END_PROGRAM
     assert_bytecode!(
         bytecode,
         [
-            bc::load_const_i32(0), // pool:0 (0x8001)
-            bc::trunc_u16(),
+            bc::load_const_i32(0),                 // pool:0 (0x8001, already in WORD range)
             bc::dup(),                             // (store-load optimization)
             bc::store_var_i32(0),                  // var:0
             bc::load_const_i32(1),                 // pool:1 (1)

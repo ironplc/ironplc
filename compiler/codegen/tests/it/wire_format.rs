@@ -24,8 +24,6 @@
 //! 3. **Per-shape golden encodings.** A handful of small programs
 //!    compile to known-exact byte sequences, guarding operand widths,
 //!    little-endian operand encoding, and per-shape layout.
-//!
-//! See `specs/plans/2026-05-02-codegen-test-wire-format-split.md`.
 
 use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
@@ -234,11 +232,19 @@ fn opcode_constants_when_fb_family_then_pinned_bytes() {
 }
 
 #[test]
+fn opcode_constants_when_method_call_then_pinned_byte() {
+    assert_eq!(opcode::METHOD_CALL, 0xF8);
+}
+
+#[test]
 fn opcode_constants_when_array_family_then_pinned_bytes() {
     assert_eq!(opcode::LOAD_ARRAY, 0xA8);
     assert_eq!(opcode::STORE_ARRAY, 0xAC);
     assert_eq!(opcode::LOAD_ARRAY_DEREF, 0xB0);
     assert_eq!(opcode::STORE_ARRAY_DEREF, 0xB4);
+    // COPY_REGION is STORE_ARRAY at type tag 1 -- the same op class, one
+    // granularity coarser -- rather than an op class of its own.
+    assert_eq!(opcode::COPY_REGION, 0xAD);
 }
 
 #[test]
@@ -418,6 +424,39 @@ fn encoding_when_consolidated_op_class_then_type_tag_selects_member() {
 }
 
 #[test]
+fn encoding_when_op_class_census_taken_then_one_slot_free() {
+    // The op-class field is 6 bits: 64 slots, and `encode_opcode` shifts
+    // the class left by two, so a 65th class would alias another class's
+    // bytes rather than fail. ADR-0033 planned on 23 free slots and the
+    // family consolidations that would have bought them; only BOOL_OP and
+    // STACK_OP were folded, so the real budget is one slot.
+    //
+    // This test is the tripwire that keeps the budget honest: spending
+    // 0x3F fails here, and a 65th class fails to compile against the
+    // assertion in `encode_opcode`.
+    let mut classes: Vec<u8> = (0u8..=255)
+        .filter(|&b| opcode::is_assigned(b))
+        .map(|b| b >> 2)
+        .collect();
+    classes.sort_unstable();
+    classes.dedup();
+
+    let highest = *classes.last().expect("at least one op class is assigned");
+    assert!(
+        highest <= opcode::MAX_OP_CLASS,
+        "op class 0x{highest:02X} does not fit the 6-bit field"
+    );
+    assert_eq!(classes.len(), 63, "op classes in use");
+    assert_eq!(highest, 0x3E, "highest op class in use");
+    assert_eq!(
+        64 - classes.len(),
+        1,
+        "free op-class slots -- consolidate a family behind sub-opcode \
+         dispatch before claiming another top-level operation"
+    );
+}
+
+#[test]
 fn encoding_when_decode_opcode_then_round_trips() {
     // The decode/encode helpers are part of the wire-format contract:
     // they let consumers (verifier, disassembler) interpret the byte
@@ -552,6 +591,51 @@ END_PROGRAM
     assert_eq!(i16::from_le_bytes([bc[4], bc[5]]), 13, "forward LE i16");
     assert_eq!(bc[16], 0x7C, "JMP");
     assert_eq!(i16::from_le_bytes([bc[17], bc[18]]), -19, "backward LE i16");
+}
+
+#[test]
+fn wire_when_seven_byte_copy_region_then_three_le_u16_operands() {
+    // COPY_REGION emits opcode + LE u16 dst_var + LE u16 dst_desc + LE u16
+    // src_desc. It is the only 7-byte shape.
+    let bc = bytecode_of(
+        "
+PROGRAM main
+  VAR
+    x : ARRAY[1..2] OF DINT;
+    y : ARRAY[1..2] OF DINT;
+  END_VAR
+  x := y;
+END_PROGRAM
+",
+    );
+    assert_eq!(opcode::instruction_size(opcode::COPY_REGION), 7);
+    let pos = bc
+        .iter()
+        .position(|&b| b == opcode::COPY_REGION)
+        .expect("whole-array assignment emits COPY_REGION");
+    assert!(
+        pos + 7 <= bc.len(),
+        "COPY_REGION has 6 trailing operand bytes"
+    );
+
+    // x is var 0 and y is var 1. Both arrays are ARRAY[1..2] OF DINT, so
+    // `add_array_descriptor` dedupes them onto one descriptor index.
+    assert_eq!(
+        u16::from_le_bytes([bc[pos + 1], bc[pos + 2]]),
+        0,
+        "dst_var is x"
+    );
+    let dst_desc = u16::from_le_bytes([bc[pos + 3], bc[pos + 4]]);
+    let src_desc = u16::from_le_bytes([bc[pos + 5], bc[pos + 6]]);
+    assert_eq!(dst_desc, src_desc, "identical types share a descriptor");
+
+    // The source offset is delivered by a preceding LOAD_VAR_I32 of y.
+    assert_eq!(bc[pos - 3], opcode::LOAD_VAR_I32);
+    assert_eq!(
+        u16::from_le_bytes([bc[pos - 2], bc[pos - 1]]),
+        1,
+        "src is y"
+    );
 }
 
 #[test]
@@ -844,10 +928,12 @@ fn opcode_pins_when_compared_to_assigned_set_then_complete() {
         opcode::STR_INIT,
         opcode::CMP_BR_I32,
         opcode::CMP_BR_I64,
+        opcode::COPY_REGION,
         opcode::FIND_STR,
         opcode::REPLACE_STR,
         opcode::INSERT_STR,
         opcode::CONCAT_STR,
+        opcode::METHOD_CALL,
     ];
 
     let mut pinned_sorted = pinned.to_vec();

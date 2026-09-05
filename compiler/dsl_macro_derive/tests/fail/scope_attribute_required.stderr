@@ -1,0 +1,5 @@
+error: `PouDeclaration` declares `variables: Vec<VarDecl>`, so it must say whether it opens a lexical scope: add `#[recurse(scope)]` to bracket its contents with `enter_scope`/`exit_scope`, or `#[recurse(no_scope)]` to state that its variables are visible to the enclosing scope
+  --> tests/fail/scope_attribute_required.rs:13:9
+   |
+13 |     pub variables: Vec<VarDecl>,
+   |         ^^^^^^^^^

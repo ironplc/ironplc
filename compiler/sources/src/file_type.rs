@@ -27,7 +27,7 @@ impl FileType {
             Some(ext) if ext.eq_ignore_ascii_case("tcdut") => FileType::TwinCat,
             // .TcIO holds Beckhoff TwinCAT INTERFACE declarations — a
             // separate object type from POU/GVL/DUT, stored in its own
-            // extension. See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
+            // extension. See specs/design/beckhoff-twincat-dialect.md §1.3.
             Some(ext) if ext.eq_ignore_ascii_case("tcio") => FileType::TwinCat,
             _ => FileType::Unknown,
         }

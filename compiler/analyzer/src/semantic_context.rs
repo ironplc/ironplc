@@ -252,9 +252,8 @@ mod tests {
         // Just verify the mutable reference works
         let _ = types.iter().count();
 
-        let symbols = ctx.symbols_mut();
         // Verify mutable access to symbols works
-        let _ = symbols.total_symbols();
+        let _ = ctx.symbols_mut();
     }
 
     #[test]

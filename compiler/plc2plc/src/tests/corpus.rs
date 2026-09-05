@@ -1,8 +1,12 @@
 //! Round-trip rendering of the shared sample corpus.
 //!
-//! Each case parses a `.st` source, renders it back to text, and compares
-//! against the committed `*_rendered.st` golden output. The cases share one
-//! parametrised body so a new corpus entry is a single `#[case]` line.
+//! Each case parses a `.st` source, renders it back to text, *re-parses the
+//! rendering* and compares against the committed `*_rendered.st` golden
+//! output. The cases share one parametrised body so a new corpus entry is a
+//! single `#[case]` line.
+//!
+//! The golden file alone only pins the layout; without the re-parse it will
+//! happily record output the parser rejects. See `common` for why.
 
 use super::common::*;
 use rstest::rstest;
@@ -29,7 +33,5 @@ fn write_to_string_when_corpus_source_then_round_trips(
     #[case] source: &'static str,
     #[case] rendered: &'static str,
 ) {
-    let actual = parse_and_render_resource(source);
-    let expected = read_resource(rendered);
-    assert_eq!(actual, expected);
+    assert_resource_renders_to(source, rendered, &CompilerOptions::default());
 }

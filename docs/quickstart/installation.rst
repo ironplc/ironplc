@@ -19,8 +19,8 @@ Installation
    Both listings are the same extension; only the name differs, because the
    two registries are separate namespaces. Visual Studio Code installs from
    the Marketplace, and editors such as Cursor, Kiro, Devin, and VSCodium
-   install from Open VSX. A VSIX for manual installation is attached to every
-   `IronPLC GitHub releases`_.
+   install from Open VSX. Each release on `IronPLC GitHub releases`_ attaches
+   one VSIX per registry for manual installation.
 
 IronPLC supports the following platforms:
 
@@ -84,12 +84,13 @@ Follow the steps below to install IronPLC.
    .. rubric:: Install IronPLC Extension from a VSIX
 
    If your development environment cannot reach either registry, install the
-   extension manually:
+   extension manually.
 
-   #. Download the latest IronPLC extension
-      :download_artifact:`ironplc-vscode-extension.vsix` from
-      `IronPLC GitHub releases`_.
-   #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
+   .. include:: /includes/download-extension-vsix.rst
+
+   Then, in the Extensions view:
+
+   #. Select the :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
    #. In the :guilabel:`Install from VSIX` dialog, select the VSIX file you downloaded earlier.
 
 .. tab:: macOS
@@ -133,12 +134,13 @@ Follow the steps below to install IronPLC.
    .. rubric:: Install IronPLC Extension from a VSIX
 
    If your development environment cannot reach either registry, install the
-   extension manually:
+   extension manually.
 
-   #. Download the latest IronPLC extension
-      :download_artifact:`ironplc-vscode-extension.vsix` from
-      `IronPLC GitHub releases`_.
-   #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
+   .. include:: /includes/download-extension-vsix.rst
+
+   Then, in the Extensions view:
+
+   #. Select the :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
    #. In the :guilabel:`Install from VSIX` dialog, select the VSIX file you downloaded earlier.
 
 .. tab:: Linux
@@ -177,12 +179,13 @@ Follow the steps below to install IronPLC.
    .. rubric:: Install IronPLC Extension from a VSIX
 
    If your development environment cannot reach either registry, install the
-   extension manually:
+   extension manually.
 
-   #. Download the latest IronPLC extension
-      :download_artifact:`ironplc-vscode-extension.vsix` from
-      `IronPLC GitHub releases`_.
-   #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
+   .. include:: /includes/download-extension-vsix.rst
+
+   Then, in the Extensions view:
+
+   #. Select the :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
    #. In the :guilabel:`Install from VSIX` dialog, select the VSIX file you downloaded earlier.
 
 --------------------------------------

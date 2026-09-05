@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use super::common::{
     parse_options, serialize_diagnostic, serialize_diagnostics, validate_sources, SourceInput,
 };
-use crate::cache::{CachedContainer, ContainerCache, InsertError, ProgramMeta, TaskMeta};
+use crate::cache::{CachedContainer, ContainerCache, InsertError, ProgramMeta, TaskKind, TaskMeta};
 
 /// Combined input accepted by `compile`.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -51,7 +51,7 @@ pub struct CompileResponse {
 pub struct TaskInfo {
     pub name: String,
     pub priority: u32,
-    pub kind: String,
+    pub kind: TaskKind,
     pub interval_ms: Option<f64>,
 }
 
@@ -170,7 +170,7 @@ pub fn build_response(
         .map(|t| TaskInfo {
             name: t.name.clone(),
             priority: t.priority,
-            kind: t.kind.clone(),
+            kind: t.kind,
             interval_ms: t.interval_ms,
         })
         .collect();
@@ -257,10 +257,13 @@ fn extract_task_program_metadata(library: &Library) -> (Vec<TaskMeta>, Vec<Progr
                 })
                 .unwrap_or_else(|| "default".to_string());
 
+            // No CONFIGURATION: codegen keeps the freewheeling task that
+            // `ContainerBuilder` synthesizes, so that is what `run` will
+            // schedule and what the caller needs to see.
             let tasks = vec![TaskMeta {
                 name: program_name.clone(),
                 priority: 0,
-                kind: "event".to_string(),
+                kind: TaskKind::Freewheeling,
                 interval_ms: None,
             }];
             let programs = vec![ProgramMeta {
@@ -290,24 +293,35 @@ fn extract_from_configuration(
     (tasks, programs)
 }
 
+/// Reports the kind of task the *container* will carry, which is not always
+/// the kind the source appears to declare: codegen compiles a task with no
+/// `INTERVAL` — and one whose `INTERVAL` is zero — to a freewheeling task,
+/// because a zero-interval cyclic task would be permanently overdue (see
+/// `codegen::compile::apply_task_configuration`). Reporting the declaration
+/// instead of the outcome would leave a caller unable to tell that `run` needs
+/// an assumed cycle time for this container.
 fn task_meta_from_config(task: &TaskConfiguration) -> TaskMeta {
-    let kind = if task.interval.is_some() {
-        "cyclic"
-    } else if task.single.is_some() {
-        "single"
-    } else {
-        "event"
-    };
-
-    let interval_ms = task
+    // Microseconds, matching what codegen writes to the task table: a
+    // sub-millisecond INTERVAL is a cyclic task, and rounding it to whole
+    // milliseconds would report it as 0 and misclassify it as freewheeling.
+    let interval_us = task
         .interval
         .as_ref()
-        .map(|d| d.interval.whole_milliseconds() as f64);
+        .map(|d| d.interval.whole_microseconds());
+    let interval_ms = interval_us.map(|us| us as f64 / 1_000.0);
+
+    let kind = if interval_us.is_some_and(|us| us > 0) {
+        TaskKind::Cyclic
+    } else if task.single.is_some() {
+        TaskKind::Single
+    } else {
+        TaskKind::Freewheeling
+    };
 
     TaskMeta {
         name: task.name.to_string(),
         priority: task.priority,
-        kind: kind.to_string(),
+        kind,
         interval_ms,
     }
 }
@@ -388,7 +402,7 @@ END_CONFIGURATION
         assert!(resp.ok);
         assert!(!resp.tasks.is_empty());
         assert_eq!(resp.tasks[0].name, "plc_task");
-        assert_eq!(resp.tasks[0].kind, "cyclic");
+        assert_eq!(resp.tasks[0].kind, TaskKind::Cyclic);
         assert_eq!(resp.tasks[0].priority, 1);
         assert!(resp.tasks[0].interval_ms.is_some());
     }

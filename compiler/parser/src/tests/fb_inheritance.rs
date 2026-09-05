@@ -1,5 +1,5 @@
 //! OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE.
-//! See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
+//! See specs/design/beckhoff-twincat-dialect.md §1.3-1.4.
 
 use super::common::*;
 
@@ -188,4 +188,63 @@ END_FUNCTION_BLOCK";
     let fb = extract_fb(&library);
     assert_eq!(fb.name, TypeName::from("ABSTRACT"));
     assert!(fb.oop.is_none());
+}
+
+/// Object-oriented programming is the headline addition of IEC 61131-3:2013,
+/// so the `iec61131-3-ed3` dialect preset must parse it without any vendor
+/// dialect or explicit `--allow-fb-inheritance`. Before #1427 the preset
+/// demoted every OOP keyword to an identifier and reported a syntax error on
+/// each of these sources.
+#[rstest]
+#[case::extends(
+    "
+FUNCTION_BLOCK FB_Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+END_FUNCTION_BLOCK"
+)]
+#[case::implements(
+    "
+FUNCTION_BLOCK FB_Motor IMPLEMENTS I_Drivable
+END_FUNCTION_BLOCK"
+)]
+#[case::abstract_fb(
+    "
+FUNCTION_BLOCK ABSTRACT FB_BaseAxis
+END_FUNCTION_BLOCK"
+)]
+#[case::interface(
+    "
+INTERFACE I_Drivable
+END_INTERFACE"
+)]
+#[case::method(
+    "
+FUNCTION_BLOCK FB_Motor
+VAR
+    speed : INT;
+END_VAR
+METHOD Stop
+    speed := 0;
+END_METHOD
+END_FUNCTION_BLOCK"
+)]
+#[case::this_and_super(
+    "
+FUNCTION_BLOCK FB_Motor
+VAR
+    speed : INT;
+END_VAR
+THIS^.speed := SUPER^.speed;
+END_FUNCTION_BLOCK"
+)]
+fn parse_when_edition3_dialect_then_oop_syntax_parses(#[case] source: &str) {
+    let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+    let result = parse_program(source, &FileId::default(), &options);
+    assert!(
+        result.is_ok(),
+        "the Edition 3 dialect must parse object-oriented syntax: {:?}",
+        result.err()
+    );
 }

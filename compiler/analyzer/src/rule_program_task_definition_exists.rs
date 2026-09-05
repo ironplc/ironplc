@@ -21,6 +21,7 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 use std::collections::HashSet;
+use std::convert::Infallible;
 
 use crate::{
     result::SemanticResult,
@@ -48,13 +49,13 @@ impl RuleProgramTaskDefinitionExists {
     }
 }
 
-impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
+impl Visitor<Infallible> for RuleProgramTaskDefinitionExists {
     type Value = ();
 
     fn visit_resource_declaration(
         &mut self,
         node: &ResourceDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let mut task_names = HashSet::new();
 
         // Collect all task names for easy lookup
