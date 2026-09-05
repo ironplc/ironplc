@@ -291,10 +291,12 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    TwinCAT, and RuSTy.
 
 ``--allow-partial-access-syntax``
-   Allow IEC 61131-3:2013 partial-access bit syntax ``.%Xn`` (e.g.,
-   ``myByte.%X3`` to access bit 3 of a ``BYTE``). Semantically equivalent to
-   the short form ``.n``. Byte/word/dword/lword partial access (``.%Bn``,
-   ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
+   Allow IEC 61131-3:2013 partial-access syntax: the bit form ``.%Xn``
+   (e.g., ``myByte.%X3`` to access bit 3 of a ``BYTE``, equivalent to the
+   short form ``.n``) and the byte, word, double word, and long word forms
+   ``.%Bn``, ``.%Wn``, ``.%Dn``, and ``.%Ln`` (e.g., ``myDword.%B2`` to
+   access byte 2 of a ``DWORD``). See
+   :doc:`/reference/language/structured-text/bit-access`.
 
 ``--allow-pragmas``
    Allow curly-brace pragmas such as ``{attribute 'qualified_only'}`` and
