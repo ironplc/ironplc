@@ -188,6 +188,7 @@ pub(crate) fn emit_string_literal_load(
     } else {
         ctx.add_str_constant(bytes)
     };
+    ctx.note_char_width(char_width);
     ctx.num_temp_bufs += 1;
     emitter.emit_load_const_str(pool_index);
 }
@@ -1114,10 +1115,12 @@ fn compile_program_with_functions(
 
     let container = builder.build();
 
-    // Verify operand-stack discipline before the container escapes codegen.
-    // See `crate::stack_balance` for why this is a hard error and
-    // `specs/design/bytecode-verifier-rules.md` for the rules it enforces.
+    // Verify operand-stack discipline and string-encoding agreement before
+    // the container escapes codegen. See `crate::stack_balance` and
+    // `crate::string_encoding` for why these are hard errors, and
+    // `specs/design/bytecode-verifier-rules.md` for the rules they enforce.
     crate::stack_balance::verify_container(&container)?;
+    crate::string_encoding::verify_container(&container)?;
 
     Ok(container)
 }
@@ -1341,7 +1344,7 @@ pub(crate) enum CurrentFunctionReturn {
 }
 
 impl CompileContext {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         CompileContext {
             variables: HashMap::new(),
             var_types: HashMap::new(),
@@ -1372,6 +1375,19 @@ impl CompileContext {
     /// Returns the exit label for the innermost enclosing loop, if any.
     pub(crate) fn current_loop_exit(&self) -> Option<crate::emit::Label> {
         self.loop_exit_labels.last().copied()
+    }
+
+    /// Records that a value of `char_width` exists in this program.
+    ///
+    /// Temp-buffer slots are uniform, so one wide value anywhere means every
+    /// slot has to be sized in wide bytes (ADR-0035). Recording the width here
+    /// -- rather than at each declaration site that happens to allocate a wide
+    /// value -- keeps a later site that emits a wide value from silently
+    /// getting a slot too small for it.
+    pub(crate) fn note_char_width(&mut self, char_width: CharWidth) {
+        if char_width.is_wide() {
+            self.has_wide_string = true;
+        }
     }
 
     /// Records a static call-graph edge from the function whose body is

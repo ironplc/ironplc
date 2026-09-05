@@ -7,18 +7,17 @@ V9014
 The VM detected a string operation whose operand encoding (1 for ``STRING``,
 2 for ``WSTRING``) does not match the destination's declared encoding.
 
-The analyzer rejects cross-encoding assignments and operations statically,
-so this trap is reached only via:
+Mixing ``STRING`` and ``WSTRING`` is a compile error
+(:doc:`/reference/compiler/problems/P4034`), so a program compiled by
+``ironplcc`` does not reach this trap. Reaching it means one of:
 
-1. **A compiler bug** that emits a string opcode whose source and destination
-   disagree on encoding.
+1. **A compiler bug**.
 2. **A tampered or hand-crafted ``.iplc`` file** whose constant pool, data
    region headers, or temp buffer slots disagree on encoding.
 
-The runtime check is the defense-in-depth layer: even if a static check
-slips, the trap fires before silently corrupting data.
+The trap fires before the mismatched encodings can corrupt data.
 
-This error should not occur during normal operation. It indicates a bug in
-the IronPLC compiler or VM, or a corrupted ``.iplc`` file.
+This error indicates a bug in the IronPLC compiler or VM, or a corrupted
+``.iplc`` file — not a mistake in the program being run.
 
 .. include:: ../../../includes/report-internal-vm-error.rst

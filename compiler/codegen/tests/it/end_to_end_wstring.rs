@@ -399,3 +399,231 @@ END_PROGRAM
         "expected P4034 for STRING := WSTRING"
     );
 }
+
+// The issue-#1550 program: a WSTRING variable compared against a literal.
+// The literal is interned at the peer operand's encoding, so CMP_STR sees two
+// wide operands. w = var0, eq = var1, ne = var2.
+e2e_i32!(
+    wstring_when_compared_to_wide_literal_then_eq_true,
+    "
+PROGRAM main
+  VAR
+    w : WSTRING[10] := \"abc\";
+    eq : BOOL;
+    ne : BOOL;
+  END_VAR
+  eq := w = \"abc\";
+  ne := w <> \"abd\";
+END_PROGRAM
+",
+    &[(1, 1), (2, 1)],
+);
+
+#[test]
+fn wstring_when_compared_to_single_quoted_literal_then_p4034() {
+    // A delimiter is what types a literal: 'abc' is a STRING and "abc" a
+    // WSTRING (IEC 61131-3 Table 5). Comparison operands are peers, with no
+    // destination for either to take an encoding from, so the two types have
+    // nothing in common and the program is rejected rather than widened.
+    use ironplc_problems::Problem;
+
+    let source = "
+PROGRAM main
+  VAR
+    w : WSTRING[10] := \"abc\";
+    eq : BOOL;
+  END_VAR
+  eq := w = 'abc';
+END_PROGRAM
+";
+    let diagnostic =
+        crate::common::try_parse_and_compile(source, &CompilerOptions::default()).unwrap_err();
+    assert_eq!(diagnostic.code, Problem::StringEncodingMismatch.code());
+}
+
+// The literal operand order must not matter.
+e2e_i32!(
+    wstring_when_literal_is_left_operand_then_eq_true,
+    "
+PROGRAM main
+  VAR
+    w : WSTRING[10] := \"abc\";
+    eq : BOOL;
+  END_VAR
+  eq := \"abc\" = w;
+END_PROGRAM
+",
+    &[(1, 1)],
+);
+
+// FIND's needle is a literal: it is interned wide and matched by code unit.
+e2e_i32!(
+    wstring_when_find_literal_needle_then_returns_code_unit_position,
+    "
+PROGRAM main
+  VAR
+    hay : WSTRING[20] := \"abcdef\";
+    pos : DINT;
+  END_VAR
+  pos := FIND(hay, \"cd\");
+END_PROGRAM
+",
+    &[(1, 3)],
+);
+
+#[test]
+fn wstring_when_concat_with_literal_then_joins_code_units() {
+    let source = "
+PROGRAM main
+  VAR
+    a : WSTRING[10] := \"foo\";
+    out : WSTRING[20];
+  END_VAR
+  out := CONCAT(a, \"bar\");
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    let out_offset = wstring_region(10);
+    assert_eq!(read_char_width(&bufs.data_region, out_offset), 2);
+    assert_eq!(read_wstring(&bufs.data_region, out_offset), "foobar");
+}
+
+#[test]
+fn wstring_when_nested_call_has_only_wide_literals_then_result_is_wide() {
+    let source = "
+PROGRAM main
+  VAR
+    out : WSTRING[20];
+  END_VAR
+  out := CONCAT(\"a\", \"b\");
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
+    assert_eq!(read_wstring(&bufs.data_region, 0), "ab");
+}
+
+#[test]
+fn wstring_assigned_narrow_call_result_when_compiled_then_p4034() {
+    // CONCAT('a', 'b') is a STRING expression whatever it is assigned to. The
+    // destination decides the encoding of a literal written into it, not of a
+    // string a call already built.
+    use ironplc_problems::Problem;
+
+    let source = "
+PROGRAM main
+  VAR
+    out : WSTRING[20];
+  END_VAR
+  out := CONCAT('a', 'b');
+END_PROGRAM
+";
+    let diagnostic =
+        crate::common::try_parse_and_compile(source, &CompilerOptions::default()).unwrap_err();
+    assert_eq!(diagnostic.code, Problem::StringEncodingMismatch.code());
+}
+
+#[test]
+fn wstring_when_literal_passed_to_wstring_parameter_then_copied_wide() {
+    let source = "
+FUNCTION echo : WSTRING
+  VAR_INPUT
+    s : WSTRING[10];
+  END_VAR
+  echo := s;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    out : WSTRING[10];
+  END_VAR
+  out := echo(\"hi\");
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
+    assert_eq!(read_wstring(&bufs.data_region, 0), "hi");
+}
+
+#[test]
+fn wstring_when_struct_field_assigned_literal_then_stored_wide() {
+    let source = "
+TYPE
+  Rec : STRUCT
+    label : WSTRING[10];
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    r : Rec;
+  END_VAR
+  r.label := \"hi\";
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
+    assert_eq!(read_wstring(&bufs.data_region, 0), "hi");
+}
+
+#[test]
+fn wstring_array_element_when_compared_to_literal_then_eq_true() {
+    let source = "
+PROGRAM main
+  VAR
+    arr : ARRAY[1..2] OF WSTRING[8];
+    eq : BOOL;
+  END_VAR
+  arr[1] := \"one\";
+  eq := arr[1] = \"one\";
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+#[test]
+fn string_concat_wstring_when_compiled_then_p4034() {
+    // Mixing declared encodings in one operation has no encoding both
+    // operands can share. That is the program's error, reported at compile
+    // time, not a runtime trap.
+    use ironplc_problems::Problem;
+
+    let source = "
+PROGRAM main
+  VAR
+    s : STRING[10] := 'abc';
+    w : WSTRING[10] := \"abc\";
+    out : STRING[20];
+  END_VAR
+  out := CONCAT(s, w);
+END_PROGRAM
+";
+    let diagnostic =
+        crate::common::try_parse_and_compile(source, &CompilerOptions::default()).unwrap_err();
+    assert_eq!(diagnostic.code, Problem::StringEncodingMismatch.code());
+}
+
+#[test]
+fn wstring_when_concat_with_wide_literal_then_appends_wide() {
+    // The example in docs/reference/language/data-types/elementary/wstring.rst.
+    let source = "
+PROGRAM main
+  VAR
+    w : WSTRING[10] := \"abc\";
+  END_VAR
+  IF w = \"abc\" THEN
+    w := CONCAT(w, \"d\");
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
+    assert_eq!(read_wstring(&bufs.data_region, 0), "abcd");
+}

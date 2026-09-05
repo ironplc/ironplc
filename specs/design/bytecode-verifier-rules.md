@@ -208,6 +208,24 @@ For DEREF_LOAD, the value pushed must match the type byte. For DEREF_STORE, the 
 
 **Error**: `R0303(offset, opcode, type_byte, variable_type)`
 
+### Rule R0304: String Encoding Agreement
+
+Every string operation must find operands that agree on their encoding. A string value carries its per-code-unit width — 1 for `STRING` (Latin-1), 2 for `WSTRING` (UTF-16LE) — in the data-region header of its slot and in the tag of its constant-pool entry, and an operation that mixes the two has no defined result.
+
+The verifier reads each data-region slot's width back from the `STR_INIT` that declared it, gathered across all functions because data-region offsets are allocated once for the whole program, and checks:
+
+| Instruction | Requirement |
+|---|---|
+| FIND_STR / CONCAT_STR / REPLACE_STR / INSERT_STR | The two data offsets name slots of the same declared width |
+| BUILTIN CMP_STR | The two data offsets pushed by the preceding LOAD_CONST_I32 instructions name slots of the same declared width |
+| STR_STORE_VAR preceded by LOAD_CONST_STR | The constant's pool tag (STRING_LITERAL / WSTRING_LITERAL) matches the destination slot's declared width |
+
+A width the bytecode does not state statically — a slot never initialized in this container, a slot whose declarations disagree, a value that reaches a store through a temp buffer a built-in produced — is not checked: the rule reports what the bytecode proves and is silent otherwise.
+
+A violation is a compiler defect rather than a program error. Cross-encoding operations in a *program* are rejected earlier, by the analyzer (P4034) and by codegen's operand-width resolution; bytecode that reaches this rule disagreeing with itself was emitted wrong.
+
+**Error**: `R0304(offset, opcode, expected_width, actual_width)`
+
 ### Rule R0400: Jump Target Validity
 
 Every JMP, JMP_IF, JMP_IF_NOT, JMP_FAR, JMP_IF_FAR, and JMP_IF_NOT_FAR offset must satisfy:
@@ -381,6 +399,7 @@ Multiple errors may be reported in a single verification pass (the verifier does
 | R0301 | Function Call Parameter Type Correctness | Stack type correctness |
 | R0302 | Field Access Type Correctness | Stack type correctness |
 | R0303 | Reference Type Consistency | Stack type correctness |
+| R0304 | String Encoding Agreement | Stack type correctness |
 | R0400 | Jump Target Validity | Control flow |
 | R0401 | Return Path Completeness | Control flow |
 | R0402 | Call Depth Exceeded | Control flow |
