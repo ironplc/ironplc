@@ -6,7 +6,7 @@
 review feedback. Points that are now settled are recorded under
 [Decisions](#decisions-settled-in-review); the genuinely unresolved items are in
 [Open Questions](#open-questions). The design will be finalized from the
-remaining answers before an implementation plan is written under `specs/plans/`.
+remaining answers before an implementation plan is written.
 
 ## Overview
 
@@ -545,8 +545,8 @@ cross-platform is [Q6](#open-questions)).
 
 ## Implementation Phases
 
-Each phase is independently testable. Detailed plans follow in `specs/plans/`
-once the open questions are resolved.
+Each phase is independently testable. Detailed plans follow once the open
+questions are resolved.
 
 1. **Typed variable access.** Widen `VmRunning` setters (today `write_variable`
    only accepts `i32`, `compiler/vm/src/vm.rs:603`) to mirror the read side —
