@@ -213,32 +213,41 @@ fn function_char_width(
                 )),
             }
         }
-        _ => ctx
+        _ => match ctx
             .user_functions
             .get(name.as_str())
             .and_then(|info| info.return_string_info.as_ref())
-            .map(|info| info.char_width)
-            .or_else(|| resolved_string_char_width(expr))
-            .ok_or_else(|| {
-                unknown_string_encoding(
-                    func.name.span(),
-                    "a function call that does not return a string",
-                )
-            }),
+        {
+            Some(info) => Ok(info.char_width),
+            None => resolved_string_char_width(expr, func.name.span()),
+        },
     }
 }
 
-/// The encoding an expression's analyzer-assigned type names, when it names a
-/// string type at all.
-fn resolved_string_char_width(expr: &Expr) -> Option<CharWidth> {
-    match expr
-        .resolved_type
-        .as_ref()
-        .and_then(|t| ElementaryTypeName::try_from(&t.name).ok())?
-    {
-        ElementaryTypeName::STRING => Some(CharWidth::Narrow),
-        ElementaryTypeName::WSTRING => Some(CharWidth::Wide),
-        _ => None,
+/// The encoding an expression's analyzer-assigned type names.
+///
+/// Every remaining call in a string position is one whose result the analyzer
+/// typed, so this answers for all of them. Failing to answer means the
+/// analyzer typed a string-position expression as something that is not a
+/// string, which is a defect in the compiler rather than in the program being
+/// compiled -- so it is reported as one, and the diagnostic names what was
+/// found instead. An internal error that does not say enough to debug it is
+/// only half a report.
+fn resolved_string_char_width(expr: &Expr, span: SourceSpan) -> Result<CharWidth, Diagnostic> {
+    let Some(type_name) = expr.resolved_type.as_ref() else {
+        return Err(unknown_string_encoding(
+            span,
+            "a function call the analyzer left untyped",
+        ));
+    };
+
+    match ElementaryTypeName::try_from(&type_name.name) {
+        Ok(ElementaryTypeName::STRING) => Ok(CharWidth::Narrow),
+        Ok(ElementaryTypeName::WSTRING) => Ok(CharWidth::Wide),
+        _ => Err(unknown_string_encoding(
+            span,
+            &format!("a function call the analyzer typed as {type_name}"),
+        )),
     }
 }
 
@@ -547,4 +556,59 @@ pub(crate) fn compile_concat(
 
     emitter.emit_concat_str(in1_offset, in2_offset);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use ironplc_dsl::common::TypeName;
+
+    use super::*;
+
+    /// An expression carrying `type_name` as the type the analyzer resolved.
+    /// `resolved_string_char_width` reads only that, so the kind is arbitrary.
+    fn typed_as(type_name: &str) -> Expr {
+        Expr::with_type(
+            ExprKind::Null(SourceSpan::default()),
+            TypeName::from(type_name),
+        )
+    }
+
+    #[test]
+    fn resolved_string_char_width_when_string_then_narrow() {
+        let width = resolved_string_char_width(&typed_as("STRING"), SourceSpan::default()).unwrap();
+        assert_eq!(width, CharWidth::Narrow);
+    }
+
+    #[test]
+    fn resolved_string_char_width_when_wstring_then_wide() {
+        let width =
+            resolved_string_char_width(&typed_as("WSTRING"), SourceSpan::default()).unwrap();
+        assert_eq!(width, CharWidth::Wide);
+    }
+
+    #[test]
+    fn resolved_string_char_width_when_typed_as_non_string_then_internal_error_names_the_type() {
+        // Unreachable by construction -- the analyzer has established that a
+        // string argument is a string. Should it happen anyway, it stops the
+        // compile and says what it found, rather than passing a guessed width
+        // down to an encoding-mismatch trap at run time.
+        let diagnostic =
+            resolved_string_char_width(&typed_as("INT"), SourceSpan::default()).unwrap_err();
+
+        assert_eq!(diagnostic.code, "P9998");
+        assert!(
+            diagnostic.primary.message.contains("INT"),
+            "the message should name what was found, got: {}",
+            diagnostic.primary.message
+        );
+    }
+
+    #[test]
+    fn resolved_string_char_width_when_untyped_then_internal_error() {
+        let untyped = Expr::new(ExprKind::Null(SourceSpan::default()));
+        let diagnostic = resolved_string_char_width(&untyped, SourceSpan::default()).unwrap_err();
+
+        assert_eq!(diagnostic.code, "P9998");
+        assert!(diagnostic.primary.message.contains("untyped"));
+    }
 }
