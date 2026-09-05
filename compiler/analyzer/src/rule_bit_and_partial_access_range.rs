@@ -255,6 +255,7 @@ mod tests {
     use ironplc_dsl::core::FileId;
     use ironplc_parser::{options::CompilerOptions, parse_program};
     use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     use super::*;
 
@@ -610,6 +611,9 @@ END_FUNCTION_BLOCK"
         )
     }
 
+    /// REQ-PAB-analyzer-122: the valid index range is
+    /// `0..(base_bytes / slice_bytes - 1)`.
+    #[spec_test(REQ_PAB_analyzer_122)]
     #[rstest]
     // A WORD holds two bytes, so byte 0 and byte 1 exist and byte 2 does not.
     #[case::word_byte_0("WORD", "BYTE", "%B0", true)]
@@ -634,6 +638,8 @@ END_FUNCTION_BLOCK"
         );
     }
 
+    /// REQ-PAB-analyzer-121: a slice wider than the variable is rejected.
+    #[spec_test(REQ_PAB_analyzer_121)]
     #[rstest]
     // A slice wider than the variable cannot be taken from it, whatever the
     // index -- a distinct failure from an index past the last slice.
@@ -651,12 +657,12 @@ END_FUNCTION_BLOCK"
     }
 
     // ---------------------------------------------------------------------
-    // REQ-PAB-030: the bit-range analyzer applies to .%Xn identically to .n.
+    // REQ-PAB-analyzer-030: the bit-range analyzer applies to .%Xn identically to .n.
     // See specs/design/partial-access-bit-syntax.md.
     // ---------------------------------------------------------------------
 
-    /// REQ-PAB-030: `b.%X8` on a BYTE is rejected (bit 8 out of range).
-    #[test]
+    /// REQ-PAB-analyzer-030: `b.%X8` on a BYTE is rejected (bit 8 out of range).
+    #[spec_test(REQ_PAB_analyzer_030)]
     fn analyzer_spec_req_pab_030_dot_percent_x_bit_out_of_range_is_rejected() {
         use ironplc_parser::options::CompilerOptions;
         use ironplc_parser::parse_program;

@@ -9,5 +9,7 @@ fn main() {
         "adr-and-pointer-to.md",
         // The function forms of operators (`REQ-KF-analyzer-*`).
         "keyword-function-forms.md",
+        // Partial-access syntax (`REQ-PAB-analyzer-*`): slice range checks.
+        "partial-access-bit-syntax.md",
     ]);
 }
