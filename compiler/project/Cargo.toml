@@ -25,6 +25,11 @@ log = "0.4.29"
 serde_json = "1.0"
 
 [dev-dependencies]
+# `test-support` gives the disassembler tests the shared container fixtures.
+# Dev-dependency only, so it never reaches a normal build.
+ironplc-container = { path = "../container", version = "0.241.0", features = [
+  "test-support",
+] }
 tempfile = "3"
 ctor = "1.0"
 env_logger = "0.11"

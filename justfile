@@ -307,6 +307,10 @@ _install-script-smoke-verify:
     echo "warning: compatibility libraries not installed (release predates library shipping); skipping PI check" >&2
   fi
 
+  # The SBOM ships beside the binaries. Every release install.sh can install
+  # carries it, so a missing file here means the installer regressed.
+  test -f "$BIN/bom.cdx.json"
+
   # install.sh installs every binary or fails, so each one below is checked
   # unconditionally: a missing server here means the installer regressed.
 
