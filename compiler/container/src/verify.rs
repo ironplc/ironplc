@@ -49,7 +49,7 @@ use std::vec::Vec;
 
 use crate::code_section::CodeSection;
 use crate::id_types::FunctionId;
-use crate::opcode::{self, Opcode};
+use crate::opcode::{self, DecodeStop, Opcode};
 
 /// Depth the operand stack must have when a `RET` executes: the single
 /// return value the caller's `CALL` accounts for.
@@ -471,31 +471,34 @@ fn branch_target(
 
 /// Marks every byte offset that starts an instruction, by decoding the
 /// body linearly from offset 0.
+///
+/// Unlike the passes that only look for a pattern, this one rejects the
+/// container over any byte it cannot read: an offset this walk does not mark
+/// is one the abstract interpretation would refuse to branch to, so a body
+/// that does not decode cleanly cannot be verified at all.
 fn instruction_boundaries(
     function_id: FunctionId,
     bytecode: &[u8],
 ) -> Result<Vec<bool>, StackImbalance> {
     let mut boundaries = vec![false; bytecode.len()];
-    let mut pc = 0usize;
-    while pc < bytecode.len() {
-        let op = bytecode[pc];
-        if !opcode::is_assigned(op) {
-            return Err(StackImbalance::UnknownOpcode {
-                function_id,
-                offset: pc,
-                byte: op,
-            });
+    for decoded in opcode::decode_body(bytecode) {
+        match decoded {
+            Ok(instruction) => boundaries[instruction.offset] = true,
+            Err(DecodeStop::UnknownOpcode { offset, byte }) => {
+                return Err(StackImbalance::UnknownOpcode {
+                    function_id,
+                    offset,
+                    byte,
+                })
+            }
+            Err(DecodeStop::Truncated { offset, opcode }) => {
+                return Err(StackImbalance::TruncatedInstruction {
+                    function_id,
+                    offset,
+                    opcode,
+                })
+            }
         }
-        boundaries[pc] = true;
-        let size = opcode::instruction_size(op);
-        if pc + size > bytecode.len() {
-            return Err(StackImbalance::TruncatedInstruction {
-                function_id,
-                offset: pc,
-                opcode: op,
-            });
-        }
-        pc += size;
     }
     Ok(boundaries)
 }
@@ -513,18 +516,15 @@ fn instruction_boundaries(
 /// reports the malformed body.
 fn method_return_depth(code: &CodeSection, callee: FunctionId) -> u16 {
     let bytecode = code.get_function_bytecode(callee).unwrap_or_default();
-    let mut pc = 0usize;
-    while pc < bytecode.len() {
-        let op = bytecode[pc];
-        if !opcode::is_assigned(op) {
-            break;
-        }
-        if op == opcode::RET {
-            return RET_DEPTH;
-        }
-        pc += opcode::instruction_size(op);
+    let decodes_to_ret = opcode::decode_body(bytecode)
+        .map_while(Result::ok)
+        .any(|instruction| instruction.opcode == opcode::RET);
+
+    if decodes_to_ret {
+        RET_DEPTH
+    } else {
+        RET_VOID_DEPTH
     }
-    RET_VOID_DEPTH
 }
 
 /// Reads a little-endian `u16` from the start of `operands`.
