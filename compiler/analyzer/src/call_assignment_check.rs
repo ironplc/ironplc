@@ -8,6 +8,11 @@
 //! context key used in the resulting `Diagnostic` (a function block calls
 //! itself "invocation"; a method calls itself "method"). Shared here so the
 //! two rules can't drift out of sync on the actual validation logic.
+//!
+//! The binding of each argument to the parameter it names or occupies,
+//! [`bind_inputs`], is the part of that validation any other analysis of a
+//! call needs too, so it is a function of its own that the check builds on.
+//! Finding the callee in the first place is `callee_resolution`'s job.
 
 use ironplc_dsl::{
     common::{HasVariables, VarDecl, VariableType},
@@ -55,6 +60,34 @@ fn find_input_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a 
 /// through the input `:=` syntax so not included for this rule.
 fn find_output_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a VarDecl> {
     find(owner, name, &[VariableType::Output])
+}
+
+/// Pairs every input argument of a call with the declared parameter it
+/// binds to: a named input (`x := e`) by name against `VAR_INPUT` and
+/// `VAR_IN_OUT`, a positional input by its position among the `VAR_INPUT`
+/// declarations alone, in declaration order. The parameter is `None` when
+/// the callee declares nothing for the argument -- an unknown name, or more
+/// positional arguments than inputs -- which [`check_assignments`] reports.
+///
+/// Output assignments (`=>`) are not inputs and are not returned.
+pub(crate) fn bind_inputs<'a>(
+    owner: &'a dyn HasVariables,
+    params: &'a [ParamAssignmentKind],
+) -> Vec<(&'a ParamAssignmentKind, Option<&'a VarDecl>)> {
+    let mut positional = owner
+        .variables()
+        .iter()
+        .filter(|item| item.var_type == VariableType::Input);
+    params
+        .iter()
+        .filter_map(|param| match param {
+            ParamAssignmentKind::NamedInput(named) => {
+                Some((param, find_input_type(owner, &named.name)))
+            }
+            ParamAssignmentKind::PositionalInput(_) => Some((param, positional.next())),
+            ParamAssignmentKind::Output(_) => None,
+        })
+        .collect()
 }
 
 /// Labels used to build the diagnostics `check_assignments` returns, so
@@ -125,8 +158,8 @@ pub(crate) fn check_assignments(
     // permitted so we use the assignments as the set to iterate
     if !formal.is_empty() {
         // TODO check the types.
-        for name in &formal {
-            if find_input_type(owner, &name.name).is_none() {
+        for (param, declared) in bind_inputs(owner, params) {
+            if let (ParamAssignmentKind::NamedInput(name), None) = (param, declared) {
                 diagnostics.push(
                     Diagnostic::problem(
                         Problem::FunctionInvocationMissingInput,
@@ -174,4 +207,116 @@ pub(crate) fn check_assignments(
     }
 
     diagnostics
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::parse_and_resolve_types;
+    use ironplc_dsl::common::{
+        FunctionBlockBodyKind, FunctionBlockDeclaration, Library, LibraryElementKind,
+    };
+    use ironplc_dsl::textual::{ExprKind, FbCall, StmtKind};
+
+    /// A function block with one input, one in-out and one output, and a
+    /// program that calls it with `params`.
+    fn parse_call(params: &str) -> Library {
+        let program = format!(
+            "
+FUNCTION_BLOCK FB_Bump
+VAR_INPUT
+    step : INT;
+END_VAR
+VAR_IN_OUT
+    total : INT;
+END_VAR
+VAR_OUTPUT
+    done : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR
+    inst : FB_Bump;
+    a : INT;
+    b : INT;
+    q : BOOL;
+END_VAR
+    inst({params});
+END_PROGRAM"
+        );
+        parse_and_resolve_types(&program)
+    }
+
+    /// The function block and the one call the program makes to it.
+    fn fb_and_call(lib: &Library) -> (&FunctionBlockDeclaration, &FbCall) {
+        let fb = lib
+            .elements
+            .iter()
+            .find_map(|element| match element {
+                LibraryElementKind::FunctionBlockDeclaration(fb) => Some(fb),
+                _ => None,
+            })
+            .unwrap();
+        let call = lib
+            .elements
+            .iter()
+            .find_map(|element| match element {
+                LibraryElementKind::ProgramDeclaration(program) => match &program.body {
+                    FunctionBlockBodyKind::Statements(statements) => {
+                        statements.body.iter().find_map(|stmt| match stmt {
+                            StmtKind::FbCall(call) => Some(call),
+                            _ => None,
+                        })
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap();
+        (fb, call)
+    }
+
+    /// The names of the parameters each input argument binds to, in argument
+    /// order, with `-` for an unbound argument.
+    fn bound_names(lib: &Library) -> Vec<String> {
+        let (fb, call) = fb_and_call(lib);
+        bind_inputs(fb, &call.params)
+            .iter()
+            .map(|(_, declared)| match declared {
+                Some(decl) => decl.identifier.to_string(),
+                None => "-".to_owned(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn bind_inputs_when_named_then_binds_input_and_in_out_by_name() {
+        let lib = parse_call("total := b, step := a, done => q");
+        assert_eq!(vec!["total", "step"], bound_names(&lib));
+    }
+
+    #[test]
+    fn bind_inputs_when_named_unknown_then_unbound() {
+        let lib = parse_call("nope := a");
+        assert_eq!(vec!["-"], bound_names(&lib));
+    }
+
+    #[test]
+    fn bind_inputs_when_positional_then_binds_inputs_in_order_and_extra_is_unbound() {
+        let lib = parse_call("a, b");
+        assert_eq!(vec!["step", "-"], bound_names(&lib));
+    }
+
+    #[test]
+    fn bind_inputs_when_argument_bound_then_pairs_it_with_its_expression() {
+        let lib = parse_call("step := a");
+        let (fb, call) = fb_and_call(&lib);
+        let bound = bind_inputs(fb, &call.params);
+        assert_eq!(1, bound.len());
+        assert!(matches!(
+            bound[0],
+            (ParamAssignmentKind::NamedInput(named), Some(_))
+                if matches!(named.expr.kind, ExprKind::Variable(_))
+        ));
+    }
 }
