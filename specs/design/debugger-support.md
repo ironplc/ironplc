@@ -110,11 +110,11 @@ The container format spec defines a debug section with three sub-tables: source 
 | 2 | No variable scope info | DAP `scopes`/`variables` can't separate Locals from Globals or group by IEC section (VAR_INPUT, VAR_OUTPUT, etc.) | Yes |
 | 3 | No variable type names | Variables pane shows raw slot values with no type context; can't render BOOL as TRUE/FALSE, REAL as float, or FB instances by type name | Yes |
 | 4 | No source column | Breakpoint highlight covers entire line; can't pinpoint within a line containing multiple statements | No — line-level is sufficient for ST (one statement per line is idiomatic) |
-| 5 | No FB type name table | Expanding an FB instance variable shows "fb_type_3" instead of "TON" | No — FB type/field name display is in development |
-| 6 | No FB field name table | FB instance fields show as "field[0]" instead of "IN", "PT", "Q", "ET" | No — FB type/field name display is in development |
+| 5 | ~~No FB type name table~~ Closed by design (2026-09-05) | The COMPOSITE_TYPE sub-table (tag 5) names each FB type and each field; see [Variable Inspection Model](variable-inspection-model.md). | — |
+| 6 | ~~No FB field name table~~ Closed by design (2026-09-05) | As above: fields carry names, sections, byte offsets and type references, so an FB instance expands to `IN`, `PT`, `Q`, `ET`. Structures and arrays expand the same way. | — |
 | 7 | ~~No source file table~~ Closed (2026-05-22) | Line maps now carry a `file_id` indexing into the SOURCE_FILE_TABLE (tag 6); per-file BLAKE3 hashes enable drift detection between an `.iplc` and the user's working copy. | — |
 
-Gaps 1–3 must be addressed in the debug section format before ST debugging can work. Gap 4 is deferred. Gaps 5–6 (FB type/field name display) are in development. Gap 7 is closed by the SOURCE_FILE_TABLE (tag 6).
+Gaps 1–3 must be addressed in the debug section format before ST debugging can work. Gap 4 is deferred. Gaps 5–6 are closed by the type-directed layout tables of the [Variable Inspection Model](variable-inspection-model.md), which are in development. Gap 7 is closed by the SOURCE_FILE_TABLE (tag 6).
 
 ### Revised Debug Section Format
 
@@ -158,13 +158,14 @@ payload_offset = 2 + (8 × sub_table_count) + sum(directory[0..i].size)
 | 1 | LINE_MAP | v1 | Bytecode offset → source line/column mappings |
 | 2 | VAR_NAME | v1 | Variable names with scope and type metadata |
 | 3 | FUNC_NAME | v1 | Function/POU name mappings |
-| 4 | STRING_LAYOUT | implemented | String variable layout: var_index → (data_offset, max_length) (`compiler/container/src/debug_section.rs`) |
-| 5 | FB_FIELD_NAME | in development | FB field index → field name mappings |
+| 4 | STRING_LAYOUT | implemented; retired in format version 4 | String variable layout: var_index → (data_offset, max_length). Folded into VAR_NAME ([Variable Inspection Model](variable-inspection-model.md)) |
+| 5 | COMPOSITE_TYPE | in development | Structure and FB type layouts ([Variable Inspection Model](variable-inspection-model.md) §1.3) |
 | 6 | SOURCE_FILE | implemented | Source file table for multi-file projects (`compiler/container/src/debug_section.rs`) |
 | 7 | LD_RUNG_MAP | reserved | Ladder Diagram rung ID → bytecode mappings |
 | 8 | FBD_NETWORK_MAP | reserved | Function Block Diagram network/element mappings |
 | 9 | ENUM_DEF | implemented | Enumeration type → ordinal-ordered value names (`compiler/container/src/debug_section.rs`) |
-| 10–65535 | — | reserved | Future use |
+| 10 | ARRAY_TYPE | in development | Array type layouts ([Variable Inspection Model](variable-inspection-model.md) §1.4) |
+| 11–65535 | — | reserved | Future use |
 
 **Rules:**
 - Each tag may appear **at most once** in the directory. A reader that encounters a duplicate tag discards the debug section.
@@ -213,17 +214,18 @@ Each sub-table payload starts with its own item count, followed by the items. Th
 | 0 | count | u16 | Number of entries |
 | 2 | entries | [FuncNameEntry; count] | Variable size each |
 
-**Tag 4 — STRING_LAYOUT:**
+**Tag 4 — STRING_LAYOUT (retired in format version 4):**
 
 Same pattern (count + entries): a `count: u16` followed by `StringLayoutEntry`
 items mapping `var_index → (data_offset, max_length)`
-(`compiler/container/src/debug_section.rs`).
+(`compiler/container/src/debug_section.rs`). Format version 4 carries the
+same two facts on the `VarNameEntry` itself.
 
-**Tag 5 — FB_FIELD_NAME (in development):**
+**Tags 5 and 10 — COMPOSITE_TYPE and ARRAY_TYPE (in development):**
 
-Same pattern (count + entries): a `count: u16` followed by `FieldNameEntry`
-items mapping `(type_id, field_index) → field name`. FB type/field name display
-is still in development; see the §FB type/field name support section below.
+Type-directed layout tables that let a reader expand a structure, array or FB
+instance into named, typed children. Defined in
+[Variable Inspection Model](variable-inspection-model.md) §1.3 and §1.4.
 
 #### LineMapEntry (10 bytes)
 
@@ -249,6 +251,12 @@ The column field is populated when available but may be zero. Stepping and break
 | 7 | name | [u8; name_length] | UTF-8 variable name |
 | 7+N | type_name_length | u8 | Length of type name in bytes |
 | 8+N | type_name | [u8; type_name_length] | UTF-8 type name (e.g., "DINT", "REAL", "TON") |
+
+Format version 4 replaces `iec_type_tag` with a three-byte type reference
+(kind + id) and inserts the variable's static `data_offset: u32` before
+`name_length`, so an aggregate's contents can be located without reading the
+live slot. The revised layout is in
+[Variable Inspection Model](variable-inspection-model.md) §1.2.
 
 **var_section encoding:**
 
@@ -276,22 +284,16 @@ The column field is populated when available but may be zero. Stepping and break
 
 The DAP `stackTrace` response requires a function name for each frame. Without this table, stack frames can only display numeric function IDs.
 
-#### FB type/field name support (in development)
+#### Aggregate expansion (in development)
 
-FB type and field name display — the data needed to show `myTimer.IN = TRUE`
-instead of `myTimer.field[0] = 1` — is in development. The earlier draft placed
-the FB type-name table at tag 4, but tag 4 is the implemented `STRING_LAYOUT`
-table, so that assignment was reclaimed; the FB field-name table is tracked as
-tag 5 (in development) and the FB type-name table's tag is not yet finalized.
-
-`FieldNameEntry` (tag 5, in development):
-
-| Offset | Field | Type | Description |
-|--------|-------|------|-------------|
-| 0 | type_id | u16 | FB type ID |
-| 2 | field_index | u8 | Field index within the FB type descriptor |
-| 3 | name_length | u8 | Length of field name in bytes |
-| 4 | name | [u8; name_length] | UTF-8 field name (e.g., "IN", "PT", "Q", "ET") |
+Showing `myTimer.IN = TRUE` instead of `myTimer : TON` — and likewise the
+fields of a structure and the elements of an array — is specified by the
+[Variable Inspection Model](variable-inspection-model.md). Each aggregate type
+is described once (COMPOSITE_TYPE, tag 5; ARRAY_TYPE, tag 10) and each
+aggregate variable's `VarNameEntry` references its type and records the static
+offset of its contents. An earlier draft of this section planned separate FB
+type-name and field-name tables; the type-directed tables subsume both
+([ADR-0049](../adrs/0049-type-directed-debug-layout-for-aggregates.md)).
 
 ### How DAP Uses the Debug Info
 
@@ -302,7 +304,7 @@ The DAP server scans the debug section directory for the tags it needs and ignor
 | `setBreakpoints` | Line maps | Resolve source line → (function_id, bytecode_offset); snap to nearest valid line |
 | `stackTrace` | Function names + line maps | Frame name (FuncNameEntry.name) + source location (LineMapEntry.source_line) |
 | `scopes` | Variable names | Group variables by var_section: Locals (VAR, VAR_TEMP), Inputs (VAR_INPUT), Outputs (VAR_OUTPUT), In/Out (VAR_IN_OUT), Globals (VAR_EXTERNAL, VAR_GLOBAL). Alongside these program scopes sits a **`Runtime`** scope carrying VM-level state that is not a program variable — currently `scanCount` and `systemUptime` (see §Scopes). |
-| `variables` | Variable names + type section | Name (VarNameEntry.name), type (VarNameEntry.type_name), value (read from VariableTable, formatted according to type) |
+| `variables` | Variable names + COMPOSITE_TYPE + ARRAY_TYPE + ENUM_DEF | Name (VarNameEntry.name), type (VarNameEntry.type_name), value (read from VariableTable or the data region, formatted according to the type reference); an aggregate expands into children per [Variable Inspection Model](variable-inspection-model.md) §3 |
 | `evaluate` | Variable names | Look up variable by name, return formatted value |
 
 ### Codegen Changes
@@ -382,10 +384,11 @@ pub struct DebugInfo {
     pub line_maps: Vec<LineMapEntry>,
     pub var_names: Vec<VarNameEntry>,
     pub func_names: Vec<FuncNameEntry>,
-    pub string_layouts: Vec<StringLayoutEntry>, // tag 4
+    pub string_layouts: Vec<StringLayoutEntry>, // tag 4; retired in format version 4
     pub source_files: Vec<SourceFileEntry>,      // tag 6
     pub enum_defs: Vec<EnumDefEntry>,            // tag 9
-    // FB type/field name tables (tag 5 and a tag TBD) are in development.
+    // Format version 4 adds composite_types (tag 5) and array_types (tag 10);
+    // see variable-inspection-model.md.
 }
 
 pub struct LineMapEntry {
@@ -965,7 +968,7 @@ The "global" sentinel is `FunctionId::GLOBAL_SCOPE` (defined in `compiler/contai
 | BYTE, WORD, DWORD, LWORD | Hexadecimal with `16#` prefix |
 | TIME, LTIME | `T#` duration format |
 | STRING | Quoted string content |
-| (FB type) | `{type_name}` (expand via FB field names — in development) |
+| STRUCT, ARRAY, FB instance | `{type_name}`, expandable into fields or elements ([Variable Inspection Model](variable-inspection-model.md) §3) |
 
 ### Variable forcing: not in v1
 
@@ -1503,7 +1506,7 @@ This spec **replaces** the debug section format defined in the container format 
 2. **Tagged sub-tables** — each sub-table has a type tag; readers skip unknown tags by size
 3. **LineMapEntry is 10 bytes** — grew from 6 → 8 (adding `source_column: u16`) and then 8 → 10 (adding `file_id: u16` for multi-file source maps)
 4. **VarNameEntry gains scope and type fields** — adds `function_id`, `var_section`, `type_name`
-5. **Additional implemented sub-tables** — function names (tag 3), string layout (tag 4, `STRING_LAYOUT`), source files (tag 6), enum definitions (tag 9). FB type/field name display (tag 5, FB_FIELD_NAME) is in development.
+5. **Additional implemented sub-tables** — function names (tag 3), string layout (tag 4, `STRING_LAYOUT`; retired in format version 4), source files (tag 6), enum definitions (tag 9). Aggregate layout tables (tag 5, `COMPOSITE_TYPE`; tag 10, `ARRAY_TYPE`) are in development ([Variable Inspection Model](variable-inspection-model.md)).
 6. **Reserved tags** — LD rung map (tag 7), FBD network map (tag 8). Tag 6 (source file table) is now implemented.
 
 These changes affect only the debug section, which is independently hashed and signed (via `debug_hash` and the debug signature section). Adding or modifying debug info does not affect the content signature or the content hash, so existing containers remain valid.

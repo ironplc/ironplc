@@ -175,6 +175,8 @@ Each array descriptor defines the element type and total element count for one a
 
 The verifier checks that every LOAD_ARRAY/STORE_ARRAY descriptor index references a valid array descriptor and that the descriptor's `element_type` is valid.
 
+The descriptor carries neither the declared bounds nor a structure element type, and two arrays of the same size share one descriptor, so it cannot serve a debugger. The debug section's ARRAY_TYPE sub-table (tag 10, [Variable Inspection Model](variable-inspection-model.md) §1.4) carries those, and a codegen test keeps the two consistent.
+
 ### FB Type Descriptors
 
 Each FB type descriptor defines the field layout for a function block type.
@@ -292,15 +294,16 @@ payload_offset = 2 + (8 × sub_table_count) + sum(directory[0..i].size)
 |-----|------|--------|-------------|
 | 0 | SOURCE_TEXT | v1 | Embedded source text (UTF-8) |
 | 1 | LINE_MAP | v1 | Bytecode offset → source line/column mappings |
-| 2 | VAR_NAME | v1 | Variable names with scope and type metadata |
+| 2 | VAR_NAME | v1 | Variable names with scope and type metadata. Format version 4 replaces `iec_type_tag` with a type reference and adds the static `data_offset`; see [Variable Inspection Model](variable-inspection-model.md) §1.2 |
 | 3 | FUNC_NAME | v1 | Function/POU name mappings |
-| 4 | STRING_LAYOUT | implemented | String variable layout: var_index → (data_offset, max_length) (`compiler/container/src/debug_section.rs`) |
-| 5 | FB_FIELD_NAME | in development | FB field index → field name mappings |
+| 4 | STRING_LAYOUT | implemented; retired in format version 4 | String variable layout: var_index → (data_offset, max_length) (`compiler/container/src/debug_section.rs`). Folded into VAR_NAME by [Variable Inspection Model](variable-inspection-model.md); the tag is not reused |
+| 5 | COMPOSITE_TYPE | in development (format version 4) | Structure and function block type layouts: fields with names, sections, byte offsets and type references. Subsumes the earlier FB_FIELD_NAME plan. See [Variable Inspection Model](variable-inspection-model.md) §1.3 |
 | 6 | SOURCE_FILE | v1 | Source file table: `(path, BLAKE3 content hash)` per file. `LineMapEntry.file_id` indexes into this table. |
 | 7 | LD_RUNG_MAP | reserved | Ladder Diagram rung ID → bytecode mappings |
 | 8 | FBD_NETWORK_MAP | reserved | Function Block Diagram network/element mappings |
-| 9 | ENUM_DEF | implemented | Enumeration type → ordinal-ordered value names (`compiler/container/src/debug_section.rs`) |
-| 10–65535 | — | reserved | Future use |
+| 9 | ENUM_DEF | implemented | Enumeration type → ordinal-ordered value names (`compiler/container/src/debug_section.rs`). Format version 4 sorts entries by type name so they can be indexed |
+| 10 | ARRAY_TYPE | in development (format version 4) | Array type layouts: element type reference, element stride and declared bounds per dimension. See [Variable Inspection Model](variable-inspection-model.md) §1.4 |
+| 11–65535 | — | reserved | Future use |
 
 **Rules:**
 - Each tag may appear **at most once** in the directory. A reader that encounters a duplicate tag discards the debug section.
@@ -342,7 +345,7 @@ Each LineMapEntry (10 bytes):
 | 0 | count | u16 | Number of entries |
 | 2 | entries | [VarNameEntry; count] | Variable size each |
 
-Each VarNameEntry (variable size):
+Each VarNameEntry (variable size, format version 3; format version 4 replaces `iec_type_tag` with a three-byte type reference and inserts a `data_offset: u32` before `name_length` — see [Variable Inspection Model](variable-inspection-model.md) §1.2, which is the authoritative layout once it lands):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
@@ -405,6 +408,9 @@ Tags 25-27 mark a variable whose slot holds a data-region offset rather than
 its value, so a reader knows not to display the slot. They are distinct from
 `OTHER` because `OTHER` also carries named subrange types, whose slot does hold
 their value. See [Variable Value Rendering](variable-value-rendering.md).
+Format version 4 retires them: the type reference's `kind` says what the slot
+holds, and the COMPOSITE_TYPE and ARRAY_TYPE tables say what is at the offset
+([Variable Inspection Model](variable-inspection-model.md) §1.1).
 
 New tag values are additive: a reader that does not recognise one falls back to
 the same display it would have used for `OTHER`, so adding a tag does not
@@ -425,7 +431,7 @@ Each FuncNameEntry (variable size):
 | 2 | name_length | u8 | Length of function name in bytes |
 | 3 | name | [u8; name_length] | UTF-8 POU name (e.g., "MAIN", "MotorControl") |
 
-**Tag 4 — STRING_LAYOUT:**
+**Tag 4 — STRING_LAYOUT (retired in format version 4; a `VarNameEntry` of kind `STRING` carries the same offset and length):**
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
@@ -440,7 +446,9 @@ Each StringLayoutEntry (8 bytes):
 | 2 | data_offset | u32 | Offset of the string's bytes within the data region |
 | 6 | max_length | u16 | Declared maximum length of the string |
 
-**Tag 5 — FB_FIELD_NAME (in development):**
+**Tag 5 — COMPOSITE_TYPE (in development):** defined in [Variable Inspection Model](variable-inspection-model.md) §1.3. The earlier FB_FIELD_NAME plan for this tag, kept below for the record, is subsumed by it and will not be implemented.
+
+**Tag 5 — FB_FIELD_NAME (superseded):**
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
@@ -456,9 +464,7 @@ Each FieldNameEntry (variable size):
 | 3 | name_length | u8 | Length of field name in bytes |
 | 4 | name | [u8; name_length] | UTF-8 field name (e.g., "IN", "PT", "Q", "ET") |
 
-A companion FB type-name table is also in development. Its earlier tag-4
-assignment was reclaimed by the implemented STRING_LAYOUT table, so its tag is
-not yet finalized.
+**Tag 10 — ARRAY_TYPE (in development):** defined in [Variable Inspection Model](variable-inspection-model.md) §1.4.
 
 **Tag 6 — SOURCE_FILE:**
 
@@ -638,3 +644,12 @@ The `format_version` field allows future changes to the container format. The VM
 Rules for version increments:
 - Adding new optional sections → minor version (backward compatible)
 - Changing header layout or section semantics → major version (not backward compatible)
+
+Version history:
+
+| Version | Change |
+|---------|--------|
+| 1 | This spec as first written |
+| 2 | Opcode encoding by class and type ([ADR-0033](../adrs/0033-opcode-encoding-by-class-and-type.md)) |
+| 3 | WSTRING string header and constant-pool encoding tags ([ADR-0035](../adrs/0035-length-and-encoding-prefixed-string-layout.md)) |
+| 4 (in development) | Debug section: `VarNameEntry` carries a type reference and static `data_offset`; STRING_LAYOUT retired; COMPOSITE_TYPE and ARRAY_TYPE added ([ADR-0049](../adrs/0049-type-directed-debug-layout-for-aggregates.md), [Variable Inspection Model](variable-inspection-model.md)) |
