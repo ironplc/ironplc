@@ -262,24 +262,13 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                 }
             }
 
-            let positional_args: Vec<_> = node
-                .param_assignment
-                .iter()
-                .filter_map(|p| match p {
-                    ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-                    // NamedInput is already converted to PositionalInput by
-                    // xform_named_to_positional_args; Output is handled above.
-                    _ => None,
-                })
-                .collect();
-
             // Check each positional argument type against the parameter type.
             // Standard-library functions are checked too: their parameters use
             // generic ANY_* categories (or concrete types for the conversion
             // functions), all handled by `are_types_compatible`. The parameter
             // list continues past the declared ones for an extensible
             // function, so every input of `ADD(a, b, c)` is checked.
-            for (param, arg_expr) in signature.input_parameters().zip(&positional_args) {
+            for (param, arg_expr) in signature.bind_inputs(&node.param_assignment) {
                 if let Some(ref arg_type) = arg_expr.resolved_type {
                     if !are_types_compatible(&param.param_type, arg_type, self.options) {
                         self.diagnostics.push(
