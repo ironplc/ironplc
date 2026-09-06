@@ -180,15 +180,14 @@ fn populate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::test_support::ed2_options;
+    use crate::tools::test_support::{
+        ed2_options, source, unnamed_source, with_program, ENUM_TYPE_PROGRAM,
+        SEMANTIC_ERROR_PROGRAM, VALID_PROGRAM,
+    };
 
     #[test]
     fn build_response_when_valid_program_then_ok_true() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&source(VALID_PROGRAM), &ed2_options());
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert_eq!(resp.programs, vec!["p".to_string()]);
         assert_eq!(resp.files, vec!["main.st".to_string()]);
@@ -220,21 +219,16 @@ mod tests {
 
     #[test]
     fn build_response_when_enum_type_then_in_enumerations() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "TYPE MyEnum : (A, B, C); END_TYPE\nPROGRAM p\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&source(ENUM_TYPE_PROGRAM), &ed2_options());
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.enumerations.contains(&"MyEnum".to_string()));
     }
 
     #[test]
     fn build_response_when_struct_type_then_in_structures() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "TYPE MyStruct : STRUCT a : INT; b : REAL; END_STRUCT; END_TYPE\nPROGRAM p\nEND_PROGRAM".into(),
-        }];
+        let sources = source(&with_program(
+            "TYPE MyStruct : STRUCT a : INT; b : REAL; END_STRUCT; END_TYPE",
+        ));
         let resp = build_response(&sources, &ed2_options());
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.structures.contains(&"MyStruct".to_string()));
@@ -260,11 +254,7 @@ mod tests {
 
     #[test]
     fn build_response_when_semantic_error_then_ok_false() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&source(SEMANTIC_ERROR_PROGRAM), &ed2_options());
         assert!(!resp.ok);
         assert!(!resp.diagnostics.is_empty());
     }
@@ -273,11 +263,7 @@ mod tests {
     fn build_response_when_semantic_error_then_partial_manifest_preserved() {
         // REQ-TOL-mcp-201: semantic failure must still return whatever the
         // analyzer recognized.
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&source(SEMANTIC_ERROR_PROGRAM), &ed2_options());
         assert!(!resp.ok);
         assert_eq!(resp.files, vec!["main.st".to_string()]);
         // The program `p` was recognized even though semantic analysis failed.
@@ -286,22 +272,14 @@ mod tests {
 
     #[test]
     fn build_response_when_invalid_sources_then_error_diagnostic() {
-        let sources = vec![SourceInput {
-            name: String::new(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&unnamed_source(), &ed2_options());
         assert!(!resp.ok);
         assert!(resp.diagnostics.iter().any(|d| d["code"] == "P8001"));
     }
 
     #[test]
     fn build_response_when_invalid_options_then_error_diagnostic() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &serde_json::json!({}));
+        let resp = build_response(&source(VALID_PROGRAM), &serde_json::json!({}));
         assert!(!resp.ok);
         assert!(resp.diagnostics.iter().any(|d| d["code"] == "P8001"));
     }
