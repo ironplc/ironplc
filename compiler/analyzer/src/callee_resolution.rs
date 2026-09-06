@@ -98,26 +98,14 @@ pub(crate) struct InstanceTypes {
 
 impl InstanceTypes {
     /// Records `decl` when it declares a function-block instance; any other
-    /// declaration is ignored.
-    ///
-    /// An instance declared with a member initializer, `inst : FB := (x :=
-    /// 1)`, keeps the structure-shaped initializer through type resolution,
-    /// so its type alone says whether it is an instance; `is_function_block`
-    /// answers that for the caller's view of the declared types.
-    pub(crate) fn declare(
-        &mut self,
-        decl: &VarDecl,
-        is_function_block: &dyn Fn(&TypeName) -> bool,
-    ) {
-        let fb_type = match &decl.initializer {
-            InitialValueAssignmentKind::FunctionBlock(init) => Some(&init.type_name),
-            InitialValueAssignmentKind::Structure(init) if is_function_block(&init.type_name) => {
-                Some(&init.type_name)
+    /// declaration is ignored. Type resolution has already turned every
+    /// instance declaration, member-initialized or not, into a
+    /// function-block initializer, so the initializer kind is the whole test.
+    pub(crate) fn declare(&mut self, decl: &VarDecl) {
+        if let InitialValueAssignmentKind::FunctionBlock(init) = &decl.initializer {
+            if let Some(name) = decl.identifier.symbolic_id() {
+                self.var_to_fb.insert(name.clone(), init.type_name.clone());
             }
-            _ => None,
-        };
-        if let (Some(fb_type), Some(name)) = (fb_type, decl.identifier.symbolic_id()) {
-            self.var_to_fb.insert(name.clone(), fb_type.clone());
         }
     }
 
@@ -252,7 +240,7 @@ END_PROGRAM",
         );
         let mut instances = InstanceTypes::default();
         for decl in &program(&lib).variables {
-            instances.declare(decl, &|type_name| *type_name == TypeName::from("FB_Base"));
+            instances.declare(decl);
         }
         assert_eq!(
             Some(&TypeName::from("FB_Base")),

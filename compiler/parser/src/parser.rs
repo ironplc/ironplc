@@ -70,6 +70,35 @@ fn negate_literal_constant(c: ConstantKind) -> Result<ConstantKind, ConstantKind
 /// literal (optionally with one leading unary minus, e.g. `-123`), and
 /// otherwise wraps it as `SimpleExpr` (the constant-expression dialect
 /// extension, folded by `xform_fold_initializer_expressions`).
+/// A member list written against a user type name: `T := (a := 1)`. The
+/// type may be a structure or a function block; the resolver decides.
+fn late_resolved_members(init: StructureInitializationDeclaration) -> InitialValueAssignmentKind {
+    InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+        type_name: init.type_name,
+        initial_value: Some(LateResolvedInitialValue::Members(init.elements_init)),
+    })
+}
+
+/// A value written against a user type name: `T := Red`. A qualified value
+/// (`T := T#Red`) names an enumeration and is settled here; a bare
+/// identifier may be an enumeration value or a named constant of any other
+/// type, and the resolver decides.
+fn late_resolved_or_enumerated(
+    type_name: TypeName,
+    value: EnumeratedValue,
+) -> InitialValueAssignmentKind {
+    if value.type_name.is_some() {
+        return InitialValueAssignmentKind::EnumeratedType(EnumeratedInitialValueAssignment {
+            type_name,
+            initial_value: Some(value),
+        });
+    }
+    InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+        type_name,
+        initial_value: Some(LateResolvedInitialValue::Value(value.value)),
+    })
+}
+
 fn resolve_initializer_expr(type_name: TypeName, e: ExprKind) -> InitialValueAssignmentKind {
     match e {
         ExprKind::Const(c) => InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -726,17 +755,10 @@ parser! {
       arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) }
       // handle the initial value
       / subrange:subrange_spec_init__with_range() { InitialValueAssignmentKind::Subrange(subrange.0) }
-      / i:initialized_structure__without_ambiguous() { InitialValueAssignmentKind::Structure(i) }
+      / i:initialized_structure__without_ambiguous() { late_resolved_members(i) }
       / spec_init:enumerated_spec_init__with_value() {
         match spec_init.0 {
-          SpecificationKind::Named(id) => {
-            InitialValueAssignmentKind::EnumeratedType(
-              EnumeratedInitialValueAssignment {
-                type_name: id,
-                initial_value: Some(spec_init.1),
-              }
-            )
-          },
+          SpecificationKind::Named(id) => late_resolved_or_enumerated(id, spec_init.1),
           SpecificationKind::Inline(values) => {
             InitialValueAssignmentKind::EnumeratedValues(
               EnumeratedValuesInitializer {
@@ -803,15 +825,11 @@ parser! {
         other => Ok(resolve_initializer_expr(s, other)),
       }
     } / spec:enumerated_specification() _ tok(TokenType::Assignment) _ init:enumerated_value() {
-      // An enumerated_specification defined with a value is unambiguous the value
-      // is not a valid constant.
+      // An inline enumeration is unambiguous. A named type with a value is
+      // only unambiguous when the value is qualified; a bare identifier may
+      // as well be a named constant for an alias, so the resolver decides.
       match spec {
-        SpecificationKind::Named(name) => {
-          InitialValueAssignmentKind::EnumeratedType(EnumeratedInitialValueAssignment {
-            type_name: name,
-            initial_value: Some(init),
-          })
-        },
+        SpecificationKind::Named(name) => late_resolved_or_enumerated(name, init),
         SpecificationKind::Inline(values) => {
           InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer {
             values: values.values,
@@ -836,7 +854,7 @@ parser! {
     }/ i:type_name() {
       // What remains is ambiguous and the devolves to a single identifier because the prior
       // cases have captures all cases with a value. This can be simple, enumerated or struct
-      InitialValueAssignmentKind::LateResolvedType(i)
+      InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer::bare(i))
     }
     rule string_type_name() -> TypeName = type_name()
     rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftBracket) _ length:integer_ref() _ tok(TokenType::RightBracket) _ init:(tok(TokenType::Assignment) _ str:character_string() {str})? {
@@ -1033,11 +1051,10 @@ parser! {
     }
     rule structured_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init_struct:initialized_structure()  {
       names.into_iter().map(|name| {
-        // TODO
         UntypedVarDecl {
           location: None,
           name,
-          initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
+          initializer: late_resolved_members(init_struct.clone()),
         }
       }).collect()
     }
@@ -1046,7 +1063,7 @@ parser! {
         UntypedVarDecl {
           location: None,
           name,
-          initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
+          initializer: late_resolved_members(init_struct.clone()),
         }
       }).collect()
     }
@@ -1129,7 +1146,7 @@ parser! {
     }
     rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl()
     rule temp_var_decl() -> Vec<UntypedVarDecl> = string_var_declaration() / var1_declaration() / array_var_declaration() / structured_var_declaration()
-    rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(spec:subrange_specification__with_range() {InitialValueAssignmentKind::Subrange(spec)} / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(spec)} ) {
+    rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(spec:subrange_specification__with_range() {InitialValueAssignmentKind::Subrange(spec)} / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer::bare(spec))} ) {
       // TODO this could eventually cause duplicated definitions because
       // multiple variables have the same type declaration
       names.iter().map(|identifier| {

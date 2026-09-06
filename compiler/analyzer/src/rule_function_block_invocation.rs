@@ -148,10 +148,7 @@ impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        let function_blocks = self.function_blocks;
-        self.instances.declare(node, &|type_name| {
-            function_blocks.contains(type_name) || is_stdlib_function_block(&type_name.name)
-        });
+        self.instances.declare(node);
         Ok(())
     }
 

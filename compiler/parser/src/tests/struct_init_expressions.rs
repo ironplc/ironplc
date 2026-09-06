@@ -35,13 +35,19 @@ END_FUNCTION_BLOCK";
         &library.elements[1],
         LibraryElementKind::FunctionBlockDeclaration
     );
-    let struct_init = cast!(
+    // `TON` is a type name the parser does not classify, so the member list
+    // is recorded for the type resolver (ADR-0050).
+    let late = cast!(
         &fb.variables[1].initializer,
-        InitialValueAssignmentKind::Structure
+        InitialValueAssignmentKind::LateResolvedType
     );
-    assert_eq!(struct_init.elements_init.len(), 1);
+    let elements = match &late.initial_value {
+        Some(LateResolvedInitialValue::Members(elements)) => elements,
+        other => panic!("expected a member list, got {other:?}"),
+    };
+    assert_eq!(elements.len(), 1);
     assert!(matches!(
-        struct_init.elements_init[0].init,
+        elements[0].init,
         StructInitialValueAssignmentKind::Expression(_)
     ));
 }
