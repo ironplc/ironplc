@@ -227,7 +227,8 @@ fn parse_when_first_steps_function_block_logger_then_test_apply_when_names_corre
                     VariableType::Input,
                     DeclarationQualifier::Unspecified,
                 ),
-                VarDecl::enumerated("LEVEL", "LOGLEVEL", "INFO").with_type(VariableType::Input),
+                VarDecl::late_bound_value("LEVEL", "LOGLEVEL", "INFO")
+                    .with_type(VariableType::Input),
                 VarDecl::simple("TRIG0", "BOOL"),
             ],
             edge_variables: vec![],

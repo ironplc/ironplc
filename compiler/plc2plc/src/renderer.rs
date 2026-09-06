@@ -477,6 +477,31 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    fn visit_late_resolved_initializer(
+        &mut self,
+        node: &LateResolvedInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)?;
+
+        match &node.initial_value {
+            None => {}
+            Some(LateResolvedInitialValue::Members(elements)) => {
+                self.write_ws(":=");
+                self.write_ws("(");
+
+                visit_comma_separated!(self, elements.iter(), StructureElementInit);
+
+                self.write_ws(")");
+            }
+            Some(LateResolvedInitialValue::Value(value)) => {
+                self.write_ws(":=");
+                self.visit_id(value)?;
+            }
+        }
+
+        Ok(())
+    }
+
     // 2.3.3.1
     fn visit_structure_element_init(
         &mut self,

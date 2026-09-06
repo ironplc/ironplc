@@ -121,6 +121,16 @@ pub(crate) fn assign_variables(
                     }
                 }
                 InitialValueAssignmentKind::FunctionBlock(fb_init) => {
+                    // The instance's members take the block's own initial
+                    // values; applying `(x := 1)` on top is not implemented.
+                    // Reject it rather than allocate the instance and drop
+                    // the values silently.
+                    if !fb_init.init.is_empty() {
+                        return Err(Diagnostic::not_implemented(Label::span(
+                            decl.identifier.span(),
+                            "Function block instance with member initializer",
+                        )));
+                    }
                     let fb_name = fb_init.type_name.to_string().to_uppercase();
                     if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
                         // Standard library function block.

@@ -129,7 +129,10 @@ impl RuleAggregateAssignment<'_> {
             InitialValueAssignmentKind::Structure(structure) => type_environment
                 .get(&structure.type_name)
                 .map(|attrs| attrs.representation.clone()),
-            InitialValueAssignmentKind::LateResolvedType(type_name) => type_environment
+            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name,
+                ..
+            }) => type_environment
                 .get(type_name)
                 .map(|attrs| attrs.representation.clone()),
             _ => None,

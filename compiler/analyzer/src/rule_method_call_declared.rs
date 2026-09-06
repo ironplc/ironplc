@@ -154,9 +154,7 @@ impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        let function_blocks = self.function_blocks;
-        self.instances
-            .declare(node, &|type_name| function_blocks.contains(type_name));
+        self.instances.declare(node);
         Ok(())
     }
 
