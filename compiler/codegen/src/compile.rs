@@ -61,6 +61,7 @@ use ironplc_dsl::configuration::{
 };
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::{FunctionEnvironment, SemanticContext, TypeEnvironment};
@@ -202,11 +203,23 @@ pub(crate) fn emit_string_literal_load(
 /// Returns an error if no program is found or if the program contains
 /// unsupported constructs.
 /// Options that affect code generation.
-#[derive(Default)]
+///
+/// Every front end derives this from the project's [`CompilerOptions`] via
+/// [`From`], so the mapping from a compiler option to what codegen does with
+/// it has exactly one definition.
+#[derive(Debug, Default, Clone, Copy)]
 pub struct CodegenOptions {
     /// When `true`, inject `__SYSTEM_UP_TIME` (TIME) and `__SYSTEM_UP_LTIME`
     /// (LTIME) as implicit globals at the start of the variable table.
     pub system_uptime_global: bool,
+}
+
+impl From<&CompilerOptions> for CodegenOptions {
+    fn from(options: &CompilerOptions) -> Self {
+        CodegenOptions {
+            system_uptime_global: options.allow_system_uptime_global,
+        }
+    }
 }
 
 pub fn compile(

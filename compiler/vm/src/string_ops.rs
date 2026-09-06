@@ -122,6 +122,21 @@ pub(crate) fn read_string_header(
     Ok((cur_len, data_start, char_width))
 }
 
+/// Resolve a `STRING` operand at `offset` in `data_region` to the bytes of
+/// its current value, for the `STRING_TO_*` conversions.
+///
+/// The conversions read Latin-1 digits, so a `WSTRING` operand traps
+/// [`Trap::EncodingMismatch`] (ADR-0034) rather than being misread as
+/// narrow bytes. The read is bounds-checked; a header past the end of the
+/// region traps [`Trap::DataRegionOutOfBounds`], and a value that runs past
+/// the end is clipped to the region.
+pub(crate) fn narrow_str_bytes(data_region: &[u8], offset: usize) -> Result<&[u8], Trap> {
+    let (cur_len, data_start, char_width) = read_string_header(data_region, offset)?;
+    verify_encoding(CharWidth::Narrow, char_width)?;
+    let end = (data_start + cur_len).min(data_region.len());
+    Ok(&data_region[data_start..end])
+}
+
 /// Copy `units` code units (`units * char_width` bytes) from `src` starting at
 /// byte offset `src_byte` into `dst` starting at byte offset `dst_byte`.
 pub(crate) fn copy_code_units(
