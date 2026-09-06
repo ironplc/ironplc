@@ -385,10 +385,11 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    TwinCAT/CODESYS. Without this flag, such a value produces
    :doc:`P4043 </reference/compiler/problems/P4043>`. A constant value is
    standard syntax and is always allowed. The ``pDevice^.Delta`` example
-   spells its pointer with ``REF_TO``, which is a separate extension: it
-   needs ``--allow-ref-to`` as well (``--dialect=codesys`` enables both).
-   ``--dialect=twincat`` deliberately does not enable ``REF_TO`` — TwinCAT
-   spells the same declaration ``POINTER TO FB_Device``.
+   spells its pointer with ``REF_TO``, which is a separate extension needing
+   ``--allow-ref-to``; not every dialect that enables one enables the other,
+   and some spell the same declaration ``POINTER TO FB_Device``. The
+   per-dialect lists above are the reference for which flags a dialect
+   enables.
 
 ``--allow-fb-inheritance``
    Allow the IEC 61131-3:2013 :doc:`object-oriented syntax

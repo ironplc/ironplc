@@ -252,8 +252,8 @@ Options
    computed at instantiation time. Produces
    :doc:`P4043 </reference/compiler/problems/P4043>` when used without this
    flag. The ``REF_TO`` in that example is a separate extension needing
-   ``--allow-ref-to``; ``--dialect=twincat`` does not enable ``REF_TO`` and
-   spells the declaration ``POINTER TO FB_Device`` instead.
+   ``--allow-ref-to``; some dialects enable one without the other, and some
+   spell the declaration ``POINTER TO FB_Device`` instead.
 
 ``--allow-fb-inheritance``
    Allow the IEC 61131-3:2013 object-oriented syntax:

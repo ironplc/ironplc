@@ -36,10 +36,11 @@ The following code will generate error P4043:
    END_VAR
    END_FUNCTION_BLOCK
 
-``REF_TO`` is itself a dialect extension, so this example additionally needs
-``--allow-ref-to`` (or a dialect that enables it, such as
-``--dialect=codesys``). Under ``--dialect=twincat``, which does not enable
-``REF_TO``, write the pointer as ``POINTER TO FB_Device`` instead.
+``REF_TO`` is itself an extension, so this example needs
+``--allow-ref-to`` as well as the flag below. Not every dialect that enables
+one enables the other, and some spell the pointer ``POINTER TO FB_Device``
+instead -- see :doc:`/explanation/enabling-dialects-and-features` for which
+dialect enables which flag.
 
 To fix this error, use a constant value:
 
