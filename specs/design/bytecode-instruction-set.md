@@ -10,7 +10,7 @@ The instruction set builds on these design decisions documented as ADRs:
 
 - **[ADR-0000](../adrs/0000-stack-based-bytecode-vm.md)**: Stack-based bytecode VM as the execution model — chosen over register-based VM, native compilation, tree-walking interpretation, and C transpilation
 - **[ADR-0001](../adrs/0001-bytecode-integer-arithmetic-type-strategy.md)**: Two-width integer arithmetic with explicit narrowing — sub-32-bit types are promoted to 32-bit on load; 64-bit types remain at 64-bit; explicit `TRUNC_*` instructions handle truncation back to narrow types
-- **[ADR-0002](../adrs/0002-bytecode-overflow-behavior.md)**: Configurable overflow behavior (**proposed, not implemented** — see [Arithmetic Edge Cases](#arithmetic-edge-cases); the VM today is unconditionally wrapping)
+- **[ADR-0049](../adrs/0049-behavior-policies-selected-at-compile-time.md)**: Implementer-specific behavior is selected at compile time and encoded as distinct opcodes or func_ids; the VM carries no behavior configuration (supersedes ADR-0002's runtime overflow policy, which was never implemented — see [Arithmetic Edge Cases](#arithmetic-edge-cases); the VM is unconditionally wrapping)
 - **[ADR-0003](../adrs/0003-plc-standard-function-blocks-as-intrinsics.md)**: Standard function blocks as VM intrinsics via `FB_CALL` — timers, counters, and other standard FBs use the same `FB_CALL` instruction as user-defined FBs, with the VM fast-pathing known type_ids
 - **[ADR-0008](../adrs/0008-unified-builtin-opcode.md)**: Unified `BUILTIN` opcode for standard library functions — numeric functions, conversions, shifts, and selection functions share a single `BUILTIN` opcode with func_id dispatch
 - **[ADR-0017](../adrs/0017-unified-data-region.md)**: Unified data region — strings, arrays, structures, and FB instances live in one byte-addressed data region; the variable table slot holds a byte offset into it
@@ -349,7 +349,7 @@ Operands are reinterpreted as `u32` / `u64`; the result is I32 0 or 1.
 | 0x1E | TRUNC_I16 | [I32] → [I32] | `(v as i16) as i32` — wraps to −32768..32767 (INT) |
 | 0x1F | TRUNC_U16 | [I32] → [I32] | `(v as u16) as i32` — wraps to 0..65535 (UINT, WORD) |
 
-The truncated value stays 32 bits wide on the stack; the instruction constrains the *value*, not the slot. Truncation is unconditionally wrapping — the configurable overflow policy of ADR-0002 is not implemented (see [Arithmetic Edge Cases](#arithmetic-edge-cases)).
+The truncated value stays 32 bits wide on the stack; the instruction constrains the *value*, not the slot. Truncation is unconditionally wrapping; ADR-0002's configurable overflow policy was never implemented and is superseded by ADR-0049 (see [Arithmetic Edge Cases](#arithmetic-edge-cases)).
 
 #### Widening, cross-domain, and float conversion
 
@@ -1006,7 +1006,7 @@ The following behaviors are normative. The VM implements these exactly to ensure
 
 ### Overflow behavior
 
-**ADR-0002's configurable overflow policy is not implemented.** The VM is unconditionally *wrapping*: `ADD_*`, `SUB_*`, `MUL_*`, and `NEG_*` use two's complement wrapping arithmetic, and `TRUNC_*` truncates by discarding high bits. There is no VM startup setting for saturating or faulting arithmetic, and no bytecode encodes one. Adopting ADR-0002 would change VM configuration and possibly `TRUNC_*` semantics, but would not add opcodes.
+**There is no overflow policy.** The VM is unconditionally *wrapping*: `ADD_*`, `SUB_*`, `MUL_*`, and `NEG_*` use two's complement wrapping arithmetic, and `TRUNC_*` truncates by discarding high bits. There is no VM startup setting for saturating or faulting arithmetic, and no bytecode encodes one. ADR-0002 proposed a policy configured on the VM instance; it was never implemented and is superseded by [ADR-0049](../adrs/0049-behavior-policies-selected-at-compile-time.md), under which any alternative to wrapping would be selected at compile time and arrive as distinct opcodes, never as a VM setting.
 
 | Operation | Behavior today |
 |---|---|

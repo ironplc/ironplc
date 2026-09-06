@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use ironplc_dsl::common::{FunctionReturnType, TypeName};
 use ironplc_dsl::core::{Id, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::textual::{Expr, ParamAssignmentKind};
 use ironplc_problems::Problem;
 
 use crate::intermediate_type::IntermediateFunctionParameter;
@@ -107,6 +108,25 @@ impl FunctionSignature {
     /// Returns the number of input parameters.
     pub fn input_parameter_count(&self) -> usize {
         self.parameters.iter().filter(|p| p.is_input).count()
+    }
+
+    /// Pairs each positional input argument of a call with the parameter it
+    /// binds to, in argument order, continuing past the declared parameters
+    /// for an extensible function (see [`Self::input_parameters`]).
+    ///
+    /// Only positional inputs bind: by the time a call is checked,
+    /// `xform_named_to_positional_args` has rewritten its named inputs, and
+    /// an output assignment binds no input. Arguments beyond the parameter
+    /// list are dropped; the arity check reports them.
+    pub fn bind_inputs<'a>(
+        &'a self,
+        params: &'a [ParamAssignmentKind],
+    ) -> impl Iterator<Item = (IntermediateFunctionParameter, &'a Expr)> + 'a {
+        let positional = params.iter().filter_map(|param| match param {
+            ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
+            ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
+        });
+        self.input_parameters().zip(positional)
     }
 
     /// Returns the input parameters in argument order, continuing past the

@@ -21,21 +21,16 @@ use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind};
 
-use super::compile::{CompileContext, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE};
+use super::compile::{CompileContext, OpType, DEFAULT_OP_TYPE};
 use super::compile_expr::compile_expr;
 use crate::emit::Emitter;
 
-/// Resolves the operand type for a stdlib function block field by name.
-pub(crate) fn fb_field_op_type(field_name: &str) -> OpType {
-    match field_name {
-        "in" | "q" => (OpWidth::W32, Signedness::Signed),
-        "pt" | "et" => (OpWidth::W32, Signedness::Signed),
-        _ => DEFAULT_OP_TYPE,
-    }
-}
-
-/// Resolves the operand type for a function block field, preferring the
-/// user-defined function block's own field types over the stdlib names.
+/// Resolves the operand type for a function block field.
+///
+/// A user-defined function block records the operand type of each of its
+/// fields, so its own table answers first. A standard library block records
+/// none — the intrinsic owns its layout, not codegen — so its fields take
+/// the default slot type.
 pub(crate) fn resolve_fb_field_op_type(
     ctx: &CompileContext,
     type_id: u16,
@@ -49,8 +44,7 @@ pub(crate) fn resolve_fb_field_op_type(
             }
         }
     }
-    // Fall back to stdlib field names.
-    fb_field_op_type(field_name)
+    DEFAULT_OP_TYPE
 }
 
 /// Emits a store of `value` into `field` of the function block instance
