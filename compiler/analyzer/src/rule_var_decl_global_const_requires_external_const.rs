@@ -106,7 +106,11 @@ impl DiagnosticVisitor for FindGlobalConstVars<'_> {
 impl Visitor<Infallible> for FindGlobalConstVars<'_> {
     type Value = ();
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        if node.qualifier == DeclarationQualifier::Constant {
+        // Only a global constant obliges its externals to be constant. A
+        // `VAR CONSTANT` local to one unit says nothing about a global that
+        // happens to share its name.
+        if node.var_type == VariableType::Global && node.qualifier == DeclarationQualifier::Constant
+        {
             match &node.identifier {
                 VariableIdentifier::Symbol(name) => {
                     self.global_consts.insert(name.clone());
@@ -180,6 +184,35 @@ FUNCTION_BLOCK func
         ResetCounterValue : INT;
     END_VAR
 END_FUNCTION_BLOCK"
+    );
+
+    rule_ok!(
+        apply_when_local_const_shares_name_with_plain_global_then_ok,
+        "
+CONFIGURATION config
+    VAR_GLOBAL
+        Limit : INT := 17;
+    END_VAR
+    RESOURCE resource1 ON PLC
+        TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
+        PROGRAM plc_task_instance WITH plc_task : plc_prg;
+    END_RESOURCE
+END_CONFIGURATION
+
+FUNCTION_BLOCK reader
+    VAR_EXTERNAL
+        Limit : INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK other
+    VAR CONSTANT
+        Limit : INT := 1;
+    END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM plc_prg
+END_PROGRAM"
     );
 
     rule_ok!(
