@@ -38,9 +38,7 @@ fn run_with_tc2_utilities(source: &str) -> VmBuffers {
         context.diagnostics()
     );
 
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        system_uptime_global: false,
-    };
+    let codegen_options = ironplc_codegen::CodegenOptions::from(&options);
     let container = compile(
         &analyzed,
         &context,
