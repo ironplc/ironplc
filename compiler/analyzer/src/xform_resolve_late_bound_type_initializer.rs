@@ -249,6 +249,23 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                     }
                 }
             }
+            // `inst : FB := (x := 1)` parses as a structure initializer:
+            // the parser cannot tell a structure type from a function block.
+            // Now that the types are known, an instance is an instance, so
+            // no later pass has to classify structure-shaped initializers.
+            InitialValueAssignmentKind::Structure(init)
+                if self
+                    .type_environment
+                    .get(&init.type_name)
+                    .is_some_and(|attrs| attrs.representation.is_function_block()) =>
+            {
+                Ok(InitialValueAssignmentKind::FunctionBlock(
+                    FunctionBlockInitialValueAssignment {
+                        type_name: init.type_name,
+                        init: init.elements_init,
+                    },
+                ))
+            }
             _ => Ok(node),
         }
     }
@@ -569,6 +586,43 @@ END_FUNCTION_BLOCK
             &fb_a.variables[1].initializer,
             InitialValueAssignmentKind::FunctionBlock(fb_init)
             if fb_init.type_name == TypeName::from("FB_Callee")
+        ));
+    }
+
+    #[rstest::rstest]
+    #[case::declared_block("FB_Counter", "(limit := 20)")]
+    #[case::stdlib_block("TON", "(PT := T#1s)")]
+    fn apply_when_member_initializer_on_function_block_then_function_block_initializer(
+        #[case] type_name: &str,
+        #[case] initializer: &str,
+    ) {
+        let program = format!(
+            "
+FUNCTION_BLOCK FB_Counter
+VAR
+    limit : INT := 10;
+END_VAR
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR
+    inst : {type_name} := {initializer};
+END_VAR
+END_PROGRAM"
+        );
+        let library = crate::test_helpers::parse_and_resolve_types(&program);
+
+        let decl = library
+            .elements
+            .iter()
+            .find_map(|element| match element {
+                LibraryElementKind::ProgramDeclaration(program) => program.variables.first(),
+                _ => None,
+            })
+            .unwrap();
+        assert!(matches!(
+            &decl.initializer,
+            InitialValueAssignmentKind::FunctionBlock(init)
+                if init.type_name == TypeName::from(type_name) && init.init.len() == 1
         ));
     }
 }

@@ -223,10 +223,14 @@ END_FUNCTION_BLOCK",
         let (lib, _) = parse_and_resolve_types_with_options(
             "
 FUNCTION_BLOCK FB_Base
+VAR
+    x : INT;
+END_VAR
 END_FUNCTION_BLOCK
 PROGRAM main
 VAR
     inst : FB_Base;
+    with_init : FB_Base := (x := 1);
     count : INT;
 END_VAR
 END_PROGRAM",
@@ -239,6 +243,10 @@ END_PROGRAM",
         assert_eq!(
             Some(&TypeName::from("FB_Base")),
             instances.type_of(&Id::from("inst"))
+        );
+        assert_eq!(
+            Some(&TypeName::from("FB_Base")),
+            instances.type_of(&Id::from("with_init"))
         );
         assert_eq!(None, instances.type_of(&Id::from("count")));
 
