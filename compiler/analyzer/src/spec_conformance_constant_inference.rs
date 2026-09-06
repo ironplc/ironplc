@@ -481,33 +481,63 @@ END_PROGRAM",
     );
 }
 
-/// REQ-CVI-analyzer-021: A write to a name anywhere in the library blocks
-/// every declaration of that name, in every unit.
+/// REQ-CVI-analyzer-021: A write reaches the declaration the name resolves
+/// to where the write occurs: the unit's own declaration, a method's over
+/// its block's, an inherited field's on the ancestor that declares it, and a
+/// global's through its external. A same-named declaration elsewhere is not
+/// affected.
 #[spec_test(REQ_CVI_analyzer_021)]
-fn analyzer_spec_req_cvi_021_write_in_one_unit_blocks_same_name_everywhere() {
-    let (library, _) = analyze_default(
+fn analyzer_spec_req_cvi_021_write_reaches_the_declaration_it_resolves_to() {
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    let (library, _) = analyze_with(
         "
-FUNCTION_BLOCK FB_A
+FUNCTION_BLOCK FB_Base
 VAR
-    shared : INT := 1;
-    own : INT := 1;
+    inherited : INT := 0;
 END_VAR
 END_FUNCTION_BLOCK
-FUNCTION_BLOCK FB_B
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
 VAR
-    shared : INT := 2;
+    field : INT := 0;
 END_VAR
-    shared := 3;
+METHOD Reset
+VAR
+    field : INT := 1;
+END_VAR
+    inherited := 0;
+END_METHOD
+METHOD Bump
+    field := field + 1;
+END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK FB_Other
+VAR
+    inherited : INT := 5;
+    field : INT := 5;
+END_VAR
 END_FUNCTION_BLOCK",
+        &options,
     );
+    // FB_Base's `inherited` is written from FB_Derived's method; FB_Other's
+    // is not. Declaration order is toposort's, so count rather than index.
+    let inherited = declaration_qualifiers(&library, "inherited");
+    assert_eq!(2, inherited.len());
+    assert!(inherited.contains(&DeclarationQualifier::Unspecified));
+    assert!(inherited.contains(&DeclarationQualifier::Constant));
+    // FB_Derived's `field` is written by `Bump`; `Reset`'s own `field`
+    // shadows it and FB_Other's is unrelated, so those two stay constant.
+    let field = declaration_qualifiers(&library, "field");
+    assert_eq!(3, field.len());
     assert_eq!(
-        vec![
-            DeclarationQualifier::Unspecified,
-            DeclarationQualifier::Unspecified
-        ],
-        declaration_qualifiers(&library, "shared")
+        1,
+        field
+            .iter()
+            .filter(|q| **q == DeclarationQualifier::Unspecified)
+            .count()
     );
-    assert_eq!(DeclarationQualifier::Constant, qualifier(&library, "own"));
 }
 
 // ---------------------------------------------------------------------------
@@ -560,22 +590,15 @@ fn analyzer_spec_req_cvi_030_unwritten_global_and_its_externals_are_marked() {
     assert!(codes.is_empty(), "unexpected diagnostics {codes:?}");
 }
 
-/// REQ-CVI-analyzer-031: When the global cannot be marked, neither its
-/// externals nor a same-named local declaration are.
+/// REQ-CVI-analyzer-031: When the global cannot be marked, its externals
+/// are left unchanged too.
 #[spec_test(REQ_CVI_analyzer_031)]
-fn analyzer_spec_req_cvi_031_unmarkable_global_leaves_externals_and_locals_alone() {
-    let program = GLOBAL_PROGRAM
-        .replacen(
-            "    copy := limit;",
-            "    copy := limit;\n    limit := 0;",
-            1,
-        )
-        .replacen(
-            "VAR\n    local : INT := 1;",
-            "VAR\n    local : INT := 1;\n    limit_shadow : INT := 1;",
-            1,
-        )
-        .replace("limit_shadow", "limit");
+fn analyzer_spec_req_cvi_031_unmarkable_global_leaves_externals_alone() {
+    let program = GLOBAL_PROGRAM.replacen(
+        "    copy := limit;",
+        "    copy := limit;\n    limit := 0;",
+        1,
+    );
     let (library, codes) = analyze_default(&program);
     assert!(
         declaration_qualifiers(&library, "limit")

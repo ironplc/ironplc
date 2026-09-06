@@ -31,11 +31,14 @@ and may skip the storage altogether when nothing else needs it.
 
 Two consequences follow, and both are deliberate:
 
-- A tool that lets the operator change a variable while the program runs
-  (the debugger's `setVariable`, which the current server refuses) must
-  refuse an inferred constant just as it would refuse a declared one, or
-  the folded reads and the stored value will disagree. The transform makes
-  no distinction between the two, and neither should such a tool.
+- The transform is an optimization, and a build may leave it out. A build
+  that lets the operator change a variable while the program runs (the
+  debugger's `setVariable`, which the current server refuses) should
+  compile without the transform, as a non-optimized build would, so that a
+  read never disagrees with the stored value. A build that runs it must
+  refuse to change an inferred constant just as it refuses a declared one.
+  Selecting the transform per build is not wired up yet; it is a single
+  call in `stages::resolve_types` to gate when the time comes.
 - The transform runs on the whole library as one unit. A variable is only
   constant with respect to the program that was analyzed with it; the
   qualifier is a property of the analyzed library, not of the declaration
@@ -69,29 +72,35 @@ A variable argument bound to a `VAR_INPUT` parameter is **not** a write
 The callee is found the way the invocation rules find it: the instance's
 declared type from the declarations of the unit being walked, the block or
 method from the library (`callee_resolution`), and the argument-to-parameter
-binding from `call_assignment_check`. The transform adds no lookup of its
-own.
+binding from `call_assignment_check`.
 
 **REQ-CVI-analyzer-020** An assignment to a member of a function-block
 instance from outside the block, `inst.count := 5`, writes the member
-`count` as well as the instance `inst`, so the block's own declaration of
-`count` is not marked.
+`count` of the instance's block (or of the ancestor that declares it) as
+well as the instance `inst`, so that declaration of `count` is not marked.
 
-### Writes are tracked by name, not by scope
+### A write reaches one declaration
 
-**REQ-CVI-analyzer-021** A write to a variable named `x` anywhere in the
-library prevents every declaration named `x` in the library from being
-marked, in every program organization unit.
+**REQ-CVI-analyzer-021** A write is resolved to the declaration the name
+reaches where the write occurs, and blocks that declaration alone: the
+innermost enclosing unit that declares the name (a method's declaration
+over its block's), then the block in the `EXTENDS` chain that declares an
+inherited field, then the global. A write through a `VAR_EXTERNAL`
+declaration reaches the global. A same-named declaration in another unit
+is not affected.
 
-This is coarser than scope-aware tracking, and it is chosen on purpose.
-The name-only rule is sound by construction: it cannot be wrong about
-which declaration a write reaches, because it does not try to decide.
-Inheritance (a derived block writing a field of its base), methods writing
-the fields of their block, and `VAR_EXTERNAL` aliasing of a `VAR_GLOBAL`
-all fall out without any scope modelling. The cost is that two unrelated
-units reusing a name share one verdict. That precision can be bought
-later without changing the contract above; nothing downstream depends on
-how the set of written names is computed.
+The resolution is the analyzer's own, not the transform's: the symbol
+environment answers which scope a name reaches from a given scope,
+`callee_resolution` answers which block in an `EXTENDS` chain declares a
+field and what type an instance has, and the type environment answers
+whether a type is a function block. The transform holds no table of its
+own.
+
+Where a write's target cannot be resolved to one declaration -- a member
+reached through an array element or a nested field, a configuration path
+(`VAR_CONFIG`, a configuration-level `VAR_ACCESS`), a constructor argument
+-- every declaration of that name is blocked instead. That is the one
+place the transform is coarse, and it is coarse in the safe direction.
 
 ## Which declarations are marked
 
@@ -127,16 +136,12 @@ is marked with it.
 
 **REQ-CVI-analyzer-031** When the global is not marked -- because it is
 written, has no initializer, or carries another qualifier -- its
-`VAR_EXTERNAL` declarations are left unchanged, and so is any local
-declaration of the same name.
+`VAR_EXTERNAL` declarations are left unchanged.
 
 The pair is required by P4009 (`VariableMustBeConst`): a constant global
 must be declared constant in every unit that references it. Marking one
 side without the other would introduce that diagnostic into a program
-that had none. The rule that enforces P4009 collects the name of every
-`CONSTANT` declaration, local ones included, which is why a local
-declaration shares the verdict of a same-named global that cannot be
-marked.
+that had none.
 
 ## Pipeline position
 
@@ -161,7 +166,9 @@ assumed. The transform is infallible; there is no fallback to revert to.
 
 - Folding reads of constant variables in code generation (the `LEN` fold
   of #1612 and any other). This document only establishes the qualifier.
-- Scope-aware write tracking (see REQ-CVI-analyzer-021).
+- Resolving a member reached through an array element or a nested field
+  to its declaration (see REQ-CVI-analyzer-021); such a write blocks every
+  declaration of the name.
 - Structure-typed variables (see the initializer note above).
 - Reference-typed variables (`REF_TO`, `POINTER TO`, `REFERENCE TO`): the
   constancy of a reference says nothing about its target, and no folding

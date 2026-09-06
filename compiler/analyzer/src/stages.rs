@@ -318,8 +318,12 @@ pub fn resolve_types(
     // rewritten to `Ref`, user functions in the function environment and
     // named arguments made positional. Infallible, so nothing to revert.
     // See specs/design/constant-variable-inference.md.
-    let library =
-        xform_mark_unwritten_constants::apply(library, &type_environment, &function_environment);
+    let library = xform_mark_unwritten_constants::apply(
+        library,
+        &type_environment,
+        &function_environment,
+        &symbol_environment,
+    );
 
     // Generate and display useful symbol table information
     debug!("Type Environment:");

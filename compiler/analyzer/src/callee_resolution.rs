@@ -49,6 +49,26 @@ impl<'a> FunctionBlocks<'a> {
         self.by_name.contains_key(name)
     }
 
+    /// `fb_name`, then its `EXTENDS` base, then that base's base, and so
+    /// on. Stops at a block seen before: a cycle is independently invalid
+    /// (and rejected elsewhere), this is just a safety net.
+    fn chain(&self, fb_name: &TypeName) -> impl Iterator<Item = &'a FunctionBlockDeclaration> + '_ {
+        let mut current = self.get(fb_name);
+        let mut visited: HashSet<TypeName> = HashSet::new();
+        std::iter::from_fn(move || {
+            let fb = current?;
+            if !visited.insert(fb.name.clone()) {
+                return None;
+            }
+            current = fb
+                .oop
+                .as_ref()
+                .and_then(|oop| oop.base.as_ref())
+                .and_then(|base| self.get(base));
+            Some(fb)
+        })
+    }
+
     /// Resolves `method_name` against `fb_name`'s own methods, then its
     /// `EXTENDS` base, then that base's base, and so on (ADR-0041 Phase 1
     /// static dispatch). Returns the function block that actually declares
@@ -59,29 +79,26 @@ impl<'a> FunctionBlocks<'a> {
         fb_name: &TypeName,
         method_name: &Id,
     ) -> Option<(&'a FunctionBlockDeclaration, &'a MethodDeclaration)> {
-        let mut current = self.get(fb_name);
-        let mut visited: HashSet<TypeName> = HashSet::new();
+        self.chain(fb_name).find_map(|fb| {
+            fb.methods
+                .iter()
+                .find(|m| &m.name == method_name)
+                .map(|method| (fb, method))
+        })
+    }
 
-        while let Some(fb) = current {
-            // Guards against an EXTENDS cycle causing an infinite loop.
-            // Cycles are also independently invalid (and expected to be
-            // rejected elsewhere); this is just a safety net.
-            if !visited.insert(fb.name.clone()) {
-                return None;
-            }
-
-            if let Some(method) = fb.methods.iter().find(|m| &m.name == method_name) {
-                return Some((fb, method));
-            }
-
-            current = fb
-                .oop
-                .as_ref()
-                .and_then(|oop| oop.base.as_ref())
-                .and_then(|base| self.get(base));
-        }
-
-        None
+    /// The block in `fb_name`'s `EXTENDS` chain -- `fb_name` itself first --
+    /// that declares the variable `field`, if any does.
+    pub(crate) fn declaring_block(
+        &self,
+        fb_name: &TypeName,
+        field: &Id,
+    ) -> Option<&'a FunctionBlockDeclaration> {
+        self.chain(fb_name).find(|fb| {
+            fb.variables
+                .iter()
+                .any(|decl| decl.identifier.symbolic_id() == Some(field))
+        })
     }
 }
 
@@ -190,6 +207,38 @@ END_FUNCTION_BLOCK";
         let fbs = FunctionBlocks::from_library(&lib);
         assert!(fbs
             .resolve_method(&TypeName::from("FB_Derived"), &Id::from("Reset"))
+            .is_none());
+    }
+
+    #[test]
+    fn declaring_block_when_field_inherited_then_returns_base_block() {
+        let lib = parse(
+            "
+FUNCTION_BLOCK FB_Base
+VAR
+    count : INT;
+END_VAR
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+VAR
+    own : INT;
+END_VAR
+END_FUNCTION_BLOCK",
+        );
+        let fbs = FunctionBlocks::from_library(&lib);
+        let derived = TypeName::from("FB_Derived");
+        assert_eq!(
+            Some(TypeName::from("FB_Base")),
+            fbs.declaring_block(&derived, &Id::from("count"))
+                .map(|fb| fb.name.clone())
+        );
+        assert_eq!(
+            Some(derived.clone()),
+            fbs.declaring_block(&derived, &Id::from("own"))
+                .map(|fb| fb.name.clone())
+        );
+        assert!(fbs
+            .declaring_block(&derived, &Id::from("missing"))
             .is_none());
     }
 
