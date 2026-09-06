@@ -8,6 +8,7 @@
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::CompilerOptions;
+use ironplc_problems::Problem;
 
 use crate::common::{parse_and_compile, parse_and_run};
 
@@ -377,8 +378,6 @@ fn string_assigned_wstring_when_analyzed_then_compile_error() {
     // encoding-mismatch trap is only defense-in-depth.
     use ironplc_dsl::core::FileId;
     use ironplc_parser::parse_program;
-    use ironplc_problems::Problem;
-
     let source = "
 PROGRAM main
   VAR
@@ -429,3 +428,182 @@ END_PROGRAM
     assert_eq!(read_char_width(&bufs.data_region, out_offset), 2);
     assert_eq!(read_wstring(&bufs.data_region, out_offset), "abcd");
 }
+
+// =========================================================================
+// Operands of one string operation share an encoding
+//
+// A literal's delimiter is what types it -- 'abc' is a STRING and "abc" a
+// WSTRING (IEC 61131-3 Table 5) -- so operands that disagree have no encoding
+// in common. Each of these compiled before and trapped with V9014 one scan
+// into the run.
+// =========================================================================
+
+/// Compiles `source` and returns the problem code it is rejected with.
+fn compile_error_code(source: &str) -> String {
+    crate::common::try_parse_and_compile(source, &CompilerOptions::default())
+        .expect_err("expected the program to be rejected")
+        .code
+}
+
+#[test]
+fn wstring_when_compared_to_single_quoted_literal_then_p4034() {
+    let code = compile_error_code(
+        "
+PROGRAM main
+  VAR
+    w : WSTRING[10] := \"abc\";
+    eq : BOOL;
+  END_VAR
+  eq := w = 'abc';
+END_PROGRAM
+",
+    );
+    assert_eq!(code, Problem::StringEncodingMismatch.code());
+}
+
+#[test]
+fn string_when_compared_to_double_quoted_literal_then_p4034() {
+    let code = compile_error_code(
+        "
+PROGRAM main
+  VAR
+    s : STRING[10] := 'abc';
+    eq : BOOL;
+  END_VAR
+  eq := s = \"abc\";
+END_PROGRAM
+",
+    );
+    assert_eq!(code, Problem::StringEncodingMismatch.code());
+}
+
+#[test]
+fn concat_when_operands_are_string_and_wstring_then_p4034() {
+    let code = compile_error_code(
+        "
+PROGRAM main
+  VAR
+    s : STRING[10] := 'abc';
+    w : WSTRING[10] := \"abc\";
+    out : STRING[20];
+  END_VAR
+  out := CONCAT(s, w);
+END_PROGRAM
+",
+    );
+    assert_eq!(code, Problem::StringEncodingMismatch.code());
+}
+
+#[test]
+fn find_when_needle_spelling_differs_from_haystack_then_p4034() {
+    let code = compile_error_code(
+        "
+PROGRAM main
+  VAR
+    w : WSTRING[20] := \"abcdef\";
+    pos : DINT;
+  END_VAR
+  pos := FIND(w, 'cd');
+END_PROGRAM
+",
+    );
+    assert_eq!(code, Problem::StringEncodingMismatch.code());
+}
+
+// The same operations keep working when the operands do agree.
+
+e2e_i32!(
+    wstring_when_compared_to_wide_literal_then_eq_true,
+    "
+PROGRAM main
+  VAR
+    w : WSTRING[10] := \"abc\";
+    eq : BOOL;
+    ne : BOOL;
+  END_VAR
+  eq := w = \"abc\";
+  ne := w <> \"abd\";
+END_PROGRAM
+",
+    &[(1, 1), (2, 1)],
+);
+
+e2e_i32!(
+    wstring_when_find_wide_literal_needle_then_returns_position,
+    "
+PROGRAM main
+  VAR
+    hay : WSTRING[20] := \"abcdef\";
+    pos : DINT;
+  END_VAR
+  pos := FIND(hay, \"cd\");
+END_PROGRAM
+",
+    &[(1, 3)],
+);
+
+#[test]
+fn wstring_struct_field_when_assigned_literal_then_stored_wide() {
+    let source = "
+TYPE
+  Rec : STRUCT
+    label : WSTRING[10];
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    r : Rec;
+  END_VAR
+  r.label := \"hi\";
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
+    assert_eq!(read_wstring(&bufs.data_region, 0), "hi");
+}
+
+e2e_i32!(
+    wstring_array_element_when_compared_to_wide_literal_then_eq_true,
+    "
+PROGRAM main
+  VAR
+    arr : ARRAY[1..2] OF WSTRING[8];
+    eq : BOOL;
+  END_VAR
+  arr[1] := \"one\";
+  eq := arr[1] = \"one\";
+END_PROGRAM
+",
+    &[(1, 1)],
+);
+
+// s = var0, w = var1, other = var2, same = var3, differ = var4.
+e2e_i32!(
+    function_when_parameters_are_string_and_wstring_then_each_copied_at_its_own_width,
+    "
+FUNCTION same_len : BOOL
+  VAR_INPUT
+    s : STRING[10];
+    w : WSTRING[10];
+  END_VAR
+  same_len := LEN(s) = LEN(w);
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    s : STRING[10] := 'abc';
+    w : WSTRING[10] := \"wx\";
+    other : WSTRING[10] := \"z\";
+    same : BOOL;
+    differ : BOOL;
+  END_VAR
+  s := CONCAT(s, 'd');
+  w := CONCAT(w, \"yz\");
+  same := same_len(s, w);
+  differ := same_len(s, other);
+END_PROGRAM
+",
+    &[(3, 1), (4, 0)],
+);
