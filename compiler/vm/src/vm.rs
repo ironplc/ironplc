@@ -1510,17 +1510,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     }
                     opcode::builtin::CONV_STR_TO_I32 => {
                         let data_offset = stack.pop()?.as_i32() as usize;
-                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                        }
-                        // STRING_TO_* parses Latin-1 digits; reject WSTRING input.
-                        let width = string_ops::str_read_char_width(data_region, data_offset)?;
-                        string_ops::verify_encoding(CharWidth::Narrow, width)?;
-                        let cur_len =
-                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
-                        let start = data_offset + STRING_HEADER_BYTES;
-                        let end = (start + cur_len).min(data_region.len());
-                        let result = core::str::from_utf8(&data_region[start..end])
+                        let bytes = string_ops::narrow_str_bytes(data_region, data_offset)?;
+                        let result = core::str::from_utf8(bytes)
                             .ok()
                             .and_then(|s| s.trim().parse::<i32>().ok())
                             .unwrap_or(0);
@@ -1528,17 +1519,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     }
                     opcode::builtin::CONV_STR_TO_F32 => {
                         let data_offset = stack.pop()?.as_i32() as usize;
-                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                        }
-                        // STRING_TO_* parses Latin-1 digits; reject WSTRING input.
-                        let width = string_ops::str_read_char_width(data_region, data_offset)?;
-                        string_ops::verify_encoding(CharWidth::Narrow, width)?;
-                        let cur_len =
-                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
-                        let start = data_offset + STRING_HEADER_BYTES;
-                        let end = (start + cur_len).min(data_region.len());
-                        let result = core::str::from_utf8(&data_region[start..end])
+                        let bytes = string_ops::narrow_str_bytes(data_region, data_offset)?;
+                        let result = core::str::from_utf8(bytes)
                             .ok()
                             .and_then(|s| s.trim().parse::<f32>().ok())
                             .unwrap_or(0.0);

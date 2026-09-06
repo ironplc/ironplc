@@ -594,9 +594,7 @@ pub fn try_parse_and_compile(
     options: &CompilerOptions,
 ) -> Result<Container, Diagnostic> {
     let (library, context) = parse(source, options);
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        system_uptime_global: options.allow_system_uptime_global,
-    };
+    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
     compile(
         &library,
         &context,
@@ -619,9 +617,7 @@ pub fn parse_and_try_run(
     options: &CompilerOptions,
 ) -> Result<(Container, VmBuffers), FaultContext> {
     let (library, context) = parse(source, options);
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        system_uptime_global: options.allow_system_uptime_global,
-    };
+    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
     let container = compile(
         &library,
         &context,
@@ -671,9 +667,7 @@ pub fn parse_and_run_rounds(
     f: impl FnOnce(&mut ironplc_vm::VmRunning<'_>),
 ) {
     let (library, context) = parse(source, options);
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        system_uptime_global: options.allow_system_uptime_global,
-    };
+    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
     let container = compile(
         &library,
         &context,
