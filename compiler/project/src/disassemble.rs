@@ -10,7 +10,7 @@ use std::io::BufReader;
 use std::path::Path;
 
 use ironplc_container::opcode;
-use ironplc_container::opcode::{Instruction, Operand};
+use ironplc_container::opcode::{DecodeStop, DecodedInstruction, Instruction, Operand};
 use ironplc_container::{ConstType, Container};
 use serde_json::{json, Value};
 
@@ -251,73 +251,55 @@ fn disassemble_functions(container: &Container) -> Value {
 /// assigned opcode, from a corrupt container or one written by a newer
 /// compiler.
 fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
-    let mut instructions = Vec::new();
-    let mut pc = 0;
-
-    while pc < bytecode.len() {
-        let opcode_byte = bytecode[pc];
-        let size = opcode::instruction_size(opcode_byte);
-
-        instructions.push(match Instruction::decode(opcode_byte) {
-            Some(instruction) => decode_instruction(instruction, bytecode, pc, size, container),
-            None => instruction_json(
-                pc,
-                &format!("UNKNOWN(0x{opcode_byte:02X})"),
+    opcode::decode_body(bytecode)
+        .map(|decoded| match decoded {
+            Ok(instruction) => decode_instruction(&instruction, container),
+            // A byte that is not an assigned opcode. The walk resumes after it.
+            Err(DecodeStop::UnknownOpcode { offset, byte }) => instruction_json(
+                offset,
+                &format!("UNKNOWN(0x{byte:02X})"),
                 String::new(),
                 String::new(),
             ),
-        });
-
-        pc += size;
-    }
-
-    instructions
+            // A truncated container can end part-way through an instruction.
+            // Say so rather than reading past the end of the body.
+            Err(DecodeStop::Truncated { offset, opcode }) => instruction_json(
+                offset,
+                Instruction::decode(opcode)
+                    .map(|i| i.mnemonic)
+                    .unwrap_or("UNKNOWN"),
+                "<truncated>".to_string(),
+                String::new(),
+            ),
+        })
+        .collect()
 }
 
 /// Decodes one instruction: its mnemonic, its operands in order, and whatever
 /// comments those operands contribute (a constant's value, a branch target).
-fn decode_instruction(
-    instruction: Instruction,
-    bytecode: &[u8],
-    pc: usize,
-    size: usize,
-    container: &Container,
-) -> Value {
-    // A truncated container can end part-way through an instruction. Say so
-    // rather than reading past the end of the function's bytecode.
-    if pc + size > bytecode.len() {
-        return instruction_json(
-            pc,
-            instruction.mnemonic,
-            "<truncated>".to_string(),
-            String::new(),
-        );
-    }
-
+fn decode_instruction(decoded: &DecodedInstruction<'_>, container: &Container) -> Value {
     let mut operands = Vec::new();
     let mut comments = Vec::new();
-    let mut at = pc + 1;
 
-    if !instruction.note.is_empty() {
-        comments.push(instruction.note.to_string());
+    if !decoded.instruction.note.is_empty() {
+        comments.push(decoded.instruction.note.to_string());
     }
 
-    for &operand in instruction.operands {
-        let (text, comment) = format_operand(operand, bytecode, at, pc + size, container);
+    for (operand, bytes) in decoded.operands_with_kinds() {
+        let (text, comment) = format_operand(operand, bytes, decoded.next_offset(), container);
         operands.push(text);
         comments.extend(comment);
-        at += operand.width();
     }
 
     instruction_json(
-        pc,
-        instruction.mnemonic,
+        decoded.offset,
+        decoded.instruction.mnemonic,
         operands.join(", "),
         comments.join(", "),
     )
 }
 
-/// Renders the operand at byte offset `at`, and the comment it contributes.
+/// Renders one operand from its own bytes, and the comment it contributes.
 ///
 /// The match is exhaustive over [`Operand`] with no catch-all, so an operand
 /// shape added to the instruction set does not compile until it is rendered
@@ -325,47 +307,46 @@ fn decode_instruction(
 /// a branch offset is measured from.
 fn format_operand(
     operand: Operand,
-    bytecode: &[u8],
-    at: usize,
+    bytes: &[u8],
     next_pc: usize,
     container: &Container,
 ) -> (String, Option<String>) {
     match operand {
         Operand::ConstIndex => {
-            let pool_index = read_u16(bytecode, at);
+            let pool_index = read_u16(bytes, 0);
             (
                 format!("pool[{pool_index}]"),
                 Some(lookup_const_comment(container, pool_index)),
             )
         }
-        Operand::VarIndex => (format!("var[{}]", read_u16(bytecode, at)), None),
-        Operand::RefIndex => (format!("ref[{}]", read_u16(bytecode, at)), None),
-        Operand::ArrayDescIndex => (format!("desc[{}]", read_u16(bytecode, at)), None),
-        Operand::DataOffset => (format!("data[{}]", read_u32(bytecode, at)), None),
-        Operand::FieldIndex => (format!("field[{}]", bytecode[at]), None),
-        Operand::FbTypeId => (format!("type[{}]", read_u16(bytecode, at)), None),
+        Operand::VarIndex => (format!("var[{}]", read_u16(bytes, 0)), None),
+        Operand::RefIndex => (format!("ref[{}]", read_u16(bytes, 0)), None),
+        Operand::ArrayDescIndex => (format!("desc[{}]", read_u16(bytes, 0)), None),
+        Operand::DataOffset => (format!("data[{}]", read_u32(bytes, 0)), None),
+        Operand::FieldIndex => (format!("field[{}]", bytes[0]), None),
+        Operand::FbTypeId => (format!("type[{}]", read_u16(bytes, 0)), None),
         Operand::FunctionId => {
-            let function_id = read_u16(bytecode, at);
+            let function_id = read_u16(bytes, 0);
             (
                 format!("func[{function_id}]"),
                 lookup_function_comment(container, function_id),
             )
         }
-        Operand::BuiltinId => (format_builtin(read_u16(bytecode, at)), None),
+        Operand::BuiltinId => (format_builtin(read_u16(bytes, 0)), None),
         Operand::JumpOffset => {
-            let jump_offset = read_i16(bytecode, at);
+            let jump_offset = read_i16(bytes, 0);
             let target = (next_pc as isize + jump_offset as isize) as usize;
             (
                 format!("offset: {}", format_jump_offset(jump_offset)),
                 Some(format!("-> 0x{target:04X}")),
             )
         }
-        Operand::CmpOp => (format_cmp_op(bytecode[at]).to_string(), None),
-        Operand::MaxLength => (format!("max_len: {}", read_u16(bytecode, at)), None),
-        Operand::CharWidth => (format!("char_width: {}", bytecode[at]), None),
-        Operand::NumFields => (format!("num_fields: {}", bytecode[at]), None),
-        Operand::FieldVarOffset => (format!("fields[{}]", read_u16(bytecode, at)), None),
-        Operand::ParamVarOffset => (format!("params[{}]", read_u16(bytecode, at)), None),
+        Operand::CmpOp => (format_cmp_op(bytes[0]).to_string(), None),
+        Operand::MaxLength => (format!("max_len: {}", read_u16(bytes, 0)), None),
+        Operand::CharWidth => (format!("char_width: {}", bytes[0]), None),
+        Operand::NumFields => (format!("num_fields: {}", bytes[0]), None),
+        Operand::FieldVarOffset => (format!("fields[{}]", read_u16(bytes, 0)), None),
+        Operand::ParamVarOffset => (format!("params[{}]", read_u16(bytes, 0)), None),
     }
 }
 
