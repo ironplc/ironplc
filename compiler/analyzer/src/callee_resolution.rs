@@ -49,6 +49,26 @@ impl<'a> FunctionBlocks<'a> {
         self.by_name.contains_key(name)
     }
 
+    /// `fb_name`, then its `EXTENDS` base, then that base's base, and so
+    /// on. Stops at a block seen before: a cycle is independently invalid
+    /// (and rejected elsewhere), this is just a safety net.
+    fn chain(&self, fb_name: &TypeName) -> impl Iterator<Item = &'a FunctionBlockDeclaration> + '_ {
+        let mut current = self.get(fb_name);
+        let mut visited: HashSet<TypeName> = HashSet::new();
+        std::iter::from_fn(move || {
+            let fb = current?;
+            if !visited.insert(fb.name.clone()) {
+                return None;
+            }
+            current = fb
+                .oop
+                .as_ref()
+                .and_then(|oop| oop.base.as_ref())
+                .and_then(|base| self.get(base));
+            Some(fb)
+        })
+    }
+
     /// Resolves `method_name` against `fb_name`'s own methods, then its
     /// `EXTENDS` base, then that base's base, and so on (ADR-0041 Phase 1
     /// static dispatch). Returns the function block that actually declares
@@ -59,29 +79,26 @@ impl<'a> FunctionBlocks<'a> {
         fb_name: &TypeName,
         method_name: &Id,
     ) -> Option<(&'a FunctionBlockDeclaration, &'a MethodDeclaration)> {
-        let mut current = self.get(fb_name);
-        let mut visited: HashSet<TypeName> = HashSet::new();
+        self.chain(fb_name).find_map(|fb| {
+            fb.methods
+                .iter()
+                .find(|m| &m.name == method_name)
+                .map(|method| (fb, method))
+        })
+    }
 
-        while let Some(fb) = current {
-            // Guards against an EXTENDS cycle causing an infinite loop.
-            // Cycles are also independently invalid (and expected to be
-            // rejected elsewhere); this is just a safety net.
-            if !visited.insert(fb.name.clone()) {
-                return None;
-            }
-
-            if let Some(method) = fb.methods.iter().find(|m| &m.name == method_name) {
-                return Some((fb, method));
-            }
-
-            current = fb
-                .oop
-                .as_ref()
-                .and_then(|oop| oop.base.as_ref())
-                .and_then(|base| self.get(base));
-        }
-
-        None
+    /// The block in `fb_name`'s `EXTENDS` chain -- `fb_name` itself first --
+    /// that declares the variable `field`, if any does.
+    pub(crate) fn declaring_block(
+        &self,
+        fb_name: &TypeName,
+        field: &Id,
+    ) -> Option<&'a FunctionBlockDeclaration> {
+        self.chain(fb_name).find(|fb| {
+            fb.variables
+                .iter()
+                .any(|decl| decl.identifier.symbolic_id() == Some(field))
+        })
     }
 }
 
@@ -98,26 +115,14 @@ pub(crate) struct InstanceTypes {
 
 impl InstanceTypes {
     /// Records `decl` when it declares a function-block instance; any other
-    /// declaration is ignored.
-    ///
-    /// An instance declared with a member initializer, `inst : FB := (x :=
-    /// 1)`, keeps the structure-shaped initializer through type resolution,
-    /// so its type alone says whether it is an instance; `is_function_block`
-    /// answers that for the caller's view of the declared types.
-    pub(crate) fn declare(
-        &mut self,
-        decl: &VarDecl,
-        is_function_block: &dyn Fn(&TypeName) -> bool,
-    ) {
-        let fb_type = match &decl.initializer {
-            InitialValueAssignmentKind::FunctionBlock(init) => Some(&init.type_name),
-            InitialValueAssignmentKind::Structure(init) if is_function_block(&init.type_name) => {
-                Some(&init.type_name)
+    /// declaration is ignored. Type resolution has already turned every
+    /// instance declaration, member-initialized or not, into a
+    /// function-block initializer, so the initializer kind is the whole test.
+    pub(crate) fn declare(&mut self, decl: &VarDecl) {
+        if let InitialValueAssignmentKind::FunctionBlock(init) = &decl.initializer {
+            if let Some(name) = decl.identifier.symbolic_id() {
+                self.var_to_fb.insert(name.clone(), init.type_name.clone());
             }
-            _ => None,
-        };
-        if let (Some(fb_type), Some(name)) = (fb_type, decl.identifier.symbolic_id()) {
-            self.var_to_fb.insert(name.clone(), fb_type.clone());
         }
     }
 
@@ -206,6 +211,38 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
+    fn declaring_block_when_field_inherited_then_returns_base_block() {
+        let lib = parse(
+            "
+FUNCTION_BLOCK FB_Base
+VAR
+    count : INT;
+END_VAR
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+VAR
+    own : INT;
+END_VAR
+END_FUNCTION_BLOCK",
+        );
+        let fbs = FunctionBlocks::from_library(&lib);
+        let derived = TypeName::from("FB_Derived");
+        assert_eq!(
+            Some(TypeName::from("FB_Base")),
+            fbs.declaring_block(&derived, &Id::from("count"))
+                .map(|fb| fb.name.clone())
+        );
+        assert_eq!(
+            Some(derived.clone()),
+            fbs.declaring_block(&derived, &Id::from("own"))
+                .map(|fb| fb.name.clone())
+        );
+        assert!(fbs
+            .declaring_block(&derived, &Id::from("missing"))
+            .is_none());
+    }
+
+    #[test]
     fn resolve_method_when_extends_cycle_then_none() {
         let lib = parse(
             "
@@ -252,7 +289,7 @@ END_PROGRAM",
         );
         let mut instances = InstanceTypes::default();
         for decl in &program(&lib).variables {
-            instances.declare(decl, &|type_name| *type_name == TypeName::from("FB_Base"));
+            instances.declare(decl);
         }
         assert_eq!(
             Some(&TypeName::from("FB_Base")),

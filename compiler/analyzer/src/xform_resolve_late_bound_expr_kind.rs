@@ -122,14 +122,10 @@ impl DeclarationResolver<'_> {
             InitialValueAssignmentKind::Structure(_) => VariableType::Structure,
             InitialValueAssignmentKind::Array(_) => VariableType::Array,
             InitialValueAssignmentKind::Reference(_) => VariableType::Reference,
-            InitialValueAssignmentKind::LateResolvedType(type_name) => {
-                VariableType::LateResolvedType(type_name.clone())
-            }
-            // The type is no more known here than for `LateResolvedType`;
-            // the member initializers do not name it.
-            InitialValueAssignmentKind::LateResolvedTypeInit(late) => {
-                VariableType::LateResolvedType(late.type_name.clone())
-            }
+            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name,
+                ..
+            }) => VariableType::LateResolvedType(type_name.clone()),
             // Not yet folded to a literal (extension, folded by a
             // later pass); treat like `Simple` for type-inference purposes.
             InitialValueAssignmentKind::SimpleExpr(_) => VariableType::Simple,

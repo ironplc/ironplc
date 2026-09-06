@@ -211,21 +211,6 @@ impl Fold<Diagnostic> for TypeEnvironment {
                     }
                 }
             }
-            // A type declaration is parsed by `initialized_structure()`, which
-            // yields `Structure` -- only a VAR declaration produces the
-            // late-bound form, and this fold does not see those. Alias it
-            // like the arm below rather than failing on a shape that would
-            // mean the parser changed.
-            InitialValueAssignmentKind::LateResolvedTypeInit(late) => {
-                if self.get(&late.type_name).is_none() {
-                    return Err(Diagnostic::problem(
-                        Problem::ParentTypeNotDeclared,
-                        Label::span(node.type_name.span(), "Type alias"),
-                    )
-                    .with_secondary(Label::span(late.type_name.span(), "Base type")));
-                }
-                self.insert_alias(&node.type_name, &late.type_name)?;
-            }
             InitialValueAssignmentKind::Structure(structure_init) => {
                 // Handle structure type aliases like: TYPE MyAlias : ExistingStruct := (field := 10); END_TYPE
                 // This creates an alias to an existing structure type

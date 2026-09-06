@@ -2082,6 +2082,23 @@ impl VarDecl {
         }
     }
 
+    /// Creates a variable declaration against a user type name with a bare
+    /// identifier as its initial value, `name : type_name := initial_value`,
+    /// as the parser leaves it before the type is known (ADR-0050).
+    /// The declaration has type `VAR` and no qualifier.
+    pub fn late_bound_value(name: &str, type_name: &str, initial_value: &str) -> Self {
+        VarDecl {
+            identifier: VariableIdentifier::new_symbol(name),
+            var_type: VariableType::Var,
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name: TypeName::from(type_name),
+                initial_value: Some(LateResolvedInitialValue::Value(Id::from(initial_value))),
+            }),
+            block: next_block_id(),
+        }
+    }
+
     /// Creates a variable declaration for enumeration having an initial value.
     /// The declaration has type `VAR` and no qualifier.
     pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> Self {
@@ -2146,7 +2163,9 @@ impl VarDecl {
             identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignmentKind::LateResolvedType(TypeName::from(type_name)),
+            initializer: InitialValueAssignmentKind::LateResolvedType(
+                LateResolvedInitializer::bare(TypeName::from(type_name)),
+            ),
             block: next_block_id(),
         }
     }
@@ -2193,9 +2212,6 @@ impl VarDecl {
             InitialValueAssignmentKind::Structure(structure_initialization_declaration) => {
                 TypeReference::Named(structure_initialization_declaration.type_name.clone())
             }
-            InitialValueAssignmentKind::LateResolvedTypeInit(late_resolved) => {
-                TypeReference::Named(late_resolved.type_name.clone())
-            }
             InitialValueAssignmentKind::Array(array_initial_value_assignment) => {
                 match &array_initial_value_assignment.spec {
                     SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
@@ -2203,8 +2219,8 @@ impl VarDecl {
                 }
             }
             InitialValueAssignmentKind::Reference(_) => TypeReference::Inline,
-            InitialValueAssignmentKind::LateResolvedType(type_name) => {
-                TypeReference::Named(type_name.clone())
+            InitialValueAssignmentKind::LateResolvedType(late) => {
+                TypeReference::Named(late.type_name.clone())
             }
             InitialValueAssignmentKind::SimpleExpr(simple_expr_initializer) => {
                 TypeReference::Named(simple_expr_initializer.type_name.clone())
@@ -2552,15 +2568,10 @@ pub enum InitialValueAssignmentKind {
     Array(ArrayInitialValueAssignment),
     /// Reference type initializer (REF_TO).
     Reference(ReferenceInitializer),
-    /// Type that is ambiguous until have discovered type
-    /// definitions. Value is the name of the type.
-    LateResolvedType(TypeName),
-    /// `x : T := (a := 1)` before `T` is known.
-    ///
-    /// A STRUCT and a function block instance take the same spelling here,
-    /// so the parser records the type name and the member values and leaves
-    /// the choice to `xform_resolve_late_bound_type_initializer`.
-    LateResolvedTypeInit(LateResolvedTypeInitializer),
+    /// A declaration whose type is a user-defined name the parser cannot
+    /// classify, with the initializer exactly as written. The type
+    /// resolver replaces it with the kind the type implies (ADR-0050).
+    LateResolvedType(LateResolvedInitializer),
     /// A constant-expression initializer not yet folded to a literal
     /// (extension — see `allow_constant_initializer_expressions`).
     /// Always normalized to `Simple` by
@@ -2569,7 +2580,63 @@ pub enum InitialValueAssignmentKind {
     SimpleExpr(SimpleExprInitializer),
 }
 
+/// A declaration against a user-defined type name, before the type is known.
+///
+/// `T` in `x : T`, `x : T := (a := 1)` or `x : T := Red` may be a structure,
+/// a function block, an enumeration or an alias of an elementary type, and
+/// only the type resolver can tell. The parser records the initializer as
+/// written and decides nothing; see ADR-0050.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct LateResolvedInitializer {
+    pub type_name: TypeName,
+    pub initial_value: Option<LateResolvedInitialValue>,
+}
+
+impl LateResolvedInitializer {
+    /// A bare declaration, `x : T`.
+    pub fn bare(type_name: TypeName) -> Self {
+        LateResolvedInitializer {
+            type_name,
+            initial_value: None,
+        }
+    }
+}
+
+/// The initializer written against a type the parser could not classify.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub enum LateResolvedInitialValue {
+    /// `(a := 1, b := 2)`: a structure's fields, or a function block's
+    /// members.
+    Members(Vec<StructureElementInit>),
+    /// `Red`: an enumeration's value, or a named constant for any other
+    /// type.
+    Value(Id),
+}
+
 impl InitialValueAssignmentKind {
+    /// Returns whether the declaration states an initial value: a literal,
+    /// enumerated or string value, at least one array element, at least one
+    /// structure member, or a reference target. A function-block instance
+    /// has state rather than a value, and an initializer whose kind is not
+    /// yet resolved states nothing.
+    pub fn has_initial_value(&self) -> bool {
+        match self {
+            InitialValueAssignmentKind::Simple(si) => si.initial_value.is_some(),
+            InitialValueAssignmentKind::String(si) => si.initial_value.is_some(),
+            InitialValueAssignmentKind::EnumeratedValues(ev) => ev.initial_value.is_some(),
+            InitialValueAssignmentKind::EnumeratedType(et) => et.initial_value.is_some(),
+            InitialValueAssignmentKind::Array(arr) => !arr.initial_values.is_empty(),
+            InitialValueAssignmentKind::Structure(st) => !st.elements_init.is_empty(),
+            InitialValueAssignmentKind::Reference(re) => re.initial_value.is_some(),
+            InitialValueAssignmentKind::None(_)
+            | InitialValueAssignmentKind::FunctionBlock(_)
+            | InitialValueAssignmentKind::FunctionBlockCall(_)
+            | InitialValueAssignmentKind::Subrange(_)
+            | InitialValueAssignmentKind::LateResolvedType(_)
+            | InitialValueAssignmentKind::SimpleExpr(_) => false,
+        }
+    }
+
     /// Creates an initial value with
     pub fn simple_uninitialized(type_name: TypeName) -> Self {
         InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -2627,14 +2694,6 @@ pub enum StructInitialValueAssignmentKind {
     /// [`Self::EnumeratedValue`] or [`Self::Expression`] once declarations
     /// are known, and no later stage sees it.
     LateBound(LateBound),
-}
-
-/// A `name : T := (member := value, ...)` declaration whose type is not yet
-/// resolved. See [`InitialValueAssignmentKind::LateResolvedTypeInit`].
-#[derive(Clone, PartialEq, Debug, Recurse)]
-pub struct LateResolvedTypeInitializer {
-    pub type_name: TypeName,
-    pub elements_init: Vec<StructureElementInit>,
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]

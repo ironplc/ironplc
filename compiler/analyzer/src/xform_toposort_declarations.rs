@@ -581,14 +581,6 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         let to = self.declarations.add_node(&struct_init.type_name.name);
                         self.declarations.graph.add_edge(to, from, ());
                     }
-                    // Whether the named type turns out to be a structure or a
-                    // function block is decided later, but either way this
-                    // declaration depends on it, and ordering happens here.
-                    InitialValueAssignmentKind::LateResolvedTypeInit(late) => {
-                        let from = self.declarations.add_node(from);
-                        let to = self.declarations.add_node(&late.type_name.name);
-                        self.declarations.graph.add_edge(to, from, ());
-                    }
                     InitialValueAssignmentKind::Array(array_init) => {
                         // An array-typed field depends on its element type
                         // exactly as `visit_array_declaration` does for a
@@ -607,7 +599,10 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::Reference(_) => {}
-                    InitialValueAssignmentKind::LateResolvedType(lrt) => {
+                    InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                        type_name: lrt,
+                        ..
+                    }) => {
                         // We only care about these because these may be references to a function block
                         let from = self.declarations.add_node(from);
                         let to = self.declarations.add_node(&lrt.name);

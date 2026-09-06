@@ -177,8 +177,7 @@ impl<'a> Visitor<Infallible> for RuleConstantVarsInitialized<'a> {
                         );
                     }
                 }
-                InitialValueAssignmentKind::LateResolvedType(_)
-                | InitialValueAssignmentKind::LateResolvedTypeInit(_) => {
+                InitialValueAssignmentKind::LateResolvedType(_) => {
                     self.diagnostics.push(Diagnostic::internal_error());
                 }
                 InitialValueAssignmentKind::SimpleExpr(_) => {

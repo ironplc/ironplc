@@ -4,12 +4,12 @@
 //! `--allow-struct-initializer-expressions` flag is enforced by a later
 //! semantic rule, not here.
 //!
-//! The declaration itself parses to `LateResolvedTypeInit`, not `Structure`:
+//! The declaration itself parses to `LateResolvedType`, not `Structure`:
 //! `x : T := (a := 1)` is the same spelling whether `T` names a STRUCT or a
 //! function block, and nothing here knows which.
 
 use super::common::*;
-use dsl::common::StructInitialValueAssignmentKind;
+use dsl::common::{LateResolvedInitialValue, StructInitialValueAssignmentKind};
 
 #[test]
 fn parse_when_struct_init_value_is_deref_member_expr_then_parses_as_expression() {
@@ -39,13 +39,19 @@ END_FUNCTION_BLOCK";
         &library.elements[1],
         LibraryElementKind::FunctionBlockDeclaration
     );
-    let struct_init = cast!(
+    // `TON` is a type name the parser does not classify, so the member list
+    // is recorded for the type resolver (ADR-0050).
+    let late = cast!(
         &fb.variables[1].initializer,
-        InitialValueAssignmentKind::LateResolvedTypeInit
+        InitialValueAssignmentKind::LateResolvedType
     );
-    assert_eq!(struct_init.elements_init.len(), 1);
+    let elements = match &late.initial_value {
+        Some(LateResolvedInitialValue::Members(elements)) => elements,
+        other => panic!("expected a member list, got {other:?}"),
+    };
+    assert_eq!(elements.len(), 1);
     assert!(matches!(
-        struct_init.elements_init[0].init,
+        elements[0].init,
         StructInitialValueAssignmentKind::Expression(_)
     ));
 }
@@ -144,9 +150,12 @@ fn sole_struct_element_init(library: &Library) -> &StructInitialValueAssignmentK
             _ => None,
         })
         .unwrap();
-    let struct_init = cast!(
+    let late = cast!(
         &program.variables.last().unwrap().initializer,
-        InitialValueAssignmentKind::LateResolvedTypeInit
+        InitialValueAssignmentKind::LateResolvedType
     );
-    &struct_init.elements_init[0].init
+    match late.initial_value.as_ref().unwrap() {
+        LateResolvedInitialValue::Members(elements) => &elements[0].init,
+        other => panic!("expected a member list, got {other:?}"),
+    }
 }

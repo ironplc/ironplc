@@ -121,6 +121,10 @@ pub(crate) fn assign_variables(
                     }
                 }
                 InitialValueAssignmentKind::FunctionBlock(fb_init) => {
+                    // A member initializer (`(PT := T#100MS)`) is applied by
+                    // `emit_initial_values`, which runs after the instance
+                    // has its slot offset -- each member store addresses the
+                    // instance through it. Nothing to do here but size it.
                     let fb_name = fb_init.type_name.to_string().to_uppercase();
                     if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
                         // Standard library function block.

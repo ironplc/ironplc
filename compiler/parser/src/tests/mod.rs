@@ -15,6 +15,7 @@ mod duration;
 mod enums;
 mod fb_inheritance;
 mod function_calls;
+mod late_resolved_initializers;
 mod literals;
 mod methods;
 mod partial_access;

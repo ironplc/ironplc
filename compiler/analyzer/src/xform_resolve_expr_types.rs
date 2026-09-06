@@ -170,8 +170,10 @@ impl ExprTypeResolver<'_> {
                 Some(tn) => tn.clone(),
                 None => return, // Inline array targets don't have a single type name
             },
-            InitialValueAssignmentKind::LateResolvedType(tn) => tn.clone(),
-            InitialValueAssignmentKind::LateResolvedTypeInit(late) => late.type_name.clone(),
+            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name: tn,
+                ..
+            }) => tn.clone(),
             InitialValueAssignmentKind::SimpleExpr(se) => se.type_name.clone(),
         };
 
@@ -219,9 +221,10 @@ impl ExprTypeResolver<'_> {
                 self.element_type_from_named_array(&si.type_name)
             }
             // Late-resolved type that may be an array alias
-            InitialValueAssignmentKind::LateResolvedType(tn) => {
-                self.element_type_from_named_array(tn)
-            }
+            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name: tn,
+                ..
+            }) => self.element_type_from_named_array(tn),
             _ => None,
         };
 

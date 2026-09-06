@@ -8,10 +8,12 @@ use ironplc_dsl::common::*;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
+use ironplc_dsl::textual::{Expr, ExprKind, NamedVariable, SymbolicVariableKind, Variable};
 use ironplc_dsl::visitor::Visitor;
 use ironplc_problems::Problem;
 use log::trace;
 
+use crate::intermediate_type::IntermediateType;
 use crate::scoped_table::{ScopedTable, Value};
 use crate::type_environment::TypeEnvironment;
 
@@ -136,17 +138,102 @@ struct TypeResolver<'a> {
     diagnostics: Vec<Diagnostic>,
 }
 
+/// What a user type name turned out to be, as far as an initializer's shape
+/// is concerned.
+enum ResolvedKind {
+    FunctionBlock,
+    Structure,
+    Enumeration,
+    /// Any other declared type: an alias, a subrange, a string, an array.
+    Other,
+}
+
 impl TypeResolver<'_> {
-    /// Returns whether `name` names a function block type.
-    ///
-    /// The type environment answers for every function block, standard
-    /// library or user-declared: `xform_resolve_type_decl_environment`
-    /// registers each `FUNCTION_BLOCK` declaration before this transform
-    /// runs.
-    fn is_function_block_type(&self, name: &TypeName) -> bool {
-        self.type_environment
-            .get(name)
-            .is_some_and(|ty| ty.representation.is_function_block())
+    /// Classifies `name` from the type environment, or from this pass's own
+    /// table of declared types when the environment does not hold it, in
+    /// the same order the bare-declaration arm consults them.
+    fn classify(&self, name: &TypeName) -> Option<ResolvedKind> {
+        if let Some(attrs) = self.type_environment.get(name) {
+            return Some(match &attrs.representation {
+                IntermediateType::FunctionBlock { .. } => ResolvedKind::FunctionBlock,
+                IntermediateType::Structure { .. } => ResolvedKind::Structure,
+                IntermediateType::Enumeration { .. } => ResolvedKind::Enumeration,
+                _ => ResolvedKind::Other,
+            });
+        }
+        self.types.find(name).map(|kind| match kind {
+            TypeDefinitionKind::FunctionBlock => ResolvedKind::FunctionBlock,
+            TypeDefinitionKind::Structure | TypeDefinitionKind::StructureInitialization => {
+                ResolvedKind::Structure
+            }
+            TypeDefinitionKind::Enumeration => ResolvedKind::Enumeration,
+            _ => ResolvedKind::Other,
+        })
+    }
+
+    /// Gives a declaration written against a user type name, with an
+    /// initializer, the kind its type implies (ADR-0050). The parser could
+    /// not tell a structure from a function block, or an enumeration value
+    /// from a named constant; here the types are known.
+    fn resolve_initialized(
+        &mut self,
+        name: TypeName,
+        initial_value: LateResolvedInitialValue,
+    ) -> Result<InitialValueAssignmentKind, Diagnostic> {
+        let Some(kind) = self.classify(&name) else {
+            // Undeclared, as for a bare declaration: say so and keep the
+            // placeholder so the rest of the library still resolves.
+            self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::UndeclaredUnknownType,
+                    Label::span(name.span(), "Variable type"),
+                )
+                .with_context_type("identifier", &name),
+            );
+            return Ok(InitialValueAssignmentKind::LateResolvedType(
+                LateResolvedInitializer {
+                    type_name: name,
+                    initial_value: Some(initial_value),
+                },
+            ));
+        };
+        Ok(match (initial_value, kind) {
+            (LateResolvedInitialValue::Members(elements), ResolvedKind::FunctionBlock) => {
+                InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment {
+                    type_name: name,
+                    init: elements,
+                })
+            }
+            // A structure, or a type that takes no members at all; the
+            // initializer checks report the latter against the declared type.
+            (LateResolvedInitialValue::Members(elements), _) => {
+                InitialValueAssignmentKind::Structure(StructureInitializationDeclaration {
+                    type_name: name,
+                    elements_init: elements,
+                })
+            }
+            (LateResolvedInitialValue::Value(value), ResolvedKind::Enumeration) => {
+                InitialValueAssignmentKind::EnumeratedType(EnumeratedInitialValueAssignment {
+                    type_name: name,
+                    initial_value: Some(EnumeratedValue {
+                        type_name: None,
+                        value,
+                        explicit_value: None,
+                    }),
+                })
+            }
+            // A named constant for any other type: a constant expression,
+            // which `xform_fold_initializer_expressions` evaluates or
+            // diagnoses like every other.
+            (LateResolvedInitialValue::Value(value), _) => {
+                InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
+                    type_name: name,
+                    initial_value: Expr::new(ExprKind::Variable(Variable::Symbolic(
+                        SymbolicVariableKind::Named(NamedVariable { name: value }),
+                    ))),
+                })
+            }
+        })
     }
 }
 
@@ -156,31 +243,15 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
         node: InitialValueAssignmentKind,
     ) -> Result<InitialValueAssignmentKind, Diagnostic> {
         match node {
-            // `x : T := (a := 1)`. The parser could not tell a STRUCT from a
-            // function block, so it left the choice here. Both carry the
-            // same `Vec<StructureElementInit>` -- setting a structure's
-            // fields and setting an instance's members is one construct with
-            // one spelling -- so resolving is only a matter of which node
-            // the member values belong to.
-            InitialValueAssignmentKind::LateResolvedTypeInit(late) => {
-                if self.is_function_block_type(&late.type_name) {
-                    Ok(InitialValueAssignmentKind::FunctionBlock(
-                        FunctionBlockInitialValueAssignment {
-                            type_name: late.type_name,
-                            init: late.elements_init,
-                        },
-                    ))
-                } else {
-                    Ok(InitialValueAssignmentKind::Structure(
-                        StructureInitializationDeclaration {
-                            type_name: late.type_name,
-                            elements_init: late.elements_init,
-                        },
-                    ))
-                }
-            }
             // TODO this needs to handle struct definitions
-            InitialValueAssignmentKind::LateResolvedType(name) => {
+            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name: name,
+                initial_value: Some(initial_value),
+            }) => self.resolve_initialized(name, initial_value),
+            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name: name,
+                initial_value: None,
+            }) => {
                 // Check the type environment for known types (elementary types and stdlib FBs)
                 if let Some(ty) = self.type_environment.get(&name) {
                     if ty.representation.is_primitive() {
@@ -270,7 +341,9 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                             )
                             .with_context_type("identifier", &name),
                         );
-                        Ok(InitialValueAssignmentKind::LateResolvedType(name))
+                        Ok(InitialValueAssignmentKind::LateResolvedType(
+                            LateResolvedInitializer::bare(name),
+                        ))
                     }
                 }
             }
@@ -597,112 +670,152 @@ END_FUNCTION_BLOCK
         ));
     }
 
-    /// A standard library function block declared with a parenthesized member
-    /// initializer is an *instance* of that block, not a structure -- the
-    /// remedy `docs/reference/compiler/problems/P4043.rst` offers for P4043.
-    ///
-    /// These go through the whole type-resolution stage rather than calling
-    /// `apply` against a hand-built type environment: what decides the
-    /// question is that `xform_resolve_type_decl_environment` has already
-    /// registered the function block, so an environment assembled by the test
-    /// would be testing the assembly rather than the resolution.
-    #[test]
-    fn apply_when_stdlib_fb_type_has_member_initializer_then_resolves_to_instance() {
-        let result = crate::test_helpers::parse_and_resolve_types(
+    #[rstest::rstest]
+    #[case::declared_block("FB_Counter", "(limit := 20)")]
+    #[case::stdlib_block("TON", "(PT := T#1s)")]
+    fn apply_when_member_initializer_on_function_block_then_function_block_initializer(
+        #[case] type_name: &str,
+        #[case] initializer: &str,
+    ) {
+        let program = format!(
             "
-FUNCTION_BLOCK FB_Example
+FUNCTION_BLOCK FB_Counter
 VAR
-    tonDelta : TON := (PT := T#100MS);
+    limit : INT := 10;
 END_VAR
 END_FUNCTION_BLOCK
-        ",
-        );
-
-        let fb = first_function_block(&result);
-        let initializer = &fb.variables[0].initializer;
-        let InitialValueAssignmentKind::FunctionBlock(fb_init) = initializer else {
-            panic!("expected a function block instance, got {initializer:?}");
-        };
-        assert_eq!(TypeName::from("TON"), fb_init.type_name);
-        assert_eq!(1, fb_init.init.len());
-        assert_eq!(Id::from("PT"), fb_init.init[0].name);
-    }
-
-    /// The same holds for a user-declared function block.
-    #[test]
-    fn apply_when_user_fb_type_has_member_initializer_then_resolves_to_instance() {
-        let result = crate::test_helpers::parse_and_resolve_types(
-            "
-FUNCTION_BLOCK SCALER
-VAR_INPUT
-    factor : INT;
-END_VAR
-END_FUNCTION_BLOCK
-
-FUNCTION_BLOCK caller
+PROGRAM main
 VAR
-    scaler : SCALER := (factor := 3);
+    inst : {type_name} := {initializer};
 END_VAR
-END_FUNCTION_BLOCK
-        ",
+END_PROGRAM"
         );
+        let library = crate::test_helpers::parse_and_resolve_types(&program);
 
-        let caller = named_function_block(&result, "caller");
+        let decl = library
+            .elements
+            .iter()
+            .find_map(|element| match element {
+                LibraryElementKind::ProgramDeclaration(program) => program.variables.first(),
+                _ => None,
+            })
+            .unwrap();
         assert!(matches!(
-            &caller.variables[0].initializer,
-            InitialValueAssignmentKind::FunctionBlock(fb_init)
-            if fb_init.type_name == TypeName::from("SCALER") && fb_init.init.len() == 1
+            &decl.initializer,
+            InitialValueAssignmentKind::FunctionBlock(init)
+                if init.type_name == TypeName::from(type_name) && init.init.len() == 1
         ));
     }
 
-    /// A genuine STRUCT type with the same initializer shape stays a structure.
+    // -----------------------------------------------------------------
+    // A user-typed initializer is classified by the type (ADR-0050).
+    // -----------------------------------------------------------------
+
+    /// The first variable of the first program organization unit after the
+    /// pass, with the diagnostics it raised.
+    fn resolve_first_var(program: &str) -> (VarDecl, Vec<ironplc_dsl::diagnostic::Diagnostic>) {
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironment::new();
+        let (result, diagnostics) = apply(input, &mut type_environment).unwrap();
+        let decl = result
+            .elements
+            .iter()
+            .find_map(|element| match element {
+                LibraryElementKind::ProgramDeclaration(program) => program.variables.first(),
+                _ => None,
+            })
+            .unwrap()
+            .clone();
+        (decl, diagnostics)
+    }
+
     #[test]
-    fn apply_when_struct_type_has_member_initializer_then_stays_a_structure() {
-        let result = crate::test_helpers::parse_and_resolve_types(
+    fn apply_when_members_on_structure_type_then_structure_initializer() {
+        let (decl, diagnostics) = resolve_first_var(
             "
-TYPE the_struct : STRUCT x : INT; END_STRUCT; END_TYPE
-
-FUNCTION_BLOCK caller
+TYPE
+    Point : STRUCT a : INT; b : INT; END_STRUCT;
+END_TYPE
+PROGRAM main
 VAR
-    the_var : the_struct := (x := 3);
+    p : Point := (a := 1);
 END_VAR
-END_FUNCTION_BLOCK
-        ",
+END_PROGRAM",
         );
-
-        let caller = named_function_block(&result, "caller");
+        assert!(diagnostics.is_empty());
         assert!(matches!(
-            &caller.variables[0].initializer,
-            InitialValueAssignmentKind::Structure(decl)
-            if decl.type_name == TypeName::from("the_struct")
+            &decl.initializer,
+            InitialValueAssignmentKind::Structure(init)
+                if init.type_name == TypeName::from("Point") && init.elements_init.len() == 1
         ));
     }
 
-    /// Returns the function block declaration named `name`.
-    fn named_function_block<'a>(library: &'a Library, name: &str) -> &'a FunctionBlockDeclaration {
-        library
-            .elements
-            .iter()
-            .find_map(|e| match e {
-                LibraryElementKind::FunctionBlockDeclaration(fb)
-                    if fb.name == TypeName::from(name) =>
-                {
-                    Some(fb)
-                }
-                _ => None,
-            })
-            .unwrap()
+    #[test]
+    fn apply_when_value_on_enumeration_type_then_enumerated_initializer() {
+        let (decl, diagnostics) = resolve_first_var(
+            "
+TYPE
+    Color : (Red, Green);
+END_TYPE
+PROGRAM main
+VAR
+    c : Color := Green;
+END_VAR
+END_PROGRAM",
+        );
+        assert!(diagnostics.is_empty());
+        assert!(matches!(
+            &decl.initializer,
+            InitialValueAssignmentKind::EnumeratedType(init)
+                if init.type_name == TypeName::from("Color")
+                    && init.initial_value.as_ref().map(|v| v.value.clone()) == Some(Id::from("Green"))
+        ));
     }
 
-    /// Returns the first function block declaration in the library.
-    fn first_function_block(library: &Library) -> &FunctionBlockDeclaration {
-        library
-            .elements
-            .iter()
-            .find_map(|e| match e {
-                LibraryElementKind::FunctionBlockDeclaration(fb) => Some(fb),
-                _ => None,
+    #[test]
+    fn apply_when_value_on_alias_type_then_constant_expression_initializer() {
+        // A bare identifier on a non-enumeration type is a named constant,
+        // for the initializer-expression fold to evaluate.
+        let (decl, diagnostics) = resolve_first_var(
+            "
+TYPE
+    Count : INT := 0;
+END_TYPE
+PROGRAM main
+VAR
+    n : Count := LIMIT;
+END_VAR
+END_PROGRAM",
+        );
+        assert!(diagnostics.is_empty());
+        assert!(matches!(
+            &decl.initializer,
+            InitialValueAssignmentKind::SimpleExpr(init)
+                if init.type_name == TypeName::from("Count")
+                    && matches!(&init.initial_value.kind, ironplc_dsl::textual::ExprKind::Variable(_))
+        ));
+    }
+
+    #[test]
+    fn apply_when_members_on_undeclared_type_then_diagnosed_and_placeholder_kept() {
+        let (decl, diagnostics) = resolve_first_var(
+            "
+PROGRAM main
+VAR
+    p : Missing := (a := 1);
+END_VAR
+END_PROGRAM",
+        );
+        assert_eq!(1, diagnostics.len());
+        assert_eq!(Problem::UndeclaredUnknownType.code(), diagnostics[0].code);
+        assert!(matches!(
+            &decl.initializer,
+            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                initial_value: Some(LateResolvedInitialValue::Members(_)),
+                ..
             })
-            .unwrap()
+        ));
     }
 }

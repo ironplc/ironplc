@@ -127,16 +127,12 @@ fn field_has_default(
             // Array has a default if it has initial values (non-empty vec)
             !array_init.initial_values.is_empty()
         }
-        InitialValueAssignmentKind::LateResolvedType(type_name) => {
+        InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+            type_name, ..
+        }) => {
             // Late resolved types don't carry initial value information themselves,
             // but they may reference a structure type with all defaults
             nested_structure_has_all_defaults(type_name, type_environment)
-        }
-        InitialValueAssignmentKind::LateResolvedTypeInit(late) => {
-            // Same as above, except this one was written with explicit
-            // member values, which is a default by definition.
-            !late.elements_init.is_empty()
-                || nested_structure_has_all_defaults(&late.type_name, type_environment)
         }
         // A constant-expression initializer is only ever produced by the
         // parser when an explicit `:= expr` was present, so it always
@@ -195,7 +191,9 @@ fn resolve_field_type(
                 })?;
             Ok(type_attrs.representation.clone())
         }
-        InitialValueAssignmentKind::LateResolvedType(type_name) => {
+        InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+            type_name, ..
+        }) => {
             // LateResolvedType may appear when the field references a user-defined type.
             // Since types are processed in topological order, the referenced type should
             // already be in the environment.
