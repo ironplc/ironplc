@@ -99,11 +99,25 @@ pub(crate) struct InstanceTypes {
 impl InstanceTypes {
     /// Records `decl` when it declares a function-block instance; any other
     /// declaration is ignored.
-    pub(crate) fn declare(&mut self, decl: &VarDecl) {
-        if let InitialValueAssignmentKind::FunctionBlock(init) = &decl.initializer {
-            if let Some(name) = decl.identifier.symbolic_id() {
-                self.var_to_fb.insert(name.clone(), init.type_name.clone());
+    ///
+    /// An instance declared with a member initializer, `inst : FB := (x :=
+    /// 1)`, keeps the structure-shaped initializer through type resolution,
+    /// so its type alone says whether it is an instance; `is_function_block`
+    /// answers that for the caller's view of the declared types.
+    pub(crate) fn declare(
+        &mut self,
+        decl: &VarDecl,
+        is_function_block: &dyn Fn(&TypeName) -> bool,
+    ) {
+        let fb_type = match &decl.initializer {
+            InitialValueAssignmentKind::FunctionBlock(init) => Some(&init.type_name),
+            InitialValueAssignmentKind::Structure(init) if is_function_block(&init.type_name) => {
+                Some(&init.type_name)
             }
+            _ => None,
+        };
+        if let (Some(fb_type), Some(name)) = (fb_type, decl.identifier.symbolic_id()) {
+            self.var_to_fb.insert(name.clone(), fb_type.clone());
         }
     }
 
@@ -223,10 +237,14 @@ END_FUNCTION_BLOCK",
         let (lib, _) = parse_and_resolve_types_with_options(
             "
 FUNCTION_BLOCK FB_Base
+VAR
+    x : INT;
+END_VAR
 END_FUNCTION_BLOCK
 PROGRAM main
 VAR
     inst : FB_Base;
+    with_init : FB_Base := (x := 1);
     count : INT;
 END_VAR
 END_PROGRAM",
@@ -234,11 +252,15 @@ END_PROGRAM",
         );
         let mut instances = InstanceTypes::default();
         for decl in &program(&lib).variables {
-            instances.declare(decl);
+            instances.declare(decl, &|type_name| *type_name == TypeName::from("FB_Base"));
         }
         assert_eq!(
             Some(&TypeName::from("FB_Base")),
             instances.type_of(&Id::from("inst"))
+        );
+        assert_eq!(
+            Some(&TypeName::from("FB_Base")),
+            instances.type_of(&Id::from("with_init"))
         );
         assert_eq!(None, instances.type_of(&Id::from("count")));
 
