@@ -2551,6 +2551,29 @@ pub enum LateResolvedInitialValue {
 }
 
 impl InitialValueAssignmentKind {
+    /// Returns whether the declaration states an initial value: a literal,
+    /// enumerated or string value, at least one array element, at least one
+    /// structure member, or a reference target. A function-block instance
+    /// has state rather than a value, and an initializer whose kind is not
+    /// yet resolved states nothing.
+    pub fn has_initial_value(&self) -> bool {
+        match self {
+            InitialValueAssignmentKind::Simple(si) => si.initial_value.is_some(),
+            InitialValueAssignmentKind::String(si) => si.initial_value.is_some(),
+            InitialValueAssignmentKind::EnumeratedValues(ev) => ev.initial_value.is_some(),
+            InitialValueAssignmentKind::EnumeratedType(et) => et.initial_value.is_some(),
+            InitialValueAssignmentKind::Array(arr) => !arr.initial_values.is_empty(),
+            InitialValueAssignmentKind::Structure(st) => !st.elements_init.is_empty(),
+            InitialValueAssignmentKind::Reference(re) => re.initial_value.is_some(),
+            InitialValueAssignmentKind::None(_)
+            | InitialValueAssignmentKind::FunctionBlock(_)
+            | InitialValueAssignmentKind::FunctionBlockCall(_)
+            | InitialValueAssignmentKind::Subrange(_)
+            | InitialValueAssignmentKind::LateResolvedType(_)
+            | InitialValueAssignmentKind::SimpleExpr(_) => false,
+        }
+    }
+
     /// Creates an initial value with
     pub fn simple_uninitialized(type_name: TypeName) -> Self {
         InitialValueAssignmentKind::Simple(SimpleInitializer {
