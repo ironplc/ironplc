@@ -107,3 +107,42 @@ spare for a further failure alternative). Only target 0, U32 (`UDINT`), is
 assigned. The signed, sub-32-bit, 64-bit and real targets keep the
 single-encoding `CONV_STR_TO_I32` / `CONV_STR_TO_F32` builtins until they are
 moved onto the block.
+
+### The literal grammar
+
+Under every non-numeric alternative, what is converted is an IEC 61131-3
+unsigned integer literal: CODESYS documents the input as "a valid literal of
+the target type", and every surveyed implementation accepts `16#FF`, so the
+grammar is the meaning of "convertible" rather than a policy.
+
+**REQ-BP-vm-001** A literal is an optional sign, then either a run of decimal digits or a based literal (`2#`, `8#` or `16#` followed by digits of that base), where single `_` separators may appear between digits. A typed prefix (`UDINT#`) is not part of the grammar.
+
+For an unsigned target a `-` sign is accepted by the grammar and is a range
+failure for any value but zero, so `-5` fails on range rather than on
+syntax. This keeps `ignore-surrounding` from skipping a sign that Rockwell's
+`STOD` documents as part of the number.
+
+### Scan semantics
+
+**REQ-BP-vm-002** Under `reject`, the string less surrounding ASCII whitespace must be exactly one literal; an empty string, or anything before or after the literal, is a failure.
+
+**REQ-BP-vm-003** Under `ignore-trailing`, the longest literal at the start of the string, after leading ASCII whitespace, is converted and everything after it is ignored; a string with no leading literal is a failure.
+
+**REQ-BP-vm-004** Under `ignore-surrounding`, characters that cannot start a literal (anything but a digit, or a sign immediately followed by a digit) are skipped, then the string is converted as under `ignore-trailing`; a string with no literal anywhere is a failure.
+
+**REQ-BP-vm-005** A literal whose value does not fit the target type is a failure under every non-numeric alternative; no alternative wraps or saturates.
+
+Range is a failure, not a scan question (ADR-0049): `'4294967296'` is a
+well-formed literal that is not convertible to `UDINT`, so under
+`ignore-trailing` it fails rather than converting a shorter run of its digits.
+
+### Failure
+
+**REQ-BP-vm-006** Under `trap`, a failure halts execution with `V4006 StringNotConvertible`, whose message names the target type and the offending string; under `zero`, the conversion produces 0 and execution continues.
+
+**REQ-BP-vm-007** A `WSTRING` operand traps `V9014 EncodingMismatch` regardless of policy, and a func_id in the block that names no conversion traps `V9007 InvalidBuiltinFunction`.
+
+The trap carries a bounded preview of the offending string (its first
+sixteen bytes, with an ellipsis if more followed), because the VM is `no_std`
+and a trap cannot own the value; sixteen bytes is enough to show any
+`UDINT` literal and to recognise a mistyped one.
