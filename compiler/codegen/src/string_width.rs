@@ -11,8 +11,18 @@
 //!
 //! Answering "which width is that?" is a question about types, not about
 //! bytecode, and it is the question this module exists to answer.
-//! [`string_expr_char_width`] is the entry point; everything else here is one
-//! of the cases it delegates to.
+//! [`string_expr_char_width`] answers it for one expression; the helpers
+//! below it are the cases it delegates to.
+//!
+//! Two further questions belong with it. An operation with several string
+//! operands needs them to share an encoding, which
+//! [`resolve_operand_char_width`] settles -- a literal's delimiter is what
+//! types it, `'abc'` being a `STRING` and `"abc"` a `WSTRING` (IEC 61131-3
+//! Table 5), so operands that disagree have no encoding in common and the
+//! program is rejected rather than left for the VM to trap on. And a value
+//! being written into a declared destination is *encoded for* that
+//! destination rather than checked against it, which is
+//! [`compile_string_value`].
 
 use ironplc_analyzer::IntermediateType;
 use ironplc_container::CharWidth;
@@ -21,9 +31,15 @@ use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, Function, SymbolicVariableKind, Variable};
 
-use super::compile::{char_width_for_string_type, CompileContext};
-use super::compile_expr::variable_span;
+use ironplc_problems::Problem;
+
+use super::compile::{
+    char_width_for_string_type, emit_string_literal_load, CompileContext, DEFAULT_OP_TYPE,
+    NARROW_CHAR_WIDTH,
+};
+use super::compile_expr::{compile_expr, variable_span};
 use super::compile_string::collect_positional_args;
+use crate::emit::Emitter;
 
 /// Returns the encoding a string-valued expression produces.
 ///
@@ -208,6 +224,117 @@ fn unknown_string_encoding(span: SourceSpan, what: &str) -> Diagnostic {
         span,
         format!("Cannot determine the string encoding of {what}"),
     ))
+}
+
+/// Resolves the single encoding every operand of one string operation shares.
+///
+/// A comparison, a `CONCAT`, a `FIND` -- each addresses its operands as
+/// data-region slots, and the runtime requires all of them to agree. Among
+/// peers there is no destination for a literal to take an encoding from, so
+/// every operand answers with its own: a declaration for a variable, a
+/// delimiter for a literal.
+///
+/// Operands that do not agree have no encoding they can share. That is a
+/// program error -- `CONCAT(s, w)` mixing a `STRING` and a `WSTRING`, or
+/// `w = 'abc'` comparing one against a `STRING` literal -- and is reported as
+/// P4034 rather than emitted for the VM to trap on one scan later.
+pub(crate) fn resolve_operand_char_width(
+    ctx: &CompileContext,
+    operands: &[&Expr],
+    span: &SourceSpan,
+) -> Result<CharWidth, Diagnostic> {
+    let mut resolved: Option<CharWidth> = None;
+
+    for operand in operands {
+        let width = string_expr_char_width(ctx, operand)?;
+        match resolved {
+            Some(existing) if existing != width => {
+                return Err(encoding_mismatch(
+                    existing,
+                    width,
+                    &operand_span(operand, span),
+                ));
+            }
+            Some(_) => {}
+            None => resolved = Some(width),
+        }
+    }
+
+    Ok(resolved.unwrap_or(NARROW_CHAR_WIDTH))
+}
+
+/// Compiles `expr` so that it leaves a temp buffer encoded at `char_width`.
+///
+/// This is the one place a literal takes an encoding other than the one its
+/// delimiter spells: a declared destination -- an assignment target, an array
+/// element, a structure field, a function parameter being copied in -- decides
+/// the encoding of a literal written into it, rather than being compared
+/// against it.
+///
+/// For a `WSTRING` destination that path is currently unreachable: the
+/// analyzer types every character-string literal as `STRING`, so `w := "abc"`
+/// is rejected with P4035 before codegen runs. It is what a `STRING`
+/// destination needs, and is written to be correct if that typing is fixed.
+///
+/// Any other expression carries an encoding of its own, and one that is not
+/// `char_width` has no valid bytecode for the store the caller is about to
+/// emit -- so that is P4034 too. An encoding codegen cannot work out is left
+/// to the destination, which is the one that decides the store.
+pub(crate) fn compile_string_value(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    expr: &Expr,
+    char_width: CharWidth,
+) -> Result<(), Diagnostic> {
+    if let ExprKind::Const(ConstantKind::CharacterString(lit)) = &expr.kind {
+        emit_string_literal_load(emitter, ctx, &lit.value, char_width);
+        return Ok(());
+    }
+
+    if let Ok(width) = string_expr_char_width(ctx, expr) {
+        if width != char_width {
+            return Err(encoding_mismatch(char_width, width, &expr.span()));
+        }
+    }
+
+    compile_expr(emitter, ctx, expr, DEFAULT_OP_TYPE)
+}
+
+/// The span to blame an operand's encoding on: its own when it has one, and
+/// the enclosing operation's otherwise. Not every expression position carries
+/// a span, and an unplaced diagnostic is worse than one placed on the
+/// operation the operand belongs to.
+fn operand_span(operand: &Expr, operation: &SourceSpan) -> SourceSpan {
+    let span = operand.span();
+    if span == SourceSpan::default() {
+        operation.clone()
+    } else {
+        span
+    }
+}
+
+/// Builds the P4034 diagnostic for two string encodings that cannot be
+/// reconciled.
+pub(crate) fn encoding_mismatch(
+    expected: CharWidth,
+    actual: CharWidth,
+    span: &SourceSpan,
+) -> Diagnostic {
+    Diagnostic::problem(
+        Problem::StringEncodingMismatch,
+        Label::span(span.clone(), "String operand"),
+    )
+    .with_context("expected", &type_name_for(expected).to_string())
+    .with_context("found", &type_name_for(actual).to_string())
+}
+
+/// The IEC type name for an encoding, for diagnostics.
+fn type_name_for(char_width: CharWidth) -> &'static str {
+    if char_width.is_wide() {
+        "WSTRING"
+    } else {
+        "STRING"
+    }
 }
 
 #[cfg(test)]
