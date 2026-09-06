@@ -13,7 +13,6 @@ use ironplc_problems::Problem;
 use log::trace;
 
 use crate::scoped_table::{ScopedTable, Value};
-use crate::stdlib::is_unsupported_standard_type;
 use crate::type_environment::TypeEnvironment;
 
 /// Derived data types declared.
@@ -205,17 +204,6 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                             SpecificationKind::Named(name),
                         ));
                     }
-                }
-
-                // Unsupported standard types resolve to a known type that we will detect later.
-                // This allows passing the transformation stage to show other errors.
-                if is_unsupported_standard_type(&name) {
-                    return Ok(InitialValueAssignmentKind::FunctionBlock(
-                        FunctionBlockInitialValueAssignment {
-                            type_name: name,
-                            init: vec![],
-                        },
-                    ));
                 }
 
                 // TODO error handling

@@ -399,3 +399,33 @@ END_PROGRAM
         "expected P4034 for STRING := WSTRING"
     );
 }
+
+#[test]
+fn wstring_returning_call_when_used_as_a_string_operand_then_wide_encoding() {
+    // The wide counterpart of the conversion case in end_to_end_conv_string:
+    // a call whose result is a string operand of another string function. A
+    // user function is the only call that can produce a WSTRING result today
+    // -- the *_TO_STRING conversions are all Latin-1, and no *_TO_WSTRING
+    // exists -- and its declared return type is what says so.
+    let source = "
+FUNCTION mk : WSTRING
+  VAR_INPUT
+    s : WSTRING[10];
+  END_VAR
+  mk := s;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    w : WSTRING[10] := \"ab\";
+    out : WSTRING[20];
+  END_VAR
+  out := CONCAT(mk(w), \"cd\");
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    let out_offset = wstring_region(10);
+    assert_eq!(read_char_width(&bufs.data_region, out_offset), 2);
+    assert_eq!(read_wstring(&bufs.data_region, out_offset), "abcd");
+}

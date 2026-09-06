@@ -5,22 +5,26 @@
 //! validation is owned by `tools::common`. Per-tool tests use these fixtures
 //! to prove the tool wires that shared infrastructure in — one wiring test
 //! per concern — plus whatever response shape is specific to the tool.
+//!
+//! The source snippets themselves live in [`ironplc_test::fixtures`] so the
+//! integration tests under `tests/`, which cannot see this `#[cfg(test)]`
+//! module, share the same text; this module re-exports them and adds the
+//! wrappers that need this crate's types.
 
 use super::common::SourceInput;
 use serde_json::{json, Value};
 
-/// A minimal valid program.
-pub const VALID_PROGRAM: &str = "PROGRAM p\nEND_PROGRAM";
-
-/// A program with a syntax error (unterminated declaration).
-pub const SYNTAX_ERROR_PROGRAM: &str = "PROGRAM";
-
-/// A program with a semantic error (undeclared variable `y`).
-pub const SEMANTIC_ERROR_PROGRAM: &str = "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM";
+pub use ironplc_test::fixtures::*;
 
 /// Options selecting the IEC 61131-3 second-edition dialect.
 pub fn ed2_options() -> Value {
     json!({"dialect": "iec61131-3-ed2"})
+}
+
+/// `prelude` followed by [`VALID_PROGRAM`], for a test whose subject is a
+/// top-level declaration (or comment) that needs a program alongside it.
+pub fn with_program(prelude: &str) -> String {
+    format!("{prelude}\n{VALID_PROGRAM}")
 }
 
 /// A single source named `main.st` with the given content.

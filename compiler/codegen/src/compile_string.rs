@@ -4,23 +4,20 @@
 //! INSERT, DELETE, LEFT, RIGHT, MID, CONCAT) and string comparison.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
-use ironplc_analyzer::IntermediateType;
 use ironplc_container::opcode;
 use ironplc_container::CharWidth;
 use ironplc_dsl::common::ConstantKind;
 use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{
-    CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind, SymbolicVariableKind,
-    Variable,
-};
+use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
 
 use super::compile::{
-    char_width_for_string_type, emit_string_literal_load, string_region_size, CompileContext,
-    DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
+    emit_string_literal_load, string_region_size, CompileContext, DEFAULT_OP_TYPE,
+    DEFAULT_STRING_MAX_LENGTH,
 };
-use super::compile_expr::{compile_expr, resolve_variable_name, variable_span};
+use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
+use crate::string_width::string_expr_char_width;
 
 /// Compiles the LEN standard function call.
 ///
@@ -83,149 +80,6 @@ pub(crate) fn compile_string_compare(
         }
     }
     Ok(())
-}
-
-/// Returns the encoding a string-valued expression produces.
-///
-/// Every string slot records its encoding in its header and the VM rejects a
-/// store whose source and destination disagree (ADR-0034), so the temporary
-/// that [`resolve_string_arg`] allocates has to be initialized at the width
-/// the expression yields rather than at a fixed one. The width is always
-/// known at compile time: a literal spells it, a declaration states it, and
-/// every string function returns the encoding of its first string argument.
-///
-/// An expression whose width cannot be determined is a compiler bug rather
-/// than a program error -- the analyzer has already established that this
-/// argument is a string. Report it as one instead of guessing a width, which
-/// would defer the same problem to an encoding-mismatch trap at run time.
-fn string_expr_char_width(ctx: &CompileContext, expr: &Expr) -> Result<CharWidth, Diagnostic> {
-    match &expr.kind {
-        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
-            Ok(char_width_for_string_type(&lit.width))
-        }
-        ExprKind::Expression(inner) => string_expr_char_width(ctx, inner),
-        ExprKind::Variable(variable) => variable_char_width(ctx, variable),
-        ExprKind::Function(func) => function_char_width(ctx, func),
-        _ => Err(unknown_string_encoding(
-            expr.span(),
-            "a string expression of an unexpected kind",
-        )),
-    }
-}
-
-/// Returns the encoding of a string variable, array element or structure field.
-///
-/// Subscripts and dereferences do not change the encoding, so the access is
-/// walked back to the variable it is rooted in: a name, resolved against the
-/// declared strings and string arrays, or a structure field, whose declared
-/// type carries the width.
-fn variable_char_width(ctx: &CompileContext, variable: &Variable) -> Result<CharWidth, Diagnostic> {
-    let Variable::Symbolic(kind) = variable else {
-        return Err(unknown_string_encoding(
-            variable_span(variable),
-            "a directly represented variable",
-        ));
-    };
-
-    match access_root(kind) {
-        SymbolicVariableKind::Named(named) => {
-            if let Some(info) = ctx.string_vars.get(&named.name) {
-                return Ok(info.char_width);
-            }
-            ctx.array_vars
-                .get(&named.name)
-                .filter(|info| info.is_string_element)
-                .map(|info| info.string_char_width)
-                .ok_or_else(|| {
-                    unknown_string_encoding(
-                        variable_span(variable),
-                        "a variable that is not a declared string",
-                    )
-                })
-        }
-        SymbolicVariableKind::Structured(structured) => {
-            let (_, _, field_type) = crate::compile_struct::walk_struct_chain(
-                ctx,
-                &structured.record,
-                &structured.field,
-                0,
-            )
-            .map_err(|_| {
-                unknown_string_encoding(variable_span(variable), "an unresolvable structure field")
-            })?;
-            string_char_width_of(&field_type).ok_or_else(|| {
-                unknown_string_encoding(
-                    variable_span(variable),
-                    "a structure field that is not a string",
-                )
-            })
-        }
-        _ => Err(unknown_string_encoding(
-            variable_span(variable),
-            "a variable access of an unexpected kind",
-        )),
-    }
-}
-
-/// Walks past subscripts and dereferences to the variable an access is rooted
-/// in. `s.names[i]` roots in the structure field `s.names`, `arr[i][j]` in the
-/// name `arr`.
-fn access_root(kind: &SymbolicVariableKind) -> &SymbolicVariableKind {
-    let mut current = kind;
-    loop {
-        current = match current {
-            SymbolicVariableKind::Array(array) => array.subscripted_variable.as_ref(),
-            SymbolicVariableKind::Deref(deref) => deref.variable.as_ref(),
-            other => return other,
-        };
-    }
-}
-
-/// Returns the encoding of a STRING type, or of a STRING array's element.
-fn string_char_width_of(field_type: &IntermediateType) -> Option<CharWidth> {
-    match field_type {
-        IntermediateType::String { char_width, .. } => Some(*char_width),
-        IntermediateType::Array { element_type, .. } => string_char_width_of(element_type),
-        _ => None,
-    }
-}
-
-/// Returns the encoding of a function call's string result.
-///
-/// The standard string functions return the encoding of their first string
-/// argument; a user-defined function declares its return type.
-fn function_char_width(ctx: &CompileContext, func: &Function) -> Result<CharWidth, Diagnostic> {
-    let name = func.name.lower_case();
-    match name.as_str() {
-        "concat" | "left" | "right" | "mid" | "insert" | "delete" | "replace" => {
-            match collect_positional_args(func).first() {
-                Some(first) => string_expr_char_width(ctx, first),
-                None => Err(unknown_string_encoding(
-                    func.name.span(),
-                    "a string function call with no arguments",
-                )),
-            }
-        }
-        _ => ctx
-            .user_functions
-            .get(name.as_str())
-            .and_then(|info| info.return_string_info.as_ref())
-            .map(|info| info.char_width)
-            .ok_or_else(|| {
-                unknown_string_encoding(
-                    func.name.span(),
-                    "a function call that does not return a string",
-                )
-            }),
-    }
-}
-
-/// Reports that codegen could not determine a string expression's encoding.
-fn unknown_string_encoding(span: SourceSpan, what: &str) -> Diagnostic {
-    Diagnostic::internal_error_at(Label::span(
-        span,
-        format!("Cannot determine the string encoding of {what}"),
-    ))
 }
 
 /// Allocates a data region slot for an intermediate string value.
