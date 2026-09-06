@@ -27,6 +27,7 @@ use super::compile_expr::{
     op_type, resolve_variable, resolve_variable_name, signed_integer_to_i64, try_classify_cmp,
     variable_span, ClassifiedCmp,
 };
+use super::compile_fb_init::{compile_fb_field_store, resolve_fb_field_op_type};
 use crate::emit::Emitter;
 use ironplc_container::opcode;
 
@@ -157,28 +158,13 @@ fn compile_statement(
                 // `ctx.struct_vars`, and their fields are stored in the data
                 // region addressed via FB_STORE_PARAM.
                 if let SymbolicVariableKind::Named(named) = structured.record.as_ref() {
-                    if let Some(fb_info) = ctx.fb_instances.get(&named.name) {
-                        let field_name = structured.field.to_string().to_lowercase();
-                        let field_idx = fb_info
-                            .field_indices
-                            .get(&field_name)
-                            .copied()
-                            .ok_or_else(|| {
-                                Diagnostic::not_implemented(Label::span(
-                                    structured.field.span(),
-                                    format!(
-                                        "Unknown field '{}' on function block '{}'",
-                                        structured.field, named.name
-                                    ),
-                                ))
-                            })?;
-                        let var_index = fb_info.var_index;
-                        let type_id = fb_info.type_id;
-                        let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
-                        emitter.emit_fb_load_instance(var_index);
-                        compile_expr(emitter, ctx, &assignment.value, op_type)?;
-                        emitter.emit_fb_store_param(field_idx);
-                        emitter.emit_pop();
+                    if compile_fb_field_store(
+                        emitter,
+                        ctx,
+                        &named.name,
+                        &structured.field,
+                        &assignment.value,
+                    )? {
                         return Ok(());
                     }
                 }
@@ -451,21 +437,6 @@ fn compile_statement(
     }
 }
 
-/// Returns the op_type for an FB field, checking user-defined FBs first,
-/// then falling back to the stdlib hardcoded mapping.
-fn resolve_fb_field_op_type(ctx: &CompileContext, type_id: u16, field_name: &str) -> OpType {
-    // Check user-defined FBs by type_id.
-    for user_fb in ctx.user_fb_types.values() {
-        if user_fb.type_id == type_id {
-            if let Some(op_type) = user_fb.field_op_types.get(field_name) {
-                return *op_type;
-            }
-        }
-    }
-    // Fall back to stdlib field names.
-    fb_field_op_type(field_name)
-}
-
 /// Compiles a function block invocation: stores inputs, calls FB, reads outputs.
 fn compile_fb_call(
     emitter: &mut Emitter,
@@ -638,15 +609,6 @@ fn compile_method_call(
     emitter.emit_pop();
 
     Ok(())
-}
-
-/// Returns the op_type for a standard FB field by name.
-fn fb_field_op_type(field_name: &str) -> OpType {
-    match field_name {
-        "in" | "q" => (OpWidth::W32, Signedness::Signed),
-        "pt" | "et" => (OpWidth::W32, Signedness::Signed),
-        _ => DEFAULT_OP_TYPE,
-    }
 }
 
 /// Compiles a slice of statements.
