@@ -58,6 +58,11 @@ Examples:
 - Use `rstest` to group related tests and eliminate boilerplate — parameterize
   cases with `#[case(...)]` and share setup with fixtures instead of copying a
   test body per input
+- Reuse the IEC 61131-3 source snippets in `ironplc_test::fixtures` (a
+  minimal program, a syntax error, a semantic error, a user type, a program
+  that runs, ...) before inlining a new literal; they are plain `const`
+  strings, so integration tests and `wasm` crates can use them too. Add a
+  snippet there only when a second test target needs the same shape
 - Use descriptive test function names that explain the scenario and expected outcome
 - Include both positive and negative test cases
 - Test edge cases and boundary conditions

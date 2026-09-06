@@ -7,6 +7,7 @@
 
 use ironplc_mcp::tools::common::SourceInput;
 use ironplc_mcp::tools::{check, explain_diagnostic, list_options};
+use ironplc_test::fixtures::{PROGRAM_WITH_VAR, VALID_PROGRAM};
 
 fn ed2_options() -> serde_json::Value {
     serde_json::json!({"dialect": "iec61131-3-ed2"})
@@ -55,7 +56,7 @@ fn scenario_agent_self_heals_syntax_error() {
     // Step 3: agent fixes the missing semicolon and re-checks
     let fixed = vec![SourceInput {
         name: "main.st".into(),
-        content: "PROGRAM p\nVAR x : INT; END_VAR\nEND_PROGRAM".into(),
+        content: PROGRAM_WITH_VAR.into(),
     }];
     let r2 = check::build_response(&fixed, &ed2_options());
     assert!(
@@ -89,7 +90,7 @@ fn scenario_options_discovery_then_check_accepts_dialect() {
     // Step 3: use that id in a check call
     let sources = vec![SourceInput {
         name: "main.st".into(),
-        content: "PROGRAM p\nEND_PROGRAM".into(),
+        content: VALID_PROGRAM.into(),
     }];
     let opts = serde_json::json!({"dialect": dialect_id});
     let resp = check::build_response(&sources, &opts);
