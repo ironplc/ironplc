@@ -578,3 +578,32 @@ END_PROGRAM
 ",
     &[(1, 1)],
 );
+
+// s = var0, w = var1, other = var2, same = var3, differ = var4.
+e2e_i32!(
+    function_when_parameters_are_string_and_wstring_then_each_copied_at_its_own_width,
+    "
+FUNCTION same_len : BOOL
+  VAR_INPUT
+    s : STRING[10];
+    w : WSTRING[10];
+  END_VAR
+  same_len := LEN(s) = LEN(w);
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    s : STRING[10] := 'abc';
+    w : WSTRING[10] := \"wx\";
+    other : WSTRING[10] := \"z\";
+    same : BOOL;
+    differ : BOOL;
+  END_VAR
+  s := CONCAT(s, 'd');
+  w := CONCAT(w, \"yz\");
+  same := same_len(s, w);
+  differ := same_len(s, other);
+END_PROGRAM
+",
+    &[(3, 1), (4, 0)],
+);
