@@ -15,8 +15,7 @@ offset the slot holds as if it were a value, and left the contents for "a
 layout sub-table the container does not yet carry." This document specifies
 that sub-table.
 
-The decision behind the shape of the tables is
-[ADR-0049](../adrs/0049-type-directed-debug-layout-for-aggregates.md).
+The reasons for the shape of the tables are in [Design decisions](#design-decisions).
 This design builds on:
 
 - **[Bytecode Container Format](bytecode-container-format.md)** — the debug
@@ -91,6 +90,87 @@ declared in programs, globals, functions and function block bodies.
   resolve it later.
 - The playground and the LSP run panel. Both render through the same
   renderer and can adopt the tree later; this design changes neither.
+
+## Design decisions
+
+The tables below are one of several ways to describe an aggregate to a
+debugger. This section records why this shape, so the choice is not re-made
+in review of each implementation PR.
+
+### Type-directed tables, not flattened leaves
+
+**Chosen:** describe each aggregate *type* once (fields with offsets, or
+element type with bounds and stride) and give each aggregate *variable* a
+reference to its type plus the static offset of its contents. Readers walk the
+type tree.
+
+**Rejected: one debug entry per leaf** (`pt.x`, `pt.y`, `arr[1]`, …). The
+reader would be trivial, but size is proportional to element count, a
+structure's field names repeat once per element of every array of that
+structure, and there is no way to tell a paging client "this is an array of
+10 000" without parsing names back into indices. Arrays are the common
+aggregate in PLC programs and they are large.
+
+**Rejected: extend the type section.** FB type descriptors and array
+descriptors already exist, but the type section is on the execution path and
+[ADR-0019](../adrs/0019-type-encoding-in-debug-variable-names.md) rejected
+putting display-only information there. Array descriptors are also
+deduplicated by `(element_type, total_elements)`, so two arrays with different
+bounds share one and it cannot carry bounds. Structures have no descriptor at
+all — they are flat `SLOT` arrays to the verifier — and inventing one that only
+the debugger reads is the debug section by another name.
+
+### The link lives on `VarNameEntry`, not in a separate table
+
+A table keyed by `var_index` is what `STRING_LAYOUT` does, and it has the cost
+such a join always has: every render correlates two tables, and the format
+admits states it never defines — an aggregate with no layout entry, or a
+layout entry with no name. Putting the reference and the offset on the one
+entry every variable already has removes the join and the undefined states,
+and retires `STRING_LAYOUT` rather than leaving two mechanisms for one fact.
+
+The price is a wire-format change to `VarNameEntry` and a format version bump
+to 4. There is no deployed bytecode to migrate: the compiler and VM ship
+together, the reader rejects any other version outright, and
+[ADR-0033](../adrs/0033-opcode-encoding-by-class-and-type.md) and
+[ADR-0035](../adrs/0035-length-and-encoding-prefixed-string-layout.md) set the
+precedent of bumping rather than carrying two readers.
+
+### No `inline` flag on fields
+
+Every composite field the compiler lays out today is inline: a nested
+structure's fields, an embedded array's elements and an FB instance's fields
+all sit contiguously inside the parent's region
+([ADR-0026](../adrs/0026-structure-memory-layout.md)). A per-field `inline`
+byte would be a constant. If a by-reference field ever appears (`REF_TO`,
+`VAR_IN_OUT`), it is a pointer because of how it is *bound*, not because of
+what it points at, and it will need a binding axis on the field rather than a
+resurrected boolean. Until then a codegen test asserts the invariant instead
+of the format carrying it.
+
+### Bytes, not slots
+
+ADR-0026's migration to packed layout changes what a slot is. A table that
+records byte offsets, byte strides and byte sizes describes either layout
+without change; a table in slot units would have to be re-specified. The cost
+is two bytes per offset, which is nothing against the name strings the entries
+already carry.
+
+### Consequences
+
+- Debug info grows with the number of types and variables. A
+  `ARRAY[1..10000] OF Point` costs one `ARRAY_TYPE` entry, one
+  `COMPOSITE_TYPE` entry and one `VarNameEntry`.
+- The tree's shape is static: the file viewer can show it and the conformance
+  tests can assert it without running the program.
+- The VM, the verifier and the instruction set are untouched.
+- The `STRUCT`/`ARRAY`/`FB_INSTANCE` type tags (25–27) and `STRING_LAYOUT`
+  become redundant and are removed rather than kept as a second way to say
+  one thing.
+- `VarNameEntry` grows by six bytes per variable; scalars pay for a
+  `data_offset` they do not use.
+- Every `.iplc` on disk must be recompiled. There are none deployed; the cost
+  is fixtures and the version test.
 
 ## 1. What the container records
 

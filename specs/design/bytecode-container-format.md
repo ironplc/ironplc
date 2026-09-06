@@ -652,4 +652,4 @@ Version history:
 | 1 | This spec as first written |
 | 2 | Opcode encoding by class and type ([ADR-0033](../adrs/0033-opcode-encoding-by-class-and-type.md)) |
 | 3 | WSTRING string header and constant-pool encoding tags ([ADR-0035](../adrs/0035-length-and-encoding-prefixed-string-layout.md)) |
-| 4 (in development) | Debug section: `VarNameEntry` carries a type reference and static `data_offset`; STRING_LAYOUT retired; COMPOSITE_TYPE and ARRAY_TYPE added ([ADR-0049](../adrs/0049-type-directed-debug-layout-for-aggregates.md), [Variable Inspection Model](variable-inspection-model.md)) |
+| 4 (in development) | Debug section: `VarNameEntry` carries a type reference and static `data_offset`; STRING_LAYOUT retired; COMPOSITE_TYPE and ARRAY_TYPE added ([Variable Inspection Model](variable-inspection-model.md)) |

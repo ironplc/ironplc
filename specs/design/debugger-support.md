@@ -292,8 +292,8 @@ fields of a structure and the elements of an array — is specified by the
 is described once (COMPOSITE_TYPE, tag 5; ARRAY_TYPE, tag 10) and each
 aggregate variable's `VarNameEntry` references its type and records the static
 offset of its contents. An earlier draft of this section planned separate FB
-type-name and field-name tables; the type-directed tables subsume both
-([ADR-0049](../adrs/0049-type-directed-debug-layout-for-aggregates.md)).
+type-name and field-name tables; the type-directed tables subsume both (see
+that design's *Design decisions*).
 
 ### How DAP Uses the Debug Info
 
