@@ -419,7 +419,10 @@ fn not_found_diagnostic(pou_name: &str) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::test_support::ed2_options;
+    use crate::tools::test_support::{
+        ed2_options, source, unnamed_source, PROGRAM_USING_FB, PROGRAM_USING_STDLIB_FB,
+        VALID_PROGRAM,
+    };
 
     fn contains(entries: &[LineageEntry], name: &str) -> bool {
         entries.iter().any(|e| e.name.eq_ignore_ascii_case(name))
@@ -442,10 +445,7 @@ mod tests {
 
     #[test]
     fn build_response_when_program_uses_fb_then_upstream_has_fb() {
-        let resp = build(
-            "FUNCTION_BLOCK Counter\nVAR_INPUT Inc : BOOL; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Main\nVAR c : Counter; END_VAR\nEND_PROGRAM",
-            "Main",
-        );
+        let resp = build(PROGRAM_USING_FB, "Main");
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.found);
         assert!(contains(&resp.upstream, "Counter"));
@@ -455,10 +455,7 @@ mod tests {
 
     #[test]
     fn build_response_when_fb_is_used_then_downstream_has_caller() {
-        let resp = build(
-            "FUNCTION_BLOCK Counter\nVAR_INPUT Inc : BOOL; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Main\nVAR c : Counter; END_VAR\nEND_PROGRAM",
-            "Counter",
-        );
+        let resp = build(PROGRAM_USING_FB, "Counter");
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.found);
         assert!(resp.upstream.is_empty());
@@ -504,10 +501,7 @@ mod tests {
 
     #[test]
     fn build_response_when_program_uses_stdlib_fb_then_upstream_has_stdlib_entry() {
-        let resp = build(
-            "PROGRAM MotorStartStop\nVAR Star_Timer : TON; Run : BOOL; END_VAR\nStar_Timer(IN := Run, PT := T#5s);\nEND_PROGRAM",
-            "MotorStartStop",
-        );
+        let resp = build(PROGRAM_USING_STDLIB_FB, "MotorStartStop");
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.found);
         // Reported under the IEC spelling, not the type registry's key.
@@ -517,10 +511,7 @@ mod tests {
 
     #[test]
     fn build_response_when_queried_pou_is_stdlib_fb_then_found_with_downstream() {
-        let resp = build(
-            "PROGRAM MotorStartStop\nVAR Star_Timer : TON; Run : BOOL; END_VAR\nStar_Timer(IN := Run, PT := T#5s);\nEND_PROGRAM",
-            "TON",
-        );
+        let resp = build(PROGRAM_USING_STDLIB_FB, "TON");
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.found);
         assert!(contains(&resp.downstream, "MotorStartStop"));
@@ -544,10 +535,7 @@ mod tests {
     fn build_response_when_stdlib_fb_unused_then_absent_from_lineage() {
         // Registering the standard library must not put its POUs into the
         // lineage of a POU that does not use them.
-        let resp = build(
-            "FUNCTION_BLOCK Counter\nVAR_INPUT Inc : BOOL; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Main\nVAR c : Counter; END_VAR\nEND_PROGRAM",
-            "Main",
-        );
+        let resp = build(PROGRAM_USING_FB, "Main");
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert_eq!(resp.upstream.len(), 1);
         assert!(contains(&resp.upstream, "Counter"));
@@ -574,7 +562,7 @@ mod tests {
 
     #[test]
     fn build_response_when_pou_not_found_then_found_false_and_p8001() {
-        let resp = build("PROGRAM p\nEND_PROGRAM", "nonexistent");
+        let resp = build(VALID_PROGRAM, "nonexistent");
         assert!(!resp.ok);
         assert!(!resp.found);
         assert!(resp.upstream.is_empty());
@@ -596,11 +584,7 @@ mod tests {
 
     #[test]
     fn build_response_when_empty_source_name_then_p8001() {
-        let sources = vec![SourceInput {
-            name: String::new(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), "p");
+        let resp = build_response(&unnamed_source(), &ed2_options(), "p");
         assert!(!resp.ok);
         assert!(!resp.found);
         assert!(resp.diagnostics.iter().any(|d| d["code"] == "P8001"));
@@ -608,11 +592,7 @@ mod tests {
 
     #[test]
     fn build_response_when_missing_dialect_then_p8001() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &serde_json::json!({}), "p");
+        let resp = build_response(&source(VALID_PROGRAM), &serde_json::json!({}), "p");
         assert!(!resp.ok);
         assert!(!resp.found);
         assert!(resp.diagnostics.iter().any(|d| d["code"] == "P8001"));

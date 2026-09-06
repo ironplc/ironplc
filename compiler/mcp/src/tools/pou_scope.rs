@@ -250,7 +250,9 @@ fn not_found_diagnostic(pou_name: &str) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::test_support::ed2_options;
+    use crate::tools::test_support::{
+        ed2_options, source, unnamed_source, SEMANTIC_ERROR_PROGRAM, VALID_PROGRAM,
+    };
 
     fn build(src: &str, pou: &str) -> PouScopeResponse {
         let sources = vec![SourceInput {
@@ -318,7 +320,7 @@ mod tests {
 
     #[test]
     fn build_response_when_pou_not_found_then_found_false_and_p8001() {
-        let resp = build("PROGRAM p\nEND_PROGRAM", "nonexistent");
+        let resp = build(VALID_PROGRAM, "nonexistent");
         assert!(!resp.ok);
         assert!(!resp.found);
         assert_eq!(resp.pou, "nonexistent");
@@ -353,11 +355,7 @@ mod tests {
 
     #[test]
     fn build_response_when_empty_source_name_then_p8001() {
-        let sources = vec![SourceInput {
-            name: String::new(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), "p");
+        let resp = build_response(&unnamed_source(), &ed2_options(), "p");
         assert!(!resp.ok);
         assert!(!resp.found);
         assert!(resp.diagnostics.iter().any(|d| d["code"] == "P8001"));
@@ -365,11 +363,7 @@ mod tests {
 
     #[test]
     fn build_response_when_missing_dialect_then_p8001() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &serde_json::json!({}), "p");
+        let resp = build_response(&source(VALID_PROGRAM), &serde_json::json!({}), "p");
         assert!(!resp.ok);
         assert!(!resp.found);
         assert!(resp.diagnostics.iter().any(|d| d["code"] == "P8001"));
@@ -379,7 +373,7 @@ mod tests {
     fn build_response_when_semantic_error_then_ok_false_but_partial_variables() {
         // Even when analysis fails, the AST is available and we can still
         // return a best-effort variables list.
-        let resp = build("PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM", "p");
+        let resp = build(SEMANTIC_ERROR_PROGRAM, "p");
         assert!(!resp.ok);
         assert!(resp.found);
         assert!(!resp.variables.is_empty());
