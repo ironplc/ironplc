@@ -459,6 +459,28 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     }
 
     // 2.3.3.1
+    // `x : T := (a := 1)` before the analyzer has decided whether `T` names a
+    // STRUCT or a function block. The renderer works on the parse tree, so
+    // this is the shape it sees for every such declaration; it spells the
+    // same as the resolved structure form below.
+    fn visit_late_resolved_type_initializer(
+        &mut self,
+        node: &LateResolvedTypeInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)?;
+
+        if !node.elements_init.is_empty() {
+            self.write_ws(":=");
+            self.write_ws("(");
+
+            visit_comma_separated!(self, node.elements_init.iter(), StructureElementInit);
+
+            self.write_ws(")");
+        }
+
+        Ok(())
+    }
+
     fn visit_structure_initialization_declaration(
         &mut self,
         node: &StructureInitializationDeclaration,

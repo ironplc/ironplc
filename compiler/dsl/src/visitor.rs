@@ -280,6 +280,7 @@ pub trait Visitor<E> {
     dispatch!(EnumeratedSpecificationKind);
 
     dispatch!(EnumeratedInitialValueAssignment);
+    dispatch!(LateResolvedTypeInitializer);
 
     dispatch!(VariableIdentifier);
 

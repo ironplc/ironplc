@@ -428,6 +428,15 @@ fn compile_struct_field_init(
                 "Expression-valued struct/FB-instance field initializer",
             )))
         }
+        StructInitialValueAssignmentKind::LateBound(late_bound) => {
+            // `xform_resolve_late_bound_expr_kind` replaces every one of
+            // these with an enumerated value or an expression, so reaching
+            // codegen with one means that pass did not run.
+            Err(Diagnostic::internal_error_at(Label::span(
+                late_bound.value.span(),
+                "Unresolved struct/FB-instance field initializer",
+            )))
+        }
     }
 }
 

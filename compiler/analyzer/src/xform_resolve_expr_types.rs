@@ -171,6 +171,7 @@ impl ExprTypeResolver<'_> {
                 None => return, // Inline array targets don't have a single type name
             },
             InitialValueAssignmentKind::LateResolvedType(tn) => tn.clone(),
+            InitialValueAssignmentKind::LateResolvedTypeInit(late) => late.type_name.clone(),
             InitialValueAssignmentKind::SimpleExpr(se) => se.type_name.clone(),
         };
 

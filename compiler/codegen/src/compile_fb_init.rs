@@ -108,6 +108,15 @@ pub(crate) fn emit_fb_instance_member_initializers(
                 Expr::new(ExprKind::EnumeratedValue(value.clone()))
             }
             StructInitialValueAssignmentKind::Expression(expr) => expr.clone(),
+            // `xform_resolve_late_bound_expr_kind` replaces every one of
+            // these with an enumerated value or an expression, so reaching
+            // codegen with one means that pass did not run.
+            StructInitialValueAssignmentKind::LateBound(late_bound) => {
+                return Err(Diagnostic::internal_error_at(Label::span(
+                    late_bound.value.span(),
+                    "Unresolved function block instance member initializer",
+                )))
+            }
             // An array or nested structure value initializes several slots
             // at once, which the single-slot FB_STORE_PARAM path cannot
             // express. Refuse rather than silently leave the member zeroed.

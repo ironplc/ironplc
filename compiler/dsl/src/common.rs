@@ -2193,6 +2193,9 @@ impl VarDecl {
             InitialValueAssignmentKind::Structure(structure_initialization_declaration) => {
                 TypeReference::Named(structure_initialization_declaration.type_name.clone())
             }
+            InitialValueAssignmentKind::LateResolvedTypeInit(late_resolved) => {
+                TypeReference::Named(late_resolved.type_name.clone())
+            }
             InitialValueAssignmentKind::Array(array_initial_value_assignment) => {
                 match &array_initial_value_assignment.spec {
                     SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
@@ -2552,6 +2555,12 @@ pub enum InitialValueAssignmentKind {
     /// Type that is ambiguous until have discovered type
     /// definitions. Value is the name of the type.
     LateResolvedType(TypeName),
+    /// `x : T := (a := 1)` before `T` is known.
+    ///
+    /// A STRUCT and a function block instance take the same spelling here,
+    /// so the parser records the type name and the member values and leaves
+    /// the choice to `xform_resolve_late_bound_type_initializer`.
+    LateResolvedTypeInit(LateResolvedTypeInitializer),
     /// A constant-expression initializer not yet folded to a literal
     /// (extension — see `allow_constant_initializer_expressions`).
     /// Always normalized to `Simple` by
@@ -2608,6 +2617,24 @@ pub enum StructInitialValueAssignmentKind {
     /// call-style FB-instance/struct initializers where the value is
     /// computed at instantiation time, not a compile-time constant.
     Expression(Expr),
+    /// A bare identifier, before anything knows what it names.
+    ///
+    /// `(x := g)` is one token in a position that accepts both an
+    /// enumerated value and a variable reference, and the parser has no
+    /// declarations in scope to tell them apart. Recording the ambiguity is
+    /// what keeps a diagnostic from naming the wrong construct;
+    /// `xform_resolve_late_bound_expr_kind` replaces this with
+    /// [`Self::EnumeratedValue`] or [`Self::Expression`] once declarations
+    /// are known, and no later stage sees it.
+    LateBound(LateBound),
+}
+
+/// A `name : T := (member := value, ...)` declaration whose type is not yet
+/// resolved. See [`InitialValueAssignmentKind::LateResolvedTypeInit`].
+#[derive(Clone, PartialEq, Debug, Recurse)]
+pub struct LateResolvedTypeInitializer {
+    pub type_name: TypeName,
+    pub elements_init: Vec<StructureElementInit>,
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]

@@ -351,15 +351,12 @@ parser! {
         / t:tok(TokenType::AnyDate) { TypeName { name: Id::from("ANY_DATE").with_position(t.span.clone()) } }
 
     // B.1.2 Constants
-    // Every literal kind records the span of the tokens it matched. Doing it
-    // once here, rather than in each literal's own rule, is what guarantees
-    // no kind is left span-less: `Located for ExprKind` joins the spans of
-    // an expression's operands, so a single span-less literal makes the
-    // whole expression report position 0.
-    rule constant() -> ConstantKind = start:position!() c:constant__unspanned() end:position!() {
-        c.with_span(span_of_tokens(tokens, start, end))
-    }
-    rule constant__unspanned() -> ConstantKind =
+    // Every literal kind records the span of the tokens it matched. Recording
+    // it here, once around the whole choice, is what guarantees no kind is
+    // left span-less: `Located for ExprKind` joins the spans of an
+    // expression's operands, so a single span-less literal makes the whole
+    // expression report position 0.
+    rule constant() -> ConstantKind = start:position!() c:(
         real:real_literal() { ConstantKind::RealLiteral(real) }
         / integer:integer_literal() { ConstantKind::IntegerLiteral(integer) }
         / c:character_string_literal() { ConstantKind::CharacterString(c) }
@@ -369,6 +366,9 @@ parser! {
         / date_time:date_and_time() { ConstantKind::DateAndTime(date_time) }
         / bit_string:bit_string_literal() { ConstantKind::BitStringLiteral(bit_string) }
         / boolean:boolean_literal() { ConstantKind::Boolean(boolean) }
+    ) end:position!() {
+        c.with_span(span_of_tokens(tokens, start, end))
+    }
 
     // B.1.2.1 Numeric literals
     // numeric_literal omitted because it only appears in constant so we do not need to create a type for it
@@ -668,6 +668,11 @@ parser! {
     // carve-out variable_identifier() already provides for VAR
     // declarations (see #300, "Feature/reserved variables").
     rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:variable_identifier() { EnumeratedValue {type_name, value, explicit_value: None} }
+    // The `Type#VALUE` spelling only. Unlike `enumerated_value()`, this
+    // cannot match a bare identifier, so a caller in a position that also
+    // accepts a variable reference can tell the unambiguous case apart from
+    // the one that has to be resolved later.
+    rule enumerated_value__qualified() -> EnumeratedValue = name:enumerated_type_name() tok(TokenType::Hash) value:variable_identifier() { EnumeratedValue {type_name: Some(name), value, explicit_value: None} }
     // CODESYS/TwinCAT (also standard as of IEC 61131-3:2013) explicit
     // per-member enum value, e.g. `Type_UNDEFINED := 0, Type_ANY,
     // Type_BOOL` -- only a member *declaration* can carry an explicit
@@ -782,25 +787,23 @@ parser! {
     }
     rule structure_element_name() ->Id = identifier()
     rule structure_initialization() -> Vec<StructureElementInit> = tok(TokenType::LeftParen) _ elems:structure_element_initialization() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { elems }
-    // `constant()`/`enumerated_value()` are grammatically a strict subset of
-    // `expression()` (e.g. a bare identifier is a valid, but truncated,
-    // match for `pDevice^.Delta`) -- the trailing lookahead requires them to
-    // consume the *entire* value (immediately followed by the list
-    // terminator) before winning the choice, so a genuinely richer
+    // `constant()` and a qualified `Type#VALUE` are grammatically a strict
+    // subset of `expression()` (e.g. a bare identifier is a valid, but
+    // truncated, match for `pDevice^.Delta`) -- the trailing lookahead
+    // requires them to consume the *entire* value (immediately followed by
+    // the list terminator) before winning the choice, so a genuinely richer
     // expression like a dereference-then-member-access chain falls through
     // to the `expression()` alternative instead of matching only its first
     // identifier and leaving `^.Delta` unconsumed.
     //
-    // The lookahead cannot separate a bare identifier that names a variable
-    // from one that names an enumeration value: both are the same single
-    // token in the same position, and both satisfy the lookahead, so
-    // `enumerated_value()` always wins and `(x := g)` parses as an
-    // enumeration value even when `g` is a variable. That is not a hole this
-    // grammar can close -- no type or variable declaration is in scope yet.
-    // `xform_resolve_late_bound_expr_kind` reclassifies the ones that name a
-    // variable once declarations are known, which is also what makes them
-    // reach the `--allow-struct-initializer-expressions` gate.
-    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)} / ex:expression() { StructInitialValueAssignmentKind::Expression(Expr::new(ex)) }) {
+    // A *bare* identifier is a different problem: `(x := g)` is one token in
+    // a position that accepts both an enumerated value and a variable
+    // reference, and no lookahead can separate them, because nothing here
+    // distinguishes them -- no type or variable declaration is in scope yet.
+    // Rather than pick one and be wrong half the time, record the ambiguity
+    // as `LateBound`; `xform_resolve_late_bound_expr_kind` resolves it once
+    // declarations are known. A qualified `Type#VALUE` needs no such help.
+    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value__qualified() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / v:variable_identifier() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::LateBound(LateBound { value: v }) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)} / ex:expression() { StructInitialValueAssignmentKind::Expression(Expr::new(ex)) }) {
       StructureElementInit {
         name,
         init,
@@ -1074,12 +1077,22 @@ parser! {
         }
       }).collect()
     }
+    // `x : T := (a := 1)` is the same spelling whether `T` names a STRUCT or a
+    // function block, and no type declaration is in scope here, so the
+    // initializer records the type name and the member values without
+    // claiming which it is. `xform_resolve_late_bound_type_initializer`
+    // decides. Committing to a structure here is what used to make a
+    // function block instance uninvocable and report "Unknown structure
+    // type" against it.
     rule structured_var_init_decl__without_ambiguous() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init_struct:initialized_structure__without_ambiguous() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           location: None,
           name,
-          initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
+          initializer: InitialValueAssignmentKind::LateResolvedTypeInit(LateResolvedTypeInitializer {
+            type_name: init_struct.type_name.clone(),
+            elements_init: init_struct.elements_init.clone(),
+          }),
         }
       }).collect()
     }

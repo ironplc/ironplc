@@ -125,6 +125,11 @@ impl DeclarationResolver<'_> {
             InitialValueAssignmentKind::LateResolvedType(type_name) => {
                 VariableType::LateResolvedType(type_name.clone())
             }
+            // The type is no more known here than for `LateResolvedType`;
+            // the member initializers do not name it.
+            InitialValueAssignmentKind::LateResolvedTypeInit(late) => {
+                VariableType::LateResolvedType(late.type_name.clone())
+            }
             // Not yet folded to a literal (extension, folded by a
             // later pass); treat like `Simple` for type-inference purposes.
             InitialValueAssignmentKind::SimpleExpr(_) => VariableType::Simple,
@@ -166,35 +171,30 @@ impl DeclarationResolver<'_> {
 }
 
 impl Fold<Diagnostic> for DeclarationResolver<'_> {
-    /// Reclassifies a bare identifier used as a structure or function-block
+    /// Resolves a bare identifier used as a structure or function-block
     /// member initializer value.
     ///
-    /// `structure_element_initialization()` offers `enumerated_value()`
-    /// before `expression()`, and a bare identifier is a complete match for
-    /// the former, so the PEG ordered choice locks in `EnumeratedValue` for
-    /// `(x := g)` whether `g` names an enumeration value or a variable. The
-    /// trailing lookahead that keeps a longer value like `pDevice^.Delta`
-    /// falling through to `expression()` cannot help here -- at parse time
-    /// the two spellings are the same single token in the same position.
+    /// `(x := g)` is one token in a position that accepts both an enumerated
+    /// value and a variable reference, so the parser records it as
+    /// `LateBound` rather than guessing. Deciding it needs the declarations,
+    /// which is what this pass has: `resolve_late_bound` already makes
+    /// exactly this call for every other bare identifier.
     ///
-    /// The decision belongs where declarations are known, which is here:
-    /// `resolve_late_bound` already makes exactly this call for every other
-    /// bare identifier. A variable reference becomes an `Expression`, which
-    /// is what it is -- a value read at instantiation time, gated by
-    /// `--allow-struct-initializer-expressions` (P4043). A qualified
-    /// `Type#VALUE` is unambiguous and is left alone.
+    /// A variable reference becomes an `Expression` -- a value read at
+    /// instantiation time, gated by `--allow-struct-initializer-expressions`
+    /// (P4043). Anything else is an enumerated value, standard syntax that
+    /// the gate must never see.
     fn fold_struct_initial_value_assignment_kind(
         &mut self,
         node: StructInitialValueAssignmentKind,
     ) -> Result<StructInitialValueAssignmentKind, Diagnostic> {
-        if let StructInitialValueAssignmentKind::EnumeratedValue(value) = &node {
-            if value.type_name.is_none() {
-                if let ExprKind::Variable(variable) = self.resolve_late_bound(value.value.clone()) {
-                    return Ok(StructInitialValueAssignmentKind::Expression(Expr::new(
-                        ExprKind::Variable(variable),
-                    )));
+        if let StructInitialValueAssignmentKind::LateBound(late_bound) = node {
+            return Ok(match self.resolve_late_bound(late_bound.value) {
+                ExprKind::EnumeratedValue(value) => {
+                    StructInitialValueAssignmentKind::EnumeratedValue(value)
                 }
-            }
+                resolved => StructInitialValueAssignmentKind::Expression(Expr::new(resolved)),
+            });
         }
         node.recurse_fold(self)
     }

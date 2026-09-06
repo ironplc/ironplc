@@ -223,6 +223,7 @@ pub trait Fold<E> {
     dispatch!(EnumeratedSpecificationKind);
 
     dispatch!(EnumeratedInitialValueAssignment);
+    dispatch!(LateResolvedTypeInitializer);
 
     dispatch!(VariableIdentifier);
 
