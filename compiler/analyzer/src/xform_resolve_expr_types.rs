@@ -372,7 +372,11 @@ impl ExprTypeResolver<'_> {
                 elem.into()
             }),
             ConstantKind::Boolean(_) => Some(TypeName::from("BOOL")),
-            ConstantKind::CharacterString(_) => Some(TypeName::from("STRING")),
+            // The delimiter is the type: `'abc'` is a STRING and `"abc"` a
+            // WSTRING (IEC 61131-3 Table 5). Typing every literal STRING made
+            // `w := "abc"` a P4035 and `f("abc")` a P4026 -- the analyzer
+            // never learned what the quotes already said.
+            ConstantKind::CharacterString(lit) => Some(TypeName::from(lit.width.keyword())),
             ConstantKind::Duration(_) => Some(TypeName::from("TIME")),
             ConstantKind::TimeOfDay(_) => Some(TypeName::from("TIME_OF_DAY")),
             ConstantKind::Date(_) => Some(TypeName::from("DATE")),
@@ -1244,6 +1248,18 @@ END_VAR
     s := 'hello';
 END_FUNCTION_BLOCK",
         "STRING"
+    )]
+    // The quotes are the type: a double-quoted literal is a WSTRING, so the
+    // wide target accepts it. Typing it STRING made this assignment P4035.
+    #[case::wstring_literal(
+        "
+FUNCTION_BLOCK FB_TEST
+VAR
+    s : WSTRING;
+END_VAR
+    s := \"hello\";
+END_FUNCTION_BLOCK",
+        "WSTRING"
     )]
     #[case::untyped_integer_literal_resolves_any_int(
         "
