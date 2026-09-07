@@ -21,6 +21,7 @@ fn init_test_logger() {
 mod test_macros;
 
 mod call_assignment_check;
+mod callee_resolution;
 mod constant_folding;
 mod function_environment;
 pub mod intermediate_type;
@@ -41,6 +42,7 @@ mod rule_function_call_type_check;
 mod rule_method_call_declared;
 mod rule_mixed_located_var_declarations;
 mod rule_no_top_level_var_global;
+mod rule_operator_operand_type_check;
 mod rule_pou_hierarchy;
 mod rule_program_task_definition_exists;
 mod rule_ref_to;
@@ -50,7 +52,6 @@ mod rule_struct_initializer_expression_allowed;
 mod rule_support;
 mod rule_task_names_unique;
 mod rule_unsupported_extension;
-mod rule_unsupported_stdlib_type;
 mod rule_use_declared_enumerated_value;
 mod rule_use_declared_symbolic_var;
 mod rule_var_decl_const_initialized;
@@ -60,7 +61,6 @@ mod rule_var_decl_initializer_type_compat;
 mod scoped_table;
 mod semantic_context;
 pub mod stages;
-mod stdlib;
 mod string_similarity;
 pub mod symbol_environment;
 mod type_attributes;
@@ -74,6 +74,7 @@ mod xform_fold_constant_expressions;
 mod xform_fold_initializer_expressions;
 mod xform_insert_implicit_deref;
 mod xform_int_to_bool_initializer;
+mod xform_mark_unwritten_constants;
 mod xform_named_to_positional_args;
 mod xform_resolve_adr;
 mod xform_resolve_constant_expressions;
@@ -118,6 +119,8 @@ mod spec_requirements {
 mod spec_conformance;
 #[cfg(test)]
 mod spec_conformance_adr;
+#[cfg(test)]
+mod spec_conformance_constant_inference;
 #[cfg(test)]
 mod spec_conformance_keyword_function_forms;
 #[cfg(test)]

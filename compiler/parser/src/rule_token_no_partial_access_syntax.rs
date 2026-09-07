@@ -1,8 +1,7 @@
 //! Validation rule: reject partial-access syntax (`.%Xn`, `.%Bn`, `.%Wn`,
 //! `.%Dn`, `.%Ln`) unless the `allow_partial_access_syntax` flag is set.
 //! IEC 61131-3:2013 standardizes this form; IronPLC accepts it under
-//! `--allow-partial-access-syntax` (implied by the `rusty` and
-//! `iec61131-3-ed3` dialects).
+//! `--allow-partial-access-syntax`.
 
 use dsl::diagnostic::{Diagnostic, Label};
 
@@ -48,6 +47,7 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 #[cfg(test)]
 mod test {
     use dsl::core::SourceSpan;
+    use spec_test_macro::spec_test;
 
     use crate::{
         options::CompilerOptions,
@@ -91,7 +91,9 @@ mod test {
         assert!(result.is_ok());
     }
 
-    #[test]
+    /// REQ-PAB-parser-140: a wider selector without the flag is
+    /// `PartialAccessSyntaxDisabled`, the same diagnostic as `.%Xn`.
+    #[spec_test(REQ_PAB_parser_140)]
     fn apply_when_partial_access_byte_and_flag_off_then_error() {
         let tokens = vec![mk_token(TokenType::PartialAccessByte, "%B0")];
         let result = apply(

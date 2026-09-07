@@ -346,6 +346,13 @@ install_binaries() {
         warn "archive does not include compatibility libraries (released before they existed); skipping"
     fi
 
+    # The SBOM ships beside the binaries it describes.
+    if [ -f "${_tmp}/bom.cdx.json" ]; then
+        mv -f "${_tmp}/bom.cdx.json" "${INSTALL_DIR}/bin/bom.cdx.json"
+    else
+        warn "archive does not include an SBOM (released before it existed); skipping"
+    fi
+
     # macOS may set com.apple.quarantine on extracted binaries. Best-effort removal.
     if [ "$PLATFORM_OS" = "macos" ] && have xattr; then
         xattr -dr com.apple.quarantine "${INSTALL_DIR}/bin" 2>/dev/null || true

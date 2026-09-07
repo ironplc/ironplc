@@ -121,6 +121,10 @@ pub(crate) fn assign_variables(
                     }
                 }
                 InitialValueAssignmentKind::FunctionBlock(fb_init) => {
+                    // A member initializer (`(PT := T#100MS)`) is applied by
+                    // `emit_initial_values`, which runs after the instance
+                    // has its slot offset -- each member store addresses the
+                    // instance through it. Nothing to do here but size it.
                     let fb_name = fb_init.type_name.to_string().to_uppercase();
                     if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
                         // Standard library function block.
@@ -482,7 +486,7 @@ pub(crate) fn emit_initial_values(
                         }
                     }
                 }
-                InitialValueAssignmentKind::FunctionBlock(_) => {
+                InitialValueAssignmentKind::FunctionBlock(fb_init) => {
                     if let Some(fb_info) = ctx.fb_instances.get(id) {
                         let data_offset = fb_info.data_offset;
                         let var_index = fb_info.var_index;
@@ -490,6 +494,17 @@ pub(crate) fn emit_initial_values(
                         let offset_const = ctx.add_i32_constant(data_offset as i32);
                         emitter.emit_load_const_i32(offset_const);
                         emitter.emit_store_var_i32(var_index);
+
+                        // `timer : TON := (PT := T#100MS)` sets the instance's
+                        // own members. The slot offset has to be in place
+                        // first, because each member store addresses the
+                        // instance through it.
+                        crate::compile_fb_init::emit_fb_instance_member_initializers(
+                            emitter,
+                            ctx,
+                            id,
+                            &fb_init.init,
+                        )?;
                     }
                 }
                 InitialValueAssignmentKind::Array(array_init) => {

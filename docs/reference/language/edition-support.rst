@@ -44,10 +44,10 @@ Edition 3 introduced the following features, which require
    * - :ref:`NULL <ref-operator-null>`
      - Literal
      - Null reference value
-   * - :doc:`.%Xn <structured-text/bit-access>`
+   * - :doc:`.%Xn, .%Bn, .%Wn, .%Dn, .%Ln <structured-text/bit-access>`
      - Partial access
-     - Bit access via explicit partial-access syntax (equivalent to the
-       ``.n`` short form; byte/word/dword/lword forms are not yet supported)
+     - Select a bit (equivalent to the ``.n`` short form), byte, word,
+       double word, or long word of a wider value
    * - :doc:`EXTENDS <object-orientation/extends>`
      - Object orientation
      - Derive a function block type or interface from a base type

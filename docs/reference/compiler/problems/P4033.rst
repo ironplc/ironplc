@@ -4,10 +4,11 @@ P4033
 
 .. problem-summary:: P4033
 
-This error occurs when a source uses the IEC 61131-3:2013 partial-access bit
-syntax (``.%Xn``) without enabling it. Partial-access syntax is standardized
-in Edition 3 of IEC 61131-3 but is not part of Edition 2, so it is gated
-behind the ``--allow-partial-access-syntax`` flag.
+This error occurs when a source uses IEC 61131-3:2013 partial-access syntax
+(``.%Xn``, ``.%Bn``, ``.%Wn``, ``.%Dn``, or ``.%Ln``) without enabling it.
+Partial-access syntax is standardized in Edition 3 of IEC 61131-3 but is not
+part of Edition 2, so it is gated behind the
+``--allow-partial-access-syntax`` flag.
 
 Example
 -------
@@ -40,9 +41,9 @@ Scope
 
 IEC 61131-3:2013 defines partial access at five granularities — ``.%Xn``
 (bit), ``.%Bn`` (byte), ``.%Wn`` (word), ``.%Dn`` (double word), and
-``.%Ln`` (long word). IronPLC currently implements only the bit form
-``.%Xn`` behind this flag. The wider forms are recognized as partial-access
-syntax and therefore also raise ``P4033`` when the flag is off; they are not
-yet accepted when the flag is on and still produce a lexer error there. See
+``.%Ln`` (long word). The flag enables all five forms, and all five raise
+``P4033`` when the flag is off. Only the bit form has an Edition 2
+equivalent (the ``.n`` short form); the wider forms have none, so a source
+that uses them must enable the flag. See
 :doc:`/reference/language/structured-text/bit-access` for the full feature
-description and current support status.
+description.

@@ -187,6 +187,30 @@ mod tests {
     }
 
     #[test]
+    fn fold_expr_when_mod_two_reals_then_left_unfolded() {
+        // MOD is defined over ANY_INT only, so a real MOD is left for the
+        // operand-type rule to reject rather than folded into a remainder.
+        let lib = apply_fold("PROGRAM main VAR x : REAL; END_VAR x := 7.5 MOD 2.0; END_PROGRAM");
+        let exprs = collect_exprs(&lib);
+        assert!(
+            exprs.iter().any(|e| matches!(e, ExprKind::BinaryOp(_))),
+            "Expected the MOD expression to remain: {:?}",
+            exprs
+        );
+    }
+
+    #[test]
+    fn fold_expr_when_mod_int_by_real_then_left_unfolded() {
+        let lib = apply_fold("PROGRAM main VAR x : REAL; END_VAR x := 7 MOD 2.0; END_PROGRAM");
+        let exprs = collect_exprs(&lib);
+        assert!(
+            exprs.iter().any(|e| matches!(e, ExprKind::BinaryOp(_))),
+            "Expected the MOD expression to remain: {:?}",
+            exprs
+        );
+    }
+
+    #[test]
     fn fold_expr_when_int_div_by_zero_then_error() {
         let library =
             parse_and_resolve_types("PROGRAM main VAR x : INT; END_VAR x := 10 / 0; END_PROGRAM");

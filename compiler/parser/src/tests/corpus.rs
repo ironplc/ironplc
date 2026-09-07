@@ -87,6 +87,7 @@ fn parse_when_first_steps_func_avg_val_then_builds_structure() {
                         initial_value: Some(ConstantKind::RealLiteral(RealLiteral {
                             value: 5.1,
                             data_type: None,
+                            span: SourceSpan::default(),
                         })),
                     }),
                     block: next_block_id(),
@@ -227,7 +228,8 @@ fn parse_when_first_steps_function_block_logger_then_test_apply_when_names_corre
                     VariableType::Input,
                     DeclarationQualifier::Unspecified,
                 ),
-                VarDecl::enumerated("LEVEL", "LOGLEVEL", "INFO").with_type(VariableType::Input),
+                VarDecl::late_bound_value("LEVEL", "LOGLEVEL", "INFO")
+                    .with_type(VariableType::Input),
                 VarDecl::simple("TRIG0", "BOOL"),
             ],
             edge_variables: vec![],

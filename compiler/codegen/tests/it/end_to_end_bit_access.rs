@@ -1,6 +1,7 @@
 //! End-to-end integration tests for bit access on integer variables (e.g., `a.0`).
 
 use ironplc_parser::options::CompilerOptions;
+use spec_test_macro::spec_test;
 
 // --- Bit read tests ---
 
@@ -146,7 +147,8 @@ fn opts_with_partial_access() -> CompilerOptions {
 }
 
 e2e_i32_with!(
-    /// REQ-PAB-040: Reading `x.%Xn` on a BYTE returns the value of bit n.
+    #[spec_test(REQ_PAB_codegen_040)]
+    /// REQ-PAB-codegen-040: Reading `x.%Xn` on a BYTE returns the value of bit n.
     /// 0x05 = 0b00000101 — bits 0 and 2 are set.
     codegen_spec_req_pab_040_read_percent_x_on_byte_returns_bit,
     opts_with_partial_access(),
@@ -155,7 +157,8 @@ e2e_i32_with!(
 );
 
 e2e_i32_with!(
-    /// REQ-PAB-041: Reading `arr[i].%Xn` returns bit n of element i. This is the
+    #[spec_test(REQ_PAB_codegen_041)]
+    /// REQ-PAB-codegen-041: Reading `arr[i].%Xn` returns bit n of element i. This is the
     /// user's exact failing program (from a rusty source). myByteArray[0] =
     /// 0b00000101 — bit 0 = 1, bit 1 = 0, bit 2 = 1.
     codegen_spec_req_pab_041_read_percent_x_on_byte_array_element_returns_bit,
@@ -165,7 +168,8 @@ e2e_i32_with!(
 );
 
 e2e_i32_with!(
-    /// REQ-PAB-042: Writing `arr[i].%Xn := TRUE/FALSE` updates bit n without
+    #[spec_test(REQ_PAB_codegen_042)]
+    /// REQ-PAB-codegen-042: Writing `arr[i].%Xn := TRUE/FALSE` updates bit n without
     /// altering other bits or other elements. Array contents live in the data
     /// region, so the test copies the updated bytes out to scalar vars for
     /// verification.

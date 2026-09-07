@@ -385,6 +385,8 @@ pub fn describe_dialects() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
+    use spec_test_macro::spec_test;
 
     /// Collect the dialect-flag `option_key`s that `from_dialect(dialect)`
     /// turns on, sorted for order-independent comparison.
@@ -557,17 +559,30 @@ mod tests {
         );
     }
 
-    /// REQ-PAB-051: The `rusty` dialect preset enables partial-access syntax.
-    #[test]
+    /// REQ-PAB-parser-051: The `rusty` dialect preset enables partial-access syntax.
+    #[spec_test(REQ_PAB_parser_051)]
     fn options_spec_req_pab_051_rusty_dialect_enables_partial_access_syntax() {
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
         assert!(options.allow_partial_access_syntax);
     }
 
-    /// REQ-PAB-052: The `iec61131-3-ed3` dialect preset enables partial-access syntax.
-    #[test]
+    /// REQ-PAB-parser-052: The `iec61131-3-ed3` dialect preset enables partial-access syntax.
+    #[spec_test(REQ_PAB_parser_052)]
     fn options_spec_req_pab_052_ed3_dialect_enables_partial_access_syntax() {
         let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+        assert!(options.allow_partial_access_syntax);
+    }
+
+    /// REQ-PAB-parser-141: The `codesys` and `twincat` dialect presets enable
+    /// partial-access syntax.
+    #[spec_test(REQ_PAB_parser_141)]
+    #[rstest]
+    #[case::codesys(Dialect::Codesys)]
+    #[case::twincat(Dialect::TwinCat)]
+    fn options_spec_req_pab_141_vendor_dialects_enable_partial_access_syntax(
+        #[case] dialect: Dialect,
+    ) {
+        let options = CompilerOptions::from_dialect(dialect);
         assert!(options.allow_partial_access_syntax);
     }
 

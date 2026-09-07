@@ -513,7 +513,7 @@ fn get_selection_functions() -> Vec<FunctionSignature> {
                 input_param("IN0", "ANY_NUM"),
                 input_param("IN1", "ANY_NUM"),
             ],
-            17,
+            Some(17),
         ),
     ]
 }

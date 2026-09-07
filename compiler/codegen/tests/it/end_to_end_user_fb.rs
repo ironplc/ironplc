@@ -9,6 +9,29 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::parse_and_run_rounds;
 
+// A user-defined function block instance declared with member initial values
+// (`fb : SCALER := (factor := 3)`) is an instance, not a structure: the
+// members are set once during setup and the block is invocable.
+e2e_i32!(
+    end_to_end_when_user_fb_declared_with_member_initializer_then_member_is_set,
+    "
+FUNCTION_BLOCK SCALER
+  VAR_INPUT x : DINT; factor : DINT; END_VAR
+  VAR_OUTPUT y : DINT; END_VAR
+  y := x * factor;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    fb : SCALER := (factor := 3);
+    result : DINT;
+  END_VAR
+  fb(x := 7, y => result);
+END_PROGRAM
+",
+    &[(1, 21)],
+);
+
 e2e_i32!(
     end_to_end_when_user_fb_simple_input_output_then_computes_result,
     "

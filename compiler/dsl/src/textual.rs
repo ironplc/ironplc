@@ -649,6 +649,16 @@ pub enum ParamAssignmentKind {
 }
 
 impl ParamAssignmentKind {
+    /// The expression this argument passes to the callee, for a positional
+    /// or named input. An output assignment passes nothing in.
+    pub fn input_expr(&self) -> Option<&Expr> {
+        match self {
+            ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
+            ParamAssignmentKind::NamedInput(input) => Some(&input.expr),
+            ParamAssignmentKind::Output(_) => None,
+        }
+    }
+
     pub fn positional(expr: ExprKind) -> ParamAssignmentKind {
         ParamAssignmentKind::PositionalInput(PositionalInput {
             expr: Expr::new(expr),

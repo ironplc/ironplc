@@ -1,6 +1,7 @@
 //! Numeric, real, duration and long-date/time literal parsing.
 
 use super::common::*;
+use dsl::core::Located;
 
 #[test]
 fn parse_program_when_complex_bit_string_then_ok() {
@@ -45,6 +46,7 @@ END_FUNCTION";
                     initial_value: Some(ConstantKind::RealLiteral(RealLiteral {
                         value: -0.5,
                         data_type: None,
+                        span: SourceSpan::default(),
                     })),
                 }),
                 block: next_block_id(),
@@ -83,6 +85,7 @@ END_FUNCTION";
                     initial_value: Some(ConstantKind::RealLiteral(RealLiteral {
                         value: 0.002,
                         data_type: None,
+                        span: SourceSpan::default(),
                     })),
                 }),
                 block: next_block_id(),
@@ -121,6 +124,7 @@ END_FUNCTION";
                     initial_value: Some(ConstantKind::RealLiteral(RealLiteral {
                         value: 150.0,
                         data_type: None,
+                        span: SourceSpan::default(),
                     })),
                 }),
                 block: next_block_id(),
@@ -304,4 +308,51 @@ w := WSTRING#\"abc\";
 END_FUNCTION_BLOCK",
     );
     assert_eq!(wide.width, StringType::WString);
+}
+
+/// Every literal kind records where it was written.
+///
+/// `Located for ExprKind` builds a compound expression's span by joining its
+/// operands' spans, so one span-less literal kind makes every expression
+/// containing it report byte offset 0 — which is what a diagnostic then
+/// points at. Covering all nine kinds is what keeps that from regressing one
+/// literal at a time.
+///
+/// A leading `-` is not part of any case here: outside a declaration
+/// initializer it parses as a unary operator applied to the literal, and
+/// `Located for ExprKind` reports a unary expression as its operand's span —
+/// a separate truncation, unrelated to whether the literal has a span at all.
+#[rstest]
+#[case::integer("42")]
+#[case::typed_integer("INT#42")]
+#[case::hex_integer("16#2A")]
+#[case::real("1.5")]
+#[case::typed_real("REAL#1.5")]
+#[case::boolean("TRUE")]
+#[case::typed_boolean("BOOL#TRUE")]
+#[case::character_string("'text'")]
+#[case::duration("T#100ms")]
+#[case::time_of_day("TOD#14:30:00")]
+#[case::date("DATE#2025-03-15")]
+#[case::date_and_time("DT#2025-03-15-14:30:00")]
+#[case::bit_string("WORD#16#FF")]
+fn parse_when_literal_then_constant_span_covers_the_literal(#[case] literal: &str) {
+    let source = format!(
+        "FUNCTION_BLOCK fb
+VAR
+    x : INT;
+END_VAR
+x := {literal};
+END_FUNCTION_BLOCK"
+    );
+    let library = parse_program(&source, &FileId::default(), &CompilerOptions::default()).unwrap();
+
+    let value = extract_assignment_value(&library);
+    let constant = cast!(&value.kind, ExprKind::Const);
+    let span = constant.span();
+    assert_eq!(
+        literal,
+        &source[span.start..span.end],
+        "span of {constant:?} should cover the literal as written"
+    );
 }

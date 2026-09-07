@@ -14,6 +14,12 @@
 use spec_test_macro::spec_test;
 
 use crate::tools;
+use crate::tools::test_support::{
+    ed2_options, source, with_program, COUNTER_PROGRAM, COUNTER_PROGRAM_WITH_TASK,
+    PROGRAM_USING_FB, PROGRAM_USING_STDLIB_FB, PROGRAM_WITH_INPUT, PROGRAM_WITH_INPUT_AND_LOCAL,
+    PROGRAM_WITH_VAR, SEMANTIC_ERROR_PROGRAM, SYNTAX_ERROR_PROGRAM, USER_TYPES_PROGRAM,
+    VALID_PROGRAM,
+};
 
 // ---------------------------------------------------------------------------
 // Meta-test: completeness check
@@ -36,13 +42,8 @@ fn all_spec_requirements_have_tests() {
 /// required `sources` parameter.
 #[spec_test(REQ_STL_mcp_001)]
 fn mcp_spec_req_stl_001_tools_accept_sources_parameter() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(VALID_PROGRAM);
+    let options = ed2_options();
 
     // parse accepts sources
     let parse_resp = tools::parse::build_response(&sources, &options);
@@ -57,12 +58,7 @@ fn mcp_spec_req_stl_001_tools_accept_sources_parameter() {
 /// required `options` object.
 #[spec_test(REQ_STL_mcp_002)]
 fn mcp_spec_req_stl_002_tools_accept_options_parameter() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nEND_PROGRAM".into(),
-    }];
+    let sources = source(VALID_PROGRAM);
     // Both parse and check accept an options object with dialect
     let options = serde_json::json!({"dialect": "rusty"});
 
@@ -128,13 +124,8 @@ fn mcp_spec_req_stl_004_source_name_validation() {
 /// REQ-STL-mcp-005: Every tool response includes a top-level `ok: boolean` field.
 #[spec_test(REQ_STL_mcp_005)]
 fn mcp_spec_req_stl_005_response_includes_ok_field() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(VALID_PROGRAM);
+    let options = ed2_options();
 
     // parse response has ok field
     let parse_resp = tools::parse::build_response(&sources, &options);
@@ -159,15 +150,10 @@ fn mcp_spec_req_stl_006_no_disk_io() {}
 /// REQ-TOL-mcp-010: The `parse` tool runs the parse stage only (no semantic analysis).
 #[spec_test(REQ_TOL_mcp_010)]
 fn mcp_spec_req_tol_010_parse_runs_parse_only() {
-    use crate::tools::common::SourceInput;
-
     // This program parses fine but has a semantic error (undeclared variable y).
     // parse should succeed because it doesn't run semantic analysis.
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(SEMANTIC_ERROR_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::parse::build_response(&sources, &options);
     assert!(resp.ok, "parse should not catch semantic errors");
@@ -177,13 +163,8 @@ fn mcp_spec_req_tol_010_parse_runs_parse_only() {
 /// format as `check`.
 #[spec_test(REQ_TOL_mcp_011)]
 fn mcp_spec_req_tol_011_parse_returns_diagnostics_array() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM".into(), // parse error
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(SYNTAX_ERROR_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::parse::build_response(&sources, &options);
     let json = serde_json::to_value(&resp).unwrap();
@@ -200,12 +181,7 @@ fn mcp_spec_req_tol_011_parse_returns_diagnostics_array() {
 /// REQ-TOL-mcp-012: The `parse` tool accepts the same `options` object as `check`.
 #[spec_test(REQ_TOL_mcp_012)]
 fn mcp_spec_req_tol_012_parse_accepts_same_options_as_check() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nEND_PROGRAM".into(),
-    }];
+    let sources = source(VALID_PROGRAM);
     // Same options accepted by both
     let options = serde_json::json!({"dialect": "rusty", "allow_c_style_comments": true});
 
@@ -219,13 +195,8 @@ fn mcp_spec_req_tol_012_parse_accepts_same_options_as_check() {
 /// REQ-TOL-mcp-013: The `parse` tool returns a best-effort `structure` array.
 #[spec_test(REQ_TOL_mcp_013)]
 fn mcp_spec_req_tol_013_parse_returns_structure_array() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(VALID_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::parse::build_response(&sources, &options);
     let json = serde_json::to_value(&resp).unwrap();
@@ -246,14 +217,9 @@ fn mcp_spec_req_tol_013_parse_returns_structure_array() {
 /// REQ-TOL-mcp-020: The `check` tool runs parse and full semantic analysis.
 #[spec_test(REQ_TOL_mcp_020)]
 fn mcp_spec_req_tol_020_check_runs_semantic_analysis() {
-    use crate::tools::common::SourceInput;
-
     // This program has a semantic error (undeclared variable y).
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(SEMANTIC_ERROR_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::check::build_response(&sources, &options);
     assert!(!resp.ok, "check should catch semantic errors");
@@ -263,13 +229,8 @@ fn mcp_spec_req_tol_020_check_runs_semantic_analysis() {
 /// REQ-TOL-mcp-021: The `check` tool does not run code generation.
 #[spec_test(REQ_TOL_mcp_021)]
 fn mcp_spec_req_tol_021_check_no_codegen() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(VALID_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::check::build_response(&sources, &options);
     // Response has no container_id — check does not produce codegen output
@@ -280,14 +241,9 @@ fn mcp_spec_req_tol_021_check_no_codegen() {
 /// REQ-TOL-mcp-022: The `check` tool returns `diagnostics` and `ok`.
 #[spec_test(REQ_TOL_mcp_022)]
 fn mcp_spec_req_tol_022_check_returns_diagnostics_and_ok() {
-    use crate::tools::common::SourceInput;
-
     // Valid program: ok = true, diagnostics empty
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(VALID_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::check::build_response(&sources, &options);
     let json = serde_json::to_value(&resp).unwrap();
@@ -295,10 +251,7 @@ fn mcp_spec_req_tol_022_check_returns_diagnostics_and_ok() {
     assert!(json["diagnostics"].as_array().unwrap().is_empty());
 
     // Invalid program: ok = false, diagnostics non-empty
-    let bad_sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
-    }];
+    let bad_sources = source(SEMANTIC_ERROR_PROGRAM);
     let resp = tools::check::build_response(&bad_sources, &options);
     let json = serde_json::to_value(&resp).unwrap();
     assert_eq!(json["ok"], false);
@@ -308,13 +261,8 @@ fn mcp_spec_req_tol_022_check_returns_diagnostics_and_ok() {
 /// REQ-TOL-mcp-023: Diagnostic format with byte offsets.
 #[spec_test(REQ_TOL_mcp_023)]
 fn mcp_spec_req_tol_023_diagnostic_format() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(SEMANTIC_ERROR_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::check::build_response(&sources, &options);
     assert!(!resp.diagnostics.is_empty());
@@ -338,14 +286,9 @@ fn mcp_spec_req_tol_023_diagnostic_format() {
 /// compiler failures.
 #[spec_test(REQ_TOL_mcp_024)]
 fn mcp_spec_req_tol_024_no_mcp_error_for_compiler_failures() {
-    use crate::tools::common::SourceInput;
-
     // Syntax error — should produce diagnostics, not panic or MCP error
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(SYNTAX_ERROR_PROGRAM);
+    let options = ed2_options();
 
     // build_response returns a CheckResponse (not Err), even for broken input
     let resp = tools::check::build_response(&sources, &options);
@@ -356,12 +299,7 @@ fn mcp_spec_req_tol_024_no_mcp_error_for_compiler_failures() {
 /// REQ-TOL-mcp-025: The `check` tool rejects invalid `options`.
 #[spec_test(REQ_TOL_mcp_025)]
 fn mcp_spec_req_tol_025_rejects_invalid_options() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nEND_PROGRAM".into(),
-    }];
+    let sources = source(VALID_PROGRAM);
 
     // Missing dialect
     let resp = tools::check::build_response(&sources, &serde_json::json!({}));
@@ -382,17 +320,11 @@ fn mcp_spec_req_tol_025_rejects_invalid_options() {
 /// REQ-TOL-mcp-026: The `check` tool accepts individual feature flag overrides.
 #[spec_test(REQ_TOL_mcp_026)]
 fn mcp_spec_req_tol_026_accepts_flag_overrides() {
-    use crate::tools::common::SourceInput;
-
     // C-style comments are not allowed in ed2, but allowed with override
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "// C-style comment\nPROGRAM p\nEND_PROGRAM".into(),
-    }];
+    let sources = source(&with_program("// C-style comment"));
 
     // Without override — should fail (ed2 doesn't allow C-style comments)
-    let resp =
-        tools::check::build_response(&sources, &serde_json::json!({"dialect": "iec61131-3-ed2"}));
+    let resp = tools::check::build_response(&sources, &ed2_options());
     assert!(!resp.ok, "ed2 should reject C-style comments");
 
     // With flag override — should succeed
@@ -413,14 +345,10 @@ fn mcp_spec_req_tol_030_compile_returns_container_id() {
     use std::sync::Mutex;
 
     use crate::cache::ContainerCache;
-    use crate::tools::common::SourceInput;
 
     let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(COUNTER_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::compile::build_response(&sources, &options, false, &cache);
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -434,14 +362,10 @@ fn mcp_spec_req_tol_031_compile_returns_diagnostics_on_failure() {
     use std::sync::Mutex;
 
     use crate::cache::ContainerCache;
-    use crate::tools::common::SourceInput;
 
     let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(SYNTAX_ERROR_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::compile::build_response(&sources, &options, false, &cache);
     assert!(!resp.ok);
@@ -456,14 +380,10 @@ fn mcp_spec_req_tol_032_compile_returns_tasks_array() {
     use std::sync::Mutex;
 
     use crate::cache::{ContainerCache, TaskKind};
-    use crate::tools::common::SourceInput;
 
     let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM\n\nCONFIGURATION config\n  RESOURCE resource1 ON PLC\n    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);\n    PROGRAM program1 WITH plc_task : Main;\n  END_RESOURCE\nEND_CONFIGURATION".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(COUNTER_PROGRAM_WITH_TASK);
+    let options = ed2_options();
 
     let resp = tools::compile::build_response(&sources, &options, false, &cache);
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -474,10 +394,7 @@ fn mcp_spec_req_tol_032_compile_returns_tasks_array() {
 
     // `kind` reports the task the container carries: a program with no
     // CONFIGURATION compiles to the freewheeling task the builder synthesizes.
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM".into(),
-    }];
+    let sources = source(COUNTER_PROGRAM);
     let resp = tools::compile::build_response(&sources, &options, false, &cache);
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
     assert_eq!(resp.tasks[0].kind, TaskKind::Freewheeling);
@@ -491,14 +408,10 @@ fn mcp_spec_req_tol_033_compile_returns_programs_array() {
     use std::sync::Mutex;
 
     use crate::cache::ContainerCache;
-    use crate::tools::common::SourceInput;
 
     let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM\n\nCONFIGURATION config\n  RESOURCE resource1 ON PLC\n    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);\n    PROGRAM program1 WITH plc_task : Main;\n  END_RESOURCE\nEND_CONFIGURATION".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(COUNTER_PROGRAM_WITH_TASK);
+    let options = ed2_options();
 
     let resp = tools::compile::build_response(&sources, &options, false, &cache);
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -514,14 +427,10 @@ fn mcp_spec_req_tol_034_compile_returns_base64_when_requested() {
     use std::sync::Mutex;
 
     use crate::cache::ContainerCache;
-    use crate::tools::common::SourceInput;
 
     let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(COUNTER_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::compile::build_response(&sources, &options, true, &cache);
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -535,14 +444,10 @@ fn mcp_spec_req_tol_035_compile_stores_container_in_cache() {
     use std::sync::Mutex;
 
     use crate::cache::ContainerCache;
-    use crate::tools::common::SourceInput;
 
     let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(COUNTER_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::compile::build_response(&sources, &options, false, &cache);
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -562,11 +467,8 @@ fn mcp_spec_req_tol_036_cached_container_is_immutable_snapshot() {
     use crate::tools::common::SourceInput;
 
     let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(COUNTER_PROGRAM);
+    let options = ed2_options();
 
     // Compile once and snapshot the bytes
     let resp1 = tools::compile::build_response(&sources, &options, false, &cache);
@@ -639,18 +541,12 @@ fn mcp_spec_req_tol_049_freewheeling_task_needs_a_supplied_cycle_time() {
     use std::sync::Mutex;
 
     use crate::cache::{ContainerCache, TaskKind};
-    use crate::tools::common::SourceInput;
     use crate::tools::run::RunInput;
 
     let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
     // No CONFIGURATION, so the compiled container carries a freewheeling task.
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content:
-            "PROGRAM Main\nVAR\n  Counter : INT;\nEND_VAR\n  Counter := Counter + 1;\nEND_PROGRAM"
-                .into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(COUNTER_PROGRAM);
+    let options = ed2_options();
 
     let compiled = tools::compile::build_response(&sources, &options, false, &cache);
     assert!(compiled.ok, "diagnostics: {:?}", compiled.diagnostics);
@@ -711,7 +607,7 @@ fn mcp_spec_req_tol_050_symbols_returns_declarations() {
         name: "main.st".into(),
         content: "TYPE\nMyEnum : (A, B);\nEND_TYPE\nFUNCTION_BLOCK fb\nEND_FUNCTION_BLOCK\nFUNCTION f : INT\nVAR_INPUT a : INT; END_VAR\nf := a;\nEND_FUNCTION\nPROGRAM p\nVAR inst : fb; END_VAR\nEND_PROGRAM".into(),
     }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let options = ed2_options();
     let resp = tools::symbols::build_response(&sources, &options, None);
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
     assert!(!resp.programs.is_empty());
@@ -722,13 +618,8 @@ fn mcp_spec_req_tol_050_symbols_returns_declarations() {
 
 #[spec_test(REQ_TOL_mcp_051)]
 fn mcp_spec_req_tol_051_program_variable_details() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nVAR x : INT; END_VAR\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(PROGRAM_WITH_VAR);
+    let options = ed2_options();
     let resp = tools::symbols::build_response(&sources, &options, None);
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
     let prog = &resp.programs[0];
@@ -746,7 +637,7 @@ fn mcp_spec_req_tol_052_function_entry_details() {
         name: "main.st".into(),
         content: "FUNCTION f : INT\nVAR_INPUT a : INT; END_VAR\nf := a;\nEND_FUNCTION\nPROGRAM p\nVAR r : INT; END_VAR\nr := f(a := 1);\nEND_PROGRAM".into(),
     }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let options = ed2_options();
     let resp = tools::symbols::build_response(&sources, &options, None);
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
     let func = &resp.functions[0];
@@ -758,13 +649,8 @@ fn mcp_spec_req_tol_052_function_entry_details() {
 
 #[spec_test(REQ_TOL_mcp_053)]
 fn mcp_spec_req_tol_053_symbols_diagnostics_format() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(SEMANTIC_ERROR_PROGRAM);
+    let options = ed2_options();
     let resp = tools::symbols::build_response(&sources, &options, None);
     assert!(!resp.ok);
     assert!(!resp.diagnostics.is_empty());
@@ -779,7 +665,7 @@ fn mcp_spec_req_tol_054_symbols_pou_filter() {
         name: "main.st".into(),
         content: "PROGRAM a\nEND_PROGRAM\nPROGRAM b\nVAR x : INT; END_VAR\nEND_PROGRAM".into(),
     }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let options = ed2_options();
 
     let resp = tools::symbols::build_response(&sources, &options, Some("b"));
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -962,7 +848,7 @@ fn mcp_spec_req_tol_200_project_manifest_returns_declarations() {
                   PROGRAM p\nVAR inst : fb; END_VAR\nEND_PROGRAM"
             .into(),
     }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let options = ed2_options();
 
     let resp = tools::project_manifest::build_response(&sources, &options);
     let json = serde_json::to_value(&resp).unwrap();
@@ -1007,13 +893,8 @@ fn mcp_spec_req_tol_200_project_manifest_returns_declarations() {
 /// a partial manifest, and analysis diagnostics.
 #[spec_test(REQ_TOL_mcp_201)]
 fn mcp_spec_req_tol_201_project_manifest_partial_on_failure() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(SEMANTIC_ERROR_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::project_manifest::build_response(&sources, &options);
     let json = serde_json::to_value(&resp).unwrap();
@@ -1053,7 +934,7 @@ fn mcp_spec_req_tol_210_project_io_returns_inputs() {
                   END_PROGRAM"
             .into(),
     }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let options = ed2_options();
 
     let resp = tools::project_io::build_response(&sources, &options);
     let json = serde_json::to_value(&resp).unwrap();
@@ -1083,7 +964,7 @@ fn mcp_spec_req_tol_211_project_io_returns_outputs() {
                   END_PROGRAM"
             .into(),
     }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let options = ed2_options();
 
     let resp = tools::project_io::build_response(&sources, &options);
     let json = serde_json::to_value(&resp).unwrap();
@@ -1105,13 +986,8 @@ fn mcp_spec_req_tol_211_project_io_returns_outputs() {
 /// `address` (string or null).
 #[spec_test(REQ_TOL_mcp_212)]
 fn mcp_spec_req_tol_212_project_io_entry_format() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nVAR_INPUT start : BOOL; END_VAR\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(PROGRAM_WITH_INPUT);
+    let options = ed2_options();
 
     let resp = tools::project_io::build_response(&sources, &options);
     let json = serde_json::to_value(&resp).unwrap();
@@ -1138,13 +1014,8 @@ fn mcp_spec_req_tol_212_project_io_entry_format() {
 /// `name`, `type`, `direction`, and `initial_value` fields.
 #[spec_test(REQ_TOL_mcp_220)]
 fn mcp_spec_req_tol_220_pou_scope_returns_variables() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nVAR_INPUT start : BOOL := FALSE; END_VAR\nVAR count : DINT; END_VAR\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(PROGRAM_WITH_INPUT_AND_LOCAL);
+    let options = ed2_options();
 
     let resp = tools::pou_scope::build_response(&sources, &options, "p");
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -1171,7 +1042,7 @@ fn mcp_spec_req_tol_221_pou_scope_unknown_pou() {
         name: "main.st".into(),
         content: "FUNCTION_BLOCK Motor\nVAR fb_var : INT; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Motor\nVAR prog_var : INT; END_VAR\nEND_PROGRAM".into(),
     }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let options = ed2_options();
 
     // Program resolves first.
     let resp = tools::pou_scope::build_response(&sources, &options, "Motor");
@@ -1196,14 +1067,10 @@ fn mcp_spec_req_tol_221_pou_scope_unknown_pou() {
 /// carrying its `name` and `source`.
 #[spec_test(REQ_TOL_mcp_230)]
 fn mcp_spec_req_tol_230_pou_lineage_returns_dependencies() {
-    use crate::tools::common::SourceInput;
     use crate::tools::pou_lineage::PouSource;
 
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "FUNCTION_BLOCK Counter\nVAR_INPUT Inc : BOOL; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Main\nVAR c : Counter; END_VAR\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(PROGRAM_USING_FB);
+    let options = ed2_options();
 
     // Main depends on Counter → Counter is upstream.
     let main_resp = tools::pou_lineage::build_response(&sources, &options, "Main");
@@ -1230,14 +1097,10 @@ fn mcp_spec_req_tol_230_pou_lineage_returns_dependencies() {
 /// `source: "stdlib"` and are addressable as the queried POU.
 #[spec_test(REQ_TOL_mcp_232)]
 fn mcp_spec_req_tol_232_pou_lineage_reports_stdlib_pous() {
-    use crate::tools::common::SourceInput;
     use crate::tools::pou_lineage::PouSource;
 
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM MotorStartStop\nVAR Star_Timer : TON; Run : BOOL; END_VAR\nStar_Timer(IN := Run, PT := T#5s);\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(PROGRAM_USING_STDLIB_FB);
+    let options = ed2_options();
 
     let resp = tools::pou_lineage::build_response(&sources, &options, "MotorStartStop");
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -1268,7 +1131,7 @@ fn mcp_spec_req_tol_231_pou_lineage_unknown_pou() {
         name: "main.st".into(),
         content: "PROGRAM Main\nEND_PROGRAM".into(),
     }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let options = ed2_options();
 
     let resp = tools::pou_lineage::build_response(&sources, &options, "nonexistent");
     assert!(!resp.ok);
@@ -1286,13 +1149,8 @@ fn mcp_spec_req_tol_231_pou_lineage_unknown_pou() {
 /// detail fields.
 #[spec_test(REQ_TOL_mcp_240)]
 fn mcp_spec_req_tol_240_types_all_returns_user_defined_types() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "TYPE MotorState : (Stopped, Running, Fault); END_TYPE\nTYPE PidParams : STRUCT Kp : REAL; END_STRUCT; END_TYPE\nTYPE Buf : ARRAY[1..10] OF INT; END_TYPE\nTYPE Percent : INT (0..100); END_TYPE\nPROGRAM p\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(USER_TYPES_PROGRAM);
+    let options = ed2_options();
 
     let resp = tools::types_all::build_response(&sources, &options);
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -1333,13 +1191,8 @@ fn mcp_spec_req_arc_001_stdio_transport() {
 /// the supplied sources.
 #[spec_test(REQ_ARC_mcp_010)]
 fn mcp_spec_req_arc_010_fresh_project_per_call() {
-    use crate::tools::common::SourceInput;
-
-    let sources = vec![SourceInput {
-        name: "main.st".into(),
-        content: "PROGRAM p\nEND_PROGRAM".into(),
-    }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let sources = source(VALID_PROGRAM);
+    let options = ed2_options();
 
     // Two independent calls both succeed — no state leaks between them
     let resp1 = tools::check::build_response(&sources, &options);
@@ -1360,7 +1213,7 @@ fn mcp_spec_req_arc_011_file_id_from_string() {
         name: "my_file.st".into(),
         content: "PROGRAM".into(), // parse error
     }];
-    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+    let options = ed2_options();
 
     let resp = tools::parse::build_response(&sources, &options);
     assert!(!resp.ok);

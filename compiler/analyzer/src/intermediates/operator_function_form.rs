@@ -26,6 +26,18 @@ pub enum FormOf {
     Not,
 }
 
+/// How many operands a function form takes.
+#[derive(Debug, Clone, PartialEq)]
+enum Arity {
+    /// One operand, `IN` (`NOT`).
+    Unary,
+    /// Exactly two operands, `IN1` and `IN2` (`SUB`, `GT`).
+    Binary,
+    /// Two or more operands, `IN1`, `IN2`, ..., `INn` (`ADD`, `AND`): what
+    /// IEC 61131-3 calls an extensible function.
+    Extensible,
+}
+
 /// How the result type of a function form follows from its operands.
 #[derive(Debug, Clone, PartialEq)]
 enum FormResult {
@@ -47,6 +59,8 @@ pub struct OperatorFunctionForm {
     pub name: &'static str,
     /// The operator this function is a form of.
     pub operator: FormOf,
+    /// How many operands the function takes.
+    arity: Arity,
     /// The type category of every operand.
     operands: &'static str,
     /// How the result type follows from the operands.
@@ -57,12 +71,14 @@ pub struct OperatorFunctionForm {
 const fn form(
     name: &'static str,
     operator: FormOf,
+    arity: Arity,
     operands: &'static str,
     result: FormResult,
 ) -> OperatorFunctionForm {
     OperatorFunctionForm {
         name,
         operator,
+        arity,
         operands,
         result,
     }
@@ -80,31 +96,38 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
     form(
         "ADD",
         FormOf::Arithmetic(Operator::Add),
+        Arity::Extensible,
         "ANY_NUM",
         FormResult::Operand,
     ),
     form(
         "SUB",
         FormOf::Arithmetic(Operator::Sub),
+        Arity::Binary,
         "ANY_NUM",
         FormResult::Operand,
     ),
     form(
         "MUL",
         FormOf::Arithmetic(Operator::Mul),
+        Arity::Extensible,
         "ANY_NUM",
         FormResult::Operand,
     ),
     form(
         "DIV",
         FormOf::Arithmetic(Operator::Div),
+        Arity::Binary,
         "ANY_NUM",
         FormResult::Operand,
     ),
+    // MOD alone is defined over ANY_INT (IEC 61131-3 Table 24): there is no
+    // floating-point remainder operator, and codegen has no opcode for one.
     form(
         "MOD",
         FormOf::Arithmetic(Operator::Mod),
-        "ANY_NUM",
+        Arity::Binary,
+        "ANY_INT",
         FormResult::Operand,
     ),
     // Comparison (IEC 61131-3 Section 2.5.1.5.3, Table 33): defined for
@@ -113,36 +136,42 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
     form(
         "GT",
         FormOf::Compare(CompareOp::Gt),
+        Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
     form(
         "GE",
         FormOf::Compare(CompareOp::GtEq),
+        Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
     form(
         "EQ",
         FormOf::Compare(CompareOp::Eq),
+        Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
     form(
         "LE",
         FormOf::Compare(CompareOp::LtEq),
+        Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
     form(
         "LT",
         FormOf::Compare(CompareOp::Lt),
+        Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
     form(
         "NE",
         FormOf::Compare(CompareOp::Ne),
+        Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
     ),
@@ -152,41 +181,70 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
     form(
         "AND",
         FormOf::Compare(CompareOp::And),
+        Arity::Extensible,
         "ANY_BIT",
         FormResult::Operand,
     ),
     form(
         "OR",
         FormOf::Compare(CompareOp::Or),
+        Arity::Extensible,
         "ANY_BIT",
         FormResult::Operand,
     ),
     form(
         "XOR",
         FormOf::Compare(CompareOp::Xor),
+        Arity::Extensible,
         "ANY_BIT",
         FormResult::Operand,
     ),
-    form("NOT", FormOf::Not, "ANY_BIT", FormResult::Operand),
+    form(
+        "NOT",
+        FormOf::Not,
+        Arity::Unary,
+        "ANY_BIT",
+        FormResult::Operand,
+    ),
 ];
 
 impl OperatorFunctionForm {
+    /// The type every operand of the operator must have: a generic category
+    /// such as `ANY_INT`, or `BOOL`.
+    ///
+    /// This is the row's operand cell as a type name, so the function form's
+    /// parameters and an operand check on the operator itself compare
+    /// against the same type.
+    pub(crate) fn operand_type(&self) -> TypeName {
+        TypeName::from(self.operands)
+    }
+
     /// Derives the function's signature from the row.
     ///
-    /// A unary form takes `IN`; a binary form takes `IN1` and `IN2`. Every
-    /// parameter has the row's operand category, and so does the return type
-    /// unless the row says the result is `BOOL`.
+    /// A unary form takes `IN`; a binary form takes `IN1` and `IN2`; an
+    /// extensible form declares `IN1` and `IN2` and accepts any number more.
+    /// Every parameter has the row's operand category, and so does the
+    /// return type unless the row says the result is `BOOL`.
     pub(crate) fn signature(&self) -> FunctionSignature {
         let operand = |name: &str| input_param(name, self.operands);
-        let parameters = match self.operator {
-            FormOf::Not => vec![operand("IN")],
-            FormOf::Arithmetic(_) | FormOf::Compare(_) => vec![operand("IN1"), operand("IN2")],
-        };
         let return_type = match self.result {
-            FormResult::Operand => TypeName::from(self.operands),
+            FormResult::Operand => self.operand_type(),
             FormResult::Bool => TypeName::from("BOOL"),
         };
-        FunctionSignature::stdlib(self.name, return_type, parameters)
+        match self.arity {
+            Arity::Unary => FunctionSignature::stdlib(self.name, return_type, vec![operand("IN")]),
+            Arity::Binary => FunctionSignature::stdlib(
+                self.name,
+                return_type,
+                vec![operand("IN1"), operand("IN2")],
+            ),
+            Arity::Extensible => FunctionSignature::stdlib_extensible(
+                self.name,
+                return_type,
+                vec![operand("IN1"), operand("IN2")],
+                None,
+            ),
+        }
     }
 }
 
@@ -198,6 +256,14 @@ pub fn operator_function_form(name: &str) -> Option<&'static OperatorFunctionFor
     OPERATOR_FUNCTION_FORMS
         .iter()
         .find(|form| form.name.eq_ignore_ascii_case(name))
+}
+
+/// Returns the row whose function is the form of `operator`, or `None` when
+/// the operator has no function form.
+pub(crate) fn form_of_operator(operator: &FormOf) -> Option<&'static OperatorFunctionForm> {
+    OPERATOR_FUNCTION_FORMS
+        .iter()
+        .find(|form| form.operator == *operator)
 }
 
 /// Returns the signatures of the function forms of operators, in table order.
@@ -215,32 +281,35 @@ mod tests {
     use rstest::rstest;
 
     /// Every row of the operator-form table, pinned. A change to what an
-    /// operator accepts shows up as a change to the row's cell and to its
-    /// case here, and nowhere else.
+    /// operator accepts, or to how many operands, shows up as a change to
+    /// the row's cell and to its case here, and nowhere else.
     #[rstest]
-    #[case::add("ADD", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
-    #[case::sub("SUB", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
-    #[case::mul("MUL", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
-    #[case::div("DIV", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
-    #[case::modulo("MOD", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM")]
-    #[case::gt("GT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::ge("GE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::eq("EQ", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::le("LE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::lt("LT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::ne("NE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL")]
-    #[case::and("AND", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT")]
-    #[case::or("OR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT")]
-    #[case::xor("XOR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT")]
-    #[case::not("NOT", &["IN"], "ANY_BIT", "ANY_BIT")]
+    #[case::add("ADD", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", true)]
+    #[case::sub("SUB", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", false)]
+    #[case::mul("MUL", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", true)]
+    #[case::div("DIV", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", false)]
+    #[case::modulo("MOD", &["IN1", "IN2"], "ANY_INT", "ANY_INT", false)]
+    #[case::gt("GT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
+    #[case::ge("GE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
+    #[case::eq("EQ", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
+    #[case::le("LE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
+    #[case::lt("LT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
+    #[case::ne("NE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
+    #[case::and("AND", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT", true)]
+    #[case::or("OR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT", true)]
+    #[case::xor("XOR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT", true)]
+    #[case::not("NOT", &["IN"], "ANY_BIT", "ANY_BIT", false)]
     fn operator_function_form_when_row_then_signature_is_derived_from_it(
         #[case] name: &str,
         #[case] param_names: &[&str],
         #[case] operands: &str,
         #[case] return_type: &str,
+        #[case] extensible: bool,
     ) {
         let signature = operator_function_form(name).unwrap().signature();
         assert_eq!(signature.name, Id::from(name));
+        assert_eq!(signature.is_extensible, extensible);
+        assert!(signature.max_inputs.is_none());
         assert_eq!(
             signature.return_type.unwrap().to_type_name(),
             TypeName::from(return_type)
@@ -263,6 +332,18 @@ mod tests {
         let form = operator_function_form("and").unwrap();
         assert_eq!(form.name, "AND");
         assert_eq!(form.operator, FormOf::Compare(CompareOp::And));
+    }
+
+    #[test]
+    fn form_of_operator_when_arithmetic_operator_then_row_with_its_operand_type() {
+        let form = form_of_operator(&FormOf::Arithmetic(Operator::Mod)).unwrap();
+        assert_eq!(form.name, "MOD");
+        assert_eq!(form.operand_type(), TypeName::from("ANY_INT"));
+    }
+
+    #[test]
+    fn form_of_operator_when_operator_has_no_function_form_then_none() {
+        assert!(form_of_operator(&FormOf::Arithmetic(Operator::Pow)).is_none());
     }
 
     #[test]

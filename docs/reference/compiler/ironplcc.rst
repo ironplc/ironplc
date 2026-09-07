@@ -195,9 +195,9 @@ Options
    extension supported by CODESYS, TwinCAT, and RuSTy.
 
 ``--allow-partial-access-syntax``
-   Allow IEC 61131-3:2013 partial-access bit syntax (``.%Xn``) as an alias
-   for the short form ``.n``. Byte/word/dword/lword partial access (``.%Bn``,
-   ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
+   Allow IEC 61131-3:2013 partial-access syntax: the bit form ``.%Xn`` (an
+   alias for the short form ``.n``) and the byte, word, double word, and
+   long word forms ``.%Bn``, ``.%Wn``, ``.%Dn``, and ``.%Ln``.
 
 ``--allow-pragmas``
    Allow curly-brace pragmas such as ``{attribute 'qualified_only'}``. This
@@ -251,7 +251,9 @@ Options
    structure initializer here; this extension accepts a value
    computed at instantiation time. Produces
    :doc:`P4043 </reference/compiler/problems/P4043>` when used without this
-   flag.
+   flag. The ``REF_TO`` in that example is a separate extension needing
+   ``--allow-ref-to``; some dialects enable one without the other, and some
+   spell the declaration ``POINTER TO FB_Device`` instead.
 
 ``--allow-fb-inheritance``
    Allow the IEC 61131-3:2013 object-oriented syntax:

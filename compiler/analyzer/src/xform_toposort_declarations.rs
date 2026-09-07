@@ -599,7 +599,10 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::Reference(_) => {}
-                    InitialValueAssignmentKind::LateResolvedType(lrt) => {
+                    InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                        type_name: lrt,
+                        ..
+                    }) => {
                         // We only care about these because these may be references to a function block
                         let from = self.declarations.add_node(from);
                         let to = self.declarations.add_node(&lrt.name);
