@@ -1,19 +1,33 @@
 //! Semantic rule that checks the operands of an operator against the type
 //! category the operator is defined for.
 //!
-//! IEC 61131-3 defines `MOD` over `ANY_INT` (Table 24). The function form
-//! `MOD(a, b)` is held to that by the function-call rule, whose signature is
-//! derived from the `MOD` row of the operator-form table. The operator
-//! spelling `a MOD b` has no signature, so this rule reads the same row and
-//! asks the same question of each operand, through
-//! [`are_types_compatible`]. The two spellings therefore agree by
-//! construction: whatever `MOD(a, b)` accepts, `a MOD b` accepts.
+//! A function form like `MOD(a, b)` is held to its operand type by the
+//! function-call rule, whose signature is derived from that operator's row
+//! of the operator-form table. The operator spelling `a MOD b` has no
+//! signature, so this rule reads the same row and asks the same question of
+//! each operand, through [`are_types_compatible`]. The two spellings
+//! therefore agree by construction: whatever `MOD(a, b)` accepts, `a MOD b`
+//! accepts.
 //!
-//! Only `MOD` is checked (see [`checked_form`]). An operand whose resolved
-//! type the predicate cannot judge (a subrange, an enumeration, a
-//! structure) is skipped rather than reported, as the assignment check
-//! skips such targets: `p MOD 2` on a subrange of `INT` compiles today and
-//! this rule leaves that alone.
+//! Two families are checked:
+//!
+//! - `MOD`, defined over `ANY_INT` (Table 24). See [`checked_form`].
+//! - `AND`, `OR`, `XOR` and `NOT`, defined over `ANY_BIT` (Table 28). See
+//!   [`checked_compare_form`] and [`checked_unary_form`].
+//!
+//! The bit-string family matters because codegen selects its opcode by
+//! width and signedness, which cannot separate `BOOL` from a signed
+//! integer. An `ANY_INT` operand therefore reached the *logical* opcode and
+//! the program silently computed a truthiness rather than a bit pattern:
+//! `d AND 3` with `d : DINT := 10` yielded 1 rather than 2, and `NOT d`
+//! yielded 0 rather than -11, with no diagnostic. Issue #1567 fixed the
+//! functional spelling of the same family in the other direction, by
+//! declaring it `ANY_BIT`; this holds the operator spelling to that row.
+//!
+//! An operand whose resolved type the predicate cannot judge (a subrange,
+//! an enumeration, a structure) is skipped rather than reported, as the
+//! assignment check skips such targets: `p MOD 2` on a subrange of `INT`
+//! compiles today and this rule leaves that alone.
 //!
 //! ## Passes
 //!
@@ -32,8 +46,10 @@
 //! PROGRAM main
 //! VAR
 //!     r : REAL;
+//!     d : DINT;
 //! END_VAR
 //!     r := r MOD 2.0;    (* P4049: MOD is not defined for REAL *)
+//!     d := d AND 3;      (* P4049: AND is not defined for DINT *)
 //! END_PROGRAM
 //! ```
 
@@ -86,6 +102,56 @@ fn checked_form(op: &Operator) -> Option<&'static OperatorFunctionForm> {
     match op {
         Operator::Mod => form_of_operator(&FormOf::Arithmetic(Operator::Mod)),
         Operator::Add | Operator::Sub | Operator::Mul | Operator::Div | Operator::Pow => None,
+    }
+}
+
+/// Returns the row whose operand type the operands of `op` must have, or
+/// `None` for a compare operator this rule does not check.
+///
+/// `AND`, `OR` and `XOR` are defined over `ANY_BIT` (IEC 61131-3 Table 28).
+/// Their operator spelling reaches codegen through the same path as `BOOL`
+/// operands do, so an `ANY_INT` operand is lowered to the *logical* opcode
+/// and the program silently computes a truthiness, not a bit pattern:
+/// `x AND 3` with `x : DINT := 10` yields 1 rather than 2. Holding them to
+/// the row is what makes the operator spelling agree with the functional
+/// one, which issue #1567 already fixed in the other direction.
+///
+/// The relational operators are declared `ANY_ELEMENTARY` in the table.
+/// Holding them to that is a separate decision from this rule, as it is for
+/// the arithmetic operators above (issue #1621).
+fn checked_compare_form(op: &CompareOp) -> Option<&'static OperatorFunctionForm> {
+    match op {
+        CompareOp::And | CompareOp::Or | CompareOp::Xor => {
+            form_of_operator(&FormOf::Compare(op.clone()))
+        }
+        // `AND_THEN` and `OR_ELSE` are a CODESYS/TwinCAT short-circuit
+        // extension rather than IEC operators, so the table has no row to
+        // hold them to.
+        CompareOp::AndThen | CompareOp::OrElse => None,
+        CompareOp::Eq
+        | CompareOp::Ne
+        | CompareOp::Lt
+        | CompareOp::Gt
+        | CompareOp::LtEq
+        | CompareOp::GtEq => None,
+    }
+}
+
+/// Returns the row whose operand type the operand of `op` must have, or
+/// `None` for a unary operator this rule does not check.
+///
+/// `NOT` is defined over `ANY_BIT` (IEC 61131-3 Table 28). Codegen selects
+/// its opcode by width and signedness, which cannot tell `BOOL` from a
+/// signed integer -- both are `(W32, Signed)` -- so `NOT` over `ANY_INT`
+/// falls through to `BOOL_NOT` and `NOT x` with `x : DINT := 10` yields 0
+/// rather than -11. Rejecting the operand here is what keeps that arm
+/// reachable only for `BOOL`.
+fn checked_unary_form(op: &UnaryOp) -> Option<&'static OperatorFunctionForm> {
+    match op {
+        UnaryOp::Not => form_of_operator(&FormOf::Not),
+        // Negation is `ANY_NUM`, the same separate decision as the
+        // arithmetic operators.
+        UnaryOp::Neg => None,
     }
 }
 
@@ -143,6 +209,20 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
     fn visit_binary_expr(&mut self, node: &BinaryExpr) -> Result<Self::Value, Infallible> {
         if let Some(form) = checked_form(&node.op) {
             self.check_operands(&node.op.to_string(), form, &[&node.left, &node.right]);
+        }
+        node.recurse_visit(self)
+    }
+
+    fn visit_compare_expr(&mut self, node: &CompareExpr) -> Result<Self::Value, Infallible> {
+        if let Some(form) = checked_compare_form(&node.op) {
+            self.check_operands(&node.op.to_string(), form, &[&node.left, &node.right]);
+        }
+        node.recurse_visit(self)
+    }
+
+    fn visit_unary_expr(&mut self, node: &UnaryExpr) -> Result<Self::Value, Infallible> {
+        if let Some(form) = checked_unary_form(&node.op) {
+            self.check_operands(&node.op.to_string(), form, &[&node.term]);
         }
         node.recurse_visit(self)
     }
@@ -338,4 +418,176 @@ END_PROGRAM
             .iter()
             .any(|d| d.code == Problem::OperatorOperandTypeMismatch.code()));
     }
+
+    // --- The bit-string operators (AND, OR, XOR, NOT) ---
+
+    rule_ctx_ok!(
+        apply_when_and_of_bit_string_variables_then_ok,
+        "
+PROGRAM main
+VAR
+    b1 : BYTE;
+    b2 : BYTE;
+    b3 : BYTE;
+END_VAR
+    b3 := b1 AND b2;
+END_PROGRAM"
+    );
+
+    rule_ctx_ok!(
+        apply_when_or_of_word_variables_then_ok,
+        "
+PROGRAM main
+VAR
+    w1 : WORD;
+    w2 : WORD;
+    w3 : WORD;
+END_VAR
+    w3 := w1 OR w2;
+END_PROGRAM"
+    );
+
+    rule_ctx_ok!(
+        apply_when_xor_of_bool_variables_then_ok,
+        "
+PROGRAM main
+VAR
+    a : BOOL;
+    b : BOOL;
+    c : BOOL;
+END_VAR
+    c := a XOR b;
+END_PROGRAM"
+    );
+
+    rule_ctx_ok!(
+        apply_when_not_of_bool_variable_then_ok,
+        "
+PROGRAM main
+VAR
+    a : BOOL;
+    b : BOOL;
+END_VAR
+    b := NOT a;
+END_PROGRAM"
+    );
+
+    rule_ctx_ok!(
+        apply_when_not_of_bit_string_variable_then_ok,
+        "
+PROGRAM main
+VAR
+    b1 : BYTE;
+    b2 : BYTE;
+END_VAR
+    b2 := NOT b1;
+END_PROGRAM"
+    );
+
+    rule_ctx_ok!(
+        /// The operands are comparison results, which are BOOL, so the
+        /// familiar `a > 0 AND a < 10` stays accepted.
+        apply_when_and_of_comparison_results_then_ok,
+        "
+PROGRAM main
+VAR
+    d : DINT;
+    c : BOOL;
+END_VAR
+    c := d > 0 AND d < 10;
+END_PROGRAM"
+    );
+
+    rule_ctx_ok!(
+        /// Relational operators are declared ANY_ELEMENTARY and this rule
+        /// deliberately does not hold them to it, so an integer comparison
+        /// stays accepted.
+        apply_when_relational_of_integer_variables_then_ok,
+        "
+PROGRAM main
+VAR
+    d1 : DINT;
+    d2 : DINT;
+    c : BOOL;
+END_VAR
+    c := d1 > d2;
+END_PROGRAM"
+    );
+
+    rule_ctx_errn!(
+        /// Without this the operands are lowered to the *logical* opcode and
+        /// `d1 AND d2` silently computes a truthiness: 10 AND 3 yields 1
+        /// rather than 2.
+        apply_when_and_of_integer_variables_then_p4049_per_operand,
+        "
+PROGRAM main
+VAR
+    d1 : DINT;
+    d2 : DINT;
+    d3 : DINT;
+END_VAR
+    d3 := d1 AND d2;
+END_PROGRAM",
+        2,
+        Problem::OperatorOperandTypeMismatch
+    );
+
+    rule_ctx_errn!(
+        apply_when_or_of_integer_variables_then_p4049_per_operand,
+        "
+PROGRAM main
+VAR
+    d1 : DINT;
+    d2 : DINT;
+    d3 : DINT;
+END_VAR
+    d3 := d1 OR d2;
+END_PROGRAM",
+        2,
+        Problem::OperatorOperandTypeMismatch
+    );
+
+    rule_ctx_errn!(
+        apply_when_xor_of_integer_variables_then_p4049_per_operand,
+        "
+PROGRAM main
+VAR
+    d1 : DINT;
+    d2 : DINT;
+    d3 : DINT;
+END_VAR
+    d3 := d1 XOR d2;
+END_PROGRAM",
+        2,
+        Problem::OperatorOperandTypeMismatch
+    );
+
+    rule_ctx_err1!(
+        /// `NOT` over an integer reached `BOOL_NOT`, so `NOT d1` with
+        /// `d1 := 10` yielded 0 rather than -11.
+        apply_when_not_of_integer_variable_then_p4049,
+        "
+PROGRAM main
+VAR
+    d1 : DINT;
+    d2 : DINT;
+END_VAR
+    d2 := NOT d1;
+END_PROGRAM",
+        Problem::OperatorOperandTypeMismatch
+    );
+
+    rule_ctx_err1!(
+        apply_when_and_of_real_variable_then_p4049,
+        "
+PROGRAM main
+VAR
+    r : REAL;
+    b : BOOL;
+    c : BOOL;
+END_VAR
+    c := b AND r > 1.0 AND r;
+END_PROGRAM",
+        Problem::OperatorOperandTypeMismatch
+    );
 }
