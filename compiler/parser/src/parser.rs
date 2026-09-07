@@ -66,10 +66,6 @@ fn negate_literal_constant(c: ConstantKind) -> Result<ConstantKind, ConstantKind
     }
 }
 
-/// Collapses an initializer expression to `Simple` when it is exactly a
-/// literal (optionally with one leading unary minus, e.g. `-123`), and
-/// otherwise wraps it as `SimpleExpr` (the constant-expression dialect
-/// extension, folded by `xform_fold_initializer_expressions`).
 /// A member list written against a user type name: `T := (a := 1)`. The
 /// type may be a structure or a function block; the resolver decides.
 fn late_resolved_members(init: StructureInitializationDeclaration) -> InitialValueAssignmentKind {
@@ -99,6 +95,10 @@ fn late_resolved_or_enumerated(
     })
 }
 
+/// Collapses an initializer expression to `Simple` when it is exactly a
+/// literal (optionally with one leading unary minus, e.g. `-123`), and
+/// otherwise wraps it as `SimpleExpr` (the constant-expression extension,
+/// folded by `xform_fold_initializer_expressions`).
 fn resolve_initializer_expr(type_name: TypeName, e: ExprKind) -> InitialValueAssignmentKind {
     match e {
         ExprKind::Const(c) => InitialValueAssignmentKind::Simple(SimpleInitializer {
