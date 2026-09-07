@@ -186,12 +186,7 @@ impl RuleOperatorOperandTypeCheck<'_> {
 
     /// Reports P4049 when `operand`'s resolved type is one the predicate can
     /// judge and it is not acceptable where `expected` is required.
-    fn check_operand(
-        &mut self,
-        form: &OperatorFunctionForm,
-        expected: &TypeName,
-        operand: &Expr,
-    ) {
+    fn check_operand(&mut self, form: &OperatorFunctionForm, expected: &TypeName, operand: &Expr) {
         let Some(actual) = operand.resolved_type.as_ref() else {
             return;
         };
