@@ -624,6 +624,20 @@ pub fn parse(source: &str, options: &CompilerOptions) -> (Library, SemanticConte
     (analyzed, ctx)
 }
 
+/// [`CompilerOptions`] with one extension flag turned on.
+///
+/// A test that exercises a dialect-gated feature has to enable that gate, the
+/// same way a user passing `--allow-...` does. Without it the pipeline rejects
+/// the program and the test is asserting bytecode nobody can build.
+pub fn options_allowing(flag: &str) -> CompilerOptions {
+    let mut options = CompilerOptions::default();
+    assert!(
+        options.set_flag_by_key(flag, true),
+        "no such compiler option: {flag}"
+    );
+    options
+}
+
 /// Parses, analyzes, and compiles an IEC 61131-3 source string into a Container.
 pub fn parse_and_compile(source: &str, options: &CompilerOptions) -> Container {
     try_parse_and_compile(source, options).unwrap()

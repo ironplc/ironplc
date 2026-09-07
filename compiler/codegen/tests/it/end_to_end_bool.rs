@@ -30,7 +30,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 5;
   y := x > 0 AND x < 10;
@@ -45,7 +45,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 15;
   y := x > 0 AND x < 10;
@@ -60,7 +60,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 5;
   y := x > 10 OR x < 10;
@@ -75,7 +75,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 5;
   y := x > 10 OR x < 0;
@@ -90,7 +90,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 5;
   y := x > 10 XOR x < 10;
@@ -105,7 +105,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 5;
   y := x > 0 XOR x < 10;
@@ -120,7 +120,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 0;
   y := NOT x;
@@ -135,7 +135,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 5;
   y := NOT x;
@@ -149,7 +149,7 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    y : DINT;
+    y : BOOL;
   END_VAR
   y := TRUE;
 END_PROGRAM
@@ -162,7 +162,7 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    y : DINT;
+    y : BOOL;
   END_VAR
   y := FALSE;
 END_PROGRAM

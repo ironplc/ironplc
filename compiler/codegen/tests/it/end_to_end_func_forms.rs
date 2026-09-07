@@ -15,7 +15,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 10;
   y := ADD(x, 32);

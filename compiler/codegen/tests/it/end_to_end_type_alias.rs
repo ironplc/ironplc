@@ -1,12 +1,14 @@
 //! End-to-end tests for type alias resolution through codegen.
 //!
-//! These tests validate that the analyzer's `resolve_types` pass correctly
-//! resolves type aliases to their elementary types, enabling codegen to select
-//! the correct opcodes.
+//! These tests validate that the analyzer resolves type aliases to their
+//! elementary types, enabling codegen to select the correct opcodes.
+
+use crate::common::options_allowing;
 
 // BYTE is an unsigned 8-bit type; 42 fits within u8 range
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_type_alias_byte_assignment_then_correct,
+    options_allowing("allow_cross_family_widening"),
     "
 TYPE MyByte : BYTE := 0; END_TYPE
 PROGRAM main
@@ -20,8 +22,9 @@ END_PROGRAM
 );
 
 // 300 truncated to u8 = 300 - 256 = 44
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_type_alias_byte_truncation_then_correct,
+    options_allowing("allow_cross_family_widening"),
     "
 TYPE MyByte : BYTE := 0; END_TYPE
 PROGRAM main
