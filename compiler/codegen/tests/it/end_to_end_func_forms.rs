@@ -222,8 +222,8 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    true_result : DINT;
-    false_result : DINT;
+    true_result : BOOL;
+    false_result : BOOL;
   END_VAR
   true_result := NOT(FALSE);
   false_result := NOT(TRUE);
