@@ -105,9 +105,20 @@ impl FunctionSignature {
         self.span.is_builtin()
     }
 
+    /// The declared parameters a call supplies an argument for, in
+    /// declaration order.
+    ///
+    /// One definition, so the arity check and the positional binding below
+    /// cannot disagree about which parameters a caller has to pass.
+    fn declared_inputs(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = &IntermediateFunctionParameter> + Clone {
+        self.parameters.iter().filter(|p| p.is_input)
+    }
+
     /// Returns the number of input parameters.
     pub fn input_parameter_count(&self) -> usize {
-        self.parameters.iter().filter(|p| p.is_input).count()
+        self.declared_inputs().count()
     }
 
     /// Pairs each positional input argument of a call with the parameter it
@@ -140,7 +151,7 @@ impl FunctionSignature {
     /// never when there is none, so a caller with no argument list to zip
     /// against must bound what it takes.
     pub fn input_parameters(&self) -> impl Iterator<Item = IntermediateFunctionParameter> + '_ {
-        let declared = self.parameters.iter().filter(|p| p.is_input);
+        let declared = self.declared_inputs();
         let extension = self
             .is_extensible
             .then(|| declared.clone().next_back())
