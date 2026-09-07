@@ -520,7 +520,9 @@ Builtins are monomorphized by the compiler: a generic IEC 61131-3 signature (`AN
 | 0x0422–0x0430 | `MUX` on I64 (base 0x0420 + arity) |
 | 0x0442–0x0450 | `MUX` on F32 (base 0x0440 + arity) |
 | 0x0462–0x0470 | `MUX` on F64 (base 0x0460 + arity) |
-| 0x0471–0xFFFF | Unassigned |
+| 0x0471–0x047F | Unassigned |
+| 0x0480–0x04FF | `STRING_TO_<numeric>` under behavior policies (base 0x0480 + target × 8 + policies); see [String-to-number under behavior policies](#string-to-number-under-behavior-policies) |
+| 0x0500–0xFFFF | Unassigned |
 
 #### Numeric and selection builtins
 
@@ -643,6 +645,31 @@ These are dispatched inline in the VM main loop rather than through the shared b
 | 0x03A2 | CMP_STR | 2 | [data_offset, data_offset] → [I32] | Three-way lexicographic compare; −1 / 0 / +1 |
 
 `CMP_STR` is how the compiler lowers `=`, `<>`, `<`, `<=`, `>`, `>=` on strings: emit `CMP_STR`, then compare its result to 0 with the ordinary integer comparison opcodes.
+
+`CONV_STR_TO_I32` and `CONV_STR_TO_F32` are the conversions that have not yet moved onto the policy block below; they trim whitespace, accept Rust's decimal syntax, and yield 0 on failure.
+
+#### String-to-number under behavior policies
+
+A `STRING_TO_<numeric>` conversion whose behavior is selected at compile time ([ADR-0049](../adrs/0049-behavior-policies-selected-at-compile-time.md)) is encoded as a func_id that names its target type and both of its policies, following rule 3 of the encoding (the func_id names the family member):
+
+```text
+func_id = 0x0480 + target * 8 + non_numeric * 2 + failure
+```
+
+`non_numeric` is 0 `reject`, 1 `ignore-trailing`, 2 `ignore-surrounding`; `failure` is 0 `trap`, 1 `zero`. Each target owns a stride of eight (two slots spare). The block runs to 0x04FF; `builtin::str_to_num::decode` recovers the target and policies from an ID, and an ID in the block that names no conversion traps `V9007` like any other unassigned func_id. The semantics of each alternative are specified in [behavior-policies.md](behavior-policies.md).
+
+All take one argument: `[data_offset] → [value]`. A `WSTRING` operand traps `V9014`.
+
+| func_id | Name | Non-numeric | Failure |
+|---------|------|-------------|---------|
+| 0x0480 | CONV_STR_TO_U32_REJECT_TRAP | reject | trap `V4006` |
+| 0x0481 | CONV_STR_TO_U32_REJECT_ZERO | reject | 0 |
+| 0x0482 | CONV_STR_TO_U32_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x0483 | CONV_STR_TO_U32_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
+| 0x0484 | CONV_STR_TO_U32_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x0485 | CONV_STR_TO_U32_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
+
+Target 0 is U32 (`STRING_TO_UDINT`). Out of range is a failure under every non-numeric alternative; the result is never wrapped.
 
 #### MUX
 

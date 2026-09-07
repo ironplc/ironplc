@@ -16,6 +16,7 @@ mod header;
 pub mod id_types;
 mod instruction;
 pub mod opcode;
+pub mod policy;
 mod string_layout;
 mod task_type;
 
@@ -91,3 +92,5 @@ mod spec_requirements {
 }
 #[cfg(test)]
 mod spec_conformance;
+#[cfg(test)]
+mod spec_conformance_behavior_policies;
