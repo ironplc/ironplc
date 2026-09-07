@@ -87,6 +87,7 @@ fn parse_when_first_steps_func_avg_val_then_builds_structure() {
                         initial_value: Some(ConstantKind::RealLiteral(RealLiteral {
                             value: 5.1,
                             data_type: None,
+                            span: SourceSpan::default(),
                         })),
                     }),
                     block: next_block_id(),
