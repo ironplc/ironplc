@@ -5,13 +5,13 @@
 #![allow(clippy::result_large_err)]
 
 use ironplc_analyzer::SemanticContext;
-use ironplc_codegen::compile;
 use ironplc_container::Container;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
+use ironplc_project::project::{MemoryBackedProject, Project};
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::FaultContext;
 pub use ironplc_vm::VmBuffers;
@@ -573,25 +573,54 @@ macro_rules! assert_bytecode {
     }};
 }
 
-/// Parses an IEC 61131-3 source string and runs the analyzer over it.
+/// Compiles an IEC 61131-3 source string through the **production pipeline**.
 ///
-/// Runs the **whole** analysis, not just type resolution: `ironplcc` only
-/// reaches codegen when `semantic()` reports nothing (see
-/// `project::compile::compile`), so a codegen test that skipped the semantic
-/// rules could assert bytecode for a program the shipped compiler refuses to
-/// compile. Panicking on a diagnostic here keeps every codegen test honest
-/// about being a program a user could actually build.
+/// This is deliberately `ironplc_project::compile::compile` -- the same
+/// function `ironplcc` calls -- rather than a test-local reassembly of parse,
+/// analyze and codegen. A harness that rebuilt the pipeline could drift from
+/// it: the old one ran `resolve_types` and skipped the semantic rules, so a
+/// codegen test could assert bytecode for a program the shipped compiler
+/// refuses to compile. That is how the WSTRING literal typing bug (#1550)
+/// survived a full end-to-end suite.
 ///
-/// A test that wants to assert a program is *rejected* belongs in the
-/// analyzer's own rule tests, not here.
+/// Returns the diagnostics on any problem, so codegen tests exercise exactly
+/// the programs a user could build. A test that wants to assert a program is
+/// *rejected* belongs with the analyzer's rule tests.
+fn compile_via_pipeline(
+    source: &str,
+    options: &CompilerOptions,
+) -> Result<Container, Diagnostic> {
+    let mut project = MemoryBackedProject::new(options.clone());
+    project.add_source(FileId::from_string("main.st"), source.to_owned());
+    let output = ironplc_project::compile::compile(
+        &mut project,
+        options,
+        &ironplc_codegen::EmptyLookup,
+        vec![],
+    );
+    match output.container {
+        Some(container) if output.diagnostics.is_empty() => Ok(container),
+        // The pipeline reports every problem it found; a test asserting a
+        // rejection cares about the first one, as the CLI user sees it.
+        _ => Err(output
+            .diagnostics
+            .into_iter()
+            .next()
+            .unwrap_or_else(Diagnostic::internal_error)),
+    }
+}
+
+/// Parses and analyzes a source string, returning the analyzed artifacts.
+///
+/// Runs the production pipeline first so the source is known to be a program
+/// `ironplcc` accepts, then hands back the analyzed library and context for
+/// tests that inspect them directly.
 pub fn parse(source: &str, options: &CompilerOptions) -> (Library, SemanticContext) {
+    if let Err(d) = compile_via_pipeline(source, options) {
+        panic!("source does not compile, so ironplcc would reject it: {d:?}");
+    }
     let library = parse_program(source, &FileId::default(), options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
-    assert!(
-        !ctx.has_diagnostics(),
-        "source does not analyze cleanly, so ironplcc would never codegen it: {:?}",
-        ctx.diagnostics(),
-    );
     (analyzed, ctx)
 }
 
@@ -605,14 +634,7 @@ pub fn try_parse_and_compile(
     source: &str,
     options: &CompilerOptions,
 ) -> Result<Container, Diagnostic> {
-    let (library, context) = parse(source, options);
-    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
-    compile(
-        &library,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
+    compile_via_pipeline(source, options)
 }
 
 /// Parses, analyzes, compiles, and runs one scan cycle.
@@ -628,15 +650,7 @@ pub fn parse_and_try_run(
     source: &str,
     options: &CompilerOptions,
 ) -> Result<(Container, VmBuffers), FaultContext> {
-    let (library, context) = parse(source, options);
-    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
-    let container = compile(
-        &library,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
-    .unwrap();
+    let container = parse_and_compile(source, options);
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs)?;
@@ -678,15 +692,7 @@ pub fn parse_and_run_rounds(
     options: &CompilerOptions,
     f: impl FnOnce(&mut ironplc_vm::VmRunning<'_>),
 ) {
-    let (library, context) = parse(source, options);
-    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
-    let container = compile(
-        &library,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
-    .unwrap();
+    let container = parse_and_compile(source, options);
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = load_and_start(&container, &mut bufs).unwrap();
     assert_stack_balanced(&vm, "after init");
