@@ -63,6 +63,7 @@ use ironplc_dsl::{
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 use std::convert::Infallible;
+use std::fmt;
 
 use crate::intermediates::operator_function_form::{
     form_of_operator, FormOf, OperatorFunctionForm,
@@ -173,7 +174,16 @@ impl RuleOperatorOperandTypeCheck<'_> {
     /// Every operator this rule checks asks the same question of each of its
     /// operands, so arity is just the length of `operands`: two for an
     /// arithmetic or compare expression, one for `NOT`.
-    fn check_operands(&mut self, op: &str, form: &OperatorFunctionForm, operands: &[&Expr]) {
+    ///
+    /// `op` is the operator itself rather than its rendered name, so the
+    /// three callers each pass their own enum and the compiler still checks
+    /// which one. It is rendered only when a diagnostic is actually built.
+    fn check_operands(
+        &mut self,
+        op: &impl fmt::Display,
+        form: &OperatorFunctionForm,
+        operands: &[&Expr],
+    ) {
         let expected = form.operand_type();
         for operand in operands {
             self.check_operand(op, &expected, operand);
@@ -182,7 +192,7 @@ impl RuleOperatorOperandTypeCheck<'_> {
 
     /// Reports P4049 when `operand`'s resolved type is one the predicate can
     /// judge and it is not acceptable where `expected` is required.
-    fn check_operand(&mut self, op: &str, expected: &TypeName, operand: &Expr) {
+    fn check_operand(&mut self, op: &impl fmt::Display, expected: &TypeName, operand: &Expr) {
         let Some(actual) = operand.resolved_type.as_ref() else {
             return;
         };
@@ -208,21 +218,21 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
 
     fn visit_binary_expr(&mut self, node: &BinaryExpr) -> Result<Self::Value, Infallible> {
         if let Some(form) = checked_form(&node.op) {
-            self.check_operands(&node.op.to_string(), form, &[&node.left, &node.right]);
+            self.check_operands(&node.op, form, &[&node.left, &node.right]);
         }
         node.recurse_visit(self)
     }
 
     fn visit_compare_expr(&mut self, node: &CompareExpr) -> Result<Self::Value, Infallible> {
         if let Some(form) = checked_compare_form(&node.op) {
-            self.check_operands(&node.op.to_string(), form, &[&node.left, &node.right]);
+            self.check_operands(&node.op, form, &[&node.left, &node.right]);
         }
         node.recurse_visit(self)
     }
 
     fn visit_unary_expr(&mut self, node: &UnaryExpr) -> Result<Self::Value, Infallible> {
         if let Some(form) = checked_unary_form(&node.op) {
-            self.check_operands(&node.op.to_string(), form, &[&node.term]);
+            self.check_operands(&node.op, form, &[&node.term]);
         }
         node.recurse_visit(self)
     }
