@@ -49,7 +49,7 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::Located,
+    core::{Located, SourceSpan},
     diagnostic::{Diagnostic, Label},
     scope::ScopeNode,
     textual::*,
@@ -137,15 +137,25 @@ impl RuleConstantRange<'_> {
             || format!("-{}", literal.value.value.value),
             |value| value.to_string(),
         );
+        self.report_out_of_range(constant.span(), &reported, (minimum, maximum));
+    }
+
+    /// Reports the value spelled `reported` as outside `range`.
+    ///
+    /// Every out-of-range constant is reported the same way, whatever
+    /// context it was found in, so that the range that decides the outcome
+    /// is the only thing that varies between reports.
+    fn report_out_of_range(&mut self, span: SourceSpan, reported: &String, range: (i128, i128)) {
+        let (minimum, maximum) = range;
         self.diagnostics.push(
             Diagnostic::problem(
                 Problem::ConstantOverflow,
                 Label::span(
-                    constant.span(),
+                    span,
                     format!("Value must be in the range {minimum} to {maximum}"),
                 ),
             )
-            .with_context("value", &reported)
+            .with_context("value", reported)
             .with_context("minimum", &minimum.to_string())
             .with_context("maximum", &maximum.to_string()),
         );
@@ -254,17 +264,10 @@ impl RuleConstantRange<'_> {
                 Err(_) => continue,
             };
             if value < minimum || value > maximum {
-                self.diagnostics.push(
-                    Diagnostic::problem(
-                        Problem::ConstantOverflow,
-                        Label::span(
-                            label.value.span(),
-                            format!("Value must be in the range {minimum} to {maximum}"),
-                        ),
-                    )
-                    .with_context("value", &value.to_string())
-                    .with_context("minimum", &minimum.to_string())
-                    .with_context("maximum", &maximum.to_string()),
+                self.report_out_of_range(
+                    label.value.span(),
+                    &value.to_string(),
+                    (minimum, maximum),
                 );
             }
         }
