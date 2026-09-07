@@ -203,20 +203,20 @@ requirement; a parametrized table names the cases that cover each.
 
 | Requirement  | Test function                                                                   | File                                                              | Kind        |
 |--------------|---------------------------------------------------------------------------------|-------------------------------------------------------------------|-------------|
-| REQ-PAB-parser-001  | `lexer_spec_req_pab_001_percent_x_digits_tokenizes_as_partial_access_bit`       | `compiler/parser/src/tests/`                                    | lexer       |
-| REQ-PAB-parser-002  | `lexer_spec_req_pab_002_direct_address_still_takes_precedence`                  | `compiler/parser/src/tests/`                                    | lexer       |
-| REQ-PAB-parser-010  | `parser_spec_req_pab_010_dot_percent_x_accepted_on_simple_var`                  | `compiler/parser/src/tests/`                                    | parser      |
-| REQ-PAB-parser-011  | `parser_spec_req_pab_011_dot_percent_x_accepted_after_array_subscript`          | `compiler/parser/src/tests/`                                    | parser      |
-| REQ-PAB-parser-012  | `parser_spec_req_pab_012_dot_percent_x_accepted_after_struct_field`             | `compiler/parser/src/tests/`                                    | parser      |
-| REQ-PAB-parser-020  | `parser_spec_req_pab_020_dot_percent_x_and_dot_n_produce_equal_ast`             | `compiler/parser/src/tests/`                                    | AST         |
+| REQ-PAB-parser-001  | `lexer_spec_req_pab_001_percent_x_digits_tokenizes_as_partial_access_bit`       | `compiler/parser/src/tests/partial_access.rs`               | lexer       |
+| REQ-PAB-parser-002  | `lexer_spec_req_pab_002_direct_address_still_takes_precedence`                  | `compiler/parser/src/tests/partial_access.rs`               | lexer       |
+| REQ-PAB-parser-010  | `parser_spec_req_pab_010_dot_percent_x_accepted_on_simple_var`                  | `compiler/parser/src/tests/partial_access.rs`               | parser      |
+| REQ-PAB-parser-011  | `parser_spec_req_pab_011_dot_percent_x_accepted_after_array_subscript`          | `compiler/parser/src/tests/partial_access.rs`               | parser      |
+| REQ-PAB-parser-012  | `parser_spec_req_pab_012_dot_percent_x_accepted_after_struct_field`             | `compiler/parser/src/tests/partial_access.rs`               | parser      |
+| REQ-PAB-parser-020  | `parser_spec_req_pab_020_dot_percent_x_and_dot_n_produce_equal_ast`             | `compiler/parser/src/tests/partial_access.rs`               | AST         |
 | REQ-PAB-analyzer-030  | `analyzer_spec_req_pab_030_dot_percent_x_bit_out_of_range_is_rejected`          | `compiler/analyzer/src/rule_bit_and_partial_access_range.rs` (tests mod)      | analyzer    |
-| REQ-PAB-codegen-040  | `codegen_spec_req_pab_040_read_percent_x_on_byte_returns_bit`                   | `compiler/codegen/tests/end_to_end_bit_access.rs`                 | e2e         |
-| REQ-PAB-codegen-041  | `codegen_spec_req_pab_041_read_percent_x_on_byte_array_element_returns_bit`    | `compiler/codegen/tests/end_to_end_bit_access.rs`                 | e2e (user's case) |
-| REQ-PAB-codegen-042  | `codegen_spec_req_pab_042_write_percent_x_on_byte_array_preserves_other_bits`  | `compiler/codegen/tests/end_to_end_bit_access.rs`                 | e2e         |
-| REQ-PAB-parser-050  | `parser_spec_req_pab_050_disabled_flag_produces_partial_access_syntax_disabled` | `compiler/parser/src/tests/`                                    | negative    |
+| REQ-PAB-codegen-040  | `codegen_spec_req_pab_040_read_percent_x_on_byte_returns_bit`                   | `compiler/codegen/tests/it/end_to_end_bit_access.rs`              | e2e         |
+| REQ-PAB-codegen-041  | `codegen_spec_req_pab_041_read_percent_x_on_byte_array_element_returns_bit`    | `compiler/codegen/tests/it/end_to_end_bit_access.rs`              | e2e (user's case) |
+| REQ-PAB-codegen-042  | `codegen_spec_req_pab_042_write_percent_x_on_byte_array_preserves_other_bits`  | `compiler/codegen/tests/it/end_to_end_bit_access.rs`              | e2e         |
+| REQ-PAB-parser-050  | `parser_spec_req_pab_050_disabled_flag_produces_partial_access_syntax_disabled` | `compiler/parser/src/tests/partial_access.rs`               | negative    |
 | REQ-PAB-parser-051  | `options_spec_req_pab_051_rusty_dialect_enables_partial_access_syntax`          | `compiler/parser/src/options.rs` (tests mod)                      | options     |
 | REQ-PAB-parser-052  | `options_spec_req_pab_052_ed3_dialect_enables_partial_access_syntax`            | `compiler/parser/src/options.rs` (tests mod)                      | options     |
-| REQ-PAB-plc2plc-060  | `plc2plc_spec_req_pab_060_percent_x_round_trips_through_short_form`             | `compiler/plc2plc/src/tests/`                                   | round-trip  |
+| REQ-PAB-plc2plc-060  | `plc2plc_spec_req_pab_060_percent_x_round_trips_through_short_form`             | `compiler/plc2plc/src/tests/partial_access.rs`              | round-trip  |
 | REQ-PAB-parser-100  | `lexer_spec_req_pab_100_percent_b_w_d_l_digits_tokenize_as_partial_access_selectors` | `compiler/parser/src/tests/partial_access.rs`                | lexer       |
 | REQ-PAB-parser-101  | `parser_spec_req_pab_101_wider_selectors_accepted_in_every_position`         | `compiler/parser/src/tests/partial_access.rs`                     | parser      |
 | REQ-PAB-parser-110  | `parser_spec_req_pab_110_wider_selector_lowers_to_partial_access_variable`    | `compiler/parser/src/tests/partial_access.rs`                     | AST         |
