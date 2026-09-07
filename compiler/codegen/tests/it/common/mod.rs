@@ -573,13 +573,25 @@ macro_rules! assert_bytecode {
     }};
 }
 
-/// Parses an IEC 61131-3 source string and runs type resolution via the analyzer.
+/// Parses an IEC 61131-3 source string and runs the analyzer over it.
 ///
-/// The analyzer populates `Expr.resolved_type` and resolves type aliases in
-/// variable declarations, which codegen requires.
+/// Runs the **whole** analysis, not just type resolution: `ironplcc` only
+/// reaches codegen when `semantic()` reports nothing (see
+/// `project::compile::compile`), so a codegen test that skipped the semantic
+/// rules could assert bytecode for a program the shipped compiler refuses to
+/// compile. Panicking on a diagnostic here keeps every codegen test honest
+/// about being a program a user could actually build.
+///
+/// A test that wants to assert a program is *rejected* belongs in the
+/// analyzer's own rule tests, not here.
 pub fn parse(source: &str, options: &CompilerOptions) -> (Library, SemanticContext) {
     let library = parse_program(source, &FileId::default(), options).unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], options).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
+    assert!(
+        !ctx.has_diagnostics(),
+        "source does not analyze cleanly, so ironplcc would never codegen it: {:?}",
+        ctx.diagnostics(),
+    );
     (analyzed, ctx)
 }
 
