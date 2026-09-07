@@ -127,7 +127,7 @@ fn compile_when_not_expression_then_produces_bool_not_bytecode() {
 PROGRAM main
   VAR
     x : DINT;
-    y : BOOL;
+    y : DINT;
   END_VAR
   x := 10;
   y := NOT x;

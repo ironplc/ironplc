@@ -120,7 +120,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : BOOL;
+    y : DINT;
   END_VAR
   x := 0;
   y := NOT x;
@@ -135,7 +135,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : BOOL;
+    y : DINT;
   END_VAR
   x := 5;
   y := NOT x;
