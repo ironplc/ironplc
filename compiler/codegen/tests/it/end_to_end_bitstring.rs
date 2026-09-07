@@ -1,6 +1,6 @@
 //! End-to-end integration tests for bit string types (BYTE, WORD, DWORD, LWORD).
 
-use crate::common::{parse_and_run, options_allowing};
+use crate::common::{options_allowing, parse_and_run};
 use ironplc_parser::options::CompilerOptions;
 
 // --- BYTE (8-bit unsigned, 0..255) ---

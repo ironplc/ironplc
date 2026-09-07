@@ -11,7 +11,7 @@ use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
-use ironplc_project::project::{MemoryBackedProject, Project};
+use ironplc_project::project::MemoryBackedProject;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::FaultContext;
 pub use ironplc_vm::VmBuffers;
@@ -586,11 +586,8 @@ macro_rules! assert_bytecode {
 /// Returns the diagnostics on any problem, so codegen tests exercise exactly
 /// the programs a user could build. A test that wants to assert a program is
 /// *rejected* belongs with the analyzer's rule tests.
-fn compile_via_pipeline(
-    source: &str,
-    options: &CompilerOptions,
-) -> Result<Container, Diagnostic> {
-    let mut project = MemoryBackedProject::new(options.clone());
+fn compile_via_pipeline(source: &str, options: &CompilerOptions) -> Result<Container, Diagnostic> {
+    let mut project = MemoryBackedProject::new(*options);
     project.add_source(FileId::from_string("main.st"), source.to_owned());
     let output = ironplc_project::compile::compile(
         &mut project,
