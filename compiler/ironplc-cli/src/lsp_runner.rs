@@ -245,9 +245,7 @@ fn compile_to_bytes(source: &str, options: &CompilerOptions) -> Result<Vec<u8>, 
         });
     }
 
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        system_uptime_global: options.allow_system_uptime_global,
-    };
+    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
     let container = codegen_compile(
         &library,
         &context,
