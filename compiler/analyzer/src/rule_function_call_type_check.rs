@@ -1234,7 +1234,94 @@ END_VAR
 END_PROGRAM"
     );
 
+    // Call arguments go through the same resolved type, so a wide literal
+    // reaches a WSTRING parameter and a narrow one does not.
+    rule_ctx_ok!(
+        apply_when_wstring_parameter_given_wide_literal_then_ok,
+        "
+FUNCTION wide_len : INT
+VAR_INPUT
+    w : WSTRING[10];
+END_VAR
+    wide_len := LEN(w);
+END_FUNCTION
+
+PROGRAM main
+VAR
+    n : INT;
+END_VAR
+    n := wide_len(\"abc\");
+END_PROGRAM"
+    );
+
+    rule_ctx_err1!(
+        apply_when_wstring_parameter_given_narrow_literal_then_error,
+        "
+FUNCTION wide_len : INT
+VAR_INPUT
+    w : WSTRING[10];
+END_VAR
+    wide_len := LEN(w);
+END_FUNCTION
+
+PROGRAM main
+VAR
+    n : INT;
+END_VAR
+    n := wide_len('abc');
+END_PROGRAM",
+        Problem::FunctionCallArgTypeMismatch
+    );
+
     // --- Assignment statement type checks (P4035) ---
+
+    // A character-string literal is typed by its delimiter (IEC 61131-3
+    // Table 5), so each spelling belongs to exactly one of the two targets.
+    rule_ctx_ok!(
+        apply_when_wstring_target_assigned_wide_literal_then_ok,
+        "
+PROGRAM main
+VAR
+    w : WSTRING[10];
+END_VAR
+    w := \"abc\";
+END_PROGRAM"
+    );
+
+    rule_ctx_err1!(
+        apply_when_wstring_target_assigned_narrow_literal_then_error,
+        "
+PROGRAM main
+VAR
+    w : WSTRING[10];
+END_VAR
+    w := 'abc';
+END_PROGRAM",
+        Problem::AssignmentTypeMismatch
+    );
+
+    rule_ctx_ok!(
+        apply_when_string_target_assigned_narrow_literal_then_ok,
+        "
+PROGRAM main
+VAR
+    s : STRING[10];
+END_VAR
+    s := 'abc';
+END_PROGRAM"
+    );
+
+    rule_ctx_err1!(
+        apply_when_string_target_assigned_wide_literal_then_error,
+        "
+PROGRAM main
+VAR
+    s : STRING[10];
+END_VAR
+    s := \"abc\";
+END_PROGRAM",
+        Problem::AssignmentTypeMismatch
+    );
 
     rule_ctx_err1!(
         apply_when_bool_target_assigned_real_expr_then_error,

@@ -63,6 +63,11 @@ quotes:
            w := CONCAT(w, "d");
        END_IF;
 
+A literal written with the wrong quotes is a type mismatch rather than a
+mixing error, so it is reported as
+:doc:`/reference/compiler/problems/P4035` for an assignment or
+:doc:`/reference/compiler/problems/P4026` for a call argument.
+
 See Also
 --------
 
