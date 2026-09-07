@@ -46,6 +46,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
+    intermediates::global_vars::collect_global_var_decls,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
@@ -61,15 +62,22 @@ pub fn apply(
 
     let mut diagnostics = Vec::new();
 
-    // Collect the global constants
-    if let Err(errs) = run_rule(
-        FindGlobalConstVars {
-            global_consts: &mut global_consts,
-            diagnostics: Vec::new(),
-        },
-        lib,
-    ) {
-        diagnostics.extend(errs);
+    // Collect the global constants. Only a global constant obliges its
+    // externals to be constant. A `VAR CONSTANT` local to one unit says
+    // nothing about a global that happens to share its name.
+    for decl in collect_global_var_decls(lib) {
+        if decl.qualifier != DeclarationQualifier::Constant {
+            continue;
+        }
+        match &decl.identifier {
+            VariableIdentifier::Symbol(name) => {
+                global_consts.insert(name.clone());
+            }
+            // A located CONSTANT declaration (`AT %QW0 : INT`) is not
+            // handled yet. Record that and keep collecting, so the rule
+            // still reports on every other declaration.
+            VariableIdentifier::Direct(_) => diagnostics.push(Diagnostic::todo()),
+        }
     }
 
     // Check that externals with the same name are constants. This runs even
@@ -90,38 +98,6 @@ pub fn apply(
         Ok(())
     } else {
         Err(diagnostics)
-    }
-}
-
-struct FindGlobalConstVars<'a> {
-    global_consts: &'a mut HashSet<Id>,
-    diagnostics: Vec<Diagnostic>,
-}
-impl DiagnosticVisitor for FindGlobalConstVars<'_> {
-    fn into_diagnostics(self) -> Vec<Diagnostic> {
-        self.diagnostics
-    }
-}
-
-impl Visitor<Infallible> for FindGlobalConstVars<'_> {
-    type Value = ();
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        // Only a global constant obliges its externals to be constant. A
-        // `VAR CONSTANT` local to one unit says nothing about a global that
-        // happens to share its name.
-        if node.var_type == VariableType::Global && node.qualifier == DeclarationQualifier::Constant
-        {
-            match &node.identifier {
-                VariableIdentifier::Symbol(name) => {
-                    self.global_consts.insert(name.clone());
-                }
-                // A located CONSTANT declaration (`AT %QW0 : INT`) is not
-                // handled yet. Record that and keep collecting, so the rule
-                // still reports on every other declaration.
-                VariableIdentifier::Direct(_) => self.diagnostics.push(Diagnostic::todo()),
-            }
-        }
-        Ok(())
     }
 }
 
