@@ -122,10 +122,14 @@ impl RuleConstantRange<'_> {
         let ConstantKind::IntegerLiteral(literal) = constant else {
             return;
         };
-        let Some((minimum, maximum)) = value_range::of(expected) else {
-            return;
-        };
+        if let Some(range) = value_range::of(expected) {
+            self.check_literal(literal, range);
+        }
+    }
 
+    /// Reports `literal` when its value is outside `range`.
+    fn check_literal(&mut self, literal: &IntegerLiteral, range: (i128, i128)) {
+        let (minimum, maximum) = range;
         let value = literal_value(literal);
         if value.is_some_and(|value| value >= minimum && value <= maximum) {
             return;
@@ -137,7 +141,7 @@ impl RuleConstantRange<'_> {
             || format!("-{}", literal.value.value.value),
             |value| value.to_string(),
         );
-        self.report_out_of_range(constant.span(), &reported, (minimum, maximum));
+        self.report_out_of_range(literal.value.value.span(), &reported, range);
     }
 
     /// Reports the value spelled `reported` as outside `range`.
