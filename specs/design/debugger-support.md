@@ -89,7 +89,7 @@ The debugger is four layers:
 | **Debug info** | `codegen` crate + `container` crate | Emit and parse line maps, variable names in the debug section |
 | **VM execution model** | `vm` crate | Iterative dispatch with an explicit `FrameStack`; pausable/resumable. Existing recursive `execute_with_hook` is retired. |
 | **VM debug engine** | `vm` crate | A `DebugHook` implementation (`DebuggerHook`) that holds the breakpoint table, step controller, and logpoint table; tracks call depth via `before_call`/`after_return` callbacks |
-| **DAP server** | `vm-cli` crate (feature-gated) | Translate DAP protocol messages to VM debug engine API calls |
+| **DAP server** | `vm-cli` crate (`ironplcvmd` binary) | Translate DAP protocol messages to VM debug engine API calls |
 | **VS Code integration** | `integrations/vscode` | Launch configuration, debug adapter descriptor, UI contributions |
 
 ### Why a separate DAP binary?
@@ -1438,7 +1438,7 @@ This supersedes the original decision to feature-gate DAP behind `--features dap
 **Status:** implemented.
 
 **Adapter invocation (as shipped).** Phase 4 shipped the DAP server as a
-**separate binary, `ironplcvmd`** (feature-gated on `vm-cli`), that speaks DAP
+**separate binary, `ironplcvmd`** (a second `[[bin]]` of `vm-cli`), that speaks DAP
 over stdin/stdout and takes **no CLI arguments**; the program under debug is
 delivered by the `launch` request's `arguments.program` field (a path to a
 compiled `.iplc` container). Phase 5 matches that: the adapter spawns

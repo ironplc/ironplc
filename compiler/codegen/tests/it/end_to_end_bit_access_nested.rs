@@ -1,20 +1,21 @@
-//! Examples demonstrating bit-access paths that were previously not
-//! implemented by PR #916 (partial-access bit syntax). Each test exercises a
-//! specific NotImplemented branch that needs to be filled in:
+//! End-to-end tests for bit access on nested and 64-bit bases, the paths
+//! that sit beyond a plain variable or a 32-bit array element:
 //!
-//!   1. Bit write on an LWORD/LINT array element (W64 array-element path).
-//!   2. Bit access on an array that is a field of a struct (the
-//!      "non-trivial array base" branch).
-//!   3. Bit read/write on a struct field.
+//!   1. Bit write on an LWORD/LINT array element (the 64-bit array-element
+//!      path).
+//!   2. Bit read/write on a struct field.
+//!   3. The `%Xn` form on a struct field and on an LWORD array element.
+//!   4. Bit access on an array that is a field of a struct.
 //!
-//! These tests fail before implementation and pass after.
+//! `end_to_end_bit_access.rs` covers the plain-variable and 32-bit
+//! array-element cases.
 
 use crate::common::{parse_and_run, try_parse_and_compile};
 use ironplc_parser::options::CompilerOptions;
 
-// --- 1. Bit write on an LWORD array element. Before the fix, this produces a
-//        NotImplemented diagnostic in compile_bit_access_assignment_on_array
-//        because element_vti.op_width == OpWidth::W64.
+// --- 1. Bit write on an LWORD array element: the 64-bit branch of
+//        compile_bit_access_assignment_on_array (element_vti.op_width ==
+//        OpWidth::W64).
 
 // x = arr[1]; arr[1] bit 40 = 2^40 = 1099511627776
 e2e_i64!(
@@ -67,10 +68,9 @@ END_PROGRAM
     &[(1, 0xFF00_FF00_FF00_FF01_u64 as i64)],
 );
 
-// --- 2. Bit access on an array that is a struct field. Before the fix,
-//        compile_bit_access_assignment_on_array / compile_variable_read
-//        cannot resolve the array (it's not in ctx.array_vars) and produces
-//        "Bit access on non-trivial array base is not yet supported".
+// --- 2. Bit access on a struct field: the base is a Structured variable, so
+//        the slot is resolved through the struct chain rather than
+//        ctx.array_vars.
 
 // 0x05 = 0b00000101: bit 0 = 1, bit 2 = 1.
 e2e_i32!(
@@ -261,9 +261,9 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i64(), 1099511627776);
 }
 
-// --- Sanity check: previously-implemented paths still work. These duplicate
-// tests in end_to_end_bit_access.rs but with distinct names so a regression
-// in the new implementation can be localized.
+// --- Sanity check: the 32-bit array-element path. This duplicates a test in
+// end_to_end_bit_access.rs under a distinct name so a regression in the
+// nested paths can be told apart from one in the plain path.
 
 // x is the scalar we wrote arr[0] into. vars[0] is the array base, not a scalar.
 e2e_i32!(
@@ -282,10 +282,10 @@ END_PROGRAM
     &[(1, 65536)],
 );
 
-// --- Compilation-failure sanity tests (showing what previously errored).
+// --- Compile-only checks for the same paths.
 
-/// Before the fix, `arr[0].0 := TRUE;` on an LWORD array produced a
-/// NotImplemented error. After the fix, it compiles successfully.
+/// `arr[0].0 := TRUE;` on an LWORD array compiles (the 64-bit
+/// array-element path).
 #[test]
 fn end_to_end_when_write_bit_on_lword_array_then_compiles() {
     let source = "
@@ -304,9 +304,8 @@ END_PROGRAM
     );
 }
 
-/// Before the fix, `s.flags.0 := TRUE;` produced a resolver error since the
-/// bit-access codegen doesn't handle a Structured base. After the fix, it
-/// compiles.
+/// `s.flags.0 := TRUE;` compiles (bit-access codegen accepts a Structured
+/// base).
 #[test]
 fn end_to_end_when_write_bit_on_struct_field_then_compiles() {
     let source = "
