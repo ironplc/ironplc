@@ -224,6 +224,33 @@ fn builtin_func_ids_when_unnamed_arithmetic_builtins_then_pinned_values() {
 }
 
 #[test]
+fn builtin_func_ids_when_string_to_u32_policy_block_then_pinned_values() {
+    // The STRING_TO_<numeric> policy block (ADR-0049): each row is a
+    // permanent compiler/VM commitment, laid out as
+    // BASE + target * 8 + non_numeric * 2 + failure.
+    assert_eq!(opcode::builtin::str_to_num::BASE, 0x0480);
+    assert_eq!(opcode::builtin::str_to_num::END, 0x04FF);
+    assert_eq!(opcode::builtin::CONV_STR_TO_U32_REJECT_TRAP, 0x0480);
+    assert_eq!(opcode::builtin::CONV_STR_TO_U32_REJECT_ZERO, 0x0481);
+    assert_eq!(
+        opcode::builtin::CONV_STR_TO_U32_IGNORE_TRAILING_TRAP,
+        0x0482
+    );
+    assert_eq!(
+        opcode::builtin::CONV_STR_TO_U32_IGNORE_TRAILING_ZERO,
+        0x0483
+    );
+    assert_eq!(
+        opcode::builtin::CONV_STR_TO_U32_IGNORE_SURROUNDING_TRAP,
+        0x0484
+    );
+    assert_eq!(
+        opcode::builtin::CONV_STR_TO_U32_IGNORE_SURROUNDING_ZERO,
+        0x0485
+    );
+}
+
+#[test]
 fn opcode_constants_when_fb_family_then_pinned_bytes() {
     assert_eq!(opcode::FB_LOAD_INSTANCE, 0x98);
     assert_eq!(opcode::FB_STORE_PARAM, 0x9C);
