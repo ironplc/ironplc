@@ -37,12 +37,24 @@ shape):
 - `TwincatInterfaceSolution/PlcAxis/POUs/MAIN.TcPOU` — declares an
   `FB_Axis` instance and calls `Start()` on it
 
-Register one new e2e test in `ironplc-cli/tests/cli.rs`, mirroring
-`check_when_twincat_solution_declares_pou_methods_then_ok`: run
-`ironplcc check --dialect twincat` against the new solution directory
-and assert success with empty stdout. `--dialect twincat` already turns
-on `allow_fb_inheritance` (confirmed in `parser/src/options.rs`), so no
-extra flag is needed, same as the existing method-solution test.
+Register one new e2e test in `ironplc-cli/tests/cli.rs`. Unlike the
+`.TcPOU`/`<Method>` precedent, this cannot be a success-path test:
+`analyzer/src/rule_unsupported_extension.rs` unconditionally flags
+`INTERFACE` and `IMPLEMENTS` as P9999 ("recognized but not yet
+supported") regardless of dialect -- interface dispatch is a later
+ADR-0041 phase, not yet built. Discovered while implementing, after the
+original plan assumed a happy-path test; the existing inline analyzer
+test `apply_when_interface_declaration_then_p9999` confirms this is
+deliberate, current behavior, not a bug to fix here.
+
+So the new test asserts `ironplcc check --dialect twincat` *fails* with
+exactly the two expected P9999 diagnostics (one for `I_Drivable.TcIO`'s
+`INTERFACE`, one for `FB_Axis.TcPOU`'s `IMPLEMENTS`) -- proving the
+`.TcIO` file is discovered, parsed, and position-mapped correctly end to
+end through the real CLI pipeline, which is the actual gap #1428 item 2
+identifies (today only inline XML string literals exercise `<Itf>`
+parsing). `--dialect twincat` already turns on `allow_fb_inheritance`
+(confirmed in `parser/src/options.rs`), so no extra flag is needed.
 
 Not touched: the inline `Itf` string-literal tests in
 `twincat_parser/tests.rs` stay as-is — they test different things (XML
@@ -82,8 +94,9 @@ not new behavior.
       I_Drivable`, one `Start` method)
 - [ ] Write `MAIN.TcPOU` (declares an `FB_Axis` instance, calls
       `Start()`)
-- [ ] Add `check_when_twincat_solution_declares_interface_then_ok` to
-      `ironplc-cli/tests/cli.rs`
+- [ ] Add `check_when_twincat_solution_declares_interface_then_p9999`
+      to `ironplc-cli/tests/cli.rs`, asserting failure and both
+      expected P9999 diagnostics
 - [ ] Run `cd compiler && just` (compile, coverage, clippy, fmt, dupes)
 - [ ] `git rm` this plan file before opening the PR
 - [ ] Push the branch and open a PR against `ironplc/ironplc` `main`
