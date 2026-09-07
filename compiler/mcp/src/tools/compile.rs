@@ -336,32 +336,13 @@ fn program_meta_from_config(prog: &ProgramConfiguration) -> ProgramMeta {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::test_support::ed2_options;
+    use crate::tools::test_support::{
+        ed2_options, source, unnamed_source, COUNTER_PROGRAM, COUNTER_PROGRAM_WITH_TASK,
+        SYNTAX_ERROR_PROGRAM,
+    };
 
     fn make_cache() -> Mutex<ContainerCache> {
         Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024))
-    }
-
-    fn valid_program_source() -> Vec<SourceInput> {
-        vec![SourceInput {
-            name: "main.st".into(),
-            content: r#"
-PROGRAM Main
-VAR
-  x : INT;
-END_VAR
-  x := 1;
-END_PROGRAM
-
-CONFIGURATION config
-  RESOURCE resource1 ON PLC
-    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
-    PROGRAM program1 WITH plc_task : Main;
-  END_RESOURCE
-END_CONFIGURATION
-"#
-            .into(),
-        }]
     }
 
     // The valid-program happy path is asserted by
@@ -377,11 +358,7 @@ END_CONFIGURATION
     #[test]
     fn build_response_when_syntax_error_then_ok_false() {
         let cache = make_cache();
-        let sources = vec![SourceInput {
-            name: "bad.st".into(),
-            content: "PROGRAM END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), false, &cache);
+        let resp = build_response(&source(SYNTAX_ERROR_PROGRAM), &ed2_options(), false, &cache);
         assert!(!resp.ok);
         assert!(resp.container_id.is_none());
     }
@@ -389,7 +366,12 @@ END_CONFIGURATION
     #[test]
     fn build_response_when_valid_then_container_id_present() {
         let cache = make_cache();
-        let resp = build_response(&valid_program_source(), &ed2_options(), false, &cache);
+        let resp = build_response(
+            &source(COUNTER_PROGRAM_WITH_TASK),
+            &ed2_options(),
+            false,
+            &cache,
+        );
         assert!(resp.ok);
         assert!(resp.container_id.is_some());
         assert!(resp.container_id.unwrap().starts_with("c_"));
@@ -398,7 +380,12 @@ END_CONFIGURATION
     #[test]
     fn build_response_when_valid_then_tasks_populated() {
         let cache = make_cache();
-        let resp = build_response(&valid_program_source(), &ed2_options(), false, &cache);
+        let resp = build_response(
+            &source(COUNTER_PROGRAM_WITH_TASK),
+            &ed2_options(),
+            false,
+            &cache,
+        );
         assert!(resp.ok);
         assert!(!resp.tasks.is_empty());
         assert_eq!(resp.tasks[0].name, "plc_task");
@@ -410,7 +397,12 @@ END_CONFIGURATION
     #[test]
     fn build_response_when_valid_then_programs_populated() {
         let cache = make_cache();
-        let resp = build_response(&valid_program_source(), &ed2_options(), false, &cache);
+        let resp = build_response(
+            &source(COUNTER_PROGRAM_WITH_TASK),
+            &ed2_options(),
+            false,
+            &cache,
+        );
         assert!(resp.ok);
         assert!(!resp.programs.is_empty());
         assert_eq!(resp.programs[0].name, "program1");
@@ -420,7 +412,12 @@ END_CONFIGURATION
     #[test]
     fn build_response_when_include_bytes_true_then_base64_present() {
         let cache = make_cache();
-        let resp = build_response(&valid_program_source(), &ed2_options(), true, &cache);
+        let resp = build_response(
+            &source(COUNTER_PROGRAM_WITH_TASK),
+            &ed2_options(),
+            true,
+            &cache,
+        );
         assert!(resp.ok);
         assert!(resp.container_base64.is_some());
         // Verify it's valid base64
@@ -432,7 +429,12 @@ END_CONFIGURATION
     #[test]
     fn build_response_when_include_bytes_false_then_base64_null() {
         let cache = make_cache();
-        let resp = build_response(&valid_program_source(), &ed2_options(), false, &cache);
+        let resp = build_response(
+            &source(COUNTER_PROGRAM_WITH_TASK),
+            &ed2_options(),
+            false,
+            &cache,
+        );
         assert!(resp.ok);
         assert!(resp.container_base64.is_none());
     }
@@ -440,19 +442,7 @@ END_CONFIGURATION
     #[test]
     fn build_response_when_no_configuration_then_default_task() {
         let cache = make_cache();
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: r#"
-PROGRAM Main
-VAR
-  x : INT;
-END_VAR
-  x := 1;
-END_PROGRAM
-"#
-            .into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), false, &cache);
+        let resp = build_response(&source(COUNTER_PROGRAM), &ed2_options(), false, &cache);
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(!resp.tasks.is_empty());
         assert_eq!(resp.tasks[0].name, "Main");
@@ -461,11 +451,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_invalid_sources_then_error_diagnostic() {
         let cache = make_cache();
-        let sources = vec![SourceInput {
-            name: "".into(),
-            content: "PROGRAM Main END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), false, &cache);
+        let resp = build_response(&unnamed_source(), &ed2_options(), false, &cache);
         assert!(!resp.ok);
         assert!(!resp.diagnostics.is_empty());
     }
@@ -474,7 +460,7 @@ END_PROGRAM
     fn build_response_when_invalid_options_then_error_diagnostic() {
         let cache = make_cache();
         let resp = build_response(
-            &valid_program_source(),
+            &source(COUNTER_PROGRAM_WITH_TASK),
             &serde_json::json!({ "dialect": "nonexistent" }),
             false,
             &cache,

@@ -36,6 +36,7 @@ mod compile_array_struct;
 mod compile_call;
 mod compile_enum;
 mod compile_expr;
+mod compile_fb_init;
 mod compile_fn;
 mod compile_method;
 mod compile_setup;
@@ -47,6 +48,7 @@ mod emit;
 mod optimize;
 mod source_lookup;
 mod stack_balance;
+mod string_width;
 mod type_info;
 
 pub use compile::{compile, CodegenOptions};

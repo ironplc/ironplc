@@ -187,7 +187,9 @@ fn direction_of(info: &SymbolInfo) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::test_support::ed2_options;
+    use crate::tools::test_support::{
+        ed2_options, source, unnamed_source, SEMANTIC_ERROR_PROGRAM, VALID_PROGRAM,
+    };
 
     fn build(src: &str) -> ProjectIoResponse {
         let sources = vec![SourceInput {
@@ -280,29 +282,21 @@ mod tests {
 
     #[test]
     fn build_response_when_semantic_error_then_ok_false_with_diagnostics() {
-        let resp = build("PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM");
+        let resp = build(SEMANTIC_ERROR_PROGRAM);
         assert!(!resp.ok);
         assert!(!resp.diagnostics.is_empty());
     }
 
     #[test]
     fn build_response_when_empty_source_name_then_p8001() {
-        let sources = vec![SourceInput {
-            name: String::new(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&unnamed_source(), &ed2_options());
         assert!(!resp.ok);
         assert!(resp.diagnostics.iter().any(|d| d["code"] == "P8001"));
     }
 
     #[test]
     fn build_response_when_missing_dialect_then_p8001() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &serde_json::json!({}));
+        let resp = build_response(&source(VALID_PROGRAM), &serde_json::json!({}));
         assert!(!resp.ok);
         assert!(resp.diagnostics.iter().any(|d| d["code"] == "P8001"));
     }

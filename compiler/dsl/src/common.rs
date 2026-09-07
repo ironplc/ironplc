@@ -42,6 +42,57 @@ impl ConstantKind {
             data_type: None,
         }))
     }
+
+    /// Returns the constant with `span` recorded as its position in the
+    /// source text.
+    ///
+    /// Every literal kind carries its own span rather than the enumeration
+    /// carrying one, because a literal is also reachable outside a
+    /// `ConstantKind` (a subrange bound, a case label). Setting them all in
+    /// one place is what keeps `Located for ConstantKind` -- and so
+    /// `Located for ExprKind`, which joins the spans of an expression's
+    /// operands -- from reporting position 0 for an expression built from
+    /// literals.
+    pub fn with_span(self, span: SourceSpan) -> Self {
+        match self {
+            ConstantKind::IntegerLiteral(mut lit) => {
+                lit.value.value.span = span;
+                ConstantKind::IntegerLiteral(lit)
+            }
+            ConstantKind::BitStringLiteral(mut lit) => {
+                lit.value.span = span;
+                ConstantKind::BitStringLiteral(lit)
+            }
+            ConstantKind::RealLiteral(mut lit) => {
+                lit.span = span;
+                ConstantKind::RealLiteral(lit)
+            }
+            ConstantKind::Boolean(mut lit) => {
+                lit.span = span;
+                ConstantKind::Boolean(lit)
+            }
+            ConstantKind::CharacterString(mut lit) => {
+                lit.span = span;
+                ConstantKind::CharacterString(lit)
+            }
+            ConstantKind::Duration(mut lit) => {
+                lit.span = span;
+                ConstantKind::Duration(lit)
+            }
+            ConstantKind::TimeOfDay(mut lit) => {
+                lit.span = span;
+                ConstantKind::TimeOfDay(lit)
+            }
+            ConstantKind::Date(mut lit) => {
+                lit.span = span;
+                ConstantKind::Date(lit)
+            }
+            ConstantKind::DateAndTime(mut lit) => {
+                lit.span = span;
+                ConstantKind::DateAndTime(lit)
+            }
+        }
+    }
 }
 
 impl Located for ConstantKind {
@@ -49,13 +100,13 @@ impl Located for ConstantKind {
         match self {
             ConstantKind::IntegerLiteral(lit) => lit.value.value.span(),
             ConstantKind::BitStringLiteral(lit) => lit.value.span(),
-            ConstantKind::RealLiteral(_)
-            | ConstantKind::Boolean(_)
-            | ConstantKind::CharacterString(_)
-            | ConstantKind::Duration(_)
-            | ConstantKind::TimeOfDay(_)
-            | ConstantKind::Date(_)
-            | ConstantKind::DateAndTime(_) => SourceSpan::default(),
+            ConstantKind::RealLiteral(lit) => lit.span.clone(),
+            ConstantKind::Boolean(lit) => lit.span.clone(),
+            ConstantKind::CharacterString(lit) => lit.span.clone(),
+            ConstantKind::Duration(lit) => lit.span.clone(),
+            ConstantKind::TimeOfDay(lit) => lit.span.clone(),
+            ConstantKind::Date(lit) => lit.span.clone(),
+            ConstantKind::DateAndTime(lit) => lit.span.clone(),
         }
     }
 }
@@ -513,6 +564,8 @@ impl From<Integer> for FixedPoint {
 pub struct RealLiteral {
     pub value: f64,
     pub data_type: Option<RealTypeName>,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl RealLiteral {
@@ -528,6 +581,7 @@ impl RealLiteral {
             .map(|value| RealLiteral {
                 value,
                 data_type: tn,
+                span: SourceSpan::default(),
             })
             .map_err(|_e| "real")
     }
@@ -545,11 +599,16 @@ impl fmt::Display for RealLiteral {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BooleanLiteral {
     pub value: Boolean,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl BooleanLiteral {
     pub fn new(value: Boolean) -> Self {
-        Self { value }
+        Self {
+            value,
+            span: SourceSpan::default(),
+        }
     }
 }
 
@@ -570,6 +629,8 @@ pub struct CharacterStringLiteral {
     /// initializes because a literal also appears in statement bodies, where
     /// there is no declaration to borrow it from.
     pub width: StringType,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl CharacterStringLiteral {
@@ -578,6 +639,7 @@ impl CharacterStringLiteral {
         Self {
             value,
             width: StringType::String,
+            span: SourceSpan::default(),
         }
     }
 
@@ -586,6 +648,7 @@ impl CharacterStringLiteral {
         Self {
             value,
             width: StringType::WString,
+            span: SourceSpan::default(),
         }
     }
 }
@@ -2019,6 +2082,23 @@ impl VarDecl {
         }
     }
 
+    /// Creates a variable declaration against a user type name with a bare
+    /// identifier as its initial value, `name : type_name := initial_value`,
+    /// as the parser leaves it before the type is known (ADR-0050).
+    /// The declaration has type `VAR` and no qualifier.
+    pub fn late_bound_value(name: &str, type_name: &str, initial_value: &str) -> Self {
+        VarDecl {
+            identifier: VariableIdentifier::new_symbol(name),
+            var_type: VariableType::Var,
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name: TypeName::from(type_name),
+                initial_value: Some(LateResolvedInitialValue::Value(Id::from(initial_value))),
+            }),
+            block: next_block_id(),
+        }
+    }
+
     /// Creates a variable declaration for enumeration having an initial value.
     /// The declaration has type `VAR` and no qualifier.
     pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> Self {
@@ -2083,7 +2163,9 @@ impl VarDecl {
             identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignmentKind::LateResolvedType(TypeName::from(type_name)),
+            initializer: InitialValueAssignmentKind::LateResolvedType(
+                LateResolvedInitializer::bare(TypeName::from(type_name)),
+            ),
             block: next_block_id(),
         }
     }
@@ -2137,8 +2219,8 @@ impl VarDecl {
                 }
             }
             InitialValueAssignmentKind::Reference(_) => TypeReference::Inline,
-            InitialValueAssignmentKind::LateResolvedType(type_name) => {
-                TypeReference::Named(type_name.clone())
+            InitialValueAssignmentKind::LateResolvedType(late) => {
+                TypeReference::Named(late.type_name.clone())
             }
             InitialValueAssignmentKind::SimpleExpr(simple_expr_initializer) => {
                 TypeReference::Named(simple_expr_initializer.type_name.clone())
@@ -2486,9 +2568,10 @@ pub enum InitialValueAssignmentKind {
     Array(ArrayInitialValueAssignment),
     /// Reference type initializer (REF_TO).
     Reference(ReferenceInitializer),
-    /// Type that is ambiguous until have discovered type
-    /// definitions. Value is the name of the type.
-    LateResolvedType(TypeName),
+    /// A declaration whose type is a user-defined name the parser cannot
+    /// classify, with the initializer exactly as written. The type
+    /// resolver replaces it with the kind the type implies (ADR-0050).
+    LateResolvedType(LateResolvedInitializer),
     /// A constant-expression initializer not yet folded to a literal
     /// (extension — see `allow_constant_initializer_expressions`).
     /// Always normalized to `Simple` by
@@ -2497,7 +2580,63 @@ pub enum InitialValueAssignmentKind {
     SimpleExpr(SimpleExprInitializer),
 }
 
+/// A declaration against a user-defined type name, before the type is known.
+///
+/// `T` in `x : T`, `x : T := (a := 1)` or `x : T := Red` may be a structure,
+/// a function block, an enumeration or an alias of an elementary type, and
+/// only the type resolver can tell. The parser records the initializer as
+/// written and decides nothing; see ADR-0050.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct LateResolvedInitializer {
+    pub type_name: TypeName,
+    pub initial_value: Option<LateResolvedInitialValue>,
+}
+
+impl LateResolvedInitializer {
+    /// A bare declaration, `x : T`.
+    pub fn bare(type_name: TypeName) -> Self {
+        LateResolvedInitializer {
+            type_name,
+            initial_value: None,
+        }
+    }
+}
+
+/// The initializer written against a type the parser could not classify.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub enum LateResolvedInitialValue {
+    /// `(a := 1, b := 2)`: a structure's fields, or a function block's
+    /// members.
+    Members(Vec<StructureElementInit>),
+    /// `Red`: an enumeration's value, or a named constant for any other
+    /// type.
+    Value(Id),
+}
+
 impl InitialValueAssignmentKind {
+    /// Returns whether the declaration states an initial value: a literal,
+    /// enumerated or string value, at least one array element, at least one
+    /// structure member, or a reference target. A function-block instance
+    /// has state rather than a value, and an initializer whose kind is not
+    /// yet resolved states nothing.
+    pub fn has_initial_value(&self) -> bool {
+        match self {
+            InitialValueAssignmentKind::Simple(si) => si.initial_value.is_some(),
+            InitialValueAssignmentKind::String(si) => si.initial_value.is_some(),
+            InitialValueAssignmentKind::EnumeratedValues(ev) => ev.initial_value.is_some(),
+            InitialValueAssignmentKind::EnumeratedType(et) => et.initial_value.is_some(),
+            InitialValueAssignmentKind::Array(arr) => !arr.initial_values.is_empty(),
+            InitialValueAssignmentKind::Structure(st) => !st.elements_init.is_empty(),
+            InitialValueAssignmentKind::Reference(re) => re.initial_value.is_some(),
+            InitialValueAssignmentKind::None(_)
+            | InitialValueAssignmentKind::FunctionBlock(_)
+            | InitialValueAssignmentKind::FunctionBlockCall(_)
+            | InitialValueAssignmentKind::Subrange(_)
+            | InitialValueAssignmentKind::LateResolvedType(_)
+            | InitialValueAssignmentKind::SimpleExpr(_) => false,
+        }
+    }
+
     /// Creates an initial value with
     pub fn simple_uninitialized(type_name: TypeName) -> Self {
         InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -2545,6 +2684,16 @@ pub enum StructInitialValueAssignmentKind {
     /// call-style FB-instance/struct initializers where the value is
     /// computed at instantiation time, not a compile-time constant.
     Expression(Expr),
+    /// A bare identifier, before anything knows what it names.
+    ///
+    /// `(x := g)` is one token in a position that accepts both an
+    /// enumerated value and a variable reference, and the parser has no
+    /// declarations in scope to tell them apart. Recording the ambiguity is
+    /// what keeps a diagnostic from naming the wrong construct;
+    /// `xform_resolve_late_bound_expr_kind` replaces this with
+    /// [`Self::EnumeratedValue`] or [`Self::Expression`] once declarations
+    /// are known, and no later stage sees it.
+    LateBound(LateBound),
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]
@@ -3207,12 +3356,14 @@ mod tests {
         let rl1 = RealLiteral {
             value: 1.23,
             data_type: None,
+            span: SourceSpan::default(),
         };
         let rl2 = rl1.clone();
         assert_eq!(rl1, rl2);
         let rl3 = RealLiteral {
             value: 2.34,
             data_type: None,
+            span: SourceSpan::default(),
         };
         assert_ne!(rl1, rl3);
     }
@@ -3239,11 +3390,13 @@ mod tests {
     fn test_boolean_literal_partial_eq_and_clone() {
         let bl1 = BooleanLiteral {
             value: Boolean::True,
+            span: SourceSpan::default(),
         };
         let bl2 = bl1.clone();
         assert_eq!(bl1, bl2);
         let bl3 = BooleanLiteral {
             value: Boolean::False,
+            span: SourceSpan::default(),
         };
         assert_ne!(bl1, bl3);
     }
@@ -3564,6 +3717,7 @@ mod tests {
         let rl = RealLiteral {
             value: 3.25,
             data_type: Some(RealTypeName::REAL),
+            span: SourceSpan::default(),
         };
         assert_eq!(format!("{rl}"), "REAL#3.25");
     }
@@ -3573,6 +3727,7 @@ mod tests {
         let rl = RealLiteral {
             value: 2.5,
             data_type: None,
+            span: SourceSpan::default(),
         };
         assert_eq!(format!("{rl}"), "2.5");
     }
@@ -3581,6 +3736,7 @@ mod tests {
     fn display_when_boolean_literal_then_value() {
         let bl = BooleanLiteral {
             value: Boolean::True,
+            span: SourceSpan::default(),
         };
         assert_eq!(format!("{bl}"), "TRUE");
     }
@@ -3673,6 +3829,7 @@ mod tests {
         let ck = ConstantKind::RealLiteral(RealLiteral {
             value: 1.5,
             data_type: None,
+            span: SourceSpan::default(),
         });
         assert_eq!(format!("{ck}"), "1.5");
     }
@@ -3681,6 +3838,7 @@ mod tests {
     fn display_when_constant_kind_boolean_then_formatted() {
         let ck = ConstantKind::Boolean(BooleanLiteral {
             value: Boolean::True,
+            span: SourceSpan::default(),
         });
         assert_eq!(format!("{ck}"), "TRUE");
     }

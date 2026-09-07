@@ -37,7 +37,7 @@
 use ironplc_parser::options::CompilerOptions;
 
 use crate::tools;
-use crate::tools::common::SourceInput;
+use crate::tools::test_support::source;
 
 /// A source snippet that isolates a single feature flag's effect.
 struct FlagFixture {
@@ -250,14 +250,6 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
     },
 ];
 
-/// Wraps snippet text as the single-source input the tools expect.
-fn sources(content: &str) -> Vec<SourceInput> {
-    vec![SourceInput {
-        name: "main.st".into(),
-        content: content.into(),
-    }]
-}
-
 /// Builds an ed2 options object with the given flags enabled.
 fn ed2_with(flags: &[&str]) -> serde_json::Value {
     let mut map = serde_json::Map::new();
@@ -323,7 +315,7 @@ fn each_feature_flag_gates_its_example_source_off_then_on() {
         let mut on_flags = fx.prereqs.to_vec();
         on_flags.push(fx.key);
 
-        let off = tools::check::build_response(&sources(fx.source), &ed2_with(fx.prereqs));
+        let off = tools::check::build_response(&source(fx.source), &ed2_with(fx.prereqs));
         assert!(
             !off.ok,
             "flag `{}`: source expected to be REJECTED with the flag off (prereqs {:?}) but it \
@@ -331,7 +323,7 @@ fn each_feature_flag_gates_its_example_source_off_then_on() {
             fx.key, fx.prereqs, fx.source
         );
 
-        let on = tools::check::build_response(&sources(fx.source), &ed2_with(&on_flags));
+        let on = tools::check::build_response(&source(fx.source), &ed2_with(&on_flags));
         assert!(
             on.ok,
             "flag `{}`: source expected to be ACCEPTED with the flag on but got diagnostics: \

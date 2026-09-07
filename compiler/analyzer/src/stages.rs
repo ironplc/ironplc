@@ -24,18 +24,18 @@ use crate::{
     rule_operator_operand_type_check, rule_pou_hierarchy, rule_program_task_definition_exists,
     rule_ref_to, rule_stdlib_type_redefinition, rule_string_encoding_compat,
     rule_struct_initializer_expression_allowed, rule_task_names_unique, rule_unsupported_extension,
-    rule_unsupported_stdlib_type, rule_use_declared_enumerated_value,
-    rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
+    rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
+    rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
     semantic_context::SemanticContext,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
-    xform_insert_implicit_deref, xform_int_to_bool_initializer, xform_named_to_positional_args,
-    xform_resolve_adr, xform_resolve_constant_expressions, xform_resolve_expr_types,
-    xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
-    xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
-    xform_resolve_type_decl_environment, xform_toposort_declarations,
+    xform_insert_implicit_deref, xform_int_to_bool_initializer, xform_mark_unwritten_constants,
+    xform_named_to_positional_args, xform_resolve_adr, xform_resolve_constant_expressions,
+    xform_resolve_expr_types, xform_resolve_late_bound_expr_kind,
+    xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
+    xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -312,6 +312,19 @@ pub fn resolve_types(
         }
     }
 
+    // Mark every variable the program never writes as CONSTANT, so the
+    // semantic rules and codegen see one notion of a constant variable.
+    // Runs last: it needs bare identifiers resolved to variables, `ADR`
+    // rewritten to `Ref`, user functions in the function environment and
+    // named arguments made positional. Infallible, so nothing to revert.
+    // See specs/design/constant-variable-inference.md.
+    let library = xform_mark_unwritten_constants::apply(
+        library,
+        &type_environment,
+        &function_environment,
+        &symbol_environment,
+    );
+
     // Generate and display useful symbol table information
     debug!("Type Environment:");
     debug!("{type_environment:?}");
@@ -361,7 +374,6 @@ pub(crate) fn semantic(
         rule_struct_initializer_expression_allowed::apply,
         rule_use_declared_enumerated_value::apply,
         rule_use_declared_symbolic_var::apply,
-        rule_unsupported_stdlib_type::apply,
         rule_unsupported_extension::apply,
         rule_var_decl_const_initialized::apply,
         rule_var_decl_const_not_fb::apply,

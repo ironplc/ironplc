@@ -1510,17 +1510,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     }
                     opcode::builtin::CONV_STR_TO_I32 => {
                         let data_offset = stack.pop()?.as_i32() as usize;
-                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                        }
-                        // STRING_TO_* parses Latin-1 digits; reject WSTRING input.
-                        let width = string_ops::str_read_char_width(data_region, data_offset)?;
-                        string_ops::verify_encoding(CharWidth::Narrow, width)?;
-                        let cur_len =
-                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
-                        let start = data_offset + STRING_HEADER_BYTES;
-                        let end = (start + cur_len).min(data_region.len());
-                        let result = core::str::from_utf8(&data_region[start..end])
+                        let bytes = string_ops::narrow_str_bytes(data_region, data_offset)?;
+                        let result = core::str::from_utf8(bytes)
                             .ok()
                             .and_then(|s| s.trim().parse::<i32>().ok())
                             .unwrap_or(0);
@@ -1528,17 +1519,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     }
                     opcode::builtin::CONV_STR_TO_F32 => {
                         let data_offset = stack.pop()?.as_i32() as usize;
-                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                        }
-                        // STRING_TO_* parses Latin-1 digits; reject WSTRING input.
-                        let width = string_ops::str_read_char_width(data_region, data_offset)?;
-                        string_ops::verify_encoding(CharWidth::Narrow, width)?;
-                        let cur_len =
-                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
-                        let start = data_offset + STRING_HEADER_BYTES;
-                        let end = (start + cur_len).min(data_region.len());
-                        let result = core::str::from_utf8(&data_region[start..end])
+                        let bytes = string_ops::narrow_str_bytes(data_region, data_offset)?;
+                        let result = core::str::from_utf8(bytes)
                             .ok()
                             .and_then(|s| s.trim().parse::<f32>().ok())
                             .unwrap_or(0.0);
@@ -3037,59 +3019,9 @@ impl core::fmt::Write for StackFmtBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{assert_trap, single_function_container, steel_thread_container};
     use crate::VmBuffers;
     use ironplc_container::ContainerBuilder;
-
-    /// Builds a container with one function from the given bytecode,
-    /// with `num_vars` variables and the given constants.
-    /// Uses a generous max_stack_depth (16) suitable for most tests.
-    fn single_function_container(bytecode: &[u8], num_vars: u16, constants: &[i32]) -> Container {
-        let mut builder = ContainerBuilder::new().num_variables(num_vars);
-        for &c in constants {
-            builder = builder.add_i32_constant(c);
-        }
-        builder
-            .add_function(FunctionId::INIT, &[0x8C], 0, num_vars, 0) // init: RET_VOID
-            .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0) // scan: test bytecode
-            .init_function_id(FunctionId::INIT)
-            .entry_function_id(FunctionId::SCAN)
-            .max_call_depth(1)
-            .build()
-    }
-
-    /// Asserts that a run_round produces a specific trap.
-    fn assert_trap(vm: &mut VmRunning, expected: Trap) {
-        let result = vm.run_round(0);
-        assert!(
-            result.is_err(),
-            "expected trap {expected} but run_round succeeded"
-        );
-        assert_eq!(result.unwrap_err().trap, expected);
-    }
-
-    fn steel_thread_container() -> Container {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
-            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
-            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
-            0x20,                   // ADD_I32
-            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
-            0x8C,                   // RET_VOID
-        ];
-
-        ContainerBuilder::new()
-            .num_variables(2)
-            .add_i32_constant(10)
-            .add_i32_constant(32)
-            .add_function(FunctionId::INIT, &[0x8C], 0, 2, 0) // init: RET_VOID
-            .add_function(FunctionId::SCAN, &bytecode, 2, 2, 0) // scan: program body
-            .init_function_id(FunctionId::INIT)
-            .entry_function_id(FunctionId::SCAN)
-            .max_call_depth(1)
-            .build()
-    }
 
     #[test]
     fn vm_load_when_valid_container_then_returns_ready() {

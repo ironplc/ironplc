@@ -17,8 +17,8 @@ use ironplc_dsl::textual::{
 use ironplc_problems::Problem;
 
 use super::compile::{
-    emit_string_literal_load, CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness,
-    VarTypeInfo, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
+    CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness, VarTypeInfo,
+    DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_expr::{
     compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
@@ -27,7 +27,9 @@ use super::compile_expr::{
     op_type, resolve_variable, resolve_variable_name, signed_integer_to_i64, try_classify_cmp,
     variable_span, ClassifiedCmp,
 };
+use super::compile_fb_init::{compile_fb_field_store, resolve_fb_field_op_type};
 use crate::emit::Emitter;
+use crate::string_width::compile_string_value;
 use ironplc_container::opcode;
 
 /// Compiles a function block body.
@@ -157,28 +159,13 @@ fn compile_statement(
                 // `ctx.struct_vars`, and their fields are stored in the data
                 // region addressed via FB_STORE_PARAM.
                 if let SymbolicVariableKind::Named(named) = structured.record.as_ref() {
-                    if let Some(fb_info) = ctx.fb_instances.get(&named.name) {
-                        let field_name = structured.field.to_string().to_lowercase();
-                        let field_idx = fb_info
-                            .field_indices
-                            .get(&field_name)
-                            .copied()
-                            .ok_or_else(|| {
-                                Diagnostic::not_implemented(Label::span(
-                                    structured.field.span(),
-                                    format!(
-                                        "Unknown field '{}' on function block '{}'",
-                                        structured.field, named.name
-                                    ),
-                                ))
-                            })?;
-                        let var_index = fb_info.var_index;
-                        let type_id = fb_info.type_id;
-                        let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
-                        emitter.emit_fb_load_instance(var_index);
-                        compile_expr(emitter, ctx, &assignment.value, op_type)?;
-                        emitter.emit_fb_store_param(field_idx);
-                        emitter.emit_pop();
+                    if compile_fb_field_store(
+                        emitter,
+                        ctx,
+                        &named.name,
+                        &structured.field,
+                        &assignment.value,
+                    )? {
                         return Ok(());
                     }
                 }
@@ -193,10 +180,12 @@ fn compile_statement(
                         &structured.field,
                         0,
                     )?;
-                if matches!(
-                    &field_type,
-                    ironplc_analyzer::intermediate_type::IntermediateType::String { .. }
-                ) {
+                if let ironplc_analyzer::intermediate_type::IntermediateType::String {
+                    char_width,
+                    ..
+                } = &field_type
+                {
+                    let char_width = *char_width;
                     let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
                         Diagnostic::not_implemented(Label::span(
                             structured.span(),
@@ -204,7 +193,9 @@ fn compile_statement(
                         ))
                     })?;
                     let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
-                    compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+                    // Produce the RHS at the field's declared encoding, the
+                    // same as any other string destination (ADR-0034).
+                    compile_string_value(emitter, ctx, &assignment.value, char_width)?;
                     emitter.emit_str_store_var(byte_offset);
                     return Ok(());
                 }
@@ -235,16 +226,9 @@ fn compile_statement(
                 .map(|info| (info.data_offset, info.char_width));
 
             if let Some((data_offset, char_width)) = string_info {
-                // String target: produce the RHS as a temp buffer, then
-                // STR_STORE_VAR. A string literal is encoded at the target's
-                // width so the store's encoding check passes; variables and
-                // function results already carry their own width (ADR-0034).
-                if let ExprKind::Const(ConstantKind::CharacterString(lit)) = &assignment.value.kind
-                {
-                    emit_string_literal_load(emitter, ctx, &lit.value, char_width);
-                } else {
-                    compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
-                }
+                // String target: produce the RHS as a temp buffer at the
+                // target's encoding, then STR_STORE_VAR (ADR-0034).
+                compile_string_value(emitter, ctx, &assignment.value, char_width)?;
                 emitter.emit_str_store_var(data_offset);
             } else {
                 match crate::compile_array::resolve_access(ctx, &assignment.target)? {
@@ -279,22 +263,15 @@ fn compile_statement(
                         let target_span = variable_span(&assignment.target);
 
                         if is_string_elem {
-                            // String array: produce the RHS as a temp buffer, then
-                            // flat index, then STR_STORE_ARRAY_ELEM. A string
-                            // literal is encoded at the element width so the
-                            // store's encoding check passes.
-                            if let ExprKind::Const(ConstantKind::CharacterString(lit)) =
-                                &assignment.value.kind
-                            {
-                                emit_string_literal_load(
-                                    emitter,
-                                    ctx,
-                                    &lit.value,
-                                    element_char_width,
-                                );
-                            } else {
-                                compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
-                            }
+                            // String array: produce the RHS as a temp buffer at
+                            // the element's encoding, then the flat index, then
+                            // STR_STORE_ARRAY_ELEM (ADR-0034).
+                            compile_string_value(
+                                emitter,
+                                ctx,
+                                &assignment.value,
+                                element_char_width,
+                            )?;
                             crate::compile_array::emit_flat_index(
                                 emitter,
                                 ctx,
@@ -449,21 +426,6 @@ fn compile_statement(
             Ok(())
         }
     }
-}
-
-/// Returns the op_type for an FB field, checking user-defined FBs first,
-/// then falling back to the stdlib hardcoded mapping.
-fn resolve_fb_field_op_type(ctx: &CompileContext, type_id: u16, field_name: &str) -> OpType {
-    // Check user-defined FBs by type_id.
-    for user_fb in ctx.user_fb_types.values() {
-        if user_fb.type_id == type_id {
-            if let Some(op_type) = user_fb.field_op_types.get(field_name) {
-                return *op_type;
-            }
-        }
-    }
-    // Fall back to stdlib field names.
-    fb_field_op_type(field_name)
 }
 
 /// Compiles a function block invocation: stores inputs, calls FB, reads outputs.
@@ -638,15 +600,6 @@ fn compile_method_call(
     emitter.emit_pop();
 
     Ok(())
-}
-
-/// Returns the op_type for a standard FB field by name.
-fn fb_field_op_type(field_name: &str) -> OpType {
-    match field_name {
-        "in" | "q" => (OpWidth::W32, Signedness::Signed),
-        "pt" | "et" => (OpWidth::W32, Signedness::Signed),
-        _ => DEFAULT_OP_TYPE,
-    }
 }
 
 /// Compiles a slice of statements.
