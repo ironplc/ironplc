@@ -149,6 +149,25 @@ impl LibraryRenderer {
         }
         Ok(())
     }
+
+    /// Renders the `name : associations END_STEP` tail shared by
+    /// `INITIAL_STEP` and `STEP`; the caller writes the keyword.
+    fn write_step_body(&mut self, node: &dsl::sfc::Step) -> Result<(), Diagnostic> {
+        self.visit_id(&node.name)?;
+        self.write_ws(":");
+        self.newline();
+
+        self.indent();
+        for elem in node.action_associations.iter() {
+            self.visit_action_association(elem)?;
+            self.newline();
+        }
+        self.outdent();
+
+        self.write_ws("END_STEP");
+        self.newline();
+        Ok(())
+    }
 }
 
 impl Visitor<Diagnostic> for LibraryRenderer {
@@ -1096,12 +1115,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     // 2.6.2
     fn visit_network(&mut self, node: &dsl::sfc::Network) -> Result<Self::Value, Diagnostic> {
         self.write_ws("INITIAL_STEP");
-        self.visit_id(&node.initial_step.name)?;
-        self.write_ws(":");
-        self.newline();
-
-        self.write_ws("END_STEP");
-        self.newline();
+        self.write_step_body(&node.initial_step)?;
         self.newline();
 
         for elem in node.elements.iter() {
@@ -1114,20 +1128,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     // 2.6.2
     fn visit_step(&mut self, node: &dsl::sfc::Step) -> Result<Self::Value, Diagnostic> {
         self.write_ws("STEP");
-        self.visit_id(&node.name)?;
-        self.write_ws(":");
-        self.newline();
-
-        self.indent();
-        for elem in node.action_associations.iter() {
-            self.visit_action_association(elem)?;
-            self.newline();
-        }
-        self.outdent();
-
-        self.write_ws("END_STEP");
-        self.newline();
-        Ok(())
+        self.write_step_body(node)
     }
 
     // 2.6.3

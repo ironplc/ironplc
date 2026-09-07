@@ -428,6 +428,15 @@ fn compile_struct_field_init(
                 "Expression-valued struct/FB-instance field initializer",
             )))
         }
+        StructInitialValueAssignmentKind::LateBound(late_bound) => {
+            // `xform_resolve_late_bound_expr_kind` replaces every one of
+            // these with an enumerated value or an expression, so reaching
+            // codegen with one means that pass did not run.
+            Err(Diagnostic::internal_error_at(Label::span(
+                late_bound.value.span(),
+                "Unresolved struct/FB-instance field initializer",
+            )))
+        }
     }
 }
 
@@ -557,6 +566,14 @@ pub(crate) fn initialize_struct_fields(
 ///
 /// Called from both the `Structure` and `LateResolvedType` match arms in
 /// `assign_variables`.
+///
+/// A function-block type never reaches here, even though `x : T := (a := 1)`
+/// parses as a structure initializer for every `T`: the parser has no type
+/// declarations in scope, so `xform_resolve_late_bound_type_initializer`
+/// rewrites the ones naming a function block into
+/// `InitialValueAssignmentKind::FunctionBlock` before codegen runs. Reaching
+/// here with a function-block type name therefore means that rewrite did not
+/// happen, and the "Unknown structure type" diagnostic below is the symptom.
 pub(crate) fn allocate_struct_variable(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,

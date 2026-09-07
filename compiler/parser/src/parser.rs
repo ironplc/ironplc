@@ -146,7 +146,7 @@ fn resolve_initializer_expr(type_name: TypeName, e: ExprKind) -> InitialValueAss
 
 /// Parses a IEC 61131-3 library into object form.
 pub fn parse_library(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Diagnostic> {
-    plc_parser::library(&SliceByRef(&tokens[..])).map_err(|e| {
+    plc_parser::library(&SliceByRef(&tokens[..]), &tokens[..]).map_err(|e| {
         let token_index = e.location;
 
         let expected = Vec::from_iter(e.expected.tokens()).join(" | ");
@@ -176,7 +176,7 @@ pub fn parse_statements(tokens: Vec<Token>) -> Result<Vec<StmtKind>, Diagnostic>
         return Ok(vec![]);
     }
 
-    plc_parser::statement_list(&SliceByRef(&tokens[..])).map_err(|e| {
+    plc_parser::statement_list(&SliceByRef(&tokens[..]), &tokens[..]).map_err(|e| {
         let token_index = e.location;
 
         let expected = Vec::from_iter(e.expected.tokens()).join(" | ");
@@ -236,6 +236,20 @@ enum ProgramConfigurationKind {
     FbTask(FunctionBlockTask),
 }
 
+/// Returns the source span covering tokens `start..end` (end exclusive).
+///
+/// `position!()` yields a token index, not a byte offset, so a rule that
+/// wants the span of everything it matched has to map those indices back
+/// through the token list -- which is why the grammar takes the token slice
+/// as an argument.
+fn span_of_tokens(tokens: &[Token], start: usize, end: usize) -> SourceSpan {
+    match (tokens.get(start), tokens.get(end.saturating_sub(1))) {
+        (Some(first), Some(last)) => SourceSpan::join(&first.span, &last.span),
+        (Some(only), None) => only.span.clone(),
+        _ => SourceSpan::default(),
+    }
+}
+
 /// The default implementation of the parsing traits for `[T]` expects `T` to be
 /// `Copy`, as in the `[u8]` or simple enum cases. This wrapper exposes the
 /// elements by `&T` reference, which is `Copy`.
@@ -268,7 +282,7 @@ impl<'a, T: 'a> ParseElem<'a> for SliceByRef<'a, T> {
 }
 
 parser! {
-  grammar plc_parser<'a>() for SliceByRef<'a, Token> {
+  grammar plc_parser<'a>(tokens: &'a [Token]) for SliceByRef<'a, Token> {
 
     /// Rule to enable optional tracing rule for pegviz markers that makes
     /// working with the parser easier in the terminal.
@@ -366,7 +380,12 @@ parser! {
         / t:tok(TokenType::AnyDate) { TypeName { name: Id::from("ANY_DATE").with_position(t.span.clone()) } }
 
     // B.1.2 Constants
-    rule constant() -> ConstantKind =
+    // Every literal kind records the span of the tokens it matched. Recording
+    // it here, once around the whole choice, is what guarantees no kind is
+    // left span-less: `Located for ExprKind` joins the spans of an
+    // expression's operands, so a single span-less literal makes the whole
+    // expression report position 0.
+    rule constant() -> ConstantKind = start:position!() c:(
         real:real_literal() { ConstantKind::RealLiteral(real) }
         / integer:integer_literal() { ConstantKind::IntegerLiteral(integer) }
         / c:character_string_literal() { ConstantKind::CharacterString(c) }
@@ -376,6 +395,9 @@ parser! {
         / date_time:date_and_time() { ConstantKind::DateAndTime(date_time) }
         / bit_string:bit_string_literal() { ConstantKind::BitStringLiteral(bit_string) }
         / boolean:boolean_literal() { ConstantKind::Boolean(boolean) }
+    ) end:position!() {
+        c.with_span(span_of_tokens(tokens, start, end))
+    }
 
     // B.1.2.1 Numeric literals
     // numeric_literal omitted because it only appears in constant so we do not need to create a type for it
@@ -409,6 +431,7 @@ parser! {
         RealLiteral {
           value: node.value * sign,
           data_type: node.data_type,
+          span: node.span,
         }
       })
     }
@@ -467,7 +490,7 @@ parser! {
     rule dt_sep(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case(val)]
 
     pub rule duration() -> DurationLiteral = start:position!() (tok(TokenType::Time) / tok(TokenType::Ltime) / dt_sep("T")) tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() end:position!() {
-      let span = SourceSpan::range(start, end);
+      let span = span_of_tokens(tokens, start, end);
       let interval = match s {
         Some(sign) => i.interval * -1,
         None => i.interval,
@@ -674,6 +697,11 @@ parser! {
     // carve-out variable_identifier() already provides for VAR
     // declarations (see #300, "Feature/reserved variables").
     rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:variable_identifier() { EnumeratedValue {type_name, value, explicit_value: None} }
+    // The `Type#VALUE` spelling only. Unlike `enumerated_value()`, this
+    // cannot match a bare identifier, so a caller in a position that also
+    // accepts a variable reference can tell the unambiguous case apart from
+    // the one that has to be resolved later.
+    rule enumerated_value__qualified() -> EnumeratedValue = name:enumerated_type_name() tok(TokenType::Hash) value:variable_identifier() { EnumeratedValue {type_name: Some(name), value, explicit_value: None} }
     // CODESYS/TwinCAT (also standard as of IEC 61131-3:2013) explicit
     // per-member enum value, e.g. `Type_UNDEFINED := 0, Type_ANY,
     // Type_BOOL` -- only a member *declaration* can carry an explicit
@@ -781,15 +809,23 @@ parser! {
     }
     rule structure_element_name() ->Id = identifier()
     rule structure_initialization() -> Vec<StructureElementInit> = tok(TokenType::LeftParen) _ elems:structure_element_initialization() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { elems }
-    // `constant()`/`enumerated_value()` are grammatically a strict subset of
-    // `expression()` (e.g. a bare identifier is a valid, but truncated,
-    // match for `pDevice^.Delta`) -- the trailing lookahead requires them to
-    // consume the *entire* value (immediately followed by the list
-    // terminator) before winning the choice, so a genuinely richer
+    // `constant()` and a qualified `Type#VALUE` are grammatically a strict
+    // subset of `expression()` (e.g. a bare identifier is a valid, but
+    // truncated, match for `pDevice^.Delta`) -- the trailing lookahead
+    // requires them to consume the *entire* value (immediately followed by
+    // the list terminator) before winning the choice, so a genuinely richer
     // expression like a dereference-then-member-access chain falls through
     // to the `expression()` alternative instead of matching only its first
     // identifier and leaving `^.Delta` unconsumed.
-    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)} / ex:expression() { StructInitialValueAssignmentKind::Expression(Expr::new(ex)) }) {
+    //
+    // A *bare* identifier is a different problem: `(x := g)` is one token in
+    // a position that accepts both an enumerated value and a variable
+    // reference, and no lookahead can separate them, because nothing here
+    // distinguishes them -- no type or variable declaration is in scope yet.
+    // Rather than pick one and be wrong half the time, record the ambiguity
+    // as `LateBound`; `xform_resolve_late_bound_expr_kind` resolves it once
+    // declarations are known. A qualified `Type#VALUE` needs no such help.
+    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value__qualified() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / v:variable_identifier() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::LateBound(LateBound { value: v }) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)} / ex:expression() { StructInitialValueAssignmentKind::Expression(Expr::new(ex)) }) {
       StructureElementInit {
         name,
         init,
@@ -1536,17 +1572,17 @@ parser! {
         elements
       }
     }
-    rule initial_step() -> Step = tok(TokenType::InitialStep) _ name:step_name() _ tok(TokenType::Colon) _ action_associations:action_association() ** (_ tok(TokenType::Semicolon) _) tok(TokenType::EndStep) {
-      Step{
+    rule initial_step() -> Step = tok(TokenType::InitialStep) _ step:step_body() { step }
+    rule step() -> ElementKind = tok(TokenType::Step) _ step:step_body() { ElementKind::Step(step) }
+    // The `name : associations END_STEP` tail shared by `INITIAL_STEP` and
+    // `STEP`. One rule so the two cannot drift apart again (issue #1659):
+    // each kept its own copy, and neither accepted every legal body. The
+    // association list may be empty, and every association ends in `;`.
+    rule step_body() -> Step = name:step_name() _ tok(TokenType::Colon) _ action_associations:semisep_or_empty(<action_association()>) _ tok(TokenType::EndStep) {
+      Step {
         name,
         action_associations,
-       }
-    }
-    rule step() -> ElementKind = tok(TokenType::Step) _ name:step_name() _ tok(TokenType::Colon) _ action_associations:semisep(<action_association()>) _ tok(TokenType::EndStep) {
-      ElementKind::step(
-        name,
-        action_associations
-      )
+      }
     }
     rule step_name() -> Id = identifier()
     rule action_association() -> ActionAssociation = name:action_name() _ tok(TokenType::LeftParen) _ qualifier:action_qualifier()? _ indicators:(tok(TokenType::Comma) _ i:indicator_name() ** (_ tok(TokenType::Comma) _) { i })? _ tok(TokenType::RightParen) {

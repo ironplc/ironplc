@@ -195,6 +195,31 @@ PROGRAM main
 END_PROGRAM
 ";
 
+// Member initializer on the instance declaration sets PT, so the invocation
+// need not pass it: timer=var0, result=var1. This is the shape
+// docs/reference/compiler/problems/P4043.rst offers as the remedy for P4043.
+const TON_MEMBER_INIT_PT: &str = "
+PROGRAM main
+  VAR
+    timer : TON := (PT := T#5s);
+    result : BOOL;
+  END_VAR
+  timer(IN := TRUE, Q => result);
+END_PROGRAM
+";
+
+// A member initializer that an invocation later overrides: the invocation's
+// own PT wins, because it is stored on every scan. timer=var0, result=var1.
+const TON_MEMBER_INIT_PT_OVERRIDDEN: &str = "
+PROGRAM main
+  VAR
+    timer : TON := (PT := T#5s);
+    result : BOOL;
+  END_VAR
+  timer(IN := TRUE, PT := T#1s, Q => result);
+END_PROGRAM
+";
+
 #[rstest]
 // Plain TIME literal assignment: T#5s stored as 5000 ms (i32).
 #[case::time_value_i32_ms(TON_TIME_ONLY, &[Run(0), Expect(0, 5000)])]
@@ -266,6 +291,15 @@ END_PROGRAM
 #[case::dot_access_reads_q_in_while(TON_DOT_READ_Q_IN_WHILE, &[
     // Q still FALSE, so the loop runs to its count bound.
     Run(0), Run(100_000), Expect(1, 3),
+])]
+// A declaration member initializer sets PT: Q stays FALSE before it elapses
+// and goes TRUE after, exactly as an explicit `PT := T#5s` argument would.
+#[case::member_initializer_sets_pt(TON_MEMBER_INIT_PT, &[
+    Run(0), Expect(1, 0), Run(2_000_000), Expect(1, 0), Run(6_000_000), Expect(1, 1),
+])]
+// An invocation argument overrides the declaration's member initializer.
+#[case::member_initializer_overridden_by_invocation(TON_MEMBER_INIT_PT_OVERRIDDEN, &[
+    Run(0), Expect(1, 0), Run(2_000_000), Expect(1, 1),
 ])]
 fn end_to_end_fb_ton(#[case] source: &str, #[case] steps: &[FbStep]) {
     drive_fb(source, &CompilerOptions::default(), steps);
