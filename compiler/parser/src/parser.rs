@@ -1572,17 +1572,17 @@ parser! {
         elements
       }
     }
-    rule initial_step() -> Step = tok(TokenType::InitialStep) _ name:step_name() _ tok(TokenType::Colon) _ action_associations:action_association() ** (_ tok(TokenType::Semicolon) _) tok(TokenType::EndStep) {
-      Step{
+    rule initial_step() -> Step = tok(TokenType::InitialStep) _ step:step_body() { step }
+    rule step() -> ElementKind = tok(TokenType::Step) _ step:step_body() { ElementKind::Step(step) }
+    // The `name : associations END_STEP` tail shared by `INITIAL_STEP` and
+    // `STEP`. One rule so the two cannot drift apart again (issue #1659):
+    // each kept its own copy, and neither accepted every legal body. The
+    // association list may be empty, and every association ends in `;`.
+    rule step_body() -> Step = name:step_name() _ tok(TokenType::Colon) _ action_associations:semisep_or_empty(<action_association()>) _ tok(TokenType::EndStep) {
+      Step {
         name,
         action_associations,
-       }
-    }
-    rule step() -> ElementKind = tok(TokenType::Step) _ name:step_name() _ tok(TokenType::Colon) _ action_associations:semisep(<action_association()>) _ tok(TokenType::EndStep) {
-      ElementKind::step(
-        name,
-        action_associations
-      )
+      }
     }
     rule step_name() -> Id = identifier()
     rule action_association() -> ActionAssociation = name:action_name() _ tok(TokenType::LeftParen) _ qualifier:action_qualifier()? _ indicators:(tok(TokenType::Comma) _ i:indicator_name() ** (_ tok(TokenType::Comma) _) { i })? _ tok(TokenType::RightParen) {
