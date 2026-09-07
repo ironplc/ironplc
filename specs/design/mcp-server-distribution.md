@@ -64,11 +64,11 @@ The `APPFILE` registry key (`REGPATH_APPPATHSUBKEY`) points to `ironplcc.exe` an
 
 ### macOS and Linux (Homebrew / tarball)
 
-The `_package-macos` and `_package-linux` justfile recipes build a `.tar.gz` archive from the release binaries. The Homebrew formula's `install` block extracts the archive and copies the binaries into `bin`.
+The `_package-macos` and `_package-linux` justfile recipes build a `.tar.gz` archive from the release binaries. The Homebrew formula's `install` block extracts the archive, keeps the binaries in `libexec` beside their bundled resources, and symlinks each executable into `bin`.
 
 **REQ-DST-020** The `_package-macos` and `_package-linux` justfile recipes include `ironplcmcp` in the archive alongside `ironplcc` and `ironplcvm`.
 
-**REQ-DST-021** The Homebrew formula's `install` block installs `ironplcmcp` into `bin` alongside the other two binaries.
+**REQ-DST-021** The Homebrew formula's `install` block installs `ironplcmcp` into `libexec` and symlinks it into `bin` alongside the other binaries.
 
 After these changes, `brew install ironplc/brew/ironplc` installs all three binaries and all three are on the user's `PATH`.
 
@@ -108,11 +108,11 @@ The `tools/list` request body:
 
 ### Homebrew Formula Template
 
-The formula template (`compiler/homebrew/Formula/ironplc.rb`) currently installs two binaries. After this change it installs three.
+The formula template (`compiler/homebrew/Formula/ironplc.rb`) installs four binaries: `ironplcc`, `ironplcvm`, `ironplcmcp` and `ironplcvmd` (the DAP server, added after this design). Each is placed in `libexec` with `libexec.install` and exposed on the `PATH` with `bin.install_symlink`.
 
-**REQ-DST-040** The Homebrew formula template adds `bin.install "ironplcmcp"` to the `install` block.
+**REQ-DST-050** The Homebrew formula template lists `ironplcmcp` in the `libexec.install` call and adds `bin.install_symlink libexec/"ironplcmcp"` to the `install` block.
 
-**REQ-DST-041** No new template variables are required. The formula downloads the same `.tar.gz` archive as before; the archive now contains the additional binary.
+**REQ-DST-051** No new template variables are required. The formula downloads the same `.tar.gz` archive as before; the archive now contains the additional binary.
 
 ### Summary of File Changes
 
@@ -120,7 +120,7 @@ The formula template (`compiler/homebrew/Formula/ironplc.rb`) currently installs
 |------|--------|
 | `compiler/setup.nsi` | Add `MCPFILE` constant; add `File` directive for `ironplcmcp.exe` |
 | `compiler/justfile` | Add `ironplcmcp` to `_package-macos` and `_package-linux` tar commands; add MCP smoke-test step to `endtoend-smoke-test` |
-| `compiler/homebrew/Formula/ironplc.rb` | Add `bin.install "ironplcmcp"` |
+| `compiler/homebrew/Formula/ironplc.rb` | Add `ironplcmcp` to `libexec.install`; add `bin.install_symlink libexec/"ironplcmcp"` |
 | `.github/workflows/partial_compiler.yaml` | Pass `MCPFILE` to `makensis` |
 
 No new crates, no new workflow files, and no new distribution channels are introduced.
