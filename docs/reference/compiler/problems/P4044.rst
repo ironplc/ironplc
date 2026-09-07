@@ -4,11 +4,13 @@ P4044
 
 .. problem-summary:: P4044
 
-This error occurs when a derived function block (using the
-CODESYS/TwinCAT ``EXTENDS`` extension) redeclares a field that is
-already declared on its base function block, or any ancestor further up
-the ``EXTENDS`` chain. Real TwinCAT rejects this as a duplicate
-definition even when the redeclared field has a different type.
+This error occurs when a derived function block (one declared with
+``EXTENDS``) redeclares a field that is already declared on its base
+function block, or any ancestor further up the ``EXTENDS`` chain. The
+redeclaration is rejected even when the new field has a different type:
+a derived function block inherits every field of its base and cannot hide
+one behind a declaration of its own. CODESYS and TwinCAT reject the same
+code as a duplicate definition.
 
 Example
 -------

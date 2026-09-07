@@ -74,6 +74,12 @@ Global variables are declared in a :code:`CONFIGURATION` block using
 The :code:`VAR_EXTERNAL` declaration must match the name and type of the
 global variable it references.
 
+A program cannot declare a variable of its own with the same name as a
+global variable; that is reported as
+:doc:`P4050 </reference/compiler/problems/P4050>`. A function, function
+block or method may reuse a global's name, and within that unit the local
+declaration hides the global.
+
 .. playground::
 
    CONFIGURATION config
