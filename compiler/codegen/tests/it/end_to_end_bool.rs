@@ -115,14 +115,14 @@ END_PROGRAM
 );
 
 e2e_i32!(
-    end_to_end_when_not_zero_then_one,
+    end_to_end_when_not_false_then_true,
     "
 PROGRAM main
   VAR
-    x : DINT;
-    y : DINT;
+    x : BOOL;
+    y : BOOL;
   END_VAR
-  x := 0;
+  x := FALSE;
   y := NOT x;
 END_PROGRAM
 ",
@@ -130,18 +130,18 @@ END_PROGRAM
 );
 
 e2e_i32!(
-    end_to_end_when_not_nonzero_then_zero,
+    end_to_end_when_not_true_then_false,
     "
 PROGRAM main
   VAR
-    x : DINT;
-    y : DINT;
+    x : BOOL;
+    y : BOOL;
   END_VAR
-  x := 5;
+  x := TRUE;
   y := NOT x;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 0)],
+    &[(0, 1), (1, 0)],
 );
 
 e2e_i32!(
