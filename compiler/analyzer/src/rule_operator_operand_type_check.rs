@@ -101,9 +101,22 @@ impl DiagnosticVisitor for RuleOperatorOperandTypeCheck<'_> {
 }
 
 impl RuleOperatorOperandTypeCheck<'_> {
+    /// Reports P4049 for each operand of `op` that is not acceptable where the
+    /// row's operand type is required.
+    ///
+    /// Every operator this rule checks asks the same question of each of its
+    /// operands, so arity is just the length of `operands`: two for an
+    /// arithmetic or compare expression, one for `NOT`.
+    fn check_operands(&mut self, op: &str, form: &OperatorFunctionForm, operands: &[&Expr]) {
+        let expected = form.operand_type();
+        for operand in operands {
+            self.check_operand(op, &expected, operand);
+        }
+    }
+
     /// Reports P4049 when `operand`'s resolved type is one the predicate can
     /// judge and it is not acceptable where `expected` is required.
-    fn check_operand(&mut self, op: &Operator, expected: &TypeName, operand: &Expr) {
+    fn check_operand(&mut self, op: &str, expected: &TypeName, operand: &Expr) {
         let Some(actual) = operand.resolved_type.as_ref() else {
             return;
         };
@@ -129,9 +142,7 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
 
     fn visit_binary_expr(&mut self, node: &BinaryExpr) -> Result<Self::Value, Infallible> {
         if let Some(form) = checked_form(&node.op) {
-            let expected = form.operand_type();
-            self.check_operand(&node.op, &expected, &node.left);
-            self.check_operand(&node.op, &expected, &node.right);
+            self.check_operands(&node.op.to_string(), form, &[&node.left, &node.right]);
         }
         node.recurse_visit(self)
     }
