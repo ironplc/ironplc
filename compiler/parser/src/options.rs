@@ -1,12 +1,23 @@
 //! Options affecting compilation (parsing, analysis, and code generation).
 //!
 //! Use [`Dialect`] to select a preset configuration, then optionally
-//! override individual flags.  Use the [`define_compiler_options`] macro
-//! to declare dialect-extension fields so that [`CompilerOptions::from_dialect`]
-//! is the single place that maps dialects to flags.
+//! override individual flags and behavior policies.  Use the
+//! [`define_compiler_options`] macro to declare dialect-extension fields and
+//! policy fields so that [`CompilerOptions::from_dialect`] is the single place
+//! that maps dialects to flags and policies.
+//!
+//! A flag enables one syntax extension; a behavior policy (ADR-0049) selects
+//! one of several documented alternatives for an operation's runtime
+//! behavior. Flags only ever enable, and a preset is a bundle of them; a
+//! policy always has exactly one alternative selected, and a preset names the
+//! one a real target uses.
 
 use std::fmt;
 use std::str::FromStr;
+
+pub use ironplc_container::policy::{
+    BehaviorPolicy, StringToNumFailure, StringToNumNonNumeric, UnknownAlternative,
+};
 
 /// A named configuration preset that sets the IEC edition and
 /// dialect-extension flags in one shot.
@@ -142,11 +153,46 @@ pub struct FeatureDescriptor {
     pub dialects: &'static [Dialect],
 }
 
-/// Declares [`CompilerOptions`] with a set of dialect-extension boolean flags.
+/// Metadata for a single behavior policy (ADR-0049).
 ///
-/// Each field carries a description string and a list of [`Dialect`] variants
-/// that enable it.  The macro auto-generates the struct, its `Default` impl,
-/// [`CompilerOptions::from_dialect`], and [`CompilerOptions::FEATURE_DESCRIPTORS`].
+/// A policy is not a flag: it selects one of several enumerated alternatives
+/// rather than enabling a feature, so it has its own descriptor and its own
+/// accessors ([`CompilerOptions::set_policy_by_key`],
+/// [`CompilerOptions::get_policy_by_key`]).
+pub struct PolicyDescriptor {
+    /// The CLI flag name (e.g. `"--policy-string-to-num-failure"`).
+    pub cli_flag: &'static str,
+    /// The option key used in the MCP `options` object and, in lowerCamelCase,
+    /// in the LSP `initializationOptions`. Matches the corresponding
+    /// [`CompilerOptions`] field name.
+    pub option_key: &'static str,
+    /// A short human-readable description of what the policy governs.
+    pub description: &'static str,
+    /// The CLI name of every alternative, in encoding order.
+    pub alternatives: &'static [&'static str],
+    /// The CLI name of the alternative every strict dialect selects.
+    pub default: &'static str,
+}
+
+/// The outcome of [`CompilerOptions::set_policy_by_key`] when nothing was set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetPolicyError {
+    /// The key names no behavior policy.
+    UnknownKey,
+    /// The key names a policy, but the value is not one of its alternatives.
+    UnknownAlternative,
+}
+
+/// Declares [`CompilerOptions`] with a set of dialect-extension boolean flags
+/// and a set of behavior policies.
+///
+/// Each flag carries a description string and a list of [`Dialect`] variants
+/// that enable it. Each policy carries a description, its enum type, and the
+/// alternative each non-default dialect selects (a dialect not listed keeps
+/// the policy's default). The macro auto-generates the struct, its `Default`
+/// impl, [`CompilerOptions::from_dialect`], [`CompilerOptions::FEATURE_DESCRIPTORS`],
+/// and [`CompilerOptions::POLICY_DESCRIPTORS`], so this invocation is the single
+/// place that maps dialects to flags and policies.
 macro_rules! define_compiler_options {
     (
         $(
@@ -155,23 +201,41 @@ macro_rules! define_compiler_options {
             [$($dialect:ident),* $(,)?],
             $flag_field:ident
         ),* $(,)?
+        policies {
+            $(
+                $policy_desc:literal,
+                $policy_cli_flag:literal,
+                $policy_type:ident,
+                [$($policy_dialect:ident => $policy_alt:ident),* $(,)?],
+                $policy_field:ident
+            ),* $(,)?
+        }
     ) => {
         #[derive(Debug, Default, Clone, Copy)]
         pub struct CompilerOptions {
             $(pub $flag_field: bool,)*
+            $(pub $policy_field: $policy_type,)*
         }
 
         impl CompilerOptions {
             /// Build a [`CompilerOptions`] from a [`Dialect`] preset.
             ///
             /// Individual flags can be set to `true` afterwards to layer
-            /// additional extensions on top of the dialect.
+            /// additional extensions on top of the dialect, and individual
+            /// policies can be reassigned.
             pub fn from_dialect(dialect: Dialect) -> Self {
                 let mut opts = Self::default();
                 $(
                     if [$(Dialect::$dialect),*].contains(&dialect) {
                         opts.$flag_field = true;
                     }
+                )*
+                $(
+                    $(
+                        if dialect == Dialect::$policy_dialect {
+                            opts.$policy_field = $policy_type::$policy_alt;
+                        }
+                    )*
                 )*
                 opts
             }
@@ -187,6 +251,50 @@ macro_rules! define_compiler_options {
                     },
                 )*
             ];
+
+            /// Metadata for every behavior policy.
+            pub const POLICY_DESCRIPTORS: &[PolicyDescriptor] = &[
+                $(
+                    PolicyDescriptor {
+                        cli_flag: $policy_cli_flag,
+                        option_key: stringify!($policy_field),
+                        description: $policy_desc,
+                        alternatives: <$policy_type as BehaviorPolicy>::NAMES,
+                        // The first alternative is the default by the
+                        // `BehaviorPolicy` contract.
+                        default: <$policy_type as BehaviorPolicy>::NAMES[0],
+                    },
+                )*
+            ];
+
+            /// Select a behavior policy alternative by the policy's
+            /// `option_key` (the field name from [`PolicyDescriptor`]) and
+            /// the alternative's CLI name.
+            pub fn set_policy_by_key(&mut self, key: &str, value: &str) -> Result<(), SetPolicyError> {
+                match key {
+                    $(
+                        stringify!($policy_field) => {
+                            let alt = <$policy_type as BehaviorPolicy>::from_cli_name(value)
+                                .ok_or(SetPolicyError::UnknownAlternative)?;
+                            self.$policy_field = alt;
+                            Ok(())
+                        }
+                    )*
+                    _ => Err(SetPolicyError::UnknownKey),
+                }
+            }
+
+            /// The CLI name of the alternative currently selected for the
+            /// policy with the given `option_key`, or `None` if the key names
+            /// no policy.
+            pub fn get_policy_by_key(&self, key: &str) -> Option<&'static str> {
+                match key {
+                    $(
+                        stringify!($policy_field) => Some(self.$policy_field.cli_name()),
+                    )*
+                    _ => None,
+                }
+            }
 
             /// Set a dialect-extension feature flag by its `option_key` (the
             /// field name from [`FeatureDescriptor`]).
@@ -355,6 +463,20 @@ define_compiler_options! {
     "--allow-fb-inheritance",
     [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
     allow_fb_inheritance,
+
+    policies {
+        "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",
+        "--policy-string-to-num-non-numeric",
+        StringToNumNonNumeric,
+        [Codesys => IgnoreTrailing, TwinCat => IgnoreTrailing],
+        policy_string_to_num_non_numeric,
+
+        "What STRING_TO_<numeric> does when the string is not convertible",
+        "--policy-string-to-num-failure",
+        StringToNumFailure,
+        [Rusty => Zero, Codesys => Zero, TwinCat => Zero],
+        policy_string_to_num_failure,
+    }
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -377,6 +499,21 @@ pub fn describe_dialects() -> String {
             for f in &features {
                 out.push_str(&format!("  {:<34} {}\n", f.cli_flag, f.description));
             }
+        }
+    }
+
+    for dialect in Dialect::ALL {
+        let options = CompilerOptions::from_dialect(*dialect);
+        out.push_str(&format!(
+            "\nBehavior policies selected by \"{}\":\n",
+            dialect
+        ));
+        for p in CompilerOptions::POLICY_DESCRIPTORS {
+            let selected = options.get_policy_by_key(p.option_key).unwrap_or("?");
+            out.push_str(&format!(
+                "  {:<34} {:<20} {}\n",
+                p.cli_flag, selected, p.description
+            ));
         }
     }
     out
@@ -584,6 +721,151 @@ mod tests {
     ) {
         let options = CompilerOptions::from_dialect(dialect);
         assert!(options.allow_partial_access_syntax);
+    }
+
+    /// Assert that a dialect selects exactly the given policy alternatives,
+    /// keyed by `option_key`. Like `assert_enabled_flags`, this is the guard
+    /// against a preset silently changing: every policy is listed for every
+    /// dialect, so a new policy forces a matching update here.
+    fn assert_selected_policies(dialect: Dialect, expected: &[(&str, &str)]) {
+        let options = CompilerOptions::from_dialect(dialect);
+        let mut selected: Vec<(&str, &str)> = CompilerOptions::POLICY_DESCRIPTORS
+            .iter()
+            .map(|p| {
+                (
+                    p.option_key,
+                    options.get_policy_by_key(p.option_key).unwrap(),
+                )
+            })
+            .collect();
+        selected.sort_unstable();
+        let mut expected_sorted = expected.to_vec();
+        expected_sorted.sort_unstable();
+        assert_eq!(
+            selected, expected_sorted,
+            "dialect {dialect} does not select exactly the expected policy alternatives"
+        );
+    }
+
+    /// The strict dialects select every policy's default: reject anything
+    /// that is not a whole literal, and trap on failure (ADR-0049 rule 4).
+    #[rstest]
+    #[case::ed2(Dialect::Iec61131_3Ed2)]
+    #[case::ed3(Dialect::Iec61131_3Ed3)]
+    fn strict_dialects_select_default_policies(#[case] dialect: Dialect) {
+        assert_selected_policies(
+            dialect,
+            &[
+                ("policy_string_to_num_non_numeric", "reject"),
+                ("policy_string_to_num_failure", "trap"),
+            ],
+        );
+    }
+
+    /// RuSTy rejects a string with trailing characters, but its documented
+    /// "never fault" contract makes the failure result 0 rather than a trap.
+    #[test]
+    fn rusty_dialect_selects_reject_and_zero() {
+        assert_selected_policies(
+            Dialect::Rusty,
+            &[
+                ("policy_string_to_num_non_numeric", "reject"),
+                ("policy_string_to_num_failure", "zero"),
+            ],
+        );
+    }
+
+    /// CODESYS and TwinCAT (observed) stop parsing at the first invalid
+    /// character and document 0 as the result for a string that is not valid
+    /// in the target type.
+    #[rstest]
+    #[case::codesys(Dialect::Codesys)]
+    #[case::twincat(Dialect::TwinCat)]
+    fn codesys_family_dialects_select_ignore_trailing_and_zero(#[case] dialect: Dialect) {
+        assert_selected_policies(
+            dialect,
+            &[
+                ("policy_string_to_num_non_numeric", "ignore-trailing"),
+                ("policy_string_to_num_failure", "zero"),
+            ],
+        );
+    }
+
+    #[test]
+    fn set_policy_by_key_when_known_key_and_alternative_then_selected() {
+        let mut options = CompilerOptions::default();
+        assert_eq!(
+            options.set_policy_by_key("policy_string_to_num_failure", "zero"),
+            Ok(())
+        );
+        assert_eq!(
+            options.policy_string_to_num_failure,
+            StringToNumFailure::Zero
+        );
+        assert_eq!(
+            options.get_policy_by_key("policy_string_to_num_failure"),
+            Some("zero")
+        );
+    }
+
+    #[test]
+    fn set_policy_by_key_when_unknown_alternative_then_error_and_unchanged() {
+        let mut options = CompilerOptions::default();
+        assert_eq!(
+            options.set_policy_by_key("policy_string_to_num_non_numeric", "wrap"),
+            Err(SetPolicyError::UnknownAlternative)
+        );
+        assert_eq!(
+            options.policy_string_to_num_non_numeric,
+            StringToNumNonNumeric::Reject
+        );
+    }
+
+    #[test]
+    fn set_policy_by_key_when_unknown_key_then_error() {
+        let mut options = CompilerOptions::default();
+        assert_eq!(
+            options.set_policy_by_key("allow_c_style_comments", "reject"),
+            Err(SetPolicyError::UnknownKey)
+        );
+        assert_eq!(options.get_policy_by_key("allow_c_style_comments"), None);
+    }
+
+    #[test]
+    fn set_policy_by_key_when_each_descriptor_alternative_then_round_trips() {
+        let mut options = CompilerOptions::default();
+        for p in CompilerOptions::POLICY_DESCRIPTORS {
+            for alt in p.alternatives {
+                assert_eq!(options.set_policy_by_key(p.option_key, alt), Ok(()));
+                assert_eq!(options.get_policy_by_key(p.option_key), Some(*alt));
+            }
+        }
+    }
+
+    #[test]
+    fn policy_descriptors_when_called_then_default_is_first_alternative_and_keys_start_with_policy()
+    {
+        assert!(!CompilerOptions::POLICY_DESCRIPTORS.is_empty());
+        let defaults = CompilerOptions::default();
+        for p in CompilerOptions::POLICY_DESCRIPTORS {
+            assert!(
+                p.option_key.starts_with("policy_"),
+                "option_key {} does not start with policy_",
+                p.option_key
+            );
+            assert!(p.cli_flag.starts_with("--policy-"));
+            assert_eq!(p.default, p.alternatives[0]);
+            assert_eq!(defaults.get_policy_by_key(p.option_key), Some(p.default));
+            assert!(!p.description.is_empty());
+        }
+    }
+
+    #[test]
+    fn describe_dialects_when_called_then_lists_policy_selections() {
+        let output = describe_dialects();
+        assert!(output.contains("Behavior policies selected by \"codesys\":"));
+        assert!(output.contains("--policy-string-to-num-non-numeric"));
+        assert!(output.contains("ignore-trailing"));
     }
 
     #[test]

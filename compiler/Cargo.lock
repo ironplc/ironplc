@@ -1049,6 +1049,7 @@ dependencies = [
 name = "ironplc-parser"
 version = "0.242.0"
 dependencies = [
+ "ironplc-container",
  "ironplc-dsl",
  "ironplc-problems",
  "ironplc-spec-requirements-gen",
