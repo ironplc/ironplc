@@ -19,6 +19,7 @@ use spec_test_macro::spec_test;
 use crate::builder::ContainerBuilder;
 use crate::code_section::{CodeSection, FuncEntry};
 use crate::constant_pool::{ConstEntry, ConstantPool};
+use crate::container_ref::ConstTableEntry;
 use crate::debug_section::FuncNameEntry;
 use crate::header::{
     FileHeader, FLAG_HAS_DEBUG_SECTION, FLAG_HAS_SYSTEM_UPTIME, FLAG_HAS_TYPE_SECTION,
@@ -319,7 +320,7 @@ fn assert_flipped_byte_is_rejected(buf: &[u8], index: usize) {
         Container::read_from(&mut Cursor::new(&tampered)),
         Err(ContainerError::ContentHashMismatch)
     ));
-    let mut offsets = vec![0u32; 4];
+    let mut offsets = vec![ConstTableEntry::EMPTY; 4];
     assert!(matches!(
         ContainerRef::from_slice(&tampered, &mut offsets),
         Err(ContainerError::ContentHashMismatch)
@@ -432,7 +433,7 @@ fn container_spec_req_cf_031_zero_content_hash_is_not_checked() {
     unhashed[last_byte_of(h.code_section_offset, h.code_section_size)] ^= 0xFF;
 
     assert!(Container::read_from(&mut Cursor::new(&unhashed)).is_ok());
-    let mut offsets = vec![0u32; 4];
+    let mut offsets = vec![ConstTableEntry::EMPTY; 4];
     assert!(ContainerRef::from_slice(&unhashed, &mut offsets).is_ok());
 }
 

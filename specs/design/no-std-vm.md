@@ -85,7 +85,7 @@ did with the owned container.
 
 ### Host path
 
-A host needs somewhere to keep the bytes and the constant-offset scratch the
+A host needs somewhere to keep the bytes and the decoded constant table the
 view borrows. `ContainerBytes` (container crate, `std` feature) owns both,
 validates once at construction, and hands out views on a shared borrow, so a
 session can hold one next to its `VmBuffers` and a benchmark can take a view
@@ -117,7 +117,7 @@ caller-provided buffer slices are still to come (`VmBuffers` is
 #![no_std]
 #![no_main]
 
-use ironplc_container::ContainerRef;
+use ironplc_container::{ConstTableEntry, ContainerRef};
 use ironplc_vm::{Slot, Vm};
 use ironplc_vm::scheduler::{TaskState, ProgramInstanceState};
 
@@ -134,9 +134,10 @@ const NUM_CONSTANTS: usize = 2;
 
 #[arduino_hal::entry]
 fn main() -> ! {
-    // Phase 1: parse container (two-phase for constant offset index).
-    let mut const_offsets = [0u32; NUM_CONSTANTS];
-    let container = ContainerRef::from_slice(PROGRAM, &mut const_offsets)
+    // Phase 1: parse container, decoding the constant pool into a table
+    // sized from the compiled program.
+    let mut constants = [ConstTableEntry::EMPTY; NUM_CONSTANTS];
+    let container = ContainerRef::from_slice(PROGRAM, &mut constants)
         .unwrap();
 
     // Phase 2: allocate buffers on the stack.

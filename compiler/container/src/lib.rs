@@ -52,7 +52,7 @@ pub mod verify_temp_bufs;
 pub use char_width::CharWidth;
 pub use code_section::FuncEntry;
 pub use const_type::ConstType;
-pub use container_ref::ContainerRef;
+pub use container_ref::{ConstTableEntry, ContainerRef};
 pub use error::ContainerError;
 pub use header::{
     FileHeader, FLAG_HAS_DEBUG_SECTION, FLAG_HAS_SYSTEM_UPTIME, FLAG_HAS_TYPE_SECTION,
