@@ -9,13 +9,16 @@
 
 use crate::common::VmBuffers;
 use ironplc_container::opcode;
+use ironplc_container::ContainerBytes;
 use ironplc_container::VarIndex;
 
 #[test]
 fn ton_when_in_true_after_pt_then_q_true_et_clamped() {
     let c = crate::common::timer_test_container(5000, opcode::fb_type::TON);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     vm.write_variable(VarIndex::new(1), 1).unwrap(); // IN = TRUE
 
@@ -29,8 +32,10 @@ fn ton_when_in_true_after_pt_then_q_true_et_clamped() {
 #[test]
 fn ton_when_in_falls_after_timer_expires_then_resets() {
     let c = crate::common::timer_test_container(5000, opcode::fb_type::TON);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     vm.write_variable(VarIndex::new(1), 1).unwrap(); // IN = TRUE
     vm.run_round(1_000_000).unwrap(); // t=1s: rising edge

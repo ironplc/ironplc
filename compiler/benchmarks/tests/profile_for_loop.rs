@@ -16,6 +16,7 @@
 
 use ironplc_benchmarks::compile_st;
 use ironplc_container::opcode;
+use ironplc_container::ContainerBytes;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::{InstructionProfile, VmBuffers};
 
@@ -43,8 +44,10 @@ END_PROGRAM";
 
 fn run_one_scan(source: &str) -> InstructionProfile {
     let container = compile_st(source);
+    let container_image = ContainerBytes::from_container(&container).unwrap();
+    let container = container_image.container_ref();
     let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = load_and_start(&container, &mut bufs).unwrap();
+    let mut vm = load_and_start(container, &mut bufs).unwrap();
     vm.run_round(0).unwrap();
     vm.stop().profile().clone()
 }

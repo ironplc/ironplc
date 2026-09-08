@@ -19,6 +19,7 @@ use rstest::rstest;
 use spec_test_macro::spec_test;
 
 use crate::common::VmBuffers;
+use ironplc_container::ContainerBytes;
 
 /// Runs `CONV_STR_TO_U32_*` for the given policies over the narrow string
 /// `input`, returning the converted value or the trap.
@@ -41,8 +42,10 @@ fn convert_to(
     let func_id = str_to_num::func_id(target, non_numeric, failure);
     let bytecode = convert_bytecode(func_id, 1);
     let c = container(&bytecode, Some(input), None);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).map_err(|fault| fault.trap)?;
     Ok(vm.read_variable(VarIndex::new(0)).unwrap())
 }
@@ -63,8 +66,10 @@ fn convert_to_i64(
         .unwrap();
     bytecode[store] = opcode::STORE_VAR_I64;
     let c = container(&bytecode, Some(input), None);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).map_err(|fault| fault.trap)?;
     Ok(vm.read_variable_i64(VarIndex::new(0)).unwrap())
 }
@@ -263,8 +268,10 @@ fn convert_to_real(
         _ => opcode::STORE_VAR_F64,
     };
     let c = container(&bytecode, Some(input), None);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).map_err(|fault| fault.trap)?;
     Ok(vm.read_variable_raw(VarIndex::new(0)).unwrap())
 }
@@ -497,8 +504,10 @@ fn container(
 fn execute_when_str_to_u32_given_wide_operand_then_encoding_mismatch() {
     let bytecode = convert_bytecode(opcode::builtin::CONV_STR_TO_U32_REJECT_ZERO, 2);
     let c = container(&bytecode, None, Some(&[b'4', 0, b'2', 0]));
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     crate::common::assert_trap(
         &mut vm,
         Trap::EncodingMismatch {
@@ -516,8 +525,10 @@ fn execute_when_str_to_u32_given_wide_operand_then_encoding_mismatch() {
 fn execute_when_id_in_policy_block_names_no_conversion_then_v9007() {
     let bytecode = convert_bytecode(0x0486, 1);
     let c = container(&bytecode, Some(b"1"), None);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     crate::common::assert_trap(
         &mut vm,
         Trap::InvalidBuiltinFunction(FunctionId::new(0x0486)),

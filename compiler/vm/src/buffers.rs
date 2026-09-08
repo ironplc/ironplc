@@ -1,4 +1,4 @@
-use ironplc_container::{Container, FunctionId};
+use ironplc_container::{ContainerRef, FunctionId};
 
 use crate::frame_stack::Frame;
 use crate::scheduler::{ProgramInstanceState, TaskState};
@@ -13,7 +13,7 @@ use crate::variable_table::VariableScope;
 /// callers do not need to repeat the allocation boilerplate.
 ///
 /// Construct with [`VmBuffers::from_container`], which sizes each buffer
-/// according to the [`Container`] header and task table.
+/// according to the [`ContainerRef`] header and task table.
 #[derive(Debug)]
 pub struct VmBuffers {
     pub stack: Vec<Slot>,
@@ -28,10 +28,10 @@ pub struct VmBuffers {
 
 impl VmBuffers {
     /// Allocate buffers sized for the given container.
-    pub fn from_container(container: &Container) -> Self {
-        let h = &container.header;
-        let task_count = container.task_table.tasks.len();
-        let program_count = container.task_table.programs.len();
+    pub fn from_container(container: &ContainerRef<'_>) -> Self {
+        let h = container.header();
+        let task_count = container.num_tasks() as usize;
+        let program_count = container.num_programs() as usize;
         let temp_buf_total = h.num_temp_bufs as usize * h.max_temp_buf_bytes as usize;
         let zero_frame = Frame {
             function_id: FunctionId::new(0),

@@ -21,7 +21,7 @@ use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::{parse_and_compile, parse_and_run, VmBuffers};
+use crate::common::{parse_and_compile, parse_and_run, ContainerBytes, VmBuffers};
 use ironplc_vm::Vm;
 
 #[rstest]
@@ -115,9 +115,11 @@ PROGRAM main
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
+    let container_image = ContainerBytes::from_container(&container).unwrap();
+    let container = container_image.container_ref();
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = Vm::new()
-        .load(&container, &mut bufs)
+        .load(container, &mut bufs)
         .unwrap()
         .start()
         .unwrap();
@@ -144,9 +146,11 @@ PROGRAM main
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
+    let container_image = ContainerBytes::from_container(&container).unwrap();
+    let container = container_image.container_ref();
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = Vm::new()
-        .load(&container, &mut bufs)
+        .load(container, &mut bufs)
         .unwrap()
         .start()
         .unwrap();

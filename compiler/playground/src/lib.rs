@@ -14,7 +14,7 @@ use std::io::Cursor;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use ironplc_container::debug_format::VariableRenderer;
-use ironplc_container::{Container, InstanceId, TaskId};
+use ironplc_container::{Container, ContainerBytes, InstanceId, TaskId};
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, LineColumn, DOCS_SECTIONS};
@@ -32,7 +32,7 @@ use wasm_bindgen::prelude::*;
 /// across calls to [`step`]. The VM is re-created each step because
 /// `VmRunning` borrows all buffers and cannot be stored across WASM calls.
 struct VmSession {
-    container_bytes: Vec<u8>,
+    container: ContainerBytes,
     var_buf: Vec<Slot>,
     data_region: Vec<u8>,
     scan_count: u64,
@@ -540,11 +540,24 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
         }
     };
 
-    let mut bufs = VmBuffers::from_container(&container);
+    let image = match ContainerBytes::new(bytes.to_vec()) {
+        Ok(image) => image,
+        Err(e) => {
+            return RunResult {
+                ok: false,
+                variables: vec![],
+                scans_completed: 0,
+                error: Some(internal_run_error(format!(
+                    "Invalid bytecode container: {e}"
+                ))),
+            };
+        }
+    };
+    let mut bufs = VmBuffers::from_container(&image.container_ref());
 
     const INIT_TRAP: &str = "VM trap during init";
     let running = Vm::new()
-        .load(&container, &mut bufs)
+        .load(image.container_ref(), &mut bufs)
         .map_err(|trap| vm_trap_error(INIT_TRAP, &trap, None))
         .and_then(|ready| {
             ready.start().map_err(|ctx| {
@@ -722,7 +735,7 @@ fn load_program_inner(
     let bytecode_b64 = compile_result.bytecode.unwrap();
     let container_bytes = BASE64.decode(&bytecode_b64).unwrap();
 
-    let container = match Container::read_from(&mut Cursor::new(&container_bytes)) {
+    let container = match ContainerBytes::new(container_bytes) {
         Ok(c) => c,
         Err(e) => {
             return StepResult {
@@ -737,9 +750,9 @@ fn load_program_inner(
 
     // Run the init function once to apply initial values to the variable buffer.
     // Subsequent calls to step() will use resume() to skip re-initialization.
-    let mut bufs = VmBuffers::from_container(&container);
+    let mut bufs = VmBuffers::from_container(&container.container_ref());
 
-    let trap = match Vm::new().load(&container, &mut bufs) {
+    let trap = match Vm::new().load(container.container_ref(), &mut bufs) {
         Ok(ready) => ready
             .start()
             .map(|running| running.stop())
@@ -759,7 +772,7 @@ fn load_program_inner(
 
     SESSION.with(|cell| {
         *cell.borrow_mut() = Some(VmSession {
-            container_bytes,
+            container,
             var_buf: bufs.vars,
             data_region: bufs.data_region,
             scan_count: 0,
@@ -820,7 +833,9 @@ fn step_inner(scans: u32) -> StepResult {
             };
         }
 
-        let container = match Container::read_from(&mut Cursor::new(&session.container_bytes)) {
+        // The owned container carries the debug section the variable
+        // renderer reads; the VM runs from the zero-copy view.
+        let container = match Container::read_from(&mut Cursor::new(session.container.bytes())) {
             Ok(c) => c,
             Err(e) => {
                 return StepResult {
@@ -834,6 +849,7 @@ fn step_inner(scans: u32) -> StepResult {
         };
 
         let (variables, total_scans, error) = run_vm_step(
+            &session.container,
             &container,
             &mut session.var_buf,
             &mut session.data_region,
@@ -866,6 +882,7 @@ fn step_inner(scans: u32) -> StepResult {
 /// Returns `(variables, total_scan_count, error)`, where `error` carries the
 /// message and the trap's v-code when execution stopped on a trap.
 fn run_vm_step(
+    image: &ContainerBytes,
     container: &Container,
     var_buf: &mut Vec<Slot>,
     data_region: &mut Vec<u8>,
@@ -873,13 +890,20 @@ fn run_vm_step(
     scans: u32,
     cycle_time_us: u64,
 ) -> (Vec<VariableInfo>, u64, Option<RunError>) {
-    let mut bufs = VmBuffers::from_container(container);
+    let mut bufs = VmBuffers::from_container(&image.container_ref());
     // Swap the session's persistent buffers into VmBuffers so the VM
     // operates on them directly, avoiding a copy.
     std::mem::swap(&mut bufs.vars, var_buf);
     std::mem::swap(&mut bufs.data_region, data_region);
 
-    let result = run_vm_scans(container, &mut bufs, base_scan_count, scans, cycle_time_us);
+    let result = run_vm_scans(
+        image,
+        container,
+        &mut bufs,
+        base_scan_count,
+        scans,
+        cycle_time_us,
+    );
 
     // Swap the (now-updated) persistent buffers back to the session.
     std::mem::swap(&mut bufs.vars, var_buf);
@@ -891,13 +915,14 @@ fn run_vm_step(
 /// Runs scan cycles on an already-prepared [`VmBuffers`], returning variable
 /// snapshots and the total scan count.
 fn run_vm_scans(
+    image: &ContainerBytes,
     container: &Container,
     bufs: &mut VmBuffers,
     base_scan_count: u64,
     scans: u32,
     cycle_time_us: u64,
 ) -> (Vec<VariableInfo>, u64, Option<RunError>) {
-    let mut running = match Vm::new().load(container, bufs) {
+    let mut running = match Vm::new().load(image.container_ref(), bufs) {
         Ok(ready) => ready.resume(base_scan_count),
         Err(trap) => {
             let error = vm_trap_error("VM trap", &trap, None);

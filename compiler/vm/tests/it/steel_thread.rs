@@ -1,4 +1,6 @@
-use crate::common::{load_and_start, round_trip, steel_thread_container, VmBuffers};
+use crate::common::{
+    load_and_start, round_trip, steel_thread_container, ContainerBytes, VmBuffers,
+};
 use ironplc_container::VarIndex;
 
 /// End-to-end steel thread test: hand-assembled bytecode -> container
@@ -15,8 +17,10 @@ fn steel_thread_when_full_round_trip_then_x_is_10_y_is_42() {
     let loaded = round_trip(&steel_thread_container());
 
     // 2. Allocate buffers from header sizes and run.
+    let loaded_image = ContainerBytes::from_container(&loaded).unwrap();
+    let loaded = loaded_image.container_ref();
     let mut b = VmBuffers::from_container(&loaded);
-    let mut vm = load_and_start(&loaded, &mut b).unwrap();
+    let mut vm = load_and_start(loaded, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     // 3. Verify results.

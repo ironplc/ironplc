@@ -10,7 +10,7 @@ use std::io::Cursor;
 use ironplc_analyzer::stages::analyze;
 use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_format::VariableRenderer;
-use ironplc_container::Container;
+use ironplc_container::{Container, ContainerBytes};
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_sources::{parse_source, FileType};
@@ -44,7 +44,7 @@ pub struct RunResult {
 /// Stores compiled bytecode and variable buffer so variables persist
 /// across calls to [`VmRunner::step`].
 pub struct VmRunner {
-    container_bytes: Vec<u8>,
+    container: ContainerBytes,
     var_buf: Vec<Slot>,
     data_region: Vec<u8>,
     scan_count: u64,
@@ -64,17 +64,16 @@ impl VmRunner {
     ) -> Result<(Self, RunResult), RunResult> {
         let container_bytes = compile_to_bytes(source, options)?;
 
-        let container =
-            Container::read_from(&mut Cursor::new(&container_bytes)).map_err(|e| RunResult {
-                ok: false,
-                variables: vec![],
-                total_scans: 0,
-                error: Some(format!("Failed to load bytecode: {e}")),
-            })?;
+        let container = ContainerBytes::new(container_bytes).map_err(|e| RunResult {
+            ok: false,
+            variables: vec![],
+            total_scans: 0,
+            error: Some(format!("Failed to load bytecode: {e}")),
+        })?;
 
         // Run init to apply initial values
-        let mut bufs = VmBuffers::from_container(&container);
-        let trap = match Vm::new().load(&container, &mut bufs) {
+        let mut bufs = VmBuffers::from_container(&container.container_ref());
+        let trap = match Vm::new().load(container.container_ref(), &mut bufs) {
             Ok(ready) => ready
                 .start()
                 .map(|running| running.stop())
@@ -92,7 +91,7 @@ impl VmRunner {
         }
 
         let runner = VmRunner {
-            container_bytes,
+            container,
             var_buf: bufs.vars,
             data_region: bufs.data_region,
             scan_count: 0,
@@ -124,7 +123,9 @@ impl VmRunner {
             };
         }
 
-        let container = match Container::read_from(&mut Cursor::new(&self.container_bytes)) {
+        // The owned container carries the debug section the variable
+        // renderer reads; the VM runs from the zero-copy view.
+        let container = match Container::read_from(&mut Cursor::new(self.container.bytes())) {
             Ok(c) => c,
             Err(e) => {
                 return RunResult {
@@ -136,13 +137,14 @@ impl VmRunner {
             }
         };
 
-        let mut bufs = VmBuffers::from_container(&container);
+        let mut bufs = VmBuffers::from_container(&self.container.container_ref());
         // Swap the session's persistent buffers into VmBuffers so the VM
         // operates on them directly, avoiding a copy.
         std::mem::swap(&mut bufs.vars, &mut self.var_buf);
         std::mem::swap(&mut bufs.data_region, &mut self.data_region);
 
         let result = run_step_scans(
+            &self.container,
             &container,
             &mut bufs,
             self.scan_count,
@@ -166,13 +168,14 @@ impl VmRunner {
 /// Runs scan cycles on an already-prepared [`VmBuffers`], returning a
 /// [`RunResult`] with variable snapshots and the total scan count.
 fn run_step_scans(
+    image: &ContainerBytes,
     container: &Container,
     bufs: &mut VmBuffers,
     base_scan_count: u64,
     scans: u32,
     cycle_time_us: u64,
 ) -> RunResult {
-    let mut running = match Vm::new().load(container, bufs) {
+    let mut running = match Vm::new().load(image.container_ref(), bufs) {
         Ok(ready) => ready.resume(base_scan_count),
         Err(trap) => {
             return RunResult {

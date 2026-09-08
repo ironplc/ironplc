@@ -8,6 +8,7 @@
 use crate::common::VmBuffers;
 use ironplc_container::opcode;
 use ironplc_container::ContainerBuilder;
+use ironplc_container::ContainerBytes;
 use ironplc_container::VarIndex;
 use ironplc_vm::error::Trap;
 use ironplc_vm::test_support::load_and_start;
@@ -142,7 +143,9 @@ fn copy_container(
 
 /// Runs one round, returning var[2] (the destination's first slot) or the trap.
 fn run(container: &ironplc_container::Container) -> Result<i32, Trap> {
-    let mut bufs = VmBuffers::from_container(container);
+    let container_image = ContainerBytes::from_container(container).unwrap();
+    let container = container_image.container_ref();
+    let mut bufs = VmBuffers::from_container(&container);
     let mut vm = load_and_start(container, &mut bufs).unwrap();
     match vm.run_round(0) {
         Ok(_) => Ok(vm.read_variable(VarIndex::new(READ_VAR)).unwrap()),
@@ -262,8 +265,10 @@ fn execute_when_copy_region_descriptor_index_unknown_then_traps() {
         .max_call_depth(1)
         .build();
 
+    let container_image = ContainerBytes::from_container(&container).unwrap();
+    let container = container_image.container_ref();
     let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = load_and_start(&container, &mut bufs).unwrap();
+    let mut vm = load_and_start(container, &mut bufs).unwrap();
     assert_eq!(
         vm.run_round(0).unwrap_err().trap,
         Trap::InvalidVariableIndex(VarIndex::new(DST_VAR))

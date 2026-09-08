@@ -24,7 +24,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use ironplc_container::debug_section::DebugSection;
-use ironplc_container::{Container, VarIndex};
+use ironplc_container::{Container, ContainerBytes, VarIndex};
 use ironplc_vm::{
     has_freewheeling_task, interval_from_ms, interval_us, resolve_cycle_time, BreakpointTable,
     DebuggerHook, PauseReason, RoundOutcome, StepMode, VmBuffers, VmRunning,
@@ -238,12 +238,25 @@ fn launched_session<R: BufRead, W: Write>(
     .filter(|interval| !interval.is_zero())
     .unwrap_or(DEFAULT_FREEWHEELING_INTERVAL);
 
-    let mut bufs = VmBuffers::from_container(&container);
+    // The VM reads the zero-copy view over the serialized container; the
+    // owned `container` stays for the debug section the session renders from.
+    let image = match ContainerBytes::from_container(&container) {
+        Ok(image) => image,
+        Err(err) => {
+            let err = launch::LaunchError::ContainerRead(err.to_string());
+            send(
+                writer,
+                &Response::error(take_seq(seq), launch_request, err.to_string()),
+            )?;
+            return Ok(());
+        }
+    };
+    let mut bufs = VmBuffers::from_container(&image.container_ref());
 
     // Construct + start the VM. Buffer sizing (operand stack, variable table,
     // data region, and the frame stack from `header.max_call_depth`) is done by
     // `VmBuffers::from_container`, reused from the `ironplcvm` embedding path.
-    let mut running = match launch::start_vm(&container, &mut bufs) {
+    let mut running = match launch::start_vm(image.container_ref(), &mut bufs) {
         Ok(running) => running,
         Err(err) => {
             send(

@@ -1,5 +1,6 @@
 //! Integration tests for the DUP and SWAP opcodes.
 
+use ironplc_container::ContainerBytes;
 use ironplc_container::VarIndex;
 
 #[test]
@@ -28,8 +29,10 @@ fn execute_when_dup_then_both_copies_independent() {
         0x8C,              // RET_VOID
     ];
     let c = crate::common::single_function_container(&bytecode, 2, &[10]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = ironplc_vm::VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 10);
     assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 10);

@@ -1,6 +1,7 @@
 use crate::common::VmBuffers;
 use ironplc_container::opcode;
 use ironplc_container::ContainerBuilder;
+use ironplc_container::ContainerBytes;
 use ironplc_container::VarIndex;
 use ironplc_vm::error::Trap;
 use rstest::rstest;
@@ -85,8 +86,10 @@ fn execute_when_store_array_then_load_array_roundtrips_i32(
         opcode::RET_VOID,
     ];
     let c = array_container(&bytecode, total_elements, &[value, index]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), value);
@@ -106,8 +109,10 @@ fn execute_when_load_array_out_of_bounds_then_trap(#[case] index: i32) {
         opcode::RET_VOID,
     ];
     let c = array_container(&bytecode, 5, &[index]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     let err = vm.run_round(0).unwrap_err();
 
     assert_eq!(
@@ -131,8 +136,10 @@ fn execute_when_store_array_negative_index_then_trap() {
         opcode::RET_VOID,
     ];
     let c = array_container(&bytecode, 5, &[42, -1]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     let err = vm.run_round(0).unwrap_err();
 
     assert_eq!(
@@ -157,8 +164,10 @@ fn execute_when_load_array_uninitialized_then_returns_zero() {
         opcode::RET_VOID,
     ];
     let c = array_container(&bytecode, 3, &[0]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 0);

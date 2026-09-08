@@ -14,6 +14,7 @@
 //!
 //! See `specs/design/adr-and-pointer-to.md`.
 
+use ironplc_container::ContainerBytes;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_vm::test_support::load_and_start;
@@ -65,9 +66,11 @@ fn adr_compile_and_run(
     let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], options).unwrap();
     let codegen_options = crate::CodegenOptions::default();
     let container = crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
+    let container_image = ContainerBytes::from_container(&container).unwrap();
+    let cref = container_image.container_ref();
+    let mut bufs = VmBuffers::from_container(&cref);
     {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
+        let mut vm = load_and_start(cref, &mut bufs).unwrap();
         vm.run_round(0).unwrap();
     }
     (container, bufs)

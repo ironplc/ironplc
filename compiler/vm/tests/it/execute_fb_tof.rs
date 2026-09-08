@@ -9,13 +9,16 @@
 
 use crate::common::VmBuffers;
 use ironplc_container::opcode;
+use ironplc_container::ContainerBytes;
 use ironplc_container::VarIndex;
 
 #[test]
 fn tof_when_in_false_after_pt_then_q_false_et_clamped() {
     let c = crate::common::timer_test_container(5000, opcode::fb_type::TOF);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     // IN = TRUE first
     vm.write_variable(VarIndex::new(1), 1).unwrap();
@@ -35,8 +38,10 @@ fn tof_when_in_false_after_pt_then_q_false_et_clamped() {
 #[test]
 fn tof_when_in_never_true_then_q_false() {
     let c = crate::common::timer_test_container(5000, opcode::fb_type::TOF);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     // IN = FALSE (default), no prior TRUE state
     vm.run_round(1_000_000).unwrap(); // t = 1s
