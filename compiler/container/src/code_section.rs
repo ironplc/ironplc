@@ -1,15 +1,16 @@
+#[cfg(feature = "std")]
 use std::io::{Read, Write};
+#[cfg(feature = "std")]
 use std::vec;
+#[cfg(feature = "std")]
 use std::vec::Vec;
 
 use crate::id_types::FunctionId;
+#[cfg(feature = "std")]
 use crate::ContainerError;
 
-/// Size of a single function directory entry in bytes.
-const FUNC_ENTRY_SIZE: usize = 16;
-
 /// A function entry in the code section directory.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct FuncEntry {
     pub function_id: FunctionId,
     pub code_offset: u32,
@@ -19,19 +20,51 @@ pub struct FuncEntry {
     pub num_params: u16,
 }
 
+impl FuncEntry {
+    /// Serialized size of one directory entry in bytes.
+    pub const SIZE: usize = 16;
+
+    /// Decodes an entry from its serialized bytes. Every field is a plain
+    /// integer, so any 16 bytes decode.
+    pub fn from_bytes(buf: &[u8; Self::SIZE]) -> Self {
+        FuncEntry {
+            function_id: FunctionId::new(u16::from_le_bytes([buf[0], buf[1]])),
+            code_offset: u32::from_le_bytes([buf[2], buf[3], buf[4], buf[5]]),
+            code_length: u32::from_le_bytes([buf[6], buf[7], buf[8], buf[9]]),
+            max_stack_depth: u16::from_le_bytes([buf[10], buf[11]]),
+            num_locals: u16::from_le_bytes([buf[12], buf[13]]),
+            num_params: u16::from_le_bytes([buf[14], buf[15]]),
+        }
+    }
+
+    /// Encodes the entry into its serialized bytes.
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
+        let mut buf = [0u8; Self::SIZE];
+        buf[0..2].copy_from_slice(&self.function_id.to_le_bytes());
+        buf[2..6].copy_from_slice(&self.code_offset.to_le_bytes());
+        buf[6..10].copy_from_slice(&self.code_length.to_le_bytes());
+        buf[10..12].copy_from_slice(&self.max_stack_depth.to_le_bytes());
+        buf[12..14].copy_from_slice(&self.num_locals.to_le_bytes());
+        buf[14..16].copy_from_slice(&self.num_params.to_le_bytes());
+        buf
+    }
+}
+
 /// The code section of a bytecode container.
+#[cfg(feature = "std")]
 #[derive(Clone, Debug, Default)]
 pub struct CodeSection {
     pub functions: Vec<FuncEntry>,
     pub(crate) bytecode: Vec<u8>,
 }
 
+#[cfg(feature = "std")]
 impl CodeSection {
     /// Returns the serialized size of this code section in bytes.
     ///
     /// Format: function_directory + bytecode_bodies
     pub fn section_size(&self) -> u32 {
-        (self.functions.len() * FUNC_ENTRY_SIZE + self.bytecode.len()) as u32
+        (self.functions.len() * FuncEntry::SIZE + self.bytecode.len()) as u32
     }
 
     /// Returns the FuncEntry for the given function ID, if it exists.
@@ -53,12 +86,7 @@ impl CodeSection {
     /// Writes the code section to the given writer.
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
         for func in &self.functions {
-            w.write_all(&func.function_id.to_le_bytes())?;
-            w.write_all(&func.code_offset.to_le_bytes())?;
-            w.write_all(&func.code_length.to_le_bytes())?;
-            w.write_all(&func.max_stack_depth.to_le_bytes())?;
-            w.write_all(&func.num_locals.to_le_bytes())?;
-            w.write_all(&func.num_params.to_le_bytes())?;
+            w.write_all(&func.to_bytes())?;
         }
         w.write_all(&self.bytecode)?;
         Ok(())
@@ -74,31 +102,14 @@ impl CodeSection {
         num_functions: u16,
         section_size: u32,
     ) -> Result<Self, ContainerError> {
-        let dir_size = num_functions as usize * FUNC_ENTRY_SIZE;
+        let dir_size = num_functions as usize * FuncEntry::SIZE;
         let bytecode_size = section_size as usize - dir_size;
 
         let mut functions = Vec::with_capacity(num_functions as usize);
         for _ in 0..num_functions {
-            let mut entry_buf = [0u8; FUNC_ENTRY_SIZE];
+            let mut entry_buf = [0u8; FuncEntry::SIZE];
             r.read_exact(&mut entry_buf)?;
-            functions.push(FuncEntry {
-                function_id: FunctionId::new(u16::from_le_bytes([entry_buf[0], entry_buf[1]])),
-                code_offset: u32::from_le_bytes([
-                    entry_buf[2],
-                    entry_buf[3],
-                    entry_buf[4],
-                    entry_buf[5],
-                ]),
-                code_length: u32::from_le_bytes([
-                    entry_buf[6],
-                    entry_buf[7],
-                    entry_buf[8],
-                    entry_buf[9],
-                ]),
-                max_stack_depth: u16::from_le_bytes([entry_buf[10], entry_buf[11]]),
-                num_locals: u16::from_le_bytes([entry_buf[12], entry_buf[13]]),
-                num_params: u16::from_le_bytes([entry_buf[14], entry_buf[15]]),
-            });
+            functions.push(FuncEntry::from_bytes(&entry_buf));
         }
 
         let mut bytecode = vec![0u8; bytecode_size];
@@ -164,6 +175,6 @@ mod tests {
         let mut buf = Vec::new();
         section.write_to(&mut buf).unwrap();
 
-        assert_eq!(buf.len(), FUNC_ENTRY_SIZE);
+        assert_eq!(buf.len(), FuncEntry::SIZE);
     }
 }
