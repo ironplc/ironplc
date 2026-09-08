@@ -29,6 +29,8 @@ mod constant_pool;
 #[cfg(feature = "std")]
 mod container;
 #[cfg(feature = "std")]
+mod container_bytes;
+#[cfg(feature = "std")]
 pub mod debug_format;
 #[cfg(feature = "std")]
 pub mod debug_section;
@@ -70,6 +72,8 @@ pub use code_section::CodeSection;
 pub use constant_pool::{ConstEntry, ConstantPool};
 #[cfg(feature = "std")]
 pub use container::Container;
+#[cfg(feature = "std")]
+pub use container_bytes::ContainerBytes;
 #[cfg(feature = "std")]
 pub use debug_format::{
     RenderedValue, VarDebugInfo, VariableRenderer, VALUE_INVALID, VALUE_UNAVAILABLE,
