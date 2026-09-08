@@ -60,15 +60,13 @@ provides single inheritance for function block types. An instance of a derived
 type *is a* kind of its base type, so it can be used wherever the base type is
 expected.
 
-Hiding inherited names
-----------------------
+Inherited names cannot be redeclared
+------------------------------------
 
-A derived type can declare a variable whose name is already used by an
-inherited variable. The declaration in the derived type **hides** (or
-*shadows*) the inherited one: within the derived type's own body the name
-refers to the member declared there, not to the one it inherited. The
-inherited member is not removed — it still exists on every instance and is
-reached through the base type.
+A derived type inherits every variable of its base type, and it cannot
+declare a variable of its own with one of those names. The following is
+rejected with :doc:`P4044 </reference/compiler/problems/P4044>`, whatever
+the type of the second declaration:
 
 .. code-block::
 
@@ -80,26 +78,33 @@ reached through the base type.
 
    FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
        VAR
-           state : BOOL;
+           state : BOOL;   (* Error: state is inherited from FB_Base *)
        END_VAR
    END_FUNCTION_BLOCK
 
-Inside ``FB_Derived``, ``state`` names the ``BOOL`` declared there; the
-inherited ``INT`` is hidden but still present on the instance.
+An instance of ``FB_Derived`` has exactly one ``state``, the ``INT`` it
+inherits, and the derived type's body and methods use that one. A derived
+type that needs another value declares it under a new name. This matches
+CODESYS and TwinCAT, which reject the same code as a duplicate definition.
 
-Hiding is different from declaring the same name twice in one place. Two
-declarations of the same name in a single scope — for example two variables in
-one ``VAR`` block — are a duplicate and are rejected
-(:doc:`P4014 </reference/compiler/problems/P4014>`). Hiding involves two
-*different* scopes, the base type and the derived type, so the name is
-resolved by choosing the nearer declaration rather than reported as an error.
+This is the same rule as declaring a name twice in one place, applied
+across the ``EXTENDS`` chain: two declarations of one name in a single
+``VAR`` block are rejected with
+:doc:`P4014 </reference/compiler/problems/P4014>`, and a derived type's
+declarations are checked against everything it inherits as though they
+shared that block.
+
+Hiding does exist in one place: a method's own parameters and local
+variables. A method local with the same name as a variable of the function
+block hides that variable within the method, and the method reaches the
+hidden one through ``THIS^``.
 
 Referring to the instance and to the base type
 ----------------------------------------------
 
-Hiding raises a question: once a derived type has hidden an inherited name,
-how does it reach the hidden one? The standard answers with two names for the
-instance a method is running on —
+Hiding raises a question: once a method local has hidden a member of the
+instance, how does the method reach the hidden one? The standard answers
+with two names for the instance a method is running on —
 :doc:`THIS and SUPER </reference/language/object-orientation/this-and-super>`.
 
 ``THIS^`` is the instance itself. It is what makes an instance variable
@@ -205,8 +210,9 @@ Terminology
    * - Inheritance
      - Deriving one type from another so it reuses the base type's members.
    * - Hiding (shadowing)
-     - A member declared in a derived type takes precedence, within that type,
-       over an inherited member of the same name.
+     - A method's parameter or local variable takes precedence, within that
+       method, over a member of the instance with the same name. A derived
+       type cannot hide an inherited variable; see above.
    * - Interface
      - A named set of method signatures with no implementation.
    * - Implement
@@ -249,6 +255,6 @@ References
 * `CODESYS: Extension of a Function Block (EXTENDS) <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_extending_function_block.html>`_
 * `CODESYS: Shadowing Rules <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_shadowing_rules.html>`_
 * `CODESYS: SUPER pointer <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_pointer_super.html>`_
-* `CODESYS: Static Analysis SA0013 (Declarations with the same variable name) <https://content.helpme-codesys.com/en/CODESYS%20Static%20Analysis/_san_rule_sa0013.html>`_
+* `Beckhoff: Inheritance principle <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/3537661579.html>`_
 * `PLCCoder: IEC 61131-3 — The hiding attributes <https://www.plccoder.com/the-hiding-attributes/>`_
 * `Stefan Henneken: IEC 61131-3 — Methods, Properties and Inheritance <https://stefanhenneken.net/2017/04/23/iec-61131-3-methods-properties-and-inheritance/>`_
