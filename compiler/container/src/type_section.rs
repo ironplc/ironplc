@@ -65,7 +65,6 @@ impl FieldEntry {
 
 /// Serialized size of the fixed part of an FB type descriptor: `type_id`
 /// (u16), `num_fields` (u8) and one reserved byte. Field entries follow.
-#[cfg(feature = "std")]
 pub(crate) const FB_TYPE_DESCRIPTOR_HEADER_SIZE: usize = 4;
 
 /// An FB type descriptor in the type section.
@@ -590,7 +589,7 @@ mod tests {
             element_extra: 50,
             element_stride: 80,
         };
-        let decoded = read_single_descriptor(desc.clone()).unwrap();
+        let decoded = read_single_descriptor(desc).unwrap();
         assert_eq!(decoded.array_descriptors, vec![desc]);
     }
 
