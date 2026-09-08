@@ -24,11 +24,11 @@ fn is_var_keyword(tt: &TokenType) -> bool {
 
 /// Returns true if the token type is a qualifier keyword that may appear
 /// between a VAR keyword and the first declaration (e.g. CONSTANT, RETAIN,
-/// NON_RETAIN).
+/// NON_RETAIN, PERSISTENT).
 fn is_qualifier(tt: &TokenType) -> bool {
     matches!(
         tt,
-        TokenType::Constant | TokenType::Retain | TokenType::NonRetain
+        TokenType::Constant | TokenType::Retain | TokenType::NonRetain | TokenType::Persistent
     )
 }
 

@@ -15,6 +15,7 @@ mod fb_inheritance;
 mod methods;
 mod mixed_vars;
 mod partial_access;
+mod persistent_var;
 mod pointer_to;
 mod reference_to;
 mod short_circuit;

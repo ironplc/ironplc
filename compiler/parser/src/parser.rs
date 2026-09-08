@@ -1221,6 +1221,10 @@ parser! {
       let qualifier = Option::Some(DeclarationQualifier::Retain);
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
     }
+    rule persistent_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ tok(TokenType::Persistent) _ declarations:semisep_or_empty(<var_init_decl()>) _ tok(TokenType::EndVar) {
+      let qualifier = Option::Some(DeclarationQualifier::Persistent);
+      VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::Var, qualifier))
+    }
     rule located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<located_var_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = qualifier.unwrap_or(DeclarationQualifier::Unspecified);
       VarDeclarations::Located(VarDeclarations::map(declarations, &qualifier))
@@ -1262,7 +1266,7 @@ parser! {
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
-    rule global_var_declarations__qualifier() -> DeclarationQualifier = tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) { DeclarationQualifier::Retain }
+    rule global_var_declarations__qualifier() -> DeclarationQualifier = tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) { DeclarationQualifier::Retain } / tok(TokenType::Persistent) { DeclarationQualifier::Persistent }
     pub rule global_var_declarations() -> Vec<VarDecl> = tok(TokenType::VarGlobal) _ qualifier:global_var_declarations__qualifier()? _ declarations:semisep_or_empty(<global_var_decl()>) _ tok(TokenType::EndVar) {
       // TODO set the options - this is pretty similar to VarInit - maybe it should be the same
       let declarations = declarations.into_iter().flatten();
@@ -1496,7 +1500,7 @@ parser! {
       }
     }
 
-    rule other_var_declarations() -> VarDeclarations = external_var_declarations() / var_declarations() / retentive_var_declarations() / non_retentive_var_declarations() / incompl_located_var_declarations()
+    rule other_var_declarations() -> VarDeclarations = external_var_declarations() / var_declarations() / retentive_var_declarations() / non_retentive_var_declarations() / persistent_var_declarations() / incompl_located_var_declarations()
     rule temp_var_decls() -> VarDeclarations = tok(TokenType::VarTemp) _ declarations:semisep_or_empty(<var2_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::VarTemp, None))
     }
@@ -1518,7 +1522,7 @@ parser! {
 
     // A VAR block in a program that may contain both located and non-located
     // declarations (e.g. `Motor : FB; xStart AT %IX0.0 : BOOL;`).
-    rule program_var_declarations() -> Vec<VarDeclarations> = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) { DeclarationQualifier::Retain } / tok(TokenType::NonRetain) { DeclarationQualifier::NonRetain })? _ declarations:semisep_or_empty(<program_var_decl()>) _ tok(TokenType::EndVar) {
+    rule program_var_declarations() -> Vec<VarDeclarations> = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) { DeclarationQualifier::Retain } / tok(TokenType::NonRetain) { DeclarationQualifier::NonRetain } / tok(TokenType::Persistent) { DeclarationQualifier::Persistent })? _ declarations:semisep_or_empty(<program_var_decl()>) _ tok(TokenType::EndVar) {
       let qualifier = qualifier.unwrap_or(DeclarationQualifier::Unspecified);
       let mut located = Vec::new();
       let mut regular = Vec::new();

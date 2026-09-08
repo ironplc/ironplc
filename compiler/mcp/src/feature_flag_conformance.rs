@@ -248,6 +248,15 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Base\nVAR\nx : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nFUNCTION_BLOCK FB_Derived EXTENDS FB_Base\nEND_FUNCTION_BLOCK",
     },
+    // The Beckhoff TwinCAT/CODESYS PERSISTENT variable qualifier. With the
+    // flag off, PERSISTENT demotes to a plain identifier, so it collides with
+    // the following declaration name and fails to parse. With the flag on,
+    // it parses as the qualifier.
+    FlagFixture {
+        key: "allow_persistent_var",
+        prereqs: &["allow_top_level_var_global"],
+        source: "VAR_GLOBAL PERSISTENT\nnCounter : DINT;\nEND_VAR",
+    },
 ];
 
 /// Builds an ed2 options object with the given flags enabled.

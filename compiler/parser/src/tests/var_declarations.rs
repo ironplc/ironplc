@@ -142,6 +142,79 @@ END_PROGRAM",
     assert_eq!(prog.variables[1].qualifier, DeclarationQualifier::Retain);
 }
 
+/// Beckhoff TwinCAT/CODESYS `PERSISTENT` qualifier on a top-level
+/// `VAR_GLOBAL` block (the common case: a GVL's global persistent
+/// variables).
+#[test]
+fn parse_when_var_global_persistent_and_flag_on_then_ok() {
+    let options = CompilerOptions {
+        allow_persistent_var: true,
+        allow_top_level_var_global: true,
+        ..CompilerOptions::default()
+    };
+    let lib = parse_program(
+        "VAR_GLOBAL PERSISTENT
+    nCounter : DINT;
+END_VAR",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    let vars = cast!(&lib.elements[0], LibraryElementKind::GlobalVarDeclarations);
+    assert_eq!(vars.len(), 1);
+    assert_eq!(vars[0].qualifier, DeclarationQualifier::Persistent);
+}
+
+/// `PERSISTENT` on a `PROGRAM`'s own `VAR` block.
+#[test]
+fn parse_when_program_var_persistent_and_flag_on_then_ok() {
+    let options = CompilerOptions {
+        allow_persistent_var: true,
+        ..CompilerOptions::default()
+    };
+    let lib = parse_program(
+        "PROGRAM main
+VAR PERSISTENT
+    nCounter : DINT;
+END_VAR
+END_PROGRAM",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    assert_eq!(prog.variables.len(), 1);
+    assert_eq!(
+        prog.variables[0].qualifier,
+        DeclarationQualifier::Persistent
+    );
+}
+
+/// `PERSISTENT` on a `FUNCTION_BLOCK`'s own `VAR` block.
+#[test]
+fn parse_when_function_block_var_persistent_and_flag_on_then_ok() {
+    let options = CompilerOptions {
+        allow_persistent_var: true,
+        ..CompilerOptions::default()
+    };
+    let lib = parse_program(
+        "FUNCTION_BLOCK FB_Example
+VAR PERSISTENT
+    nCounter : DINT;
+END_VAR
+END_FUNCTION_BLOCK",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    let fb = cast!(
+        &lib.elements[0],
+        LibraryElementKind::FunctionBlockDeclaration
+    );
+    assert_eq!(fb.variables.len(), 1);
+    assert_eq!(fb.variables[0].qualifier, DeclarationQualifier::Persistent);
+}
+
 #[test]
 fn parse_when_program_motor_control_style_then_ok() {
     let lib = parse_text(

@@ -2448,6 +2448,9 @@ pub enum DeclarationQualifier {
     Retain,
     /// Stored so that the value is NOT retained through power loss.
     NonRetain,
+    /// Stored so that the value survives a download, reset, or power loss
+    /// (Beckhoff TwinCAT/CODESYS extension, not part of the IEC standard).
+    Persistent,
 }
 
 /// Location assignment for a variable.
