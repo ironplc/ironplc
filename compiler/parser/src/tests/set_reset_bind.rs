@@ -1,9 +1,9 @@
 //! `S=` / `R=` set/reset assignment operators (TwinCAT/CODESYS).
 //!
 //! Unlike `REF=` (see `reference_to.rs`), these are not gated by any
-//! dialect flag — see the plan discussion at the time this was added:
-//! `REF=` itself has no flag check either, and `S`/`R` are too common as
-//! ordinary variable names to safely turn into demoted keywords.
+//! dialect flag: `REF=` itself has no flag check either, and `S`/`R` are
+//! too common as ordinary variable names to safely turn into demoted
+//! keywords.
 
 use super::common::*;
 
