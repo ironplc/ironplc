@@ -3,7 +3,7 @@
 use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_compile, VmBuffers};
+use crate::common::{parse_and_compile, ContainerBytes, VmBuffers};
 use ironplc_vm::Vm;
 
 e2e_i32!(
@@ -128,8 +128,10 @@ PROGRAM main
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
+    let container_image = ContainerBytes::from_container(&container).unwrap();
+    let container = container_image.container_ref();
     let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = Vm::new().load(&container, &mut bufs).start().unwrap();
+    let mut vm = Vm::new().load(container, &mut bufs).start().unwrap();
 
     // Scan 1: x = 0*2+1 = 1
     // Scan 2: x = 1*2+1 = 3

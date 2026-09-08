@@ -1,5 +1,6 @@
 use crate::common::VmBuffers;
 use ironplc_container::opcode;
+use ironplc_container::ContainerBytes;
 use ironplc_container::{ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex};
 use ironplc_vm::error::Trap;
 
@@ -40,8 +41,10 @@ fn execute_when_fb_store_param_then_writes_data_region() {
         opcode::RET_VOID,
     ];
     let c = fb_container(&bytecode, 1, &[42i64], 48); // 6 fields * 8 bytes
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     // Check data region: field 0 at offset 0 should contain 42
@@ -62,10 +65,12 @@ fn execute_when_fb_load_param_then_reads_data_region() {
         opcode::RET_VOID,
     ];
     let c = fb_container(&bytecode, 2, &[], 48);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
     // Pre-fill field 1 (offset 8) with value 99
     b.data_region[8..16].copy_from_slice(&99i64.to_le_bytes());
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable_i64(VarIndex::new(1)).unwrap(), 99);
@@ -81,8 +86,10 @@ fn execute_when_fb_call_unknown_type_then_traps() {
         opcode::RET_VOID,
     ];
     let c = fb_container(&bytecode, 1, &[], 48);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     crate::common::assert_trap(&mut vm, Trap::InvalidFbTypeId(FbTypeId::new(0xFFFF)));
 }
 
@@ -97,8 +104,10 @@ fn execute_when_pop_then_discards_top() {
         opcode::RET_VOID,
     ];
     let c = crate::common::single_function_container(&bytecode, 1, &[42, 99]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 42);
@@ -171,8 +180,10 @@ fn execute_when_user_fb_call_then_executes_body_and_persists_state() {
         .max_call_depth(3)
         .build();
 
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     // y = x * 2 = 7 * 2 = 14
@@ -243,8 +254,10 @@ fn execute_when_user_fb_call_then_internal_state_persists_across_rounds() {
         .max_call_depth(3)
         .build();
 
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     // Round 1: total = 0 + 10 = 10
     vm.run_round(0).unwrap();
@@ -335,8 +348,10 @@ fn execute_when_nested_user_fb_calls_then_both_copy_outs_run() {
         .max_call_depth(3)
         .build();
 
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     // Outer's RET_VOID popped its frame and ran the copy-out, so its

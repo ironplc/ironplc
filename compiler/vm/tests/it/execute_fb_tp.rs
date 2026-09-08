@@ -9,13 +9,16 @@
 
 use crate::common::VmBuffers;
 use ironplc_container::opcode;
+use ironplc_container::ContainerBytes;
 use ironplc_container::VarIndex;
 
 #[test]
 fn tp_when_in_false_then_q_false_et_zero() {
     let c = crate::common::timer_test_container(5000, opcode::fb_type::TP);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     // var[1] = IN = 0 (FALSE) — default
     vm.run_round(1_000_000).unwrap(); // t = 1s
 
@@ -26,8 +29,10 @@ fn tp_when_in_false_then_q_false_et_zero() {
 #[test]
 fn tp_when_retrigger_after_pulse_then_new_pulse() {
     let c = crate::common::timer_test_container(5000, opcode::fb_type::TP);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     // First pulse
     vm.write_variable(VarIndex::new(1), 1).unwrap(); // IN = TRUE

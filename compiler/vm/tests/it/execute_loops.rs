@@ -1,6 +1,6 @@
 //! Integration tests for loop patterns using JMP/JMP_IF_NOT opcodes.
 
-use crate::common::{single_function_container, VmBuffers};
+use crate::common::{single_function_container, ContainerBytes, VmBuffers};
 use ironplc_container::VarIndex;
 
 #[test]
@@ -25,9 +25,11 @@ fn execute_when_while_true_three_iterations_then_loops() {
         0x8C,                   // RET_VOID
     ];
     let c = single_function_container(&bytecode, 1, &[0, 1]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
     b.vars[0] = ironplc_vm::Slot::from_i32(3);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 0);
@@ -106,8 +108,10 @@ fn execute_when_for_loop_then_iterates_correctly() {
         0x8C,                   // RET_VOID
     ];
     let c = single_function_container(&bytecode, 2, &[1, 3]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 4); // control ends at 4 (first value > 3)

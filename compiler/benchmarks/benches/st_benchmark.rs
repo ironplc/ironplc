@@ -9,23 +9,28 @@
 
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use ironplc_benchmarks::compile_st;
+use ironplc_container::ContainerBytes;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::{NoopDebugHook, Slot, VmBuffers};
 use std::hint::black_box;
 
 /// Runs one benchmark iteration: creates `VmBuffers`, applies `$setup`,
 /// then executes one VM scan cycle.
+///
+/// The container is serialized once per benchmark; each iteration takes a
+/// fresh zero-copy view over those bytes, which is what a host does too.
 macro_rules! bench_run {
     ($group:expr, $id:expr, $container:expr, |$bufs:ident| $setup:block) => {
+        let image = ContainerBytes::from_container($container).unwrap();
         $group.bench_with_input($id, &(), |b, _| {
             b.iter_batched(
                 || {
-                    let mut $bufs = VmBuffers::from_container($container);
+                    let mut $bufs = VmBuffers::from_container(&image.container_ref());
                     $setup
                     $bufs
                 },
                 |mut bufs| {
-                    let mut vm = load_and_start($container, &mut bufs).unwrap();
+                    let mut vm = load_and_start(image.container_ref(), &mut bufs).unwrap();
                     black_box(vm.run_round(0).unwrap());
                 },
                 BatchSize::SmallInput,
@@ -463,18 +468,19 @@ END_PROGRAM",
     );
 
     // Debug driver path — run_round_debug with the zero-cost hook.
+    let image = ContainerBytes::from_container(&container).unwrap();
     group.bench_with_input(
         BenchmarkId::new("run_round_debug_noop", count),
         &(),
         |b, _| {
             b.iter_batched(
                 || {
-                    let mut bufs = VmBuffers::from_container(&container);
+                    let mut bufs = VmBuffers::from_container(&image.container_ref());
                     bufs.vars[0] = Slot::from_i32(count);
                     bufs
                 },
                 |mut bufs| {
-                    let mut vm = load_and_start(&container, &mut bufs).unwrap();
+                    let mut vm = load_and_start(image.container_ref(), &mut bufs).unwrap();
                     let mut hook = NoopDebugHook;
                     black_box(vm.run_round_debug(0, &mut hook).unwrap());
                 },

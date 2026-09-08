@@ -4,6 +4,7 @@ status: proposed
 date: 2026-02-25
 amended: 2026-08-31 (Implementation Status added; status unchanged)
 amended: 2026-09-05 (host `no_std` gate recorded; status unchanged)
+amended: 2026-09-08 (engine reads through `ContainerRef`; status unchanged)
 
 ## Context and Problem Statement
 
@@ -114,6 +115,14 @@ What landed:
   `blake3` and the I/O paths, as this ADR specified.
 * The engine borrows rather than allocates: `Vm::load` takes
   `&mut VmBuffers` and sizes execution state from the container header.
+* The engine reads the program through `ContainerRef` only (since
+  2026-09-08). `Vm::load` takes the zero-copy view, and the dispatch loop,
+  task table population and uptime injection all go through its accessors;
+  nothing in `ironplc-vm`'s execution path names the owned `Container`.
+  Hosts keep the serialized bytes in `ContainerBytes` (container crate,
+  `std`) and hand the engine a view; the debugger and the `run` MCP tool
+  still hold an owned `Container` beside it for the debug section and the
+  task-table rewrite.
 
 What did not:
 
@@ -121,6 +130,11 @@ What did not:
   `lib.rs`, and `vm.rs` imports `std::time::Instant` for scan timing.
 * `VmBuffers` is `Vec`-backed, so the default construction path needs an
   allocator even though the engine itself only borrows slices.
+* Two host conveniences in `ironplc-vm` still depend on the container crate's
+  `std` feature: the freewheeling task-table rewrite (`freewheeling.rs`
+  mutates an owned `Container`) and the test-support module. Neither is on
+  the execution path; both need a home outside the engine, or a feature gate
+  this ADR did not plan for, before the crate can drop `std`.
 * Confirmation items 1 and 2 — the bare-metal cross-compile and the Arduino Due
   example — do not exist, and the `justfile` has no bare-metal target, so nothing
   prevents a `std` dependency from re-entering the VM.

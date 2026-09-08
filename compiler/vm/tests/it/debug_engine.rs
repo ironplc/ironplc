@@ -2,7 +2,7 @@
 //! [`DebugHook`], call/return depth callbacks, and the re-entrant
 //! `run_round_debug` driver.
 
-use crate::common::{single_function_container, steel_thread_container, VmBuffers};
+use crate::common::{single_function_container, steel_thread_container, ContainerBytes, VmBuffers};
 use core::time::Duration;
 use ironplc_container::{opcode, ContainerBuilder, FunctionId, VarIndex};
 use ironplc_vm::{
@@ -93,8 +93,10 @@ fn run_round_debug_when_call_then_call_and_return_callbacks_bracket_callee() {
     ];
 
     let c = call_container(&scan_bytecode, &[(&func_body, 4, 1, 1)], 3, &[21]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     let mut hook = RecordingHook::default();
     let outcome = vm.run_round_debug(0, &mut hook).unwrap();
@@ -157,8 +159,10 @@ fn run_round_debug_when_breakpoint_in_entry_then_pauses_there_and_resumes_to_com
     // (documented on `steel_thread_bytecode`) are what the breakpoint at 6
     // below refers to.
     let c = steel_thread_container();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     let mut table = BreakpointTable::new();
     let id = table.add(FunctionId::SCAN, 6); // LOAD_VAR x, after x := 10
@@ -205,8 +209,10 @@ fn run_round_debug_when_breakpoint_in_callee_then_frame_stack_shows_caller_benea
         opcode::RET_VOID,
     ];
     let c = call_container(&scan_bytecode, &[(&func_body, 4, 1, 1)], 3, &[21]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     let func2 = FunctionId::new(2);
     let mut table = BreakpointTable::new();
@@ -269,8 +275,10 @@ fn run_round_debug_when_paused_at_every_instruction_then_final_state_matches_unh
 
     // Reference: an ordinary unhooked scan.
     let c = call_container(&scan_bytecode, &[(&func_body, 4, 1, 1)], 3, &[21]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut rb = VmBuffers::from_container(&c);
-    let mut reference = crate::common::load_and_start(&c, &mut rb).unwrap();
+    let mut reference = crate::common::load_and_start(c.clone(), &mut rb).unwrap();
     reference.run_round(0).unwrap();
     let ref_vars: Vec<i32> = (0..3)
         .map(|i| reference.read_variable(VarIndex::new(i)).unwrap())
@@ -279,7 +287,7 @@ fn run_round_debug_when_paused_at_every_instruction_then_final_state_matches_unh
 
     // Hooked: resume one instruction at a time until the scan completes.
     let mut db = VmBuffers::from_container(&c);
-    let mut debugged = crate::common::load_and_start(&c, &mut db).unwrap();
+    let mut debugged = crate::common::load_and_start(c, &mut db).unwrap();
     let mut hook = PauseEachInstruction::default();
     let mut rounds = 0;
     loop {
@@ -303,8 +311,10 @@ fn run_round_debug_when_paused_at_every_instruction_then_final_state_matches_unh
 fn run_round_debug_when_trap_then_returns_fault_and_phase_faulted() {
     // A single invalid opcode traps immediately.
     let c = single_function_container(&[0xFF], 0, &[]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     let table = BreakpointTable::new();
     let mut hook = DebuggerHook::new(&table);
@@ -337,8 +347,10 @@ fn stepping_container() -> ironplc_container::Container {
 #[test]
 fn run_round_debug_when_step_over_call_then_lands_after_call_in_caller() {
     let c = stepping_container();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     let mut table = BreakpointTable::new();
     table.add(FunctionId::SCAN, 3); // the CALL
@@ -365,8 +377,10 @@ fn run_round_debug_when_step_over_call_then_lands_after_call_in_caller() {
 #[test]
 fn run_round_debug_when_step_in_call_then_lands_on_first_callee_instruction() {
     let c = stepping_container();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     let mut table = BreakpointTable::new();
     table.add(FunctionId::SCAN, 3); // the CALL
@@ -391,8 +405,10 @@ fn run_round_debug_when_step_in_call_then_lands_on_first_callee_instruction() {
 #[test]
 fn run_round_debug_when_step_out_of_callee_then_lands_in_caller_after_call() {
     let c = stepping_container();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     let func2 = FunctionId::new(2);
     let mut table = BreakpointTable::new();
@@ -435,8 +451,10 @@ fn incrementing_scan_container() -> ironplc_container::Container {
 #[test]
 fn run_round_debug_when_step_scan_then_runs_the_cycle_out_and_pauses_after_scan() {
     let c = incrementing_scan_container();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     let mut table = BreakpointTable::new();
     table.add(FunctionId::SCAN, 7); // the STORE, before the increment lands
@@ -468,8 +486,10 @@ fn run_round_debug_when_step_scan_then_runs_the_cycle_out_and_pauses_after_scan(
 #[test]
 fn run_round_debug_when_scan_step_landing_then_stops_at_next_scan_first_instruction() {
     let c = incrementing_scan_container();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     // Run one cycle out with a scan step armed from the top of the scan.
     let table = BreakpointTable::new();
@@ -503,8 +523,10 @@ fn run_round_debug_when_step_scan_spans_a_call_then_does_not_stop_on_return() {
     // A scan step is not a step-out: returning to a shallower frame mid-scan
     // is not a landing, so the cycle runs to its end.
     let c = stepping_container();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     let mut table = BreakpointTable::new();
     table.add(FunctionId::new(2), 0); // inside the callee
@@ -529,8 +551,10 @@ fn run_round_debug_when_breakpoint_during_step_scan_then_stops_at_the_breakpoint
     // A breakpoint inside the stepped-over cycle wins, exactly as it does
     // mid-`step_over`, and the scan does not complete.
     let c = incrementing_scan_container();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     let mut table = BreakpointTable::new();
     table.add(FunctionId::SCAN, 0);
@@ -556,8 +580,10 @@ fn run_round_debug_when_no_step_scan_then_completed_scan_is_not_a_pause() {
     // The `stepping_scan` default must not turn every completed scan into a
     // stop for hooks that never arm a scan step.
     let c = incrementing_scan_container();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     let table = BreakpointTable::new();
     let mut hook = DebuggerHook::new(&table);
@@ -573,8 +599,10 @@ fn uptime_when_scan_resumed_then_keeps_the_starting_clock() {
     // against, so resuming a scan must not adopt the resume call's clock --
     // only a fresh scan moves it.
     let c = incrementing_scan_container();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     let mut table = BreakpointTable::new();
     table.add(FunctionId::SCAN, 7);

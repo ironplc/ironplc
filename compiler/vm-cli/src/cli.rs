@@ -1,14 +1,14 @@
 //! Implements the command line behavior.
 
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
 use ironplc_container::debug_format::VariableRenderer;
-use ironplc_container::Container;
+use ironplc_container::{Container, ContainerBytes};
 use ironplc_vm::{VariableView, Vm, VmBuffers};
 use serde_json::json;
 
@@ -23,24 +23,20 @@ const BUILD_OPT_LEVEL: &str = env!("BUILD_OPT_LEVEL");
 /// When `dump_vars` is `Some(path)`, writes variable values after stopping.
 /// A path of "-" writes to stdout; any other path writes to a file.
 pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<(), VmError> {
-    let mut file = File::open(path).map_err(|e| {
-        VmError::io(
-            error::FILE_OPEN,
-            format!("Unable to open {}: {}", path.display(), e),
-        )
-    })?;
-
-    let container = ironplc_container::Container::read_from(&mut file).map_err(|e| {
+    let image = read_container(path)?;
+    // `--dump-vars` renders through the debug section, which only the owned
+    // container carries; the VM itself reads the zero-copy view.
+    let container = Container::read_from(&mut image.bytes()).map_err(|e| {
         VmError::io(
             error::CONTAINER_READ,
             format!("Unable to read container {}: {e}", path.display()),
         )
     })?;
 
-    let mut bufs = VmBuffers::from_container(&container);
+    let mut bufs = VmBuffers::from_container(&image.container_ref());
 
     let mut running = Vm::new()
-        .load(&container, &mut bufs)
+        .load(image.container_ref(), &mut bufs)
         .start()
         .map_err(|ctx| VmError::from_trap(&ctx.trap, ctx.task_id, ctx.instance_id))?;
 
@@ -100,27 +96,35 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
     Ok(())
 }
 
-/// Benchmarks a bytecode container by running it for `cycles` scan rounds,
-/// preceded by `warmup` unmeasured rounds, then prints JSON timing statistics.
-pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), VmError> {
+/// Reads the container file at `path` into the owned form the VM borrows.
+fn read_container(path: &Path) -> Result<ContainerBytes, VmError> {
     let mut file = File::open(path).map_err(|e| {
         VmError::io(
             error::FILE_OPEN,
             format!("Unable to open {}: {}", path.display(), e),
         )
     })?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(ironplc_container::ContainerError::from)
+        .and_then(|_| ContainerBytes::new(bytes))
+        .map_err(|e| {
+            VmError::io(
+                error::CONTAINER_READ,
+                format!("Unable to read container {}: {e}", path.display()),
+            )
+        })
+}
 
-    let container = ironplc_container::Container::read_from(&mut file).map_err(|e| {
-        VmError::io(
-            error::CONTAINER_READ,
-            format!("Unable to read container {}: {e}", path.display()),
-        )
-    })?;
+/// Benchmarks a bytecode container by running it for `cycles` scan rounds,
+/// preceded by `warmup` unmeasured rounds, then prints JSON timing statistics.
+pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), VmError> {
+    let image = read_container(path)?;
 
-    let mut bufs = VmBuffers::from_container(&container);
+    let mut bufs = VmBuffers::from_container(&image.container_ref());
 
     let mut running = Vm::new()
-        .load(&container, &mut bufs)
+        .load(image.container_ref(), &mut bufs)
         .start()
         .map_err(|ctx| VmError::from_trap(&ctx.trap, ctx.task_id, ctx.instance_id))?;
 

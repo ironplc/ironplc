@@ -1,6 +1,7 @@
 //! Integration tests for stack overflow detection.
 
 use ironplc_container::opcode;
+use ironplc_container::ContainerBytes;
 use ironplc_container::{ContainerBuilder, FunctionId};
 use ironplc_vm::error::Trap;
 use spec_test_macro::spec_test;
@@ -26,8 +27,10 @@ fn execute_when_stack_overflow_then_traps() {
         .entry_function_id(FunctionId::SCAN)
         .max_call_depth(1)
         .build();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = crate::common::VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     crate::common::assert_trap(&mut vm, Trap::StackOverflow);
 }
 
@@ -48,8 +51,10 @@ fn execute_when_stack_underflow_then_traps() {
         .entry_function_id(FunctionId::SCAN)
         .max_call_depth(1)
         .build();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = crate::common::VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     crate::common::assert_trap(&mut vm, Trap::StackUnderflow);
 }
 
@@ -78,8 +83,10 @@ fn assert_self_recursion_traps_at_depth(max_call_depth: u16) {
         .entry_function_id(FunctionId::SCAN)
         .max_call_depth(max_call_depth)
         .build();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = crate::common::VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     crate::common::assert_trap(&mut vm, Trap::CallStackOverflow);
 }
 
@@ -118,8 +125,10 @@ fn execute_when_exactly_at_stack_limit_then_succeeds() {
         .entry_function_id(FunctionId::SCAN)
         .max_call_depth(1)
         .build();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = crate::common::VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(

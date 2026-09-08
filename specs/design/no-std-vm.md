@@ -66,6 +66,41 @@ Heap types used (VM): `Vec<Slot>` (stack, variable table), `Vec<TaskState>`, `Ve
 | `log` | `logger.rs` | Yes |
 | `time` | `logger.rs` | No |
 
+## Container Access
+
+The engine reads the loaded program through `ContainerRef` only. `Vm::load`
+takes the view by value and the VM state types own it for the lifetime of the
+borrowed buffers; the dispatch loop, task-table population and uptime
+injection all go through its accessors. The owned `Container` (the `std`
+reader and builder) never reaches the engine, so the same `ironplc-vm` code
+runs whether the bytes came from a file, a compiler in the same process, or
+flash.
+
+`ContainerRef::from_slice` validates every fixed-layout table the engine
+indexes -- the function directory, the task table, the type section -- so an
+entry inside a declared count always decodes. What it does not validate is
+the bytecode's operands: an index the bytecode supplies can still be out of
+range, and those come back as `None` or an error and trap in the VM, as they
+did with the owned container.
+
+### Host path
+
+A host needs somewhere to keep the bytes and the constant-offset scratch the
+view borrows. `ContainerBytes` (container crate, `std` feature) owns both,
+validates once at construction, and hands out views on a shared borrow, so a
+session can hold one next to its `VmBuffers` and a benchmark can take a view
+per iteration:
+
+```rust
+let image = ContainerBytes::from_container(&container)?; // or ContainerBytes::new(bytes)
+let mut bufs = VmBuffers::from_container(&image.container_ref());
+let mut running = Vm::new().load(image.container_ref(), &mut bufs).start()?;
+```
+
+A host that renders variables or resolves a freewheeling cycle time keeps
+an owned `Container` beside the image: the debug section is read from it,
+and the task-table rewrite mutates it before the bytes are serialized.
+
 ## Embedded Deployment Model
 
 The embedded deployment does **not** require users to have a local Rust compiler or build toolchain. The application binary contains both the VM and the user's bytecode. At startup, the VM obtains a `&[u8]` reference to the bytecode and parses it via `ContainerRef::from_slice`.
@@ -73,6 +108,10 @@ The embedded deployment does **not** require users to have a local Rust compiler
 ### Embedded usage sketch
 
 Buffer sizes are **known at build time** on embedded because the bytecode is baked into the binary. The programmer sizes arrays to match the compiled program (the IronPLC compiler can emit these constants). `Vm::load` validates that all buffers are large enough and returns an error if not, so an undersized array is caught at startup rather than silently corrupting memory.
+
+The container half of this sketch is what `Vm::load` takes today; the
+caller-provided buffer slices are still to come (`VmBuffers` is
+`Vec`-backed), which is why the sketch's `load` call does not yet compile.
 
 ```rust
 #![no_std]

@@ -3,6 +3,7 @@
 //! These tests verify that the VM never panics on arbitrary input
 //! and that arithmetic identities hold across the full value range.
 
+use ironplc_container::ContainerBytes;
 use ironplc_vm::VmBuffers;
 use proptest::prelude::*;
 
@@ -18,8 +19,10 @@ proptest! {
         // on the first operand.
         let constants: Vec<i32> = (0..256).collect();
         let c = crate::common::single_function_container(&bytecode, 256, &constants);
+        let c_image = ContainerBytes::from_container(&c).unwrap();
+        let c = c_image.container_ref();
         let mut b = VmBuffers::from_container(&c);
-        if let Ok(mut vm) = crate::common::load_and_start(&c, &mut b) {
+        if let Ok(mut vm) = crate::common::load_and_start(c, &mut b) {
             // We don't care whether it succeeds or traps --
             // only that it doesn't panic.
             let _ = vm.run_round(0);

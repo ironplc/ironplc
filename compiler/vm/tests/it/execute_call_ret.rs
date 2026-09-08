@@ -2,6 +2,7 @@
 
 use crate::common::VmBuffers;
 use ironplc_container::opcode;
+use ironplc_container::ContainerBytes;
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_vm::error::Trap;
 
@@ -68,8 +69,10 @@ fn execute_when_call_function_with_return_value_then_correct() {
     ];
 
     let c = call_container(&scan_bytecode, &[(&func_body, 4, 1, 1)], 3, &[21]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     // 21 * 2 = 42
@@ -99,8 +102,10 @@ fn execute_when_call_function_with_two_params_then_correct() {
     ];
 
     let c = call_container(&scan_bytecode, &[(&func_body, 4, 2, 2)], 4, &[30, 12]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 42);
@@ -149,8 +154,10 @@ fn execute_when_nested_call_then_correct() {
         5,        // vars: 0=result, 1=unused, 2=outer.param, 3=unused, 4=inner.param
         &[10, 1], // constants: 10, 1
     );
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     // inner(10) = 11, outer(10) = inner(10) + inner(10) = 11 + 11 = 22
@@ -168,8 +175,10 @@ fn execute_when_call_invalid_function_id_then_traps() {
     ];
 
     let c = call_container(&scan_bytecode, &[], 1, &[0]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     crate::common::assert_trap(&mut vm, Trap::InvalidFunctionId(FunctionId::new(255)));
 }
 
@@ -194,8 +203,10 @@ fn execute_when_call_void_function_then_no_return_value() {
     ];
 
     let c = call_container(&scan_bytecode, &[(&func_body, 4, 1, 0)], 3, &[0, 99]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 99);

@@ -7,6 +7,7 @@
 use ironplc_analyzer::SemanticContext;
 use ironplc_codegen::compile;
 use ironplc_container::Container;
+pub use ironplc_container::ContainerBytes;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::Diagnostic;
@@ -625,9 +626,11 @@ pub fn parse_and_try_run(
         &ironplc_codegen::EmptyLookup,
     )
     .unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
+    let container_image = ContainerBytes::from_container(&container).unwrap();
+    let cref = container_image.container_ref();
+    let mut bufs = VmBuffers::from_container(&cref);
     {
-        let mut vm = load_and_start(&container, &mut bufs)?;
+        let mut vm = load_and_start(cref, &mut bufs)?;
         assert_stack_balanced(&vm, "after init");
         vm.run_round(0)?;
         assert_stack_balanced(&vm, "after scan round");
@@ -675,8 +678,10 @@ pub fn parse_and_run_rounds(
         &ironplc_codegen::EmptyLookup,
     )
     .unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = load_and_start(&container, &mut bufs).unwrap();
+    let container_image = ContainerBytes::from_container(&container).unwrap();
+    let cref = container_image.container_ref();
+    let mut bufs = VmBuffers::from_container(&cref);
+    let mut vm = load_and_start(cref, &mut bufs).unwrap();
     assert_stack_balanced(&vm, "after init");
     f(&mut vm);
     // The closure may have run any number of rounds. Each individual round

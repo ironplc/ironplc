@@ -3,7 +3,7 @@
 //! Phase 2: Multi-scan state accumulation and fault handling.
 //! Phase 3: Multi-task execution, variable scope isolation, and watchdog.
 
-use crate::common::{load_and_start, VmBuffers};
+use crate::common::{load_and_start, ContainerBytes, VmBuffers};
 use ironplc_container::{
     ContainerBuilder, FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId, TaskType,
     VarIndex,
@@ -43,8 +43,10 @@ fn counter_container() -> ironplc_container::Container {
 #[test]
 fn scenario_when_counter_increments_each_scan_then_accumulates() {
     let c = counter_container();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = load_and_start(&c, &mut b).unwrap();
+    let mut vm = load_and_start(c, &mut b).unwrap();
 
     for _ in 0..10 {
         vm.run_round(0).unwrap();
@@ -56,8 +58,10 @@ fn scenario_when_counter_increments_each_scan_then_accumulates() {
 #[test]
 fn scenario_when_stop_then_scan_count_reflects_completed_rounds() {
     let c = counter_container();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = load_and_start(&c, &mut b).unwrap();
+    let mut vm = load_and_start(c, &mut b).unwrap();
 
     for _ in 0..5 {
         vm.run_round(0).unwrap();
@@ -119,8 +123,10 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
         .max_call_depth(1)
         .build();
 
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = load_and_start(&c, &mut b).unwrap();
+    let mut vm = load_and_start(c, &mut b).unwrap();
     let result = vm.run_round(0);
 
     // The counter ran successfully before the fault program trapped
@@ -154,8 +160,10 @@ fn scenario_when_variables_read_after_fault_then_accessible() {
         .max_call_depth(1)
         .build();
 
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = load_and_start(&c, &mut b).unwrap();
+    let mut vm = load_and_start(c, &mut b).unwrap();
     let result = vm.run_round(0);
 
     assert!(result.is_err());
@@ -253,8 +261,10 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
         .max_call_depth(1)
         .build();
 
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = load_and_start(&c, &mut b).unwrap();
+    let mut vm = load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 10); // set by task 0
@@ -312,8 +322,10 @@ fn scenario_when_tasks_share_global_then_communication_works() {
         .max_call_depth(1)
         .build();
 
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = load_and_start(&c, &mut b).unwrap();
+    let mut vm = load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 99); // global, written by task 0
@@ -355,9 +367,11 @@ fn scenario_when_watchdog_exceeded_then_trap() {
         .max_call_depth(1)
         .build();
 
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
     b.vars[0] = ironplc_vm::Slot::from_i32(10_000);
-    let mut vm = load_and_start(&c, &mut b).unwrap();
+    let mut vm = load_and_start(c, &mut b).unwrap();
     let result = vm.run_round(0);
 
     assert!(result.is_err());
@@ -385,8 +399,10 @@ fn scenario_when_watchdog_disabled_then_no_trap() {
         .max_call_depth(1)
         .build();
 
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = load_and_start(&c, &mut b).unwrap();
+    let mut vm = load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 42);
@@ -414,8 +430,10 @@ fn scenario_when_scope_violation_then_trap() {
         .max_call_depth(1)
         .build();
 
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = load_and_start(&c, &mut b).unwrap();
+    let mut vm = load_and_start(c, &mut b).unwrap();
     let result = vm.run_round(0);
 
     assert!(result.is_err());

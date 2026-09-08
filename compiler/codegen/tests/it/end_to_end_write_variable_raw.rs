@@ -22,7 +22,7 @@ use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::test_support::load_and_start;
 
-use crate::common::{parse_and_compile, parse_and_run_rounds, VmBuffers};
+use crate::common::{parse_and_compile, parse_and_run_rounds, ContainerBytes, VmBuffers};
 
 /// Doubles a 64-bit fieldbus input. `fieldbus_in` is var 0, `scaled` is var 1.
 const SCALE_LINT_INPUT: &str = "
@@ -139,9 +139,11 @@ END_PROGRAM
     let container = parse_and_compile(source, &CompilerOptions::default());
 
     // First run: five scans accumulate 5e9, which exceeds i32 range.
+    let container_image = ContainerBytes::from_container(&container).unwrap();
+    let container = container_image.container_ref();
     let mut bufs = VmBuffers::from_container(&container);
     let snapshot = {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
+        let mut vm = load_and_start(container, &mut bufs).unwrap();
         for round in 0..5 {
             vm.run_round(round).unwrap();
         }
@@ -154,8 +156,9 @@ END_PROGRAM
 
     // Restart: a fresh VM zeroes the accumulator during init, and the host
     // restores the retained slot before the first scan.
+    let container = container_image.container_ref();
     let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = load_and_start(&container, &mut bufs).unwrap();
+    let mut vm = load_and_start(container, &mut bufs).unwrap();
     assert_eq!(vm.read_variable_i64(VarIndex::new(0)).unwrap(), 0);
 
     vm.write_variable_raw(VarIndex::new(0), snapshot).unwrap();

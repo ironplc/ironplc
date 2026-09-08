@@ -10,6 +10,7 @@ use ironplc_vm::error::Trap;
 use ironplc_vm::Vm;
 
 use crate::common::VmBuffers;
+use ironplc_container::ContainerBytes;
 
 fn empty_init_container_with_depth(max_call_depth: u16) -> ironplc_container::Container {
     let init_bytecode: Vec<u8> = vec![opcode::RET_VOID];
@@ -32,11 +33,14 @@ fn start_when_container_declares_call_depth_exceeding_buffer_then_returns_progra
     // check is for: a fixed-size buffer allocated up front (or shared
     // across loads) that can't grow to fit a freshly loaded program.
     let small = empty_init_container_with_depth(8);
+    let small_image = ContainerBytes::from_container(&small).unwrap();
+    let small = small_image.container_ref();
     let mut b = VmBuffers::from_container(&small);
     assert_eq!(b.frames.len(), 8, "buffer sized from the small container");
 
     let deep = empty_init_container_with_depth(64);
-    let fault = match Vm::new().load(&deep, &mut b).start() {
+    let deep_image = ContainerBytes::from_container(&deep).unwrap();
+    let fault = match Vm::new().load(deep_image.container_ref(), &mut b).start() {
         Ok(_) => panic!("start should reject over-deep container"),
         Err(f) => f,
     };
@@ -52,6 +56,8 @@ fn start_when_container_declares_call_depth_exceeding_buffer_then_returns_progra
 #[test]
 fn from_container_when_max_call_depth_set_then_buffer_sized_to_declared_depth() {
     let c = empty_init_container_with_depth(7);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let b = VmBuffers::from_container(&c);
     assert_eq!(b.frames.len(), 7);
 }
@@ -62,6 +68,8 @@ fn from_container_when_max_call_depth_zero_then_buffer_is_empty() {
     // so the buffer allocates no frames. Such a container is rejected by
     // `VmReady::start` before any code runs.
     let c = empty_init_container_with_depth(0);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let b = VmBuffers::from_container(&c);
     assert_eq!(b.frames.len(), 0);
 }
@@ -72,8 +80,10 @@ fn start_when_container_declares_zero_call_depth_then_rejected() {
     // A declared depth of 0 means the field was never computed (a legacy
     // or hand-built container) and is rejected at load.
     let c = empty_init_container_with_depth(0);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let fault = match Vm::new().load(&c, &mut b).start() {
+    let fault = match Vm::new().load(c, &mut b).start() {
         Ok(_) => panic!("start should reject a zero-call-depth container"),
         Err(f) => f,
     };
@@ -83,8 +93,10 @@ fn start_when_container_declares_zero_call_depth_then_rejected() {
 #[test]
 fn start_when_container_declares_call_depth_within_buffer_then_succeeds() {
     let c = empty_init_container_with_depth(16);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let ok = Vm::new().load(&c, &mut b).start().is_ok();
+    let ok = Vm::new().load(c, &mut b).start().is_ok();
     assert!(ok, "start should succeed when max_call_depth fits");
 }
 
@@ -94,7 +106,9 @@ fn start_when_container_declares_call_depth_equal_to_buffer_then_succeeds() {
     // declared depth, so it should be accepted (the rejection check
     // is strict greater-than).
     let c = empty_init_container_with_depth(32);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let ok = Vm::new().load(&c, &mut b).start().is_ok();
+    let ok = Vm::new().load(c, &mut b).start().is_ok();
     assert!(ok, "start should succeed at exact-fit boundary");
 }

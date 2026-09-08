@@ -43,7 +43,8 @@ pub(crate) fn verify_container(container: &Container) -> Result<(), Diagnostic> 
 #[cfg(test)]
 mod tests {
     use ironplc_container::{
-        opcode, verify_stack_balance, ContainerBuilder, FunctionId, StackImbalance, VarIndex,
+        opcode, verify_stack_balance, ContainerBuilder, ContainerBytes, FunctionId, StackImbalance,
+        VarIndex,
     };
 
     use crate::emit::Emitter;
@@ -195,8 +196,10 @@ mod tests {
                 ));
             container.header.max_stack_depth = 4;
 
+            let container_image = ContainerBytes::from_container(&container).unwrap();
+            let container = container_image.container_ref();
             let mut bufs = ironplc_vm::VmBuffers::from_container(&container);
-            let vm = ironplc_vm::Vm::new().load(&container, &mut bufs).start();
+            let vm = ironplc_vm::Vm::new().load(container, &mut bufs).start();
 
             assert!(vm.is_ok());
             assert_eq!(vm.unwrap().operand_stack_depth(), 1);

@@ -9,6 +9,7 @@
 
 use ironplc_analyzer::stages::analyze;
 use ironplc_codegen::compile;
+use ironplc_container::ContainerBytes;
 use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
@@ -48,9 +49,11 @@ fn run_with_tc2_utilities(source: &str) -> VmBuffers {
         &ironplc_codegen::EmptyLookup,
     )
     .unwrap();
+    let container_image = ContainerBytes::from_container(&container).unwrap();
+    let container = container_image.container_ref();
     let mut bufs = VmBuffers::from_container(&container);
     {
-        let mut vm = load_and_start(&container, &mut bufs).expect("VM load must not trap");
+        let mut vm = load_and_start(container, &mut bufs).expect("VM load must not trap");
         vm.run_round(0).expect("VM run must not trap");
     }
     bufs

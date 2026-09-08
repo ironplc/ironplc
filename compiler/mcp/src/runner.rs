@@ -23,7 +23,7 @@ use std::time::Duration;
 use ironplc_analyzer::symbol_environment::ScopeKind;
 use ironplc_analyzer::SemanticContext;
 use ironplc_container::debug_section::{iec_type_tag, DebugSection, VarNameEntry};
-use ironplc_container::Container;
+use ironplc_container::{Container, ContainerBytes};
 use ironplc_vm::{resolve_cycle_time, Vm, VmBuffers};
 use serde_json::Value;
 
@@ -220,7 +220,8 @@ impl TerminatedReason {
 /// simulated time, under `limits`.
 ///
 /// This is the core of the `run` tool. Control flow:
-/// 1. Deserialize bytes → `Container`.
+/// 1. Deserialize bytes → `Container`, apply the assumed cycle time, and
+///    serialize back into the bytes the VM reads.
 /// 2. Build VM buffers, load, start.
 /// 3. Round loop: check limits, step one round, snapshot any task that
 ///    advanced its `scan_count`, append to trace.
@@ -265,9 +266,13 @@ pub fn execute(
 
     let task_names: Vec<String> = cached.tasks.iter().map(|t| t.name.clone()).collect();
 
-    let mut bufs = VmBuffers::from_container(&container);
+    // The rewritten task table reaches the VM through the serialized bytes
+    // it reads; nothing below needs the owned container.
+    let image = ContainerBytes::from_container(&container)
+        .map_err(|e| format!("container serialize error: {e}"))?;
+    let mut bufs = VmBuffers::from_container(&image.container_ref());
 
-    let mut running = match Vm::new().load(&container, &mut bufs).start() {
+    let mut running = match Vm::new().load(image.container_ref(), &mut bufs).start() {
         Ok(r) => r,
         Err(ctx) => {
             // Start-time fault (e.g. init function trapped).

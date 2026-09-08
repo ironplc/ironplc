@@ -12,6 +12,7 @@
 
 use crate::common::VmBuffers;
 use ironplc_container::opcode;
+use ironplc_container::ContainerBytes;
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_vm::error::Trap;
 
@@ -102,8 +103,10 @@ fn execute_when_str_init_then_sets_header() {
         opcode::RET_VOID,
     ];
     let c = string_container(&bytecode, 1, &[], &[], 32);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     // After init, cur_length should be 0
@@ -124,8 +127,10 @@ fn execute_when_str_store_and_load_then_roundtrips() {
         opcode::RET_VOID,
     ];
     let c = string_container(&bytecode, 1, &[], &[b"Hi"], 32);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     // "Hi" has length 2
@@ -151,8 +156,10 @@ fn execute_when_wide_const_stored_into_narrow_var_then_encoding_mismatch() {
     ];
     let hi: &[u8] = &[0x48, 0x00, 0x69, 0x00];
     let c = wstring_container(&bytecode, 1, &[], &[hi], 64);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     let err = vm.run_round(0).unwrap_err().trap;
 
     assert_eq!(
@@ -172,9 +179,11 @@ fn execute_when_load_var_with_invalid_char_width_then_trap() {
         opcode::RET_VOID,
     ];
     let c = wstring_container(&bytecode, 1, &[], &[], 64);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
     write_str_header(&mut b.data_region, 0, 10, 2, 0); // char_width = 0 is invalid
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     let err = vm.run_round(0).unwrap_err().trap;
 
     assert_eq!(err, Trap::InvalidCharWidth(0));
@@ -192,10 +201,12 @@ fn execute_when_cmp_mixed_encoding_then_trap() {
         opcode::RET_VOID,
     ];
     let c = wstring_container(&bytecode, 1, &[0, 32], &[], 64);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
     write_str_header(&mut b.data_region, 0, 10, 2, 2); // left wide
     write_str_header(&mut b.data_region, 32, 10, 2, 1); // right narrow
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     let err = vm.run_round(0).unwrap_err().trap;
 
     assert_eq!(
@@ -217,10 +228,12 @@ fn execute_when_concat_mixed_encoding_then_trap() {
         opcode::RET_VOID,
     ];
     let c = wstring_container(&bytecode, 1, &[], &[], 64);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
     write_str_header(&mut b.data_region, 0, 5, 2, 2); // wide
     write_str_header(&mut b.data_region, 16, 5, 2, 1); // narrow
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     let err = vm.run_round(0).unwrap_err().trap;
 
     assert_eq!(
@@ -289,8 +302,10 @@ fn execute_when_store_wide_into_narrow_array_elem_then_encoding_mismatch() {
     ];
     let hi: &[u8] = &[0x48, 0x00, 0x69, 0x00];
     let c = wstr_array_container(&bytecode, 2, 5, &[0], &[hi], 64);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     let err = vm.run_round(0).unwrap_err().trap;
 
     assert_eq!(
@@ -319,6 +334,8 @@ fn execute_when_wide_array_elem_roundtrip_then_preserves_bytes() {
         opcode::RET_VOID,
     ];
     let c = wstr_array_container(&bytecode, 2, 10, &[0, 1], &[], 64);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
     // Element 0 (offset 0): wide "ABC".
     write_str_header(&mut b.data_region, 0, 10, 3, 2);
@@ -326,7 +343,7 @@ fn execute_when_wide_array_elem_roundtrip_then_preserves_bytes() {
     // Element 1 (offset 16): empty wide.
     write_str_header(&mut b.data_region, 16, 10, 0, 2);
     let len = {
-        let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+        let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
         vm.run_round(0).unwrap();
         vm.read_variable(VarIndex::new(1)).unwrap()
     };

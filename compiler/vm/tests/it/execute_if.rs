@@ -1,6 +1,6 @@
 //! Integration tests for the JMP and JMP_IF_NOT opcodes.
 
-use crate::common::{single_function_container, VmBuffers};
+use crate::common::{single_function_container, ContainerBytes, VmBuffers};
 use ironplc_container::VarIndex;
 
 #[test]
@@ -17,8 +17,10 @@ fn execute_when_jmp_then_skips_instruction() {
         0x8C,                   // RET_VOID
     ];
     let c = single_function_container(&bytecode, 2, &[99]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
 
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 0); // untouched

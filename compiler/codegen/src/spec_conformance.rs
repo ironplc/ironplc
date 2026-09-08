@@ -12,6 +12,7 @@
 //! See `specs/design/enumeration-codegen.md` for the enumeration codegen spec.
 
 use ironplc_container::debug_section::iec_type_tag;
+use ironplc_container::ContainerBytes;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::test_support::load_and_start;
@@ -50,9 +51,11 @@ fn compile_and_run(source: &str) -> (ironplc_container::Container, VmBuffers) {
         ironplc_analyzer::stages::resolve_types(&[&library], &CompilerOptions::default()).unwrap();
     let codegen_options = crate::CodegenOptions::default();
     let container = crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
+    let container_image = ContainerBytes::from_container(&container).unwrap();
+    let cref = container_image.container_ref();
+    let mut bufs = VmBuffers::from_container(&cref);
     {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
+        let mut vm = load_and_start(cref, &mut bufs).unwrap();
         vm.run_round(0).unwrap();
     }
     (container, bufs)
@@ -716,9 +719,11 @@ fn compile_and_try_run_with(
     let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], options).unwrap();
     let codegen_options = crate::CodegenOptions::default();
     let container = crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
+    let container_image = ContainerBytes::from_container(&container).unwrap();
+    let cref = container_image.container_ref();
+    let mut bufs = VmBuffers::from_container(&cref);
     {
-        let mut vm = load_and_start(&container, &mut bufs)?;
+        let mut vm = load_and_start(cref, &mut bufs)?;
         vm.run_round(0)?;
     }
     Ok((container, bufs))

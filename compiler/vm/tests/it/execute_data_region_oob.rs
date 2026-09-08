@@ -2,6 +2,7 @@
 
 use crate::common::VmBuffers;
 use ironplc_container::opcode;
+use ironplc_container::ContainerBytes;
 use ironplc_container::{ContainerBuilder, FunctionId};
 use ironplc_vm::error::Trap;
 
@@ -45,8 +46,10 @@ fn execute_when_fb_load_param_oob_then_traps() {
         opcode::RET_VOID,
     ];
     let c = data_region_container(&bytecode, 2, &[], &[], 8); // only 8 bytes
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     crate::common::assert_trap(&mut vm, Trap::DataRegionOutOfBounds(8));
 }
 
@@ -62,8 +65,10 @@ fn execute_when_fb_store_param_oob_then_traps() {
         opcode::RET_VOID,
     ];
     let c = data_region_container(&bytecode, 1, &[], &[42i64], 8);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     crate::common::assert_trap(&mut vm, Trap::DataRegionOutOfBounds(8));
 }
 
@@ -82,8 +87,10 @@ fn execute_when_fb_instance_at_high_offset_oob_then_traps() {
         opcode::RET_VOID,
     ];
     let c = data_region_container(&bytecode, 1, &[1000], &[], 16);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     crate::common::assert_trap(&mut vm, Trap::DataRegionOutOfBounds(1000));
 }
 
@@ -101,8 +108,10 @@ fn execute_when_data_region_access_within_bounds_then_succeeds() {
         opcode::RET_VOID,
     ];
     let c = data_region_container(&bytecode, 2, &[], &[77i64], 16);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     vm.run_round(0).unwrap();
 
     assert_eq!(

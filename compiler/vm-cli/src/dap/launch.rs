@@ -20,7 +20,7 @@ use std::fs::File;
 use std::num::NonZeroU64;
 use std::path::Path;
 
-use ironplc_container::Container;
+use ironplc_container::{Container, ContainerRef};
 use ironplc_vm::{Vm, VmBuffers, VmRunning};
 
 use super::problem_codes;
@@ -182,11 +182,12 @@ pub fn check_scan_limit(scan_limit: Option<i64>) -> Result<Option<NonZeroU64>, L
 /// the running VM.
 ///
 /// The caller sizes `bufs` with [`VmBuffers::from_container`] and owns both
-/// `container` and `bufs` so the returned [`VmRunning`] can borrow them. This
-/// mirrors the `ironplcvm` `Run` embedding in `cli.rs`; the only added policy
-/// is mapping a start-time trap to [`LaunchError::VmStartFailed`].
+/// the bytes behind `container` and `bufs` so the returned [`VmRunning`] can
+/// borrow them. This mirrors the `ironplcvm` `Run` embedding in `cli.rs`; the
+/// only added policy is mapping a start-time trap to
+/// [`LaunchError::VmStartFailed`].
 pub fn start_vm<'a>(
-    container: &'a Container,
+    container: ContainerRef<'a>,
     bufs: &'a mut VmBuffers,
 ) -> Result<VmRunning<'a>, LaunchError> {
     Vm::new()
@@ -202,6 +203,7 @@ pub fn start_vm<'a>(
 mod tests {
     use super::*;
     use ironplc_container::debug_section::{iec_type_tag, var_section, VarNameEntry};
+    use ironplc_container::ContainerBytes;
     use ironplc_container::{
         ContainerBuilder, FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId,
         TaskType, VarIndex,
@@ -301,8 +303,9 @@ mod tests {
             .max_call_depth(1)
             .add_var_name(a_var_name())
             .build();
-        let mut bufs = VmBuffers::from_container(&container);
-        assert!(start_vm(&container, &mut bufs).is_ok());
+        let image = ContainerBytes::from_container(&container).unwrap();
+        let mut bufs = VmBuffers::from_container(&image.container_ref());
+        assert!(start_vm(image.container_ref(), &mut bufs).is_ok());
     }
 
     #[test]
@@ -323,8 +326,9 @@ mod tests {
             .max_call_depth(1)
             .add_var_name(a_var_name())
             .build();
-        let mut bufs = VmBuffers::from_container(&container);
-        let err = match start_vm(&container, &mut bufs) {
+        let image = ContainerBytes::from_container(&container).unwrap();
+        let mut bufs = VmBuffers::from_container(&image.container_ref());
+        let err = match start_vm(image.container_ref(), &mut bufs) {
             Ok(_) => panic!("expected the dividing-by-zero init to trap"),
             Err(err) => err,
         };

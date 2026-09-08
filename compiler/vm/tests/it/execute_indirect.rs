@@ -1,6 +1,7 @@
 //! Tests for LOAD_INDIRECT and STORE_INDIRECT opcodes (reference dereference).
 
 use ironplc_container::opcode;
+use ironplc_container::ContainerBytes;
 use ironplc_vm::error::Trap;
 
 #[test]
@@ -46,9 +47,11 @@ fn execute_when_load_indirect_valid_ref_then_loads_value() {
         .entry_function_id(ironplc_container::FunctionId::SCAN)
         .max_call_depth(1)
         .build();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = crate::common::VmBuffers::from_container(&c);
     {
-        let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+        let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[2].as_i32(), 42);
@@ -94,9 +97,11 @@ fn execute_when_store_indirect_valid_ref_then_stores_value() {
         .entry_function_id(ironplc_container::FunctionId::SCAN)
         .max_call_depth(1)
         .build();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = crate::common::VmBuffers::from_container(&c);
     {
-        let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+        let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i32(), 99);
@@ -113,8 +118,10 @@ fn execute_when_load_indirect_null_ref_then_null_dereference_trap() {
     ];
 
     let c = crate::common::single_function_container_i64(&bytecode, 1, &[u64::MAX as i64]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = crate::common::VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     let err = vm.run_round(0).unwrap_err();
     assert_eq!(err.trap, Trap::NullDereference);
 }
@@ -131,8 +138,10 @@ fn execute_when_store_indirect_null_ref_then_null_dereference_trap() {
     ];
 
     let c = crate::common::single_function_container_i64(&bytecode, 1, &[u64::MAX as i64, 42]);
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = crate::common::VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
     let err = vm.run_round(0).unwrap_err();
     assert_eq!(err.trap, Trap::NullDereference);
 }
@@ -182,9 +191,11 @@ fn execute_when_store_then_load_indirect_then_roundtrips() {
         .entry_function_id(ironplc_container::FunctionId::SCAN)
         .max_call_depth(1)
         .build();
+    let c_image = ContainerBytes::from_container(&c).unwrap();
+    let c = c_image.container_ref();
     let mut b = crate::common::VmBuffers::from_container(&c);
     {
-        let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+        let mut vm = crate::common::load_and_start(c, &mut b).unwrap();
         vm.run_round(0).unwrap();
     }
     assert_eq!(b.vars[0].as_i32(), 77);
