@@ -26,6 +26,7 @@ impl FuncEntry {
 
     /// Decodes an entry from its serialized bytes. Every field is a plain
     /// integer, so any 16 bytes decode.
+    #[inline]
     pub fn from_bytes(buf: &[u8; Self::SIZE]) -> Self {
         FuncEntry {
             function_id: FunctionId::new(u16::from_le_bytes([buf[0], buf[1]])),

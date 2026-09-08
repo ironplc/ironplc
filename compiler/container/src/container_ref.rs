@@ -13,11 +13,42 @@ use crate::type_section::{
 /// char-width tag (u8) and value size (u16).
 const CONST_ENTRY_HEADER_SIZE: usize = 4;
 
+/// One constant pool entry as [`ContainerRef::from_slice`] decodes it into
+/// the caller's constant table.
+///
+/// A primitive's value bytes are copied inline, so the dispatch loop reads a
+/// constant with one indexed load rather than following an offset into the
+/// pool; a string keeps only where its bytes lie. The table is the one piece
+/// of scratch a `no_std` caller sizes (with [`ContainerRef::const_count`])
+/// and owns.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ConstTableEntry {
+    /// The primitive's little-endian value bytes, zero-extended; unused for
+    /// strings.
+    value: [u8; 8],
+    /// Byte offset of a string's value within the pool's entry bytes.
+    offset: u32,
+    /// Byte length of a string's value.
+    len: u16,
+    /// The entry's [`ConstType`] tag.
+    tag: u8,
+}
+
+impl ConstTableEntry {
+    /// An entry `from_slice` has not filled yet; what a table starts as.
+    pub const EMPTY: Self = ConstTableEntry {
+        value: [0; 8],
+        offset: 0,
+        len: 0,
+        tag: 0,
+    };
+}
+
 /// Zero-copy, `no_std`-compatible view over a serialized bytecode container.
 ///
 /// Borrows the underlying byte slice and provides O(1) accessors for every
-/// section the VM reads. The caller provides the buffer that holds the
-/// pre-scanned constant pool offsets.
+/// section the VM reads. The caller provides the constant table that
+/// [`from_slice`](Self::from_slice) decodes the pool into.
 ///
 /// Construction validates every fixed-layout table the accessors index --
 /// the function directory, the task table and the type section -- so an
@@ -28,7 +59,7 @@ const CONST_ENTRY_HEADER_SIZE: usize = 4;
 pub struct ContainerRef<'a> {
     header: FileHeader,
     const_pool_bytes: &'a [u8],
-    const_offsets: &'a [u32],
+    constants: &'a [ConstTableEntry],
     code_bytes: &'a [u8],
     func_dir: &'a [u8],
     shared_globals_size: u16,
@@ -75,6 +106,7 @@ fn table<const N: usize>(data: &[u8], count: usize) -> Result<&[u8], ContainerEr
 }
 
 /// Splits a table of fixed-size entries into `N`-byte arrays.
+#[inline]
 fn entries<const N: usize>(table: &[u8]) -> impl Iterator<Item = &[u8; N]> {
     table
         .chunks_exact(N)
@@ -82,6 +114,7 @@ fn entries<const N: usize>(table: &[u8]) -> impl Iterator<Item = &[u8; N]> {
 }
 
 /// Returns the `index`th `N`-byte entry of `table`, or `None` past the end.
+#[inline]
 fn entry<const N: usize>(table: &[u8], index: usize) -> Option<&[u8; N]> {
     let start = index.checked_mul(N)?;
     table.get(start..start + N)?.try_into().ok()
@@ -91,7 +124,7 @@ impl<'a> ContainerRef<'a> {
     /// Returns the number of constants in the constant pool without fully
     /// parsing the container.
     ///
-    /// This is useful for sizing the `const_offset_buf` before calling
+    /// This is useful for sizing the constant table before calling
     /// [`from_slice`](Self::from_slice).
     pub fn const_count(data: &[u8]) -> Result<u16, ContainerError> {
         let header = Self::parse_header(data)?;
@@ -101,38 +134,38 @@ impl<'a> ContainerRef<'a> {
         read_u16(data, header.const_section_offset as usize)
     }
 
-    /// Parses a serialized container from a byte slice, filling `const_offset_buf`
-    /// with the byte offsets of each constant pool entry.
+    /// Parses a serialized container from a byte slice, decoding the
+    /// constant pool into `const_table`.
     ///
-    /// The caller must provide a `const_offset_buf` with at least
+    /// The caller must provide a `const_table` with at least
     /// [`const_count`](Self::const_count) elements.
     pub fn from_slice(
         data: &'a [u8],
-        const_offset_buf: &'a mut [u32],
+        const_table: &'a mut [ConstTableEntry],
     ) -> Result<Self, ContainerError> {
         let header = Self::parse_header(data)?;
         let num_consts = Self::const_count(data)? as usize;
         let const_pool_bytes = Self::const_pool_bytes(&header, data)?;
-        Self::scan_const_offsets(const_pool_bytes, num_consts, const_offset_buf)?;
-        let const_offsets: &'a [u32] = const_offset_buf;
-        Self::from_parts(data, const_offsets)
+        Self::decode_constants(const_pool_bytes, num_consts, const_table)?;
+        let constants: &'a [ConstTableEntry] = const_table;
+        Self::from_parts(data, constants)
     }
 
-    /// Builds the view over `data` using constant offsets that
-    /// [`from_slice`](Self::from_slice) already scanned for the same bytes.
+    /// Builds the view over `data` using a constant table that
+    /// [`from_slice`](Self::from_slice) already decoded for the same bytes.
     ///
     /// This is what lets a host hand out many views over one buffer without
-    /// a mutable scratch borrow per view. It is crate-private because
-    /// offsets from any other source would silently misread the pool.
+    /// a mutable scratch borrow per view. It is crate-private because a
+    /// table from any other source would silently misread the pool.
     pub(crate) fn from_parts(
         data: &'a [u8],
-        const_offsets: &'a [u32],
+        constants: &'a [ConstTableEntry],
     ) -> Result<Self, ContainerError> {
         let header = Self::parse_header(data)?;
 
         let const_pool_bytes = Self::const_pool_bytes(&header, data)?;
         let num_consts = Self::const_count(data)? as usize;
-        let const_offsets = const_offsets
+        let constants = constants
             .get(..num_consts)
             .ok_or(ContainerError::SectionSizeMismatch)?;
 
@@ -146,7 +179,7 @@ impl<'a> ContainerRef<'a> {
         Ok(ContainerRef {
             header,
             const_pool_bytes,
-            const_offsets,
+            constants,
             code_bytes,
             func_dir,
             shared_globals_size,
@@ -176,27 +209,47 @@ impl<'a> ContainerRef<'a> {
             .ok_or(ContainerError::SectionSizeMismatch)
     }
 
-    /// Walks the first `num_consts` constant pool entries, recording each
-    /// one's offset in `const_offset_buf`.
+    /// Decodes the first `num_consts` constant pool entries into
+    /// `const_table`, which must hold at least that many elements.
     ///
-    /// `const_offset_buf` must hold at least `num_consts` elements; every
-    /// entry must lie within `const_pool_bytes`.
-    fn scan_const_offsets(
+    /// Every entry must lie within `const_pool_bytes` and carry a known type
+    /// tag; a primitive's value may not exceed the eight bytes kept inline,
+    /// which is the same limit the owned reader applies.
+    fn decode_constants(
         const_pool_bytes: &[u8],
         num_consts: usize,
-        const_offset_buf: &mut [u32],
+        const_table: &mut [ConstTableEntry],
     ) -> Result<(), ContainerError> {
-        let slots = const_offset_buf
+        let entries = const_table
             .get_mut(..num_consts)
             .ok_or(ContainerError::SectionSizeMismatch)?;
         let mut pos: usize = 0;
-        for slot in slots {
-            *slot = pos as u32;
-            let entry_value_size = read_u16(const_pool_bytes, pos + 2)? as usize;
-            pos += CONST_ENTRY_HEADER_SIZE + entry_value_size;
-            if pos > const_pool_bytes.len() {
-                return Err(ContainerError::SectionSizeMismatch);
+        for entry in entries {
+            let tag = *const_pool_bytes
+                .get(pos)
+                .ok_or(ContainerError::SectionSizeMismatch)?;
+            let const_type = ConstType::from_u8(tag)?;
+            let len = read_u16(const_pool_bytes, pos + 2)?;
+            let value_offset = pos + CONST_ENTRY_HEADER_SIZE;
+            let value = const_pool_bytes
+                .get(value_offset..value_offset + len as usize)
+                .ok_or(ContainerError::SectionSizeMismatch)?;
+
+            let mut inline = [0u8; 8];
+            if !const_type.is_string_like() {
+                let width = value.len();
+                if width > inline.len() {
+                    return Err(ContainerError::InvalidConstantType(tag));
+                }
+                inline[..width].copy_from_slice(value);
             }
+            *entry = ConstTableEntry {
+                value: inline,
+                offset: value_offset as u32,
+                len,
+                tag,
+            };
+            pos = value_offset + len as usize;
         }
         Ok(())
     }
@@ -279,67 +332,62 @@ impl<'a> ContainerRef<'a> {
     }
 
     /// Returns a reference to the parsed file header.
+    #[inline]
     pub fn header(&self) -> &FileHeader {
         &self.header
     }
 
-    /// Returns the type tag and value bytes of the constant at `index`.
-    fn constant(&self, index: ConstantIndex) -> Result<(ConstType, &'a [u8]), ContainerError> {
-        let offset = *self
-            .const_offsets
+    /// Returns the decoded constant at `index`.
+    #[inline]
+    fn constant(&self, index: ConstantIndex) -> Result<&ConstTableEntry, ContainerError> {
+        self.constants
             .get(index.raw() as usize)
-            .ok_or(ContainerError::InvalidConstantIndex(index))? as usize;
-        let type_tag = *self
-            .const_pool_bytes
-            .get(offset)
-            .ok_or(ContainerError::SectionSizeMismatch)?;
-        let const_type = ConstType::from_u8(type_tag)?;
-        let size = read_u16(self.const_pool_bytes, offset + 2)? as usize;
-        let value_offset = offset + CONST_ENTRY_HEADER_SIZE;
-        let value = self
-            .const_pool_bytes
-            .get(value_offset..value_offset + size)
-            .ok_or(ContainerError::SectionSizeMismatch)?;
-        Ok((const_type, value))
+            .ok_or(ContainerError::InvalidConstantIndex(index))
     }
 
-    /// Reads the first `N` little-endian bytes of the primitive constant at
-    /// `index`, after checking its type is `expected`. A shorter stored
-    /// value is zero-extended, as the owned constant pool does.
+    /// Returns the `N` little-endian value bytes of the primitive constant
+    /// at `index`, after checking its type tag is `expected`.
+    ///
+    /// This is the constant read on the dispatch loop's hot path: one
+    /// indexed load of the decoded table, then a compare and a copy.
+    #[inline]
     fn primitive_constant<const N: usize>(
         &self,
         index: ConstantIndex,
         expected: ConstType,
     ) -> Result<[u8; N], ContainerError> {
-        let (const_type, value) = self.constant(index)?;
-        if const_type != expected {
-            return Err(ContainerError::InvalidConstantType(const_type as u8));
+        let entry = self.constant(index)?;
+        if entry.tag != expected as u8 {
+            return Err(ContainerError::InvalidConstantType(entry.tag));
         }
         let mut bytes = [0u8; N];
-        let n = value.len().min(N);
-        bytes[..n].copy_from_slice(&value[..n]);
+        bytes.copy_from_slice(&entry.value[..N]);
         Ok(bytes)
     }
 
     /// Returns the i32 constant at the given pool index.
+    #[inline]
     pub fn get_i32_constant(&self, index: ConstantIndex) -> Result<i32, ContainerError> {
         self.primitive_constant::<4>(index, ConstType::I32)
             .map(i32::from_le_bytes)
     }
 
     /// Returns the i64 constant at the given pool index.
+    #[inline]
     pub fn get_i64_constant(&self, index: ConstantIndex) -> Result<i64, ContainerError> {
         self.primitive_constant::<8>(index, ConstType::I64)
             .map(i64::from_le_bytes)
     }
 
     /// Returns the f32 constant at the given pool index.
+    #[inline]
     pub fn get_f32_constant(&self, index: ConstantIndex) -> Result<f32, ContainerError> {
         self.primitive_constant::<4>(index, ConstType::F32)
             .map(f32::from_le_bytes)
     }
 
     /// Returns the f64 constant at the given pool index.
+    #[inline]
     pub fn get_f64_constant(&self, index: ConstantIndex) -> Result<f64, ContainerError> {
         self.primitive_constant::<8>(index, ConstType::F64)
             .map(f64::from_le_bytes)
@@ -349,36 +397,50 @@ impl<'a> ContainerRef<'a> {
     /// Accepts both [`ConstType::Str`] (Latin-1) and [`ConstType::WStr`]
     /// (UTF-16LE) entries.
     pub fn get_str_constant(&self, index: ConstantIndex) -> Result<&'a [u8], ContainerError> {
-        let (const_type, value) = self.constant(index)?;
-        if !const_type.is_string_like() {
-            return Err(ContainerError::InvalidConstantType(const_type as u8));
+        let entry = self.constant(index)?;
+        if !ConstType::from_u8(entry.tag)?.is_string_like() {
+            return Err(ContainerError::InvalidConstantType(entry.tag));
         }
-        Ok(value)
+        let start = entry.offset as usize;
+        self.const_pool_bytes
+            .get(start..start + entry.len as usize)
+            .ok_or(ContainerError::SectionSizeMismatch)
     }
 
     /// Returns the per-code-unit [`CharWidth`] of the string constant at
     /// `index`, or an error when the entry is not string-typed.
     pub fn constant_char_width(&self, index: ConstantIndex) -> Result<CharWidth, ContainerError> {
-        let (const_type, _) = self.constant(index)?;
-        const_type
+        let entry = self.constant(index)?;
+        ConstType::from_u8(entry.tag)?
             .char_width()
-            .ok_or(ContainerError::InvalidConstantType(const_type as u8))
+            .ok_or(ContainerError::InvalidConstantType(entry.tag))
     }
 
-    /// Returns the function directory entry for the given function ID.
+    /// Returns the raw directory entry for the given function ID.
     ///
     /// Function IDs are compiler-assigned sequential indices, so the entry
     /// sits at `id * FuncEntry::SIZE` in the directory.
+    #[inline]
+    fn function_entry_bytes(&self, id: FunctionId) -> Option<&'a [u8; FuncEntry::SIZE]> {
+        entry::<{ FuncEntry::SIZE }>(self.func_dir, id.raw() as usize)
+    }
+
+    /// Returns the function directory entry for the given function ID.
+    #[inline]
     pub fn function_entry(&self, id: FunctionId) -> Option<FuncEntry> {
-        entry::<{ FuncEntry::SIZE }>(self.func_dir, id.raw() as usize).map(FuncEntry::from_bytes)
+        self.function_entry_bytes(id).map(FuncEntry::from_bytes)
     }
 
     /// Returns the bytecode slice for the given function ID.
+    ///
+    /// The dispatch loop calls this once per instruction, so it reads the
+    /// two directory fields it needs rather than decoding the whole entry.
+    #[inline]
     pub fn get_function_bytecode(&self, id: FunctionId) -> Option<&'a [u8]> {
-        let entry = self.function_entry(id)?;
-        let start = entry.code_offset as usize;
-        let end = start.checked_add(entry.code_length as usize)?;
-        self.code_bytes.get(start..end)
+        let entry = self.function_entry_bytes(id)?;
+        let start = u32::from_le_bytes([entry[2], entry[3], entry[4], entry[5]]) as usize;
+        let length = u32::from_le_bytes([entry[6], entry[7], entry[8], entry[9]]) as usize;
+        self.code_bytes.get(start..start.checked_add(length)?)
     }
 
     /// Returns the number of tasks in the task table.
@@ -392,6 +454,7 @@ impl<'a> ContainerRef<'a> {
     }
 
     /// Returns the shared globals size from the task table header.
+    #[inline]
     pub fn shared_globals_size(&self) -> u16 {
         self.shared_globals_size
     }
@@ -428,6 +491,7 @@ impl<'a> ContainerRef<'a> {
 
     /// Returns the array descriptor at the given type-section index, or
     /// `None` when the container has no such descriptor.
+    #[inline]
     pub fn array_descriptor(&self, index: u16) -> Option<ArrayDescriptor> {
         entry::<{ ArrayDescriptor::SIZE }>(self.array_descriptors, index as usize)
             .map(ArrayDescriptor::from_bytes)
@@ -435,6 +499,7 @@ impl<'a> ContainerRef<'a> {
 
     /// Returns the user-defined function block descriptor with the given
     /// type ID, or `None` when the container declares none.
+    #[inline]
     pub fn user_fb_type(&self, type_id: FbTypeId) -> Option<UserFbDescriptor> {
         entries::<{ UserFbDescriptor::SIZE }>(self.user_fb_types)
             .map(UserFbDescriptor::from_bytes)
@@ -465,7 +530,7 @@ mod tests {
         let data = steel_thread_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
         assert_eq!(count, 2);
-        let mut offsets = vec![0u32; count as usize];
+        let mut offsets = vec![ConstTableEntry::EMPTY; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         assert_eq!(cref.header().num_variables, 2);
@@ -536,7 +601,7 @@ mod tests {
         #[case] expect_err: fn(&ContainerError) -> bool,
     ) {
         let data = tamper(steel_thread_bytes());
-        let mut offsets = vec![0u32; 16];
+        let mut offsets = vec![ConstTableEntry::EMPTY; 16];
         let result = ContainerRef::from_slice(&data, &mut offsets);
         let err = result.expect_err("expected corruption to be rejected");
         assert!(expect_err(&err), "unexpected error: {err:?}");
@@ -546,7 +611,7 @@ mod tests {
     fn container_ref_get_i32_constant_when_valid_index_then_returns_value() {
         let data = steel_thread_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
-        let mut offsets = vec![0u32; count as usize];
+        let mut offsets = vec![ConstTableEntry::EMPTY; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         assert_eq!(cref.get_i32_constant(ConstantIndex::new(0)).unwrap(), 10);
@@ -557,7 +622,7 @@ mod tests {
     fn container_ref_get_i32_constant_when_out_of_bounds_then_error() {
         let data = steel_thread_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
-        let mut offsets = vec![0u32; count as usize];
+        let mut offsets = vec![ConstTableEntry::EMPTY; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         let result = cref.get_i32_constant(ConstantIndex::new(99));
@@ -571,7 +636,7 @@ mod tests {
     fn container_ref_get_function_bytecode_when_valid_id_then_returns_slice() {
         let data = steel_thread_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
-        let mut offsets = vec![0u32; count as usize];
+        let mut offsets = vec![ConstTableEntry::EMPTY; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         let bytecode = cref.get_function_bytecode(FunctionId::INIT).unwrap();
@@ -584,7 +649,7 @@ mod tests {
     fn container_ref_task_entry_when_valid_index_then_returns_fields() {
         let data = steel_thread_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
-        let mut offsets = vec![0u32; count as usize];
+        let mut offsets = vec![ConstTableEntry::EMPTY; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         let task = cref.task_entry(0).unwrap();
@@ -597,7 +662,7 @@ mod tests {
     fn container_ref_program_entry_when_valid_index_then_returns_fields() {
         let data = steel_thread_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
-        let mut offsets = vec![0u32; count as usize];
+        let mut offsets = vec![ConstTableEntry::EMPTY; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         let prog = cref.program_entry(0).unwrap();
@@ -639,18 +704,18 @@ mod tests {
     }
 
     #[test]
-    fn container_ref_from_slice_when_const_section_empty_then_const_offsets_empty() {
+    fn container_ref_from_slice_when_const_section_empty_then_const_table_empty() {
         let data = empty_pool_bytes();
-        let mut offsets = vec![0u32; 0];
+        let mut offsets = vec![ConstTableEntry::EMPTY; 0];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
         assert_eq!(cref.header().num_functions, 1);
     }
 
     #[test]
-    fn container_ref_from_slice_when_const_offset_buf_too_small_then_errors() {
+    fn container_ref_from_slice_when_const_table_too_small_then_errors() {
         // steel_thread_bytes has 2 constants; pass a buffer of length 1.
         let data = steel_thread_bytes();
-        let mut offsets = vec![0u32; 1];
+        let mut offsets = vec![ConstTableEntry::EMPTY; 1];
         let result = ContainerRef::from_slice(&data, &mut offsets);
         assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));
     }
@@ -659,7 +724,7 @@ mod tests {
     fn container_ref_get_i32_constant_when_type_mismatch_then_errors() {
         let data = f32_constant_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
-        let mut offsets = vec![0u32; count as usize];
+        let mut offsets = vec![ConstTableEntry::EMPTY; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         let result = cref.get_i32_constant(ConstantIndex::new(0));
@@ -673,7 +738,7 @@ mod tests {
     fn container_ref_get_function_bytecode_when_id_out_of_bounds_then_returns_none() {
         let data = steel_thread_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
-        let mut offsets = vec![0u32; count as usize];
+        let mut offsets = vec![ConstTableEntry::EMPTY; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         assert!(cref.get_function_bytecode(FunctionId::new(99)).is_none());
@@ -697,7 +762,7 @@ mod tests {
         let length_offset = code_start + 6;
         data[length_offset..length_offset + 4].copy_from_slice(&u32::MAX.to_le_bytes());
 
-        let mut offsets = vec![0u32; 4];
+        let mut offsets = vec![ConstTableEntry::EMPTY; 4];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
         assert!(cref.get_function_bytecode(FunctionId::INIT).is_none());
     }
@@ -706,7 +771,7 @@ mod tests {
     fn container_ref_task_entry_when_index_out_of_bounds_then_errors() {
         let data = steel_thread_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
-        let mut offsets = vec![0u32; count as usize];
+        let mut offsets = vec![ConstTableEntry::EMPTY; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         assert!(matches!(
@@ -719,7 +784,7 @@ mod tests {
     fn container_ref_program_entry_when_index_out_of_bounds_then_errors() {
         let data = steel_thread_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
-        let mut offsets = vec![0u32; count as usize];
+        let mut offsets = vec![ConstTableEntry::EMPTY; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         assert!(matches!(
@@ -763,7 +828,7 @@ mod tests {
         let data = with_tampered_header(&steel_thread_bytes(), |h| {
             h.const_section_size = 0;
         });
-        let mut offsets = vec![0u32; 0];
+        let mut offsets = vec![ConstTableEntry::EMPTY; 0];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
         assert_eq!(cref.header().num_functions, 1);
     }
@@ -772,7 +837,7 @@ mod tests {
     fn container_ref_num_programs_and_shared_globals_when_valid_then_return_fields() {
         let data = steel_thread_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
-        let mut offsets = vec![0u32; count as usize];
+        let mut offsets = vec![ConstTableEntry::EMPTY; count as usize];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         // The builder synthesizes a single default program with shared_globals_size=0.
@@ -788,7 +853,7 @@ mod tests {
         let data = with_tampered_header(&steel_thread_bytes(), |h| {
             h.task_section_size = 0;
         });
-        let mut offsets = vec![0u32; 4];
+        let mut offsets = vec![ConstTableEntry::EMPTY; 4];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
         assert_eq!(cref.num_tasks(), 0);
         assert_eq!(cref.num_programs(), 0);
@@ -842,7 +907,7 @@ mod tests {
         let task_start = header.task_section_offset as usize;
         data[task_start..task_start + 2].copy_from_slice(&99u16.to_le_bytes());
 
-        let mut offsets = vec![0u32; 4];
+        let mut offsets = vec![ConstTableEntry::EMPTY; 4];
         let result = ContainerRef::from_slice(&data, &mut offsets);
 
         assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));
@@ -858,10 +923,50 @@ mod tests {
         let type_tag = header.task_section_offset as usize + TASK_TABLE_HEADER_SIZE + 4;
         data[type_tag] = 0xFF;
 
-        let mut offsets = vec![0u32; 4];
+        let mut offsets = vec![ConstTableEntry::EMPTY; 4];
         let result = ContainerRef::from_slice(&data, &mut offsets);
 
         assert!(matches!(result, Err(ContainerError::InvalidTaskType(0xFF))));
+    }
+
+    /// Corrupts the first constant pool entry of the steel-thread bytes,
+    /// whose layout is `[count: u16][tag: u8][char_width: u8][size: u16][value]`.
+    fn with_first_constant_tampered(tamper: impl FnOnce(&mut [u8])) -> Vec<u8> {
+        let base = steel_thread_bytes();
+        let header =
+            FileHeader::read_from(&mut std::io::Cursor::new(&base[..HEADER_SIZE])).unwrap();
+        let mut data = base;
+        let entry = header.const_section_offset as usize + 2;
+        tamper(&mut data[entry..entry + 8]);
+        data
+    }
+
+    #[test]
+    fn container_ref_from_slice_when_primitive_wider_than_eight_bytes_then_error() {
+        let data = with_first_constant_tampered(|entry| {
+            entry[2..4].copy_from_slice(&9u16.to_le_bytes());
+        });
+
+        let mut table = vec![ConstTableEntry::EMPTY; 4];
+        let result = ContainerRef::from_slice(&data, &mut table);
+
+        assert!(matches!(
+            result,
+            Err(ContainerError::InvalidConstantType(0))
+        ));
+    }
+
+    #[test]
+    fn container_ref_from_slice_when_constant_tag_unknown_then_error() {
+        let data = with_first_constant_tampered(|entry| entry[0] = 0xEE);
+
+        let mut table = vec![ConstTableEntry::EMPTY; 4];
+        let result = ContainerRef::from_slice(&data, &mut table);
+
+        assert!(matches!(
+            result,
+            Err(ContainerError::InvalidConstantType(0xEE))
+        ));
     }
 
     #[test]
@@ -1064,7 +1169,7 @@ mod tests {
             h.type_section_size -= 2;
         });
 
-        let mut offsets = vec![0u32; 0];
+        let mut offsets = vec![ConstTableEntry::EMPTY; 0];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         assert_eq!(cref.array_descriptor(0).unwrap().total_elements, 4);
@@ -1079,7 +1184,7 @@ mod tests {
             h.type_section_size = 3;
         });
 
-        let mut offsets = vec![0u32; 0];
+        let mut offsets = vec![ConstTableEntry::EMPTY; 0];
         let result = ContainerRef::from_slice(&data, &mut offsets);
 
         assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));

@@ -2,11 +2,11 @@ use std::vec;
 use std::vec::Vec;
 
 use crate::container::Container;
-use crate::container_ref::ContainerRef;
+use crate::container_ref::{ConstTableEntry, ContainerRef};
 use crate::error::ContainerError;
 
-/// A serialized container together with the constant-offset scratch that
-/// [`ContainerRef::from_slice`] fills, owned so a host can keep them beside
+/// A serialized container together with the constant table that
+/// [`ContainerRef::from_slice`] decodes, owned so a host can keep them beside
 /// the VM buffers that borrow them.
 ///
 /// Construction parses the bytes once, so [`container_ref`](Self::container_ref)
@@ -18,18 +18,16 @@ use crate::error::ContainerError;
 #[derive(Clone, Debug)]
 pub struct ContainerBytes {
     bytes: Vec<u8>,
-    const_offsets: Vec<u32>,
+    constants: Vec<ConstTableEntry>,
 }
 
 impl ContainerBytes {
     /// Takes ownership of serialized container bytes, validating them.
     pub fn new(bytes: Vec<u8>) -> Result<Self, ContainerError> {
-        let mut const_offsets = vec![0u32; ContainerRef::const_count(&bytes)? as usize];
-        ContainerRef::from_slice(&bytes, &mut const_offsets)?;
-        Ok(ContainerBytes {
-            bytes,
-            const_offsets,
-        })
+        let mut constants =
+            vec![ConstTableEntry::EMPTY; ContainerRef::const_count(&bytes)? as usize];
+        ContainerRef::from_slice(&bytes, &mut constants)?;
+        Ok(ContainerBytes { bytes, constants })
     }
 
     /// Serializes `container` into its wire bytes.
@@ -46,7 +44,7 @@ impl ContainerBytes {
 
     /// A zero-copy view over the bytes.
     pub fn container_ref(&self) -> ContainerRef<'_> {
-        ContainerRef::from_parts(&self.bytes, &self.const_offsets)
+        ContainerRef::from_parts(&self.bytes, &self.constants)
             .expect("bytes were validated by ContainerBytes::new")
     }
 }

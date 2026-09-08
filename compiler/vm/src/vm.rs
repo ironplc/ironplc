@@ -1128,15 +1128,28 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     //      revealed caller's `pc` is already correct), then clear `pc_dirty`.
     //   4. Pause: store the *un-advanced* `pc` so the paused opcode re-executes
     //      on resume, then return `Paused` without reaching the writeback.
+    // The body of the function on top of the frame stack. It is looked up
+    // again only when a call or return changes that function: the directory
+    // read is cheap, but on the dispatch path it sits between reading the
+    // frame and loading the opcode, and doing it per instruction measurably
+    // slows a tight loop.
+    let mut current_body: Option<(FunctionId, &[u8])> = None;
     while !frame_stack.is_empty() {
         // Snapshot the top frame's authoritative `pc` into the working copy.
         let (current_function_id, scope, mut pc) = {
             let top = frame_stack.top().expect("non-empty by loop condition");
             (top.function_id, top.scope, top.pc)
         };
-        let bytecode = container
-            .get_function_bytecode(current_function_id)
-            .ok_or(Trap::InvalidFunctionId(current_function_id))?;
+        let bytecode = match current_body {
+            Some((id, body)) if id == current_function_id => body,
+            _ => {
+                let body = container
+                    .get_function_bytecode(current_function_id)
+                    .ok_or(Trap::InvalidFunctionId(current_function_id))?;
+                current_body = Some((current_function_id, body));
+                body
+            }
+        };
 
         if pc >= bytecode.len() {
             // Fell off the end of a function body without an explicit
