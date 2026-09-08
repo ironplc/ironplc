@@ -13,6 +13,12 @@ pub const FORMAT_VERSION: u16 = 3;
 /// __SYSTEM_UP_LTIME at VarIndex(1), written by the VM before each scan.
 pub const FLAG_HAS_SYSTEM_UPTIME: u8 = 0x01;
 
+/// Flag bit: the container carries a debug section.
+pub const FLAG_HAS_DEBUG_SECTION: u8 = 0x02;
+
+/// Flag bit: the container carries a type section.
+pub const FLAG_HAS_TYPE_SECTION: u8 = 0x04;
+
 /// Fixed size of the file header in bytes.
 pub const HEADER_SIZE: usize = 256;
 

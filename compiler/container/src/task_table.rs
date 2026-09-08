@@ -1,18 +1,14 @@
+#[cfg(feature = "std")]
 use std::io::{Read, Write};
+#[cfg(feature = "std")]
 use std::vec::Vec;
 
 use crate::id_types::{FunctionId, InstanceId, TaskId, VarIndex};
 use crate::task_type::TaskType;
 use crate::ContainerError;
 
-/// Size of a single task entry in bytes.
-const TASK_ENTRY_SIZE: usize = 32;
-
-/// Size of a single program instance entry in bytes.
-const PROGRAM_INSTANCE_ENTRY_SIZE: usize = 16;
-
 /// A single task entry in the task table (32 bytes fixed).
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct TaskEntry {
     pub task_id: TaskId,
     pub priority: u16,
@@ -26,8 +22,52 @@ pub struct TaskEntry {
     pub reserved: [u8; 4],
 }
 
+impl TaskEntry {
+    /// Serialized size of one entry in bytes.
+    pub const SIZE: usize = 32;
+
+    /// Decodes an entry from its serialized bytes.
+    ///
+    /// The only byte that can be invalid is the task type tag.
+    pub fn from_bytes(buf: &[u8; Self::SIZE]) -> Result<Self, ContainerError> {
+        let task_type = TaskType::from_u8(buf[4])?;
+        Ok(TaskEntry {
+            task_id: TaskId::new(u16::from_le_bytes([buf[0], buf[1]])),
+            priority: u16::from_le_bytes([buf[2], buf[3]]),
+            task_type,
+            flags: buf[5],
+            interval_us: u64::from_le_bytes([
+                buf[6], buf[7], buf[8], buf[9], buf[10], buf[11], buf[12], buf[13],
+            ]),
+            single_var_index: VarIndex::new(u16::from_le_bytes([buf[14], buf[15]])),
+            watchdog_us: u64::from_le_bytes([
+                buf[16], buf[17], buf[18], buf[19], buf[20], buf[21], buf[22], buf[23],
+            ]),
+            input_image_offset: u16::from_le_bytes([buf[24], buf[25]]),
+            output_image_offset: u16::from_le_bytes([buf[26], buf[27]]),
+            reserved: [buf[28], buf[29], buf[30], buf[31]],
+        })
+    }
+
+    /// Encodes the entry into its serialized bytes.
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
+        let mut buf = [0u8; Self::SIZE];
+        buf[0..2].copy_from_slice(&self.task_id.to_le_bytes());
+        buf[2..4].copy_from_slice(&self.priority.to_le_bytes());
+        buf[4] = self.task_type as u8;
+        buf[5] = self.flags;
+        buf[6..14].copy_from_slice(&self.interval_us.to_le_bytes());
+        buf[14..16].copy_from_slice(&self.single_var_index.to_le_bytes());
+        buf[16..24].copy_from_slice(&self.watchdog_us.to_le_bytes());
+        buf[24..26].copy_from_slice(&self.input_image_offset.to_le_bytes());
+        buf[26..28].copy_from_slice(&self.output_image_offset.to_le_bytes());
+        buf[28..32].copy_from_slice(&self.reserved);
+        buf
+    }
+}
+
 /// A single program instance entry in the task table (16 bytes fixed).
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct ProgramInstanceEntry {
     pub instance_id: InstanceId,
     pub task_id: TaskId,
@@ -39,7 +79,46 @@ pub struct ProgramInstanceEntry {
     pub init_function_id: FunctionId,
 }
 
+impl ProgramInstanceEntry {
+    /// Serialized size of one entry in bytes.
+    pub const SIZE: usize = 16;
+
+    /// Decodes an entry from its serialized bytes. Every field is a plain
+    /// integer, so any 16 bytes decode.
+    pub fn from_bytes(buf: &[u8; Self::SIZE]) -> Self {
+        ProgramInstanceEntry {
+            instance_id: InstanceId::new(u16::from_le_bytes([buf[0], buf[1]])),
+            task_id: TaskId::new(u16::from_le_bytes([buf[2], buf[3]])),
+            entry_function_id: FunctionId::new(u16::from_le_bytes([buf[4], buf[5]])),
+            var_table_offset: u16::from_le_bytes([buf[6], buf[7]]),
+            var_table_count: u16::from_le_bytes([buf[8], buf[9]]),
+            fb_instance_offset: u16::from_le_bytes([buf[10], buf[11]]),
+            fb_instance_count: u16::from_le_bytes([buf[12], buf[13]]),
+            init_function_id: FunctionId::new(u16::from_le_bytes([buf[14], buf[15]])),
+        }
+    }
+
+    /// Encodes the entry into its serialized bytes.
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
+        let mut buf = [0u8; Self::SIZE];
+        buf[0..2].copy_from_slice(&self.instance_id.to_le_bytes());
+        buf[2..4].copy_from_slice(&self.task_id.to_le_bytes());
+        buf[4..6].copy_from_slice(&self.entry_function_id.to_le_bytes());
+        buf[6..8].copy_from_slice(&self.var_table_offset.to_le_bytes());
+        buf[8..10].copy_from_slice(&self.var_table_count.to_le_bytes());
+        buf[10..12].copy_from_slice(&self.fb_instance_offset.to_le_bytes());
+        buf[12..14].copy_from_slice(&self.fb_instance_count.to_le_bytes());
+        buf[14..16].copy_from_slice(&self.init_function_id.to_le_bytes());
+        buf
+    }
+}
+
+/// Size of the task table header in bytes: `num_tasks` (u16),
+/// `num_programs` (u16) and `shared_globals_size` (u16).
+pub const TASK_TABLE_HEADER_SIZE: usize = 6;
+
 /// The task table section of a bytecode container.
+#[cfg(feature = "std")]
 #[derive(Clone, Debug, Default)]
 pub struct TaskTable {
     pub shared_globals_size: u16,
@@ -47,16 +126,15 @@ pub struct TaskTable {
     pub programs: Vec<ProgramInstanceEntry>,
 }
 
+#[cfg(feature = "std")]
 impl TaskTable {
     /// Returns the serialized size of this task table section in bytes.
     ///
     /// Format: header (6 bytes) + task entries + program instance entries
     pub fn section_size(&self) -> u32 {
-        // header: num_tasks(2) + num_programs(2) + shared_globals_size(2) = 6
-        let header_size = 6u32;
-        let tasks_size = (self.tasks.len() * TASK_ENTRY_SIZE) as u32;
-        let programs_size = (self.programs.len() * PROGRAM_INSTANCE_ENTRY_SIZE) as u32;
-        header_size + tasks_size + programs_size
+        let tasks_size = (self.tasks.len() * TaskEntry::SIZE) as u32;
+        let programs_size = (self.programs.len() * ProgramInstanceEntry::SIZE) as u32;
+        TASK_TABLE_HEADER_SIZE as u32 + tasks_size + programs_size
     }
 
     /// Writes the task table to the given writer.
@@ -66,30 +144,11 @@ impl TaskTable {
         w.write_all(&(self.programs.len() as u16).to_le_bytes())?;
         w.write_all(&self.shared_globals_size.to_le_bytes())?;
 
-        // Task entries
         for task in &self.tasks {
-            w.write_all(&task.task_id.to_le_bytes())?;
-            w.write_all(&task.priority.to_le_bytes())?;
-            w.write_all(&[task.task_type as u8])?;
-            w.write_all(&[task.flags])?;
-            w.write_all(&task.interval_us.to_le_bytes())?;
-            w.write_all(&task.single_var_index.to_le_bytes())?;
-            w.write_all(&task.watchdog_us.to_le_bytes())?;
-            w.write_all(&task.input_image_offset.to_le_bytes())?;
-            w.write_all(&task.output_image_offset.to_le_bytes())?;
-            w.write_all(&task.reserved)?;
+            w.write_all(&task.to_bytes())?;
         }
-
-        // Program instance entries
         for prog in &self.programs {
-            w.write_all(&prog.instance_id.to_le_bytes())?;
-            w.write_all(&prog.task_id.to_le_bytes())?;
-            w.write_all(&prog.entry_function_id.to_le_bytes())?;
-            w.write_all(&prog.var_table_offset.to_le_bytes())?;
-            w.write_all(&prog.var_table_count.to_le_bytes())?;
-            w.write_all(&prog.fb_instance_offset.to_le_bytes())?;
-            w.write_all(&prog.fb_instance_count.to_le_bytes())?;
-            w.write_all(&prog.init_function_id.to_le_bytes())?;
+            w.write_all(&prog.to_bytes())?;
         }
 
         Ok(())
@@ -98,51 +157,24 @@ impl TaskTable {
     /// Reads a task table from the given reader.
     pub fn read_from(r: &mut impl Read) -> Result<Self, ContainerError> {
         // Read header
-        let mut hdr = [0u8; 6];
+        let mut hdr = [0u8; TASK_TABLE_HEADER_SIZE];
         r.read_exact(&mut hdr)?;
         let num_tasks = u16::from_le_bytes([hdr[0], hdr[1]]) as usize;
         let num_programs = u16::from_le_bytes([hdr[2], hdr[3]]) as usize;
         let shared_globals_size = u16::from_le_bytes([hdr[4], hdr[5]]);
 
-        // Read task entries
         let mut tasks = Vec::with_capacity(num_tasks);
         for _ in 0..num_tasks {
-            let mut buf = [0u8; TASK_ENTRY_SIZE];
+            let mut buf = [0u8; TaskEntry::SIZE];
             r.read_exact(&mut buf)?;
-            let task_type = TaskType::from_u8(buf[4])?;
-            tasks.push(TaskEntry {
-                task_id: TaskId::new(u16::from_le_bytes([buf[0], buf[1]])),
-                priority: u16::from_le_bytes([buf[2], buf[3]]),
-                task_type,
-                flags: buf[5],
-                interval_us: u64::from_le_bytes([
-                    buf[6], buf[7], buf[8], buf[9], buf[10], buf[11], buf[12], buf[13],
-                ]),
-                single_var_index: VarIndex::new(u16::from_le_bytes([buf[14], buf[15]])),
-                watchdog_us: u64::from_le_bytes([
-                    buf[16], buf[17], buf[18], buf[19], buf[20], buf[21], buf[22], buf[23],
-                ]),
-                input_image_offset: u16::from_le_bytes([buf[24], buf[25]]),
-                output_image_offset: u16::from_le_bytes([buf[26], buf[27]]),
-                reserved: [buf[28], buf[29], buf[30], buf[31]],
-            });
+            tasks.push(TaskEntry::from_bytes(&buf)?);
         }
 
-        // Read program instance entries
         let mut programs = Vec::with_capacity(num_programs);
         for _ in 0..num_programs {
-            let mut buf = [0u8; PROGRAM_INSTANCE_ENTRY_SIZE];
+            let mut buf = [0u8; ProgramInstanceEntry::SIZE];
             r.read_exact(&mut buf)?;
-            programs.push(ProgramInstanceEntry {
-                instance_id: InstanceId::new(u16::from_le_bytes([buf[0], buf[1]])),
-                task_id: TaskId::new(u16::from_le_bytes([buf[2], buf[3]])),
-                entry_function_id: FunctionId::new(u16::from_le_bytes([buf[4], buf[5]])),
-                var_table_offset: u16::from_le_bytes([buf[6], buf[7]]),
-                var_table_count: u16::from_le_bytes([buf[8], buf[9]]),
-                fb_instance_offset: u16::from_le_bytes([buf[10], buf[11]]),
-                fb_instance_count: u16::from_le_bytes([buf[12], buf[13]]),
-                init_function_id: FunctionId::new(u16::from_le_bytes([buf[14], buf[15]])),
-            });
+            programs.push(ProgramInstanceEntry::from_bytes(&buf));
         }
 
         Ok(TaskTable {
@@ -281,7 +313,7 @@ mod tests {
         buf.extend_from_slice(&0u16.to_le_bytes()); // num_programs
         buf.extend_from_slice(&0u16.to_le_bytes()); // shared_globals_size
                                                     // 32-byte task entry with invalid task_type at offset 4
-        let mut entry = [0u8; TASK_ENTRY_SIZE];
+        let mut entry = [0u8; TaskEntry::SIZE];
         entry[4] = 0xFF; // invalid task type
         buf.extend_from_slice(&entry);
 
