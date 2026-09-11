@@ -23,7 +23,7 @@ use crate::error::{StringPreview, Trap};
 /// policy calls for.
 pub(crate) fn convert(encoding: Encoding, bytes: &[u8]) -> Result<i32, Trap> {
     let scanned = match encoding.target {
-        Target::U32 => scan_u32(bytes, encoding.non_numeric).map(|v| v as i32),
+        Target::U32 => scan_integer(bytes, encoding.non_numeric, Bounds::U32).map(|v| v as i32),
     };
     match (scanned, encoding.failure) {
         (Some(value), _) => Ok(value),
@@ -35,32 +35,78 @@ pub(crate) fn convert(encoding: Encoding, bytes: &[u8]) -> Result<i32, Trap> {
     }
 }
 
-/// Scans `bytes` for an unsigned 32-bit integer under `policy`.
+/// The values an integer target holds, inclusive at both ends.
+///
+/// The scanner is one function for every integer target; the target's bounds
+/// are the only thing that differs between them. Wide enough for a 64-bit
+/// unsigned target, so the same scanner serves the 64-bit targets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Bounds {
+    pub(crate) min: i128,
+    pub(crate) max: i128,
+}
+
+impl Bounds {
+    /// An unsigned 32-bit target (`UDINT`).
+    pub(crate) const U32: Bounds = Bounds {
+        min: 0,
+        max: u32::MAX as i128,
+    };
+
+    fn contains(self, value: i128) -> bool {
+        (self.min..=self.max).contains(&value)
+    }
+}
+
+/// Scans `bytes` for an integer within `bounds` under `policy`.
 ///
 /// `None` is a failure: no literal where the policy requires one, or a
-/// literal whose value does not fit (out of range is a failure under every
-/// policy, never a wrap).
-pub(crate) fn scan_u32(bytes: &[u8], policy: StringToNumNonNumeric) -> Option<u32> {
+/// literal whose value is outside `bounds` (out of range is a failure under
+/// every policy, never a wrap).
+pub(crate) fn scan_integer(
+    bytes: &[u8],
+    policy: StringToNumNonNumeric,
+    bounds: Bounds,
+) -> Option<i128> {
     let text = match policy {
         StringToNumNonNumeric::Reject => trim_ascii(bytes),
         StringToNumNonNumeric::IgnoreTrailing => trim_ascii_start(bytes),
         StringToNumNonNumeric::IgnoreSurrounding => skip_to_literal(bytes),
     };
-    let (value, consumed) = leading_literal(text)?;
-    match policy {
-        StringToNumNonNumeric::Reject if consumed != text.len() => None,
-        _ => value,
+    let (literal, consumed) = leading_literal(text)?;
+    if policy == StringToNumNonNumeric::Reject && consumed != text.len() {
+        return None;
+    }
+    let value = literal?.value();
+    bounds.contains(value).then_some(value)
+}
+
+/// A well-formed literal: its sign and the magnitude it spells.
+#[derive(Clone, Copy)]
+struct Literal {
+    negative: bool,
+    magnitude: u64,
+}
+
+impl Literal {
+    fn value(self) -> i128 {
+        let magnitude = self.magnitude as i128;
+        if self.negative {
+            -magnitude
+        } else {
+            magnitude
+        }
     }
 }
 
-/// The value and length of the longest leading run of `text` that is a
+/// The literal and length of the longest leading run of `text` that is a
 /// literal, or `None` when `text` does not start with one.
 ///
-/// The value is `None` (with the run still measured) when the run is a
-/// well-formed literal that does not fit in a `u32`: the run is still the
-/// literal, so under `ignore-trailing` the rest is still ignored, and the
-/// conversion fails on range rather than on syntax.
-fn leading_literal(text: &[u8]) -> Option<(Option<u32>, usize)> {
+/// The literal is `None` (with the run still measured) when the run is
+/// well-formed but its magnitude overflows the 64-bit accumulator: the run is
+/// still the literal, so under `ignore-trailing` the rest is still ignored,
+/// and the conversion fails on range rather than on syntax.
+fn leading_literal(text: &[u8]) -> Option<(Option<Literal>, usize)> {
     let mut pos = 0;
     let negative = match text.first() {
         Some(b'+') => {
@@ -74,40 +120,39 @@ fn leading_literal(text: &[u8]) -> Option<(Option<u32>, usize)> {
         _ => false,
     };
 
-    let (mut value, digits_len) = digit_run(&text[pos..], 10)?;
+    let (mut magnitude, digits_len) = digit_run(&text[pos..], 10)?;
     pos += digits_len;
 
     // A decimal run of `2`, `8` or `16` followed by `#` and at least one
     // digit of that base is a based literal. Anything else after the run,
     // `#` included, is not part of the literal.
     if let Some(b'#') = text.get(pos) {
-        let base = match value {
+        let base = match magnitude {
             Some(2) => Some(2),
             Some(8) => Some(8),
             Some(16) => Some(16),
             _ => None,
         };
         if let Some(base) = base {
-            if let Some((based_value, based_len)) = digit_run(&text[pos + 1..], base) {
-                value = based_value;
+            if let Some((based_magnitude, based_len)) = digit_run(&text[pos + 1..], base) {
+                magnitude = based_magnitude;
                 pos += 1 + based_len;
             }
         }
     }
 
-    // An unsigned target has no negative values; `-0` is the one negative
-    // spelling of a value it holds.
-    if negative && value != Some(0) {
-        value = None;
-    }
-    Some((value, pos))
+    let literal = magnitude.map(|magnitude| Literal {
+        negative,
+        magnitude,
+    });
+    Some((literal, pos))
 }
 
 /// The value and length of the longest leading run of digits in `base`,
 /// with single `_` separators between digits, or `None` when `text` does not
-/// start with a digit. The value is `None` when the run overflows `u32`.
-fn digit_run(text: &[u8], base: u32) -> Option<(Option<u32>, usize)> {
-    let mut value: Option<u32> = Some(0);
+/// start with a digit. The value is `None` when the run overflows `u64`.
+fn digit_run(text: &[u8], base: u32) -> Option<(Option<u64>, usize)> {
+    let mut value: Option<u64> = Some(0);
     let mut len = 0;
     let mut last_was_digit = false;
     for &byte in text {
@@ -122,8 +167,8 @@ fn digit_run(text: &[u8], base: u32) -> Option<(Option<u32>, usize)> {
             None => break,
         };
         value = value
-            .and_then(|v| v.checked_mul(base))
-            .and_then(|v| v.checked_add(digit));
+            .and_then(|v| v.checked_mul(u64::from(base)))
+            .and_then(|v| v.checked_add(u64::from(digit)));
         last_was_digit = true;
         len += 1;
     }
@@ -181,6 +226,10 @@ mod tests {
     use super::*;
     use rstest::rstest;
     use StringToNumNonNumeric::{IgnoreSurrounding, IgnoreTrailing, Reject};
+
+    fn scan_u32(bytes: &[u8], policy: StringToNumNonNumeric) -> Option<u32> {
+        scan_integer(bytes, policy, Bounds::U32).map(|v| v as u32)
+    }
 
     // Inputs that are a whole literal convert identically under every
     // policy: the policies differ only in what they do with the rest.
