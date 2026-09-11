@@ -2,6 +2,7 @@
 
 status: proposed
 date: 2026-03-08
+amended: 2026-09-11 (Implementation Status added; status unchanged)
 
 ## Context and Problem Statement
 
@@ -71,6 +72,36 @@ Verify that:
 2. Each example uses typed literals matching the Literals section on the same page
 3. Each example compiles and runs successfully in the IronPLC playground
 4. The data types index page includes a tip about interactive examples (matching the standard library index pattern)
+
+## Implementation Status (as of 2026-09-11)
+
+This ADR is still `proposed` on a technicality that is worth keeping honest: the
+work is one page short.
+
+What landed:
+
+* Twenty-four of the twenty-five pages under
+  `docs/reference/language/data-types/elementary/` carry exactly one
+  `playground-with-program` example, following the design principles above.
+* The data types index carries the interactive-examples tip (Confirmation item
+  4).
+* The supported type set has grown well past the "15 supported elementary type
+  pages" Confirmation item 1 counts — the long time types and the datetime
+  family landed since — and each new page brought its example with it, which is
+  the convention this ADR was trying to establish working as intended.
+
+What did not:
+
+* `wstring.rst` has three static `code-block` directives and no interactive
+  example. It is the only elementary type page without one, and WSTRING is
+  supported end to end (`end_to_end_wstring.rs`), so the gap is a documentation
+  omission rather than a missing feature.
+
+Confirmation item 1 is therefore 24/25 and item 3 cannot be asserted for the
+page that has no example to run. Flipping this to `accepted` would be recording
+a completion that has not happened, which is the failure mode
+`development-standards.md` warns about; the honest status is `proposed` with the
+remaining page named.
 
 ## Pros and Cons of the Options
 

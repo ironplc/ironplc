@@ -3,6 +3,7 @@
 status: proposed
 date: 2026-02-18
 amended: 2026-05-22 (BLAKE3 throughout; per-file source hashes moved to debug section)
+amended: 2026-09-11 (Implementation Status added; status unchanged)
 
 ## Context and Problem Statement
 
@@ -65,6 +66,53 @@ Verify by:
 3. Modifying one byte of the debug section and confirming the debug signature rejects it while the content signature still verifies
 4. Confirming each `SOURCE_FILE_TABLE` entry's hash matches a BLAKE3 computed over the corresponding source file
 5. Attempting to replace any per-file hash in the `SOURCE_FILE_TABLE` and confirming the debug signature rejects it
+
+## Implementation Status (as of 2026-09-11)
+
+This ADR is still `proposed`, and that is accurate: one of its three
+cryptographic elements exists, and neither signature does. Recorded here so a
+reader is not left to infer it. Tracked by
+[issue #1583](https://github.com/ironplc/ironplc/issues/1583).
+
+What landed:
+
+* **Per-file source hashes (element 2), in full.** The debug section's
+  `SOURCE_FILE_TABLE` carries one BLAKE3 digest per source file, computed in
+  `codegen::source_lookup` and pinned by tests that recompute `blake3::hash` over
+  the same bytes. The "which file drifted" granularity this ADR argued for is
+  real and usable today.
+* BLAKE3 throughout, as the 2026-05-22 amendment recorded.
+* The container *shape* for the rest: `FileHeader` declares `content_hash`,
+  `debug_hash` and `layout_hash`, and the section directory reserves
+  `sig_section_offset` / `sig_section_size` and `debug_sig_offset` /
+  `debug_sig_size`. The format does not need a version bump to carry
+  signatures.
+
+What did not:
+
+* **The header hashes are never computed.** `content_hash`, `debug_hash` and
+  `layout_hash` are written as zeros and read by nothing. Elements 1 and 3 of the
+  model exist as field declarations only.
+* **Neither signature exists.** Nothing writes the signature sections, nothing
+  reads them, there is no key handling, and no signing algorithm has been
+  chosen — the ADR offers Ed25519 or ECDSA-P256 and the choice was never made.
+* **The PLC does not reject anything.** "Required. The PLC rejects bytecode
+  without a valid content signature" has no implementation; the VM loads any
+  container it can parse.
+* Confirmation items 1, 2, 3 and 5 are open — each one tests a signature
+  verifying or rejecting, and there is no verification to exercise. Item 4 (each
+  `SOURCE_FILE_TABLE` entry's hash matches BLAKE3 over the file) is satisfied.
+
+The consequence worth stating plainly: the per-file hashes that *did* land are
+not tamper-evident on their own. This ADR makes them so via the debug signature
+that transitively covers them, and that signature does not exist — so an
+attacker who edits the debug section can edit the hashes in it to match. The
+offline-tampering protection the ADR claims for element 2 is not in force until
+element 3 is.
+
+The decision stands; the work is unfinished. The pull request that lands
+signature generation and verification is the one that flips this ADR to
+`accepted`.
 
 ## Pros and Cons of the Options
 

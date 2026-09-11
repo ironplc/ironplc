@@ -2,6 +2,7 @@
 
 status: proposed
 date: 2026-02-27
+amended: 2026-09-11 (Implementation Status added; status unchanged)
 
 > **Terminology note (added later):** This ADR predates
 > [`specs/steering/glossary.md`](../steering/glossary.md), which now draws a
@@ -82,6 +83,53 @@ For each vendor dialect added, verify:
 2. **Position fidelity** — confirm that all diagnostic positions point into the original source file, not into any intermediate
 3. **No standard regression** — confirm that enabling a vendor dialect does not change the parse result of any standard IEC 61131-3 file
 4. **Incremental semantic value** — confirm that existing semantic analysis (type checking, variable resolution, etc.) still runs on the standard-compliant portions of vendor files
+
+## Implementation Status (as of 2026-09-11)
+
+This ADR is still `proposed`, and that is accurate: one of the two vendor
+dialects it names is built and the other is not. Recorded here so a reader does
+not take the table above as a description of what IronPLC reads today.
+
+What landed:
+
+* **Beckhoff TwinCAT, in full.** `.TcPOU`, `.TcGVL` and `.TcDUT` are recognized
+  by `FileType::from_path`, and so is `.TcIO` — TwinCAT's `INTERFACE` object
+  type, which this ADR's table does not list. The XML wrapper is parsed by
+  `sources/src/xml`, and the ST inside goes through the ordinary parser with the
+  TwinCAT extensions enabled. `INTERFACE`, `METHOD`, `PROPERTY`, `EXTENDS`,
+  `IMPLEMENTS`, `POINTER TO`, `REFERENCE TO` and `{attribute}` pragmas all have
+  flags and a `twincat` preset that bundles them.
+* **The principle itself is in force and is cited as policy.** ADR-0036 depends
+  on it — the reason IronPLC defines no dialect of its own is that every flag
+  bundle must describe a real toolchain.
+* Position fidelity (Confirmation item 2): diagnostics from inside a `.TcPOU`
+  point into the original file, which is why the XML path preserves offsets
+  rather than extracting CDATA into a scratch buffer.
+
+What did not:
+
+* **Siemens SCL is not built.** `.scl` is not a `FileType`, so the compiler does
+  not read Siemens files at all. Every construct in the Siemens row of the table
+  above — `#var`, `REGION`, `"quoted names"`, `VAR_STAT`, `DATA_BLOCK`,
+  `ORGANIZATION_BLOCK` — is unimplemented. `specs/design/siemens-scl-dialect.md`
+  is a design, not a description.
+* **Dialect is not detected from the file extension.** The "Dialect detection
+  strategy" section above says `.scl` selects Siemens and `.TcPOU` selects
+  Beckhoff. What exists is a two-part split: the extension selects the *parser*
+  (XML wrapper versus plain ST) via `FileType`, and the *dialect* — which
+  extensions are enabled — comes from `--dialect` or individual `--allow-*`
+  flags chosen by the user. A `.TcPOU` file compiled without `--dialect twincat`
+  parses as XML but rejects TwinCAT syntax inside it.
+* **Confirmation item 1 has no harness.** No test takes 3+ open-source projects
+  from a vendor ecosystem and asserts zero parse errors. The nearest thing is the
+  OSCAT corpus case in `parser/src/tests/corpus.rs`, which is a single vendor-
+  neutral `.st` file. Without that harness, "parses everything the vendor's
+  toolchain accepts" is an aspiration rather than a measured property, for
+  TwinCAT as much as for Siemens.
+
+The decision stands; the work is unfinished. Per-file automatic dialect
+selection and the parse-clean corpus are the two pieces that would let this flip
+to `accepted` for the dialects that exist.
 
 ## Pros and Cons of the Options
 
