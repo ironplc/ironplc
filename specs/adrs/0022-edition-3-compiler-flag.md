@@ -170,7 +170,15 @@ Three things drove the change, each decided by a later ADR:
 `CompilerOptions::allow_iec_61131_3_2013` and the "post-tokenization validation
 rule" until this amendment, six months after neither existed — a reader
 implementing that requirement would have gone looking for both. It now names
-`allow_long_time_types` and the demotion, and carries the demotion's known cost:
-`LTIME#5s` with the flag off reports an undeclared identifier rather than
-"LTIME requires Edition 3", which ADR-0040 records as the accepted price of
-demotion.
+`allow_long_time_types` and the demotion, and carries the demotion's known cost.
+Measured: `t := LTIME#5s;` without the flag reports
+
+```
+error[P0002]: Syntax error
+  ... Found text '#' that matched token '#'
+```
+
+— because `LTIME` demoted to an identifier leaves the `#` with nothing to
+introduce. Not "LTIME requires Edition 3". ADR-0040 rule 3 records exactly this
+as the accepted price: the program is genuinely ambiguous once the keyword is
+identifier-shaped, so the compiler cannot know which was meant.

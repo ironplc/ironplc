@@ -55,8 +55,8 @@ Units in a compound interval appear in strictly descending magnitude order.
 `CompilerOptions::allow_long_time_types` is `true` (set directly, or by the
 `iec61131-3-ed3`, `codesys` or `twincat` dialect preset). When the flag is
 `false`, `xform_demote_keywords` demotes `LTIME` to an ordinary identifier
-before parsing, so `LTIME#5s` fails as unrecognized input rather than with a
-message naming the edition — the accepted cost of demotion under
+before parsing, so `LTIME#5s` fails with `P0002 Syntax error` at the `#` rather
+than with a message naming the edition — the accepted cost of demotion under
 [ADR-0040](../adrs/0040-dialect-violations-diagnosed-in-policy-phase.md) rule 3,
 which applies because `LTIME` is a legal variable name in Edition 2. The Edition
 3 gate itself is [ADR-0022](../adrs/0022-edition-3-compiler-flag.md).
