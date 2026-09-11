@@ -7,7 +7,7 @@ PROGRAM main
   VAR
     y : DINT;
   END_VAR
-  y := SEL(0, 10, 20);
+  y := SEL(FALSE, 10, 20);
 END_PROGRAM
 ",
     &[(0, 10)],
@@ -20,7 +20,7 @@ PROGRAM main
   VAR
     y : DINT;
   END_VAR
-  y := SEL(1, 10, 20);
+  y := SEL(TRUE, 10, 20);
 END_PROGRAM
 ",
     &[(0, 20)],
@@ -31,10 +31,10 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    g : DINT;
+    g : BOOL;
     y : DINT;
   END_VAR
-  g := 1;
+  g := TRUE;
   y := SEL(g, 100, 200);
 END_PROGRAM
 ",

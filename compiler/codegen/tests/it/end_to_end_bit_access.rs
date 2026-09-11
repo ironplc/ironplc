@@ -1,5 +1,6 @@
 //! End-to-end integration tests for bit access on integer variables (e.g., `a.0`).
 
+use crate::common::options_allowing;
 use ironplc_parser::options::CompilerOptions;
 use spec_test_macro::spec_test;
 
@@ -48,8 +49,9 @@ e2e_i32!(
 );
 
 // 65536 = 0x10000, bit 16 = 1.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_read_bit_of_dword_then_correct,
+    options_allowing("allow_cross_family_widening"),
     "PROGRAM main VAR x : DWORD; y : BOOL; END_VAR x := 65536; y := x.16; END_PROGRAM",
     &[(1, 1)],
 );
@@ -71,43 +73,49 @@ e2e_i32!(
 // --- Bit write tests ---
 
 // Set bit 0: 0 -> 1.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_write_bit_0_set_then_correct,
+    options_allowing("allow_cross_family_widening"),
     "PROGRAM main VAR x : BYTE; END_VAR x := 0; x.0 := TRUE; END_PROGRAM",
     &[(0, 1)],
 );
 
 // Set bit 3: 0 -> 8.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_write_bit_3_set_then_correct,
+    options_allowing("allow_cross_family_widening"),
     "PROGRAM main VAR x : BYTE; END_VAR x := 0; x.3 := TRUE; END_PROGRAM",
     &[(0, 8)],
 );
 
 // Clear bit 0: 255 -> 254.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_write_bit_0_clear_then_correct,
+    options_allowing("allow_cross_family_widening"),
     "PROGRAM main VAR x : BYTE; END_VAR x := 255; x.0 := FALSE; END_PROGRAM",
     &[(0, 254)],
 );
 
 // Clear bit 7: 255 -> 127.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_write_bit_7_clear_then_correct,
+    options_allowing("allow_cross_family_widening"),
     "PROGRAM main VAR x : BYTE; END_VAR x := 255; x.7 := FALSE; END_PROGRAM",
     &[(0, 127)],
 );
 
 // 170 = 0b10101010, set bit 0 -> 0b10101011 = 171.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_write_bit_preserves_other_bits_then_correct,
+    options_allowing("allow_cross_family_widening"),
     "PROGRAM main VAR x : BYTE; END_VAR x := 170; x.0 := TRUE; END_PROGRAM",
     &[(0, 171)],
 );
 
 // Set bit 8: 0 -> 256.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_write_bit_of_word_then_correct,
+    options_allowing("allow_cross_family_widening"),
     "PROGRAM main VAR x : WORD; END_VAR x := 0; x.8 := TRUE; END_PROGRAM",
     &[(0, 256)],
 );
@@ -122,15 +130,17 @@ e2e_i32!(
 // --- Multiple bit operations ---
 
 // Set bits 0, 2, 4: 0b00010101 = 21.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_set_multiple_bits_then_correct,
+    options_allowing("allow_cross_family_widening"),
     "PROGRAM main VAR x : BYTE; END_VAR x := 0; x.0 := TRUE; x.2 := TRUE; x.4 := TRUE; END_PROGRAM",
     &[(0, 21)],
 );
 
 // x = 8 after setting bit 3; y = TRUE after reading it.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_read_after_write_then_correct,
+    options_allowing("allow_cross_family_widening"),
     "PROGRAM main VAR x : BYTE; y : BOOL; END_VAR x := 0; x.3 := TRUE; y := x.3; END_PROGRAM",
     &[(0, 8), (1, 1)],
 );
