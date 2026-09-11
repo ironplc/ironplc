@@ -88,7 +88,9 @@ For each vendor dialect added, verify:
 
 This ADR is still `proposed`, and that is accurate: one of the two vendor
 dialects it names is built and the other is not. Recorded here so a reader does
-not take the table above as a description of what IronPLC reads today.
+not take the table above as a description of what IronPLC reads today. The two
+gaps that apply to the dialect that *is* built are tracked by
+[issue #1685](https://github.com/ironplc/ironplc/issues/1685).
 
 What landed:
 
@@ -102,9 +104,11 @@ What landed:
 * **The principle itself is in force and is cited as policy.** ADR-0036 depends
   on it — the reason IronPLC defines no dialect of its own is that every flag
   bundle must describe a real toolchain.
-* Position fidelity (Confirmation item 2): diagnostics from inside a `.TcPOU`
-  point into the original file, which is why the XML path preserves offsets
-  rather than extracting CDATA into a scratch buffer.
+* Position fidelity (Confirmation item 2), substantially: `sources/src/xml/position.rs`
+  maps a position in the ST body back through the CDATA to a line and column in
+  the original `.TcPOU`, so a diagnostic points at the vendor's file rather than
+  at an intermediate. It is not uniform — some transformed nodes still fall back
+  to a file-level span carrying no position — so the item is not fully closed.
 
 What did not:
 

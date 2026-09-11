@@ -76,7 +76,8 @@ Verify that:
 ## Implementation Status (as of 2026-09-11)
 
 This ADR is still `proposed` on a technicality that is worth keeping honest: the
-work is one page short.
+work is one page short. Tracked by
+[issue #1684](https://github.com/ironplc/ironplc/issues/1684).
 
 What landed:
 
