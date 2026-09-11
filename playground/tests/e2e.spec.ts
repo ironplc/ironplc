@@ -552,6 +552,43 @@ END_PROGRAM
     await expect(page.locator('[data-testid="examples-select"]')).toBeHidden();
   });
 
+  test("code_param_when_utf8_then_loads_as_written_and_runs", async ({ page }) => {
+    // The docs directive base64-encodes UTF-8 bytes, so a character outside
+    // ASCII — which the WSTRING data type page's example carries — reaches the
+    // editor as written only if the decode reads those bytes as UTF-8 instead
+    // of one character per byte.
+    const b64 = (text: string) => Buffer.from(text, "utf-8").toString("base64");
+    const code = [
+      'unit := WSTRING#"°C";',
+      'caption := CONCAT(WSTRING#"Kiln temperature ", unit);',
+      "caption_len := LEN(caption);",
+    ].join("\n");
+    const vars = "unit : WSTRING[8]; caption : WSTRING[32]; caption_len : INT;";
+
+    await page.goto(
+      `/?embed=true&scaffold=true&code=${encodeURIComponent(b64(code))}` +
+        `&vars=${encodeURIComponent(b64(vars))}`,
+    );
+    await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
+      timeout: 15000,
+    });
+
+    const editor = page.locator('[data-testid="editor"]');
+    expect(await editor.inputValue()).toContain('WSTRING#"°C"');
+
+    await page.click('[data-testid="start-btn"]');
+
+    // A wide code unit outside printable ASCII renders as its $XXXX escape, and
+    // LEN counts the 19 code units rather than the 38 bytes they occupy.
+    const variablesPanel = page.locator('[data-testid="variables-panel"]');
+    await expect(variablesPanel).toContainText('"Kiln temperature $00B0C"', {
+      timeout: 10000,
+    });
+    await expect(variablesPanel).toContainText("19");
+
+    await page.click('[data-testid="stop-btn"]');
+  });
+
   test("dialect_select_when_loaded_then_defaults_to_ed2", async ({ page }) => {
     const select = page.locator('[data-testid="dialect-select"]');
     await expect(select).toBeVisible();

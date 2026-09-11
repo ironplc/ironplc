@@ -566,11 +566,22 @@ editor.addEventListener("scroll", () => {
   gutter.scrollTop = editor.scrollTop;
 });
 
+// Decode a base64 parameter that carries UTF-8 text. The docs directive encodes
+// UTF-8 bytes (b64encode(code.encode()) in docs/extensions/ironplc_playground.py)
+// and atob hands back one character per byte, so a multi-byte character arrives
+// mangled — "°C" as "Â°C" — unless those bytes are decoded as UTF-8. A WSTRING
+// example is written with characters outside ASCII, so this is what lets one
+// load as written.
+function decodeBase64Utf8(value: string): string {
+  const bytes = Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
 // Pre-load code from URL parameters
 if (params.has("code")) {
   try {
     const codeParam = params.get("code") || "";
-    const decoded = atob(codeParam);
+    const decoded = decodeBase64Utf8(codeParam);
     let code = decoded;
 
     // Scaffold mode: wrap snippet in PROGRAM block
@@ -581,7 +592,7 @@ if (params.has("code")) {
       if (!startsWithPOU) {
         let varBlock = "";
         if (params.has("vars")) {
-          const vars = atob(params.get("vars") || "");
+          const vars = decodeBase64Utf8(params.get("vars") || "");
           varBlock = vars
             .split(";")
             .filter((v) => v.trim())
