@@ -577,6 +577,8 @@ fn transform_var_list(
         DeclarationQualifier::Retain
     } else if var_list.nonretain {
         DeclarationQualifier::NonRetain
+    } else if var_list.persistent {
+        DeclarationQualifier::Persistent
     } else {
         DeclarationQualifier::Unspecified
     };
@@ -2088,6 +2090,39 @@ END_IF;
 
         // Verify the name value is correct
         assert_eq!(id.original(), "MyVariable");
+    }
+
+    #[test]
+    fn transform_when_var_list_persistent_then_qualifier_is_persistent() {
+        let xml = format!(
+            r#"{}
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="TestProg" pouType="program">
+        <interface>
+          <localVars persistent="true">
+            <variable name="nCounter">
+              <type><DINT/></type>
+            </variable>
+          </localVars>
+        </interface>
+      </pou>
+    </pous>
+  </types>
+</project>"#,
+            minimal_project_header()
+        );
+
+        let project = parse_project(&xml);
+        let file_id = test_file_id();
+        let library = transform_project(&project, &file_id, &CompilerOptions::default()).unwrap();
+
+        let prog_decl = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(
+            prog_decl.variables[0].qualifier,
+            DeclarationQualifier::Persistent
+        );
     }
 
     #[test]

@@ -384,6 +384,11 @@ define_compiler_options! {
     [Codesys, TwinCat],
     allow_adr,
 
+    "Allow the PERSISTENT variable qualifier (Beckhoff TwinCAT/CODESYS extension)",
+    "--allow-persistent-var",
+    [Codesys, TwinCat],
+    allow_persistent_var,
+
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
     "--allow-ref-arithmetic",
     [Rusty, Codesys],
@@ -635,6 +640,7 @@ mod tests {
                 "allow_reference_to",
                 "allow_pointer_to",
                 "allow_adr",
+                "allow_persistent_var",
                 "allow_ref_arithmetic",
                 "allow_ref_stack_variables",
                 "allow_ref_type_punning",
@@ -680,6 +686,7 @@ mod tests {
                 "allow_reference_to",
                 "allow_pointer_to",
                 "allow_adr",
+                "allow_persistent_var",
                 "allow_int_to_bool_initializer",
                 "allow_sizeof",
                 "allow_cross_family_widening",

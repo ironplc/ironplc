@@ -39,6 +39,8 @@ use crate::{
 ///   `allow_fb_inheritance`.
 /// * **`AND_THEN`, `OR_ELSE`** — demoted unless
 ///   `allow_short_circuit_operators`.
+/// * **`PERSISTENT`** — demoted unless `allow_persistent_var`
+///   (Beckhoff TwinCAT/CODESYS extension).
 ///
 /// The context-sensitive `TIME` keyword is handled by [`apply_time`].
 pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
@@ -49,6 +51,7 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     let demote_pointer = !options.allow_pointer_to;
     let demote_oop = !options.allow_fb_inheritance;
     let demote_short_circuit = !options.allow_short_circuit_operators;
+    let demote_persistent = !options.allow_persistent_var;
 
     for tok in tokens.iter_mut() {
         let demote = match tok.token_type {
@@ -68,6 +71,7 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
             | TokenType::This
             | TokenType::Super => demote_oop,
             TokenType::AndThen | TokenType::OrElse => demote_short_circuit,
+            TokenType::Persistent => demote_persistent,
             _ => false,
         };
         if demote {
@@ -194,6 +198,13 @@ mod tests {
     fn opts_fb_inheritance() -> CompilerOptions {
         CompilerOptions {
             allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    fn opts_persistent_var() -> CompilerOptions {
+        CompilerOptions {
+            allow_persistent_var: true,
             ..CompilerOptions::default()
         }
     }
@@ -486,6 +497,23 @@ mod tests {
         let mut tokens = vec![make_token(TokenType::OrElse, "OR_ELSE")];
         apply(&mut tokens, &opts_short_circuit());
         assert_eq!(tokens[0].token_type, TokenType::OrElse);
+    }
+
+    // --- PERSISTENT: demoted unless allow_persistent_var ---
+
+    #[test]
+    fn apply_when_persistent_and_disabled_then_demoted_to_identifier() {
+        let mut tokens = vec![make_token(TokenType::Persistent, "PERSISTENT")];
+        apply(&mut tokens, &opts_default());
+        assert_eq!(tokens[0].token_type, TokenType::Identifier);
+        assert_eq!(tokens[0].text, "PERSISTENT");
+    }
+
+    #[test]
+    fn apply_when_persistent_and_enabled_then_stays_keyword() {
+        let mut tokens = vec![make_token(TokenType::Persistent, "PERSISTENT")];
+        apply(&mut tokens, &opts_persistent_var());
+        assert_eq!(tokens[0].token_type, TokenType::Persistent);
     }
 
     #[test]
