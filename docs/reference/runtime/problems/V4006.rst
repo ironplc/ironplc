@@ -12,9 +12,12 @@ the offending string.
 A string is not convertible when it is not a numeric literal under the
 selected non-numeric policy (for example ``'12abc'`` under ``reject``), or
 when it is a literal whose value does not fit the target type (for example
-``'4294967296'`` for ``UDINT``). See
+``'4294967296'`` for ``UDINT``, or ``'300'`` for ``SINT``). A value that does
+not fit is never wrapped. ``STRING_TO_BYTE``, ``STRING_TO_WORD`` and
+``STRING_TO_DWORD`` convert as ``USINT``, ``UINT`` and ``UDINT``, so the
+message names the unsigned integer type. See
 :doc:`/reference/standard-library/functions/type-conversions` for what each
-policy accepts.
+policy accepts and the range of each target.
 
 Example
 -------
