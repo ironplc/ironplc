@@ -81,9 +81,21 @@ analyse records a diagnostic and stops descending into *that node*, never the
 walk --- otherwise every problem after it goes unreported. See
 [ADR-0048](../adrs/0048-semantic-rules-cannot-fail.md).
 
-This does not apply to the `xform_*` passes, which must produce a `Library` and
-may legitimately abort; `stages::resolve_types` reverts to a pre-pass clone
-when one does.
+This does not apply to the `xform_*` passes, which must produce a `Library`.
+Each runs under one of two failure policies, named by the helper it is called
+through in `stages::resolve_types`:
+
+| Signature | Called through | On a problem |
+|---|---|---|
+| `Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>` | `run_best_effort` | The transformed library is kept and the diagnostics collected alongside it. `Err` means the pass had no library to return at all. |
+| `Result<Library, Vec<Diagnostic>>` | `run_reverting_on_error` | The pre-pass clone is restored, discarding every transformation the pass had already completed. |
+
+**A new pass reports per-declaration problems through `run_best_effort`.** A
+pass that accumulates diagnostics and then returns `Err` throws away every
+unrelated declaration it had already transformed, which is how a source that
+analyzed cleanly alone came to fail once merged with unrelated code. Revert is
+for a pass whose whole output is meaningless when any part of it failed, and
+the call site says why.
 
 ## Testing Architecture
 
