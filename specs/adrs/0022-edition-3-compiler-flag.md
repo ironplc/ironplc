@@ -1,7 +1,8 @@
 # ADR-0022: IEC 61131-3:2013 Compiler Flag for LTIME and Future Features
 
-status: proposed
+status: accepted
 date: 2026-03-11
+amended: 2026-09-11 (Implementation Approach named a flag, a field and a rule that were never built)
 
 ## Context and Problem Statement
 
@@ -59,6 +60,11 @@ An enum-based CLI argument selecting the target edition.
 A `--std` flag is added to the CLI subcommands that process source files (check, compile, echo). The flag accepts the value `iec-61131-3:2013`. Internally, `CompilerOptions` gains an `allow_iec_61131_3_2013: bool` field (default `false`). A new post-tokenization validation rule rejects IEC 61131-3:2013 tokens when the flag is not set.
 
 ### Implementation Approach
+
+> **None of the names in this section exist.** There is no `--std` flag, no
+> `allow_iec_61131_3_2013` field and no `rule_token_no_std_2013.rs`. The gate
+> was built, under different names — see
+> [Amendment: the gate is a feature flag and a dialect preset, not a --std switch](#amendment-the-gate-is-a-feature-flag-and-a-dialect-preset-not-a---std-switch-2026-09-11).
 
 **CompilerOptions** (`compiler/parser/src/options.rs`):
 ```rust
@@ -122,3 +128,49 @@ Rationale:
 * **Unambiguous values** — Using the publication year (`2013`) avoids confusion with the edition number coinciding with the part number (edition 3 of part 3).
 * **Multi-standard support** — Embedding the standard name in the flag allows future standards (e.g., `--std-iec-61499=...`) to coexist as independent flags, enabling simultaneous multi-spec support without comma-separated values or repeated `--std` flags.
 * **Cross-shell compatibility** — The `--flag=value` syntax is standard POSIX long-option convention and works across Linux, macOS, and Windows shells.
+
+## Amendment: the gate is a feature flag and a dialect preset, not a `--std` switch (2026-09-11)
+
+The decision holds: an IEC 61131-3:2013 construct is rejected unless the user
+asks for Edition 3, and the default is Edition 2. `LTIME` is not accepted by
+`ironplcc check` out of the box, which is what this ADR set out to guarantee.
+It is accepted on that basis.
+
+Every name in the Implementation Approach above is wrong, because the mechanism
+was generalised before it was built.
+
+| This ADR says | What exists |
+|---|---|
+| `--std=iec-61131-3:2013` CLI flag | `--dialect iec61131-3-ed3`, one of five presets, plus per-feature `--allow-*` flags |
+| `CompilerOptions::allow_iec_61131_3_2013: bool` | `CompilerOptions::allow_long_time_types`, declared through `define_compiler_options!` |
+| `rule_token_no_std_2013.rs`, a post-tokenization rejection rule | `xform_demote_keywords.rs`, which demotes `LTIME`/`LDATE`/`LTOD`/`LDT` to identifiers when the flag is off |
+| `StdVersion` value enum in `FileArgs` | `Dialect`, with `ClapDialect` wrapping it for the CLI |
+| playground sets `allow_iec_61131_3_2013: true` | playground selects a dialect; all five are exposed in the UI |
+
+Three things drove the change, each decided by a later ADR:
+
+1. **One flag per edition does not scale to vendors.** ADR-0036 settled that
+   IronPLC defines no dialect of its own and that `--allow-*` flags exist to
+   *compose* real targets. An edition is then one more bundle of flags, not a
+   special case with its own switch. `Dialect::Iec61131_3Ed3` is that bundle.
+2. **An edition is not one feature.** Edition 3 brought the long time types,
+   `REF_TO`, and more; gating them behind a single boolean would mean a user who
+   wants `LTIME` also gets `REF_TO`. Per-feature flags (`--allow-long-time-types`,
+   `--allow-ref-to`) let the preset group them while leaving each separable —
+   and ADR-0038 decided no flag combination is restricted.
+3. **Rejection is the wrong mechanism for a word that can be an identifier.**
+   ADR-0040 rule 3 makes this explicit: `LTIME` is a legal variable name in
+   Edition 2 code, so a token-rejection rule would break programs that never
+   meant the keyword. Demotion keeps them parsing. This is why
+   `rule_token_no_std_2013.rs` does not exist while its siblings
+   (`rule_token_no_c_style_comment.rs`, `rule_token_no_partial_access_syntax.rs`)
+   do — those reject spellings that cannot be identifiers.
+
+`specs/design/time-literals.md` REQ-TL-003 cited
+`CompilerOptions::allow_iec_61131_3_2013` and the "post-tokenization validation
+rule" until this amendment, six months after neither existed — a reader
+implementing that requirement would have gone looking for both. It now names
+`allow_long_time_types` and the demotion, and carries the demotion's known cost:
+`LTIME#5s` with the flag off reports an undeclared identifier rather than
+"LTIME requires Edition 3", which ADR-0040 records as the accepted price of
+demotion.

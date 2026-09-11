@@ -7,7 +7,7 @@ This design specifies the syntax and parsing semantics of IEC 61131-3 duration l
 The design builds on:
 
 - **[ADR-0021: TIME as 32-bit and LTIME as 64-bit with Millisecond Precision](../adrs/0021-time-32bit-ltime-64bit.md)** — storage width, unit, and sub-millisecond truncation semantics
-- **[ADR-0022: IEC 61131-3:2013 Compiler Flag for LTIME and Future Features](../adrs/0022-edition-3-compiler-flag.md)** — `allow_iec_61131_3_2013` gate for `LTIME`
+- **[ADR-0022: IEC 61131-3:2013 Compiler Flag for LTIME and Future Features](../adrs/0022-edition-3-compiler-flag.md)** — the Edition 3 gate; see its amendment for the flag that was built
 
 ## Design Goals
 
@@ -51,7 +51,15 @@ Units in a compound interval appear in strictly descending magnitude order.
 
 **REQ-TL-002** The prefix is recognized case-insensitively. `T#`, `t#`, `TIME#`, `time#`, `Time#` are equivalent; likewise every case variant of `LTIME#`.
 
-**REQ-TL-003** The `LTIME` prefix is only accepted when `CompilerOptions::allow_iec_61131_3_2013` is `true`. When the flag is `false`, a post-tokenization validation rule rejects the `Ltime` token (per [ADR-0022](../adrs/0022-edition-3-compiler-flag.md)).
+**REQ-TL-003** The `LTIME` prefix is only accepted when
+`CompilerOptions::allow_long_time_types` is `true` (set directly, or by the
+`iec61131-3-ed3`, `codesys` or `twincat` dialect preset). When the flag is
+`false`, `xform_demote_keywords` demotes `LTIME` to an ordinary identifier
+before parsing, so `LTIME#5s` fails as unrecognized input rather than with a
+message naming the edition — the accepted cost of demotion under
+[ADR-0040](../adrs/0040-dialect-violations-diagnosed-in-policy-phase.md) rule 3,
+which applies because `LTIME` is a legal variable name in Edition 2. The Edition
+3 gate itself is [ADR-0022](../adrs/0022-edition-3-compiler-flag.md).
 
 ## 3. Unit Suffixes
 
@@ -80,7 +88,7 @@ Units in a compound interval appear in strictly descending magnitude order.
 | Edition | Prefixes available | Notes |
 |---------|-------------------|-------|
 | IEC 61131-3 Edition 2 (1993) | `T#`, `TIME#` | REQ-TL-001 through REQ-TL-002 and REQ-TL-010 through REQ-TL-023 apply |
-| IEC 61131-3 Edition 3 (2013) | `T#`, `TIME#`, `LTIME#` | All REQs apply; REQ-TL-003 requires `allow_iec_61131_3_2013` to enable `LTIME#` |
+| IEC 61131-3 Edition 3 (2013) | `T#`, `TIME#`, `LTIME#` | All REQs apply; REQ-TL-003 requires `allow_long_time_types` to enable `LTIME#` |
 
 Unit suffix case-insensitivity (REQ-TL-011) applies in both editions.
 
@@ -99,7 +107,7 @@ Parser tests link to requirements via the existing `{area}_spec_req_{id}_{descri
 | REQ-TL-022 | `duration_spec_req_tl_022_compound_with_underscore` (ignored — see Future Work) |
 | REQ-TL-023 | `duration_spec_req_tl_023_negative_duration` |
 
-REQ-TL-001 and REQ-TL-020 are covered by existing parser tests for basic duration literals and fixed-point durations (e.g., `parse_program_when_fixed_point_duration_then_ok` in `compiler/parser/src/tests/`). REQ-TL-003 is covered by existing LTIME gating tests for [ADR-0022](../adrs/0022-edition-3-compiler-flag.md). REQ-TL-030 is an invariant verified in codegen and DSL tests rather than parser tests.
+REQ-TL-001 and REQ-TL-020 are covered by existing parser tests for basic duration literals and fixed-point durations (e.g., `parse_program_when_fixed_point_duration_then_ok` in `compiler/parser/src/tests/`). REQ-TL-003 is covered by the keyword-demotion tests in `compiler/parser/src/xform_demote_keywords.rs`, which gate `LTIME` on `allow_long_time_types` per [ADR-0022](../adrs/0022-edition-3-compiler-flag.md). REQ-TL-030 is an invariant verified in codegen and DSL tests rather than parser tests.
 
 ## 8. Implementation
 

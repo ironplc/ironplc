@@ -1,7 +1,8 @@
 # Unified BUILTIN Opcode for Standard Library Functions
 
-status: proposed
+status: accepted
 date: 2026-02-19
+amended: 2026-09-11 (Scope and Confirmation described a string func_id split that was never built)
 
 ## Context and Problem Statement
 
@@ -53,6 +54,11 @@ The following use dedicated opcodes, not BUILTIN:
 - **FB_CALL** — function blocks use a separate dispatch mechanism because FBs have instance state and a multi-step parameter protocol (FB_LOAD_INSTANCE, FB_STORE_PARAM, FB_CALL)
 
 **Opcode total**: 157 of 256 (61%), leaving 99 slots for future extensions
+
+> **Two claims in this Scope were never built. See
+> [Amendment: BUILTIN carries the numeric standard library, not the string one](#amendment-builtin-carries-the-numeric-standard-library-not-the-string-one-2026-09-11).**
+> Strings do not dispatch through BUILTIN, and the opcode census is from the
+> pre-ADR-0033 encoding.
 
 ### Consequences
 
@@ -145,3 +151,54 @@ The func_id ranges are organized by category to enable efficient dispatch (range
 ### Bytecode size impact
 
 Each BUILTIN instruction is 3 bytes (1 opcode + 2 func_id), compared to 1 byte for a hypothetical dedicated opcode. For a typical PLC program with 50 string operations per scan cycle, this adds ~100 bytes — negligible relative to the total bytecode size of a typical PLC program (2–20 KB).
+
+## Amendment: BUILTIN carries the numeric standard library, not the string one (2026-09-11)
+
+The decision this ADR makes — one `BUILTIN` opcode with a u16 `func_id` operand,
+instead of an opcode per standard library function — is in force and is what the
+compiler emits. `compiler/container/src/builtin.rs` is the single declaration of
+every built-in, and `arg_count` from that table is what codegen and the stack
+verifier both read. That part needs no correction.
+
+Two supporting claims do.
+
+### Strings never joined the func_id table
+
+The Scope above says string functions dispatch through BUILTIN "for both STRING
+and WSTRING, distinguished by func_id range." No such range exists. `LEN`,
+`FIND` and `CONCAT` are their own op-classes (`OP_CLASS_LEN_STR`,
+`OP_CLASS_FIND_STR`, `OP_CLASS_CONCAT_STR`), and the func_id table holds only the
+numeric library — `EXPT`, `ABS`, `MIN`, `MAX`, `LIMIT`, `SEL`, the shifts and
+rotates, and the transcendentals.
+
+The func_id-range mechanism was overtaken before it was built. ADR-0034 decided
+that STRING and WSTRING are distinguished by `char_width` travelling with the
+data rather than by anything in the instruction, which removes the thing a
+STRING/WSTRING func_id split existed to encode. `specs/design/bytecode-instruction-set.md`
+has described BUILTIN's scope correctly throughout — "numeric functions,
+conversions, shifts, and selection functions" — so the drift was confined to
+this ADR.
+
+Confirmation items 1, 2, 3 and 5 therefore cannot be satisfied as written: items
+1–3 test the acceptance and rejection of `buf_idx_str` / `buf_idx_wstr`
+arguments against STRING and WSTRING func_ids that do not exist. The verifier
+test that *does* exist for this ADR is item 4 — an undefined func_id is rejected
+(`StackImbalance::UnknownBuiltin`, problem code R0510), and the VM traps
+`V9007 InvalidBuiltinFunction` at runtime for the same condition. Item 5 holds
+for the numeric func_ids. Read items 1–3 as satisfied by ADR-0034's own
+confirmation instead: it is that ADR's encoding check that now carries the
+STRING/WSTRING type safety this one was reaching for.
+
+### The opcode census is pre-ADR-0033
+
+"157 of 256 (61%), leaving 99 slots" counts a flat 256-value opcode space that no
+longer exists. ADR-0033 re-encoded the opcode byte as `[op_class:6][type:2]`; the
+census today is 63 of 64 op-classes with one free. The figure appears twice more
+in the Consequences below, and is wrong in the same way each time.
+
+This does not weaken the decision — it strengthens it. The reason to route a
+growing standard library through one opcode was always that the alternative
+spends a scarce resource; the resource turned out to be scarcer than the number
+in this ADR suggested. Every builtin added since (the transcendentals, the
+BYTE/WORD rotates, `__TRUNC` and `__MOD` under ADR-0042) cost zero op-class
+slots, which is the whole benefit this ADR was claiming.
