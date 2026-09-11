@@ -91,11 +91,14 @@ What landed:
 What did not:
 
 * **The header hashes are never computed.** `content_hash`, `debug_hash` and
-  `layout_hash` are written as zeros and read by nothing. Elements 1 and 3 of the
-  model exist as field declarations only.
-* **Neither signature exists.** Nothing writes the signature sections, nothing
-  reads them, there is no key handling, and no signing algorithm has been
-  chosen — the ADR offers Ed25519 or ECDSA-P256 and the choice was never made.
+  `layout_hash` are written as zeros; the only code that reads them is
+  `project::disassemble`, which prints them as hex. Elements 1 and 3 of the model
+  exist as field declarations only.
+* **Neither signature exists.** Nothing writes the signature sections and nothing
+  reads them; there is no key handling, and no signing crate is a dependency of
+  any crate in the workspace. The algorithm question is settled on paper — this
+  ADR recommends Ed25519, with ECDSA-P256 for NIST-compliance environments — so
+  what is missing is the implementation, not the decision.
 * **The PLC does not reject anything.** "Required. The PLC rejects bytecode
   without a valid content signature" has no implementation; the VM loads any
   container it can parse.
