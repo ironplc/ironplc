@@ -6,11 +6,13 @@
 //! selected failure policy. It holds no policy state: everything it needs is
 //! in the func_id it was handed.
 //!
-//! What counts as a literal is the IEC 61131-3 unsigned integer literal
-//! grammar, which every surveyed implementation accepts for the string form:
-//! decimal digits with optional `_` separators, or a based literal (`2#`,
-//! `8#`, `16#`) with the same separators, either preceded by an optional
-//! sign. A typed prefix (`UDINT#`) is not accepted.
+//! What counts as a literal is the IEC 61131-3 integer literal grammar, which
+//! every surveyed implementation accepts for the string form: decimal digits
+//! with optional `_` separators, or a based literal (`2#`, `8#`, `16#`) with
+//! the same separators, either preceded by an optional sign. A typed prefix
+//! (`UDINT#`) is not accepted. One scanner serves every integer target; the
+//! target contributes only its bounds, and a value outside them is a failure
+//! rather than a wrap.
 
 use ironplc_container::builtin::str_to_num::{Encoding, Target};
 use ironplc_container::policy::{StringToNumFailure, StringToNumNonNumeric};
@@ -22,9 +24,12 @@ use crate::error::{StringPreview, Trap};
 /// Returns the value as the slot's `i32` bit pattern, or the trap the failure
 /// policy calls for.
 pub(crate) fn convert(encoding: Encoding, bytes: &[u8]) -> Result<i32, Trap> {
-    let scanned = match encoding.target {
-        Target::U32 => scan_integer(bytes, encoding.non_numeric, Bounds::U32).map(|v| v as i32),
-    };
+    // Every target here lives in a 32-bit slot: the scanner has already
+    // checked the value against the target's bounds, so the cast keeps the
+    // value (sign-extended for a signed target, as the slot convention is)
+    // and nothing is truncated.
+    let scanned = scan_integer(bytes, encoding.non_numeric, Bounds::of(encoding.target))
+        .map(|value| value as i32);
     match (scanned, encoding.failure) {
         (Some(value), _) => Ok(value),
         (None, StringToNumFailure::Zero) => Ok(0),
@@ -35,39 +40,72 @@ pub(crate) fn convert(encoding: Encoding, bytes: &[u8]) -> Result<i32, Trap> {
     }
 }
 
-/// The values an integer target holds, inclusive at both ends.
+/// The values an integer target holds, as the largest magnitude on each side
+/// of zero.
 ///
 /// The scanner is one function for every integer target; the target's bounds
-/// are the only thing that differs between them. Wide enough for a 64-bit
-/// unsigned target, so the same scanner serves the 64-bit targets.
+/// are the only thing that differs between them. Stated as magnitudes so the
+/// check is two unsigned compares against the 64-bit accumulator, and so a
+/// 64-bit unsigned target (`u64::MAX`) and a 64-bit signed one (`2^63` below
+/// zero) fit without wider arithmetic.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Bounds {
-    pub(crate) min: i128,
-    pub(crate) max: i128,
+    /// The largest magnitude a negative value may have (`128` for `SINT`,
+    /// `0` for an unsigned target).
+    pub(crate) below_zero: u64,
+    /// The largest value (`127` for `SINT`, `255` for `USINT`).
+    pub(crate) above_zero: u64,
 }
 
 impl Bounds {
-    /// An unsigned 32-bit target (`UDINT`).
-    pub(crate) const U32: Bounds = Bounds {
-        min: 0,
-        max: u32::MAX as i128,
-    };
+    /// The bounds of `target`.
+    pub(crate) fn of(target: Target) -> Bounds {
+        match target {
+            Target::U32 => Bounds::unsigned(u32::MAX as u64),
+            Target::I32 => Bounds::signed(i32::MIN as i64, i32::MAX as u64),
+            Target::U8 => Bounds::unsigned(u8::MAX as u64),
+            Target::I8 => Bounds::signed(i8::MIN as i64, i8::MAX as u64),
+            Target::U16 => Bounds::unsigned(u16::MAX as u64),
+            Target::I16 => Bounds::signed(i16::MIN as i64, i16::MAX as u64),
+        }
+    }
 
-    fn contains(self, value: i128) -> bool {
-        (self.min..=self.max).contains(&value)
+    const fn unsigned(max: u64) -> Bounds {
+        Bounds {
+            below_zero: 0,
+            above_zero: max,
+        }
+    }
+
+    const fn signed(min: i64, max: u64) -> Bounds {
+        Bounds {
+            below_zero: min.unsigned_abs(),
+            above_zero: max,
+        }
+    }
+
+    fn contains(self, literal: Literal) -> bool {
+        let limit = if literal.negative {
+            self.below_zero
+        } else {
+            self.above_zero
+        };
+        literal.magnitude <= limit
     }
 }
 
 /// Scans `bytes` for an integer within `bounds` under `policy`.
 ///
-/// `None` is a failure: no literal where the policy requires one, or a
-/// literal whose value is outside `bounds` (out of range is a failure under
-/// every policy, never a wrap).
+/// Returns the value as its two's-complement 64-bit pattern (a signed
+/// value sign-extended; an unsigned value zero-extended), which the caller
+/// narrows to the slot width. `None` is a failure: no literal where the
+/// policy requires one, or a literal whose value is outside `bounds` (out of
+/// range is a failure under every policy, never a wrap).
 pub(crate) fn scan_integer(
     bytes: &[u8],
     policy: StringToNumNonNumeric,
     bounds: Bounds,
-) -> Option<i128> {
+) -> Option<i64> {
     let text = match policy {
         StringToNumNonNumeric::Reject => trim_ascii(bytes),
         StringToNumNonNumeric::IgnoreTrailing => trim_ascii_start(bytes),
@@ -77,8 +115,8 @@ pub(crate) fn scan_integer(
     if policy == StringToNumNonNumeric::Reject && consumed != text.len() {
         return None;
     }
-    let value = literal?.value();
-    bounds.contains(value).then_some(value)
+    let literal = literal?;
+    bounds.contains(literal).then(|| literal.value())
 }
 
 /// A well-formed literal: its sign and the magnitude it spells.
@@ -89,10 +127,14 @@ struct Literal {
 }
 
 impl Literal {
-    fn value(self) -> i128 {
-        let magnitude = self.magnitude as i128;
+    /// The value's 64-bit two's-complement pattern. Only meaningful once
+    /// the literal is known to be within its target's bounds: a magnitude
+    /// past `i64::MAX` is either an unsigned value whose pattern this is, or
+    /// `-2^63`, which `wrapping_neg` produces exactly.
+    fn value(self) -> i64 {
+        let magnitude = self.magnitude as i64;
         if self.negative {
-            -magnitude
+            magnitude.wrapping_neg()
         } else {
             magnitude
         }
@@ -152,7 +194,11 @@ fn leading_literal(text: &[u8]) -> Option<(Option<Literal>, usize)> {
 /// with single `_` separators between digits, or `None` when `text` does not
 /// start with a digit. The value is `None` when the run overflows `u64`.
 fn digit_run(text: &[u8], base: u32) -> Option<(Option<u64>, usize)> {
-    let mut value: Option<u64> = Some(0);
+    let mut value: u64 = 0;
+    // Overflow is remembered rather than short-circuited: the run's length
+    // is needed either way, and the flag keeps the per-digit step free of a
+    // branch on the accumulator.
+    let mut overflowed = false;
     let mut len = 0;
     let mut last_was_digit = false;
     for &byte in text {
@@ -166,16 +212,17 @@ fn digit_run(text: &[u8], base: u32) -> Option<(Option<u64>, usize)> {
             }
             None => break,
         };
-        value = value
-            .and_then(|v| v.checked_mul(u64::from(base)))
-            .and_then(|v| v.checked_add(u64::from(digit)));
+        let (shifted, mul_overflowed) = value.overflowing_mul(u64::from(base));
+        let (next, add_overflowed) = shifted.overflowing_add(u64::from(digit));
+        overflowed |= mul_overflowed | add_overflowed;
+        value = next;
         last_was_digit = true;
         len += 1;
     }
     if len == 0 {
         return None;
     }
-    Some((value, len))
+    Some(((!overflowed).then_some(value), len))
 }
 
 fn next_is_digit(text: &[u8], index: usize, base: u32) -> bool {
@@ -228,7 +275,7 @@ mod tests {
     use StringToNumNonNumeric::{IgnoreSurrounding, IgnoreTrailing, Reject};
 
     fn scan_u32(bytes: &[u8], policy: StringToNumNonNumeric) -> Option<u32> {
-        scan_integer(bytes, policy, Bounds::U32).map(|v| v as u32)
+        scan_integer(bytes, policy, Bounds::of(Target::U32)).map(|v| v as u32)
     }
 
     // Inputs that are a whole literal convert identically under every
@@ -331,6 +378,83 @@ mod tests {
         assert_eq!(scan_u32(b"12\xE9", Reject), None);
         assert_eq!(scan_u32(b"12\xE9", IgnoreTrailing), Some(12));
         assert_eq!(scan_u32(b"\xE912", IgnoreSurrounding), Some(12));
+    }
+
+    // Each target's bounds, checked at both ends and one past each: the
+    // scanner is one function, so the bounds are all a target contributes.
+    #[rstest]
+    #[case::i8(Target::I8, -128, 127)]
+    #[case::u8(Target::U8, 0, 255)]
+    #[case::i16(Target::I16, -32_768, 32_767)]
+    #[case::u16(Target::U16, 0, 65_535)]
+    #[case::i32(Target::I32, -2_147_483_648, 2_147_483_647)]
+    #[case::u32(Target::U32, 0, 4_294_967_295)]
+    fn scan_integer_when_at_or_past_target_bounds_then_in_range_converts_and_past_fails(
+        #[case] target: Target,
+        #[case] min: i64,
+        #[case] max: i64,
+    ) {
+        let bounds = Bounds::of(target);
+        let text = |v: i64| std::format!("{v}").into_bytes();
+        assert_eq!(scan_integer(&text(min), Reject, bounds), Some(min));
+        assert_eq!(scan_integer(&text(max), Reject, bounds), Some(max));
+        assert_eq!(scan_integer(&text(min - 1), Reject, bounds), None);
+        assert_eq!(scan_integer(&text(max + 1), Reject, bounds), None);
+        assert_eq!(scan_integer(&text(min - 1), IgnoreTrailing, bounds), None);
+        assert_eq!(
+            scan_integer(&text(max + 1), IgnoreSurrounding, bounds),
+            None
+        );
+    }
+
+    #[test]
+    fn scan_integer_when_signed_target_then_negative_literals_convert() {
+        let bounds = Bounds::of(Target::I8);
+        assert_eq!(scan_integer(b"-5", Reject, bounds), Some(-5));
+        assert_eq!(scan_integer(b"-16#80", Reject, bounds), Some(-128));
+        assert_eq!(scan_integer(b"a-5;", IgnoreSurrounding, bounds), Some(-5));
+        assert_eq!(scan_integer(b"-2#1000_0001", Reject, bounds), None);
+    }
+
+    #[test]
+    fn scan_integer_when_64_bit_bounds_then_extremes_convert_to_their_bit_patterns() {
+        // The bounds the 64-bit targets will use: the accumulator and the
+        // value pattern already hold them.
+        let unsigned = Bounds::unsigned(u64::MAX);
+        assert_eq!(
+            scan_integer(b"18446744073709551615", Reject, unsigned),
+            Some(-1)
+        );
+        assert_eq!(
+            scan_integer(b"18446744073709551616", Reject, unsigned),
+            None
+        );
+        let signed = Bounds::signed(i64::MIN, i64::MAX as u64);
+        assert_eq!(
+            scan_integer(b"-9223372036854775808", Reject, signed),
+            Some(i64::MIN)
+        );
+        assert_eq!(scan_integer(b"-9223372036854775809", Reject, signed), None);
+        assert_eq!(scan_integer(b"9223372036854775808", Reject, signed), None);
+    }
+
+    #[test]
+    fn convert_when_signed_target_then_value_sign_extended_in_the_slot() {
+        let encoding = Encoding {
+            target: Target::I8,
+            non_numeric: Reject,
+            failure: StringToNumFailure::Trap,
+        };
+        assert_eq!(convert(encoding, b"-1"), Ok(-1));
+        assert_eq!(convert(encoding, b"127"), Ok(127));
+        // '300' is out of range: a failure, never 44.
+        assert_eq!(
+            convert(encoding, b"300"),
+            Err(Trap::StringNotConvertible {
+                target: Target::I8,
+                value: StringPreview::of(b"300"),
+            })
+        );
     }
 
     fn u32_encoding(non_numeric: StringToNumNonNumeric, failure: StringToNumFailure) -> Encoding {
