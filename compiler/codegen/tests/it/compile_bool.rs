@@ -126,16 +126,16 @@ fn compile_when_not_expression_then_produces_bool_not_bytecode() {
     let source = "
 PROGRAM main
   VAR
-    x : DINT;
-    y : DINT;
+    x : BOOL;
+    y : BOOL;
   END_VAR
-  x := 10;
+  x := TRUE;
   y := NOT x;
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
+    // x := TRUE: LOAD_TRUE, STORE_VAR_I32 var:0
     // y := NOT x: LOAD_VAR_I32 var:0, BOOL_NOT, STORE_VAR_I32 var:1
     // RET_VOID
     let bytecode = container
@@ -145,9 +145,9 @@ END_PROGRAM
     assert_bytecode!(
         bytecode,
         [
-            bc::load_const_i32(0), // pool:0 (10)
-            bc::dup(),             // (store-load optimization)
-            bc::store_var_i32(0),  // var:0
+            bc::load_true(),
+            bc::dup(),            // (store-load optimization)
+            bc::store_var_i32(0), // var:0
             bc::bool_not(),
             bc::store_var_i32(1), // var:1
             bc::ret_void(),

@@ -1104,6 +1104,7 @@ Verification runs on the bytecode that ships, independently of the emitter's own
 | V4003 | WatchdogTimeout | A task exceeded its watchdog interval |
 | V4004 | NullDereference | Indirect access through the NULL sentinel |
 | V4005 | ArrayIndexOutOfBounds | Flat index outside the descriptor's `total_elements` |
+| V4006 | StringNotConvertible | `CONV_STR_TO_*_TRAP` given a string that is not convertible to its target |
 | V9001 / V9002 | StackOverflow / StackUnderflow | Operand stack limits |
 | V9003 | InvalidInstruction | Unassigned opcode byte |
 | V9004 | InvalidConstantIndex | Constant pool index out of range or wrong type |

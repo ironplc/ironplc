@@ -4,6 +4,7 @@ V4002,NegativeExponent,Negative exponent in arithmetic operation,none
 V4003,WatchdogTimeout,Task exceeded its watchdog time limit,tuple
 V4004,NullDereference,Null reference dereference during program execution,none
 V4005,ArrayIndexOutOfBounds,Array index out of bounds,struct
+V4006,StringNotConvertible,String is not convertible to the target numeric type,struct
 V9001,StackOverflow,VM operand stack overflow,none
 V9002,StackUnderflow,VM operand stack underflow,none
 V9003,InvalidInstruction,Unknown bytecode instruction,tuple

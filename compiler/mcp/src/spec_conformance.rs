@@ -723,7 +723,15 @@ fn mcp_spec_req_tol_062_list_options_returns_flags() {
     assert!(!response.flags.is_empty());
     for flag in &response.flags {
         assert!(!flag.id.is_empty(), "flag id must be non-empty");
-        assert_eq!(flag.flag_type, "bool", "all flags are bool type");
+        match flag.flag_type.as_str() {
+            "bool" => assert!(flag.allowed_values.is_none()),
+            "enum" => assert!(
+                flag.allowed_values.as_ref().is_some_and(|v| !v.is_empty()),
+                "enum flag {} must list its allowed values",
+                flag.id
+            ),
+            other => panic!("flag {} has unexpected type {other}", flag.id),
+        }
         assert!(
             !flag.description.is_empty(),
             "flag {} has empty description",
@@ -747,6 +755,14 @@ fn mcp_spec_req_tol_063_option_ids_match_compiler_options_fields() {
             flag_ids.contains(&fd.option_key),
             "FEATURE_DESCRIPTOR key '{}' missing from list_options response",
             fd.option_key
+        );
+    }
+    // ... and every behavior policy, which `parse_options` accepts as well.
+    for pd in CompilerOptions::POLICY_DESCRIPTORS {
+        assert!(
+            flag_ids.contains(&pd.option_key),
+            "POLICY_DESCRIPTOR key '{}' missing from list_options response",
+            pd.option_key
         );
     }
 }
