@@ -1,8 +1,7 @@
 # Interactive Playground Examples for Elementary Data Type Pages
 
-status: proposed
+status: accepted
 date: 2026-03-08
-amended: 2026-09-11 (Implementation Status added; status unchanged)
 
 ## Context and Problem Statement
 
@@ -73,37 +72,6 @@ Verify that:
 3. Each example compiles and runs successfully in the IronPLC playground
 4. The data types index page includes a tip about interactive examples (matching the standard library index pattern)
 
-## Implementation Status (as of 2026-09-11)
-
-This ADR is still `proposed` on a technicality that is worth keeping honest: the
-work is one page short. Tracked by
-[issue #1684](https://github.com/ironplc/ironplc/issues/1684).
-
-What landed:
-
-* Twenty-four of the twenty-five pages under
-  `docs/reference/language/data-types/elementary/` carry exactly one
-  `playground-with-program` example, following the design principles above.
-* The data types index carries the interactive-examples tip (Confirmation item
-  4).
-* The supported type set has grown well past the "15 supported elementary type
-  pages" Confirmation item 1 counts — the long time types and the datetime
-  family landed since — and each new page brought its example with it, which is
-  the convention this ADR was trying to establish working as intended.
-
-What did not:
-
-* `wstring.rst` has three static `code-block` directives and no interactive
-  example. It is the only elementary type page without one, and WSTRING is
-  supported end to end (`end_to_end_wstring.rs`), so the gap is a documentation
-  omission rather than a missing feature.
-
-Confirmation item 1 is therefore 24/25 and item 3 cannot be asserted for the
-page that has no example to run. Flipping this to `accepted` would be recording
-a completion that has not happened, which is the failure mode
-`development-standards.md` warns about; the honest status is `proposed` with the
-remaining page named.
-
 ## Pros and Cons of the Options
 
 ### Add Interactive Examples (chosen)
@@ -146,3 +114,7 @@ The playground is already embedded in 48+ standard library function pages and se
 ### Why not wait for unsupported types?
 
 The unsupported type pages (STRING, WSTRING, DATE, TIME_OF_DAY, DATE_AND_TIME) do not get examples because the playground cannot run code using those types. Adding examples to the supported types now does not create a commitment to add examples to unsupported types — those will get examples when their type support ships.
+
+### Postscript, 2026-09-11: the types this deferred became supported
+
+The premise that the playground cannot run STRING, WSTRING, DATE, TIME_OF_DAY or DATE_AND_TIME code no longer holds — all five types compile and run, and the supported set has grown past the fifteen pages Confirmation item 1 counts, the long time types and the datetime family with it. Each page that became supported brought its example with it, which is the convention this ADR set working as intended. `wstring.rst` was the last page without one; its example demonstrates the wide encoding (`LEN` counting code units rather than the bytes they occupy) rather than mirroring the STRING page. Every elementary data type page for a supported type now carries exactly one `playground-with-program` example, so the decision holds as written and its Confirmation is met.
