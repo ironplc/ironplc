@@ -11,7 +11,7 @@ use std::path::Path;
 
 use ironplc_container::opcode;
 use ironplc_container::opcode::{DecodeStop, DecodedInstruction, Instruction, Operand};
-use ironplc_container::{ConstType, Container};
+use ironplc_container::{ConstType, Container, FLAG_HAS_DEBUG_SECTION, FLAG_HAS_TYPE_SECTION};
 use serde_json::{json, Value};
 
 /// Disassembles a bytecode container into a structured JSON value.
@@ -63,8 +63,8 @@ fn disassemble_header(container: &Container) -> Value {
         "flags": {
             "raw": flags,
             "hasContentSignature": (flags & 0x01) != 0,
-            "hasDebugSection": (flags & 0x02) != 0,
-            "hasTypeSection": (flags & 0x04) != 0,
+            "hasDebugSection": (flags & FLAG_HAS_DEBUG_SECTION) != 0,
+            "hasTypeSection": (flags & FLAG_HAS_TYPE_SECTION) != 0,
         },
         "contentHash": hex_string(&h.content_hash),
         "debugHash": hex_string(&h.debug_hash),

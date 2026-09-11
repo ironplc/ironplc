@@ -4,7 +4,7 @@ use std::vec::Vec;
 use crate::code_section::CodeSection;
 use crate::constant_pool::ConstantPool;
 use crate::debug_section::DebugSection;
-use crate::header::{FileHeader, HEADER_SIZE};
+use crate::header::{FileHeader, FLAG_HAS_DEBUG_SECTION, FLAG_HAS_TYPE_SECTION, HEADER_SIZE};
 use crate::task_table::TaskTable;
 use crate::type_section::TypeSection;
 use crate::ContainerError;
@@ -41,7 +41,7 @@ impl Container {
             let type_section_size = type_section.section_size();
             header.type_section_offset = next_offset;
             header.type_section_size = type_section_size;
-            header.flags |= 0x04; // bit 2: type section present
+            header.flags |= FLAG_HAS_TYPE_SECTION;
             next_offset += type_section_size;
         }
 
@@ -62,7 +62,7 @@ impl Container {
             let debug_section_size = debug.section_size();
             header.debug_section_offset = next_offset;
             header.debug_section_size = debug_section_size;
-            header.flags |= 0x02; // bit 1: debug section present
+            header.flags |= FLAG_HAS_DEBUG_SECTION;
         }
 
         header.write_to(w)?;
@@ -97,20 +97,21 @@ impl Container {
         let task_end = task_start + header.task_section_size as usize;
         let task_table = TaskTable::read_from(&mut Cursor::new(&rest[task_start..task_end]))?;
 
-        // Parse type section if present (flag bit 2).
-        let type_section = if (header.flags & 0x04) != 0 && header.type_section_size > 0 {
-            let ts_start = (header.type_section_offset - base) as usize;
-            let ts_end = ts_start + header.type_section_size as usize;
-            if ts_end <= rest.len() {
-                Some(TypeSection::read_from(&mut Cursor::new(
-                    &rest[ts_start..ts_end],
-                ))?)
+        // Parse type section if present.
+        let type_section =
+            if (header.flags & FLAG_HAS_TYPE_SECTION) != 0 && header.type_section_size > 0 {
+                let ts_start = (header.type_section_offset - base) as usize;
+                let ts_end = ts_start + header.type_section_size as usize;
+                if ts_end <= rest.len() {
+                    Some(TypeSection::read_from(&mut Cursor::new(
+                        &rest[ts_start..ts_end],
+                    ))?)
+                } else {
+                    None
+                }
             } else {
                 None
-            }
-        } else {
-            None
-        };
+            };
 
         let const_start = (header.const_section_offset - base) as usize;
         let const_end = const_start + header.const_section_size as usize;
