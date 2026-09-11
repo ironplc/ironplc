@@ -97,6 +97,11 @@ analyzed cleanly alone came to fail once merged with unrelated code. Revert is
 for a pass whose whole output is meaningless when any part of it failed, and
 the call site says why.
 
+Best effort is a per-declaration decision, not a licence to emit a
+half-transformed node. A declaration the pass could not transform is left in a
+state later passes already handle — unchanged, or normalized to a placeholder —
+and nothing the author wrote is dropped from it.
+
 ## Testing Architecture
 
 ### Test Organization

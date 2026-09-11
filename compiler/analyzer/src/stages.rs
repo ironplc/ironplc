@@ -188,7 +188,9 @@ pub fn resolve_types(
 
     // Resolve constant references in type parameters (STRING lengths, array bounds).
     // Must run before toposort so that concrete integer values are available.
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+    // Best effort: an unresolvable reference is diagnosed and left as a
+    // `Constant`, which is the state reverting would leave every reference in.
+    library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_resolve_constant_expressions::apply(lib, options)
     });
 
@@ -264,10 +266,10 @@ pub fn resolve_types(
         )
     });
 
-    // Convert named function call arguments to positional. The whole merged
-    // library is reverted when any one call cannot be rewritten, which is
-    // wrong -- see ironplc/ironplc#1571.
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+    // Convert named function call arguments to positional.
+    // Best effort: a diagnosed call keeps its named arguments, which is the
+    // state reverting would leave every call in -- including the valid ones.
+    library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_named_to_positional_args::apply(lib, &function_environment)
     });
 
