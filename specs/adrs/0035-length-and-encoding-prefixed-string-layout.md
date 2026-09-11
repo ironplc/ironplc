@@ -1,6 +1,6 @@
 # Length-and-Encoding-Prefixed String Memory Layout
 
-status: proposed
+status: accepted
 date: 2026-05-05
 supersedes: ADR-0015
 

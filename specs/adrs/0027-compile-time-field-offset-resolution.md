@@ -1,6 +1,6 @@
 # Compile-Time Field Offset Resolution for Structures
 
-status: proposed
+status: accepted
 date: 2026-03-18
 
 ## Context and Problem Statement

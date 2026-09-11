@@ -2,6 +2,7 @@
 
 status: proposed
 date: 2026-02-18
+amended: 2026-09-11 (Implementation Status added; status unchanged)
 
 ## Context and Problem Statement
 
@@ -52,6 +53,53 @@ Verify by:
 2. Fuzzing the verifier with millions of random bytecode inputs — it must never crash, and must reject all malformed inputs
 3. Confirming that the interpreter refuses to execute bytecode that has not passed verification
 4. Testing the signature fallback path: signed bytecode from a trusted verifier is accepted without on-device verification
+
+## Implementation Status (as of 2026-09-11)
+
+This ADR is still `proposed`, and that is accurate: the requirement it states —
+that no unverified, unsigned bytecode ever reaches the interpreter — is not
+enforced anywhere. It is recorded here so a reader is not left to infer it from
+the absence of a marker. Tracked by
+[issue #1582](https://github.com/ironplc/ironplc/issues/1582).
+
+What landed:
+
+* **A verifier exists, and it is normative.** `ironplc_container::verify_stack_balance`
+  implements the stack-discipline subset of `specs/design/bytecode-verifier-rules.md`
+  — R0200 (depth agrees at every merge point), R0202 (no pop from an empty
+  stack), R0203 (depth within the declared `max_stack_depth`), plus the balance
+  rule that every exit path leaves the depth the calling convention promises. It
+  walks the control-flow graph of the bytecode that ships, not the emitter's
+  bookkeeping, which is what decision point 2 asks a separate pass to do.
+* Structural validity is checked at decode: an invalid op-class, a nonzero type
+  tag on an untyped op, or an unknown builtin `func_id` is rejected
+  (`StackImbalance::UnknownBuiltin`, rule R0510), and the VM traps
+  `V9007 InvalidBuiltinFunction` on the same condition at runtime.
+
+What did not:
+
+* **The verifier runs on the wrong side of the trust boundary.** Its only caller
+  is `codegen::stack_balance::verify_container`, which runs in the compiler, on
+  the compiler's own output, and reports a failure as `P9998 InternalError` — a
+  compiler bug. That is a useful self-check. It is not verification, because the
+  input it verifies is the input it trusts.
+* **Nothing verifies at load time.** `Vm::load` does not call the verifier, and
+  no VM entry point does. Decision point 2's requirement — "the interpreter
+  refuses to run bytecode that has not been verified" — has no implementation:
+  the VM has no notion of a container being verified, and no state in which it
+  would refuse one.
+* **There is no signature fallback**, so the alternative branch of the
+  requirement is unavailable too. See ADR-0007, which is unimplemented for its
+  own reasons.
+* Confirmation items 1–4 are therefore all open. Item 3 in particular cannot be
+  tested at all today: there is no refusal path to test.
+
+The gap matters in proportion to the threat this ADR names. Crafted bytecode
+reaching the interpreter is precisely the case the compiler-side check cannot
+see, because crafted bytecode does not come from the compiler.
+
+The decision stands; the work is unfinished. The pull request that makes the VM
+refuse unverified bytecode is the one that flips this ADR to `accepted`.
 
 ## Pros and Cons of the Options
 

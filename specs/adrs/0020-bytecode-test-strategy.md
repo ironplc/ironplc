@@ -1,7 +1,8 @@
 # Bytecode Test Strategy
 
-status: proposed
+status: accepted
 date: 2026-03-09
+amended: 2026-09-11 (hardcoded-hex rule corrected to the mechanism that was built)
 
 ## Context and Problem Statement
 
@@ -41,6 +42,11 @@ Chosen option: "Test correctness via end-to-end, compatibility via compile tests
 
 **Compile bytecode tests** (`compile_*.rs`) verify **backwards compatibility** — that the compiler produces the exact same bytecode byte sequence for a given input. These tests use **hardcoded hex bytes**, not symbolic opcode constants, because the purpose is to detect when byte values change. If an opcode is renumbered, these tests must fail. These tests are the single source of truth for the bytecode encoding contract.
 
+> **The hardcoded-hex rule is not what was built, and the last sentence is no
+> longer true.** Wire-format truth lives in one file,
+> `compiler/codegen/tests/it/wire_format.rs`; `compile_*.rs` is symbolic. See
+> [Amendment: wire-format truth is pinned in one place, not spread across the compile tests](#amendment-wire-format-truth-is-pinned-in-one-place-not-spread-across-the-compile-tests-2026-09-11).
+
 **VM bytecode tests** (`execute_*.rs`) verify **VM-specific edge cases** that cannot be triggered through valid IEC 61131-3 source:
 - Stack underflow / overflow traps
 - Invalid opcode or invalid builtin function ID traps
@@ -54,7 +60,7 @@ These tests necessarily use hardcoded bytecode bytes. Because their purpose is n
 
 Do not write a hand-assembled bytecode test for basic correctness of an operation (e.g., "ADD_I32 of 10 and 3 produces 13") when the same scenario can be covered by an end-to-end test (e.g., `result := 10 + 3`). The end-to-end test covers the same behavior with no dependency on bytecode encoding.
 
-Do not use symbolic opcode constants in tests whose purpose is backwards compatibility. The entire point of those tests is to catch when byte values change — symbolic constants defeat this purpose.
+Do not use symbolic opcode constants in tests whose purpose is backwards compatibility. The entire point of those tests is to catch when byte values change — symbolic constants defeat this purpose. *(Superseded — see the amendment. Symbolic constants in `compile_*.rs` are now correct; `wire_format.rs` is where byte values are caught.)*
 
 ### Consequences
 
@@ -69,7 +75,7 @@ Do not use symbolic opcode constants in tests whose purpose is backwards compati
 
 After applying this strategy:
 1. Every operation expressible in IEC 61131-3 has at least one end-to-end test
-2. Every opcode byte value is asserted by at least one compile test with hardcoded hex
+2. Every opcode byte value is asserted by a literal-byte test in `wire_format.rs` *(amended: was "by at least one compile test with hardcoded hex")*
 3. VM bytecode tests only exist for scenarios that cannot be expressed as end-to-end tests
 4. No VM bytecode test duplicates coverage that an end-to-end test already provides for basic correctness
 
@@ -121,3 +127,44 @@ Applying this strategy will:
 ### Helper extraction
 
 The remaining VM bytecode tests share common setup boilerplate (build container, allocate buffers, load VM, execute, read result). This boilerplate should be extracted into helper functions in `compiler/vm/tests/common/mod.rs` (e.g., `run_and_read_i32`, `run_and_expect_trap`) to reduce duplication. The `VmBuffers` struct used in both `vm/tests/` and `codegen/tests/` should be shared via a `test-support` feature in `ironplc_vm` to ensure VM API changes only need updating in one place.
+
+## Amendment: wire-format truth is pinned in one place, not spread across the compile tests (2026-09-11)
+
+The three test categories this ADR defines — end-to-end for correctness, compile
+tests for encoding compatibility, VM bytecode tests for edge cases unreachable
+from source — are the categories the tree has, and the division of labour holds:
+128 `end_to_end_*.rs` files, 18 `compile_*.rs`, 32 `execute_*.rs`. The decision
+is accepted on that basis.
+
+The *mechanism* assigned to the compatibility category is not what was built, and
+the rule as written would today be actively wrong to follow.
+
+This ADR requires `compile_*.rs` to assert raw hex and forbids symbolic opcode
+constants there. What exists instead:
+
+- `compile_*.rs` tests are symbolic. They assert through `bc::*` builders —
+  `bc::load_const_i32(0)`, `bc::store_var_i32(0)` — which delegate to the
+  `opcode::` constants. They test *which instructions codegen emits, in what
+  order*, which is a codegen-behaviour question, not an encoding question.
+- `compiler/codegen/tests/it/wire_format.rs` is the single canonical source of
+  wire-format truth, and it is literal. It pins every opcode constant's byte
+  value, the `[op_class:6][type:2]` scheme itself, and a set of per-shape golden
+  encodings covering operand widths and little-endian layout.
+
+The split is better than what this ADR specified, for a reason the ADR could not
+have known: ADR-0033 renumbered every opcode at once. Under the original rule
+that would have produced a cascade of confusing diffs across roughly thirty
+`compile_*.rs` files, each failing for a reason unrelated to what it was testing
+— the pressure that makes a reviewer approve a bulk hex update without reading
+it, which is exactly the regression the rule existed to catch. Concentrating the
+byte values in one file turns the same renumbering into one file's worth of
+deliberate, reviewable diff, and leaves the behavioural tests to fail only when
+behaviour changes.
+
+`wire_format.rs` also carries an assertion this ADR never asked for and that
+ADR-0033 later needed: `encoding_when_op_class_census_taken_then_one_slot_free`
+pins the op-class census, so spending the last slot is a reviewed change rather
+than a silent one.
+
+Confirmation item 2 is amended above to name `wire_format.rs`. Items 1, 3 and 4
+are unchanged and still describe the strategy in force.
