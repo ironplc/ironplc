@@ -179,22 +179,24 @@ has described BUILTIN's scope correctly throughout — "numeric functions,
 conversions, shifts, and selection functions" — so the drift was confined to
 this ADR.
 
-Confirmation items 1, 2, 3 and 5 therefore cannot be satisfied as written: items
-1–3 test the acceptance and rejection of `buf_idx_str` / `buf_idx_wstr`
-arguments against STRING and WSTRING func_ids that do not exist. The verifier
-test that *does* exist for this ADR is item 4 — an undefined func_id is rejected
-(`StackImbalance::UnknownBuiltin`, problem code R0510), and the VM traps
-`V9007 InvalidBuiltinFunction` at runtime for the same condition. Item 5 holds
-for the numeric func_ids. Read items 1–3 as satisfied by ADR-0034's own
-confirmation instead: it is that ADR's encoding check that now carries the
-STRING/WSTRING type safety this one was reaching for.
+Confirmation items 1, 2 and 3 therefore cannot be satisfied as written: each
+tests the acceptance or rejection of `buf_idx_str` / `buf_idx_wstr` arguments
+against STRING and WSTRING func_ids that do not exist. Read them as discharged by
+ADR-0034 instead — it is that ADR's encoding check, at the operand rather than
+the func_id, that now carries the STRING/WSTRING type safety this one was
+reaching for.
+
+Items 4 and 5 hold. An undefined func_id is rejected by the verifier
+(`StackImbalance::UnknownBuiltin`, rule R0510) and trapped by the VM at runtime
+(`V9007 InvalidBuiltinFunction`); the numeric func_ids are accepted with their
+declared argument counts, which `builtin::arg_count` is the single source of.
 
 ### The opcode census is pre-ADR-0033
 
 "157 of 256 (61%), leaving 99 slots" counts a flat 256-value opcode space that no
 longer exists. ADR-0033 re-encoded the opcode byte as `[op_class:6][type:2]`; the
-census today is 63 of 64 op-classes with one free. The figure appears twice more
-in the Consequences below, and is wrong in the same way each time.
+census today is 63 of 64 op-classes with one free. The figure appears once more
+in the Consequences below, and is wrong there in the same way.
 
 This does not weaken the decision — it strengthens it. The reason to route a
 growing standard library through one opcode was always that the alternative

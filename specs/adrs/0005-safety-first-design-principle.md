@@ -115,11 +115,13 @@ the headroom it predicted did not materialise.
 never argued *from* slack — it was argued from the asymmetry between a VM bug in
 a PLC (physical damage) and a larger interpreter binary (flash). That asymmetry
 is unchanged. What changed is the shape of the cost: a new safety distinction is
-no longer paid for out of a hundred spare bytes. It is paid for by consolidating
-a family behind sub-opcode dispatch — the mechanism ADR-0033 calls mandatory, and
-the one ADR-0034 used to fold WSTRING into the `STR_*` family at zero op-class
-cost. Encoding the distinction in the *operand* rather than the opcode satisfies
-this principle at a price the budget can still pay.
+no longer paid for out of a hundred spare bytes. It is paid for by moving the
+distinction out of the opcode byte and into the operand stream — either as a
+sub-opcode selecting a family member, which ADR-0033 calls mandatory rather than
+optional, or as typed data the instruction reads, which is how ADR-0034 folded
+WSTRING into the `STR_*` family at zero op-class cost. Both keep the property
+this principle is after: the distinction is still statically visible to the
+verifier, and the VM still enforces it. Only its address changed.
 
 So the checklist below is unchanged, with one addition: a change that would spend
 the last op-class slot needs to say why it cannot be a sub-opcode instead.
