@@ -1,6 +1,6 @@
 # CI Gating for Untrusted PRs and Secret Scoping via Environments
 
-status: proposed
+status: accepted
 date: 2026-04-27
 
 ## Context and Problem Statement

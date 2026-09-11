@@ -1,6 +1,6 @@
 # ADR-0021: TIME as 32-bit and LTIME as 64-bit with Millisecond Precision
 
-status: proposed
+status: accepted
 date: 2026-03-11
 
 ## Context and Problem Statement

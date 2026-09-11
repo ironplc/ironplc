@@ -1,6 +1,6 @@
 # Expression Type Annotation via Wrapper Struct
 
-status: proposed
+status: accepted
 date: 2026-03-02
 
 ## Context and Problem Statement

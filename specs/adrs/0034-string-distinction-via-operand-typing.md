@@ -1,6 +1,6 @@
 # STRING/WSTRING Distinction via Operand Typing and Runtime Encoding Tags
 
-status: proposed
+status: accepted
 date: 2026-05-05
 supersedes: ADR-0004
 
