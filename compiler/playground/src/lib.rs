@@ -289,8 +289,8 @@ struct VariableInfo {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     type_name: String,
     /// `false` when `value` is a placeholder shown because the actual value
-    /// could not be read (e.g., STRING data-region offset out of bounds, or
-    /// WSTRING which is not yet implemented).
+    /// could not be read (e.g., a STRING or WSTRING data-region offset out of
+    /// bounds, or an aggregate whose contents the renderer cannot reach).
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     valid: bool,
 }

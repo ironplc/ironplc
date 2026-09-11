@@ -68,7 +68,24 @@ mixing error, so it is reported as
 :doc:`/reference/compiler/problems/P4035` for an assignment or
 :doc:`/reference/compiler/problems/P4026` for a call argument.
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: unit : WSTRING[8]; caption : WSTRING[32]; caption_len : INT;
+
+   unit := WSTRING#"°C";
+   caption := CONCAT(WSTRING#"Kiln temperature ", unit);
+   caption_len := LEN(caption);   (* caption_len = 19 *)
+
+``caption`` holds 19 code units and occupies 38 bytes. IronPLC displays a wide
+value as a double-quoted literal and escapes every code unit outside printable
+ASCII, so ``caption`` reads back as ``"Kiln temperature $00B0C"`` — ``°`` is the
+single code unit ``$00B0``.
+
 See Also
 --------
 
 - :doc:`string` — single-byte character string
+- :doc:`/reference/standard-library/functions/len` — string length
+- :doc:`/reference/standard-library/functions/concat` — string concatenation
