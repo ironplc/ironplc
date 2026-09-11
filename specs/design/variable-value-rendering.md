@@ -102,16 +102,25 @@ real zero, which is what made the original defect worse than an omission.
   when, its text is one of those placeholders, so a surface that styles values
   can show a placeholder as a placeholder.
 - **REQ-VR-container-043** A `STRUCT`, `ARRAY` or `FB_INSTANCE` variable
-  renders as `<TYPE_NAME>` from its declared type name, or `<aggregate>` when
-  no type name is recorded, and is marked invalid. Its slot holds the byte
-  offset of its contents in the data region rather than a value, so rendering
-  the slot would publish an internal layout detail as program data — and a
-  convincing one, since the offset moves when an unrelated declaration changes
-  size. Rendering the contents needs a layout sub-table the container does not
-  yet carry.
+  whose layout the container does not describe renders as `<TYPE_NAME>` from
+  its declared type name, or `<aggregate>` when no type name is recorded, and
+  is marked invalid. Its slot holds the byte offset of its contents in the data
+  region rather than a value, so rendering the slot would publish an internal
+  layout detail as program data — and a convincing one, since the offset moves
+  when an unrelated declaration changes size.
 
 These three tags are distinct from `OTHER` rather than folded into it because
 `OTHER` also carries named subrange types, whose slot *does* hold their value.
+
+## Aggregates with a recorded layout
+
+The [Variable Inspection Model](variable-inspection-model.md) adds the layout
+the rule above lacks. Once a container carries it, an aggregate renders as its
+type name, is marked valid, and expands into named children — fields in
+declaration order, elements by declared index — each rendered by the rules of
+this document as if it were a variable of its own. The rules of this document
+do not change; they gain callers. The placeholder of REQ-VR-container-043
+remains the rendering for an aggregate whose layout is missing or unresolved.
 
 ## Enumerations
 
