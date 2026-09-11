@@ -1163,6 +1163,16 @@ parser! {
     rule ref_bind_op() -> &'input Token =
       tok(TokenType::Ref) eq:tok(TokenType::Equal) { eq }
       / [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("REF")] eq:tok(TokenType::Equal) { eq }
+    // Matches the TwinCAT/CODESYS `S=` (set) and `R=` (reset) assignment
+    // operators, same technique as `ref_bind_op()`: the letter and `=` must
+    // be adjacent (no `_`), so `S = x` is not the operator. `S`/`R` are
+    // always plain identifiers here (unlike `REF`, there is no keyword
+    // token for them) -- deliberately not a demoted keyword, since `S` and
+    // `R` are common variable names and this would demote every occurrence.
+    rule set_bind_op() -> &'input Token =
+      [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("S")] eq:tok(TokenType::Equal) { eq }
+    rule reset_bind_op() -> &'input Token =
+      [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("R")] eq:tok(TokenType::Equal) { eq }
     rule ref_initial_value() -> ReferenceInitialValue =
       t:tok(TokenType::Null) { ReferenceInitialValue::Null(t.span.clone()) }
       / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) { ReferenceInitialValue::Ref(v) }
@@ -1920,7 +1930,34 @@ parser! {
           target,
           deref: false,
           ref_bind: true,
+          set_bind: false,
+          reset_bind: false,
           value: Expr::new(ExprKind::Ref(Box::new(referent))),
+          span: eq.span.clone(),
+        })
+      }
+      // TwinCAT/CODESYS set/reset binding: `x S= cond` sets `x` TRUE when
+      // `cond` is TRUE and leaves it unchanged otherwise (never clears it);
+      // `R=` is the mirror. See issue #1680.
+      / target:variable() _ eq:set_bind_op() _ expr:expression() {
+        StmtKind::Assignment(Assignment {
+          target,
+          deref: false,
+          ref_bind: false,
+          set_bind: true,
+          reset_bind: false,
+          value: Expr::new(expr),
+          span: eq.span.clone(),
+        })
+      }
+      / target:variable() _ eq:reset_bind_op() _ expr:expression() {
+        StmtKind::Assignment(Assignment {
+          target,
+          deref: false,
+          ref_bind: false,
+          set_bind: false,
+          reset_bind: true,
+          value: Expr::new(expr),
           span: eq.span.clone(),
         })
       }
@@ -1929,6 +1966,8 @@ parser! {
           target: var,
           deref: true,
           ref_bind: false,
+          set_bind: false,
+          reset_bind: false,
           value: Expr::new(expr),
           span: assign.span.clone(),
         })
@@ -1938,6 +1977,8 @@ parser! {
           target: var,
           deref: false,
           ref_bind: false,
+          set_bind: false,
+          reset_bind: false,
           value: Expr::new(expr),
           span: assign.span.clone(),
         })

@@ -17,6 +17,7 @@ mod mixed_vars;
 mod partial_access;
 mod pointer_to;
 mod reference_to;
+mod set_reset_bind;
 mod short_circuit;
 mod string_literals;
 mod struct_init_expressions;

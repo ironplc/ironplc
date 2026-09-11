@@ -893,6 +893,8 @@ impl StmtKind {
             target,
             deref: false,
             ref_bind: false,
+            set_bind: false,
+            reset_bind: false,
             value: Expr::new(value),
             span: SourceSpan::default(),
         })
@@ -903,6 +905,8 @@ impl StmtKind {
             target: Variable::named(target),
             deref: false,
             ref_bind: false,
+            set_bind: false,
+            reset_bind: false,
             value: Expr::new(ExprKind::LateBound(LateBound {
                 value: Id::from(src),
             })),
@@ -921,6 +925,8 @@ impl StmtKind {
             target: Variable::named(target),
             deref: false,
             ref_bind: false,
+            set_bind: false,
+            reset_bind: false,
             value: Expr::new(ExprKind::Variable(variable)),
             span: SourceSpan::default(),
         })
@@ -942,6 +948,16 @@ pub struct Assignment {
     /// syntax. See `specs/design/reference-to-twincat.md`.
     #[recurse(ignore)]
     pub ref_bind: bool,
+    /// `true` when written with the TwinCAT/CODESYS `S=` set-bind operator:
+    /// `target` is set `TRUE` when `value` is `TRUE` and left unchanged
+    /// otherwise (never cleared). Mutually exclusive with `reset_bind`.
+    #[recurse(ignore)]
+    pub set_bind: bool,
+    /// `true` when written with the TwinCAT/CODESYS `R=` reset-bind operator:
+    /// the mirror of `set_bind` (`target` is cleared `FALSE` when `value` is
+    /// `TRUE`, left unchanged otherwise).
+    #[recurse(ignore)]
+    pub reset_bind: bool,
     pub value: Expr,
     #[located(position)]
     pub span: SourceSpan,

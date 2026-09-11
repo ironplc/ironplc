@@ -22,6 +22,7 @@ mod partial_access;
 mod pointer_to;
 mod pragmas;
 mod reference_to;
+mod set_reset_bind;
 mod sfc;
 mod short_circuit;
 mod struct_init_expressions;

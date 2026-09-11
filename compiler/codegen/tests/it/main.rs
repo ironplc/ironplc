@@ -32,6 +32,7 @@ mod compile_if;
 mod compile_loops;
 mod compile_mux;
 mod compile_program_count;
+mod compile_set_reset_bind;
 mod compile_shift;
 mod compile_struct;
 mod compile_this_super;
