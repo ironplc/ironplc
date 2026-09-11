@@ -2,7 +2,7 @@
 
 ## Overview
 
-This spec defines the binary container format for IronPLC bytecode files. The container packages compiled bytecode with metadata, type information, and cryptographic signatures into a single file that the VM loads and verifies before execution.
+This spec defines the binary container format for IronPLC bytecode files. The container packages compiled bytecode with metadata and type information — and, once ADR-0007 is implemented, cryptographic signatures — into a single file that the VM loads before execution.
 
 The format builds on:
 
@@ -22,19 +22,19 @@ The format builds on:
 
 **REQ-CF-container-004** All multi-byte values are little-endian, matching the instruction set encoding.
 
-Sections appear in this fixed order.
+**REQ-CF-container-010** Sections appear in this fixed order: file header, task table, type section (optional), constant pool, code section, debug section (optional).
+
+**REQ-CF-container-011** The task table begins at offset 256, immediately after the header, and each later section begins at the byte where the previous one ends; there is no padding between sections.
+
+**REQ-CF-container-012** An optional section that is absent has both its directory offset and its directory size equal to zero.
 
 ```
 ┌─────────────────────────────────────────┐  offset 0
 │ File Header (256 bytes, fixed size)     │
 ├─────────────────────────────────────────┤  offset 256
-│ Content Signature Section               │
-├─────────────────────────────────────────┤
-│ Debug Signature Section (optional)      │
-├─────────────────────────────────────────┤
-│ Type Section                            │
-├─────────────────────────────────────────┤
 │ Task Table Section                      │
+├─────────────────────────────────────────┤
+│ Type Section (optional)                 │
 ├─────────────────────────────────────────┤
 │ Constant Pool Section                   │
 ├─────────────────────────────────────────┤
@@ -43,6 +43,10 @@ Sections appear in this fixed order.
 │ Debug Section (optional)                │
 └─────────────────────────────────────────┘
 ```
+
+The task table format is defined in [Task Support Design](61131-task-support.md).
+
+> **Status — signature sections.** The content and debug signature sections that ADR-0007 defines are not in the layout above because nothing emits or reads them yet; their directory entries are written as zero. See [Content Signature Section](#content-signature-section) and the Implementation Status in [ADR-0007](../adrs/0007-dual-signature-integrity-model.md). Where they sit in the file is decided when they are implemented.
 
 ## File Header
 
@@ -54,7 +58,7 @@ The header is organized into four logical regions:
 
 1. **Identification** (bytes 0-7): magic, version, profile, flags
 2. **Hashes** (bytes 8-135): content, reserved (formerly source_hash), debug, layout hashes
-3. **Section directory** (bytes 136-191): offset/size pairs for each section, in file-layout order
+3. **Section directory** (bytes 136-191): offset/size pairs for each section. The directory lists the type section before the task table, which is the order the fields were allocated, not the file order (see [File Layout](#file-layout))
 4. **Runtime parameters** (bytes 192-217): stack/memory budgets, counts, I/O image sizes
 
 Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 6), not in this header. The 32-byte slot at bytes 40-71 was formerly a single combined `source_hash` (SHA-256); it is now reserved and must be zero. The slot is preserved to keep the header layout stable; future revisions may reuse those bytes if a new top-level hash is ever needed.
@@ -66,11 +70,11 @@ Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 
 | **REQ-CF-container-002** | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
 | **REQ-CF-container-003** | 4 | format_version | u16 | Container format version (currently 3; bumped to 2 from 1 by ADR-0033 opcode-encoding migration, then to 3 by ADR-0035 WSTRING string-header/constant-pool encoding tags) |
 | | 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
-| **REQ-CF-container-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section; Bit 2: has type section |
-| | 8 | content_hash | [u8; 32] | BLAKE3 over `type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope) |
+| **REQ-CF-container-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section (`FLAG_HAS_DEBUG_SECTION`); Bit 2: has type section (`FLAG_HAS_TYPE_SECTION`); bits 3–7 reserved. No bit indicates a signature section (see below) |
+| | 8 | content_hash | [u8; 32] | BLAKE3 over `type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope). **Planned** — currently written as all zeros |
 | | 40 | reserved_hash_slot | [u8; 32] | Reserved (formerly `source_hash`); must be zero. Per-file source integrity is now in the debug section's `SOURCE_FILE_TABLE` (tag 6). |
-| | 72 | debug_hash | [u8; 32] | BLAKE3 over debug section (all zeros if no debug section) |
-| | 104 | layout_hash | [u8; 32] | BLAKE3 over the memory layout signature (see Layout Hash and Online Change) |
+| | 72 | debug_hash | [u8; 32] | BLAKE3 over debug section (all zeros if no debug section). **Planned** — currently written as all zeros |
+| | 104 | layout_hash | [u8; 32] | BLAKE3 over the memory layout signature (see Layout Hash and Online Change). **Planned** — currently written as all zeros |
 | | 136 | sig_section_offset | u32 | Offset of content signature section (0 if absent) |
 | | 140 | sig_section_size | u32 | Size of content signature section |
 | | 144 | debug_sig_offset | u32 | Offset of debug signature section (0 if absent) |
@@ -98,6 +102,16 @@ Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 
 | | 216 | memory_image_bytes | u16 | Total memory region size in bytes (%M) |
 | **REQ-CF-container-006** | 218 | reserved | [u8; 38] | Reserved for future use; must be zero |
 
+**REQ-CF-container-013** Flag bit 1 (`FLAG_HAS_DEBUG_SECTION`, `0x02`) is set if and only if the container carries a debug section.
+
+**REQ-CF-container-014** Flag bit 2 (`FLAG_HAS_TYPE_SECTION`, `0x04`) is set if and only if the container carries a type section.
+
+**REQ-CF-container-015** Flag bits 3–7 are reserved and written as zero; a signature section's presence is given by its directory entry alone, not by a flag bit.
+
+**REQ-CF-container-016** A container with no signature sections has `sig_section_offset`, `sig_section_size`, `debug_sig_offset` and `debug_sig_size` all zero.
+
+**REQ-CF-codegen-025** The compiler does not yet compute `content_hash`, `debug_hash` or `layout_hash`; it writes all three as zeros, and a reader must not validate them. Tracked by the Implementation Status in [ADR-0007](../adrs/0007-dual-signature-integrity-model.md) and [issue #1583](https://github.com/ironplc/ironplc/issues/1583).
+
 ### Resource Budget Calculation
 
 The VM uses the resource summary fields to compute the total RAM requirement before allocating:
@@ -120,7 +134,9 @@ String buffers use a length-prefix format with no null terminator. The length pr
 
 ## Content Signature Section
 
-Present when `flags` bit 0 is set. The PLC rejects bytecode without a content signature (ADR-0006, ADR-0007).
+> **Status: planned, not implemented.** No compiler emits this section and no VM reads one; `sig_section_offset` and `sig_section_size` are always zero. [ADR-0006](../adrs/0006-bytecode-verification-requirement.md) and [ADR-0007](../adrs/0007-dual-signature-integrity-model.md) record the gap in their Implementation Status sections; [issue #1583](https://github.com/ironplc/ironplc/issues/1583) tracks the work. The format below is the design the implementation will follow.
+
+Present when `sig_section_offset` is nonzero. Once implemented, the PLC will reject bytecode without a content signature (ADR-0006, ADR-0007).
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
@@ -133,15 +149,84 @@ The `key_id` is an opaque identifier that the VM uses to look up the correspondi
 
 ## Debug Signature Section
 
-Present when both `flags` bit 0 and bit 1 are set. Same format as the content signature section, but signs `debug_hash` instead of `content_hash`. May use a different algorithm or key than the content signature.
+Planned, not implemented — the same status as the content signature section; `debug_sig_offset` and `debug_sig_size` are always zero.
+
+Present when `debug_sig_offset` is nonzero, which requires a debug section (`flags` bit 1). Same format as the content signature section, but signs `debug_hash` instead of `content_hash`. May use a different algorithm or key than the content signature.
 
 ## Type Section
 
 Present when `flags` bit 2 is set. Required for on-device verification (ADR-0006). May be stripped for constrained targets using the signature fallback.
 
-The type section contains metadata used by the verifier for type safety checking. The interpreter does not read this section — it uses pre-computed indices from the compiler.
+The type section describes the aggregate types a program uses. The interpreter reads the array descriptors (element stride and bounds) and the user FB descriptors (body dispatch) at runtime; the FB type descriptors are for the verifier.
 
-### Variable Table
+**REQ-CF-container-018** The type section is three sub-tables in this order, each prefixed by a u16 count: FB type descriptors, array descriptors, user FB descriptors.
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | num_fb_types | u16 | Number of FB type descriptors |
+| 2 | fb_types | [FbTypeDescriptor; num_fb_types] | Variable size each (see below) |
+| varies | num_arrays | u16 | Number of array descriptors |
+| varies | arrays | [ArrayDescriptor; num_arrays] | 8 bytes each |
+| varies | num_user_fb_types | u16 | Number of user FB descriptors |
+| varies | user_fb_types | [UserFbDescriptor; num_user_fb_types] | 8 bytes each |
+
+### FB Type Descriptors
+
+Each FB type descriptor defines the field layout for a function block type.
+
+**REQ-CF-container-021** Each FB type descriptor is a 4-byte header followed by `num_fields` FieldEntry records:
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | type_id | u16 | Unique type ID (matches FB_CALL operand) |
+| 2 | num_fields | u8 | Number of fields |
+| 3 | reserved | u8 | Reserved; must be zero |
+| 4 | fields | [FieldEntry; num_fields] | Field descriptors |
+
+**REQ-CF-container-008** Each FieldEntry is 4 bytes (fixed size):
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | field_type | u8 | Field type (same encoding as VarEntry.var_type) |
+| 1 | reserved | u8 | Reserved; must be zero |
+| 2 | field_extra | u16 | For STRING/WSTRING: max length in characters. For FB_INSTANCE: nested fb_type_id. For other types: 0. |
+
+The verifier (planned) checks that every FB_STORE_PARAM/FB_LOAD_PARAM `field` index is within `num_fields` for the target FB type.
+
+Type IDs and field indices are compiler-assigned. The compiler must produce deterministic assignments across compilations using the ordering rules in [Deterministic Ordering](#deterministic-ordering).
+
+### Array Descriptors
+
+Each array descriptor defines the element type and total element count for one array variable. The compiler normalizes all array indices to 0-based before emitting `LOAD_ARRAY`/`STORE_ARRAY`, so the descriptor stores a flat element count rather than per-dimension bounds. Original IEC 61131-3 bounds are preserved in the debug section.
+
+**REQ-CF-container-019** Each ArrayDescriptor is 8 bytes (fixed size):
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | element_type | u8 | Element type (same encoding as VarEntry.var_type) |
+| 1 | reserved | u8 | Reserved; must be zero |
+| 2 | total_elements | u32 | Total number of elements across all dimensions |
+| 6 | element_extra | u16 | For STRING/WSTRING elements: max length. For FB elements: fb_type_id. |
+
+The VM reads these descriptors at runtime to size array elements and bound array accesses. The verifier (planned) checks that every LOAD_ARRAY/STORE_ARRAY descriptor index references a valid array descriptor and that the descriptor's `element_type` is valid.
+
+### User FB Descriptors
+
+Each user FB descriptor maps a user-defined `FUNCTION_BLOCK` type to the compiled function that implements its body, the variable-table offset where its fields are mapped, and the number of data-region fields in an instance.
+
+**REQ-CF-container-020** Each UserFbDescriptor is 8 bytes (fixed size):
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | type_id | u16 | FB type ID (matches FB_CALL operand) |
+| 2 | function_id | u16 | Function ID of the compiled FB body |
+| 4 | var_offset | u16 | Variable-table offset where the instance's fields are mapped |
+| 6 | num_fields | u8 | Number of data-region fields in an instance |
+| 7 | reserved | u8 | Reserved; must be zero |
+
+### Variable Table (planned, not emitted)
+
+> **Status.** The type section carries no variable table today: the load-time verifier that would consume it (ADR-0006) does not exist, and the interpreter uses compiler-assigned indices directly. The layout below is retained because [Layout Hash and Online Change](#layout-hash-and-online-change) is defined over it.
 
 The variable table describes the type of each variable slot. The verifier uses types to check that LOAD_VAR/STORE_VAR opcodes use the correct typed variant.
 
@@ -162,43 +247,9 @@ Each VarEntry (4 bytes, fixed size):
 
 Variable indices are compiler-assigned. The compiler must produce deterministic indices across compilations using the ordering rules in [Deterministic Ordering](#deterministic-ordering) to ensure that the same source program (with only logic changes) produces compatible bytecode.
 
-### Array Descriptors
+### Function Signatures (planned, not emitted)
 
-Each array descriptor defines the element type and total element count for one array variable. The compiler normalizes all array indices to 0-based before emitting `LOAD_ARRAY`/`STORE_ARRAY`, so the descriptor stores a flat element count rather than per-dimension bounds. Original IEC 61131-3 bounds are preserved in the debug section.
-
-| Offset | Field | Type | Description |
-|--------|-------|------|-------------|
-| 0 | element_type | u8 | Element type (same encoding as VarEntry.var_type) |
-| 1 | reserved | u8 | Reserved; must be zero |
-| 2 | total_elements | u32 | Total number of elements across all dimensions |
-| 6 | element_extra | u16 | For STRING/WSTRING elements: max length. For FB elements: fb_type_id. |
-
-The verifier checks that every LOAD_ARRAY/STORE_ARRAY descriptor index references a valid array descriptor and that the descriptor's `element_type` is valid.
-
-### FB Type Descriptors
-
-Each FB type descriptor defines the field layout for a function block type.
-
-| Offset | Field | Type | Description |
-|--------|-------|------|-------------|
-| 0 | type_id | u16 | Unique type ID (matches FB_CALL operand) |
-| 2 | num_fields | u8 | Number of fields |
-| 3 | reserved | u8 | Reserved; must be zero |
-| 4 | fields | [FieldEntry; num_fields] | Field descriptors |
-
-**REQ-CF-container-008** Each FieldEntry is 4 bytes (fixed size):
-
-| Offset | Field | Type | Description |
-|--------|-------|------|-------------|
-| 0 | field_type | u8 | Field type (same encoding as VarEntry.var_type) |
-| 1 | reserved | u8 | Reserved; must be zero |
-| 2 | field_extra | u16 | For STRING/WSTRING: max length in characters. For FB_INSTANCE: nested fb_type_id. For other types: 0. |
-
-The verifier checks that every FB_STORE_PARAM/FB_LOAD_PARAM `field` index is within `num_fields` for the target FB type.
-
-Type IDs and field indices are compiler-assigned. The compiler must produce deterministic assignments across compilations using the ordering rules in [Deterministic Ordering](#deterministic-ordering).
-
-### Function Signatures
+> **Status.** Not emitted; same reason as the variable table.
 
 Each function signature describes the parameter and return types for a function.
 
@@ -218,16 +269,16 @@ The constant pool stores literal values referenced by LOAD_CONST_* instructions.
 | 0 | count | u16 | Number of constant entries |
 | 2 | entries | [ConstEntry; count] | Constant values |
 
-Each ConstEntry:
+**REQ-CF-container-024** Each ConstEntry is a 4-byte header followed by exactly `size` value bytes:
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | const_type | u8 | 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F64, 6=STRING_LITERAL, 7=WSTRING_LITERAL |
 | 1 | char_width | u8 | Per-code-unit byte width for string entries: 1=STRING (Latin-1), 2=WSTRING (UTF-16LE); 0 for non-string entries. `const_type` remains authoritative for the encoding (ADR-0035). |
 | 2 | size | u16 | Size of value in bytes (4, 8, or variable for strings; u16 to accommodate string literals exceeding 255 bytes) |
-| 4 | value | [u8; size] | Little-endian value bytes. For strings: u16 length prefix followed by character bytes. |
+| 4 | value | [u8; size] | Little-endian value bytes for primitives. For strings: the raw character bytes (Latin-1 for STRING, UTF-16LE for WSTRING) with no length prefix; `size` is the only length. |
 
-The verifier checks that every LOAD_CONST_* index is within `count` and that the constant type matches the opcode variant (e.g., LOAD_CONST_I32 references a type-0 entry).
+The verifier (planned) checks that every LOAD_CONST_* index is within `count` and that the constant type matches the opcode variant (e.g., LOAD_CONST_I32 references a type-0 entry).
 
 ## Code Section
 
@@ -238,15 +289,18 @@ The code section contains the bytecode for all functions and FB bodies.
 | 0 | function_directory | [FuncEntry; num_functions] | Directory of function entry points |
 | varies | bytecode_bodies | [u8; ...] | Concatenated bytecode bodies |
 
-Each FuncEntry:
+**REQ-CF-container-022** Each FuncEntry is 16 bytes (fixed size):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | function_id | u16 | Function ID |
-| 2 | bytecode_offset | u32 | Offset from start of bytecode_bodies |
-| 6 | bytecode_length | u32 | Length of this function's bytecode in bytes |
+| 2 | code_offset | u32 | Offset from start of bytecode_bodies |
+| 6 | code_length | u32 | Length of this function's bytecode in bytes |
 | 10 | max_stack_depth | u16 | Maximum operand stack depth for this function |
 | 12 | num_locals | u16 | Number of local variable slots |
+| 14 | num_params | u16 | Number of parameter slots the function receives |
+
+**REQ-CF-container-023** `bytecode_bodies` begins immediately after the directory, so a function's body starts at `code_section_offset + 16 × num_functions + code_offset` in the file.
 
 The per-function `max_stack_depth` allows the verifier to check stack bounds per-function. The header's `max_stack_depth` is the maximum across all functions.
 
@@ -503,6 +557,12 @@ See [Debugger Support](debugger-support.md) for the full debugger architecture i
 
 ## Loading Sequence
 
+> **Status.** Of the sequence below, steps 1–3 are implemented by the container reader, step 7 by `Container::read_from`, and step 12 by `VmBuffers::from_container`; the VM additionally rejects a zero `max_call_depth` with trap `V9017` at start. Steps 4–6, 8–11 and 13 are planned: the VM loads any container it can parse. See the Implementation Status in [ADR-0006](../adrs/0006-bytecode-verification-requirement.md) and [ADR-0007](../adrs/0007-dual-signature-integrity-model.md), tracked by [issue #1582](https://github.com/ironplc/ironplc/issues/1582) and [issue #1583](https://github.com/ironplc/ironplc/issues/1583).
+
+**REQ-CF-container-026** A header whose magic is not `0x49504C43` is rejected with `ContainerError::InvalidMagic`.
+
+**REQ-CF-container-027** A header whose `format_version` is not the reader's `FORMAT_VERSION` is rejected with `ContainerError::UnsupportedVersion`.
+
 The VM loads a bytecode container in this order:
 
 ```
@@ -545,7 +605,7 @@ The content hash covers the type section, constant pool, and code section in fil
 
 Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 6): each entry carries a BLAKE3 hash over the exact source bytes the parser saw, so a debugger can detect drift between an `.iplc` and the user's working copy on a per-file basis. The header has no top-level `source_hash` field — the debug section's `debug_hash` (BLAKE3 over the whole debug section) transitively protects every per-file hash.
 
-Note: The content hash does not directly cover the header bytes. Instead, the content signature signs the content_hash value, and the VM verifies that the content_hash in the header matches the actual hash of the type+constant+code sections (step 10 in the loading sequence). To make the binding explicit: the content_hash is computed as `BLAKE3(type_section_bytes || const_section_bytes || code_section_bytes)`.
+Note: The content hash does not directly cover the header bytes. Instead, the content signature signs the content_hash value, and the VM verifies that the content_hash in the header matches the actual hash of the type+constant+code sections (step 9 in the loading sequence). To make the binding explicit: the content_hash is computed as `BLAKE3(type_section_bytes || const_section_bytes || code_section_bytes)`. None of this is computed today; see the status of the hash fields in [File Header](#file-header).
 
 ## Deterministic Ordering
 
@@ -633,7 +693,7 @@ Per-variable migration (adding a variable while preserving others) is an advance
 
 ## Versioning
 
-The `format_version` field allows future changes to the container format. The VM must reject versions it does not support. Version 1 is defined by this spec.
+The `format_version` field allows future changes to the container format. The VM must reject versions it does not support. The current version is 3 (`FORMAT_VERSION`; see the header table for the history), and the reader rejects any other value.
 
 Rules for version increments:
 - Adding new optional sections → minor version (backward compatible)

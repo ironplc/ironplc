@@ -277,19 +277,15 @@ The IronPLC **parser and AST** handle most of the IEC 61131-3 configuration synt
 
 #### New Section: Task Table
 
-Add a **task table section** to the container, between the type section and the constant pool. This section defines the task schedule for the resource.
+Add a **task table section** to the container, immediately after the file header and before the type section. This section defines the task schedule for the resource. The header's section directory lists the task table after the type section, but that is only the order the directory fields were allocated; the file order is fixed by the [Bytecode Container Format](bytecode-container-format.md#file-layout).
 
 ```
 ┌─────────────────────────────────────────┐  offset 0
-│ File Header (256+ bytes, fixed size)    │
-├─────────────────────────────────────────┤
-│ Content Signature Section               │
-├─────────────────────────────────────────┤
-│ Debug Signature Section (optional)      │
-├─────────────────────────────────────────┤
-│ Type Section                            │
-├─────────────────────────────────────────┤
+│ File Header (256 bytes, fixed size)     │
+├─────────────────────────────────────────┤  offset 256
 │ Task Table Section (NEW)                │
+├─────────────────────────────────────────┤
+│ Type Section (optional)                 │
 ├─────────────────────────────────────────┤
 │ Constant Pool Section                   │
 ├─────────────────────────────────────────┤

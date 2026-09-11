@@ -9,8 +9,9 @@ use crate::task_table::TaskTable;
 use crate::type_section::TypeSection;
 use crate::ContainerError;
 
-/// A complete bytecode container: header + task table + constant pool + code section
-/// + optional debug section.
+/// A complete bytecode container, in file order: header, task table,
+/// optional type section, constant pool, code section, optional debug
+/// section.
 #[derive(Clone, Debug)]
 pub struct Container {
     pub header: FileHeader,
