@@ -1,6 +1,6 @@
 # ADR-0041: Staged Method/Property Dispatch and Interface Values
 
-status: proposed
+status: accepted
 date: 2026-07-27
 
 ## Context and Problem Statement

@@ -5,10 +5,14 @@
 //! complement the hand-crafted bytecode benchmarks in `ironplc-vm` by
 //! exercising realistic code paths.
 //!
+//! The ST sources live in `ironplc_benchmarks::programs` so that
+//! `tests/compile_programs.rs` can compile each one as a regular test.
+//!
 //! Run with: `cargo bench --package ironplc-benchmarks`
 
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use ironplc_benchmarks::compile_st;
+use ironplc_benchmarks::programs;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::{NoopDebugHook, Slot, VmBuffers};
 use std::hint::black_box;
@@ -37,14 +41,7 @@ macro_rules! bench_run {
 /// WHILE loop decrementing a counter — dispatch overhead baseline.
 fn bench_counter_loop(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_counter_loop");
-    let container = compile_st(
-        "PROGRAM main
-  VAR counter : DINT; END_VAR
-  WHILE counter > 0 DO
-    counter := counter - 1;
-  END_WHILE;
-END_PROGRAM",
-    );
+    let container = compile_st(programs::COUNTER_LOOP);
 
     for count in [100, 1000, 10_000] {
         group.throughput(Throughput::Elements(count as u64));
@@ -65,12 +62,7 @@ fn bench_arithmetic_i32(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_arithmetic_i32");
 
     for reps in [10, 100, 1000] {
-        let mut source = String::from("PROGRAM main\n  VAR x : DINT; END_VAR\n");
-        for _ in 0..reps {
-            source.push_str("  x := (x + 7 - 3) * 2;\n");
-        }
-        source.push_str("END_PROGRAM\n");
-        let container = compile_st(&source);
+        let container = compile_st(&programs::arithmetic_i32(reps));
 
         group.throughput(Throughput::Elements(reps as u64));
         bench_run!(
@@ -90,12 +82,7 @@ fn bench_arithmetic_f64(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_arithmetic_f64");
 
     for reps in [10, 100, 1000] {
-        let mut source = String::from("PROGRAM main\n  VAR x : LREAL; END_VAR\n");
-        for _ in 0..reps {
-            source.push_str("  x := (x + 7.0 - 3.0) * 2.0;\n");
-        }
-        source.push_str("END_PROGRAM\n");
-        let container = compile_st(&source);
+        let container = compile_st(&programs::arithmetic_f64(reps));
 
         group.throughput(Throughput::Elements(reps as u64));
         bench_run!(
@@ -115,16 +102,7 @@ fn bench_branching(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_branching");
 
     for branches in [5, 20, 50] {
-        let mut source = String::from("PROGRAM main\n  VAR sel : DINT; result : DINT; END_VAR\n");
-        for i in 0..branches {
-            if i == 0 {
-                source.push_str(&format!("  IF sel = {} THEN\n    result := {};\n", i, i));
-            } else {
-                source.push_str(&format!("  ELSIF sel = {} THEN\n    result := {};\n", i, i));
-            }
-        }
-        source.push_str("  END_IF;\nEND_PROGRAM\n");
-        let container = compile_st(&source);
+        let container = compile_st(&programs::branching(branches));
 
         bench_run!(
             group,
@@ -141,15 +119,7 @@ fn bench_branching(c: &mut Criterion) {
 /// FOR loop summing 1..limit — structured loop overhead.
 fn bench_for_loop(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_for_loop");
-    let container = compile_st(
-        "PROGRAM main
-  VAR i : DINT; sum : DINT; limit : DINT; END_VAR
-  sum := 0;
-  FOR i := 1 TO limit DO
-    sum := sum + i;
-  END_FOR;
-END_PROGRAM",
-    );
+    let container = compile_st(programs::FOR_LOOP);
 
     for limit in [100, 1000, 10_000] {
         group.throughput(Throughput::Elements(limit as u64));
@@ -168,18 +138,7 @@ END_PROGRAM",
 /// Nested FOR loops — exercises loop overhead at scale.
 fn bench_nested_loops(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_nested_loops");
-    let container = compile_st(
-        "PROGRAM main
-  VAR i : DINT; j : DINT; acc : DINT;
-      outer : DINT; inner : DINT; END_VAR
-  acc := 0;
-  FOR i := 1 TO outer DO
-    FOR j := 1 TO inner DO
-      acc := acc + i * j;
-    END_FOR;
-  END_FOR;
-END_PROGRAM",
-    );
+    let container = compile_st(programs::NESTED_LOOPS);
 
     for (outer, inner) in [(10, 10), (10, 100), (100, 100)] {
         let label = format!("{}x{}", outer, inner);
@@ -197,22 +156,11 @@ END_PROGRAM",
     group.finish();
 }
 
-/// Narrow opcode diversity — loop body uses only ~5 distinct opcodes
-/// (LOAD_VAR, LOAD_CONST, ADD, STORE_VAR, GT, JMP_IF_NOT, JMP).
+/// Narrow opcode diversity — loop body uses only ~5 distinct opcodes.
 /// Baseline for comparison with diverse_opcodes below.
 fn bench_narrow_opcodes(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_narrow_opcodes");
-    let container = compile_st(
-        "PROGRAM main
-  VAR i : DINT; x : DINT; limit : DINT; END_VAR
-  FOR i := 1 TO limit DO
-    x := x + 1;
-    x := x + 2;
-    x := x + 3;
-    x := x + 4;
-  END_FOR;
-END_PROGRAM",
-    );
+    let container = compile_st(programs::NARROW_OPCODES);
 
     for limit in [100, 1000, 10_000] {
         group.throughput(Throughput::Elements(limit as u64));
@@ -228,75 +176,12 @@ END_PROGRAM",
     group.finish();
 }
 
-/// Diverse opcode mix — loop body touches many distinct opcode handlers:
-/// i32 arithmetic (ADD, SUB, MUL, DIV, MOD, NEG), f64 arithmetic (ADD, SUB,
-/// MUL, DIV), comparisons (GT, LT, EQ, NE, GE, LE), boolean logic (AND, OR,
-/// XOR, NOT), builtins (ABS, MIN, MAX, LIMIT, SQRT, SHL), type conversions
-/// (DINT_TO_LREAL, LREAL_TO_DINT), and bitwise ops (AND, OR, XOR, NOT).
-/// This forces many dispatch table entries into L1 icache simultaneously.
+/// Diverse opcode mix — loop body touches many distinct opcode handlers
+/// (see [`programs::DIVERSE_OPCODES`] for the full list). This forces many
+/// dispatch table entries into L1 icache simultaneously.
 fn bench_diverse_opcodes(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_diverse_opcodes");
-    let container = compile_st(
-        "PROGRAM main
-  VAR
-    i : DINT;
-    limit : DINT;
-    d1 : DINT; d2 : DINT; d3 : DINT;
-    f1 : LREAL; f2 : LREAL;
-    b1 : BOOL; b2 : BOOL; b3 : BOOL;
-    w1 : DWORD; w2 : DWORD;
-  END_VAR
-  d1 := 100;
-  d2 := 7;
-  f1 := 3.14;
-  b1 := TRUE;
-  w1 := 16#FF00FF00;
-  FOR i := 1 TO limit DO
-    (* i32 arithmetic: ADD, SUB, MUL, DIV, MOD *)
-    d3 := (d1 + d2) - (d1 * 2);
-    d3 := d1 / d2;
-    d3 := d1 MOD d2;
-    d3 := -d3;
-
-    (* f64 arithmetic: ADD, SUB, MUL, DIV *)
-    f2 := (f1 + 1.0) * 2.0;
-    f2 := f2 - 0.5;
-    f2 := f2 / 3.0;
-
-    (* comparisons: GT, LT, EQ, NE, GE, LE *)
-    b1 := d1 > d2;
-    b2 := d1 < d2;
-    b3 := d1 = d2;
-    b1 := d1 <> d2;
-    b2 := d1 >= d2;
-    b3 := d1 <= d2;
-
-    (* boolean logic: AND, OR, XOR, NOT *)
-    b1 := b1 AND b2;
-    b1 := b1 OR b3;
-    b1 := b1 XOR b2;
-    b1 := NOT b1;
-
-    (* bitwise: AND, OR, XOR, NOT *)
-    w2 := w1 AND 16#0F0F0F0F;
-    w2 := w2 OR 16#F0F0F0F0;
-    w2 := w2 XOR 16#AAAAAAAA;
-    w2 := NOT w2;
-
-    (* builtins: ABS, MIN, MAX, LIMIT, SQRT, SHL *)
-    d3 := ABS(d3);
-    d3 := MIN(d1, d2);
-    d3 := MAX(d1, d2);
-    d3 := LIMIT(0, d3, 1000);
-    f2 := SQRT(f2 * f2 + 1.0);
-    d3 := SHL(d3, 2);
-
-    (* type conversions: DINT_TO_LREAL, LREAL_TO_DINT *)
-    f2 := DINT_TO_LREAL(d3);
-    d3 := LREAL_TO_DINT(f2);
-  END_FOR;
-END_PROGRAM",
-    );
+    let container = compile_st(programs::DIVERSE_OPCODES);
 
     for limit in [100, 1000, 10_000] {
         group.throughput(Throughput::Elements(limit as u64));
@@ -317,24 +202,7 @@ END_PROGRAM",
 /// program does no looping.
 fn bench_arithmetic(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_arithmetic");
-    let container = compile_st(
-        "PROGRAM arithmetic
-  VAR
-      a : INT := 20;
-      b : INT := 10;
-      result_add : INT;
-      result_sub : INT;
-      result_mul : INT;
-      result_div : INT;
-      result_mod : INT;
-  END_VAR
-      result_add := a + b;
-      result_sub := a - b;
-      result_mul := a * b;
-      result_div := a / b;
-      result_mod := a MOD b;
-  END_PROGRAM",
-    );
+    let container = compile_st(programs::ARITHMETIC);
     bench_run!(
         group,
         BenchmarkId::from_parameter("5ops"),
@@ -349,43 +217,7 @@ fn bench_arithmetic(c: &mut Criterion) {
 /// (five assignments) plus the CASE selector load.
 fn bench_case_state(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_case_state");
-    let container = compile_st(
-        "PROGRAM case_state
-  VAR
-      state : INT := 0;
-      output_a : BOOL := FALSE;
-      output_b : BOOL := FALSE;
-      output_c : BOOL := FALSE;
-      output_d : BOOL := FALSE;
-  END_VAR
-      CASE state OF
-          0:
-              output_a := TRUE;
-              output_b := FALSE;
-              output_c := FALSE;
-              output_d := FALSE;
-              state := 1;
-          1:
-              output_a := FALSE;
-              output_b := TRUE;
-              output_c := FALSE;
-              output_d := FALSE;
-              state := 2;
-          2:
-              output_a := FALSE;
-              output_b := FALSE;
-              output_c := TRUE;
-              output_d := FALSE;
-              state := 3;
-          3:
-              output_a := FALSE;
-              output_b := FALSE;
-              output_c := FALSE;
-              output_d := TRUE;
-              state := 0;
-      END_CASE;
-  END_PROGRAM",
-    );
+    let container = compile_st(programs::CASE_STATE);
     bench_run!(
         group,
         BenchmarkId::from_parameter("4states"),
@@ -400,22 +232,7 @@ fn bench_case_state(c: &mut Criterion) {
 /// plus either an increment (the common path) or a reset (1 in 1001 scans).
 fn bench_counter_up(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_counter_up");
-    let container = compile_st(
-        "PROGRAM counter_up
-  VAR
-      count : INT := 0;
-      threshold : INT := 1000;
-      reset_flag : BOOL := FALSE;
-  END_VAR
-      IF count >= threshold THEN
-          count := 0;
-          reset_flag := TRUE;
-      ELSE
-          count := count + 1;
-          reset_flag := FALSE;
-      END_IF;
-  END_PROGRAM",
-    );
+    let container = compile_st(programs::COUNTER_UP);
     bench_run!(
         group,
         BenchmarkId::from_parameter("1iter"),
@@ -440,14 +257,7 @@ fn bench_counter_up(c: &mut Criterion) {
 /// with `--save-baseline` / `--baseline`).
 fn bench_debug_scan_cost(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_debug_scan_cost");
-    let container = compile_st(
-        "PROGRAM main
-  VAR counter : DINT; END_VAR
-  WHILE counter > 0 DO
-    counter := counter - 1;
-  END_WHILE;
-END_PROGRAM",
-    );
+    let container = compile_st(programs::COUNTER_LOOP);
 
     let count = 10_000;
     group.throughput(Throughput::Elements(count as u64));

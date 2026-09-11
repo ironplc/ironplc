@@ -106,6 +106,17 @@ fn compile_statement(
     record_statement_position(emitter, ctx, stmt);
     match stmt {
         StmtKind::Assignment(assignment) => {
+            // TwinCAT/CODESYS `S=`/`R=` set/reset binding: parsed and
+            // analyzed like any other BOOL assignment, but codegen has no
+            // lowering for "write only when true, otherwise leave
+            // unchanged" yet (unlike `ref_bind`, which reuses the ordinary
+            // `ExprKind::Ref` value and needs no special case here at all).
+            // Refuse explicitly rather than emit the unconditional store a
+            // naive fallthrough would produce. See issue #1680.
+            if assignment.set_bind || assignment.reset_bind {
+                return Err(Diagnostic::todo_with_span(assignment.span()));
+            }
+
             // Dereference assignment: myRef^ := expr
             // Compile the RHS, load the reference variable, emit STORE_INDIRECT.
             if assignment.deref {

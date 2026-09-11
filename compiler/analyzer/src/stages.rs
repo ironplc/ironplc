@@ -78,6 +78,62 @@ pub fn analyze(
     Ok((library, context))
 }
 
+/// Runs a transform whose failure discards the whole library.
+///
+/// The pre-pass library is restored when the transform returns `Err`, so every
+/// transformation it had already completed is thrown away with the one that
+/// failed. Reserve this for a pass whose output is meaningless when any part
+/// of it failed, and prefer [`run_best_effort`].
+///
+/// The reason the distinction exists is not one failing test. Corpus testing
+/// showed what looked like merge-order or file-pairing sensitivity: a source
+/// that analyzed cleanly alone failed once merged with unrelated code. The
+/// cause was never ordering -- a transform that accumulates diagnostics and
+/// then discards its whole result throws away every unrelated resolution it
+/// had already completed. A pass that returns `Err` after a user-level
+/// diagnostic reintroduces that, so a new pass reports per-declaration
+/// problems through `run_best_effort` instead.
+fn run_reverting_on_error(
+    library: Library,
+    diagnostics: &mut Vec<Diagnostic>,
+    xform: impl FnOnce(Library) -> Result<Library, Vec<Diagnostic>>,
+) -> Library {
+    let fallback = library.clone();
+    match xform(library) {
+        Ok(result) => result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            fallback
+        }
+    }
+}
+
+/// Runs a transform that reports per-declaration problems without discarding
+/// the declarations it did transform.
+///
+/// `Ok((library, diagnostics))` means "here is the transformed library, and
+/// here is what was wrong with parts of it": the transformed library is kept
+/// and the diagnostics are collected alongside it. A best-effort pass reserves
+/// `Err` for a failure that left it with no library to return at all, which
+/// still reverts because there is nothing else to keep.
+fn run_best_effort(
+    library: Library,
+    diagnostics: &mut Vec<Diagnostic>,
+    xform: impl FnOnce(Library) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>,
+) -> Library {
+    let fallback = library.clone();
+    match xform(library) {
+        Ok((result, errs)) => {
+            diagnostics.extend(errs);
+            result
+        }
+        Err(errs) => {
+            diagnostics.extend(errs);
+            fallback
+        }
+    }
+}
+
 pub fn resolve_types(
     sources: &[&Library],
     options: &CompilerOptions,
@@ -132,43 +188,24 @@ pub fn resolve_types(
 
     // Resolve constant references in type parameters (STRING lengths, array bounds).
     // Must run before toposort so that concrete integer values are available.
-    let fallback = library.clone();
-    match xform_resolve_constant_expressions::apply(library, options) {
-        Ok(result) => library = result,
-        Err(errs) => {
-            diagnostics.extend(errs);
-            library = fallback;
-        }
-    }
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_resolve_constant_expressions::apply(lib, options)
+    });
 
     // Hard failure: declaration ordering is required for all subsequent transforms.
     // Also computes the set of declarations reachable from PROGRAM roots,
     // which codegen uses to skip unused functions.
     let (mut library, reachable) = xform_toposort_declarations::apply(library)?;
 
-    // Recoverable: a failure is collected as a diagnostic and analysis
-    // continues. A failure here reflects a fundamentally broken declaration
-    // (not an unrelated one), so reverting the whole library to its
-    // pre-transform state on error is correct.
-    let fallback = library.clone();
-    match xform_resolve_type_decl_environment::apply(library, &mut type_environment) {
-        Ok(result) => library = result,
-        Err(errs) => {
-            diagnostics.extend(errs);
-            library = fallback;
-        }
-    }
+    // A failure here reflects a fundamentally broken declaration (not an
+    // unrelated one), so reverting the whole library to its pre-transform
+    // state on error is correct.
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_resolve_type_decl_environment::apply(lib, &mut type_environment)
+    });
 
-    // Recoverable: an unresolvable declaration is diagnosed but does not
+    // Best effort: an unresolvable declaration is diagnosed but does not
     // discard the rest of the library's successfully resolved declarations.
-    //
-    // The reason this distinction exists is not one failing test. Corpus
-    // testing showed what looked like merge-order or file-pairing
-    // sensitivity: a source that analyzed cleanly alone failed once merged
-    // with unrelated code. The cause was never ordering -- a transform that
-    // accumulates diagnostics and then discards its whole result throws away
-    // every unrelated resolution it had already completed. A new transform
-    // that returns `Err` after a user-level diagnostic reintroduces that.
     let recoverable_xforms: Vec<
         fn(Library, &mut TypeEnvironment) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>,
     > = vec![
@@ -177,17 +214,9 @@ pub fn resolve_types(
     ];
 
     for xform in recoverable_xforms {
-        let fallback = library.clone();
-        match xform(library, &mut type_environment) {
-            Ok((result, errs)) => {
-                library = result;
-                diagnostics.extend(errs);
-            }
-            Err(errs) => {
-                diagnostics.extend(errs);
-                library = fallback;
-            }
-        }
+        library = run_best_effort(library, &mut diagnostics, |lib| {
+            xform(lib, &mut type_environment)
+        });
     }
 
     // Give TwinCAT `REFERENCE TO` variables their auto-dereferencing semantics
@@ -197,120 +226,64 @@ pub fn resolve_types(
     // `__ISVALIDREF` is lowered before it would be flagged as undeclared) and
     // before the reference semantic rules. See
     // specs/design/reference-to-twincat.md (PR 2).
-    let fallback = library.clone();
-    match xform_insert_implicit_deref::apply(library, options) {
-        Ok(result) => library = result,
-        Err(errs) => {
-            diagnostics.extend(errs);
-            library = fallback;
-        }
-    }
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_insert_implicit_deref::apply(lib, options)
+    });
 
     // Rewrite the `ADR(x)` address-of operator into `ExprKind::Ref` when
     // `allow_adr` is set. Runs after implicit-deref (so a `REFERENCE TO`
     // operand is not mis-addressed) and before symbol/function resolution
     // (so a recognized `ADR` is not reported as an undeclared function).
-    // Recoverable: a diagnosed call is lowered to a placeholder, so the
+    // Best effort: a diagnosed call is lowered to a placeholder, so the
     // transformed library is kept even when diagnostics are present.
-    let fallback = library.clone();
-    match xform_resolve_adr::apply(library, options) {
-        Ok((result, errs)) => {
-            library = result;
-            diagnostics.extend(errs);
-        }
-        Err(errs) => {
-            diagnostics.extend(errs);
-            library = fallback;
-        }
-    }
+    library = run_best_effort(library, &mut diagnostics, |lib| {
+        xform_resolve_adr::apply(lib, options)
+    });
 
     // Fold constant-expression VAR initializers (e.g. `scaled : LREAL := SCALE*4.0;`)
     // back into ordinary literal initializers, or diagnose. Must run before
     // any other pass touches `InitialValueAssignmentKind::SimpleExpr`.
-    // Recoverable: a diagnosed initializer is still normalized, so the
+    // Best effort: a diagnosed initializer is still normalized, so the
     // transformed library must be kept even when diagnostics are present —
     // reverting would leak `SimpleExpr` nodes to later passes.
-    let fallback = library.clone();
-    match xform_fold_initializer_expressions::apply(library, options) {
-        Ok((result, errs)) => {
-            library = result;
-            diagnostics.extend(errs);
-        }
-        Err(errs) => {
-            diagnostics.extend(errs);
-            library = fallback;
-        }
-    }
+    library = run_best_effort(library, &mut diagnostics, |lib| {
+        xform_fold_initializer_expressions::apply(lib, options)
+    });
 
     // Rewrite integer 0/1 initializers on BOOL variables to boolean literals.
     // Short-circuits internally when allow_int_to_bool_initializer is false.
-    let fallback = library.clone();
-    match xform_int_to_bool_initializer::apply(library, &mut type_environment, options) {
-        Ok(result) => library = result,
-        Err(errs) => {
-            diagnostics.extend(errs);
-            library = fallback;
-        }
-    }
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_int_to_bool_initializer::apply(lib, &mut type_environment, options)
+    });
 
-    // Recoverable: takes Library by value; clone to recover on failure.
-    let fallback = library.clone();
-    match xform_resolve_symbol_and_function_environment::apply(
-        library,
-        &mut symbol_environment,
-        &mut function_environment,
-    ) {
-        Ok(result) => library = result,
-        Err(errs) => {
-            diagnostics.extend(errs);
-            library = fallback;
-        }
-    }
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_resolve_symbol_and_function_environment::apply(
+            lib,
+            &mut symbol_environment,
+            &mut function_environment,
+        )
+    });
 
-    // Recoverable: convert named function call arguments to positional.
-    let fallback = library.clone();
-    match xform_named_to_positional_args::apply(library, &function_environment) {
-        Ok(result) => library = result,
-        Err(errs) => {
-            diagnostics.extend(errs);
-            library = fallback;
-        }
-    }
+    // Convert named function call arguments to positional. The whole merged
+    // library is reverted when any one call cannot be rewritten, which is
+    // wrong -- see ironplc/ironplc#1571.
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_named_to_positional_args::apply(lib, &function_environment)
+    });
 
-    // Recoverable: resolve expression types using the function environment.
-    let fallback = library.clone();
-    match xform_resolve_expr_types::apply(
-        library,
-        &mut type_environment,
-        &function_environment,
-        options,
-    ) {
-        Ok(result) => library = result,
-        Err(errs) => {
-            diagnostics.extend(errs);
-            library = fallback;
-        }
-    }
+    // Resolve expression types using the function environment.
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_resolve_expr_types::apply(lib, &mut type_environment, &function_environment, options)
+    });
 
-    // Recoverable: fold constant binary and unary expressions.
-    let fallback = library.clone();
-    match xform_fold_constant_expressions::apply(library) {
-        Ok(result) => library = result,
-        Err(errs) => {
-            diagnostics.extend(errs);
-            library = fallback;
-        }
-    }
+    // Fold constant binary and unary expressions.
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_fold_constant_expressions::apply(lib)
+    });
 
-    // Recoverable: takes Library by value; clone to recover on failure.
-    let fallback = library.clone();
-    match xform_resolve_type_aliases::apply(library, &type_environment, &mut symbol_environment) {
-        Ok(result) => library = result,
-        Err(errs) => {
-            diagnostics.extend(errs);
-            library = fallback;
-        }
-    }
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_resolve_type_aliases::apply(lib, &type_environment, &mut symbol_environment)
+    });
 
     // Mark every variable the program never writes as CONSTANT, so the
     // semantic rules and codegen see one notion of a constant variable.

@@ -1,6 +1,6 @@
 # ADR-0039: The Compiler Does Not Produce Warnings
 
-status: proposed
+status: accepted
 date: 2026-07-22
 
 ## Context and Problem Statement

@@ -1,6 +1,6 @@
 # VM Error Code Categories
 
-status: proposed
+status: accepted
 date: 2026-03-04
 
 ## Context and Problem Statement

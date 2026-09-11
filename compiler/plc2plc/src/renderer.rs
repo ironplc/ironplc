@@ -1427,6 +1427,22 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &dsl::textual::Assignment,
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_variable(&node.target)?;
+        if node.set_bind {
+            // Reproduce the TwinCAT/CODESYS `S=` set-bind operator.
+            self.write_ws("S=");
+            self.visit_expr(&node.value)?;
+            self.write_ws(";");
+            self.newline();
+            return Ok(());
+        }
+        if node.reset_bind {
+            // Reproduce the TwinCAT/CODESYS `R=` reset-bind operator.
+            self.write_ws("R=");
+            self.visit_expr(&node.value)?;
+            self.write_ws(";");
+            self.newline();
+            return Ok(());
+        }
         if node.ref_bind {
             // Reproduce the TwinCAT/CODESYS `REF=` binding. The value is always
             // an `ExprKind::Ref(referent)`; render `target REF= referent`.
