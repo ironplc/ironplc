@@ -9,7 +9,12 @@ export interface DisassemblyResult {
 
 export interface DisassemblyHeader {
   formatVersion: number;
-  flags: { hasContentSignature: boolean; hasDebugSection: boolean; hasTypeSection: boolean };
+  flags: {
+    hasSystemUptime?: boolean;
+    hasContentSignature: boolean;
+    hasDebugSection: boolean;
+    hasTypeSection: boolean;
+  };
   maxStackDepth: number;
   maxCallDepth: number;
   numVariables: number;
@@ -184,6 +189,9 @@ export function renderHeader(header: DisassemblyHeader): string {
   }
 
   const flagsList = [];
+  if (header.flags?.hasSystemUptime) {
+    flagsList.push('System Uptime');
+  }
   if (header.flags?.hasContentSignature) {
     flagsList.push('Content Signature');
   }
