@@ -306,7 +306,7 @@ The per-function `max_stack_depth` allows the verifier to check stack bounds per
 
 ## Debug Section
 
-Present when `flags` bit 1 is set. Can be stripped without invalidating the content signature. Has its own signature (debug signature section) when present.
+Present when `flags` bit 1 is set. Can be stripped without invalidating the content signature. Will have its own signature (the planned debug signature section).
 
 The debug section uses a **tagged sub-table** layout. A directory at the start lists every sub-table by type tag and byte size. A reader skips unknown tags by size, so future sub-tables (e.g., LD rung maps, FBD network maps) can be added without breaking existing readers.
 
