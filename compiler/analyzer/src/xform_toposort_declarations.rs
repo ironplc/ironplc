@@ -554,7 +554,20 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                     InitialValueAssignmentKind::Simple(_) => {}
                     InitialValueAssignmentKind::String(_) => {}
                     InitialValueAssignmentKind::EnumeratedValues(_) => {}
-                    InitialValueAssignmentKind::EnumeratedType(_) => {}
+                    InitialValueAssignmentKind::EnumeratedType(enum_init) => {
+                        // An enum-typed field or variable depends on its
+                        // enumeration type, exactly as the LateResolvedType
+                        // arm below records for the uninitialized form
+                        // `c : Color;`. The parser produces this arm directly
+                        // for a qualified initializer (`c : Color := Color#GREEN`)
+                        // and for located declarations, so without this edge
+                        // the enumeration may be ordered after the declaration
+                        // that references it and is then missing from the type
+                        // environment, surfacing as a spurious P2021/P2004.
+                        let from = self.declarations.add_node(from);
+                        let to = self.declarations.add_node(&enum_init.type_name.name);
+                        self.declarations.graph.add_edge(to, from, ());
+                    }
                     InitialValueAssignmentKind::FunctionBlock(fb) => {
                         // Same ordering convention as the Structure/LateResolvedType
                         // arms below: the referenced type must come before the
@@ -1202,6 +1215,17 @@ END_TYPE";
         })
     }
 
+    /// Position of the enumeration declaration named `name` in the sorted
+    /// library, or `None` when the library does not declare that enumeration.
+    fn enumeration_position(library: &Library, name: &str) -> Option<usize> {
+        library.elements.iter().position(|element| match element {
+            LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(decl)) => {
+                decl.type_name == TypeName::from(name)
+            }
+            _ => false,
+        })
+    }
+
     #[test]
     fn apply_when_struct_array_field_element_declared_first_then_element_ordered_first() {
         // Declaration order already matches dependency order. The element type
@@ -1333,11 +1357,92 @@ END_VAR
 END_PROGRAM";
 
         let library = parse_only(program);
-        let result = crate::stages::resolve_types(&[&library], &CompilerOptions::default());
+        let (_library, context) =
+            crate::stages::resolve_types(&[&library], &CompilerOptions::default()).unwrap();
         assert!(
-            result.is_ok(),
+            !context.has_diagnostics(),
             "expected type resolution to succeed, got {:?}",
-            result.err()
+            context.diagnostics()
+        );
+    }
+
+    #[test]
+    fn apply_when_struct_enum_field_initialized_and_enum_declared_first_then_enum_ordered_first() {
+        // Declaration order already matches dependency order. The qualified
+        // initializer parses straight to the EnumeratedType arm, which must
+        // record the edge so the sort is not free to emit either order.
+        let program = "
+TYPE Color : (RED, GREEN, BLUE); END_TYPE
+
+TYPE Thing : STRUCT
+    c : Color := Color#GREEN;
+    n : INT;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        let color = enumeration_position(&library, "Color").unwrap();
+        let thing = structure_position(&library, "Thing").unwrap();
+        assert!(color < thing, "Color must be ordered before Thing");
+    }
+
+    #[test]
+    fn apply_when_struct_enum_field_initialized_and_enum_declared_last_then_enum_ordered_first() {
+        // Forward reference: the enumeration is declared textually *after*
+        // the struct whose initialized field references it.
+        let program = "
+TYPE Thing : STRUCT
+    c : Color := Color#GREEN;
+    n : INT;
+END_STRUCT;
+END_TYPE
+
+TYPE Color : (RED, GREEN, BLUE); END_TYPE";
+
+        let library = parse_only(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        let color = enumeration_position(&library, "Color").unwrap();
+        let thing = structure_position(&library, "Thing").unwrap();
+        assert!(color < thing, "Color must be ordered before Thing");
+    }
+
+    #[test]
+    fn resolve_types_when_struct_enum_field_initialized_and_enum_declared_first_then_return_ok() {
+        // Pipeline-level regression guard for the reported symptom: this
+        // layout previously failed with P2021 and P2004 because the
+        // enumeration was absent from the type environment when the
+        // initialized field was resolved. Removing the initializer, or
+        // swapping the two TYPE blocks, made it pass.
+        // See https://github.com/ironplc/ironplc/issues/1593.
+        use ironplc_parser::options::CompilerOptions;
+
+        let program = "
+TYPE Color : (RED, GREEN, BLUE); END_TYPE
+
+TYPE Thing : STRUCT
+    c : Color := Color#GREEN;
+    n : INT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM Main
+VAR
+    t : Thing;
+    r : INT;
+END_VAR
+    r := t.n;
+END_PROGRAM";
+
+        let library = parse_only(program);
+        let (_library, context) =
+            crate::stages::resolve_types(&[&library], &CompilerOptions::default()).unwrap();
+        assert!(
+            !context.has_diagnostics(),
+            "expected type resolution to succeed, got {:?}",
+            context.diagnostics()
         );
     }
 }

@@ -243,6 +243,13 @@ pub fn insert_keyword_statement_terminators(
 
 ## Non-Standard Syntax Gating (`--allow-x` Flags)
 
+> **Not every vendor difference is syntax.** If the difference is in what a
+> standard operation *does* at runtime (what `STRING_TO_INT('12abc')`
+> returns), it is a [behavior policy](glossary.md#behavior-policy), not an
+> extension: it gets a `--policy-*` selection encoded in the bytecode, never
+> an `--allow-*` flag. See
+> [behavior-policies.md](../design/behavior-policies.md) for how to add one.
+
 **Rule**: Anything not in IEC 61131-3 Edition 2 **must** be gated behind an `--allow-x` flag. That includes Edition 3 syntax, which is gated the same way.
 
 ### Before Creating a New Flag

@@ -5,13 +5,21 @@ P4049
 .. problem-summary:: P4049
 
 This error occurs when an operator is applied to an operand whose type the
-operator is not defined for. IEC 61131-3 defines the ``MOD`` operator only for
-the integer types (``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``,
-``UDINT``, ``ULINT``). There is no floating-point remainder operator, so a
-``REAL`` or ``LREAL`` operand is a type error.
+operator is not defined for.
 
-The function form ``MOD(a, b)`` accepts the same operand types as the operator.
-A mismatch there is reported as :doc:`P4026` instead.
+IEC 61131-3 defines the ``MOD`` operator only for the integer types (``SINT``,
+``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``). There
+is no floating-point remainder operator, so a ``REAL`` or ``LREAL`` operand is a
+type error.
+
+The bit-string operators ``AND``, ``OR``, ``XOR`` and ``NOT`` are defined over
+the bit-string types (``BOOL``, ``BYTE``, ``WORD``, ``DWORD``, ``LWORD``). An
+integer operand is a type error: ``x AND 3`` where ``x`` is a ``DINT`` does not
+mean a bitwise AND of the two numbers. Convert the operand to a bit-string type
+of the same width when a bit-wise result is what you want.
+
+The function form of an operator accepts the same operand types as the operator
+itself. A mismatch there is reported as :doc:`P4026` instead.
 
 Example
 -------
@@ -59,3 +67,46 @@ type:
    END_PROGRAM
 
 The result has the sign of the dividend, as ``MOD`` does for integers.
+
+Bit-string operators
+--------------------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flags : DINT := 10;
+       masked : DINT;
+   END_VAR
+       masked := flags AND 3;
+   END_PROGRAM
+
+The variable ``flags`` is a ``DINT``, but ``AND`` accepts only bit-string
+operands.
+
+To fix this error, declare the operands as a bit-string type of the width you
+want:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flags : BYTE := 16#0A;
+       masked : BYTE;
+   END_VAR
+       masked := flags AND 16#03;   (* 16#02 *)
+   END_PROGRAM
+
+The same applies to ``NOT``, whose operand is a single bit string:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flags : BYTE := 16#0F;
+       inverted : BYTE;
+   END_VAR
+       inverted := NOT flags;   (* 16#F0 *)
+   END_PROGRAM
