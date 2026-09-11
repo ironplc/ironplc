@@ -1,6 +1,6 @@
 # Two-Width Integer Arithmetic With Explicit Narrowing
 
-status: proposed
+status: accepted
 date: 2026-02-17
 amended: 2026-09-03 (ADR-0002 superseded by ADR-0049: narrowing wraps; there is no configured overflow policy)
 

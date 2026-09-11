@@ -1,7 +1,8 @@
 # Typestate VM Lifecycle
 
-status: proposed
+status: accepted
 date: 2026-02-22
+amended: 2026-09-11 (Confirmation named a method that never existed)
 
 ## Context and Problem Statement
 
@@ -58,16 +59,19 @@ Verify that the following code **does not compile**:
 
 ```rust
 let vm = Vm::new();
-vm.run_single_scan(); // ERROR: no method named `run_single_scan` on `Vm`
+vm.run_round(0); // ERROR: no method named `run_round` on `Vm`
 ```
 
 Verify that the following code **does compile and produces correct results**:
 
 ```rust
-let mut vm = Vm::new().load(container).start();
-vm.run_single_scan().unwrap();
-assert_eq!(vm.read_variable(0).unwrap(), 10);
+let mut vm = Vm::new().load(container, &mut bufs).start().unwrap();
+vm.run_round(0).unwrap();
+assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 10);
 ```
+
+`ironplc_vm::test_support::load_and_start` is that sequence, and every VM
+integration test goes through it.
 
 ## Pros and Cons of the Options
 

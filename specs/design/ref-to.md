@@ -112,27 +112,44 @@ This is standard IEC 61131-3 Edition 3 behavior. Dereference binds tighter than 
 
 ### Edition 3 Gating — Keyword Demotion
 
-All Edition 3 keyword tokens — `Ltime`, `RefTo`, `Ref`, and `Null` — use **keyword demotion**: when `allow_iec_61131_3_2013` is `false`, a post-tokenization transform downgrades these keyword tokens to `Identifier` tokens. This allows them to be used as regular variable names in Edition 2 programs. Without the Edition 3 flag, these are just identifiers; with the flag, they become keywords.
+Edition 3 keyword tokens use **keyword demotion**: a post-tokenization transform downgrades them to `Identifier` tokens when their flag is off, so they remain usable as ordinary variable names in Edition 2 programs. With the flag on, they are keywords. This is the mechanism [ADR-0040](../adrs/0040-dialect-violations-diagnosed-in-policy-phase.md) rule 3 prescribes for any keyword whose spelling could also be a legal identifier.
 
-**File**: `compiler/parser/src/xform_demote_edition3_keywords.rs` (new file, replaces the existing `rule_token_no_std_2013.rs`)
+**File**: `compiler/parser/src/xform_demote_keywords.rs`
+
+Demotion is gated **per feature**, not per edition — one boolean covering all of Edition 3 would mean a user who wants `LTIME` also gets `REF_TO`:
+
+| Tokens | Demoted unless |
+|---|---|
+| `Ltime`, `Ldate`, `Ltod`, `Ldt` | `allow_long_time_types` |
+| `RefTo`, `Ref`, `Null` | `allow_ref_to` |
+| `Reference` | `allow_reference_to` |
+| `Pointer` | `allow_pointer_to` |
+
+The split is what lets the RuSTy dialect enable `REF_TO` syntax while keeping `LDT` available as an identifier.
 
 ```rust
 pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
-    if options.allow_iec_61131_3_2013 {
-        return; // Edition 3 enabled — keep as keywords
-    }
+    // Precompute each gate once. Demotion happens when the gate is `true`.
+    let demote_time_types = !options.allow_long_time_types;
+    let demote_ref = !options.allow_ref_to;
+    // ...one per feature; see the module for the full set.
     for tok in tokens.iter_mut() {
-        match tok.token_type {
-            TokenType::Ltime | TokenType::RefTo | TokenType::Ref | TokenType::Null => {
-                tok.token_type = TokenType::Identifier;
+        let demote = match tok.token_type {
+            TokenType::Ltime | TokenType::Ldate | TokenType::Ltod | TokenType::Ldt => {
+                demote_time_types
             }
-            _ => {}
+            TokenType::RefTo | TokenType::Ref | TokenType::Null => demote_ref,
+            // ...
+            _ => false,
+        };
+        if demote {
+            tok.token_type = TokenType::Identifier;
         }
     }
 }
 ```
 
-This transform runs after tokenization but before parsing. It replaces the existing `rule_token_no_std_2013.rs` rejection rule — instead of rejecting Edition 3 tokens with an error, they are silently demoted to identifiers. The old `rule_token_no_std_2013.rs` file should be deleted.
+This transform runs after tokenization but before parsing. Demotion is deliberately silent: a program that meant the keyword but had the flag off reports unrecognized input rather than a message naming the feature, which ADR-0040 rule 3 records as the accepted cost of resolving a real ambiguity.
 
 The `Xor`/`^` token does NOT need gating — it already exists for XOR in Edition 2. Only its interpretation as dereference (in postfix position) is Edition 3.
 
@@ -443,12 +460,12 @@ This is the correct trade-off for PLC safety: preventing null dereferences and o
 
 The keyword demotion approach (see "Edition 3 Gating" above) eliminates collision concerns for Edition 2 programs: without the Edition 3 flag, `NULL`, `REF`, and `REF_TO` are demoted to identifiers and can be used freely as variable or type names.
 
-Programs migrating to Edition 3 that use `NULL` or `REF` as identifiers will need to rename them, since enabling the `--std-iec-61131-3=2013` flag promotes these to keywords. This is an expected breaking change — the same tradeoff C compilers make when moving from `-std=c99` to `-std=c11` (e.g., `_Alignas` becoming a keyword).
+Programs migrating to Edition 3 that use `NULL` or `REF` as identifiers will need to rename them, since `--allow-ref-to` (on its own, or via the `iec61131-3-ed3`, `codesys` or `rusty` preset) promotes these to keywords. This is an expected breaking change — the same tradeoff C compilers make when moving from `-std=c99` to `-std=c11` (e.g., `_Alignas` becoming a keyword).
 
 ## Dialect Compatibility
 
-REF_TO tokens are added to the logos lexer as standard keywords (same pattern as LTIME), gated by `rule_token_no_std_2013.rs`. This means:
+REF_TO tokens are added to the logos lexer as standard keywords (same pattern as LTIME), gated by demotion in `xform_demote_keywords.rs`. This means:
 
 - **Siemens SCL**: The `DIALECT_KEYWORDS` entry for `REF_TO` in the [Siemens SCL design](siemens-scl-dialect.md) becomes unnecessary — `REF_TO` is already a keyword token from the lexer. The Siemens design should be updated to note this.
 - **Beckhoff TwinCAT**: `REFERENCE TO` shipped. `RefTo type_spec` and `Reference To type_spec` map to the same AST node, distinguished by a `RefSyntax` tag, and the keyword is gated by demotion rather than promotion. See [reference-to-twincat.md](reference-to-twincat.md).
-- **Standard mode without Edition 3 flag**: `REF_TO` is lexed as a token but rejected by the validation rule with a clear diagnostic pointing to `--std-iec-61131-3=2013`.
+- **Standard mode without `--allow-ref-to`**: `REF_TO` is lexed as a keyword token and then demoted to an identifier, so an Edition 2 program may use it as a name. A program that meant the type constructor fails as unrecognized input rather than with a diagnostic naming the flag — the cost of demotion under [ADR-0040](../adrs/0040-dialect-violations-diagnosed-in-policy-phase.md) rule 3, accepted because `REF_TO` is a legal identifier.

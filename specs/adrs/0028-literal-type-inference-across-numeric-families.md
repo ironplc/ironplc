@@ -1,6 +1,6 @@
 # Literal Type Inference Across Numeric Families
 
-status: proposed
+status: accepted
 date: 2026-04-01
 
 ## Context and Problem Statement
