@@ -17,6 +17,7 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 - **[Syntax Support Guide](specs/steering/syntax-support-guide.md)** - Checklist and patterns for adding new syntax support, including `--allow-x` flags, plc2plc round-trip tests, and end-to-end execution tests (especially relevant for `**/parser/**`, `**/codegen/**`, `**/plc2plc/**` files)
 - **[Compatibility Library Authoring](specs/steering/compatibility-library-authoring.md)** - Licensing risk tiers, allowed/forbidden inputs, and the clean-room-with-AI workflow for authoring bundled compatibility libraries (especially relevant for `compiler/sources/resources/compat-libraries/` files)
 - **[Coming-from Guide Authoring](specs/steering/coming-from-guide-authoring.md)** - Standard page set, slugs, URL-stability policy, and content rules for the "Coming from X" how-to sections of the docs website (especially relevant for `docs/how-to-guides/**` files)
+- **[External Corpus Defect Sourcing](specs/steering/external-corpus-defect-sourcing.md)** - How a defect found by running third-party IEC 61131-3 code becomes a change here: automation stays in a separate repository, findings cross as prose-only issues, fixes are authored from the issue alone (relevant whenever an issue is labelled as corpus-sourced)
 
 ## Skills (Slash Commands)
 
