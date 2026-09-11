@@ -401,7 +401,10 @@ String to Numeric
 ^^^^^^^^^^^^^^^^^
 
 Conversions from string representation to numeric types. The string
-must contain a valid numeric literal for the target type.
+must contain a valid numeric literal for the target type. What happens
+when it does not is implementer-specific in IEC 61131-3, so IronPLC
+selects it at compile time with two behavior policies; see
+`String to Numeric Policies`_.
 
 .. list-table::
    :header-rows: 1
@@ -430,13 +433,136 @@ must contain a valid numeric literal for the target type.
      - Supported
    * - ``STRING_TO_UDINT``
      - String to 32-bit unsigned
-     - Supported
+     - Supported, honors the policies
    * - ``STRING_TO_REAL``
      - String to single-precision
      - Supported
    * - ``STRING_TO_LREAL``
      - String to double-precision
      - Not yet supported
+
+String to Numeric Policies
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Real PLC platforms disagree about what ``STRING_TO_INT('12abc')`` returns,
+and IronPLC does not guess. Two behavior policies select the result at
+compile time. A dialect selects the alternatives its platform documents,
+and the ``--policy-*`` flags replace the dialect's selection. The
+alternatives are encoded in the compiled program, so the same
+:file:`.iplc` behaves the same on every runtime.
+
+``--policy-string-to-num-non-numeric``
+   What counts as convertible when the string has characters that are not
+   part of a numeric literal.
+
+   ``reject`` *(default)*
+      The whole string, less surrounding whitespace, must be one literal.
+      ``'12abc'`` is a failure. The strict choice, also what RuSTy does.
+
+   ``ignore-trailing``
+      The literal at the start of the string is converted and the rest is
+      ignored. ``'12abc'`` converts to 12; ``'abc12'`` is a failure.
+      CODESYS and TwinCAT stop at the first invalid character.
+
+   ``ignore-surrounding``
+      Characters that cannot start a literal are skipped, then the literal
+      is converted and the rest is ignored. ``'abc12'`` and ``'x=12;'`` both
+      convert to 12. Rockwell Logix ``STOD`` skips leading non-numeric
+      characters this way.
+
+``--policy-string-to-num-failure``
+   What happens when the string is not convertible: not a literal under the
+   selected non-numeric policy, or a literal whose value does not fit the
+   target type. A value out of range is a failure under every non-numeric
+   alternative; nothing wraps.
+
+   ``trap`` *(default)*
+      The program halts with runtime error
+      :doc:`V4006 </reference/runtime/problems/V4006>`, which names the
+      offending string.
+
+   ``zero``
+      The conversion produces zero and the program continues. CODESYS,
+      TwinCAT and RuSTy return 0.
+
+Under every alternative the accepted literal is the IEC 61131-3 literal of
+the target type: decimal digits with optional ``_`` separators
+(``'1_000'``), or a based literal (``'16#FF'``, ``'8#17'``, ``'2#1010'``),
+optionally signed. A typed prefix (``'UDINT#5'``) is not accepted.
+
+.. list-table:: Results of ``STRING_TO_UDINT`` by policy
+   :header-rows: 1
+   :widths: 24 19 19 19 19
+
+   * - Input
+     - ``reject`` + ``trap``
+     - ``reject`` + ``zero``
+     - ``ignore-trailing`` + ``zero``
+     - ``ignore-surrounding`` + ``zero``
+   * - ``'4294967295'``
+     - 4294967295
+     - 4294967295
+     - 4294967295
+     - 4294967295
+   * - ``'16#FF'``
+     - 255
+     - 255
+     - 255
+     - 255
+   * - ``'12abc'``
+     - V4006
+     - 0
+     - 12
+     - 12
+   * - ``'abc12'``
+     - V4006
+     - 0
+     - 0
+     - 12
+   * - ``'4294967296'``
+     - V4006
+     - 0
+     - 0
+     - 0
+
+The dialects select the following alternatives:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 30 30
+
+   * - Dialect
+     - Non-numeric
+     - Failure
+   * - ``iec61131-3-ed2``, ``iec61131-3-ed3``
+     - ``reject``
+     - ``trap``
+   * - ``rusty``
+     - ``reject``
+     - ``zero``
+   * - ``codesys``, ``twincat``
+     - ``ignore-trailing``
+     - ``zero``
+
+For a literal that does not fit the target type, the CODESYS documentation
+says the result depends on the processor. IronPLC does not emulate an
+undefined result: under the ``codesys`` and ``twincat`` dialects the failure
+policy applies and the result is zero. That is IronPLC's choice, not a
+CODESYS behavior.
+
+Today only ``STRING_TO_UDINT`` honors the policies. The other
+``STRING_TO_*`` functions return zero for a string that is not a literal of
+their type, whatever the policy selects.
+
+.. playground::
+
+   PROGRAM main
+   VAR
+       text : STRING := '4294967295';
+       value : UDINT;
+   END_VAR
+   value := STRING_TO_UDINT(text);  (* value = 4294967295 *)
+   END_PROGRAM
 
 Description
 -----------

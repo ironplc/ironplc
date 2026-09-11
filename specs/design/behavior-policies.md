@@ -108,6 +108,12 @@ assigned. The signed, sub-32-bit, 64-bit and real targets keep the
 single-encoding `CONV_STR_TO_I32` / `CONV_STR_TO_F32` builtins until they are
 moved onto the block.
 
+### Codegen
+
+**REQ-BP-codegen-001** `STRING_TO_UDINT` compiles to `BUILTIN` with the func_id that `builtin::str_to_num::func_id(U32, non_numeric, failure)` gives for the selected policies, so the same source under two selections produces bytecode that differs only in that operand.
+
+**REQ-BP-codegen-002** No `TRUNC_*` follows the `STRING_TO_UDINT` builtin: the conversion range-checks against the full unsigned 32-bit range and pushes the value as-is.
+
 ### The literal grammar
 
 Under every non-numeric alternative, what is converted is an IEC 61131-3
@@ -146,3 +152,23 @@ The trap carries a bounded preview of the offending string (its first
 sixteen bytes, with an ellipsis if more followed), because the VM is `no_std`
 and a trap cannot own the value; sixteen bytes is enough to show any
 `UDINT` literal and to recognise a mistyped one.
+
+## Adding a policy
+
+1. Add the enum to `ironplc_container::policy` implementing `BehaviorPolicy`,
+   default first.
+2. Reserve the operation's func_id block in `ironplc_container::builtin` and
+   declare the assigned rows in `declare_builtins!`; pin them in the
+   wire-format tests and record them in
+   [bytecode-instruction-set.md](bytecode-instruction-set.md).
+3. Add the row to the `policies` section of `define_compiler_options!` with
+   the alternative each vendor preset selects. The CLI, LSP, MCP and
+   `dialects` surfaces follow from `POLICY_DESCRIPTORS`; the CLI needs one
+   `clap_policy!` newtype and one `Option` field, which its drift test
+   enforces.
+4. Thread the field from `CodegenOptions` to the emitter and select the
+   func_id from it.
+5. Dispatch in the VM on the decoded ID, in a module of its own.
+6. Document the policy on the page for the operation it governs, with the
+   result for every alternative and any divergence from a vendor whose
+   behavior is undefined; add the trap's `V4xxx` page.

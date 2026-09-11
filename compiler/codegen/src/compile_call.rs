@@ -1222,9 +1222,18 @@ pub(crate) fn compile_string_conversion(
             let pool_index = ctx.add_i32_constant(data_offset as i32);
             emitter.emit_load_const_i32(pool_index);
 
-            let func_id = match target.op_width {
-                OpWidth::W32 => opcode::builtin::CONV_STR_TO_I32,
-                OpWidth::F32 => opcode::builtin::CONV_STR_TO_F32,
+            let func_id = match (target.op_width, target.signedness, target.storage_bits) {
+                // UDINT: the policy-bearing conversion (ADR-0049). The
+                // func_id names the target and both selected policies, so
+                // the VM range-checks against the full unsigned range and
+                // no truncation follows.
+                (OpWidth::W32, Signedness::Unsigned, 32) => opcode::builtin::str_to_num::func_id(
+                    opcode::builtin::str_to_num::Target::U32,
+                    ctx.string_to_num.non_numeric,
+                    ctx.string_to_num.failure,
+                ),
+                (OpWidth::W32, _, _) => opcode::builtin::CONV_STR_TO_I32,
+                (OpWidth::F32, _, _) => opcode::builtin::CONV_STR_TO_F32,
                 _ => {
                     return Err(Diagnostic::todo_with_span(func.name.span()));
                 }
