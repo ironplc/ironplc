@@ -11,5 +11,7 @@ fn main() {
         "partial-access-bit-syntax.md",
         // Behavior policies (`REQ-BP-codegen-*`): func_id selection.
         "behavior-policies.md",
+        // The post-emission peephole optimizer (`REQ-PEEP-codegen-*`).
+        "bytecode-peephole-optimizer.md",
     ]);
 }
