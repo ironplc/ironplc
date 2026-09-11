@@ -19,6 +19,13 @@
 //! radix it was written in, and 511 is not a `USINT`. The radix does not
 //! survive parsing in any case.
 //!
+//! A prefixed literal states its own type, and is checked against that type
+//! as well: `INT#40000` is not an `INT` whatever it is stored into, so
+//! `d : DINT := INT#40000` is reported even though 40000 fits a `DINT`. The
+//! same by-value reasoning covers the radix form: `INT#16#FFFF` is 65535 and
+//! an `INT`, and no `INT` is 65535. A pattern that is meant to wrap is
+//! spelled with a bit-string prefix (`WORD#16#FFFF`), which is not checked.
+//!
 //! See section 2.2.1.
 //!
 //! ## Passes
@@ -42,14 +49,16 @@
 //!    VAR
 //!       count : USINT := 300;   (* USINT holds 0..255 *)
 //!       total : SINT;
+//!       wide : DINT;
 //!    END_VAR
 //!    total := 200;               (* SINT holds -128..127 *)
 //!    count := 255 + 1;           (* the operator does not widen the type *)
+//!    wide := INT#40000;          (* not an INT, whatever wide is *)
 //! END_PROGRAM
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::Located,
+    core::{Located, SourceSpan},
     diagnostic::{Diagnostic, Label},
     scope::ScopeNode,
     textual::*,
@@ -122,10 +131,36 @@ impl RuleConstantRange<'_> {
         let ConstantKind::IntegerLiteral(literal) = constant else {
             return;
         };
-        let Some((minimum, maximum)) = value_range::of(expected) else {
+        if let Some(range) = value_range::of(expected) {
+            self.check_literal(literal, range);
+        }
+    }
+
+    /// Reports `literal` when the type named by its prefix cannot hold it.
+    ///
+    /// `INT#40000` says the value is an `INT`, and no `INT` is 40000, so the
+    /// literal contradicts itself whatever it is stored into. That is a
+    /// different question from `check_constant`'s, which takes its range from
+    /// the destination: the two are asked independently, so a literal that
+    /// fits neither is reported once for each.
+    fn check_prefixed_literal(&mut self, literal: &IntegerLiteral) {
+        let Some(prefix) = &literal.data_type else {
             return;
         };
+        let Some(attributes) = self
+            .type_environment
+            .get(&TypeName::from_id(&prefix.as_id()))
+        else {
+            return;
+        };
+        if let Some(range) = value_range::of(&attributes.representation) {
+            self.check_literal(literal, range);
+        }
+    }
 
+    /// Reports `literal` when its value is outside `range`.
+    fn check_literal(&mut self, literal: &IntegerLiteral, range: (i128, i128)) {
+        let (minimum, maximum) = range;
         let value = literal_value(literal);
         if value.is_some_and(|value| value >= minimum && value <= maximum) {
             return;
@@ -137,15 +172,25 @@ impl RuleConstantRange<'_> {
             || format!("-{}", literal.value.value.value),
             |value| value.to_string(),
         );
+        self.report_out_of_range(literal.value.value.span(), &reported, range);
+    }
+
+    /// Reports the value spelled `reported` as outside `range`.
+    ///
+    /// Every out-of-range constant is reported the same way, whatever
+    /// context it was found in, so that the range that decides the outcome
+    /// is the only thing that varies between reports.
+    fn report_out_of_range(&mut self, span: SourceSpan, reported: &String, range: (i128, i128)) {
+        let (minimum, maximum) = range;
         self.diagnostics.push(
             Diagnostic::problem(
                 Problem::ConstantOverflow,
                 Label::span(
-                    constant.span(),
+                    span,
                     format!("Value must be in the range {minimum} to {maximum}"),
                 ),
             )
-            .with_context("value", &reported)
+            .with_context("value", reported)
             .with_context("minimum", &minimum.to_string())
             .with_context("maximum", &maximum.to_string()),
         );
@@ -254,17 +299,10 @@ impl RuleConstantRange<'_> {
                 Err(_) => continue,
             };
             if value < minimum || value > maximum {
-                self.diagnostics.push(
-                    Diagnostic::problem(
-                        Problem::ConstantOverflow,
-                        Label::span(
-                            label.value.span(),
-                            format!("Value must be in the range {minimum} to {maximum}"),
-                        ),
-                    )
-                    .with_context("value", &value.to_string())
-                    .with_context("minimum", &minimum.to_string())
-                    .with_context("maximum", &maximum.to_string()),
+                self.report_out_of_range(
+                    label.value.span(),
+                    &value.to_string(),
+                    (minimum, maximum),
                 );
             }
         }
@@ -309,6 +347,14 @@ impl Visitor<Infallible> for RuleConstantRange<'_> {
             }
         }
 
+        node.recurse_visit(self)
+    }
+
+    /// Every integer literal passes through here, wherever it appears, so a
+    /// prefixed one is checked against its own type in an initializer, an
+    /// operand, a comparison or a function argument alike.
+    fn visit_integer_literal(&mut self, node: &IntegerLiteral) -> Result<(), Infallible> {
+        self.check_prefixed_literal(node);
         node.recurse_visit(self)
     }
 
@@ -521,6 +567,80 @@ END_PROGRAM",
         );
 
         assert_eq!(codes, 0);
+    }
+
+    // --- A prefixed literal states its own type ---
+    //
+    // `INT#40000` is not an `INT` whatever it is stored into. Every case
+    // stores into a `LINT`, which holds all of these values, so the
+    // destination check stays silent and only the prefix decides.
+
+    #[rstest]
+    #[case::sint_low("SINT#-128", true)]
+    #[case::sint_below("SINT#-129", false)]
+    #[case::int_high("INT#32767", true)]
+    #[case::int_above("INT#32768", false)]
+    #[case::dint_above("DINT#2147483648", false)]
+    #[case::usint_high("USINT#255", true)]
+    #[case::usint_negative("USINT#-1", false)]
+    #[case::udint_above("UDINT#4294967296", false)]
+    #[case::radix_high("INT#16#7FFF", true)]
+    #[case::radix_above("INT#16#FFFF", false)]
+    fn apply_when_prefixed_literal_at_own_boundary_then_ok_or_err(
+        #[case] literal: &str,
+        #[case] expected_ok: bool,
+    ) {
+        let program = program_with(&format!("x : LINT := {literal};\n"), "");
+
+        assert_eq!(out_of_range_count(&program) == 0, expected_ok);
+    }
+
+    #[test]
+    fn apply_when_prefixed_literal_in_assignment_then_err() {
+        let codes = out_of_range_count(&program_with("x : DINT;\n", "x := INT#40000;\n"));
+
+        assert_eq!(codes, 1);
+    }
+
+    #[test]
+    fn apply_when_prefixed_literal_in_comparison_then_err() {
+        let codes = out_of_range_count(&program_with(
+            "x : DINT;\ny : DINT;\n",
+            "IF x = INT#40000 THEN y := 0; END_IF;\n",
+        ));
+
+        assert_eq!(codes, 1);
+    }
+
+    /// The destination check stops at a function call, whose arguments are
+    /// the parameters' business. The literal's own type travels with it.
+    #[test]
+    fn apply_when_prefixed_literal_is_function_argument_then_err() {
+        let codes = out_of_range_count(&program_with(
+            "x : DINT;\n",
+            "x := INT_TO_DINT(INT#40000);\n",
+        ));
+
+        assert_eq!(codes, 1);
+    }
+
+    /// A literal that is a valid `INT` but not a valid `SINT` is the
+    /// destination's problem alone.
+    #[test]
+    fn apply_when_prefixed_literal_fits_own_type_only_then_one_err() {
+        let codes = out_of_range_count(&program_with("x : SINT := INT#200;\n", ""));
+
+        assert_eq!(codes, 1);
+    }
+
+    /// The two checks answer different questions -- is this an `INT`, and
+    /// does it fit a `SINT` -- so a literal that fails both is reported for
+    /// each.
+    #[test]
+    fn apply_when_prefixed_literal_fits_neither_then_err_for_each() {
+        let codes = out_of_range_count(&program_with("x : SINT := INT#40000;\n", ""));
+
+        assert_eq!(codes, 2);
     }
 
     // --- What is deliberately not checked ---

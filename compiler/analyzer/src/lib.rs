@@ -45,6 +45,7 @@ mod rule_no_top_level_var_global;
 mod rule_operator_operand_type_check;
 mod rule_pou_hierarchy;
 mod rule_program_task_definition_exists;
+mod rule_program_var_hides_global;
 mod rule_ref_to;
 mod rule_stdlib_type_redefinition;
 mod rule_string_encoding_compat;

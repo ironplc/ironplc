@@ -126,5 +126,10 @@ fn main() {
         eprintln!("problem generating trap_codes.rs: {err}");
         process::exit(1);
     }
-    ironplc_spec_requirements_gen::generate(&["runtime-execution-model.md"]);
+    ironplc_spec_requirements_gen::generate(&[
+        "runtime-execution-model.md",
+        // Behavior policies (`REQ-BP-vm-*`): the STRING_TO_<numeric> scan
+        // and failure semantics.
+        "behavior-policies.md",
+    ]);
 }

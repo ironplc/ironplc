@@ -59,9 +59,9 @@ fn to_lower_camel_case(snake: &str) -> String {
 /// Extract parse options from LSP initialization options.
 ///
 /// Reads `"dialect"` to select the base preset, then overlays individual
-/// `--allow-*` flags.  Recognised dialect values come from
-/// [`Dialect::ALL`] via `FromStr`; unknown or missing values fall back to
-/// the default ([`Dialect::Iec61131_3Ed2`]).
+/// `--allow-*` flags and `--policy-*` selections.  Recognised dialect values
+/// come from [`Dialect::ALL`] via `FromStr`; unknown or missing values fall
+/// back to the default ([`Dialect::Iec61131_3Ed2`]).
 fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOptions {
     if let Some(ref opts) = initialize_params.initialization_options {
         let dialect = opts
@@ -85,6 +85,20 @@ fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOpt
             let key = to_lower_camel_case(fd.option_key);
             if opts.get(&key).and_then(|v| v.as_bool()).unwrap_or(false) {
                 options.set_flag_by_key(fd.option_key, true);
+            }
+        }
+
+        // Overlay behavior policies (ADR-0049): a string naming one of the
+        // policy's alternatives replaces the dialect's selection. An unknown
+        // alternative is logged and ignored, like an unknown dialect.
+        for pd in CompilerOptions::POLICY_DESCRIPTORS {
+            let key = to_lower_camel_case(pd.option_key);
+            if let Some(value) = opts.get(&key).and_then(|v| v.as_str()) {
+                if options.set_policy_by_key(pd.option_key, value).is_err() {
+                    debug!(
+                        "Ignoring unknown alternative {value:?} for {key} in initializationOptions"
+                    );
+                }
             }
         }
         options
@@ -788,6 +802,39 @@ mod test {
     /// `initializationOptions` key. `extract_compiler_options` derives these
     /// from `FEATURE_DESCRIPTORS`, so this also pins the snake -> camelCase
     /// contract the VS Code extension relies on.
+    /// The policy counterpart: every behavior policy must be settable to each
+    /// of its alternatives via its lowerCamelCase key with a string value.
+    #[test]
+    fn extract_compiler_options_when_each_policy_key_set_then_alternative_selected() {
+        for pd in ironplc_parser::options::CompilerOptions::POLICY_DESCRIPTORS {
+            for alt in pd.alternatives {
+                let key = super::to_lower_camel_case(pd.option_key);
+                let params = params_with_init_options(
+                    serde_json::json!({ "dialect": "codesys", key.clone(): alt }),
+                );
+                let options = super::extract_compiler_options(&params);
+                assert_eq!(
+                    options.get_policy_by_key(pd.option_key),
+                    Some(*alt),
+                    "LSP key `{key}` = {alt:?} did not select it for CompilerOptions.{}",
+                    pd.option_key
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn extract_compiler_options_when_policy_value_unknown_then_dialect_selection_kept() {
+        let params = params_with_init_options(
+            serde_json::json!({ "dialect": "codesys", "policyStringToNumFailure": "wrap" }),
+        );
+        let options = super::extract_compiler_options(&params);
+        assert_eq!(
+            options.get_policy_by_key("policy_string_to_num_failure"),
+            Some("zero")
+        );
+    }
+
     #[test]
     fn extract_compiler_options_when_each_dialect_flag_key_set_then_flag_enabled() {
         for fd in ironplc_parser::options::CompilerOptions::FEATURE_DESCRIPTORS {

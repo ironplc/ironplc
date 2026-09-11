@@ -70,7 +70,8 @@ Informational Commands
 
 :program:`ironplcc dialects`
    Show available dialects and which features each enables. Use this to
-   discover which ``--allow-*`` flags a dialect includes.
+   discover which ``--allow-*`` flags a dialect includes and which
+   behavior policy alternatives it selects.
 
 :program:`ironplcc version`
    Print the version number of the compiler.
@@ -265,6 +266,23 @@ Options
    :doc:`P9999 </reference/compiler/problems/P9999>`. Enabled by
    ``--dialect=iec61131-3-ed3``, ``--dialect=rusty``, ``--dialect=codesys``,
    and ``--dialect=twincat``.
+
+``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
+   Select what ``STRING_TO_<numeric>`` treats as convertible when the string
+   has non-numeric characters: ``reject`` (the whole string must be a
+   literal; the default), ``ignore-trailing`` (convert the leading literal
+   and ignore the rest), or ``ignore-surrounding`` (skip to the first
+   literal, convert it, ignore the rest). A behavior policy: the dialect
+   selects an alternative and this flag replaces it. See
+   :doc:`/reference/standard-library/functions/type-conversions`.
+
+``--policy-string-to-num-failure`` *ALTERNATIVE*
+   Select what ``STRING_TO_<numeric>`` does when the string is not
+   convertible: ``trap`` (halt with
+   :doc:`V4006 </reference/runtime/problems/V4006>`; the default) or ``zero``
+   (produce zero and continue). A behavior policy: the dialect selects an
+   alternative and this flag replaces it. See
+   :doc:`/reference/standard-library/functions/type-conversions`.
 
 Examples
 ========

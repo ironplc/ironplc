@@ -146,6 +146,35 @@ pub fn parse_options(value: &serde_json::Value) -> Result<CompilerOptions, Vec<D
         if key == "dialect" {
             continue;
         }
+        let is_policy = CompilerOptions::POLICY_DESCRIPTORS
+            .iter()
+            .any(|pd| pd.option_key == key);
+        if is_policy {
+            // A behavior policy (ADR-0049) takes the CLI name of one of its
+            // alternatives.
+            match val.as_str() {
+                Some(alt) => {
+                    if options.set_policy_by_key(key, alt).is_err() {
+                        let allowed = CompilerOptions::POLICY_DESCRIPTORS
+                            .iter()
+                            .find(|pd| pd.option_key == key)
+                            .map(|pd| pd.alternatives.join(", "))
+                            .unwrap_or_default();
+                        errors.push(validation_diagnostic(&format!(
+                            "Option '{}' must be one of: {}.",
+                            key, allowed
+                        )));
+                    }
+                }
+                None => {
+                    errors.push(validation_diagnostic(&format!(
+                        "Option '{}' must be a string.",
+                        key
+                    )));
+                }
+            }
+            continue;
+        }
         match val.as_bool() {
             Some(b) => {
                 if !options.set_flag_by_key(key, b) {
@@ -411,6 +440,44 @@ mod tests {
         let val = serde_json::json!({"dialect": "iec61131-3-ed2", "allow_c_style_comments": true});
         let opts = parse_options(&val).unwrap();
         assert!(opts.allow_c_style_comments);
+    }
+
+    #[test]
+    fn parse_options_when_policy_override_then_replaces_dialect_selection() {
+        let val = serde_json::json!({
+            "dialect": "codesys",
+            "policy_string_to_num_failure": "trap",
+        });
+        let opts = parse_options(&val).unwrap();
+        assert_eq!(
+            opts.get_policy_by_key("policy_string_to_num_failure"),
+            Some("trap")
+        );
+        // The other policy keeps the dialect's selection.
+        assert_eq!(
+            opts.get_policy_by_key("policy_string_to_num_non_numeric"),
+            Some("ignore-trailing")
+        );
+    }
+
+    #[test]
+    fn parse_options_when_policy_value_unknown_then_error_names_alternatives() {
+        let val = serde_json::json!({
+            "dialect": "iec61131-3-ed2",
+            "policy_string_to_num_failure": "wrap",
+        });
+        let errors = parse_options(&val).unwrap_err();
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].primary.message.contains("trap, zero"));
+    }
+
+    #[test]
+    fn parse_options_when_policy_value_not_a_string_then_error() {
+        let val = serde_json::json!({
+            "dialect": "iec61131-3-ed2",
+            "policy_string_to_num_failure": true,
+        });
+        assert!(parse_options(&val).is_err());
     }
 
     // -- serialize_diagnostic tests --

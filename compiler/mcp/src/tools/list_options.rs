@@ -46,7 +46,9 @@ pub fn build_response() -> ListOptionsResponse {
         })
         .collect();
 
-    let mut flags = Vec::with_capacity(CompilerOptions::FEATURE_DESCRIPTORS.len());
+    let mut flags = Vec::with_capacity(
+        CompilerOptions::FEATURE_DESCRIPTORS.len() + CompilerOptions::POLICY_DESCRIPTORS.len(),
+    );
 
     // All dialect-extension flags from the macro-generated descriptors.
     for fd in CompilerOptions::FEATURE_DESCRIPTORS {
@@ -56,6 +58,18 @@ pub fn build_response() -> ListOptionsResponse {
             default: serde_json::Value::Bool(false),
             description: fd.description.to_string(),
             allowed_values: None,
+        });
+    }
+
+    // Behavior policies (ADR-0049): an enum option whose value is one of the
+    // policy's alternatives.
+    for pd in CompilerOptions::POLICY_DESCRIPTORS {
+        flags.push(FlagInfo {
+            id: pd.option_key.to_string(),
+            flag_type: "enum".into(),
+            default: serde_json::Value::String(pd.default.to_string()),
+            description: pd.description.to_string(),
+            allowed_values: Some(pd.alternatives.iter().map(|a| a.to_string()).collect()),
         });
     }
 
@@ -83,28 +97,43 @@ mod tests {
     }
 
     #[test]
-    fn build_response_when_called_then_contains_every_feature_descriptor() {
-        // Derived from the source of truth (`FEATURE_DESCRIPTORS`) rather than a
-        // hard-coded count, so adding a feature flag does not force an edit here.
-        // That each flag gates real compiler behavior — not just sets a struct
-        // field — is proven behaviorally in the `feature_flag_conformance` suite.
+    fn build_response_when_called_then_contains_every_feature_and_policy_descriptor() {
+        // Derived from the sources of truth (`FEATURE_DESCRIPTORS` and
+        // `POLICY_DESCRIPTORS`) rather than a hard-coded count, so adding a
+        // flag or a policy does not force an edit here. That each flag gates
+        // real compiler behavior — not just sets a struct field — is proven
+        // behaviorally in the `feature_flag_conformance` suite.
         let resp = build_response();
-        assert_eq!(resp.flags.len(), CompilerOptions::FEATURE_DESCRIPTORS.len());
+        assert_eq!(
+            resp.flags.len(),
+            CompilerOptions::FEATURE_DESCRIPTORS.len() + CompilerOptions::POLICY_DESCRIPTORS.len()
+        );
     }
 
     #[test]
-    fn build_response_when_called_then_all_flags_are_bool_type() {
+    fn build_response_when_called_then_feature_flags_are_bool_with_false_default() {
         let resp = build_response();
-        assert!(resp.flags.iter().all(|f| f.flag_type == "bool"));
+        for fd in CompilerOptions::FEATURE_DESCRIPTORS {
+            let flag = resp.flags.iter().find(|f| f.id == fd.option_key).unwrap();
+            assert_eq!(flag.flag_type, "bool");
+            assert_eq!(flag.default, serde_json::Value::Bool(false));
+            assert!(flag.allowed_values.is_none());
+        }
     }
 
     #[test]
-    fn build_response_when_called_then_all_defaults_are_false() {
+    fn build_response_when_called_then_policies_are_enum_with_alternatives() {
         let resp = build_response();
-        assert!(resp
-            .flags
-            .iter()
-            .all(|f| f.default == serde_json::Value::Bool(false)));
+        for pd in CompilerOptions::POLICY_DESCRIPTORS {
+            let flag = resp.flags.iter().find(|f| f.id == pd.option_key).unwrap();
+            assert_eq!(flag.flag_type, "enum");
+            assert_eq!(
+                flag.default,
+                serde_json::Value::String(pd.default.to_string())
+            );
+            let allowed = flag.allowed_values.as_ref().unwrap();
+            assert_eq!(allowed, &pd.alternatives.to_vec());
+        }
     }
 
     #[test]
