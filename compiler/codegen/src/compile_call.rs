@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use ironplc_analyzer::{operator_function_form, FormOf};
 use ironplc_container::opcode;
 use ironplc_dsl::core::{Id, Located};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     Expr, ExprKind, Function, ParamAssignmentKind, SymbolicVariableKind, Variable,
 };
@@ -1222,24 +1222,43 @@ pub(crate) fn compile_string_conversion(
             let pool_index = ctx.add_i32_constant(data_offset as i32);
             emitter.emit_load_const_i32(pool_index);
 
+            use opcode::builtin::str_to_num::{func_id as block_func_id, Target};
             // An integer target is a policy-bearing conversion (ADR-0049):
             // the func_id names the target and both selected policies, the
             // VM range-checks against the target's own bounds, and no
             // truncation follows. `STRING_TO_SINT('300')` fails; it never
-            // wraps to 44.
-            if let Some(int_target) = str_to_num_target(target) {
-                let func_id = opcode::builtin::str_to_num::func_id(
-                    int_target,
+            // wraps to 44. A bit-string type has the signedness and value
+            // width of the unsigned integer it aliases, so it lands on that
+            // integer's target.
+            let block = |target: Target| {
+                block_func_id(
+                    target,
                     ctx.string_to_num.non_numeric,
                     ctx.string_to_num.failure,
-                );
-                emitter.emit_builtin(func_id);
-                return Ok(());
-            }
-            let func_id = match target.op_width {
-                OpWidth::F32 => opcode::builtin::CONV_STR_TO_F32,
-                _ => {
+                )
+            };
+            let func_id = match (target.op_width, target.signedness, target.storage_bits) {
+                (OpWidth::W32, Signedness::Unsigned, 32) => block(Target::U32),
+                (OpWidth::W32, Signedness::Signed, 32) => block(Target::I32),
+                (OpWidth::W32, Signedness::Unsigned, 8) => block(Target::U8),
+                (OpWidth::W32, Signedness::Signed, 8) => block(Target::I8),
+                (OpWidth::W32, Signedness::Unsigned, 16) => block(Target::U16),
+                (OpWidth::W32, Signedness::Signed, 16) => block(Target::I16),
+                (OpWidth::F32, _, _) => opcode::builtin::CONV_STR_TO_F32,
+                // The 64-bit integers and LREAL await their reserved
+                // positions on the block.
+                (OpWidth::W64, _, _) | (OpWidth::F64, _, _) => {
                     return Err(Diagnostic::todo_with_span(func.name.span()));
+                }
+                // A 32-bit slot holds only the value widths above. The
+                // analyzer offers no other STRING_TO_* with a 32-bit
+                // target (there is no STRING_TO_BOOL), so this is a
+                // compiler bug, not a program error.
+                (OpWidth::W32, _, _) => {
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        func.name.span(),
+                        "STRING_TO_* target has no conversion",
+                    )));
                 }
             };
             emitter.emit_builtin(func_id);
@@ -1248,48 +1267,9 @@ pub(crate) fn compile_string_conversion(
     }
 }
 
-/// The `STRING_TO_<numeric>` block target for an integer type, or `None`
-/// for a type the block does not encode yet (the 64-bit integers and the
-/// reals). A bit-string type has the signedness and value width of the
-/// unsigned integer it aliases, so it maps to that integer's target.
-fn str_to_num_target(target: VarTypeInfo) -> Option<opcode::builtin::str_to_num::Target> {
-    use opcode::builtin::str_to_num::Target;
-    match (target.op_width, target.signedness, target.storage_bits) {
-        (OpWidth::W32, Signedness::Unsigned, 32) => Some(Target::U32),
-        (OpWidth::W32, Signedness::Signed, 32) => Some(Target::I32),
-        (OpWidth::W32, Signedness::Unsigned, 8) => Some(Target::U8),
-        (OpWidth::W32, Signedness::Signed, 8) => Some(Target::I8),
-        (OpWidth::W32, Signedness::Unsigned, 16) => Some(Target::U16),
-        (OpWidth::W32, Signedness::Signed, 16) => Some(Target::I16),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[rstest::rstest]
-    #[case::udint("UDINT", Some(opcode::builtin::str_to_num::Target::U32))]
-    #[case::dword("DWORD", Some(opcode::builtin::str_to_num::Target::U32))]
-    #[case::dint("DINT", Some(opcode::builtin::str_to_num::Target::I32))]
-    #[case::usint("USINT", Some(opcode::builtin::str_to_num::Target::U8))]
-    #[case::byte("BYTE", Some(opcode::builtin::str_to_num::Target::U8))]
-    #[case::sint("SINT", Some(opcode::builtin::str_to_num::Target::I8))]
-    #[case::uint("UINT", Some(opcode::builtin::str_to_num::Target::U16))]
-    #[case::word("WORD", Some(opcode::builtin::str_to_num::Target::U16))]
-    #[case::int("INT", Some(opcode::builtin::str_to_num::Target::I16))]
-    #[case::lint("LINT", None)]
-    #[case::ulint("ULINT", None)]
-    #[case::real("REAL", None)]
-    #[case::bool("BOOL", None)]
-    fn str_to_num_target_when_type_then_block_target_or_none(
-        #[case] type_name: &str,
-        #[case] expected: Option<opcode::builtin::str_to_num::Target>,
-    ) {
-        let info = resolve_type_name(&Id::from(type_name)).unwrap();
-        assert_eq!(str_to_num_target(info), expected);
-    }
 
     #[test]
     fn lookup_builtin_when_all_width_numeric_then_selects_by_width() {

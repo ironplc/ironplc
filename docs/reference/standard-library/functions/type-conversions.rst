@@ -408,47 +408,30 @@ selects it at compile time with two behavior policies; see
 
 .. list-table::
    :header-rows: 1
-   :widths: 40 30 30
+   :widths: 40 60
 
    * - Function
      - Description
-     - Support
    * - ``STRING_TO_SINT``
      - String to 8-bit signed
-     - Supported, honors the policies
    * - ``STRING_TO_INT``
      - String to 16-bit signed
-     - Supported, honors the policies
    * - ``STRING_TO_DINT``
      - String to 32-bit signed
-     - Supported, honors the policies
-   * - ``STRING_TO_LINT``
-     - String to 64-bit signed
-     - Not yet supported
    * - ``STRING_TO_USINT``
      - String to 8-bit unsigned
-     - Supported, honors the policies
    * - ``STRING_TO_UINT``
      - String to 16-bit unsigned
-     - Supported, honors the policies
    * - ``STRING_TO_UDINT``
      - String to 32-bit unsigned
-     - Supported, honors the policies
    * - ``STRING_TO_BYTE``
      - String to byte
-     - Supported, honors the policies
    * - ``STRING_TO_WORD``
      - String to word
-     - Supported, honors the policies
    * - ``STRING_TO_DWORD``
      - String to double word
-     - Supported, honors the policies
    * - ``STRING_TO_REAL``
      - String to single-precision
-     - Supported
-   * - ``STRING_TO_LREAL``
-     - String to double-precision
-     - Not yet supported
 
 String to Numeric Policies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -619,9 +602,8 @@ as ``STRING_TO_USINT``, ``STRING_TO_UINT`` and ``STRING_TO_UDINT`` do, and
 compile to the same instruction, so a V4006 from one of them names the
 unsigned integer type of the same width.
 
-Every integer ``STRING_TO_*`` function up to 32 bits honors the policies.
-``STRING_TO_REAL`` does not yet: it returns zero for a string that is not a
-``REAL`` literal, whatever the policy selects.
+``STRING_TO_REAL`` does not yet honor the policies: it returns zero for a
+string that is not a ``REAL`` literal, whatever the policy selects.
 
 .. playground::
 
