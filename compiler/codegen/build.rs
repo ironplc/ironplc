@@ -9,5 +9,7 @@ fn main() {
         "keyword-function-forms.md",
         // Partial-access syntax (`REQ-PAB-codegen-*`): execution semantics.
         "partial-access-bit-syntax.md",
+        // Behavior policies (`REQ-BP-codegen-*`): func_id selection.
+        "behavior-policies.md",
     ]);
 }

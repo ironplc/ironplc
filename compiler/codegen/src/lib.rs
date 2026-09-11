@@ -51,7 +51,7 @@ mod stack_balance;
 mod string_width;
 mod type_info;
 
-pub use compile::{compile, CodegenOptions};
+pub use compile::{compile, CodegenOptions, StringToNumPolicies};
 pub use source_lookup::{EmptyLookup, SourceLookup};
 
 // Spec conformance testing infrastructure (test-only)
@@ -63,5 +63,7 @@ mod spec_requirements {
 mod spec_conformance;
 #[cfg(test)]
 mod spec_conformance_adr;
+#[cfg(test)]
+mod spec_conformance_behavior_policies;
 #[cfg(test)]
 mod spec_conformance_keyword_function_forms;
