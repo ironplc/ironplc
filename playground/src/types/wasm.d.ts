@@ -61,4 +61,10 @@ declare module "*/pkg/ironplc_playground.js" {
 
   /** JSON-encoded array of selectable dialects ({ value, label, is_default }). */
   export function dialects(): string;
+
+  /**
+   * JSON-encoded object mapping a problem-code prefix ("P", "V", ...) to the
+   * reference-site section documenting that family ("compiler", "runtime", ...).
+   */
+  export function doc_sections(): string;
 }

@@ -17,7 +17,7 @@ use ironplc_container::debug_format::VariableRenderer;
 use ironplc_container::Container;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
-use ironplc_dsl::diagnostic::{Diagnostic, LineColumn};
+use ironplc_dsl::diagnostic::{Diagnostic, LineColumn, DOCS_SECTIONS};
 use ironplc_parser::options::{CompilerOptions, Dialect, FeatureDescriptor};
 use ironplc_project::MemoryBackedProject;
 use ironplc_sources::{parse_source, FileType};
@@ -123,6 +123,23 @@ pub fn dialects() -> String {
         })
         .collect();
     serde_json::to_string(&options).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Return the problem-code prefix → documentation-section map as a JSON object,
+/// so the front end links a diagnostic's code to the right part of the reference
+/// site without knowing the mapping itself.
+///
+/// The playground used to test code prefixes with its own regex, which had no
+/// `E####` arm and so disagreed with the compiler. Serving
+/// [`DOCS_SECTIONS`] across the boundary — the same table `docs_section` reads —
+/// leaves one authority for the mapping instead of two that can drift.
+#[wasm_bindgen]
+pub fn doc_sections() -> String {
+    let map: std::collections::BTreeMap<String, &str> = DOCS_SECTIONS
+        .iter()
+        .map(|(prefix, section)| (prefix.to_string(), *section))
+        .collect();
+    serde_json::to_string(&map).unwrap_or_else(|_| "{}".to_string())
 }
 
 /// Result of a compilation attempt.
@@ -1753,6 +1770,21 @@ END_PROGRAM
         let defaults: Vec<&DialectOption> = options.iter().filter(|o| o.is_default).collect();
         assert_eq!(defaults.len(), 1);
         assert_eq!(defaults[0].value, Dialect::default().cli_name());
+    }
+
+    #[test]
+    fn doc_sections_when_called_then_agrees_with_docs_section_for_every_family() {
+        use ironplc_dsl::diagnostic::docs_section;
+
+        let map: std::collections::BTreeMap<String, String> =
+            serde_json::from_str(&doc_sections()).unwrap();
+        assert_eq!(map.len(), DOCS_SECTIONS.len());
+
+        // The served map must resolve a code exactly as the compiler's own
+        // `docs_section` does; the front end builds documentation links from it.
+        for (prefix, section) in &map {
+            assert_eq!(docs_section(&format!("{prefix}0001")), section);
+        }
     }
 
     #[test]

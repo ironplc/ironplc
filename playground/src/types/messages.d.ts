@@ -81,6 +81,11 @@ export interface ReadyMessage {
   type: "ready";
   version: string;
   dialects: DialectOption[];
+  // Problem-code prefix ("P", "V", ...) to the reference-site section that
+  // documents that family, from the WASM `doc_sections()` export. The front end
+  // builds "learn more" links from this rather than testing code prefixes
+  // itself, so the mapping lives only in the compiler.
+  docSections: Record<string, string>;
 }
 
 export interface ErrorMessage {

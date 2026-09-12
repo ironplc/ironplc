@@ -11,6 +11,7 @@ import init, {
   reset_session,
   version,
   dialects,
+  doc_sections,
 } from "./pkg/ironplc_playground.js";
 import type {
   DialectOption,
@@ -31,7 +32,13 @@ init()
     init_panic_hook();
     ready = true;
     const dialectOptions = JSON.parse(dialects()) as DialectOption[];
-    post({ type: "ready", version: version(), dialects: dialectOptions });
+    const docSections = JSON.parse(doc_sections()) as Record<string, string>;
+    post({
+      type: "ready",
+      version: version(),
+      dialects: dialectOptions,
+      docSections,
+    });
   })
   .catch((err: unknown) => {
     post({ type: "error", error: `WASM init failed: ${err}` });
