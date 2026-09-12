@@ -1,7 +1,8 @@
 # ADR-0041: Staged Method/Property Dispatch and Interface Values
 
-status: accepted
+status: proposed
 date: 2026-07-27
+amended: 2026-09-12 (Implementation Status added; Phase 1's property bullet is unbuilt)
 
 ## Context and Problem Statement
 
@@ -124,6 +125,45 @@ below.
   method/property use and `THIS^`/`SUPER^`, without any function block
   memory-layout change and without introducing any new runtime
   indirection at all.
+
+### Implementation Status (as of 2026-09-12)
+
+This ADR is `proposed` rather than `accepted` because three of Phase 1's four
+bullets shipped and the fourth has no implementation at all. Phase 2 is
+explicitly not decided here, so it is not what holds the status back -- the
+property half of Phase 1 is. Tracked by
+[issue #1692](https://github.com/ironplc/ironplc/issues/1692).
+
+What landed:
+
+* **Static method resolution over the `EXTENDS` chain.** `analyzer/src/callee_resolution.rs`
+  resolves a call target from the instance's declared type, walking the type's
+  own methods before its bases, and `rule_method_call_declared.rs` rejects a
+  call to a method no type in the chain declares. `codegen/src/compile_method.rs`
+  emits the body; `compile_fb_call` resolves the target through `ctx.fb_instances`
+  at compile time, with no per-instance runtime storage.
+* **`THIS^` and `SUPER^`**, as keywords (`parser/src/token.rs`) and through
+  method codegen, with no runtime polymorphism -- as decided.
+* **No memory-layout change and no new runtime indirection**, which is the
+  property Phase 1 was chosen for. `iec_type_tag` is debug metadata, not a
+  runtime type tag; nothing in the shipped path dispatches dynamically.
+
+What did not:
+
+* **`PROPERTY` is absent end to end.** The bullet "`PROPERTY` reads/writes
+  rewrite to `GET`/`SET` accessor calls at compile time" has no implementation,
+  and neither does the `PropertyDeclaration` half of the resolution bullet above
+  it. `PROPERTY` is not a keyword at any dialect setting -- it lexes as an
+  identifier and a declaration using it is rejected with `P0002` even under
+  `--dialect twincat`. There is no `PropertyDeclaration` node in `dsl`, no
+  `<Property>` handler in `sources/src/xml` beside the `<Method>` one, no
+  `--allow-*` flag, and no codegen rewrite step.
+* The Verification section below is therefore evidence for the method and
+  dispatch-cost claims only; it never covered properties.
+
+The decision stands, and the part of it that shipped shipped as decided. The
+pull request that lands the property rewrite is the one that flips this ADR to
+`accepted`.
 
 ### Phase 2 (deferred -- not decided by this ADR) -- dynamic dispatch through references, pointers, and interfaces
 

@@ -422,6 +422,78 @@ declare_builtins! {
 
     /// As [`CONV_STR_TO_U32_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
     CONV_STR_TO_U32_IGNORE_SURROUNDING_ZERO = 0x0485, args 1;
+
+    /// Parse a STRING to a signed 32-bit integer (`STRING_TO_DINT`): the six
+    /// rows of target 1, laid out as the `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_I32_REJECT_TRAP = 0x0488, args 1;
+    /// As [`CONV_STR_TO_I32_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I32_REJECT_ZERO = 0x0489, args 1;
+    /// As [`CONV_STR_TO_I32_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_I32_IGNORE_TRAILING_TRAP = 0x048A, args 1;
+    /// As [`CONV_STR_TO_I32_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I32_IGNORE_TRAILING_ZERO = 0x048B, args 1;
+    /// As [`CONV_STR_TO_I32_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_I32_IGNORE_SURROUNDING_TRAP = 0x048C, args 1;
+    /// As [`CONV_STR_TO_I32_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I32_IGNORE_SURROUNDING_ZERO = 0x048D, args 1;
+
+    /// Parse a STRING to an unsigned 8-bit integer (`STRING_TO_USINT`,
+    /// `STRING_TO_BYTE`): the six rows of target 2, laid out as the
+    /// `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_U8_REJECT_TRAP = 0x0490, args 1;
+    /// As [`CONV_STR_TO_U8_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U8_REJECT_ZERO = 0x0491, args 1;
+    /// As [`CONV_STR_TO_U8_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_U8_IGNORE_TRAILING_TRAP = 0x0492, args 1;
+    /// As [`CONV_STR_TO_U8_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U8_IGNORE_TRAILING_ZERO = 0x0493, args 1;
+    /// As [`CONV_STR_TO_U8_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_U8_IGNORE_SURROUNDING_TRAP = 0x0494, args 1;
+    /// As [`CONV_STR_TO_U8_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U8_IGNORE_SURROUNDING_ZERO = 0x0495, args 1;
+
+    /// Parse a STRING to a signed 8-bit integer (`STRING_TO_SINT`): the six rows
+    /// of target 3, laid out as the `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_I8_REJECT_TRAP = 0x0498, args 1;
+    /// As [`CONV_STR_TO_I8_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I8_REJECT_ZERO = 0x0499, args 1;
+    /// As [`CONV_STR_TO_I8_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_I8_IGNORE_TRAILING_TRAP = 0x049A, args 1;
+    /// As [`CONV_STR_TO_I8_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I8_IGNORE_TRAILING_ZERO = 0x049B, args 1;
+    /// As [`CONV_STR_TO_I8_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_I8_IGNORE_SURROUNDING_TRAP = 0x049C, args 1;
+    /// As [`CONV_STR_TO_I8_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I8_IGNORE_SURROUNDING_ZERO = 0x049D, args 1;
+
+    /// Parse a STRING to an unsigned 16-bit integer (`STRING_TO_UINT`,
+    /// `STRING_TO_WORD`): the six rows of target 4, laid out as the
+    /// `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_U16_REJECT_TRAP = 0x04A0, args 1;
+    /// As [`CONV_STR_TO_U16_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U16_REJECT_ZERO = 0x04A1, args 1;
+    /// As [`CONV_STR_TO_U16_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_U16_IGNORE_TRAILING_TRAP = 0x04A2, args 1;
+    /// As [`CONV_STR_TO_U16_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U16_IGNORE_TRAILING_ZERO = 0x04A3, args 1;
+    /// As [`CONV_STR_TO_U16_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_U16_IGNORE_SURROUNDING_TRAP = 0x04A4, args 1;
+    /// As [`CONV_STR_TO_U16_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U16_IGNORE_SURROUNDING_ZERO = 0x04A5, args 1;
+
+    /// Parse a STRING to a signed 16-bit integer (`STRING_TO_INT`): the six rows
+    /// of target 5, laid out as the `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_I16_REJECT_TRAP = 0x04A8, args 1;
+    /// As [`CONV_STR_TO_I16_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I16_REJECT_ZERO = 0x04A9, args 1;
+    /// As [`CONV_STR_TO_I16_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_I16_IGNORE_TRAILING_TRAP = 0x04AA, args 1;
+    /// As [`CONV_STR_TO_I16_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I16_IGNORE_TRAILING_ZERO = 0x04AB, args 1;
+    /// As [`CONV_STR_TO_I16_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_I16_IGNORE_SURROUNDING_TRAP = 0x04AC, args 1;
+    /// As [`CONV_STR_TO_I16_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I16_IGNORE_SURROUNDING_ZERO = 0x04AD, args 1;
 }
 
 /// The `STRING_TO_<numeric>` func_id block (ADR-0049).
@@ -452,19 +524,42 @@ pub mod str_to_num {
 
     /// The numeric type a `STRING_TO_<numeric>` conversion produces.
     ///
-    /// The discriminant is the target's position in the block. Only the
-    /// targets listed here are encoded; the other `STRING_TO_*` functions
-    /// still use the single-encoding builtins above.
+    /// The discriminant is the target's position in the block. Even
+    /// positions are unsigned and the odd position after each is the signed
+    /// type of the same width, in width order 32, 8, 16, 64 (32 first
+    /// because `U32` landed at 0); the real targets follow. A bit-string
+    /// type (`BYTE`, `WORD`, `DWORD`) converts as the unsigned integer of
+    /// its width and has no target of its own. Positions 6 through 9 are
+    /// reserved for the 64-bit and real targets; only the targets listed
+    /// here are encoded, and the other `STRING_TO_*` functions still use the
+    /// single-encoding builtins above.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     #[repr(u16)]
     pub enum Target {
-        /// `STRING_TO_UDINT` (an unsigned 32-bit integer).
+        /// `STRING_TO_UDINT` and `STRING_TO_DWORD` (an unsigned 32-bit integer).
         U32 = 0,
+        /// `STRING_TO_DINT` (a signed 32-bit integer).
+        I32 = 1,
+        /// `STRING_TO_USINT` and `STRING_TO_BYTE` (an unsigned 8-bit integer).
+        U8 = 2,
+        /// `STRING_TO_SINT` (a signed 8-bit integer).
+        I8 = 3,
+        /// `STRING_TO_UINT` and `STRING_TO_WORD` (an unsigned 16-bit integer).
+        U16 = 4,
+        /// `STRING_TO_INT` (a signed 16-bit integer).
+        I16 = 5,
     }
 
     impl Target {
         /// Every encoded target, in block order.
-        pub const ALL: &'static [Target] = &[Target::U32];
+        pub const ALL: &'static [Target] = &[
+            Target::U32,
+            Target::I32,
+            Target::U8,
+            Target::I8,
+            Target::U16,
+            Target::I16,
+        ];
 
         fn from_index(index: u16) -> Option<Target> {
             Self::ALL.get(index as usize).copied()
@@ -598,6 +693,7 @@ pub fn arg_count_opt(func_id: u16) -> Option<u16> {
 mod tests {
     use super::*;
     use crate::policy::{BehaviorPolicy, StringToNumFailure, StringToNumNonNumeric};
+    use std::format;
 
     #[test]
     fn str_to_num_func_id_when_each_u32_combination_then_matches_declared_row() {
@@ -630,6 +726,55 @@ mod tests {
             func_id(Target::U32, IgnoreSurrounding, Zero),
             CONV_STR_TO_U32_IGNORE_SURROUNDING_ZERO
         );
+    }
+
+    #[test]
+    fn str_to_num_func_id_when_each_target_then_first_row_is_at_its_stride() {
+        // Each target's six rows start at BASE + position * 8; the rows within
+        // a stride follow the U32 layout the test above pins.
+        use str_to_num::{func_id, Target};
+        use StringToNumFailure::Trap;
+        use StringToNumNonNumeric::Reject;
+        assert_eq!(
+            func_id(Target::I32, Reject, Trap),
+            CONV_STR_TO_I32_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::U8, Reject, Trap),
+            CONV_STR_TO_U8_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::I8, Reject, Trap),
+            CONV_STR_TO_I8_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::U16, Reject, Trap),
+            CONV_STR_TO_U16_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::I16, Reject, Trap),
+            CONV_STR_TO_I16_REJECT_TRAP
+        );
+    }
+
+    #[test]
+    fn str_to_num_name_when_each_target_row_then_names_target_and_both_policies() {
+        // The disassembler shows the alternative: every row's name carries
+        // the target, the non-numeric alternative and the failure alternative.
+        for target in str_to_num::Target::ALL {
+            for non_numeric in StringToNumNonNumeric::ALL {
+                for failure in StringToNumFailure::ALL {
+                    let id = str_to_num::func_id(*target, *non_numeric, *failure);
+                    let row = name(id).unwrap();
+                    let expected = format!(
+                        "CONV_STR_TO_{target:?}_{}_{}",
+                        non_numeric.cli_name().replace('-', "_").to_uppercase(),
+                        failure.cli_name().to_uppercase()
+                    );
+                    assert_eq!(row, expected);
+                }
+            }
+        }
     }
 
     #[test]
@@ -668,8 +813,9 @@ mod tests {
         // The two spare slots of the U32 stride.
         assert_eq!(str_to_num::decode(0x0486), None);
         assert_eq!(str_to_num::decode(0x0487), None);
-        // An unassigned target.
-        assert_eq!(str_to_num::decode(0x0488), None);
+        // A reserved, not yet assigned target (position 6, the 64-bit
+        // unsigned target).
+        assert_eq!(str_to_num::decode(0x04B0), None);
     }
 
     #[test]
