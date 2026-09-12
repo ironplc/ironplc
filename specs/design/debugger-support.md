@@ -1332,7 +1332,7 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 | `container` | `header.rs` | Write `debug_section_offset` and `debug_section_size` when debug section present; set flags bit 1 |
 | `codegen` | `emit.rs` | `set_current_span` per-statement; deduplicate consecutive identical spans |
 | `codegen` | `compile.rs` | Build `LineOffsetTable` from source; collect `VarNameEntry` + `FuncNameEntry` during compilation; pass `DebugSection` to the container builder |
-| `codegen` | `optimize.rs` | `optimize_with_source_map` — remap line-map offsets through the optimizer's old→new offset table; "snap forward" entries for removed instructions; **invariant test** that every line-map offset lands on an instruction boundary in the optimized stream |
+| `codegen` | `optimize/` | `remap_line_map` — remap line-map offsets through the optimizer's old→new offset table; "snap forward" entries for removed instructions; **invariant test** that every line-map offset lands on an instruction boundary in the optimized stream |
 | `plc2x` | `disassemble.rs` | Render line maps and variable names alongside disassembly |
 
 **Tests** (in addition to the optimizer property tests required by the line-map contract below):
@@ -1487,13 +1487,11 @@ These enhancements build on the v1 debugger. Several were dropped from v1 (see �
 
 ## Optimizer Contract
 
-The bytecode optimizer (`compiler/codegen/src/optimize.rs`) removes instructions and shifts jump targets. Source-level debugging requires a stable contract between the optimizer and debug info:
+The bytecode optimizer (`compiler/codegen/src/optimize/`) removes instructions and shifts jump targets. Source-level debugging requires a stable contract between the optimizer and debug info. The offset map the optimizer returns, and the snap-forward and instruction-boundary rules it guarantees, are specified in [Bytecode Peephole Optimizer §2](bytecode-peephole-optimizer.md); what the debugger additionally requires of them is:
 
-1. **Line map remapping is mandatory.** Any pass that changes the bytecode must rewrite the line map through its old→new offset table. `optimize_with_source_map` is the only legal way to invoke optimization when debug info is enabled.
-2. **Snap-forward for removed instructions.** When the offset that an entry references is removed, the entry's offset advances to the *next surviving instruction*; consecutive duplicate entries collapse.
-3. **Instruction-boundary invariant.** Every line-map offset in the optimized stream must land on the first byte of an instruction. A property test in `compiler/codegen/tests/` enforces this on a corpus of programs.
-4. **Breakpoint resolution is post-optimization.** The DAP server resolves source lines against the line map *as emitted* (already remapped). It then reports the resolved line back to the client in the `Breakpoint` response so the editor highlights the actual stop line. Breakpoints requested on lines whose statements were entirely optimized away resolve to the next surviving line in the same function; if no such line exists, the breakpoint is reported `verified: false` with `message: "line eliminated by optimizer"`.
-5. **`--debug` build flag (codegen).** When set, the optimizer is configured to *preserve* user-visible source positions even when otherwise legal to remove them (e.g., it does not collapse a `LOAD_CONST_I32 0; STORE_VAR` if that sequence is the only line-map anchor for a statement). This trades some optimization quality for predictable stepping. Release builds keep the existing aggressive pipeline and accept that some statements may have no breakpoint location.
+1. **Line map remapping is mandatory.** Any pass that changes the bytecode must rewrite the line map through its old→new offset table. `finalize_function` does this by calling `remap_line_map`, and is the only path that turns an emitter into stored bytecode.
+2. **Breakpoint resolution is post-optimization.** The DAP server resolves source lines against the line map *as emitted* (already remapped). It then reports the resolved line back to the client in the `Breakpoint` response so the editor highlights the actual stop line. Breakpoints requested on lines whose statements were entirely optimized away resolve to the next surviving line in the same function; if no such line exists, the breakpoint is reported `verified: false` with `message: "line eliminated by optimizer"`.
+3. **`--debug` build flag (codegen).** When set, the optimizer is configured to *preserve* user-visible source positions even when otherwise legal to remove them (e.g., it does not collapse a `LOAD_CONST_I32 0; STORE_VAR` if that sequence is the only line-map anchor for a statement). This trades some optimization quality for predictable stepping. Release builds keep the existing aggressive pipeline and accept that some statements may have no breakpoint location.
 
 ## Container Format Compatibility
 
