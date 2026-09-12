@@ -3,9 +3,9 @@
 //! than emitting anything.
 //!
 //! The statements under test live in the function block *body*, not in a
-//! `METHOD` body: method bodies are not compiled at all yet (method
-//! codegen is its own unstarted slice), so a `THIS^` inside one never
-//! reaches these code paths.
+//! `METHOD` body. A method body is compiled (ADR-0041 Phase 1), but
+//! analysis rejects `THIS^`/`SUPER^` wherever they appear, so one inside
+//! a method body never reaches these code paths either.
 
 use crate::common::try_parse_and_compile;
 use ironplc_parser::options::CompilerOptions;

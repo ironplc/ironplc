@@ -3,10 +3,16 @@ THIS and SUPER
 ==============
 
 ``THIS`` and ``SUPER`` name the function block instance a method is running
-on. ``THIS^`` is that instance itself; ``SUPER^`` is the same instance seen
-as its :doc:`base type <extends>`, which is how a derived type reaches an
-inherited member it has hidden with one of its own. Both are pointers, so
-both are written with the dereference operator ``^``.
+on. ``THIS^`` is that instance itself, which is how a method reaches a
+variable of the function block that one of its own parameters or locals
+hides. ``SUPER^`` is the same instance seen as its
+:doc:`base type <extends>`, which is how a derived type calls the method it
+overrode. Both are pointers, so both are written with the dereference
+operator ``^``.
+
+Neither is a way to reach a second variable of an inherited name: a derived
+type cannot redeclare a variable it inherits
+(:doc:`P4044 </reference/compiler/problems/P4044>`).
 
 .. |keyword| replace:: ``THIS`` and ``SUPER``
 .. |flag| replace:: ``--allow-fb-inheritance``
@@ -59,9 +65,9 @@ Example
        END_METHOD
    END_FUNCTION_BLOCK
 
-``FB_LoggingMotor`` declares its own ``Stop``, which hides the one it
-inherits. ``SUPER^.Stop()`` calls the hidden base implementation; writing
-``Stop()`` there would call itself.
+``FB_LoggingMotor`` declares its own ``Stop``, which overrides the one it
+inherits. ``SUPER^.Stop()`` calls the overridden base implementation;
+writing ``Stop()`` there would call itself.
 
 ``THIS^`` is most useful when a local name hides a member of the instance —
 for example a method parameter named after a variable of the function block.

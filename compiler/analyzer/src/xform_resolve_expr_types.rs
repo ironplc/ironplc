@@ -552,8 +552,12 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
             }
             ScopeNode::FunctionBlock(node) => {
                 // Inherited fields first so the function block's own
-                // fields, inserted next into the same scope, shadow a
-                // same-named ancestor field.
+                // fields, inserted next into the same scope, win for a
+                // name declared in both. A program that reaches code
+                // generation never has such a name --
+                // `rule_extends_field_duplicated` (`P4044`) rejects it --
+                // but that rule runs after this transform, so this pass
+                // still needs a defined answer.
                 if let Some(fields) = self.inherited_fields.get(&node.name).cloned() {
                     fields.iter().for_each(|v| self.insert(v));
                 }

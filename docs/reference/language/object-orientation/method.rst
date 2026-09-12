@@ -26,13 +26,16 @@ introduced in IEC 61131-3 Edition 3.
    * - **IEC 61131-3**
      - Edition 3 (object-oriented programming)
    * - **Support**
-     - Parsed, analyzed, compiled and executed: a declaration is checked,
-       and a call is resolved against the declared type of the instance,
-       walking the ``EXTENDS`` chain to find the method. A method body
-       sets its return value by assigning the method's own name; that
-       value cannot be consumed at the call site yet (see
-       :ref:`method-limitations`). Enable with ``--allow-fb-inheritance``;
-       see :doc:`/explanation/enabling-dialects-and-features`.
+     - Parsed, analyzed, compiled and executed for a method declared on
+       the instance's own type: a declaration is checked, and a call is
+       resolved against the declared type of the instance, walking the
+       ``EXTENDS`` chain to find the method. A call that the chain
+       resolves to an inherited method is accepted by analysis but not
+       yet compiled, and a method body sets its return value by assigning
+       the method's own name without that value being consumable at the
+       call site (see :ref:`method-limitations`). Enable with
+       ``--allow-fb-inheritance``; see
+       :doc:`/explanation/enabling-dialects-and-features`.
 
 Syntax
 ------
@@ -113,6 +116,14 @@ expression, so ``x := instance.Method()`` is a syntax error and the
 return value is discarded at the call site. Until that is supported, a
 method with a return type is useful only for what its body does — write
 the result to a field of the function block and read that field.
+
+A call to a method the instance's type inherits through
+:doc:`EXTENDS <extends>` passes analysis but reports
+:doc:`P9999 </reference/compiler/problems/P9999>` when compiled. Code
+generation does not yet give a derived type storage for what it inherits,
+so there is nothing for the inherited body to run against. Declare the
+method on the type being called, or call it on an instance of the type
+that declares it, until inherited storage is compiled.
 
 See Also
 --------

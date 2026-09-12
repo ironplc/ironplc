@@ -7,10 +7,17 @@ P4044
 This error occurs when a derived function block (one declared with
 ``EXTENDS``) redeclares a field that is already declared on its base
 function block, or any ancestor further up the ``EXTENDS`` chain. The
-redeclaration is rejected even when the new field has a different type:
-a derived function block inherits every field of its base and cannot hide
-one behind a declaration of its own. CODESYS and TwinCAT reject the same
-code as a duplicate definition.
+redeclaration is rejected even when the new field has a different type.
+
+Inheritance in IEC 61131-3 Edition 3 gives the derived function block one
+set of fields — every field it inherits, plus the ones it declares — and
+provides no way to hold a second field of an inherited name. ``SUPER^``
+selects the base type's implementation of an overridden method; it does
+not select a second field. CODESYS and TwinCAT reject the same code as a
+duplicate definition.
+
+Methods are the exception: a derived function block may declare a method
+with the name of one it inherits, which overrides it.
 
 Example
 -------
@@ -50,3 +57,8 @@ remove it, if the inherited field already serves the purpose):
 
 This applies transitively: a field declared on any ancestor in the
 ``EXTENDS`` chain (not just the immediate base) cannot be redeclared.
+
+A method's own parameters and local variables are unaffected — one of
+those may carry the name of a field of the function block, and the method
+reaches the field through ``THIS^``. See
+:doc:`/reference/language/object-orientation/this-and-super`.
