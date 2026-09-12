@@ -411,6 +411,22 @@ impl Diagnostic {
 
         file_ids
     }
+
+    /// The www.ironplc.com documentation URL for this diagnostic's problem code,
+    /// tagged with the `channel` it is being surfaced through, and carrying the
+    /// Rust source location when the diagnostic recorded one.
+    ///
+    /// See [`problem_help_url`], which this delegates to; the only thing added
+    /// here is reading `source_file`/`source_line` off the diagnostic.
+    pub fn help_url(&self, version: &str, channel: &str) -> String {
+        problem_help_url(
+            &self.code,
+            version,
+            channel,
+            self.source_file.as_deref(),
+            self.source_line,
+        )
+    }
 }
 
 /// The www.ironplc.com reference section that documents a problem code, derived
@@ -430,6 +446,46 @@ pub fn docs_section(code: &str) -> &'static str {
         Some('E') => "editor",
         _ => "unknown",
     }
+}
+
+/// Builds the www.ironplc.com documentation URL for a problem `code`, tagged
+/// with the `channel` it was surfaced through.
+///
+/// Every channel — CLI, LSP/editor, MCP — funnels through here rather than
+/// formatting the URL itself, so the section can only ever come from
+/// [`docs_section`]. The language server used to format its own URL with the
+/// section written out as `compiler`, which sent any non-`P` diagnostic to a
+/// page that does not exist; a single builder makes that class of bug
+/// unrepresentable rather than merely fixed. The
+/// `problem_help_url_is_the_only_place_rust_names_the_docs_host` test fails if
+/// another Rust module starts minting these URLs again.
+///
+/// The URL is a working docs link regardless of the query string. `version`
+/// carries the client version, which the out-of-date banner in
+/// docs/_static/version-check.js reads, and PostHog captures `version` and
+/// `channel` as breakdown dimensions via `custom_campaign_params` in
+/// docs/_static/posthog-init.js, so we can see where and on which version
+/// people reach these pages. `source_file`/`source_line` — the Rust source
+/// location that raised the diagnostic — are appended when present so a
+/// maintainer can see what a remote user hit.
+pub fn problem_help_url(
+    code: &str,
+    version: &str,
+    channel: &str,
+    source_file: Option<&str>,
+    source_line: Option<u32>,
+) -> String {
+    let mut url = format!(
+        "https://www.ironplc.com/reference/{section}/problems/{code}.html?version={version}&channel={channel}",
+        section = docs_section(code),
+    );
+    if let Some(file) = source_file {
+        url.push_str(&format!("&file={file}"));
+    }
+    if let Some(line) = source_line {
+        url.push_str(&format!("&line={line}"));
+    }
+    url
 }
 
 #[cfg(test)]

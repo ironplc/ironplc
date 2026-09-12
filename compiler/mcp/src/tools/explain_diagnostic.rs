@@ -42,19 +42,13 @@ pub struct ExplainDiagnosticResponse {
     pub diagnostics: Vec<serde_json::Value>,
 }
 
-/// Builds the documentation URL for a problem code, tagged with the channel it
-/// was surfaced through.
+/// Builds the documentation URL for a problem code explained over MCP.
 ///
-/// `channel=mcp` marks the origin and `version` carries the client version
-/// (which the out-of-date banner in docs/_static/version-check.js reads). Both
-/// let us see where and on which version people reach these pages; the URL is a
-/// working docs link regardless.
+/// `channel=mcp` marks the origin; the shared builder supplies the rest. There
+/// is no diagnostic here — the tool is given a bare code — so there is no Rust
+/// source location to append.
 fn problem_help_url(code: &str) -> String {
-    let version = env!("CARGO_PKG_VERSION");
-    format!(
-        "https://www.ironplc.com/reference/{section}/problems/{code}.html?version={version}&channel=mcp",
-        section = ironplc_dsl::diagnostic::docs_section(code),
-    )
+    ironplc_dsl::diagnostic::problem_help_url(code, env!("CARGO_PKG_VERSION"), "mcp", None, None)
 }
 
 /// Builds the explain_diagnostic response.
