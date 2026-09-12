@@ -32,6 +32,8 @@ const FUNCTIONS: &[(&str, Target)] = &[
     ("LINT", Target::I64),
     ("ULINT", Target::U64),
     ("LWORD", Target::U64),
+    ("REAL", Target::F32),
+    ("LREAL", Target::F64),
 ];
 
 /// A program converting the STRING `'1'` to `x : <type_name>` with
@@ -163,23 +165,21 @@ END_PROGRAM"
         let position = bytecode.iter().position(|b| *b == opcode::BUILTIN).unwrap();
         // BUILTIN carries a two-byte func_id; the right-hand operand load,
         // at the target's width, is what follows the conversion.
-        let load = match load_width(type_name) {
-            LoadWidth::I32 => opcode::LOAD_VAR_I32,
-            LoadWidth::I64 => opcode::LOAD_VAR_I64,
-        };
-        assert_eq!(bytecode[position + 3], load, "{type_name}");
+        assert_eq!(
+            bytecode[position + 3],
+            load_opcode(type_name),
+            "{type_name}"
+        );
     }
 }
 
-/// The slot width a `STRING_TO_<type_name>` result is loaded and compared at.
-enum LoadWidth {
-    I32,
-    I64,
-}
-
-fn load_width(type_name: &str) -> LoadWidth {
+/// The load opcode of the slot width a `STRING_TO_<type_name>` result is
+/// compared at.
+fn load_opcode(type_name: &str) -> u8 {
     match type_name {
-        "LINT" | "ULINT" | "LWORD" => LoadWidth::I64,
-        _ => LoadWidth::I32,
+        "LINT" | "ULINT" | "LWORD" => opcode::LOAD_VAR_I64,
+        "REAL" => opcode::LOAD_VAR_F32,
+        "LREAL" => opcode::LOAD_VAR_F64,
+        _ => opcode::LOAD_VAR_I32,
     }
 }

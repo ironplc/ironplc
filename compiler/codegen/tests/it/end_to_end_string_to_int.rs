@@ -62,6 +62,9 @@ fn convert(
         Target::U8 | Target::U16 | Target::U32 => slot.as_i32() as u32 as i128,
         Target::I64 => slot.as_i64() as i128,
         Target::U64 => slot.as_u64() as i128,
+        Target::F32 | Target::F64 => {
+            unreachable!("the real targets are covered in end_to_end_string_to_real")
+        }
     }
 }
 

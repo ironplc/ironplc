@@ -328,7 +328,11 @@ the one integer scanner with its own bounds, and the `TRUNC_*` that used to
 follow the conversion is gone: `STRING_TO_SINT('300')` fails as the
 *First application* section says, and never wraps to 44. The 64-bit integer
 targets (`LINT`, `ULINT`, `LWORD`) followed on 2026-09-12 through the same
-scanner; the real targets are the remaining item of that issue.
+scanner, and the real targets (`REAL`, `LREAL`) the same day through a
+second scanner behind the same policies, which completes the first
+application: every `STRING_TO_<numeric>` function is on the block. Two
+real-only decisions are recorded in the design document: a magnitude that
+rounds to infinity is a range failure, and nothing produces a NaN.
 
 ### Sources for the survey
 

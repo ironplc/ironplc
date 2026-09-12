@@ -359,8 +359,10 @@ fn get_string_conversion_functions() -> Vec<FunctionSignature> {
         functions.push(build_conversion_function("STRING", target));
     }
 
-    // STRING → REAL
-    functions.push(build_conversion_function("STRING", "REAL"));
+    // STRING → real types
+    for target in REAL_TYPES {
+        functions.push(build_conversion_function("STRING", target));
+    }
 
     functions
 }
@@ -979,6 +981,8 @@ mod tests {
     #[case::lint("STRING_TO_LINT", "LINT")]
     #[case::ulint("STRING_TO_ULINT", "ULINT")]
     #[case::lword("STRING_TO_LWORD", "LWORD")]
+    #[case::real("STRING_TO_REAL", "REAL")]
+    #[case::lreal("STRING_TO_LREAL", "LREAL")]
     fn get_string_conversion_functions_when_string_to_integer_then_registered_with_target_return(
         #[case] name: &str,
         #[case] target: &str,

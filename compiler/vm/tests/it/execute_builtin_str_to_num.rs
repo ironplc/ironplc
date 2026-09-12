@@ -244,6 +244,131 @@ fn execute_when_str_to_int_builtin_at_bounds_then_value_and_past_bounds_fails(
     assert_eq!(convert_to(target, &text(max + 1), Reject, Zero), Ok(0));
 }
 
+/// As [`convert_to`] for a real target: the result is stored as a slot of
+/// `width` bytes and read back as its bit pattern.
+fn convert_to_real(
+    target: Target,
+    input: &[u8],
+    non_numeric: StringToNumNonNumeric,
+    failure: StringToNumFailure,
+) -> Result<u64, Trap> {
+    let func_id = str_to_num::func_id(target, non_numeric, failure);
+    let mut bytecode = convert_bytecode(func_id, 1);
+    let store = bytecode
+        .iter()
+        .position(|b| *b == opcode::STORE_VAR_I32)
+        .unwrap();
+    bytecode[store] = match target {
+        Target::F32 => opcode::STORE_VAR_F32,
+        _ => opcode::STORE_VAR_F64,
+    };
+    let c = container(&bytecode, Some(input), None);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    vm.run_round(0).map_err(|fault| fault.trap)?;
+    Ok(vm.read_variable_raw(VarIndex::new(0)).unwrap())
+}
+
+fn real_f32(input: &[u8], non_numeric: StringToNumNonNumeric) -> Result<f32, Trap> {
+    convert_to_real(Target::F32, input, non_numeric, StringToNumFailure::Trap)
+        .map(|bits| f32::from_bits(bits as u32))
+}
+
+fn real_f64(input: &[u8], non_numeric: StringToNumNonNumeric) -> Result<f64, Trap> {
+    convert_to_real(Target::F64, input, non_numeric, StringToNumFailure::Trap).map(f64::from_bits)
+}
+
+/// REQ-BP-vm-008: the real literal grammar -- an optional sign, a mantissa
+/// of digits, digits with a point and an optional fraction, or a point with
+/// a fraction, and an optional `E`/`e` exponent with an optional sign; `_`
+/// separators between digits; no based literal, typed prefix or word.
+#[spec_test(REQ_BP_vm_008)]
+#[rstest]
+#[case::decimal_point(b"9.876", Ok(9.876))]
+#[case::exponent(b"1.2E-34", Ok(1.2e-34))]
+#[case::lower_exponent_plus(b"+1.5e+3", Ok(1500.0))]
+#[case::integer_form(b"5", Ok(5.0))]
+#[case::point_last(b"1.", Ok(1.0))]
+#[case::point_first(b"-.5", Ok(-0.5))]
+#[case::underscores(b"1_000.000_5", Ok(1000.0005))]
+#[case::based_literal(b"16#FF", Err(()))]
+#[case::typed_prefix(b"REAL#2.5", Err(()))]
+#[case::exponent_without_digits(b"1e", Err(()))]
+#[case::point_only(b".", Err(()))]
+#[case::double_underscore(b"1__0", Err(()))]
+fn vm_spec_req_bp_008_real_literal_grammar(
+    #[case] input: &[u8],
+    #[case] expected: Result<f64, ()>,
+) {
+    assert_eq!(
+        real_f64(input, StringToNumNonNumeric::Reject).map_err(|_| ()),
+        expected
+    );
+}
+
+/// REQ-BP-vm-009: a magnitude that rounds to infinity at the target's
+/// width is a failure under every non-numeric alternative; underflow rounds
+/// to a subnormal or zero and is not.
+#[spec_test(REQ_BP_vm_009)]
+#[rstest]
+#[case::reject(StringToNumNonNumeric::Reject)]
+#[case::ignore_trailing(StringToNumNonNumeric::IgnoreTrailing)]
+#[case::ignore_surrounding(StringToNumNonNumeric::IgnoreSurrounding)]
+fn vm_spec_req_bp_009_overflow_to_infinity_fails_and_underflow_does_not(
+    #[case] non_numeric: StringToNumNonNumeric,
+) {
+    assert_eq!(
+        real_f32(b"1e39", non_numeric),
+        Err(Trap::StringNotConvertible {
+            target: Target::F32,
+            value: StringPreview::of(b"1e39"),
+        })
+    );
+    assert_eq!(real_f64(b"1e39", non_numeric), Ok(1e39));
+    assert_eq!(
+        real_f64(b"-1e309", non_numeric),
+        Err(Trap::StringNotConvertible {
+            target: Target::F64,
+            value: StringPreview::of(b"-1e309"),
+        })
+    );
+    assert_eq!(real_f32(b"1e-50", non_numeric), Ok(0.0));
+    assert!(real_f64(b"1e-310", non_numeric).unwrap().is_subnormal());
+    assert_eq!(
+        convert_to_real(Target::F32, b"1e39", non_numeric, StringToNumFailure::Zero),
+        Ok(0)
+    );
+}
+
+/// REQ-BP-vm-010: no conversion produces a NaN or an infinity. The words
+/// that would spell one are not literals -- a failure under every
+/// alternative, and positive 0.0 under `zero` -- and `ignore-surrounding`
+/// skips them to a literal behind them.
+#[spec_test(REQ_BP_vm_010)]
+#[rstest]
+#[case::nan(b"NaN")]
+#[case::inf(b"inf")]
+#[case::negative_infinity(b"-infinity")]
+fn vm_spec_req_bp_010_nan_and_infinity_words_are_failures_never_values(#[case] input: &[u8]) {
+    use StringToNumNonNumeric::{IgnoreSurrounding, IgnoreTrailing, Reject};
+    for non_numeric in [Reject, IgnoreTrailing, IgnoreSurrounding] {
+        assert_eq!(
+            real_f32(input, non_numeric),
+            Err(Trap::StringNotConvertible {
+                target: Target::F32,
+                value: StringPreview::of(input),
+            }),
+            "{non_numeric:?}"
+        );
+        let zero = convert_to_real(Target::F64, input, non_numeric, StringToNumFailure::Zero)
+            .map(f64::from_bits)
+            .unwrap();
+        assert_eq!(zero, 0.0);
+        assert!(zero.is_sign_positive());
+    }
+    assert_eq!(real_f64(b"nan5", IgnoreSurrounding), Ok(5.0));
+}
+
 /// The 64-bit targets push a 64-bit slot: both extremes of each, one past
 /// each under `trap` and `zero`, and the all-ones pattern of `ULINT`'s
 /// maximum reads back as -1 through a signed slot read.

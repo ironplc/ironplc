@@ -12,12 +12,14 @@
 //! the same separators, either preceded by an optional sign. A typed prefix
 //! (`UDINT#`) is not accepted. One scanner serves every integer target; the
 //! target contributes only its bounds, and a value outside them is a failure
-//! rather than a wrap.
+//! rather than a wrap. The real targets have their own scanner
+//! (`str_to_real`) behind the same policies and the same failure handling.
 
 use ironplc_container::builtin::str_to_num::{Encoding, Target};
 use ironplc_container::policy::{StringToNumFailure, StringToNumNonNumeric};
 
 use crate::error::{StringPreview, Trap};
+use crate::str_to_real;
 use crate::value::Slot;
 
 /// Converts the narrow string `bytes` under `encoding`.
@@ -34,15 +36,18 @@ pub(crate) fn convert(encoding: Encoding, bytes: &[u8]) -> Result<Slot, Trap> {
 /// Scans `bytes` for a value of `target` under `non_numeric`, as the slot
 /// of the target's width, or `None` when the string is not convertible.
 fn scan(target: Target, non_numeric: StringToNumNonNumeric, bytes: &[u8]) -> Option<Slot> {
-    let value = scan_integer(bytes, non_numeric, Bounds::of(target))?;
-    // The scanner has already checked the value against the target's
-    // bounds, so a narrowing cast keeps the value (sign-extended for a
-    // signed target, as the slot convention is) and nothing is truncated.
+    let integer = |bounds| scan_integer(bytes, non_numeric, bounds);
+    // For an integer target the scanner has already checked the value
+    // against the target's bounds, so a narrowing cast keeps the value
+    // (sign-extended for a signed target, as the slot convention is) and
+    // nothing is truncated. A real target parses at its own width.
     Some(match target {
         Target::U32 | Target::I32 | Target::U8 | Target::I8 | Target::U16 | Target::I16 => {
-            Slot::from_i32(value as i32)
+            Slot::from_i32(integer(Bounds::of(target))? as i32)
         }
-        Target::U64 | Target::I64 => Slot::from_i64(value),
+        Target::U64 | Target::I64 => Slot::from_i64(integer(Bounds::of(target))?),
+        Target::F32 => Slot::from_f32(str_to_real::scan_f32(bytes, non_numeric)?),
+        Target::F64 => Slot::from_f64(str_to_real::scan_f64(bytes, non_numeric)?),
     })
 }
 
@@ -89,6 +94,9 @@ impl Bounds {
             Target::I16 => Bounds::signed(i16::MIN as i64, i16::MAX as u64),
             Target::U64 => Bounds::unsigned(u64::MAX),
             Target::I64 => Bounds::signed(i64::MIN, i64::MAX as u64),
+            // The real targets are not scanned as integers; their bounds
+            // are their finite ranges, which `str_to_real` checks.
+            Target::F32 | Target::F64 => Bounds::unsigned(0),
         }
     }
 
