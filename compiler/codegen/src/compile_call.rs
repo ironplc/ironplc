@@ -1244,11 +1244,19 @@ pub(crate) fn compile_string_conversion(
                 (OpWidth::W32, Signedness::Signed, 8) => block(Target::I8),
                 (OpWidth::W32, Signedness::Unsigned, 16) => block(Target::U16),
                 (OpWidth::W32, Signedness::Signed, 16) => block(Target::I16),
+                (OpWidth::W64, Signedness::Unsigned, 64) => block(Target::U64),
+                (OpWidth::W64, Signedness::Signed, 64) => block(Target::I64),
                 (OpWidth::F32, _, _) => opcode::builtin::CONV_STR_TO_F32,
-                // The 64-bit integers and LREAL await their reserved
-                // positions on the block.
-                (OpWidth::W64, _, _) | (OpWidth::F64, _, _) => {
+                // LREAL awaits its reserved position on the block.
+                (OpWidth::F64, _, _) => {
                     return Err(Diagnostic::todo_with_span(func.name.span()));
+                }
+                // A 64-bit slot holds only the 64-bit value width.
+                (OpWidth::W64, _, _) => {
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        func.name.span(),
+                        "STRING_TO_* 64-bit target has no conversion",
+                    )));
                 }
                 // A 32-bit slot holds only the value widths above. The
                 // analyzer offers no other STRING_TO_* with a 32-bit

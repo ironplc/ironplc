@@ -146,6 +146,8 @@ fn target_type_name(target: str_to_num::Target) -> &'static str {
         str_to_num::Target::I8 => "SINT",
         str_to_num::Target::U16 => "UINT",
         str_to_num::Target::I16 => "INT",
+        str_to_num::Target::U64 => "ULINT",
+        str_to_num::Target::I64 => "LINT",
     }
 }
 
@@ -317,6 +319,20 @@ mod tests {
             value: StringPreview::of(b"2147483648"),
         },
         "string '2147483648' is not convertible to DINT"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::I64,
+            value: StringPreview::of(b"-1x"),
+        },
+        "string '-1x' is not convertible to LINT"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::U64,
+            value: StringPreview::of(b"18446744073709551616"),
+        },
+        "string '1844674407370955'... is not convertible to ULINT"
     )]
     #[case(Trap::InvalidCmpOp(0x07), "invalid comparison operator code: 0x07")]
     #[case(

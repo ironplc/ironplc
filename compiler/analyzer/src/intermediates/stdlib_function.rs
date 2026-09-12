@@ -328,7 +328,8 @@ const UNSIGNED_INT_TO_STRING_TYPES: &[&str] = &["USINT", "UINT", "UDINT", "BYTE"
 /// Integer and bit-string types that can be parsed from STRING. A bit-string
 /// target converts as the unsigned integer of its width.
 const STRING_TO_INT_TYPES: &[&str] = &[
-    "SINT", "INT", "DINT", "USINT", "UINT", "UDINT", "BYTE", "WORD", "DWORD",
+    "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "BYTE", "WORD", "DWORD",
+    "LWORD",
 ];
 
 /// Returns string ↔ numeric conversion function definitions.
@@ -975,6 +976,9 @@ mod tests {
     #[case::byte("STRING_TO_BYTE", "BYTE")]
     #[case::word("STRING_TO_WORD", "WORD")]
     #[case::dword("STRING_TO_DWORD", "DWORD")]
+    #[case::lint("STRING_TO_LINT", "LINT")]
+    #[case::ulint("STRING_TO_ULINT", "ULINT")]
+    #[case::lword("STRING_TO_LWORD", "LWORD")]
     fn get_string_conversion_functions_when_string_to_integer_then_registered_with_target_return(
         #[case] name: &str,
         #[case] target: &str,

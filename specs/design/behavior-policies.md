@@ -118,14 +118,14 @@ unsigned integer of its width and has no target of its own, so
 | 3 | I8 | `STRING_TO_SINT` | 0x0498–0x049D |
 | 4 | U16 | `STRING_TO_UINT`, `STRING_TO_WORD` | 0x04A0–0x04A5 |
 | 5 | I16 | `STRING_TO_INT` | 0x04A8–0x04AD |
-| 6 | U64 | `STRING_TO_ULINT`, `STRING_TO_LWORD` | 0x04B0–0x04B5, reserved |
-| 7 | I64 | `STRING_TO_LINT` | 0x04B8–0x04BD, reserved |
+| 6 | U64 | `STRING_TO_ULINT`, `STRING_TO_LWORD` | 0x04B0–0x04B5 |
+| 7 | I64 | `STRING_TO_LINT` | 0x04B8–0x04BD |
 | 8 | F32 | `STRING_TO_REAL` | 0x04C0–0x04C5, reserved |
 | 9 | F64 | `STRING_TO_LREAL` | 0x04C8–0x04CD, reserved |
 
-Positions 6 through 9 are reserved and not yet assigned: the 64-bit
-functions are not yet compiled, and `STRING_TO_REAL` keeps the
-single-encoding `CONV_STR_TO_F32` builtin until it moves onto the block.
+Positions 8 and 9 are reserved and not yet assigned: `STRING_TO_REAL` keeps
+the single-encoding `CONV_STR_TO_F32` builtin until it moves onto the block,
+and `STRING_TO_LREAL` is not yet compiled.
 Codegen no longer emits `CONV_STR_TO_I32`; the VM keeps its handler because
 a func_id is a permanent wire-format commitment.
 
@@ -166,9 +166,11 @@ The same holds at every width: `'300'` is not convertible to `SINT`, and the
 conversion fails rather than truncating to 44.
 
 One scanner serves every integer target. It accumulates the literal's
-magnitude in 64 bits and checks the signed value against the target's
-inclusive bounds; the target contributes nothing but those bounds, which is
-what keeps the eight functions from having eight scanners.
+magnitude in 64 bits and checks it against the target's largest magnitude on
+each side of zero, which holds `ULINT`'s `2^64 - 1` and `LINT`'s `2^63` below
+zero without wider arithmetic; the target contributes nothing but those
+bounds and its slot width, which is what keeps the eleven functions from
+having eleven scanners.
 
 ### Failure
 
@@ -179,7 +181,8 @@ what keeps the eight functions from having eight scanners.
 The trap carries a bounded preview of the offending string (its first
 sixteen bytes, with an ellipsis if more followed), because the VM is `no_std`
 and a trap cannot own the value; sixteen bytes is enough to show any
-`UDINT` literal and to recognise a mistyped one.
+`UDINT` literal, the first sixteen characters of a 64-bit one, and to
+recognise a mistyped one.
 
 The trap names the target the func_id encodes. A bit-string function shares
 the unsigned target of its width, so `STRING_TO_BYTE('300')` reports that
@@ -212,8 +215,8 @@ two functions was called, and the range it names is the same.
    table above reserves, and to `Target::ALL`; declare its six rows in
    `declare_builtins!`, pin them in the wire-format test, and record them in
    [bytecode-instruction-set.md](bytecode-instruction-set.md).
-2. Give the VM its bounds (`Bounds::of`) and its slot width in
-   `str_to_num::convert`, and its type name in `error.rs`.
+2. Give the VM its bounds (`Bounds::of`) and its slot width
+   (`str_to_num::slot`), and its type name in `error.rs`.
 3. Map the type to the target in codegen's `str_to_num_target`, and register
    the function in the analyzer if it is not.
 4. Test end to end at min, max, one past each bound and the shared invalid

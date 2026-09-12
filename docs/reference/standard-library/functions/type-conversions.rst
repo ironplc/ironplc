@@ -418,18 +418,24 @@ selects it at compile time with two behavior policies; see
      - String to 16-bit signed
    * - ``STRING_TO_DINT``
      - String to 32-bit signed
+   * - ``STRING_TO_LINT``
+     - String to 64-bit signed
    * - ``STRING_TO_USINT``
      - String to 8-bit unsigned
    * - ``STRING_TO_UINT``
      - String to 16-bit unsigned
    * - ``STRING_TO_UDINT``
      - String to 32-bit unsigned
+   * - ``STRING_TO_ULINT``
+     - String to 64-bit unsigned
    * - ``STRING_TO_BYTE``
      - String to byte
    * - ``STRING_TO_WORD``
      - String to word
    * - ``STRING_TO_DWORD``
      - String to double word
+   * - ``STRING_TO_LWORD``
+     - String to long word
    * - ``STRING_TO_REAL``
      - String to single-precision
 
@@ -562,6 +568,9 @@ produces zero, and is never 44. The ranges are those of the types:
    * - ``STRING_TO_DINT``
      - -2147483648
      - 2147483647
+   * - ``STRING_TO_LINT``
+     - -9223372036854775808
+     - 9223372036854775807
    * - ``STRING_TO_USINT``, ``STRING_TO_BYTE``
      - 0
      - 255
@@ -571,6 +580,9 @@ produces zero, and is never 44. The ranges are those of the types:
    * - ``STRING_TO_UDINT``, ``STRING_TO_DWORD``
      - 0
      - 4294967295
+   * - ``STRING_TO_ULINT``, ``STRING_TO_LWORD``
+     - 0
+     - 18446744073709551615
 
 .. list-table:: Results of ``STRING_TO_SINT`` by policy
    :header-rows: 1
@@ -597,10 +609,11 @@ produces zero, and is never 44. The ranges are those of the types:
      - -5
      - -5
 
-``STRING_TO_BYTE``, ``STRING_TO_WORD`` and ``STRING_TO_DWORD`` convert exactly
-as ``STRING_TO_USINT``, ``STRING_TO_UINT`` and ``STRING_TO_UDINT`` do, and
-compile to the same instruction, so a V4006 from one of them names the
-unsigned integer type of the same width.
+``STRING_TO_BYTE``, ``STRING_TO_WORD``, ``STRING_TO_DWORD`` and
+``STRING_TO_LWORD`` convert exactly as ``STRING_TO_USINT``, ``STRING_TO_UINT``,
+``STRING_TO_UDINT`` and ``STRING_TO_ULINT`` do, and compile to the same
+instruction, so a V4006 from one of them names the unsigned integer type of
+the same width.
 
 ``STRING_TO_REAL`` does not yet honor the policies: it returns zero for a
 string that is not a ``REAL`` literal, whatever the policy selects.

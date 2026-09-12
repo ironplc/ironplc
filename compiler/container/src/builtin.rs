@@ -494,6 +494,35 @@ declare_builtins! {
     CONV_STR_TO_I16_IGNORE_SURROUNDING_TRAP = 0x04AC, args 1;
     /// As [`CONV_STR_TO_I16_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
     CONV_STR_TO_I16_IGNORE_SURROUNDING_ZERO = 0x04AD, args 1;
+
+    /// Parse a STRING to an unsigned 64-bit integer (`STRING_TO_ULINT`,
+    /// `STRING_TO_LWORD`): the six rows of target 6, laid out as the
+    /// `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_U64_REJECT_TRAP = 0x04B0, args 1;
+    /// As [`CONV_STR_TO_U64_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U64_REJECT_ZERO = 0x04B1, args 1;
+    /// As [`CONV_STR_TO_U64_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_U64_IGNORE_TRAILING_TRAP = 0x04B2, args 1;
+    /// As [`CONV_STR_TO_U64_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U64_IGNORE_TRAILING_ZERO = 0x04B3, args 1;
+    /// As [`CONV_STR_TO_U64_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_U64_IGNORE_SURROUNDING_TRAP = 0x04B4, args 1;
+    /// As [`CONV_STR_TO_U64_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U64_IGNORE_SURROUNDING_ZERO = 0x04B5, args 1;
+
+    /// Parse a STRING to a signed 64-bit integer (`STRING_TO_LINT`): the six
+    /// rows of target 7, laid out as the `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_I64_REJECT_TRAP = 0x04B8, args 1;
+    /// As [`CONV_STR_TO_I64_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I64_REJECT_ZERO = 0x04B9, args 1;
+    /// As [`CONV_STR_TO_I64_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_I64_IGNORE_TRAILING_TRAP = 0x04BA, args 1;
+    /// As [`CONV_STR_TO_I64_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I64_IGNORE_TRAILING_ZERO = 0x04BB, args 1;
+    /// As [`CONV_STR_TO_I64_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_I64_IGNORE_SURROUNDING_TRAP = 0x04BC, args 1;
+    /// As [`CONV_STR_TO_I64_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I64_IGNORE_SURROUNDING_ZERO = 0x04BD, args 1;
 }
 
 /// The `STRING_TO_<numeric>` func_id block (ADR-0049).
@@ -528,11 +557,11 @@ pub mod str_to_num {
     /// positions are unsigned and the odd position after each is the signed
     /// type of the same width, in width order 32, 8, 16, 64 (32 first
     /// because `U32` landed at 0); the real targets follow. A bit-string
-    /// type (`BYTE`, `WORD`, `DWORD`) converts as the unsigned integer of
-    /// its width and has no target of its own. Positions 6 through 9 are
-    /// reserved for the 64-bit and real targets; only the targets listed
-    /// here are encoded, and the other `STRING_TO_*` functions still use the
-    /// single-encoding builtins above.
+    /// type (`BYTE`, `WORD`, `DWORD`, `LWORD`) converts as the unsigned
+    /// integer of its width and has no target of its own. Positions 8 and 9
+    /// are reserved for the real targets; only the targets listed here are
+    /// encoded, and `STRING_TO_REAL` still uses the single-encoding builtin
+    /// above.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     #[repr(u16)]
     pub enum Target {
@@ -548,6 +577,10 @@ pub mod str_to_num {
         U16 = 4,
         /// `STRING_TO_INT` (a signed 16-bit integer).
         I16 = 5,
+        /// `STRING_TO_ULINT` and `STRING_TO_LWORD` (an unsigned 64-bit integer).
+        U64 = 6,
+        /// `STRING_TO_LINT` (a signed 64-bit integer).
+        I64 = 7,
     }
 
     impl Target {
@@ -559,6 +592,8 @@ pub mod str_to_num {
             Target::I8,
             Target::U16,
             Target::I16,
+            Target::U64,
+            Target::I64,
         ];
 
         fn from_index(index: u16) -> Option<Target> {
@@ -755,6 +790,14 @@ mod tests {
             func_id(Target::I16, Reject, Trap),
             CONV_STR_TO_I16_REJECT_TRAP
         );
+        assert_eq!(
+            func_id(Target::U64, Reject, Trap),
+            CONV_STR_TO_U64_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::I64, Reject, Trap),
+            CONV_STR_TO_I64_REJECT_TRAP
+        );
     }
 
     #[test]
@@ -813,9 +856,8 @@ mod tests {
         // The two spare slots of the U32 stride.
         assert_eq!(str_to_num::decode(0x0486), None);
         assert_eq!(str_to_num::decode(0x0487), None);
-        // A reserved, not yet assigned target (position 6, the 64-bit
-        // unsigned target).
-        assert_eq!(str_to_num::decode(0x04B0), None);
+        // A reserved, not yet assigned target (position 8, the REAL target).
+        assert_eq!(str_to_num::decode(0x04C0), None);
     }
 
     #[test]

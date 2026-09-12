@@ -18,25 +18,38 @@ use ironplc_container::builtin::str_to_num::{Encoding, Target};
 use ironplc_container::policy::{StringToNumFailure, StringToNumNonNumeric};
 
 use crate::error::{StringPreview, Trap};
+use crate::value::Slot;
 
 /// Converts the narrow string `bytes` under `encoding`.
 ///
-/// Returns the value as the slot's `i32` bit pattern, or the trap the failure
-/// policy calls for.
-pub(crate) fn convert(encoding: Encoding, bytes: &[u8]) -> Result<i32, Trap> {
-    // Every target here lives in a 32-bit slot: the scanner has already
-    // checked the value against the target's bounds, so the cast keeps the
-    // value (sign-extended for a signed target, as the slot convention is)
-    // and nothing is truncated.
-    let scanned = scan_integer(bytes, encoding.non_numeric, Bounds::of(encoding.target))
-        .map(|value| value as i32);
-    match (scanned, encoding.failure) {
-        (Some(value), _) => Ok(value),
-        (None, StringToNumFailure::Zero) => Ok(0),
-        (None, StringToNumFailure::Trap) => Err(Trap::StringNotConvertible {
-            target: encoding.target,
-            value: StringPreview::of(bytes),
-        }),
+/// Returns the value as a slot of the target's width, or the trap the
+/// failure policy calls for.
+pub(crate) fn convert(encoding: Encoding, bytes: &[u8]) -> Result<Slot, Trap> {
+    let scanned = scan_integer(bytes, encoding.non_numeric, Bounds::of(encoding.target));
+    let value = match (scanned, encoding.failure) {
+        (Some(value), _) => value,
+        (None, StringToNumFailure::Zero) => 0,
+        (None, StringToNumFailure::Trap) => {
+            return Err(Trap::StringNotConvertible {
+                target: encoding.target,
+                value: StringPreview::of(bytes),
+            })
+        }
+    };
+    Ok(slot(encoding.target, value))
+}
+
+/// The slot a converted `value` occupies for `target`.
+///
+/// The scanner has already checked the value against the target's bounds,
+/// so a narrowing cast keeps the value (sign-extended for a signed target,
+/// as the slot convention is) and nothing is truncated.
+fn slot(target: Target, value: i64) -> Slot {
+    match target {
+        Target::U32 | Target::I32 | Target::U8 | Target::I8 | Target::U16 | Target::I16 => {
+            Slot::from_i32(value as i32)
+        }
+        Target::U64 | Target::I64 => Slot::from_i64(value),
     }
 }
 
@@ -67,6 +80,8 @@ impl Bounds {
             Target::I8 => Bounds::signed(i8::MIN as i64, i8::MAX as u64),
             Target::U16 => Bounds::unsigned(u16::MAX as u64),
             Target::I16 => Bounds::signed(i16::MIN as i64, i16::MAX as u64),
+            Target::U64 => Bounds::unsigned(u64::MAX),
+            Target::I64 => Bounds::signed(i64::MIN, i64::MAX as u64),
         }
     }
 
@@ -418,9 +433,9 @@ mod tests {
 
     #[test]
     fn scan_integer_when_64_bit_bounds_then_extremes_convert_to_their_bit_patterns() {
-        // The bounds the 64-bit targets will use: the accumulator and the
-        // value pattern already hold them.
-        let unsigned = Bounds::unsigned(u64::MAX);
+        // The accumulator and the value pattern hold both 64-bit extremes:
+        // u64::MAX is the all-ones pattern, and -2^63 is its own negation.
+        let unsigned = Bounds::of(Target::U64);
         assert_eq!(
             scan_integer(b"18446744073709551615", Reject, unsigned),
             Some(-1)
@@ -429,7 +444,7 @@ mod tests {
             scan_integer(b"18446744073709551616", Reject, unsigned),
             None
         );
-        let signed = Bounds::signed(i64::MIN, i64::MAX as u64);
+        let signed = Bounds::of(Target::I64);
         assert_eq!(
             scan_integer(b"-9223372036854775808", Reject, signed),
             Some(i64::MIN)
@@ -439,14 +454,41 @@ mod tests {
     }
 
     #[test]
+    fn convert_when_64_bit_target_then_64_bit_slot() {
+        let signed = Encoding {
+            target: Target::I64,
+            non_numeric: Reject,
+            failure: StringToNumFailure::Trap,
+        };
+        assert_eq!(
+            convert(signed, b"-9223372036854775808"),
+            Ok(Slot::from_i64(i64::MIN))
+        );
+        assert_eq!(convert(signed, b"-1"), Ok(Slot::from_i64(-1)));
+        let unsigned = Encoding {
+            target: Target::U64,
+            non_numeric: Reject,
+            failure: StringToNumFailure::Zero,
+        };
+        assert_eq!(
+            convert(unsigned, b"18446744073709551615"),
+            Ok(Slot::from_i64(-1))
+        );
+        assert_eq!(
+            convert(unsigned, b"18446744073709551616"),
+            Ok(Slot::from_i64(0))
+        );
+    }
+
+    #[test]
     fn convert_when_signed_target_then_value_sign_extended_in_the_slot() {
         let encoding = Encoding {
             target: Target::I8,
             non_numeric: Reject,
             failure: StringToNumFailure::Trap,
         };
-        assert_eq!(convert(encoding, b"-1"), Ok(-1));
-        assert_eq!(convert(encoding, b"127"), Ok(127));
+        assert_eq!(convert(encoding, b"-1"), Ok(Slot::from_i32(-1)));
+        assert_eq!(convert(encoding, b"127"), Ok(Slot::from_i32(127)));
         // '300' is out of range: a failure, never 44.
         assert_eq!(
             convert(encoding, b"300"),
@@ -468,14 +510,17 @@ mod tests {
     #[test]
     fn convert_when_convertible_then_value_as_slot_bits() {
         let encoding = u32_encoding(Reject, StringToNumFailure::Trap);
-        assert_eq!(convert(encoding, b"4294967295"), Ok(-1));
-        assert_eq!(convert(encoding, b"2147483648"), Ok(i32::MIN));
+        assert_eq!(convert(encoding, b"4294967295"), Ok(Slot::from_i32(-1)));
+        assert_eq!(
+            convert(encoding, b"2147483648"),
+            Ok(Slot::from_i32(i32::MIN))
+        );
     }
 
     #[test]
     fn convert_when_failure_and_zero_policy_then_zero() {
         let encoding = u32_encoding(Reject, StringToNumFailure::Zero);
-        assert_eq!(convert(encoding, b"12abc"), Ok(0));
+        assert_eq!(convert(encoding, b"12abc"), Ok(Slot::from_i32(0)));
     }
 
     #[test]

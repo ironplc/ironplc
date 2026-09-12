@@ -298,7 +298,7 @@ fn bench_debug_scan_cost(c: &mut Criterion) {
 /// `STRING_TO_<integer>` under the strict policies (reject, trap) — the
 /// scan-and-range-check cost of one conversion, per target width. Each
 /// program converts a valid literal one hundred times; the widths differ
-/// only in the bounds the scanner checks, so the four cases should sit
+/// only in the bounds the scanner checks, so the five cases should sit
 /// together, and a gap between them is a regression in one width's path.
 fn bench_string_to_num(c: &mut Criterion) {
     let mut group = c.benchmark_group("st_string_to_num");
@@ -309,6 +309,7 @@ fn bench_string_to_num(c: &mut Criterion) {
         ("INT", "30000"),
         ("DINT", "2000000000"),
         ("UDINT", "4000000000"),
+        ("LINT", "9000000000000000000"),
     ] {
         let mut source =
             format!("PROGRAM main\n  VAR s : STRING := '{literal}'; x : {type_name}; END_VAR\n");

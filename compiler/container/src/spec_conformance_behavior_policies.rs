@@ -106,6 +106,16 @@ fn container_spec_req_bp_002_func_id_is_base_plus_target_stride_plus_policies() 
         builtin::CONV_STR_TO_I16_IGNORE_SURROUNDING_TRAP
     );
     assert_eq!(builtin::CONV_STR_TO_I16_IGNORE_SURROUNDING_TRAP, 0x04AC);
+    assert_eq!(
+        func_id(Target::U64, Reject, Trap),
+        builtin::CONV_STR_TO_U64_REJECT_TRAP
+    );
+    assert_eq!(builtin::CONV_STR_TO_U64_REJECT_TRAP, 0x04B0);
+    assert_eq!(
+        func_id(Target::I64, IgnoreTrailing, Zero),
+        builtin::CONV_STR_TO_I64_IGNORE_TRAILING_ZERO
+    );
+    assert_eq!(builtin::CONV_STR_TO_I64_IGNORE_TRAILING_ZERO, 0x04BB);
 }
 
 /// REQ-BP-container-003: `decode` inverts `func_id` for every encoded ID and
