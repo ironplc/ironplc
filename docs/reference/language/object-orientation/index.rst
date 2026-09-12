@@ -32,7 +32,8 @@ Keywords
      - Support
    * - :doc:`extends`
      - Derive a function block type or interface from a base type
-     - Parsed and analyzed; inherited variables are not yet compiled
+     - Function block: parsed and analyzed; what a derived type inherits
+       is not yet compiled. Interface: parsed only
    * - :doc:`implements`
      - Declare that a function block type provides one or more interfaces
      - Parsed only
@@ -44,7 +45,9 @@ Keywords
      - Parsed only
    * - :doc:`method`
      - Declare a method on a function block type
-     - Parsed and analyzed; calls are not yet compiled
+     - Parsed, analyzed, compiled and executed for a method declared on
+       the instance's own type; a method reached through ``EXTENDS`` is
+       not yet compiled
    * - :doc:`this-and-super`
      - Refer to the instance a method is running on, or to its base type
      - Parsed only

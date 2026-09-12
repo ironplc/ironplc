@@ -84,8 +84,10 @@ the type of the second declaration:
 
 An instance of ``FB_Derived`` has exactly one ``state``, the ``INT`` it
 inherits, and the derived type's body and methods use that one. A derived
-type that needs another value declares it under a new name. This matches
-CODESYS and TwinCAT, which reject the same code as a duplicate definition.
+type that needs another value declares it under a new name. Edition 3
+inheritance gives a derived type a single set of variables and no way to
+hold a second one of an inherited name; CODESYS and TwinCAT reject the
+same code as a duplicate definition.
 
 This is the same rule as declaring a name twice in one place, applied
 across the ``EXTENDS`` chain: two declarations of one name in a single
@@ -93,6 +95,10 @@ across the ``EXTENDS`` chain: two declarations of one name in a single
 :doc:`P4014 </reference/compiler/problems/P4014>`, and a derived type's
 declarations are checked against everything it inherits as though they
 shared that block.
+
+Methods are different: a derived type may declare a method with the name
+of one it inherits. That **overrides** the inherited method — the derived
+type has one method of that name, and a call on the derived type runs it.
 
 Hiding does exist in one place: a method's own parameters and local
 variables. A method local with the same name as a variable of the function
