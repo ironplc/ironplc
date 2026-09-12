@@ -1100,7 +1100,27 @@ END_VAR
 END_PROGRAM",
         true
     )]
-    // Integer → bit-string is never allowed, even with flag.
+    // Integer → bit-string is allowed only for the UDINT ↔ DWORD pair, which
+    // ElementaryTypeName::can_widen_cross_family_to carves out at equal width.
+    #[case::udint_arg_to_dword_param_ok(
+        "
+FUNCTION TAKES_DWORD : DWORD
+VAR_INPUT
+    x : DWORD;
+END_VAR
+    TAKES_DWORD := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DWORD;
+    y : UDINT;
+END_VAR
+    result := TAKES_DWORD(y);
+END_PROGRAM",
+        true
+    )]
+    // INT → BYTE is not that pair, so it stays an error even with the flag.
     #[case::int_arg_to_byte_param_error(
         "
 FUNCTION TAKES_BYTE : BYTE

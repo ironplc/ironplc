@@ -2,6 +2,7 @@
 
 status: accepted
 date: 2026-04-03
+amended: 2026-09-12 (UDINT/DWORD equal-width exception recorded; status unchanged)
 
 ## Context and Problem Statement
 
@@ -54,7 +55,7 @@ BOOL is excluded. While IEC 61131-3 places BOOL under ANY_BIT, it is semanticall
 
 These conversions cross the ANY_BIT / ANY_INT boundary and are not part of the IEC 61131-3 standard:
 
-* Bit-string → integer: BYTE → INT, WORD → DINT, etc. (target must be strictly wider)
+* Bit-string → integer: BYTE → INT, WORD → DINT, etc. (target must be strictly wider, with one exception — see *Amendment: UDINT and DWORD widen in both directions at equal width*)
 * Bare integer literal → bit-string: `0` where BYTE is expected
 * Return type: function returning BYTE assigned to INT variable
 
@@ -80,3 +81,53 @@ This applies to:
 * **ADR-0047** (exact type matching): Still applies for non-widening cases
 * **ADR-0028** (literal type inference): Bare literal → REAL/LREAL remains as-is; bare literal → ANY_BIT is new and gated
 * **ADR-0029** (integer widening): Extended to include integer → real (lossless) and bit-string widening within ANY_BIT
+
+## Amendment: UDINT and DWORD widen in both directions at equal width (2026-09-12)
+
+This ADR states one cross-family rule — bit-string to integer, target strictly
+wider — and the compiler has shipped a second one since the UDINT/DWORD work
+landed. `ElementaryTypeName::can_widen_cross_family_to`
+(`compiler/dsl/src/common.rs:1001-1019`) allows `UDINT` and `DWORD` to convert
+implicitly in *both* directions under `--allow-cross-family-widening`, despite
+the two being equal width. That also makes it the one case where integer to
+bit-string is implicit, a direction this ADR does not mention at all.
+
+The exception is deliberate and evidence-backed. Beckhoff's own documentation
+states no implicit conversion exists between bit-string and integer types even
+at equal width, but a real TcXaeShell build accepted it, so IronPLC follows the
+implementation rather than the documentation. The rationale, including the
+scoping argument, lives in the doc comment at `common.rs:985-1000`.
+
+Measured on this tree with the flag enabled (`udValue : UDINT := 3000000000`,
+`dwValue : DWORD := 16#FFFFFFFF`):
+
+| Conversion | Direction | Result |
+|---|---|---|
+| `dwFromUdint := udValue` | integer → bit-string | `16#B2D05E00` (= 3000000000) |
+| `udFromDword := dwValue` | bit-string → integer | `4294967295` |
+
+Both are correct because the two types share a 32-bit slot, so the conversion is
+a bit-pattern no-op. The "UDINT at or above 2^31 reinterprets as a negative i32"
+hazard does not reach this path.
+
+The exception is scoped to exactly this pair, and nothing wider should be
+inferred from it. The other equal-width bit-string/unsigned-integer pairs
+(`BYTE`/`USINT`, `WORD`/`UINT`, `LWORD`/`ULINT`) and all signed integers are
+unverified and stay rejected: with the flag on, `WORD` ↔ `UINT` still reports
+P4035 in both directions. Without the flag, `UDINT` ↔ `DWORD` reports P4035 too.
+
+Two tests pin this. `common.rs` covers the predicate in both directions
+alongside the rejected `WORD` ↔ `UINT` control; `udint_arg_to_dword_param_ok` in
+`compiler/analyzer/src/rule_function_call_type_check.rs` covers the
+integer → bit-string direction through the function-call rule, next to the
+`INT` → `BYTE` case that must stay an error.
+
+The TcXaeShell POU that established the exception is not recoverable: the
+write-up that recorded it (dated 2026-07-27) is not in this repository's
+history at all, so the summary in `common.rs` is the whole of the surviving
+evidence. Extending the exception to the other equal-width pairs therefore
+means gathering that evidence again, not reasoning outward from this pair.
+
+This amendment corrects the record; the decision is unchanged. ADR-0031 is
+separately missing the REAL → LREAL arm, which shipped and is not enumerated
+here — see #1563 item 4.
