@@ -133,8 +133,12 @@ The remaining VM bytecode tests share common setup boilerplate (build container,
 The three test categories this ADR defines — end-to-end for correctness, compile
 tests for encoding compatibility, VM bytecode tests for edge cases unreachable
 from source — are the categories the tree has, and the division of labour holds:
-128 `end_to_end_*.rs` files, 18 `compile_*.rs`, 32 `execute_*.rs`. The decision
-is accepted on that basis.
+128 `end_to_end_*.rs` and 18 `compile_*.rs` in `compiler/codegen/tests/it`, and
+32 `execute_*.rs` in `compiler/vm/tests/it`, counted 2026-09-12. Those are a
+census rather than an invariant — end-to-end files in particular arrive with
+nearly every feature — so read the ratio, which is the thing this ADR's
+division of labour predicts, not the figures. The decision is accepted on that
+basis.
 
 The *mechanism* assigned to the compatibility category is not what was built, and
 the rule as written would today be actively wrong to follow.

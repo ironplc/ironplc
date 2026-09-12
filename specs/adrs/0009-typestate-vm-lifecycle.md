@@ -2,7 +2,7 @@
 
 status: accepted
 date: 2026-02-22
-amended: 2026-09-11 (Confirmation named a method that never existed)
+amended: 2026-09-12 (the scan method named throughout never existed; it is `run_round`)
 
 ## Context and Problem Statement
 
@@ -12,8 +12,8 @@ This decision applies ADR-0005 (safety-first design principle) to the Rust imple
 
 ## Decision Drivers
 
-* **PLC programs control physical processes** — calling `run_single_scan()` on an unloaded VM must be impossible, not just an error
-* **The scan loop is the hot path** — `run_single_scan()` is called thousands of times per second; the API must not impose overhead or ownership transfer on every call
+* **PLC programs control physical processes** — calling `run_round()` on an unloaded VM must be impossible, not just an error
+* **The scan loop is the hot path** — `run_round()` is called thousands of times per second; the API must not impose overhead or ownership transfer on every call
 * **State-dependent data** — `Container`, `OperandStack`, and `VariableTable` only exist after loading; representing them as `Option<T>` introduces `unwrap()` hazards that could panic at runtime
 * **Borrow checker interaction** — the interpreter needs simultaneous immutable access to the container (constant pool) and mutable access to the stack and variables; the design must make this natural rather than requiring workarounds
 * **Future extensibility** — diagnostic interfaces, online change, and I/O drivers will need to interact with the VM while it is running
@@ -33,17 +33,23 @@ The lifecycle is encoded as three distinct types:
 ```
 Vm  ──load(self)──>  VmReady  ──start(self)──>  VmRunning
                                                     │
-                                          run_single_scan(&mut self)
+                                     run_round(&mut self, uptime_us)
                                                     │
                                                     ▼
                                               (stays VmRunning)
 ```
 
-Setup transitions (`load`, `start`) consume `self` and return the next type. The scan loop (`run_single_scan`) takes `&mut self` because the VM remains in the same state on success.
+Setup transitions (`load`, `start`) consume `self` and return the next type. The scan loop (`run_round`) takes `&mut self` because the VM remains in the same state on success.
+
+`Vm`, `VmReady` and `VmRunning` are the three states this ADR decides. The
+shipped engine adds two terminal states reached from `VmRunning` — `VmStopped`
+and `VmFaulted` — which apply the same pattern to the exits the diagram above
+elides; `start` likewise returns `Result<VmRunning, FaultContext>` rather than
+`VmRunning` outright.
 
 ### Consequences
 
-* Good, because invalid state transitions are compile-time errors — you cannot call `run_single_scan()` on a `Vm` or `VmReady`; the method does not exist on those types
+* Good, because invalid state transitions are compile-time errors — you cannot call `run_round()` on a `Vm` or `VmReady`; the method does not exist on those types
 * Good, because state-dependent data is stored directly in each type's fields — no `Option` wrappers, no `unwrap()` calls, no runtime panics from missing data
 * Good, because the `VmError::InvalidState` variant is eliminated entirely — there is no error type for "wrong state" because the type system prevents it
 * Good, because the scan loop uses `&mut self`, which is idiomatic Rust for in-place mutation and allows external code to hold references to the VM
@@ -91,8 +97,8 @@ Each state is a type parameter: `Vm<Empty>`, `Vm<Ready>`, `Vm<Running>`. Every m
 
 * Good, because all transitions are compile-time checked, same as the hybrid approach
 * Good, because the `From` trait can express transitions declaratively
-* Bad, because `run_single_scan(self) -> Result<Vm<Running>, Vm<Faulted>>` consumes `self` on every scan cycle — the caller must rebind the variable on every iteration
-* Bad, because external code cannot hold a `&Vm<Running>` across a `run_single_scan` call, since the value is moved
+* Bad, because `run_round(self, uptime_us) -> Result<Vm<Running>, Vm<Faulted>>` consumes `self` on every scan cycle — the caller must rebind the variable on every iteration
+* Bad, because external code cannot hold a `&Vm<Running>` across a `run_round` call, since the value is moved
 * Bad, because storing "a VM in any state" requires a wrapper enum (`AnyVm`), which reintroduces runtime matching and negates the typestate benefit at the storage boundary
 * Bad, because methods valid across states require either code duplication per `impl Vm<S>` block or a trait with a blanket impl
 
@@ -101,7 +107,7 @@ Each state is a type parameter: `Vm<Empty>`, `Vm<Ready>`, `Vm<Running>`. Every m
 Distinct struct types (`Vm`, `VmReady`, `VmRunning`) with consuming `self` for setup and `&mut self` for the hot path.
 
 * Good, because setup transitions (`load`, `start`) consume `self` — the old state cannot be used after transition, preventing stale-data bugs
-* Good, because the scan loop (`run_single_scan(&mut self)`) is idiomatic — no ownership transfer, references remain valid, standard loop patterns work
+* Good, because the scan loop (`run_round(&mut self, uptime_us)`) is idiomatic — no ownership transfer, references remain valid, standard loop patterns work
 * Good, because each struct contains exactly the fields valid for its state — compile-time data integrity without `Option`
 * Bad, because it introduces three types instead of one — slightly more API surface to learn
 * Neutral, because the "three types" cost is offset by the API being self-documenting — the type name tells you what operations are available
@@ -117,7 +123,7 @@ Concretely, consuming `self` would force this loop pattern:
 ```rust
 let mut vm = vm_running;
 loop {
-    vm = match vm.run_single_scan() {
+    vm = match vm.run_round(0) {
         Ok(still_running) => still_running,
         Err(faulted) => break,
     };
@@ -128,7 +134,7 @@ With `&mut self`, the loop is:
 
 ```rust
 loop {
-    if let Err(trap) = vm.run_single_scan() {
+    if let Err(trap) = vm.run_round(0) {
         break;
     }
 }
