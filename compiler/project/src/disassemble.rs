@@ -11,7 +11,9 @@ use std::path::Path;
 
 use ironplc_container::opcode;
 use ironplc_container::opcode::{DecodeStop, DecodedInstruction, Instruction, Operand};
-use ironplc_container::{ConstType, Container};
+use ironplc_container::{
+    ConstType, Container, FLAG_HAS_DEBUG_SECTION, FLAG_HAS_SYSTEM_UPTIME, FLAG_HAS_TYPE_SECTION,
+};
 use serde_json::{json, Value};
 
 /// Disassembles a bytecode container into a structured JSON value.
@@ -62,9 +64,11 @@ fn disassemble_header(container: &Container) -> Value {
         "profile": h.profile,
         "flags": {
             "raw": flags,
-            "hasContentSignature": (flags & 0x01) != 0,
-            "hasDebugSection": (flags & 0x02) != 0,
-            "hasTypeSection": (flags & 0x04) != 0,
+            "hasSystemUptime": (flags & FLAG_HAS_SYSTEM_UPTIME) != 0,
+            // No flag bit marks a signature section; its directory entry does.
+            "hasContentSignature": h.sig_section_offset != 0,
+            "hasDebugSection": (flags & FLAG_HAS_DEBUG_SECTION) != 0,
+            "hasTypeSection": (flags & FLAG_HAS_TYPE_SECTION) != 0,
         },
         "contentHash": hex_string(&h.content_hash),
         "debugHash": hex_string(&h.debug_hash),
@@ -565,6 +569,25 @@ mod tests {
         let container = steel_thread_container();
         let result = disassemble(&container);
         assert_eq!(result["header"]["numFunctions"], 1);
+    }
+
+    #[test]
+    fn disassemble_when_system_uptime_flag_set_then_reports_uptime_not_signature() {
+        let mut container = steel_thread_container();
+        container.header.flags |= FLAG_HAS_SYSTEM_UPTIME;
+        let result = disassemble(&container);
+        assert_eq!(result["header"]["flags"]["hasSystemUptime"], true);
+        assert_eq!(result["header"]["flags"]["hasContentSignature"], false);
+    }
+
+    #[test]
+    fn disassemble_when_steel_thread_then_no_flags_reported() {
+        let container = steel_thread_container();
+        let result = disassemble(&container);
+        assert_eq!(result["header"]["flags"]["hasSystemUptime"], false);
+        assert_eq!(result["header"]["flags"]["hasContentSignature"], false);
+        assert_eq!(result["header"]["flags"]["hasDebugSection"], false);
+        assert_eq!(result["header"]["flags"]["hasTypeSection"], false);
     }
 
     #[test]

@@ -66,4 +66,6 @@ mod spec_conformance_adr;
 #[cfg(test)]
 mod spec_conformance_behavior_policies;
 #[cfg(test)]
+mod spec_conformance_container_format;
+#[cfg(test)]
 mod spec_conformance_keyword_function_forms;
