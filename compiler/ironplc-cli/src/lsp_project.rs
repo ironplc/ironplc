@@ -667,20 +667,10 @@ fn map_diagnostic(
 
     // `channel=extension` attributes the arrival to the editor integration (the
     // language server surfaces these diagnostics; we do not assume the editor is
-    // VS Code). `version` stays for the out-of-date banner in
-    // docs/_static/version-check.js. PostHog captures both as breakdown
-    // dimensions via `custom_campaign_params` in docs/_static/posthog-init.js.
-    let version = env!("CARGO_PKG_VERSION");
-    let mut url_string = format!(
-        "https://www.ironplc.com/reference/compiler/problems/{code}.html?version={version}&channel=extension",
-        code = diagnostic.code,
-    );
-    if let Some(ref file) = diagnostic.source_file {
-        url_string.push_str(&format!("&file={}", file));
-    }
-    if let Some(line) = diagnostic.source_line {
-        url_string.push_str(&format!("&line={}", line));
-    }
+    // VS Code). The shared builder supplies the rest, including the reference
+    // section: this used to be written out as `compiler`, which linked any
+    // non-`P` diagnostic to a page that does not exist.
+    let url_string = diagnostic.help_url(env!("CARGO_PKG_VERSION"), "extension");
     let code_description = match Uri::from_str(&url_string) {
         Ok(url) => Some(CodeDescription { href: url }),
         Err(_) => None,
@@ -1312,6 +1302,44 @@ INVALID_SYNTAX"
         assert!(href.contains("&channel=extension"));
         assert!(!href.contains("&file="));
         assert!(!href.contains("&line="));
+    }
+
+    // Regression test for the language server formatting its own URL with the
+    // reference section written out as `compiler`, which sent every non-`P`
+    // diagnostic to a page that does not exist. `V####` codes document under
+    // `reference/runtime/`.
+    #[test]
+    fn map_diagnostic_when_runtime_code_then_url_uses_runtime_section() {
+        use ironplc_dsl::core::FileId;
+        use ironplc_dsl::diagnostic::{
+            Diagnostic as DslDiagnostic, Label as DslLabel, Location as DslLocation,
+        };
+
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        proj.change_text_document(&url, "PROGRAM Main\nEND_PROGRAM".to_owned());
+
+        let file_id = FileId::from_path(&std::path::PathBuf::from(url.path().as_str()));
+
+        let mut diag = DslDiagnostic::problem(
+            ironplc_problems::Problem::SyntaxError,
+            DslLabel {
+                location: DslLocation { start: 0, end: 7 },
+                file_id,
+                message: "some error".to_string(),
+            },
+        );
+        // The VM's trap codes are not in the `Problem` enum, so stand one in
+        // directly; `map_diagnostic` only ever reads the code.
+        diag.code = "V4001".to_string();
+
+        let lsp_diag = super::map_diagnostic(diag, proj.wrapped.as_ref());
+
+        let href = lsp_diag.code_description.unwrap().href.to_string();
+        assert!(
+            href.contains("/reference/runtime/problems/V4001.html"),
+            "V4001 documents under reference/runtime/, but the link is {href}",
+        );
     }
 
     #[test]

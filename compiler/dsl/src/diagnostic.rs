@@ -639,18 +639,17 @@ mod tests {
         assert_eq!(docs_section(""), "unknown");
     }
 
-    // Guards against a new documented code family (a new
-    // docs/reference/<section>/problems/ directory) slipping past `docs_section`
-    // and shipping a wrong or 404 problem-code link. Walks the real docs tree
-    // and asserts every documented code's prefix maps to the section directory
-    // that actually contains its page. If this fails, add the new prefix to
-    // `docs_section`.
-    #[test]
-    fn docs_section_covers_every_documented_code() {
-        use std::path::Path;
+    /// The repository root, relative to this crate.
+    fn repo_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
 
-        let reference = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/reference");
-        let mut checked = 0;
+    /// Every documented problem code, paired with the reference section whose
+    /// `problems/` directory actually holds its page, read from the real docs
+    /// tree. Shared by the two tests below so the tree walk exists once.
+    fn documented_codes() -> Vec<(String, String)> {
+        let reference = repo_root().join("docs/reference");
+        let mut codes = Vec::new();
 
         for section_entry in std::fs::read_dir(&reference)
             .unwrap_or_else(|e| panic!("read {}: {e}", reference.display()))
@@ -677,21 +676,153 @@ mod tests {
                     continue;
                 }
 
-                assert_eq!(
-                    docs_section(code),
-                    section,
-                    "docs_section({code}) should be {section:?} (its page lives in \
-                     docs/reference/{section}/problems/); a new code family needs a \
-                     matching arm in docs_section",
-                );
-                checked += 1;
+                codes.push((section.clone(), code.to_string()));
             }
         }
 
         assert!(
-            checked > 0,
+            !codes.is_empty(),
             "found no documented problem codes under {} — test wiring is broken",
             reference.display()
+        );
+        codes
+    }
+
+    // Guards against a new documented code family (a new
+    // docs/reference/<section>/problems/ directory) slipping past `docs_section`
+    // and shipping a wrong or 404 problem-code link. Walks the real docs tree
+    // and asserts every documented code's prefix maps to the section directory
+    // that actually contains its page. If this fails, add the new prefix to
+    // `docs_section`.
+    #[test]
+    fn docs_section_covers_every_documented_code() {
+        for (section, code) in documented_codes() {
+            assert_eq!(
+                docs_section(&code),
+                section,
+                "docs_section({code}) should be {section:?} (its page lives in \
+                 docs/reference/{section}/problems/); a new code family needs a \
+                 matching arm in docs_section",
+            );
+        }
+    }
+
+    #[test]
+    fn problem_help_url_when_known_prefix_then_links_to_that_section() {
+        assert!(problem_help_url("P0001", "1.0.0", "cli", None, None)
+            .starts_with("https://www.ironplc.com/reference/compiler/problems/P0001.html?"));
+        assert!(problem_help_url("V6008", "1.0.0", "cli", None, None)
+            .starts_with("https://www.ironplc.com/reference/runtime/problems/V6008.html?"));
+        assert!(problem_help_url("E0001", "1.0.0", "cli", None, None)
+            .starts_with("https://www.ironplc.com/reference/editor/problems/E0001.html?"));
+    }
+
+    #[test]
+    fn problem_help_url_when_unknown_prefix_then_unknown_section() {
+        // An unmapped family must 404 honestly rather than be attributed to an
+        // existing section, which would look like a working link to the wrong
+        // page.
+        assert!(problem_help_url("D0001", "1.0.0", "cli", None, None)
+            .contains("/reference/unknown/problems/D0001.html"));
+    }
+
+    #[test]
+    fn problem_help_url_when_channel_given_then_tagged_with_version_and_channel() {
+        let url = problem_help_url("P0001", "1.2.3", "mcp", None, None);
+        assert!(url.ends_with("?version=1.2.3&channel=mcp"));
+        assert!(!url.contains("&file="));
+        assert!(!url.contains("&line="));
+    }
+
+    #[test]
+    fn problem_help_url_when_source_location_then_appends_file_and_line() {
+        let url = problem_help_url(
+            "P0001",
+            "1.2.3",
+            "extension",
+            Some("compiler/analyzer/src/rule_example.rs"),
+            Some(42),
+        );
+        assert!(url.contains("&file=compiler/analyzer/src/rule_example.rs"));
+        assert!(url.contains("&line=42"));
+    }
+
+    #[test]
+    fn help_url_when_diagnostic_has_source_then_carries_it() {
+        let diag = Diagnostic::problem(
+            Problem::SyntaxError,
+            Label::span(SourceSpan::default(), "some error".to_string()),
+        )
+        .with_source("compiler/analyzer/src/rule_example.rs", 42);
+
+        assert_eq!(
+            diag.help_url("1.2.3", "cli"),
+            problem_help_url(
+                &diag.code,
+                "1.2.3",
+                "cli",
+                Some("compiler/analyzer/src/rule_example.rs"),
+                Some(42),
+            )
+        );
+    }
+
+    // The end-to-end guard: for every code that has a documentation page, the
+    // URL we actually hand a user must point at the directory that page lives
+    // in. `docs_section_covers_every_documented_code` checks the mapping;
+    // this checks the thing built from it, so a builder that ignored
+    // `docs_section` (as the language server once did) fails here.
+    #[test]
+    fn problem_help_url_when_every_documented_code_then_points_at_its_page() {
+        for (section, code) in documented_codes() {
+            let url = problem_help_url(&code, "1.0.0", "cli", None, None);
+            assert!(
+                url.contains(&format!("/reference/{section}/problems/{code}.html")),
+                "problem_help_url({code}) is {url}, but the page lives in \
+                 docs/reference/{section}/problems/",
+            );
+        }
+    }
+
+    // Keeps the fix for the language server's hardcoded `compiler` section from
+    // coming back in a new channel. `problem_help_url` is the only place in the
+    // compiler allowed to name the documentation host; anything else formatting
+    // its own URL is free to pick the wrong section, which is exactly the bug
+    // this consolidation removed. A new channel calls the builder.
+    #[test]
+    fn problem_help_url_is_the_only_place_rust_names_the_docs_host() {
+        const HOST: &str = "ironplc.com/reference";
+        let compiler = repo_root().join("compiler");
+        let this_file = compiler.join("dsl/src/diagnostic.rs");
+
+        let mut offenders = Vec::new();
+        let mut dirs = vec![compiler.clone()];
+        while let Some(dir) = dirs.pop() {
+            for entry in std::fs::read_dir(&dir)
+                .unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
+                .flatten()
+            {
+                let path = entry.path();
+                if path.is_dir() {
+                    // Build output is not source; it contains our own strings.
+                    if entry.file_name() == "target" {
+                        continue;
+                    }
+                    dirs.push(path);
+                } else if path.extension().is_some_and(|e| e == "rs")
+                    && path.canonicalize().ok() != this_file.canonicalize().ok()
+                    && std::fs::read_to_string(&path).is_ok_and(|t| t.contains(HOST))
+                {
+                    offenders.push(path.display().to_string());
+                }
+            }
+        }
+
+        assert!(
+            offenders.is_empty(),
+            "these build a documentation URL instead of calling problem_help_url, so \
+             nothing stops them naming the wrong reference section: {}",
+            offenders.join(", "),
         );
     }
 }
