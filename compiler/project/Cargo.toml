@@ -33,7 +33,7 @@ ironplc-container = { path = "../container", version = "0.242.0", features = [
 tempfile = "3"
 ctor = "1.0"
 env_logger = "0.11"
-rstest = "0.26"
+rstest = "0.27"
 
 [lints]
 workspace = true

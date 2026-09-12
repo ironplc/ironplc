@@ -29,7 +29,7 @@ ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
 ironplc-parser = { path = "../parser", version = "0.242.0" }
 ctor = "1.0"
 env_logger = "0.11"
-rstest = "0.26"
+rstest = "0.27"
 spec_test_macro = { path = "../spec_test_macro" }
 
 [lints]
