@@ -186,7 +186,8 @@ fn minimal_container_bytes() -> (Vec<u8>, FileHeader) {
 }
 
 /// REQ-CF-container-010: Sections appear in the order header, task table,
-/// type section, constant pool, code section, debug section.
+/// type section, constant pool, code section, debug section. The signature
+/// sections that precede the task table are planned and not yet emitted.
 #[spec_test(REQ_CF_container_010)]
 fn container_spec_req_cf_010_sections_appear_in_fixed_order() {
     let (_, h) = full_container_bytes();
@@ -197,8 +198,9 @@ fn container_spec_req_cf_010_sections_appear_in_fixed_order() {
     assert!(h.code_section_offset < h.debug_section_offset);
 }
 
-/// REQ-CF-container-011: The task table starts at 256 and every later section
-/// starts where the previous one ends, with no padding.
+/// REQ-CF-container-011: Every section starts where the previous present one
+/// ends, with no padding; with no signature sections emitted the task table
+/// therefore starts at 256.
 #[spec_test(REQ_CF_container_011)]
 fn container_spec_req_cf_011_sections_are_contiguous() {
     let (buf, h) = full_container_bytes();

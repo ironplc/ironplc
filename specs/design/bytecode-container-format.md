@@ -22,16 +22,21 @@ The format builds on:
 
 **REQ-CF-container-004** All multi-byte values are little-endian, matching the instruction set encoding.
 
-**REQ-CF-container-010** Sections appear in this fixed order: file header, task table, type section (optional), constant pool, code section, debug section (optional).
+**REQ-CF-container-010** Sections appear in this fixed order: file header, content signature, debug signature (optional), task table, type section (optional), constant pool, code section, debug section (optional).
 
-**REQ-CF-container-011** The task table begins at offset 256, immediately after the header, and each later section begins at the byte where the previous one ends; there is no padding between sections.
+**REQ-CF-container-011** Each section begins at the byte where the previous present section ends, with no padding; with no signature sections present, the task table therefore begins at offset 256, immediately after the header.
 
-**REQ-CF-container-012** An optional section that is absent has both its directory offset and its directory size equal to zero.
+**REQ-CF-container-012** A section that is absent has both its directory offset and its directory size equal to zero.
 
 ```
 ┌─────────────────────────────────────────┐  offset 0
 │ File Header (256 bytes, fixed size)     │
 ├─────────────────────────────────────────┤  offset 256
+│ Content Signature Section (planned)     │
+├─────────────────────────────────────────┤
+│ Debug Signature Section (planned,       │
+│   optional)                             │
+├─────────────────────────────────────────┤
 │ Task Table Section                      │
 ├─────────────────────────────────────────┤
 │ Type Section (optional)                 │
@@ -46,7 +51,7 @@ The format builds on:
 
 The task table format is defined in [Task Support Design](61131-task-support.md).
 
-> **Status — signature sections.** The content and debug signature sections that ADR-0007 defines are not in the layout above because nothing emits or reads them yet; their directory entries are written as zero. See [Content Signature Section](#content-signature-section) and the Implementation Status in [ADR-0007](../adrs/0007-dual-signature-integrity-model.md). Where they sit in the file is decided when they are implemented.
+> **Status — signature sections.** The content and debug signature sections that ADR-0007 defines are planned and not yet emitted or read; their directory entries are written as zero, so today the task table is the first section after the header. See [Content Signature Section](#content-signature-section) and the Implementation Status in [ADR-0007](../adrs/0007-dual-signature-integrity-model.md).
 
 ## File Header
 
