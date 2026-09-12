@@ -1,5 +1,6 @@
-//! End-to-end tests for the 8-, 16- and 32-bit integer `STRING_TO_*`
-//! functions under the string-to-number behavior policies (ADR-0049).
+//! End-to-end tests for the integer `STRING_TO_*` functions other than
+//! `STRING_TO_UDINT` under the string-to-number behavior policies
+//! (ADR-0049).
 //!
 //! `STRING_TO_UDINT` was the steel thread (`end_to_end_string_to_udint`);
 //! these are the targets that joined it. Each converts under the same two
@@ -44,21 +45,23 @@ fn options(non_numeric: StringToNumNonNumeric, failure: StringToNumFailure) -> C
 }
 
 /// Runs the conversion under the given policies and returns `x` as the
-/// value the declared type holds: a signed type's slot is sign-extended,
-/// an unsigned type's slot holds the value's low 32 bits.
+/// value the declared type holds, read at `target`'s width and signedness:
+/// a signed type's slot is sign-extended, an unsigned type's slot holds the
+/// value's low bits.
 fn convert(
     type_name: &str,
-    signed: bool,
+    target: Target,
     input: &str,
     non_numeric: StringToNumNonNumeric,
     failure: StringToNumFailure,
-) -> i64 {
+) -> i128 {
     let (_c, bufs) = parse_and_run(&program(type_name, input), &options(non_numeric, failure));
-    let slot = bufs.vars[1].as_i32();
-    if signed {
-        slot as i64
-    } else {
-        slot as u32 as i64
+    let slot = bufs.vars[1];
+    match target {
+        Target::I8 | Target::I16 | Target::I32 => slot.as_i32() as i128,
+        Target::U8 | Target::U16 | Target::U32 => slot.as_i32() as u32 as i128,
+        Target::I64 => slot.as_i64() as i128,
+        Target::U64 => slot.as_u64() as i128,
     }
 }
 
@@ -83,8 +86,8 @@ fn not_convertible(target: Target, input: &str) -> Trap {
     }
 }
 
-// The eight functions: the type, the block target it encodes, and its bounds.
-// The bit-string types share the unsigned target of their width.
+// The eleven functions: the type, the block target it encodes, and its
+// bounds. The bit-string types share the unsigned target of their width.
 #[rstest]
 #[case::sint("SINT", Target::I8, -128, 127)]
 #[case::int("INT", Target::I16, -32_768, 32_767)]
@@ -94,16 +97,18 @@ fn not_convertible(target: Target, input: &str) -> Trap {
 #[case::byte("BYTE", Target::U8, 0, 255)]
 #[case::word("WORD", Target::U16, 0, 65_535)]
 #[case::dword("DWORD", Target::U32, 0, 4_294_967_295)]
+#[case::lint("LINT", Target::I64, -9_223_372_036_854_775_808, 9_223_372_036_854_775_807)]
+#[case::ulint("ULINT", Target::U64, 0, 18_446_744_073_709_551_615)]
+#[case::lword("LWORD", Target::U64, 0, 18_446_744_073_709_551_615)]
 fn string_to_int_when_at_bounds_then_value_under_every_policy(
     #[case] type_name: &str,
-    #[case] _target: Target,
-    #[case] min: i64,
-    #[case] max: i64,
+    #[case] target: Target,
+    #[case] min: i128,
+    #[case] max: i128,
 ) {
-    let signed = min < 0;
     for non_numeric in StringToNumNonNumeric::ALL {
         for failure in StringToNumFailure::ALL {
-            let at = |v: i64| convert(type_name, signed, &v.to_string(), *non_numeric, *failure);
+            let at = |v: i128| convert(type_name, target, &v.to_string(), *non_numeric, *failure);
             assert_eq!(
                 at(min),
                 min,
@@ -132,22 +137,24 @@ fn string_to_int_when_at_bounds_then_value_under_every_policy(
 #[case::byte("BYTE", Target::U8, 0, 255)]
 #[case::word("WORD", Target::U16, 0, 65_535)]
 #[case::dword("DWORD", Target::U32, 0, 4_294_967_295)]
+#[case::lint("LINT", Target::I64, -9_223_372_036_854_775_808, 9_223_372_036_854_775_807)]
+#[case::ulint("ULINT", Target::U64, 0, 18_446_744_073_709_551_615)]
+#[case::lword("LWORD", Target::U64, 0, 18_446_744_073_709_551_615)]
 fn string_to_int_when_one_past_each_bound_then_failure_under_every_policy(
     #[case] type_name: &str,
     #[case] target: Target,
-    #[case] min: i64,
-    #[case] max: i64,
+    #[case] min: i128,
+    #[case] max: i128,
 ) {
     // Out of range is a failure, never a wrap: the failure policy decides
     // between a trap and zero, whatever the non-numeric policy.
-    let signed = min < 0;
     for past in [min - 1, max + 1] {
         let input = past.to_string();
         for non_numeric in StringToNumNonNumeric::ALL {
             assert_eq!(
                 convert(
                     type_name,
-                    signed,
+                    target,
                     &input,
                     *non_numeric,
                     StringToNumFailure::Zero
@@ -170,23 +177,25 @@ fn string_to_int_when_one_past_each_bound_then_failure_under_every_policy(
 // `zero` failure policy and equally under `trap`; `None` is 0 under `zero`
 // and V4006 under `trap`.
 #[rstest]
-#[case::sint("SINT", Target::I8, true)]
-#[case::int("INT", Target::I16, true)]
-#[case::dint("DINT", Target::I32, true)]
-#[case::usint("USINT", Target::U8, false)]
-#[case::uint("UINT", Target::U16, false)]
-#[case::byte("BYTE", Target::U8, false)]
-#[case::word("WORD", Target::U16, false)]
-#[case::dword("DWORD", Target::U32, false)]
+#[case::sint("SINT", Target::I8)]
+#[case::int("INT", Target::I16)]
+#[case::dint("DINT", Target::I32)]
+#[case::usint("USINT", Target::U8)]
+#[case::uint("UINT", Target::U16)]
+#[case::byte("BYTE", Target::U8)]
+#[case::word("WORD", Target::U16)]
+#[case::dword("DWORD", Target::U32)]
+#[case::lint("LINT", Target::I64)]
+#[case::ulint("ULINT", Target::U64)]
+#[case::lword("LWORD", Target::U64)]
 fn string_to_int_when_shared_invalid_inputs_then_per_non_numeric_policy(
     #[case] type_name: &str,
     #[case] target: Target,
-    #[case] signed: bool,
 ) {
     use StringToNumNonNumeric::{IgnoreSurrounding, IgnoreTrailing, Reject};
     /// The value each non-numeric alternative converts an input to, or
     /// `None` for a failure.
-    type PerPolicy = &'static [(StringToNumNonNumeric, Option<i64>)];
+    type PerPolicy = &'static [(StringToNumNonNumeric, Option<i128>)];
     let expectations: &[(&str, PerPolicy)] = &[
         (
             "12abc",
@@ -233,7 +242,7 @@ fn string_to_int_when_shared_invalid_inputs_then_per_non_numeric_policy(
         for (non_numeric, expected) in per_policy.iter() {
             let zero = convert(
                 type_name,
-                signed,
+                target,
                 input,
                 *non_numeric,
                 StringToNumFailure::Zero,
@@ -272,7 +281,7 @@ fn string_to_sint_when_300_then_trap_names_sint_and_never_44() {
     assert_eq!(
         convert(
             "SINT",
-            true,
+            Target::I8,
             "300",
             StringToNumNonNumeric::Reject,
             StringToNumFailure::Zero
@@ -288,6 +297,35 @@ fn string_to_byte_when_not_convertible_then_trap_names_the_unsigned_type() {
     assert_eq!(trap.to_string(), "string '300' is not convertible to USINT");
 }
 
+#[test]
+fn string_to_lword_when_not_convertible_then_trap_names_ulint() {
+    // LWORD shares ULINT's encoding, so the trap names ULINT; the preview
+    // keeps the first sixteen bytes of a 64-bit literal.
+    let trap = convert_expecting_trap(
+        "LWORD",
+        "18446744073709551616",
+        StringToNumNonNumeric::Reject,
+    );
+    assert_eq!(
+        trap.to_string(),
+        "string '1844674407370955'... is not convertible to ULINT"
+    );
+}
+
+#[test]
+fn string_to_lint_when_based_literal_then_64_bit_value() {
+    assert_eq!(
+        convert(
+            "LINT",
+            Target::I64,
+            "-16#8000_0000_0000_0000",
+            StringToNumNonNumeric::Reject,
+            StringToNumFailure::Trap
+        ),
+        i64::MIN as i128
+    );
+}
+
 #[rstest]
 #[case::negative_one("-1")]
 #[case::minus_before_max("-255")]
@@ -300,7 +338,7 @@ fn string_to_usint_when_negative_then_failure_not_wrap(#[case] input: &str) {
     assert_eq!(
         convert(
             "USINT",
-            false,
+            Target::U8,
             input,
             StringToNumNonNumeric::IgnoreSurrounding,
             StringToNumFailure::Zero
@@ -314,7 +352,7 @@ fn string_to_sint_when_minus_zero_then_zero() {
     assert_eq!(
         convert(
             "SINT",
-            true,
+            Target::I8,
             "-0",
             StringToNumNonNumeric::Reject,
             StringToNumFailure::Trap
