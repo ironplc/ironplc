@@ -15,6 +15,7 @@ use std::collections::HashSet;
 
 use ironplc_container::{opcode, VarIndex};
 use rstest::rstest;
+use spec_test_macro::spec_test;
 
 use super::{optimize, remap_line_map, OffsetMap};
 use crate::compile::PoolConstant;
@@ -171,7 +172,7 @@ fn optimize_when_no_patterns_then_bytecode_unchanged() {
 
 // --- Pattern 1: LOAD_VAR + STORE_VAR same var ---
 
-#[test]
+#[spec_test(REQ_PEEP_codegen_020)]
 fn optimize_when_load_store_same_var_i32_then_removes_both() {
     let mut bytecode = Vec::new();
     bytecode.extend_from_slice(&load_var_i32(5));
@@ -193,7 +194,7 @@ fn optimize_when_load_store_same_var_i64_then_removes_both() {
     assert_eq!(result, vec![opcode::RET_VOID]);
 }
 
-#[test]
+#[spec_test(REQ_PEEP_codegen_020)]
 fn optimize_when_load_store_different_var_then_no_change() {
     let mut bytecode = Vec::new();
     bytecode.extend_from_slice(&load_var_i32(5));
@@ -204,7 +205,7 @@ fn optimize_when_load_store_different_var_then_no_change() {
     assert_eq!(result, bytecode);
 }
 
-#[test]
+#[spec_test(REQ_PEEP_codegen_020)]
 fn optimize_when_load_store_different_type_then_no_change() {
     let mut bytecode = Vec::new();
     bytecode.extend_from_slice(&load_var_i32(5));
@@ -220,6 +221,7 @@ fn optimize_when_load_store_different_type_then_no_change() {
 // Each case is the instruction pair (minus the trailing RET_VOID) and the
 // constant pool it reads. The pool index is always 0.
 
+#[spec_test(REQ_PEEP_codegen_030)]
 #[rstest]
 #[case::zero_add_i32([load_const_i32(0), vec![opcode::ADD_I32]].concat(), PoolConstant::I32(0))]
 #[case::zero_sub_i32([load_const_i32(0), vec![opcode::SUB_I32]].concat(), PoolConstant::I32(0))]
@@ -250,6 +252,7 @@ fn optimize_when_arith_identity_pair_then_removes_both(
 // operator — `LOAD_CONST; LOAD_VAR; SUB` — so the pass leaves it alone; that
 // matters for `0 - x`, which is negation, not an identity.
 
+#[spec_test(REQ_PEEP_codegen_031)]
 #[rstest]
 #[case::zero_add_f32([load_const_f32(0), vec![opcode::ADD_F32]].concat(), PoolConstant::F32(0.0))]
 #[case::zero_add_f64([load_const_f64(0), vec![opcode::ADD_F64]].concat(), PoolConstant::F64(0.0))]
@@ -276,7 +279,7 @@ fn optimize_when_not_arith_identity_then_no_change(
 // directly; the pairing with what the emitter actually reports is covered
 // under "Jump patching after optimization" below.
 
-#[test]
+#[spec_test(REQ_PEEP_codegen_001)]
 fn optimize_when_jump_target_then_skips_optimization() {
     // JMP forward past a LOAD_VAR, where the STORE_VAR is the jump target.
     // The pair must NOT be optimized because STORE_VAR is targeted.
@@ -320,7 +323,7 @@ fn optimize_when_jump_target_follows_removed_instructions_then_maps_to_new_posit
     assert_eq!(offset_map[&10], 4, "the emitter patches against this");
 }
 
-#[test]
+#[spec_test(REQ_PEEP_codegen_001)]
 fn optimize_when_cmp_br_targets_removable_pair_then_pair_is_kept() {
     // The branch target must be protected from removal, otherwise the
     // branch would land on whatever instruction followed the pair.
@@ -480,7 +483,7 @@ fn optimize_two_pass_bytecode(bytecode: &[u8]) -> (Vec<u8>, OffsetMap) {
     )
 }
 
-#[test]
+#[spec_test(REQ_PEEP_codegen_004)]
 fn optimize_when_target_spans_removals_from_two_passes_then_map_composes() {
     let (result, offset_map) = optimize_two_pass_bytecode(&two_pass_bytecode());
 
@@ -501,7 +504,7 @@ fn optimize_when_target_spans_removals_from_two_passes_then_map_composes() {
     );
 }
 
-#[test]
+#[spec_test(REQ_PEEP_codegen_003)]
 fn remap_line_map_when_entry_removed_by_first_pass_then_snaps_past_second_pass() {
     let bytecode = two_pass_bytecode();
     let (result, offset_map) = optimize_two_pass_bytecode(&bytecode);
@@ -522,7 +525,7 @@ fn remap_line_map_when_entry_removed_by_first_pass_then_snaps_past_second_pass()
     );
 }
 
-#[test]
+#[spec_test(REQ_PEEP_codegen_005)]
 fn remap_line_map_when_entry_is_not_an_instruction_boundary_then_internal_error() {
     // The offset map covers every instruction boundary, so an entry that
     // misses it means the emitter recorded a position mid-instruction. That
@@ -682,4 +685,156 @@ fn optimize_and_patch_when_nothing_is_removed_then_offsets_are_unchanged() {
     expected.push(opcode::RET_VOID);
 
     assert_eq!(optimize_and_patch(&mut em, &mut vec![]), expected);
+}
+
+// --- Pipeline contract ---
+//
+// The properties every holder of an offset into a function depends on: that
+// the map covers what they can be holding, that a `RewriteOperand` does not
+// move anything, and that the pass order is not load-bearing.
+
+/// The constant pool `all_patterns_bytecode` reads: a zero for the additive
+/// identity, and an in-range narrow constant for the truncation fold.
+fn all_patterns_constants() -> Vec<PoolConstant> {
+    vec![PoolConstant::I32(0), PoolConstant::I32(42)]
+}
+
+/// One instruction pair for each registered pass, in pass order:
+///
+///   [0]  LOAD_VAR_I32 5   ]-- pass_self_assign
+///   [3]  STORE_VAR_I32 5  ]
+///   [6]  LOAD_VAR_I32 1
+///   [9]  LOAD_CONST_I32 0 ]-- pass_arith_identity (pool[0] is 0)
+///   [12] ADD_I32          ]
+///   [13] LOAD_CONST_I32 1 ]-- pass_const_trunc (pool[1] is 42, fits i8)
+///   [16] TRUNC_I8         ]
+///   [17] STORE_VAR_I32 2
+///   [20] RET_VOID
+fn all_patterns_bytecode() -> Vec<u8> {
+    let mut bytecode = Vec::new();
+    bytecode.extend_from_slice(&load_var_i32(5));
+    bytecode.extend_from_slice(&store_var_i32(5));
+    bytecode.extend_from_slice(&load_var_i32(1));
+    bytecode.extend_from_slice(&load_const_i32(0));
+    bytecode.push(opcode::ADD_I32);
+    bytecode.extend_from_slice(&load_const_i32(1));
+    bytecode.push(opcode::TRUNC_I8);
+    bytecode.extend_from_slice(&store_var_i32(2));
+    bytecode.push(opcode::RET_VOID);
+    bytecode
+}
+
+/// The start offset of every instruction in `bytecode`, using the same
+/// instruction-length table the optimizer decodes with.
+fn instruction_boundaries(bytecode: &[u8]) -> Vec<usize> {
+    let mut offsets = Vec::new();
+    let mut pc = 0;
+    while pc < bytecode.len() {
+        offsets.push(pc);
+        pc += opcode::instruction_size(bytecode[pc]);
+    }
+    offsets
+}
+
+#[spec_test(REQ_PEEP_codegen_002)]
+fn optimize_when_instructions_are_removed_then_map_covers_every_boundary() {
+    let bytecode = all_patterns_bytecode();
+    let (result, offset_map) = optimize(unpatched(&bytecode), &mut all_patterns_constants());
+
+    for offset in instruction_boundaries(&bytecode) {
+        let new_offset = *offset_map
+            .get(&offset)
+            .unwrap_or_else(|| panic!("instruction boundary {offset} is missing from the map"));
+        assert!(
+            new_offset <= result.len(),
+            "boundary {offset} maps to {new_offset}, past the new end {}",
+            result.len()
+        );
+    }
+    assert_eq!(
+        offset_map.get(&bytecode.len()),
+        Some(&result.len()),
+        "the one-past-the-end position must map to the new end"
+    );
+}
+
+#[spec_test(REQ_PEEP_codegen_006)]
+fn optimize_when_operand_is_rewritten_then_following_offsets_shift_only_by_the_removal() {
+    // 300 does not fit USINT, so the load's operand is rewritten to a new
+    // pool entry holding 44. Only the TRUNC_U8 byte disappears; the load
+    // keeps its three-byte encoding, so everything after it moves by one.
+    let mut bytecode = load_const_i32(0);
+    bytecode.push(opcode::TRUNC_U8);
+    bytecode.extend_from_slice(&store_var_i32(0));
+    bytecode.push(opcode::RET_VOID);
+
+    let mut constants = vec![PoolConstant::I32(300)];
+    let (result, offset_map) = optimize(unpatched(&bytecode), &mut constants);
+
+    let mut expected = load_const_i32(1);
+    expected.extend_from_slice(&store_var_i32(0));
+    expected.push(opcode::RET_VOID);
+    assert_eq!(result, expected);
+    assert_eq!(constants[1], PoolConstant::I32(44));
+
+    assert_eq!(offset_map[&0], 0, "the rewritten load does not move");
+    assert_eq!(
+        offset_map[&4], 3,
+        "STORE_VAR moves by the removed TRUNC only"
+    );
+    assert_eq!(offset_map[&7], 6);
+}
+
+#[spec_test(REQ_PEEP_codegen_007)]
+fn optimize_when_passes_run_in_any_order_then_bytecode_is_the_same() {
+    /// One pass, wrapped so all three have the same signature.
+    type Pass = fn(&[u8], &HashSet<usize>, &mut Vec<PoolConstant>) -> (Vec<u8>, OffsetMap);
+
+    let passes: [(&str, Pass); 3] = [
+        ("self_assign", |bytecode, protected, _| {
+            super::pass_self_assign::apply(bytecode, protected)
+        }),
+        ("arith_identity", |bytecode, protected, constants| {
+            super::pass_arith_identity::apply(bytecode, protected, constants)
+        }),
+        ("const_trunc", |bytecode, protected, constants| {
+            super::pass_const_trunc::apply(bytecode, protected, constants)
+        }),
+    ];
+
+    let expected = optimize(
+        unpatched(&all_patterns_bytecode()),
+        &mut all_patterns_constants(),
+    )
+    .0;
+
+    // Every pattern is removed, leaving the surviving load, the narrow
+    // store's own load, and the store itself.
+    let mut want = Vec::new();
+    want.extend_from_slice(&load_var_i32(1));
+    want.extend_from_slice(&load_const_i32(1));
+    want.extend_from_slice(&store_var_i32(2));
+    want.push(opcode::RET_VOID);
+    assert_eq!(expected, want, "the pipeline order must remove all three");
+
+    for order in [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ] {
+        let mut bytecode = all_patterns_bytecode();
+        let mut constants = all_patterns_constants();
+        for index in order {
+            let (next, _) = passes[index].1(&bytecode, &HashSet::new(), &mut constants);
+            bytecode = next;
+        }
+        let names: Vec<&str> = order.iter().map(|i| passes[*i].0).collect();
+        assert_eq!(
+            bytecode, expected,
+            "order {names:?} produced other bytecode"
+        );
+    }
 }
