@@ -166,13 +166,13 @@ corrects the record rather than the code.
 
 What landed:
 
-* **Beckhoff TwinCAT, in full.** `.TcPOU`, `.TcGVL` and `.TcDUT` are recognized
+* **Beckhoff TwinCAT, all but `PROPERTY`.** `.TcPOU`, `.TcGVL` and `.TcDUT` are recognized
   by `FileType::from_path`, and so is `.TcIO` — TwinCAT's `INTERFACE` object
   type, which this ADR's table does not list. The XML wrapper is parsed by
   `sources/src/xml`, and the ST inside goes through the ordinary parser with the
-  TwinCAT extensions enabled. `INTERFACE`, `METHOD`, `PROPERTY`, `EXTENDS`,
-  `IMPLEMENTS`, `POINTER TO`, `REFERENCE TO` and `{attribute}` pragmas all have
-  flags and a `twincat` preset that bundles them.
+  TwinCAT extensions enabled. `INTERFACE`, `METHOD`, `EXTENDS`, `IMPLEMENTS`,
+  `POINTER TO`, `REFERENCE TO` and `{attribute}` pragmas all have flags and a
+  `twincat` preset that bundles them.
 * **The principle itself is in force and is cited as policy.** ADR-0036 depends
   on it — the reason IronPLC defines no dialect of its own is that every flag
   bundle must describe a real toolchain.
@@ -190,6 +190,14 @@ What landed:
 
 What did not:
 
+* **`PROPERTY` is not built** — the one TwinCAT POU construct missing from
+  the row above. `PROPERTY` is not a keyword at any dialect
+  setting — it lexes as an identifier, there is no `PropertyDeclaration` AST
+  node, no `<Property>` element handler in `sources/src/xml`, and no
+  `--allow-*` flag for it. A `.TcPOU` carrying a property is rejected with
+  `P0002` under `--dialect twincat`. ADR-0041 decides the dispatch semantics
+  it would need; tracked by
+  [issue #1692](https://github.com/ironplc/ironplc/issues/1692).
 * **Siemens SCL is not built.** `.scl` is not a `FileType`, so the compiler does
   not read Siemens files at all. Every construct in the Siemens row of the table
   above — `#var`, `REGION`, `"quoted names"`, `VAR_STAT`, `DATA_BLOCK`,

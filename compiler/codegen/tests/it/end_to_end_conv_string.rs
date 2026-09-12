@@ -60,13 +60,15 @@ END_PROGRAM
 // =========================================================================
 // STRING_TO_<INTEGER>
 //
-// Parses a STRING literal into an integer slot. Invalid input yields 0.
+// The integer targets honor the string-to-number behavior policies; their
+// bounds, the invalid inputs and every policy combination are covered in
+// `end_to_end_string_to_int` and `end_to_end_string_to_udint`. This is the
+// round trip through the string form.
 // =========================================================================
 
 #[rstest]
 #[case::int_valid("INT", "123", 123)]
 #[case::int_negative("INT", "-456", -456)]
-#[case::int_invalid("INT", "abc", 0)]
 #[case::dint_large("DINT", "2147483647", 2147483647)]
 fn string_to_int(#[case] tgt: &str, #[case] input: &str, #[case] expected: i32) {
     let source = format!(

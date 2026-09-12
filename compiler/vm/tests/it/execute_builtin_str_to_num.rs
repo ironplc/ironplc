@@ -1,6 +1,6 @@
-//! VM tests for the `CONV_STR_TO_U32_*` builtins (ADR-0049), including the
-//! VM-owned conformance tests for `specs/design/behavior-policies.md`
-//! (`REQ-BP-vm-*`).
+//! VM tests for the `CONV_STR_TO_*` policy-block builtins (ADR-0049),
+//! including the VM-owned conformance tests for
+//! `specs/design/behavior-policies.md` (`REQ-BP-vm-*`).
 //!
 //! The scan semantics are pinned here at the instruction level, one builtin
 //! per non-numeric alternative, so they are independent of the compiler;
@@ -27,13 +27,24 @@ fn convert(
     non_numeric: StringToNumNonNumeric,
     failure: StringToNumFailure,
 ) -> Result<u32, Trap> {
-    let func_id = str_to_num::func_id(Target::U32, non_numeric, failure);
+    convert_to(Target::U32, input, non_numeric, failure).map(|slot| slot as u32)
+}
+
+/// Runs the `CONV_STR_TO_*` builtin for `target` and the given policies over
+/// the narrow string `input`, returning the slot's `i32` bits or the trap.
+fn convert_to(
+    target: Target,
+    input: &[u8],
+    non_numeric: StringToNumNonNumeric,
+    failure: StringToNumFailure,
+) -> Result<i32, Trap> {
+    let func_id = str_to_num::func_id(target, non_numeric, failure);
     let bytecode = convert_bytecode(func_id, 1);
     let c = container(&bytecode, Some(input), None);
     let mut b = VmBuffers::from_container(&c);
     let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
     vm.run_round(0).map_err(|fault| fault.trap)?;
-    Ok(vm.read_variable(VarIndex::new(0)).unwrap() as u32)
+    Ok(vm.read_variable(VarIndex::new(0)).unwrap())
 }
 
 fn not_convertible(input: &[u8]) -> Trap {
@@ -167,6 +178,48 @@ fn vm_spec_req_bp_005_out_of_range_fails_under_every_alternative(
         convert(b"4294967296", non_numeric, StringToNumFailure::Zero),
         Ok(0)
     );
+}
+
+/// Every target's builtins dispatch, and each range-checks against its own
+/// bounds: the bound converts, one past it traps under `trap` and yields 0
+/// under `zero`. A signed target's value is sign-extended in the slot.
+#[rstest]
+#[case::i8(Target::I8, -128, 127)]
+#[case::u8(Target::U8, 0, 255)]
+#[case::i16(Target::I16, -32_768, 32_767)]
+#[case::u16(Target::U16, 0, 65_535)]
+#[case::i32(Target::I32, -2_147_483_648, 2_147_483_647)]
+fn execute_when_str_to_int_builtin_at_bounds_then_value_and_past_bounds_fails(
+    #[case] target: Target,
+    #[case] min: i64,
+    #[case] max: i64,
+) {
+    use StringToNumFailure::{Trap as TrapPolicy, Zero};
+    use StringToNumNonNumeric::Reject;
+    let text = |v: i64| v.to_string().into_bytes();
+    assert_eq!(
+        convert_to(target, &text(min), Reject, TrapPolicy),
+        Ok(min as i32)
+    );
+    assert_eq!(
+        convert_to(target, &text(max), Reject, TrapPolicy),
+        Ok(max as i32)
+    );
+    assert_eq!(
+        convert_to(target, &text(min - 1), Reject, TrapPolicy),
+        Err(Trap::StringNotConvertible {
+            target,
+            value: StringPreview::of(&text(min - 1)),
+        })
+    );
+    assert_eq!(
+        convert_to(target, &text(max + 1), Reject, TrapPolicy),
+        Err(Trap::StringNotConvertible {
+            target,
+            value: StringPreview::of(&text(max + 1)),
+        })
+    );
+    assert_eq!(convert_to(target, &text(max + 1), Reject, Zero), Ok(0));
 }
 
 /// REQ-BP-vm-006: `trap` halts with V4006 naming the string; `zero`

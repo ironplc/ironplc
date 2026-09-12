@@ -408,38 +408,30 @@ selects it at compile time with two behavior policies; see
 
 .. list-table::
    :header-rows: 1
-   :widths: 40 30 30
+   :widths: 40 60
 
    * - Function
      - Description
-     - Support
    * - ``STRING_TO_SINT``
      - String to 8-bit signed
-     - Supported
    * - ``STRING_TO_INT``
      - String to 16-bit signed
-     - Supported
    * - ``STRING_TO_DINT``
      - String to 32-bit signed
-     - Supported
-   * - ``STRING_TO_LINT``
-     - String to 64-bit signed
-     - Not yet supported
    * - ``STRING_TO_USINT``
      - String to 8-bit unsigned
-     - Supported
    * - ``STRING_TO_UINT``
      - String to 16-bit unsigned
-     - Supported
    * - ``STRING_TO_UDINT``
      - String to 32-bit unsigned
-     - Supported, honors the policies
+   * - ``STRING_TO_BYTE``
+     - String to byte
+   * - ``STRING_TO_WORD``
+     - String to word
+   * - ``STRING_TO_DWORD``
+     - String to double word
    * - ``STRING_TO_REAL``
      - String to single-precision
-     - Supported
-   * - ``STRING_TO_LREAL``
-     - String to double-precision
-     - Not yet supported
 
 String to Numeric Policies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -550,9 +542,68 @@ undefined result: under the ``codesys`` and ``twincat`` dialects the failure
 policy applies and the result is zero. That is IronPLC's choice, not a
 CODESYS behavior.
 
-Today only ``STRING_TO_UDINT`` honors the policies. The other
-``STRING_TO_*`` functions return zero for a string that is not a literal of
-their type, whatever the policy selects.
+A literal outside the target's range is a failure under every non-numeric
+alternative, never a wrap: ``STRING_TO_SINT('300')`` halts with V4006 or
+produces zero, and is never 44. The ranges are those of the types:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 30 30
+
+   * - Function
+     - Smallest
+     - Largest
+   * - ``STRING_TO_SINT``
+     - -128
+     - 127
+   * - ``STRING_TO_INT``
+     - -32768
+     - 32767
+   * - ``STRING_TO_DINT``
+     - -2147483648
+     - 2147483647
+   * - ``STRING_TO_USINT``, ``STRING_TO_BYTE``
+     - 0
+     - 255
+   * - ``STRING_TO_UINT``, ``STRING_TO_WORD``
+     - 0
+     - 65535
+   * - ``STRING_TO_UDINT``, ``STRING_TO_DWORD``
+     - 0
+     - 4294967295
+
+.. list-table:: Results of ``STRING_TO_SINT`` by policy
+   :header-rows: 1
+   :widths: 24 19 19 19 19
+
+   * - Input
+     - ``reject`` + ``trap``
+     - ``reject`` + ``zero``
+     - ``ignore-trailing`` + ``zero``
+     - ``ignore-surrounding`` + ``zero``
+   * - ``'-128'``
+     - -128
+     - -128
+     - -128
+     - -128
+   * - ``'300'``
+     - V4006
+     - 0
+     - 0
+     - 0
+   * - ``'-5abc'``
+     - V4006
+     - 0
+     - -5
+     - -5
+
+``STRING_TO_BYTE``, ``STRING_TO_WORD`` and ``STRING_TO_DWORD`` convert exactly
+as ``STRING_TO_USINT``, ``STRING_TO_UINT`` and ``STRING_TO_UDINT`` do, and
+compile to the same instruction, so a V4006 from one of them names the
+unsigned integer type of the same width.
+
+``STRING_TO_REAL`` does not yet honor the policies: it returns zero for a
+string that is not a ``REAL`` literal, whatever the policy selects.
 
 .. playground::
 

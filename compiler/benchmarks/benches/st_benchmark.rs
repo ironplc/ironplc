@@ -295,6 +295,40 @@ fn bench_debug_scan_cost(c: &mut Criterion) {
     group.finish();
 }
 
+/// `STRING_TO_<integer>` under the strict policies (reject, trap) — the
+/// scan-and-range-check cost of one conversion, per target width. Each
+/// program converts a valid literal one hundred times; the widths differ
+/// only in the bounds the scanner checks, so the four cases should sit
+/// together, and a gap between them is a regression in one width's path.
+fn bench_string_to_num(c: &mut Criterion) {
+    let mut group = c.benchmark_group("st_string_to_num");
+    const REPS: usize = 100;
+
+    for (type_name, literal) in [
+        ("SINT", "100"),
+        ("INT", "30000"),
+        ("DINT", "2000000000"),
+        ("UDINT", "4000000000"),
+    ] {
+        let mut source =
+            format!("PROGRAM main\n  VAR s : STRING := '{literal}'; x : {type_name}; END_VAR\n");
+        for _ in 0..REPS {
+            source.push_str(&format!("  x := STRING_TO_{type_name}(s);\n"));
+        }
+        source.push_str("END_PROGRAM\n");
+        let container = compile_st(&source);
+
+        group.throughput(Throughput::Elements(REPS as u64));
+        bench_run!(
+            group,
+            BenchmarkId::from_parameter(type_name),
+            &container,
+            |_bufs| {}
+        );
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_debug_scan_cost,
@@ -309,5 +343,6 @@ criterion_group!(
     bench_arithmetic,
     bench_case_state,
     bench_counter_up,
+    bench_string_to_num,
 );
 criterion_main!(benches);
