@@ -429,23 +429,37 @@ impl Diagnostic {
     }
 }
 
+/// The documented problem-code families: a code's leading letter paired with
+/// the www.ironplc.com reference section its page lives in.
+///
+/// This is the table [`docs_section`] reads. It is a table rather than a `match`
+/// arm so that it can also be handed to callers that cannot call into Rust — the
+/// playground's front end asks the WASM crate for it instead of testing code
+/// prefixes itself, which is how a fourth copy of this mapping was removed.
+pub const DOCS_SECTIONS: &[(char, &str)] = &[('P', "compiler"), ('V', "runtime"), ('E', "editor")];
+
+/// The section reported for a code whose family is not in [`DOCS_SECTIONS`].
+pub const UNKNOWN_DOCS_SECTION: &str = "unknown";
+
 /// The www.ironplc.com reference section that documents a problem code, derived
 /// from its leading letter: `P####` → `compiler`, `V####` → `runtime`,
 /// `E####` → `editor`.
 ///
-/// Returns `"unknown"` for any unrecognized prefix rather than guessing a
-/// section: a `…/reference/unknown/problems/…` URL 404s honestly instead of
-/// confidently pointing at the wrong docs. The `docs_section_covers_every_documented_code`
-/// test in this module walks the docs tree and fails if any documented code's
-/// prefix is left unmapped, so adding a new code family without updating this
-/// function is caught at test time rather than shipping a broken link.
+/// Returns [`UNKNOWN_DOCS_SECTION`] for any unrecognized prefix rather than
+/// guessing a section: a `…/reference/unknown/problems/…` URL 404s honestly
+/// instead of confidently pointing at the wrong docs. The
+/// `docs_section_covers_every_documented_code` test in this module walks the
+/// docs tree and fails if any documented code's prefix is left unmapped, so
+/// adding a new code family without updating [`DOCS_SECTIONS`] is caught at test
+/// time rather than shipping a broken link.
 pub fn docs_section(code: &str) -> &'static str {
-    match code.chars().next() {
-        Some('P') => "compiler",
-        Some('V') => "runtime",
-        Some('E') => "editor",
-        _ => "unknown",
-    }
+    let Some(prefix) = code.chars().next() else {
+        return UNKNOWN_DOCS_SECTION;
+    };
+    DOCS_SECTIONS
+        .iter()
+        .find(|(letter, _)| *letter == prefix)
+        .map_or(UNKNOWN_DOCS_SECTION, |(_, section)| *section)
 }
 
 /// Builds the www.ironplc.com documentation URL for a problem `code`, tagged
