@@ -12,12 +12,14 @@
 //! the same separators, either preceded by an optional sign. A typed prefix
 //! (`UDINT#`) is not accepted. One scanner serves every integer target; the
 //! target contributes only its bounds, and a value outside them is a failure
-//! rather than a wrap.
+//! rather than a wrap. The real targets have their own scanner
+//! (`str_to_real`) behind the same policies and the same failure handling.
 
 use ironplc_container::builtin::str_to_num::{Encoding, Target};
 use ironplc_container::policy::{StringToNumFailure, StringToNumNonNumeric};
 
 use crate::error::{StringPreview, Trap};
+use crate::str_to_real;
 use crate::value::Slot;
 
 /// Converts the narrow string `bytes` under `encoding`.
@@ -25,31 +27,41 @@ use crate::value::Slot;
 /// Returns the value as a slot of the target's width, or the trap the
 /// failure policy calls for.
 pub(crate) fn convert(encoding: Encoding, bytes: &[u8]) -> Result<Slot, Trap> {
-    let scanned = scan_integer(bytes, encoding.non_numeric, Bounds::of(encoding.target));
-    let value = match (scanned, encoding.failure) {
-        (Some(value), _) => value,
-        (None, StringToNumFailure::Zero) => 0,
-        (None, StringToNumFailure::Trap) => {
-            return Err(Trap::StringNotConvertible {
-                target: encoding.target,
-                value: StringPreview::of(bytes),
-            })
-        }
-    };
-    Ok(slot(encoding.target, value))
+    match scan(encoding.target, encoding.non_numeric, bytes) {
+        Some(slot) => Ok(slot),
+        None => failure(encoding, bytes),
+    }
 }
 
-/// The slot a converted `value` occupies for `target`.
-///
-/// The scanner has already checked the value against the target's bounds,
-/// so a narrowing cast keeps the value (sign-extended for a signed target,
-/// as the slot convention is) and nothing is truncated.
-fn slot(target: Target, value: i64) -> Slot {
-    match target {
+/// Scans `bytes` for a value of `target` under `non_numeric`, as the slot
+/// of the target's width, or `None` when the string is not convertible.
+fn scan(target: Target, non_numeric: StringToNumNonNumeric, bytes: &[u8]) -> Option<Slot> {
+    let integer = |bounds| scan_integer(bytes, non_numeric, bounds);
+    // For an integer target the scanner has already checked the value
+    // against the target's bounds, so a narrowing cast keeps the value
+    // (sign-extended for a signed target, as the slot convention is) and
+    // nothing is truncated. A real target parses at its own width.
+    Some(match target {
         Target::U32 | Target::I32 | Target::U8 | Target::I8 | Target::U16 | Target::I16 => {
-            Slot::from_i32(value as i32)
+            Slot::from_i32(integer(Bounds::of(target))? as i32)
         }
-        Target::U64 | Target::I64 => Slot::from_i64(value),
+        Target::U64 | Target::I64 => Slot::from_i64(integer(Bounds::of(target))?),
+        Target::F32 => Slot::from_f32(str_to_real::scan_f32(bytes, non_numeric)?),
+        Target::F64 => Slot::from_f64(str_to_real::scan_f64(bytes, non_numeric)?),
+    })
+}
+
+/// What a conversion that could not convert `bytes` produces under the
+/// encoded failure policy: the target's zero, or the trap.
+fn failure(encoding: Encoding, bytes: &[u8]) -> Result<Slot, Trap> {
+    match encoding.failure {
+        // Every target's zero is the all-zero slot: 0 at either integer
+        // width, and positive 0.0 at either real width.
+        StringToNumFailure::Zero => Ok(Slot::from_i64(0)),
+        StringToNumFailure::Trap => Err(Trap::StringNotConvertible {
+            target: encoding.target,
+            value: StringPreview::of(bytes),
+        }),
     }
 }
 
@@ -82,6 +94,9 @@ impl Bounds {
             Target::I16 => Bounds::signed(i16::MIN as i64, i16::MAX as u64),
             Target::U64 => Bounds::unsigned(u64::MAX),
             Target::I64 => Bounds::signed(i64::MIN, i64::MAX as u64),
+            // The real targets are not scanned as integers; their bounds
+            // are their finite ranges, which `str_to_real` checks.
+            Target::F32 | Target::F64 => Bounds::unsigned(0),
         }
     }
 
@@ -240,14 +255,14 @@ fn digit_run(text: &[u8], base: u32) -> Option<(Option<u64>, usize)> {
     Some(((!overflowed).then_some(value), len))
 }
 
-fn next_is_digit(text: &[u8], index: usize, base: u32) -> bool {
+pub(crate) fn next_is_digit(text: &[u8], index: usize, base: u32) -> bool {
     text.get(index).is_some_and(|&b| (b as char).is_digit(base))
 }
 
 /// Skips leading bytes that cannot start a literal: everything up to the
 /// first digit, or a sign immediately followed by a digit (Rockwell's `STOD`
 /// keeps "the minus sign in front of a number").
-fn skip_to_literal(bytes: &[u8]) -> &[u8] {
+pub(crate) fn skip_to_literal(bytes: &[u8]) -> &[u8] {
     let mut start = 0;
     while start < bytes.len() {
         let b = bytes[start];
@@ -262,11 +277,11 @@ fn skip_to_literal(bytes: &[u8]) -> &[u8] {
     &bytes[start..]
 }
 
-fn is_ascii_space(b: u8) -> bool {
+pub(crate) fn is_ascii_space(b: u8) -> bool {
     matches!(b, b' ' | b'\t' | b'\n' | b'\r')
 }
 
-fn trim_ascii_start(bytes: &[u8]) -> &[u8] {
+pub(crate) fn trim_ascii_start(bytes: &[u8]) -> &[u8] {
     let start = bytes
         .iter()
         .position(|&b| !is_ascii_space(b))
@@ -274,7 +289,7 @@ fn trim_ascii_start(bytes: &[u8]) -> &[u8] {
     &bytes[start..]
 }
 
-fn trim_ascii(bytes: &[u8]) -> &[u8] {
+pub(crate) fn trim_ascii(bytes: &[u8]) -> &[u8] {
     let bytes = trim_ascii_start(bytes);
     let end = bytes
         .iter()

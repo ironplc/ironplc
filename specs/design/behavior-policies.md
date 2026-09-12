@@ -120,27 +120,26 @@ unsigned integer of its width and has no target of its own, so
 | 5 | I16 | `STRING_TO_INT` | 0x04A8–0x04AD |
 | 6 | U64 | `STRING_TO_ULINT`, `STRING_TO_LWORD` | 0x04B0–0x04B5 |
 | 7 | I64 | `STRING_TO_LINT` | 0x04B8–0x04BD |
-| 8 | F32 | `STRING_TO_REAL` | 0x04C0–0x04C5, reserved |
-| 9 | F64 | `STRING_TO_LREAL` | 0x04C8–0x04CD, reserved |
+| 8 | F32 | `STRING_TO_REAL` | 0x04C0–0x04C5 |
+| 9 | F64 | `STRING_TO_LREAL` | 0x04C8–0x04CD |
 
-Positions 8 and 9 are reserved and not yet assigned: `STRING_TO_REAL` keeps
-the single-encoding `CONV_STR_TO_F32` builtin until it moves onto the block,
-and `STRING_TO_LREAL` is not yet compiled.
-Codegen no longer emits `CONV_STR_TO_I32`; the VM keeps its handler because
-a func_id is a permanent wire-format commitment.
+Every `STRING_TO_<numeric>` function is on the block; positions 10 through
+15 are unassigned. Codegen no longer emits `CONV_STR_TO_I32` or
+`CONV_STR_TO_F32`; the VM keeps their handlers because a func_id is a
+permanent wire-format commitment.
 
 ### Codegen
 
-**REQ-BP-codegen-001** Every `STRING_TO_<integer>` function whose target is assigned compiles to `BUILTIN` with the func_id that `builtin::str_to_num::func_id(target, non_numeric, failure)` gives for its target and the selected policies, so the same source under two selections produces bytecode that differs only in that operand.
+**REQ-BP-codegen-001** Every `STRING_TO_<numeric>` function compiles to `BUILTIN` with the func_id that `builtin::str_to_num::func_id(target, non_numeric, failure)` gives for its target and the selected policies, so the same source under two selections produces bytecode that differs only in that operand.
 
 **REQ-BP-codegen-002** The conversion emits no `TRUNC_*` after its builtin: the VM range-checks against the target's own bounds and pushes the value as-is, so a sub-32-bit target never wraps.
 
 ### The literal grammar
 
 Under every non-numeric alternative, what is converted is an IEC 61131-3
-integer literal: CODESYS documents the input as "a valid literal of
-the target type", and every surveyed implementation accepts `16#FF`, so the
-grammar is the meaning of "convertible" rather than a policy.
+literal of the target type: CODESYS documents the input as "a valid literal
+of the target type", and every surveyed implementation accepts `16#FF`, so
+the grammar is the meaning of "convertible" rather than a policy.
 
 **REQ-BP-vm-001** A literal is an optional sign, then either a run of decimal digits or a based literal (`2#`, `8#` or `16#` followed by digits of that base), where single `_` separators may appear between digits. A typed prefix (`UDINT#`) is not part of the grammar.
 
@@ -148,6 +147,19 @@ For an unsigned target a `-` sign is accepted by the grammar and is a range
 failure for any value but zero, so `-5` fails on range rather than on
 syntax. This keeps `ignore-surrounding` from skipping a sign that Rockwell's
 `STOD` documents as part of the number.
+
+**REQ-BP-vm-008** A real literal is an optional sign, then a mantissa that is a run of decimal digits, a run with a decimal point and an optional fraction run, or a decimal point with a fraction run, then an optional exponent of `E` or `e`, an optional sign and a run of decimal digits, where single `_` separators may appear between the digits of a run; a based literal, a typed prefix, and the words `inf`, `infinity` and `nan` are not part of the grammar.
+
+The real grammar is CODESYS's "floating-point number, also in exponential
+notation". The integer form (`'5'`) is a real literal because every
+surveyed implementation converts it; the point-first and point-last forms
+(`'.5'`, `'1.'`) because the C `strtod` the surveyed runtimes build on
+accepts them, and because rejecting `'.5'` while `ignore-surrounding` skips
+the point to convert 5 would be a worse result than 0.5. A decimal point is
+not part of an integer literal: CODESYS documents that for an integer target
+"floating-point numbers are not convertible; the decimal separator is
+treated and truncated as a following character", which is what `reject`
+(failure) and `ignore-trailing` (the integer part) already do.
 
 ### Scan semantics
 
@@ -158,6 +170,10 @@ syntax. This keeps `ignore-surrounding` from skipping a sign that Rockwell's
 **REQ-BP-vm-004** Under `ignore-surrounding`, characters that cannot start a literal (anything but a digit, or a sign immediately followed by a digit) are skipped, then the string is converted as under `ignore-trailing`; a string with no literal anywhere is a failure.
 
 **REQ-BP-vm-005** A literal whose value does not fit the target type is a failure under every non-numeric alternative; no alternative wraps or saturates.
+
+**REQ-BP-vm-009** A real literal whose magnitude rounds to infinity at the target's width is a failure under every non-numeric alternative, and a literal too small for the width rounds to a subnormal or to zero and is not a failure.
+
+**REQ-BP-vm-010** No conversion produces a NaN or an infinity: a word that would spell one is not a literal and so is a failure under every non-numeric alternative, `ignore-surrounding` skips it to a literal behind it, and under `zero` a failure produces positive 0.0.
 
 Range is a failure, not a scan question (ADR-0049): `'4294967296'` is a
 well-formed literal that is not convertible to `UDINT`, so under
@@ -171,6 +187,16 @@ each side of zero, which holds `ULINT`'s `2^64 - 1` and `LINT`'s `2^63` below
 zero without wider arithmetic; the target contributes nothing but those
 bounds and its slot width, which is what keeps the eleven functions from
 having eleven scanners.
+
+The real targets have a second scanner behind the same policies and the
+same failure handling. It measures the literal by the real grammar and
+parses it with `core`'s `FromStr` at the target's width (`f32` for `REAL`,
+`f64` for `LREAL`), so the value is the correctly rounded value of the text
+at that width rather than a wide parse narrowed; a magnitude that rounds to
+infinity there is the real targets' out-of-range. Overflow is a failure
+because an infinity is a value the text did not name, exactly as `'300'`
+names a value `SINT` does not hold; underflow is not, because zero or a
+subnormal is the value the text names at that width.
 
 ### Failure
 
@@ -215,8 +241,8 @@ two functions was called, and the range it names is the same.
    table above reserves, and to `Target::ALL`; declare its six rows in
    `declare_builtins!`, pin them in the wire-format test, and record them in
    [bytecode-instruction-set.md](bytecode-instruction-set.md).
-2. Give the VM its bounds (`Bounds::of`) and its slot width
-   (`str_to_num::slot`), and its type name in `error.rs`.
+2. Give the VM its scan and slot width (`str_to_num::scan`) and its type
+   name in `error.rs`.
 3. Map the type to the target in codegen's `str_to_num_target`, and register
    the function in the analyzer if it is not.
 4. Test end to end at min, max, one past each bound and the shared invalid
