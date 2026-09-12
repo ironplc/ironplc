@@ -98,26 +98,47 @@ documents it for `STOD`, and a program ported from Logix can ask for it.
 
 | Requirement | Value | Meaning |
 |---|---|---|
-| **REQ-BP-container-002** | `0x0480 + target * 8 + non_numeric * 2 + failure` | The func_id of a `STRING_TO_<numeric>` conversion; the six `CONV_STR_TO_U32_*` rows pin target 0 |
+| **REQ-BP-container-002** | `0x0480 + target * 8 + non_numeric * 2 + failure` | The func_id of a `STRING_TO_<numeric>` conversion; each assigned target's six `CONV_STR_TO_<target>_*` rows pin its position |
 | **REQ-BP-container-003** | `builtin::str_to_num::decode` | Inverts the arithmetic for every encoded ID and returns `None` for every other ID in `0x0480..=0x04FF` |
 
 The block reserves `0x0480..=0x04FF`: sixteen targets, each with a stride of
 eight (three non-numeric alternatives times two failure alternatives, and two
-spare for a further failure alternative). Only target 0, U32 (`UDINT`), is
-assigned. The signed, sub-32-bit, 64-bit and real targets keep the
-single-encoding `CONV_STR_TO_I32` / `CONV_STR_TO_F32` builtins until they are
-moved onto the block.
+spare for a further failure alternative). The targets sit at fixed positions:
+even positions are unsigned and the odd position after each is the signed
+type of the same width, in width order 32, 8, 16, 64 (32 first because U32
+landed at 0), and the real targets follow. A bit-string type converts as the
+unsigned integer of its width and has no target of its own, so
+`STRING_TO_BYTE` and `STRING_TO_USINT` compile to the same func_id.
+
+| Position | Target | Functions | func_ids |
+|---|---|---|---|
+| 0 | U32 | `STRING_TO_UDINT`, `STRING_TO_DWORD` | 0x0480–0x0485 |
+| 1 | I32 | `STRING_TO_DINT` | 0x0488–0x048D |
+| 2 | U8 | `STRING_TO_USINT`, `STRING_TO_BYTE` | 0x0490–0x0495 |
+| 3 | I8 | `STRING_TO_SINT` | 0x0498–0x049D |
+| 4 | U16 | `STRING_TO_UINT`, `STRING_TO_WORD` | 0x04A0–0x04A5 |
+| 5 | I16 | `STRING_TO_INT` | 0x04A8–0x04AD |
+| 6 | U64 | `STRING_TO_ULINT`, `STRING_TO_LWORD` | 0x04B0–0x04B5 |
+| 7 | I64 | `STRING_TO_LINT` | 0x04B8–0x04BD |
+| 8 | F32 | `STRING_TO_REAL` | 0x04C0–0x04C5, reserved |
+| 9 | F64 | `STRING_TO_LREAL` | 0x04C8–0x04CD, reserved |
+
+Positions 8 and 9 are reserved and not yet assigned: `STRING_TO_REAL` keeps
+the single-encoding `CONV_STR_TO_F32` builtin until it moves onto the block,
+and `STRING_TO_LREAL` is not yet compiled.
+Codegen no longer emits `CONV_STR_TO_I32`; the VM keeps its handler because
+a func_id is a permanent wire-format commitment.
 
 ### Codegen
 
-**REQ-BP-codegen-001** `STRING_TO_UDINT` compiles to `BUILTIN` with the func_id that `builtin::str_to_num::func_id(U32, non_numeric, failure)` gives for the selected policies, so the same source under two selections produces bytecode that differs only in that operand.
+**REQ-BP-codegen-001** Every `STRING_TO_<integer>` function whose target is assigned compiles to `BUILTIN` with the func_id that `builtin::str_to_num::func_id(target, non_numeric, failure)` gives for its target and the selected policies, so the same source under two selections produces bytecode that differs only in that operand.
 
-**REQ-BP-codegen-002** No `TRUNC_*` follows the `STRING_TO_UDINT` builtin: the conversion range-checks against the full unsigned 32-bit range and pushes the value as-is.
+**REQ-BP-codegen-002** The conversion emits no `TRUNC_*` after its builtin: the VM range-checks against the target's own bounds and pushes the value as-is, so a sub-32-bit target never wraps.
 
 ### The literal grammar
 
 Under every non-numeric alternative, what is converted is an IEC 61131-3
-unsigned integer literal: CODESYS documents the input as "a valid literal of
+integer literal: CODESYS documents the input as "a valid literal of
 the target type", and every surveyed implementation accepts `16#FF`, so the
 grammar is the meaning of "convertible" rather than a policy.
 
@@ -141,6 +162,15 @@ syntax. This keeps `ignore-surrounding` from skipping a sign that Rockwell's
 Range is a failure, not a scan question (ADR-0049): `'4294967296'` is a
 well-formed literal that is not convertible to `UDINT`, so under
 `ignore-trailing` it fails rather than converting a shorter run of its digits.
+The same holds at every width: `'300'` is not convertible to `SINT`, and the
+conversion fails rather than truncating to 44.
+
+One scanner serves every integer target. It accumulates the literal's
+magnitude in 64 bits and checks it against the target's largest magnitude on
+each side of zero, which holds `ULINT`'s `2^64 - 1` and `LINT`'s `2^63` below
+zero without wider arithmetic; the target contributes nothing but those
+bounds and its slot width, which is what keeps the eleven functions from
+having eleven scanners.
 
 ### Failure
 
@@ -151,7 +181,13 @@ well-formed literal that is not convertible to `UDINT`, so under
 The trap carries a bounded preview of the offending string (its first
 sixteen bytes, with an ellipsis if more followed), because the VM is `no_std`
 and a trap cannot own the value; sixteen bytes is enough to show any
-`UDINT` literal and to recognise a mistyped one.
+`UDINT` literal, the first sixteen characters of a 64-bit one, and to
+recognise a mistyped one.
+
+The trap names the target the func_id encodes. A bit-string function shares
+the unsigned target of its width, so `STRING_TO_BYTE('300')` reports that
+`'300'` is not convertible to `USINT`: the encoding does not say which of the
+two functions was called, and the range it names is the same.
 
 ## Adding a policy
 
@@ -172,3 +208,17 @@ and a trap cannot own the value; sixteen bytes is enough to show any
 6. Document the policy on the page for the operation it governs, with the
    result for every alternative and any divergence from a vendor whose
    behavior is undefined; add the trap's `V4xxx` page.
+
+## Adding a target
+
+1. Add the variant to `builtin::str_to_num::Target` at the position the
+   table above reserves, and to `Target::ALL`; declare its six rows in
+   `declare_builtins!`, pin them in the wire-format test, and record them in
+   [bytecode-instruction-set.md](bytecode-instruction-set.md).
+2. Give the VM its bounds (`Bounds::of`) and its slot width
+   (`str_to_num::slot`), and its type name in `error.rs`.
+3. Map the type to the target in codegen's `str_to_num_target`, and register
+   the function in the analyzer if it is not.
+4. Test end to end at min, max, one past each bound and the shared invalid
+   inputs under every policy combination; extend the benchmark group.
+5. Document the function's range on the type-conversions page.

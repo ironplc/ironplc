@@ -319,6 +319,17 @@ criteria 1 through 5 hold for the landed policy:
 `compiler/vm/src/` matches the policy names only in the dispatch arm that
 decodes them from the func_id.
 
+### What landed (2026-09-11)
+
+The 8-, 16- and 32-bit integer targets (`SINT`, `INT`, `DINT`, `USINT`,
+`UINT`, `BYTE`, `WORD`, `DWORD`) moved onto the func_id block, tracked by
+[#1683](https://github.com/ironplc/ironplc/issues/1683). Each instantiates
+the one integer scanner with its own bounds, and the `TRUNC_*` that used to
+follow the conversion is gone: `STRING_TO_SINT('300')` fails as the
+*First application* section says, and never wraps to 44. The 64-bit integer
+targets (`LINT`, `ULINT`, `LWORD`) followed on 2026-09-12 through the same
+scanner; the real targets are the remaining item of that issue.
+
 ### Sources for the survey
 
 * Beckhoff, [STRING_TO conversions (TwinCAT 2)](https://infosys.beckhoff.com/content/1033/tcplccontrol/925582731.html)

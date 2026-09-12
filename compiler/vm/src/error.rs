@@ -133,9 +133,21 @@ impl fmt::Display for StringPreview {
 }
 
 /// The IEC 61131-3 type name a `STRING_TO_<numeric>` target converts to.
+///
+/// A bit-string function (`STRING_TO_BYTE`, `STRING_TO_WORD`,
+/// `STRING_TO_DWORD`) shares the unsigned target of its width, so its trap
+/// names the unsigned integer type; the encoding does not say which of the
+/// two functions was called.
 fn target_type_name(target: str_to_num::Target) -> &'static str {
     match target {
         str_to_num::Target::U32 => "UDINT",
+        str_to_num::Target::I32 => "DINT",
+        str_to_num::Target::U8 => "USINT",
+        str_to_num::Target::I8 => "SINT",
+        str_to_num::Target::U16 => "UINT",
+        str_to_num::Target::I16 => "INT",
+        str_to_num::Target::U64 => "ULINT",
+        str_to_num::Target::I64 => "LINT",
     }
 }
 
@@ -272,6 +284,55 @@ mod tests {
             value: StringPreview::of(b"0123456789abcdefghij"),
         },
         "string '0123456789abcdef'... is not convertible to UDINT"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::I8,
+            value: StringPreview::of(b"300"),
+        },
+        "string '300' is not convertible to SINT"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::U8,
+            value: StringPreview::of(b"-1"),
+        },
+        "string '-1' is not convertible to USINT"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::I16,
+            value: StringPreview::of(b"32768"),
+        },
+        "string '32768' is not convertible to INT"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::U16,
+            value: StringPreview::of(b"65536"),
+        },
+        "string '65536' is not convertible to UINT"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::I32,
+            value: StringPreview::of(b"2147483648"),
+        },
+        "string '2147483648' is not convertible to DINT"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::I64,
+            value: StringPreview::of(b"-1x"),
+        },
+        "string '-1x' is not convertible to LINT"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::U64,
+            value: StringPreview::of(b"18446744073709551616"),
+        },
+        "string '1844674407370955'... is not convertible to ULINT"
     )]
     #[case(Trap::InvalidCmpOp(0x07), "invalid comparison operator code: 0x07")]
     #[case(

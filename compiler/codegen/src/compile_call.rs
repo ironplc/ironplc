@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use ironplc_analyzer::{operator_function_form, FormOf};
 use ironplc_container::opcode;
 use ironplc_dsl::core::{Id, Located};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     Expr, ExprKind, Function, ParamAssignmentKind, SymbolicVariableKind, Variable,
 };
@@ -1222,24 +1222,54 @@ pub(crate) fn compile_string_conversion(
             let pool_index = ctx.add_i32_constant(data_offset as i32);
             emitter.emit_load_const_i32(pool_index);
 
-            let func_id = match (target.op_width, target.signedness, target.storage_bits) {
-                // UDINT: the policy-bearing conversion (ADR-0049). The
-                // func_id names the target and both selected policies, so
-                // the VM range-checks against the full unsigned range and
-                // no truncation follows.
-                (OpWidth::W32, Signedness::Unsigned, 32) => opcode::builtin::str_to_num::func_id(
-                    opcode::builtin::str_to_num::Target::U32,
+            use opcode::builtin::str_to_num::{func_id as block_func_id, Target};
+            // An integer target is a policy-bearing conversion (ADR-0049):
+            // the func_id names the target and both selected policies, the
+            // VM range-checks against the target's own bounds, and no
+            // truncation follows. `STRING_TO_SINT('300')` fails; it never
+            // wraps to 44. A bit-string type has the signedness and value
+            // width of the unsigned integer it aliases, so it lands on that
+            // integer's target.
+            let block = |target: Target| {
+                block_func_id(
+                    target,
                     ctx.string_to_num.non_numeric,
                     ctx.string_to_num.failure,
-                ),
-                (OpWidth::W32, _, _) => opcode::builtin::CONV_STR_TO_I32,
+                )
+            };
+            let func_id = match (target.op_width, target.signedness, target.storage_bits) {
+                (OpWidth::W32, Signedness::Unsigned, 32) => block(Target::U32),
+                (OpWidth::W32, Signedness::Signed, 32) => block(Target::I32),
+                (OpWidth::W32, Signedness::Unsigned, 8) => block(Target::U8),
+                (OpWidth::W32, Signedness::Signed, 8) => block(Target::I8),
+                (OpWidth::W32, Signedness::Unsigned, 16) => block(Target::U16),
+                (OpWidth::W32, Signedness::Signed, 16) => block(Target::I16),
+                (OpWidth::W64, Signedness::Unsigned, 64) => block(Target::U64),
+                (OpWidth::W64, Signedness::Signed, 64) => block(Target::I64),
                 (OpWidth::F32, _, _) => opcode::builtin::CONV_STR_TO_F32,
-                _ => {
+                // LREAL awaits its reserved position on the block.
+                (OpWidth::F64, _, _) => {
                     return Err(Diagnostic::todo_with_span(func.name.span()));
+                }
+                // A 64-bit slot holds only the 64-bit value width.
+                (OpWidth::W64, _, _) => {
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        func.name.span(),
+                        "STRING_TO_* 64-bit target has no conversion",
+                    )));
+                }
+                // A 32-bit slot holds only the value widths above. The
+                // analyzer offers no other STRING_TO_* with a 32-bit
+                // target (there is no STRING_TO_BOOL), so this is a
+                // compiler bug, not a program error.
+                (OpWidth::W32, _, _) => {
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        func.name.span(),
+                        "STRING_TO_* target has no conversion",
+                    )));
                 }
             };
             emitter.emit_builtin(func_id);
-            emit_truncation(emitter, target);
             Ok(())
         }
     }
