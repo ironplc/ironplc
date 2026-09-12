@@ -25,7 +25,7 @@ ironplc-sources = { path = "../sources", version = "0.242.0" }
 ironplc-vm = { path = "../vm", version = "0.242.0", features = ["test-support"] }
 spec_test_macro = { path = "../spec_test_macro" }
 proptest = "1"
-rstest = "0.26"
+rstest = "0.27"
 
 # All integration tests live in a single binary so compile/link work (and
 # llvm-cov instrumentation) is amortized across the whole suite instead of
