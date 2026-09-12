@@ -3,9 +3,9 @@
 status: proposed
 date: 2026-02-27
 amended: 2026-09-11 (Implementation Status added; status unchanged)
-amended: 2026-09-11 (dialect selection recorded as an explicit user choice
-rather than an inference from the file extension; status unchanged — see the
-amendment note under *More Information*)
+amended: 2026-09-11 (the dialect recorded as declared by the user rather than
+inferred from the file extension, and its granularity as a default rather than
+a ceiling; status unchanged — see the amendment note under *More Information*)
 
 > **Terminology note (added later):** This ADR predates
 > [`specs/steering/glossary.md`](../steering/glossary.md), which now draws a
@@ -42,16 +42,16 @@ The principle is: **IronPLC must be able to parse any file that the vendor's own
 
 ### No mixing of vendor dialects within a file
 
-A single file belongs to exactly one vendor dialect. IronPLC does not allow mixing Siemens and Beckhoff constructs (or any other combination of vendor-specific extensions) in the same file. Only the selected dialect's extensions are enabled while parsing it.
+A single file belongs to exactly one vendor dialect. IronPLC does not allow mixing Siemens and Beckhoff constructs (or any other combination of vendor-specific extensions) in the same file. Only the dialect that covers a file is enabled while parsing it.
 
-The dialect is selected by the user for a whole compilation (see
-[File format from the extension, dialect from the command line](#file-format-from-the-extension-dialect-from-the-command-line)),
-so this rule holds *a fortiori*: every file in a run is parsed against the same
-single dialect, and a file cannot pick up a second vendor's extensions from
-anywhere. A project holding files authored for different vendors is therefore
-more than one compilation, not one compilation carrying a dialect per file.
-Whether per-file dialect selection should ever exist is left open — nothing in
-this decision depends on it.
+A workspace (project) may contain files from different vendors — for example, some `.scl` files and some `.TcPOU` files — and each file is parsed against its own dialect. But within any single file, only one vendor's extensions are valid.
+
+Which dialect covers which file is *declared*, never inferred from the file's
+extension — see
+[File format from the extension, dialect declared by the user](#file-format-from-the-extension-dialect-declared-by-the-user).
+Today one declaration covers a whole compilation; declaring a dialect per file
+is the planned exception for projects that combine platforms, and it is
+described there.
 
 The reason is **round-trip fidelity**: a file written for Siemens TIA Portal should remain valid Siemens SCL, and a file written for Beckhoff TwinCAT should remain valid TwinCAT ST. If IronPLC accepted a hybrid file that used constructs from multiple vendors, that file would not be loadable in *any* vendor's toolchain. Accepting mixed-dialect files would mean IronPLC is creating a new dialect that doesn't exist anywhere else — the opposite of "accept as-is."
 
@@ -63,7 +63,7 @@ The reason is **round-trip fidelity**: a file written for Siemens TIA Portal sho
 | Beckhoff (TwinCAT) | `.TcPOU`, `.TcGVL`, `.TcDUT` (XML) | `INTERFACE`, `METHOD`, `PROPERTY`, `EXTENDS`, `IMPLEMENTS`, access modifiers, `POINTER TO`/`REFERENCE TO`, `VAR_INST`, `UNION`, `{attribute}` pragmas |
 | Standard | `.st`, `.iec`, `.xml` (PLCopen) | Baseline IEC 61131-3 — already supported |
 
-### File format from the extension, dialect from the command line
+### File format from the extension, dialect declared by the user
 
 Two separate things must be settled before a vendor file can be read, and only
 one of them comes from the file name.
@@ -78,12 +78,14 @@ read (the playground, the MCP server):
 - `.xml` → PLCopen XML
 - `.scl` → Siemens SCL (not implemented; see *Implementation Status*)
 
-**The dialect** — which syntax the parser accepts — is selected by the user, as
-a named preset (`--dialect twincat`) or as individual `--allow-*` flags, and
-defaults to strict IEC 61131-3 Edition 2 when neither is given. One dialect
-applies to a whole compilation. Selecting a dialect enables the appropriate set
-of lexer extensions and parser grammar rules; extensions are additive, never
-replacing standard behavior.
+**The dialect** — which syntax the parser accepts — is *declared* by the user,
+as a named preset (`--dialect twincat`) or as individual `--allow-*` flags, and
+defaults to strict IEC 61131-3 Edition 2 when neither is given. Declaring a
+dialect enables the appropriate set of lexer extensions and parser grammar
+rules; extensions are additive, never replacing standard behavior. *How much*
+one declaration covers is a separate question from who makes it, and is
+addressed under [granularity](#granularity-one-declaration-per-run-by-default)
+below.
 
 Reading a TwinCAT project is therefore both together:
 
@@ -131,18 +133,48 @@ is diagnosed with help text telling the user to select a dialect that supports
 it ([ADR-0036](0036-no-ironplc-dialect.md)), and the TwinCAT source-format
 reference passes `--dialect twincat` in its first example.
 
+#### Granularity: one declaration per run, by default
+
+One declaration covering the whole run is the **default**, not a ceiling.
+
+Today the user declares a dialect once and it covers every source file in the
+compilation. Even now that is not the whole story *inside* a compilation:
+bundled compatibility library bodies are ST compiled alongside user source
+([ADR-0042](0042-library-functions-over-compiler-intrinsics.md)) and are parsed
+against strict Edition 2 whatever the user declares, so one compilation already
+holds more than one dialect configuration.
+
+For user source, IronPLC expects to grow a way to declare a dialect for
+individual files, so that a project combining files written for different
+platforms is one compilation rather than several. This is an exception, and
+should read as one: most projects target a single platform and will never reach
+for it, and the single per-run declaration stays the common path and the
+default. [ADR-0049](0049-behavior-policies-selected-at-compile-time.md) already
+depends on this — it compiles behavior policies into the bytecode rather than
+configuring them on the VM precisely because selection has to be per file,
+"which per-file dialects and mixed compositions require."
+
+What finer granularity does not change is *who* decides. A per-file dialect is
+declared too — named by the user, in the invocation or in project configuration
+— never inferred from the file's extension, which continues to say only what the
+format is. Everything under *Why the extension does not imply a dialect* holds
+unchanged at file granularity: a `.TcPOU` declared as Edition 2 is checked as
+Edition 2, whether that declaration covers one file or the whole run. Nor does
+it weaken *No mixing of vendor dialects within a file* — each file is still
+parsed against exactly one dialect; what may differ is which one, file to file.
+
 ### Consequences
 
 * Good, because users can open any Siemens or Beckhoff project and immediately get value from IronPLC's analysis on the standard-compliant portions of their code
 * Good, because error positions always point into the user's original source file — no intermediate representations or preprocessed copies
 * Good, because the approach is incremental — parsing a vendor construct and representing it in the AST is the first step; semantic analysis can follow independently
-* Good, because splitting format detection from dialect selection keeps each one honest — the format is inferred from the extension, where the answer is deterministic and uninteresting, and the accepted syntax stays a visible, explicit property of the invocation
+* Good, because splitting format detection from dialect declaration keeps each one honest — the format is inferred from the extension, where the answer is deterministic and uninteresting, and the accepted syntax stays a visible, explicit property of what the user declared
 * Good, because a vendor's files can be held to a stricter dialect than the vendor's own toolchain enforces — checking a TwinCAT project against strict Edition 2 to find what is not portable is a supported use, and one no vendor toolchain offers
 * Good, because the existing parser architecture (logos lexer + hand-written recursive descent) naturally supports additive token types and grammar rules without architectural changes
 * Bad, because each vendor dialect adds maintenance surface — new tokens, grammar rules, AST nodes, and test fixtures
 * Bad, because a user reading vendor code for the first time must know to pass `--dialect`; without it the first file produces errors on syntax the vendor accepts, which is the accept-as-is promise failing at the point of first contact — mitigated by help text on each rejection pointing at dialect selection, and by the TwinCAT source-format reference leading with the flag
 * Bad, because users may expect semantic analysis of vendor-specific constructs (e.g., type checking `POINTER TO` dereferences) once parsing succeeds — clear messaging about "parsed but not yet analyzed" is needed
-* Neutral, because dialect interactions are avoided by design — a compilation selects exactly one dialect and every file in it is parsed against that dialect alone, so there is no combinatorial complexity within a file
+* Neutral, because dialect interactions are avoided by design — each file is parsed against exactly one dialect, so there is no combinatorial complexity within a file; a compilation may hold files covered by different dialects (today for compatibility library bodies, later by per-file declaration), and each of those files is still single-dialect
 * Neutral, because the lexer and parser already support one vendor extension mechanism (TwinCAT XML wrappers, OSCAT comment removal, `allow_c_style_comments` option) — this decision formalizes and extends the existing pattern
 
 ### Confirmation
@@ -177,10 +209,10 @@ What landed:
   on it — the reason IronPLC defines no dialect of its own is that every flag
   bundle must describe a real toolchain.
 * **The format/dialect split**, as the amended *File format from the extension,
-  dialect from the command line* section above now describes it: `FileType`
-  picks the parser from the extension, and `--dialect` / `--allow-*` pick the
+  dialect declared by the user* section above now describes it: `FileType`
+  picks the parser from the extension, and `--dialect` / `--allow-*` declare the
   syntax. `ironplcc`, the LSP server, the MCP server, the VS Code extension
-  (`ironplc.dialect`) and the playground all expose the selection, and the
+  (`ironplc.dialect`) and the playground all expose the declaration, and the
   TwinCAT source-format reference leads with the flag.
 * Position fidelity (Confirmation item 2), substantially: `sources/src/xml/position.rs`
   maps a position in the ST body back through the CDATA to a line and column in
@@ -195,6 +227,14 @@ What did not:
   above — `#var`, `REGION`, `"quoted names"`, `VAR_STAT`, `DATA_BLOCK`,
   `ORGANIZATION_BLOCK` — is unimplemented. `specs/design/siemens-scl-dialect.md`
   is a design, not a description.
+* **Per-file dialect declaration, for user source.** One declaration covers the
+  whole compilation: `CompilerOptions` is held once per project
+  (`project/src/project.rs`) and every source is parsed against it. The one
+  place a second configuration already exists is bundled compatibility library
+  bodies, which `sources/src/libraries` parses with `CompilerOptions::default()`
+  — strict Edition 2 — whatever the user declared. Per-file declaration is an
+  expected extension rather than a gap in this decision, so it does not hold the
+  status at `proposed`.
 * **Confirmation item 1 has no harness.** No test takes 3+ open-source projects
   from a vendor ecosystem and asserts zero parse errors. The nearest thing is the
   OSCAT corpus case in `parser/src/tests/corpus.rs`, which is a single vendor-
@@ -288,8 +328,8 @@ This separation ensures users get value immediately (parse-clean files, diagnost
 
 ### Amendment, 2026-09-11: dialect selection is explicit, not inferred
 
-The section now titled *File format from the extension, dialect from the command
-line* was originally titled *Dialect detection strategy* and said that "the
+The section now titled *File format from the extension, dialect declared by the
+user* was originally titled *Dialect detection strategy* and said that "the
 parser determines the dialect from the file extension and (where applicable)
 file content", mapping `.scl` to Siemens, `.TcPOU`/`.TcGVL`/`.TcDUT` to
 Beckhoff, and `.st`/`.iec` to standard IEC 61131-3 "by default; optionally
@@ -298,13 +338,20 @@ claimed dialect detection "requires no user configuration for the common case".
 
 That mechanism was never built, and on review it is not the one IronPLC wants.
 What was built separates the two questions: the extension picks the *file
-format* and the user picks the *dialect*. Keeping the dialect an explicit
+format* and the user declares the *dialect*. Keeping the dialect an explicit
 choice is what allows a user to hold vendor-housed files to a stricter dialect
 than the vendor's own toolchain enforces — checking a TwinCAT solution against
 strict Edition 2 to find what is not portable. Inferring the dialect from the
 extension would make that impossible to ask for, and it is one of the few checks
 IronPLC can offer that a vendor's own tools cannot. The record has been corrected
 to describe the design that exists and to say why the user picks the dialect.
+
+The per-file granularity the original section assumed is *not* what changed,
+and is preserved: a workspace may hold files covered by different dialects, and
+each file is parsed against exactly one. What changed is that the dialect
+covering a file is declared rather than derived from its extension, and that
+today one declaration covers a whole run — a default, not a ceiling, as the
+granularity subsection now records.
 
 The decision outcome is untouched: accept-as-is stands, and no mixing within a
 file stands. Only the mechanism section, the consequences that rested on it, and
