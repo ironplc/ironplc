@@ -29,6 +29,9 @@ const FUNCTIONS: &[(&str, Target)] = &[
     ("UINT", Target::U16),
     ("WORD", Target::U16),
     ("INT", Target::I16),
+    ("LINT", Target::I64),
+    ("ULINT", Target::U64),
+    ("LWORD", Target::U64),
 ];
 
 /// A program converting the STRING `'1'` to `x : <type_name>` with

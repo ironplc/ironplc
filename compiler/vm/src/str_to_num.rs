@@ -49,6 +49,7 @@ fn slot(target: Target, value: i64) -> Slot {
         Target::U32 | Target::I32 | Target::U8 | Target::I8 | Target::U16 | Target::I16 => {
             Slot::from_i32(value as i32)
         }
+        Target::U64 | Target::I64 => Slot::from_i64(value),
     }
 }
 
@@ -79,6 +80,8 @@ impl Bounds {
             Target::I8 => Bounds::signed(i8::MIN as i64, i8::MAX as u64),
             Target::U16 => Bounds::unsigned(u16::MAX as u64),
             Target::I16 => Bounds::signed(i16::MIN as i64, i16::MAX as u64),
+            Target::U64 => Bounds::unsigned(u64::MAX),
+            Target::I64 => Bounds::signed(i64::MIN, i64::MAX as u64),
         }
     }
 
@@ -430,9 +433,9 @@ mod tests {
 
     #[test]
     fn scan_integer_when_64_bit_bounds_then_extremes_convert_to_their_bit_patterns() {
-        // The bounds the 64-bit targets will use: the accumulator and the
-        // value pattern already hold them.
-        let unsigned = Bounds::unsigned(u64::MAX);
+        // The accumulator and the value pattern hold both 64-bit extremes:
+        // u64::MAX is the all-ones pattern, and -2^63 is its own negation.
+        let unsigned = Bounds::of(Target::U64);
         assert_eq!(
             scan_integer(b"18446744073709551615", Reject, unsigned),
             Some(-1)
@@ -441,13 +444,40 @@ mod tests {
             scan_integer(b"18446744073709551616", Reject, unsigned),
             None
         );
-        let signed = Bounds::signed(i64::MIN, i64::MAX as u64);
+        let signed = Bounds::of(Target::I64);
         assert_eq!(
             scan_integer(b"-9223372036854775808", Reject, signed),
             Some(i64::MIN)
         );
         assert_eq!(scan_integer(b"-9223372036854775809", Reject, signed), None);
         assert_eq!(scan_integer(b"9223372036854775808", Reject, signed), None);
+    }
+
+    #[test]
+    fn convert_when_64_bit_target_then_64_bit_slot() {
+        let signed = Encoding {
+            target: Target::I64,
+            non_numeric: Reject,
+            failure: StringToNumFailure::Trap,
+        };
+        assert_eq!(
+            convert(signed, b"-9223372036854775808"),
+            Ok(Slot::from_i64(i64::MIN))
+        );
+        assert_eq!(convert(signed, b"-1"), Ok(Slot::from_i64(-1)));
+        let unsigned = Encoding {
+            target: Target::U64,
+            non_numeric: Reject,
+            failure: StringToNumFailure::Zero,
+        };
+        assert_eq!(
+            convert(unsigned, b"18446744073709551615"),
+            Ok(Slot::from_i64(-1))
+        );
+        assert_eq!(
+            convert(unsigned, b"18446744073709551616"),
+            Ok(Slot::from_i64(0))
+        );
     }
 
     #[test]

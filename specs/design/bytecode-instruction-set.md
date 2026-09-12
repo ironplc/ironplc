@@ -658,7 +658,7 @@ func_id = 0x0480 + target * 8 + non_numeric * 2 + failure
 
 `non_numeric` is 0 `reject`, 1 `ignore-trailing`, 2 `ignore-surrounding`; `failure` is 0 `trap`, 1 `zero`. Each target owns a stride of eight (two slots spare). The block runs to 0x04FF; `builtin::str_to_num::decode` recovers the target and policies from an ID, and an ID in the block that names no conversion traps `V9007` like any other unassigned func_id. The semantics of each alternative are specified in [behavior-policies.md](behavior-policies.md).
 
-All take one argument: `[data_offset] → [value]`. A `WSTRING` operand traps `V9014`.
+All take one argument: `[data_offset] → [value]`, where the value is an I32 slot for the targets up to 32 bits and an I64 slot for the 64-bit targets. A `WSTRING` operand traps `V9014`.
 
 | func_id | Name | Non-numeric | Failure |
 |---------|------|-------------|---------|
@@ -698,6 +698,18 @@ All take one argument: `[data_offset] → [value]`. A `WSTRING` operand traps `V
 | 0x04AB | CONV_STR_TO_I16_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
 | 0x04AC | CONV_STR_TO_I16_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
 | 0x04AD | CONV_STR_TO_I16_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
+| 0x04B0 | CONV_STR_TO_U64_REJECT_TRAP | reject | trap `V4006` |
+| 0x04B1 | CONV_STR_TO_U64_REJECT_ZERO | reject | 0 |
+| 0x04B2 | CONV_STR_TO_U64_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x04B3 | CONV_STR_TO_U64_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
+| 0x04B4 | CONV_STR_TO_U64_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x04B5 | CONV_STR_TO_U64_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
+| 0x04B8 | CONV_STR_TO_I64_REJECT_TRAP | reject | trap `V4006` |
+| 0x04B9 | CONV_STR_TO_I64_REJECT_ZERO | reject | 0 |
+| 0x04BA | CONV_STR_TO_I64_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x04BB | CONV_STR_TO_I64_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
+| 0x04BC | CONV_STR_TO_I64_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x04BD | CONV_STR_TO_I64_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
 
 The targets, at the positions the block fixes (even positions unsigned, the odd position after each its signed counterpart, in width order 32, 8, 16, 64, then the reals). A bit-string type converts as the unsigned integer of its width. Out of range is a failure under every non-numeric alternative; the result is never wrapped or truncated.
 
@@ -709,8 +721,8 @@ The targets, at the positions the block fixes (even positions unsigned, the odd 
 | 3 | I8 | `STRING_TO_SINT` | 0x0498–0x049D |
 | 4 | U16 | `STRING_TO_UINT`, `STRING_TO_WORD` | 0x04A0–0x04A5 |
 | 5 | I16 | `STRING_TO_INT` | 0x04A8–0x04AD |
-| 6 | U64 | `STRING_TO_ULINT`, `STRING_TO_LWORD` | 0x04B0–0x04B5, reserved |
-| 7 | I64 | `STRING_TO_LINT` | 0x04B8–0x04BD, reserved |
+| 6 | U64 | `STRING_TO_ULINT`, `STRING_TO_LWORD` | 0x04B0–0x04B5 |
+| 7 | I64 | `STRING_TO_LINT` | 0x04B8–0x04BD |
 | 8 | F32 | `STRING_TO_REAL` | 0x04C0–0x04C5, reserved |
 | 9 | F64 | `STRING_TO_LREAL` | 0x04C8–0x04CD, reserved |
 
