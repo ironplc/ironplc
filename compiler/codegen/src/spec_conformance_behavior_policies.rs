@@ -158,8 +158,25 @@ END_PROGRAM"
             StringToNumFailure::Trap,
         );
         let position = bytecode.iter().position(|b| *b == opcode::BUILTIN).unwrap();
-        // BUILTIN carries a two-byte func_id; the right-hand operand load is
-        // what follows the conversion.
-        assert_eq!(bytecode[position + 3], opcode::LOAD_VAR_I32, "{type_name}");
+        // BUILTIN carries a two-byte func_id; the right-hand operand load,
+        // at the target's width, is what follows the conversion.
+        let load = match load_width(type_name) {
+            LoadWidth::I32 => opcode::LOAD_VAR_I32,
+            LoadWidth::I64 => opcode::LOAD_VAR_I64,
+        };
+        assert_eq!(bytecode[position + 3], load, "{type_name}");
+    }
+}
+
+/// The slot width a `STRING_TO_<type_name>` result is loaded and compared at.
+enum LoadWidth {
+    I32,
+    I64,
+}
+
+fn load_width(type_name: &str) -> LoadWidth {
+    match type_name {
+        "LINT" | "ULINT" | "LWORD" => LoadWidth::I64,
+        _ => LoadWidth::I32,
     }
 }
