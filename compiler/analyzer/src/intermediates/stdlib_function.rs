@@ -325,8 +325,11 @@ const SIGNED_INT_TO_STRING_TYPES: &[&str] = &["SINT", "INT", "DINT"];
 /// Numeric types that convert to STRING (W32 unsigned / bit-string).
 const UNSIGNED_INT_TO_STRING_TYPES: &[&str] = &["USINT", "UINT", "UDINT", "BYTE", "WORD", "DWORD"];
 
-/// Integer types that can be parsed from STRING.
-const STRING_TO_INT_TYPES: &[&str] = &["SINT", "INT", "DINT", "USINT", "UINT", "UDINT"];
+/// Integer and bit-string types that can be parsed from STRING. A bit-string
+/// target converts as the unsigned integer of its width.
+const STRING_TO_INT_TYPES: &[&str] = &[
+    "SINT", "INT", "DINT", "USINT", "UINT", "UDINT", "BYTE", "WORD", "DWORD",
+];
 
 /// Returns string ↔ numeric conversion function definitions.
 ///
@@ -350,7 +353,7 @@ fn get_string_conversion_functions() -> Vec<FunctionSignature> {
     // REAL → STRING
     functions.push(build_conversion_function("REAL", "STRING"));
 
-    // STRING → integer types
+    // STRING → integer and bit-string types
     for target in STRING_TO_INT_TYPES {
         functions.push(build_conversion_function("STRING", target));
     }
@@ -960,6 +963,34 @@ pub fn get_sizeof_function() -> FunctionSignature {
 mod tests {
     use super::*;
     use ironplc_dsl::common::FunctionReturnType;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::sint("STRING_TO_SINT", "SINT")]
+    #[case::int("STRING_TO_INT", "INT")]
+    #[case::dint("STRING_TO_DINT", "DINT")]
+    #[case::usint("STRING_TO_USINT", "USINT")]
+    #[case::uint("STRING_TO_UINT", "UINT")]
+    #[case::udint("STRING_TO_UDINT", "UDINT")]
+    #[case::byte("STRING_TO_BYTE", "BYTE")]
+    #[case::word("STRING_TO_WORD", "WORD")]
+    #[case::dword("STRING_TO_DWORD", "DWORD")]
+    fn get_string_conversion_functions_when_string_to_integer_then_registered_with_target_return(
+        #[case] name: &str,
+        #[case] target: &str,
+    ) {
+        let functions = get_string_conversion_functions();
+        let sig = functions
+            .iter()
+            .find(|f| f.name.original() == name)
+            .unwrap();
+        assert_eq!(sig.parameters.len(), 1);
+        assert_eq!(sig.parameters[0].param_type, TypeName::from("STRING"));
+        assert_eq!(
+            sig.return_type,
+            Some(FunctionReturnType::Named(TypeName::from(target)))
+        );
+    }
 
     #[test]
     fn build_conversion_function_when_called_then_has_correct_signature() {

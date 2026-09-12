@@ -35,7 +35,7 @@ Displays metadata about the bytecode container:
    * - Format Version
      - Version of the IPLC bytecode format
    * - Flags
-     - Optional sections present in the file (Content Signature, Debug Section, Type Section)
+     - Header flags set in the file: System Uptime (the runtime writes the system up-time variables), Debug Section, Type Section, and Content Signature (reserved; not yet emitted)
    * - Functions
      - Number of functions defined
    * - Variables

@@ -50,7 +50,7 @@ IronPLC never invents a dialect of its own). A file belongs to exactly one
 dialect (see [ADR-0012](../adrs/0012-accept-vendor-dialect-files-as-is.md)).
 
 *Canonical uses:* "the CODESYS dialect", "select a dialect", "per-file dialect
-detection", "the `--dialect` flag".
+selection", "the `--dialect` flag".
 
 *Do not say:* "vendor dialect" (redundant — a dialect is already the syntax a
 target accepts; just say "dialect", or name the dialect).
