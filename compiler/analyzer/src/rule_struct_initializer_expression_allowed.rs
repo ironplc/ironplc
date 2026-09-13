@@ -163,6 +163,36 @@ END_PROGRAM";
         Problem::StructInitializerExpressionNotAllowed
     );
 
+    // The label underlines the expression as written. A unary expression
+    // used to report its operand's span alone, so the caret started one or
+    // more columns too far right -- three plus a space, for `NOT`.
+    // See https://github.com/ironplc/ironplc/issues/1662.
+    const UNARY_SOURCE: &str = "
+TYPE MyStruct :
+STRUCT
+    x : INT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+VAR
+    g : INT;
+    s : MyStruct := (x := -g);
+END_VAR
+END_PROGRAM";
+
+    #[test]
+    fn apply_when_struct_init_is_unary_expression_then_label_covers_the_operator() {
+        let opts = CompilerOptions::default();
+        let (library, context) = crate::test_helpers::resolve_fresh_with(UNARY_SOURCE, &opts);
+
+        let errors = apply(&library, &context, &opts).unwrap_err();
+
+        assert_eq!(errors.len(), 1, "expected one diagnostic, got {errors:?}");
+        let location = &errors[0].primary.location;
+        assert_eq!("-g", &UNARY_SOURCE[location.start..location.end]);
+    }
+
     rule_ok_with!(
         apply_when_struct_init_is_bare_variable_and_flag_enabled_then_ok,
         CompilerOptions {
