@@ -287,7 +287,8 @@ flag (enabled by default in the ``Rusty`` dialect). See
 :doc:`/explanation/enabling-dialects-and-features` for how to enable this flag.
 
 When the flag is enabled, a bit-string type can widen to an integer type of
-strictly greater bit width:
+strictly greater bit width. ``DWORD`` to ``UDINT`` is the one equal-width
+exception, described after the table:
 
 .. list-table:: Cross-family widening: bit-string to integer (requires ``--allow-cross-family-widening``)
    :header-rows: 1
@@ -327,7 +328,7 @@ strictly greater bit width:
      - Yes
      - No
      - No
-     - No
+     - Yes
      - Yes
    * - **LWORD**
      - No
@@ -339,8 +340,31 @@ strictly greater bit width:
      - No
      - No
 
-The reverse direction (integer to bit-string) is never implicit — use explicit
-conversion functions such as ``INT_TO_BYTE``.
+The reverse direction (integer to bit-string) is not implicit, apart from one
+pair. Use explicit conversion functions such as ``INT_TO_BYTE``.
+
+``UDINT`` and ``DWORD`` are the one pair that converts implicitly at equal
+width, and the one case where integer to bit-string is implicit. Both
+directions require the ``--allow-cross-family-widening`` flag. The two types
+share a 32-bit slot, so the conversion leaves the bit pattern unchanged:
+
+.. code-block::
+
+   VAR
+       udValue : UDINT := 3000000000;
+       dwValue : DWORD := 16#FFFFFFFF;
+       dwFromUdint : DWORD;
+       udFromDword : UDINT;
+   END_VAR
+       dwFromUdint := udValue;  (* 16#B2D05E00, the same 32 bits *)
+       udFromDword := dwValue;  (* 4294967295, the same 32 bits *)
+
+The exception covers exactly this pair. The other equal-width bit-string and
+unsigned-integer pairs — ``BYTE`` and ``USINT``, ``WORD`` and ``UINT``,
+``LWORD`` and ``ULINT`` — need an explicit conversion function in both
+directions, as do all signed integer types. Without the flag, IronPLC reports
+:doc:`P4035 </reference/compiler/problems/P4035>` for ``UDINT`` and ``DWORD``
+too.
 
 Bare integer literals (e.g. ``0``) can also be passed to bit-string parameters
 when the flag is enabled.
