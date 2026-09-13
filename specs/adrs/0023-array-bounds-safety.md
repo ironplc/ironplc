@@ -1,6 +1,6 @@
 # Array Bounds Safety
 
-status: proposed
+status: accepted
 date: 2026-03-13
 
 ## Context and Problem Statement

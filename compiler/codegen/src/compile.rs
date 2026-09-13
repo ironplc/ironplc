@@ -61,7 +61,7 @@ use ironplc_dsl::configuration::{
 };
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_parser::options::CompilerOptions;
+use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::{FunctionEnvironment, SemanticContext, TypeEnvironment};
@@ -212,12 +212,26 @@ pub struct CodegenOptions {
     /// When `true`, inject `__SYSTEM_UP_TIME` (TIME) and `__SYSTEM_UP_LTIME`
     /// (LTIME) as implicit globals at the start of the variable table.
     pub system_uptime_global: bool,
+    /// The behavior policies `STRING_TO_<numeric>` calls are compiled under
+    /// (ADR-0049). They select the builtin func_id the call emits.
+    pub string_to_num: StringToNumPolicies,
+}
+
+/// The two behavior policies of a `STRING_TO_<numeric>` conversion.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct StringToNumPolicies {
+    pub non_numeric: StringToNumNonNumeric,
+    pub failure: StringToNumFailure,
 }
 
 impl From<&CompilerOptions> for CodegenOptions {
     fn from(options: &CompilerOptions) -> Self {
         CodegenOptions {
             system_uptime_global: options.allow_system_uptime_global,
+            string_to_num: StringToNumPolicies {
+                non_numeric: options.policy_string_to_num_non_numeric,
+                failure: options.policy_string_to_num_failure,
+            },
         }
     }
 }
@@ -296,6 +310,7 @@ pub fn compile(
         context.functions(),
         context.types(),
         enum_map,
+        options.string_to_num,
         sources,
     )?;
 
@@ -681,6 +696,7 @@ fn compile_program_with_functions(
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
     enum_map: crate::compile_enum::EnumOrdinalMap,
+    string_to_num: StringToNumPolicies,
     sources: &dyn crate::source_lookup::SourceLookup,
 ) -> Result<Container, Diagnostic> {
     let ProgramInputs {
@@ -691,6 +707,7 @@ fn compile_program_with_functions(
     } = inputs;
     let mut ctx = CompileContext::new();
     ctx.enum_map = enum_map;
+    ctx.string_to_num = string_to_num;
     let mut builder = ContainerBuilder::new();
 
     // Register every top-level POU's source file with the debug
@@ -1289,6 +1306,9 @@ pub(crate) struct CompileContext {
     pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
     /// Pre-computed ordinal mappings for named enumeration types.
     pub(crate) enum_map: crate::compile_enum::EnumOrdinalMap,
+    /// The behavior policies `STRING_TO_<numeric>` calls select their
+    /// builtin by (ADR-0049).
+    pub(crate) string_to_num: StringToNumPolicies,
     /// Next available byte offset in the data region.
     pub(crate) data_region_offset: u32,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
@@ -1376,6 +1396,7 @@ impl CompileContext {
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,
             enum_map: crate::compile_enum::EnumOrdinalMap::default(),
+            string_to_num: StringToNumPolicies::default(),
             current_function_return: None,
             current_function_id: None,
             call_graph: HashMap::new(),

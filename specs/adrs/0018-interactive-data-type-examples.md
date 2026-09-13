@@ -1,6 +1,6 @@
 # Interactive Playground Examples for Elementary Data Type Pages
 
-status: proposed
+status: accepted
 date: 2026-03-08
 
 ## Context and Problem Statement
@@ -114,3 +114,7 @@ The playground is already embedded in 48+ standard library function pages and se
 ### Why not wait for unsupported types?
 
 The unsupported type pages (STRING, WSTRING, DATE, TIME_OF_DAY, DATE_AND_TIME) do not get examples because the playground cannot run code using those types. Adding examples to the supported types now does not create a commitment to add examples to unsupported types — those will get examples when their type support ships.
+
+### Postscript, 2026-09-11: the types this deferred became supported
+
+The premise that the playground cannot run STRING, WSTRING, DATE, TIME_OF_DAY or DATE_AND_TIME code no longer holds — all five types compile and run, and the supported set has grown past the fifteen pages Confirmation item 1 counts, the long time types and the datetime family with it. Each page that became supported brought its example with it, which is the convention this ADR set working as intended. `wstring.rst` was the last page without one; its example demonstrates the wide encoding (`LEN` counting code units rather than the bytes they occupy) rather than mirroring the STRING page. Every elementary data type page for a supported type now carries exactly one `playground-with-program` example, so the decision holds as written and its Confirmation is met.

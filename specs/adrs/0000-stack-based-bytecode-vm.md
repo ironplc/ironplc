@@ -1,6 +1,6 @@
 # Stack-Based Bytecode VM for PLC Program Execution
 
-status: proposed
+status: accepted
 date: 2026-02-17
 
 ## Context and Problem Statement

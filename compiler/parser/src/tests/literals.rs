@@ -318,10 +318,10 @@ END_FUNCTION_BLOCK",
 /// points at. Covering all nine kinds is what keeps that from regressing one
 /// literal at a time.
 ///
-/// A leading `-` is not part of any case here: outside a declaration
-/// initializer it parses as a unary operator applied to the literal, and
-/// `Located for ExprKind` reports a unary expression as its operand's span —
-/// a separate truncation, unrelated to whether the literal has a span at all.
+/// A leading `-` is not part of any case here because these cases are about
+/// the literal itself: outside a declaration initializer it parses as a
+/// unary operator applied to the literal, and the span of the expression it
+/// forms belongs to that expression. `expression_spans` covers it.
 #[rstest]
 #[case::integer("42")]
 #[case::typed_integer("INT#42")]

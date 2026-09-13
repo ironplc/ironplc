@@ -43,7 +43,7 @@ mod execute_bool_literal;
 mod execute_builtin_abs_i32;
 mod execute_builtin_abs_i64;
 mod execute_builtin_expt_i32;
-mod execute_builtin_str_to_u32;
+mod execute_builtin_str_to_num;
 mod execute_builtin_trunc_mod_f32;
 mod execute_builtin_trunc_mod_f64;
 mod execute_call_ret;

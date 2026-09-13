@@ -79,6 +79,43 @@ fn container_spec_req_bp_002_func_id_is_base_plus_target_stride_plus_policies() 
         func_id(Target::U32, IgnoreSurrounding, Zero),
         builtin::CONV_STR_TO_U32_IGNORE_SURROUNDING_ZERO
     );
+    // The other integer targets, at the positions the block reserves: even
+    // positions unsigned, the odd position after each its signed counterpart.
+    assert_eq!(
+        func_id(Target::I32, Reject, Trap),
+        builtin::CONV_STR_TO_I32_REJECT_TRAP
+    );
+    assert_eq!(builtin::CONV_STR_TO_I32_REJECT_TRAP, 0x0488);
+    assert_eq!(
+        func_id(Target::U8, IgnoreSurrounding, Zero),
+        builtin::CONV_STR_TO_U8_IGNORE_SURROUNDING_ZERO
+    );
+    assert_eq!(builtin::CONV_STR_TO_U8_IGNORE_SURROUNDING_ZERO, 0x0495);
+    assert_eq!(
+        func_id(Target::I8, IgnoreTrailing, Trap),
+        builtin::CONV_STR_TO_I8_IGNORE_TRAILING_TRAP
+    );
+    assert_eq!(builtin::CONV_STR_TO_I8_IGNORE_TRAILING_TRAP, 0x049A);
+    assert_eq!(
+        func_id(Target::U16, Reject, Zero),
+        builtin::CONV_STR_TO_U16_REJECT_ZERO
+    );
+    assert_eq!(builtin::CONV_STR_TO_U16_REJECT_ZERO, 0x04A1);
+    assert_eq!(
+        func_id(Target::I16, IgnoreSurrounding, Trap),
+        builtin::CONV_STR_TO_I16_IGNORE_SURROUNDING_TRAP
+    );
+    assert_eq!(builtin::CONV_STR_TO_I16_IGNORE_SURROUNDING_TRAP, 0x04AC);
+    assert_eq!(
+        func_id(Target::U64, Reject, Trap),
+        builtin::CONV_STR_TO_U64_REJECT_TRAP
+    );
+    assert_eq!(builtin::CONV_STR_TO_U64_REJECT_TRAP, 0x04B0);
+    assert_eq!(
+        func_id(Target::I64, IgnoreTrailing, Zero),
+        builtin::CONV_STR_TO_I64_IGNORE_TRAILING_ZERO
+    );
+    assert_eq!(builtin::CONV_STR_TO_I64_IGNORE_TRAILING_ZERO, 0x04BB);
 }
 
 /// REQ-BP-container-003: `decode` inverts `func_id` for every encoded ID and

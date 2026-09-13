@@ -1,6 +1,6 @@
 # Unified Data Region for Variable-Length Types
 
-status: proposed
+status: accepted
 date: 2026-03-07
 
 ## Context and Problem Statement

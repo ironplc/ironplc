@@ -202,6 +202,7 @@ fn substitute_and_fold(
     Ok(Expr {
         kind,
         resolved_type: expr.resolved_type,
+        span: expr.span,
     })
 }
 

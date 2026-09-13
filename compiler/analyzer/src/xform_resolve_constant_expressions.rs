@@ -36,7 +36,20 @@ struct ConstantInfo {
 /// `options.allow_constant_type_params` is false (strict IEC 61131-3), any such
 /// reference is rejected with [`Problem::ConstantTypeParamNotAllowed`] instead
 /// of being resolved.
-pub fn apply(lib: Library, options: &CompilerOptions) -> Result<Library, Vec<Diagnostic>> {
+///
+/// Best effort: the folded library rides back alongside the diagnostics rather
+/// than being discarded. A reference this pass could not resolve is left as
+/// `IntegerRef::Constant`/`SignedIntegerRef::Constant`, which is exactly the
+/// state reverting would leave *every* reference in -- including the ones that
+/// did resolve -- so reverting cannot be the safer option. Downstream handling
+/// of an unresolved `Constant` is already defined: `rule_decl_subrange_limits`
+/// skips the node, the array and subrange intermediates report a problem, and
+/// codegen is never reached because `ironplc_project::compile` gates it on an
+/// empty diagnostic list.
+pub fn apply(
+    lib: Library,
+    options: &CompilerOptions,
+) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
     let constants = collect_constants(&lib);
 
     let mut resolver = ConstantResolver {
@@ -45,13 +58,14 @@ pub fn apply(lib: Library, options: &CompilerOptions) -> Result<Library, Vec<Dia
         diagnostics: vec![],
     };
 
-    let result = resolver.fold_library(lib).map_err(|e| vec![e]);
-
-    if !resolver.diagnostics.is_empty() {
-        return Err(resolver.diagnostics);
+    match resolver.fold_library(lib) {
+        Ok(result) => Ok((result, resolver.diagnostics)),
+        Err(e) => {
+            let mut diagnostics = resolver.diagnostics;
+            diagnostics.push(e);
+            Err(diagnostics)
+        }
     }
-
-    result
 }
 
 /// Scan the library for global constant declarations with integer values.
@@ -275,6 +289,24 @@ mod tests {
         }
     }
 
+    /// Applies the pass and asserts it resolved everything cleanly, returning
+    /// the folded library.
+    fn resolved(lib: Library, options: &CompilerOptions) -> Library {
+        let (lib, diagnostics) = apply(lib, options).expect("fold produced a library");
+        assert!(
+            diagnostics.is_empty(),
+            "expected no diagnostics, got {diagnostics:?}"
+        );
+        lib
+    }
+
+    /// Applies the pass and returns the diagnostics it reported. The folded
+    /// library still comes back -- the pass is best effort -- so this asserts
+    /// the `Ok` arm rather than an `Err`.
+    fn diagnostics_of(lib: Library, options: &CompilerOptions) -> Vec<Diagnostic> {
+        apply(lib, options).expect("fold produced a library").1
+    }
+
     /// Find the first VarDecl with the given name from a POU.
     fn find_var_decl<'a>(lib: &'a Library, var_name: &str) -> &'a VarDecl {
         for element in &lib.elements {
@@ -327,7 +359,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib, &enabled()).unwrap();
+        let lib = resolved(lib, &enabled());
         let var = find_var_decl(&lib, "STR");
         assert_eq!(get_string_length(var), 250);
     }
@@ -347,7 +379,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib, &enabled()).unwrap();
+        let lib = resolved(lib, &enabled());
         let var = find_var_decl(&lib, "ARR");
         let subranges = get_array_subranges(var);
         assert_eq!(subranges.len(), 1);
@@ -370,8 +402,14 @@ mod tests {
         ",
         );
 
-        let result = apply(lib, &enabled());
-        assert!(result.is_err());
+        let diagnostics = diagnostics_of(lib, &enabled());
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|d| d.code.as_str())
+                .collect::<Vec<_>>(),
+            vec![Problem::UndefinedConstantReference.code()]
+        );
     }
 
     #[test]
@@ -386,8 +424,50 @@ mod tests {
         ",
         );
 
-        let result = apply(lib, &enabled());
-        assert!(result.is_err());
+        let diagnostics = diagnostics_of(lib, &enabled());
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|d| d.code.as_str())
+                .collect::<Vec<_>>(),
+            vec![Problem::UndefinedConstantReference.code()]
+        );
+    }
+
+    /// One unresolvable reference must not un-resolve the declarations that
+    /// did resolve. Reverting the whole library on a per-declaration problem
+    /// is what made a source that analyzed cleanly alone fail once merged with
+    /// unrelated code.
+    #[test]
+    fn apply_when_one_reference_undefined_then_other_declarations_still_resolved() {
+        let lib = parse(
+            "
+            VAR_GLOBAL CONSTANT
+                GOOD_LEN : INT := 42;
+            END_VAR
+            FUNCTION_BLOCK fb1
+            VAR_INPUT
+                GOOD : STRING[GOOD_LEN];
+            END_VAR
+            END_FUNCTION_BLOCK
+            FUNCTION_BLOCK fb2
+            VAR_INPUT
+                BAD : STRING[UNDEFINED_CONST];
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let (lib, diagnostics) = apply(lib, &enabled()).expect("fold produced a library");
+
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|d| d.code.as_str())
+                .collect::<Vec<_>>(),
+            vec![Problem::UndefinedConstantReference.code()]
+        );
+        assert_eq!(get_string_length(find_var_decl(&lib, "GOOD")), 42);
     }
 
     #[test]
@@ -407,7 +487,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib, &enabled()).unwrap();
+        let lib = resolved(lib, &enabled());
         assert_eq!(get_string_length(find_var_decl(&lib, "STR")), 100);
 
         let subranges = get_array_subranges(find_var_decl(&lib, "ARR"));
@@ -429,8 +509,14 @@ mod tests {
         ",
         );
 
-        let result = apply(lib, &enabled());
-        assert!(result.is_err());
+        let diagnostics = diagnostics_of(lib, &enabled());
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|d| d.code.as_str())
+                .collect::<Vec<_>>(),
+            vec![Problem::UndefinedConstantReference.code()]
+        );
     }
 
     #[test]
@@ -445,7 +531,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib, &enabled()).unwrap();
+        let lib = resolved(lib, &enabled());
         let var = find_var_decl(&lib, "STR");
         assert_eq!(get_string_length(var), 50);
     }
@@ -465,7 +551,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib, &enabled()).unwrap();
+        let lib = resolved(lib, &enabled());
         let var = find_var_decl(&lib, "fifo");
         let subranges = get_array_subranges(var);
         assert_eq!(subranges.len(), 1);
@@ -489,7 +575,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib, &enabled()).unwrap();
+        let lib = resolved(lib, &enabled());
         let var = find_var_decl(&lib, "STR");
         assert_eq!(get_string_length(var), 80);
     }
@@ -509,7 +595,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib, &enabled()).unwrap();
+        let lib = resolved(lib, &enabled());
         let var = find_var_decl(&lib, "buf");
         let subranges = get_array_subranges(var);
         assert_eq!(subranges.len(), 1);
@@ -534,8 +620,14 @@ mod tests {
         ",
         );
 
-        let result = apply(lib, &enabled());
-        assert!(result.is_err());
+        let diagnostics = diagnostics_of(lib, &enabled());
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|d| d.code.as_str())
+                .collect::<Vec<_>>(),
+            vec![Problem::UndefinedConstantReference.code()]
+        );
     }
 
     #[test]
@@ -551,8 +643,14 @@ mod tests {
         ",
         );
 
-        let result = apply(lib, &enabled());
-        assert!(result.is_err());
+        let diagnostics = diagnostics_of(lib, &enabled());
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|d| d.code.as_str())
+                .collect::<Vec<_>>(),
+            vec![Problem::UndefinedConstantReference.code()]
+        );
     }
 
     // ---------------------------------------------------------------------
@@ -575,7 +673,7 @@ mod tests {
         ",
         );
 
-        let diagnostics = apply(lib, &CompilerOptions::default()).unwrap_err();
+        let diagnostics = diagnostics_of(lib, &CompilerOptions::default());
 
         assert_eq!(
             diagnostics[0].code,
@@ -598,7 +696,7 @@ mod tests {
         ",
         );
 
-        let diagnostics = apply(lib, &CompilerOptions::default()).unwrap_err();
+        let diagnostics = diagnostics_of(lib, &CompilerOptions::default());
 
         assert_eq!(
             diagnostics[0].code,
@@ -621,7 +719,7 @@ mod tests {
         ",
         );
 
-        let diagnostics = apply(lib, &CompilerOptions::default()).unwrap_err();
+        let diagnostics = diagnostics_of(lib, &CompilerOptions::default());
 
         assert!(!diagnostics[0].help().is_empty());
     }
@@ -641,7 +739,7 @@ mod tests {
         ",
         );
 
-        let diagnostics = apply(lib, &CompilerOptions::default()).unwrap_err();
+        let diagnostics = diagnostics_of(lib, &CompilerOptions::default());
 
         assert_eq!(
             diagnostics[0].code,
@@ -663,8 +761,8 @@ mod tests {
         ",
         );
 
-        let result = apply(lib, &CompilerOptions::default());
+        let diagnostics = diagnostics_of(lib, &CompilerOptions::default());
 
-        assert!(result.is_ok());
+        assert!(diagnostics.is_empty());
     }
 }

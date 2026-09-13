@@ -1572,8 +1572,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         };
                         let data_offset = stack.pop()?.as_i32() as usize;
                         let bytes = string_ops::narrow_str_bytes(data_region, data_offset)?;
-                        let value = str_to_num::convert(encoding, bytes)?;
-                        stack.push(Slot::from_i32(value))?;
+                        stack.push(str_to_num::convert(encoding, bytes)?)?;
                     }
                     _ => builtin::dispatch(func_id, stack)?,
                 }

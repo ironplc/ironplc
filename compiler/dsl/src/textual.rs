@@ -461,22 +461,37 @@ impl fmt::Display for LateBound {
     }
 }
 
-/// Wrapper around `ExprKind` that carries optional resolved type information.
+/// Wrapper around `ExprKind` that carries what is true of an expression but
+/// not of the operation it performs: its resolved type, and where it was
+/// written.
 ///
 /// The `resolved_type` field is populated by a later analysis pass. During
 /// parsing and initial construction, it is always `None`.
 #[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct Expr {
-    #[located(delegate)]
     pub kind: ExprKind,
     #[recurse(ignore)]
     pub resolved_type: Option<TypeName>,
+    /// Where the expression was written, as written.
+    ///
+    /// The parser records the span of every token it matched, including the
+    /// ones no child node holds -- a unary operator, a caret, the
+    /// parentheses of a group or of a function call's argument list. That is
+    /// why the span lives here rather than being derived from `kind`:
+    /// `Located for ExprKind` can only join the spans of the children, so it
+    /// reports `NOT g` as `g`. An expression built by a transform rather
+    /// than parsed has no tokens to record, and `Expr::new` falls back to
+    /// that derivation for it.
+    #[located(position)]
+    pub span: SourceSpan,
 }
 
 impl Expr {
-    /// Creates a new `Expr` with no resolved type.
+    /// Creates a new `Expr` with no resolved type, spanning whatever its
+    /// `kind` spans.
     pub fn new(kind: ExprKind) -> Expr {
         Expr {
+            span: kind.span(),
             kind,
             resolved_type: None,
         }
@@ -485,9 +500,34 @@ impl Expr {
     /// Creates a new `Expr` with a resolved type.
     pub fn with_type(kind: ExprKind, type_name: TypeName) -> Expr {
         Expr {
-            kind,
             resolved_type: Some(type_name),
+            ..Expr::new(kind)
         }
+    }
+
+    /// Returns this expression, recording `span` as where it was written.
+    ///
+    /// The parser calls this wherever the expression is written with tokens
+    /// that none of its children hold, and so that `Expr::new` cannot
+    /// recover from `kind` alone.
+    pub fn with_span(mut self, span: SourceSpan) -> Expr {
+        self.span = span;
+        self
+    }
+
+    /// Creates a comparison of two expressions.
+    pub fn compare(op: CompareOp, left: Expr, right: Expr) -> Expr {
+        Expr::new(ExprKind::Compare(Box::new(CompareExpr { op, left, right })))
+    }
+
+    /// Creates an arithmetic or bitwise operation on two expressions.
+    pub fn binary(op: Operator, left: Expr, right: Expr) -> Expr {
+        Expr::new(ExprKind::BinaryOp(Box::new(BinaryExpr { op, left, right })))
+    }
+
+    /// Creates an operation on a single expression.
+    pub fn unary(op: UnaryOp, term: Expr) -> Expr {
+        Expr::new(ExprKind::UnaryOp(Box::new(UnaryExpr { op, term })))
     }
 }
 
@@ -497,6 +537,14 @@ impl fmt::Display for Expr {
     }
 }
 
+/// Reconstructs an expression's span from its children.
+///
+/// This is a fallback, and lossy: an expression is written with tokens that
+/// none of its children hold -- the operator of `NOT g`, the caret of `p^`,
+/// the parentheses of `(a + b)` and of `MAX(a, b)` -- and those tokens
+/// cannot be recovered from the tree. Prefer `Expr::span`, which is what
+/// the parser records; this is what seeds it for an expression that a
+/// transform built rather than the parser.
 impl Located for ExprKind {
     fn span(&self) -> SourceSpan {
         match self {
@@ -535,26 +583,15 @@ pub enum ExprKind {
 
 impl ExprKind {
     pub fn compare(op: CompareOp, left: ExprKind, right: ExprKind) -> ExprKind {
-        ExprKind::Compare(Box::new(CompareExpr {
-            op,
-            left: Expr::new(left),
-            right: Expr::new(right),
-        }))
+        Expr::compare(op, Expr::new(left), Expr::new(right)).kind
     }
 
     pub fn binary(op: Operator, left: ExprKind, right: ExprKind) -> ExprKind {
-        ExprKind::BinaryOp(Box::new(BinaryExpr {
-            op,
-            left: Expr::new(left),
-            right: Expr::new(right),
-        }))
+        Expr::binary(op, Expr::new(left), Expr::new(right)).kind
     }
 
     pub fn unary(op: UnaryOp, term: ExprKind) -> ExprKind {
-        ExprKind::UnaryOp(Box::new(UnaryExpr {
-            op,
-            term: Expr::new(term),
-        }))
+        Expr::unary(op, Expr::new(term)).kind
     }
 
     pub fn named_variable(name: &str) -> ExprKind {
@@ -893,6 +930,8 @@ impl StmtKind {
             target,
             deref: false,
             ref_bind: false,
+            set_bind: false,
+            reset_bind: false,
             value: Expr::new(value),
             span: SourceSpan::default(),
         })
@@ -903,6 +942,8 @@ impl StmtKind {
             target: Variable::named(target),
             deref: false,
             ref_bind: false,
+            set_bind: false,
+            reset_bind: false,
             value: Expr::new(ExprKind::LateBound(LateBound {
                 value: Id::from(src),
             })),
@@ -921,6 +962,8 @@ impl StmtKind {
             target: Variable::named(target),
             deref: false,
             ref_bind: false,
+            set_bind: false,
+            reset_bind: false,
             value: Expr::new(ExprKind::Variable(variable)),
             span: SourceSpan::default(),
         })
@@ -942,6 +985,16 @@ pub struct Assignment {
     /// syntax. See `specs/design/reference-to-twincat.md`.
     #[recurse(ignore)]
     pub ref_bind: bool,
+    /// `true` when written with the TwinCAT/CODESYS `S=` set-bind operator:
+    /// `target` is set `TRUE` when `value` is `TRUE` and left unchanged
+    /// otherwise (never cleared). Mutually exclusive with `reset_bind`.
+    #[recurse(ignore)]
+    pub set_bind: bool,
+    /// `true` when written with the TwinCAT/CODESYS `R=` reset-bind operator:
+    /// the mirror of `set_bind` (`target` is cleared `FALSE` when `value` is
+    /// `TRUE`, left unchanged otherwise).
+    #[recurse(ignore)]
+    pub reset_bind: bool,
     pub value: Expr,
     #[located(position)]
     pub span: SourceSpan,

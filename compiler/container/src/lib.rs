@@ -49,7 +49,10 @@ pub use char_width::CharWidth;
 pub use const_type::ConstType;
 pub use container_ref::{ContainerRef, ProgramEntryRef, TaskEntryRef};
 pub use error::ContainerError;
-pub use header::{FileHeader, FLAG_HAS_SYSTEM_UPTIME, FORMAT_VERSION, HEADER_SIZE, MAGIC};
+pub use header::{
+    FileHeader, FLAG_HAS_DEBUG_SECTION, FLAG_HAS_SYSTEM_UPTIME, FLAG_HAS_TYPE_SECTION,
+    FORMAT_VERSION, HEADER_SIZE, MAGIC,
+};
 pub use id_types::{
     ConstantIndex, FbTypeId, FunctionId, InstanceId, SlotIndex, SourceColumn, SourceFileId,
     SourceLine, TaskId, VarIndex,

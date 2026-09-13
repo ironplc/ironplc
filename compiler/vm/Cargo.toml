@@ -25,7 +25,7 @@ ironplc-container = { path = "../container", version = "0.242.0", features = [
   "test-support",
 ] }
 proptest = "1"
-rstest = "0.26"
+rstest = "0.27"
 spec_test_macro = { path = "../spec_test_macro" }
 
 [build-dependencies]

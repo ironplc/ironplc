@@ -1,6 +1,6 @@
 # Standard Function Blocks as VM Intrinsics via FB_CALL
 
-status: proposed
+status: accepted
 date: 2026-02-17
 
 ## Context and Problem Statement

@@ -1,6 +1,6 @@
 # Flat Variable Table for Function Calls
 
-status: proposed
+status: accepted
 date: 2026-03-12
 
 ## Context and Problem Statement

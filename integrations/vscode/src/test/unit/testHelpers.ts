@@ -21,7 +21,12 @@ export function createMockClient(overrides?: Partial<LanguageClientLike>): Langu
 export function createTestHeader(overrides?: Partial<DisassemblyHeader>): DisassemblyHeader {
   return {
     formatVersion: 1,
-    flags: { hasContentSignature: false, hasDebugSection: false, hasTypeSection: false },
+    flags: {
+      hasSystemUptime: false,
+      hasContentSignature: false,
+      hasDebugSection: false,
+      hasTypeSection: false,
+    },
     maxStackDepth: 16,
     maxCallDepth: 4,
     numVariables: 2,
