@@ -136,6 +136,10 @@ let lastVariables: Variable[] | null = null;
 let stepInFlight = false;
 let previousValues: Map<number, string> = new Map();
 let compilerVersion = "";
+// Problem-code prefix to reference-site section, supplied by the compiler over
+// the worker `ready` message. Empty until then; renderDiagnostics falls back to
+// an unlinked chip, which is also what an unmapped prefix gets.
+let docSections: Record<string, string> = {};
 let currentIntervalMs = 500;
 // The exact source last handed to the compiler. Captured on Start so a report
 // reflects what actually produced the diagnostics, even if the user keeps
@@ -624,6 +628,7 @@ worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
 
   if (msg.type === "ready") {
     compilerVersion = msg.version || "";
+    docSections = msg.docSections ?? {};
     initDialects(msg.dialects);
     initAnalytics();
     // Fetch any activated compatibility libraries' served files before enabling
@@ -1162,16 +1167,16 @@ function renderDiagnostics(diagnostics: Diagnostic[]): void {
     // Every diagnostic — compiler, VM trap, or host/embedding-layer error —
     // now carries a code, so the chip always renders.
     const code = escapeHtml(d.code);
-    // P#### are compiler problems and V#### are runtime (VM) problems; each has
-    // a documentation page under a different section of the reference site.
-    // Host/embedding-layer illegal states reuse the P9998 internal-error code,
-    // so they link to the compiler section like any other P####. Codes outside
-    // these families render as plain, unlinked chips.
-    const section = /^P\d{4}$/.test(d.code)
-      ? "compiler"
-      : /^V\d{4}$/.test(d.code)
-        ? "runtime"
-        : null;
+    // Each code family documents under a different section of the reference
+    // site. The mapping is the compiler's (served over `ready` from its
+    // `doc_sections()` export) rather than one the playground re-derives, so an
+    // added family links correctly here without a matching edit. Illegal states
+    // in the host/embedding layer reuse the P9998 internal-error code, so they
+    // link to the compiler section like any other P####. A code the compiler
+    // does not map renders as a plain, unlinked chip.
+    const section = /^[A-Z]\d{4}$/.test(d.code)
+      ? docSections[d.code.charAt(0)]
+      : undefined;
     if (section) {
       // channel=playground attributes the arrival to the playground; version
       // stays for the out-of-date banner in docs/_static/version-check.js.
