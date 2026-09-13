@@ -61,13 +61,16 @@ impl Fold<Diagnostic> for ConstantFolder {
         };
 
         match folded_kind {
-            Some(kind) => Ok(Expr {
+            Some(kind) => {
                 // The folded literal is a new node, so it carries the span of
                 // the expression it replaces. Without this a diagnostic about
                 // `255 + 1` has nowhere to point.
-                kind: with_span(kind, node.span()),
-                resolved_type: node.resolved_type,
-            }),
+                let span = node.span.clone();
+                Ok(Expr {
+                    kind: with_span(kind, span),
+                    ..node
+                })
+            }
             None => Ok(node),
         }
     }

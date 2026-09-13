@@ -27,6 +27,7 @@ mod compile_cmp;
 mod compile_const_trunc;
 mod compile_dup;
 mod compile_exit_return;
+mod compile_extends_inheritance;
 mod compile_func_forms;
 mod compile_if;
 mod compile_loops;
