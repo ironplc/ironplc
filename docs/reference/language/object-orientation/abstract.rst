@@ -19,8 +19,15 @@ programming introduced in IEC 61131-3 Edition 3.
    * - **IEC 61131-3**
      - Edition 3 (object-oriented programming)
    * - **Support**
-     - Parsed only — not yet analyzed or executed
-       (:doc:`P9999 </reference/compiler/problems/P9999>`). Enable with
+     - Parsed and analyzed: a variable declared with the type of an
+       ``ABSTRACT`` function block reports
+       :doc:`P4045 </reference/compiler/problems/P4045>`, while a concrete
+       type that :doc:`extends <extends>` it instantiates normally. The
+       check covers a direct declaration; it does not yet reject an
+       ``ABSTRACT`` type used as the element type of an array. IronPLC
+       does not yet execute an ``ABSTRACT`` function block, so declaring
+       one also reports
+       :doc:`P9999 </reference/compiler/problems/P9999>`. Enable with
        ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.
 
@@ -40,7 +47,8 @@ combined with :doc:`EXTENDS <extends>` and :doc:`IMPLEMENTS <implements>`:
 Example
 -------
 
-.. code-block::
+.. playground::
+   :dialect: iec61131-3-ed3
 
    FUNCTION_BLOCK ABSTRACT FB_BaseAxis
        VAR
@@ -54,8 +62,29 @@ Example
        END_VAR
    END_FUNCTION_BLOCK
 
+   PROGRAM main
+       VAR
+           axis : FB_LinearAxis;
+       END_VAR
+   END_PROGRAM
+
 ``FB_BaseAxis`` cannot be instantiated on its own; ``FB_LinearAxis`` extends
-it and can be.
+it and can be, so ``axis`` is a valid declaration.
+
+Naming the abstract type in the declaration instead reports
+:doc:`P4045 </reference/compiler/problems/P4045>`:
+
+.. playground::
+   :dialect: iec61131-3-ed3
+
+   FUNCTION_BLOCK ABSTRACT FB_BaseAxis
+   END_FUNCTION_BLOCK
+
+   PROGRAM main
+       VAR
+           axis : FB_BaseAxis;    (* P4045: FB_BaseAxis is ABSTRACT *)
+       END_VAR
+   END_PROGRAM
 
 See Also
 --------
@@ -66,3 +95,5 @@ See Also
 - :doc:`/explanation/object-orientation` — inheritance, interfaces, and
   abstract types explained
 - :doc:`/reference/language/pous/function-block` — the ``FUNCTION_BLOCK`` unit
+- :doc:`P4045 </reference/compiler/problems/P4045>` — the error reported for
+  instantiating an abstract type
