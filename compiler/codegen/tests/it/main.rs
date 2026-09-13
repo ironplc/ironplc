@@ -53,7 +53,7 @@ mod end_to_end_array_string_paren_length;
 mod end_to_end_atan2;
 mod end_to_end_bcd;
 mod end_to_end_bit_access;
-mod end_to_end_bit_access_not_impl;
+mod end_to_end_bit_access_nested;
 mod end_to_end_bitstring;
 mod end_to_end_bool;
 mod end_to_end_case;

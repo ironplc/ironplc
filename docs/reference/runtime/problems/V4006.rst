@@ -1,0 +1,52 @@
+=====
+V4006
+=====
+
+.. problem-summary:: V4006
+
+A ``STRING_TO_<numeric>`` conversion received a string that is not
+convertible to its target type, and the program was compiled with the
+``trap`` failure policy (the default). The message names the target type and
+the offending string.
+
+A string is not convertible when it is not a numeric literal under the
+selected non-numeric policy (for example ``'12abc'`` under ``reject``), or
+when it is a literal whose value does not fit the target type (for example
+``'4294967296'`` for ``UDINT``). See
+:doc:`/reference/standard-library/functions/type-conversions` for what each
+policy accepts.
+
+Example
+-------
+
+The following code will generate error V4006:
+
+.. code-block::
+
+   PROGRAM Main
+   VAR
+       text : STRING := '12abc';
+       value : UDINT;
+   END_VAR
+   value := STRING_TO_UDINT(text);  (* Error: '12abc' is not a UDINT literal *)
+   END_PROGRAM
+
+The string ``'12abc'`` has characters after the digits, so under the default
+``reject`` policy it is not convertible, and the default ``trap`` policy halts
+the program rather than producing a number the program did not ask for.
+
+To fix this error, convert only strings the program knows are literals of the
+target type, or select the behavior policy that matches the platform the
+program was written for. A program written for CODESYS or TwinCAT expects the
+leading digits and a zero on failure; compile it with
+``--dialect codesys`` or ``--dialect twincat``, or select the policies
+directly:
+
+.. code-block:: shell
+
+   ironplcc compile --policy-string-to-num-non-numeric ignore-trailing \
+                    --policy-string-to-num-failure zero \
+                    -o main.iplc main.st
+
+The policies are described in
+:doc:`/explanation/enabling-dialects-and-features`.

@@ -124,6 +124,36 @@ This is a **vendor** concept, not a dialect one: it is about *runtime behavior
 and libraries*, not syntax. There is deliberately no such thing as a "dialect
 compatibility library" — a dialect has no runtime to emulate.
 
+### Behavior policy
+
+A named choice among enumerated, documented, deterministic alternatives for
+**one semantic of a standard operation** that IEC 61131-3 leaves to the
+implementer — for example, what `STRING_TO_INT('12abc')` returns. A policy is
+selected at compile time (by a dialect preset, or a `--policy-*` flag that
+replaces the preset's selection) and encoded in the bytecode; the runtime has
+no policy setting (see
+[ADR-0049](../adrs/0049-behavior-policies-selected-at-compile-time.md)).
+
+A policy is a **vendor** concept, not a dialect one: it is about what an
+operation *does*, which is the runtime a vendor is emulated by, not the shape
+of the text the parser accepts. It is therefore not an
+[extension](#extension), and its flag is not an `--allow-*` [flag](#flag): a
+flag enables syntax and only ever enables; a policy always has exactly one
+alternative selected, and selecting another replaces it. The strict default
+is the standard's result, or a runtime error where the standard says "error";
+a vendor preset selects the alternative that vendor *documents*, and where
+the vendor documents the result as undefined, IronPLC does not offer an
+alternative for it.
+
+*Canonical uses:* "behavior policy", "the `--policy-string-to-num-failure`
+policy", "the policy's alternatives", "the `codesys` dialect selects
+`ignore-trailing`".
+
+*Do not say:* "policy flag" for the selection itself (a flag enables; a
+policy selects — say "policy" or "`--policy-*` selection"), "extension" for a
+policy, or "runtime setting" / "VM option" for a policy (it is fixed at
+compile time).
+
 ### Extension Library
 
 IronPLC's own set of runtime functions, function blocks, and variables that go
@@ -153,6 +183,10 @@ extensions. Anything an `--allow-*` flag enables is, by definition,
 - A **standard** program uses no extensions; it loads in any conformant tool.
   A program that uses extensions loads in the vendor(s) whose dialect includes
   them — never in a hypothetical "IronPLC dialect" ([ADR-0036](../adrs/0036-no-ironplc-dialect.md)).
+- A **dialect preset** also selects one alternative of every **behavior
+  policy** — the one its vendor documents — so a program compiled under the
+  `twincat` dialect *behaves* like TwinCAT where the standard is silent, not
+  only *parses* like it.
 
 ---
 
@@ -163,6 +197,7 @@ extensions. Anything an `--allow-*` flag enables is, by definition,
 | dialect | vendor dialect | "dialect" already means the accepted syntax |
 | extension / language extension | vendor extension, dialect extension | an extension is a syntax feature, not a company or a dialect |
 | dialect flag / `--allow-*` flag | vendor flag, vendor-extension flag | the flag gates syntax |
+| behavior policy / `--policy-*` selection | policy flag, runtime setting, VM option | a policy selects an operation's documented behavior at compile time; it does not gate syntax and is not a runtime setting |
 | non-standard syntax | vendor syntax | it's about the standard, not a vendor |
 | vendor toolchain / vendor files / vendor library | *(keep — correct)* | these really are about the product/runtime |
 | vendor compatibility library / vendor shim | dialect compatibility library | a dialect has no runtime to emulate |

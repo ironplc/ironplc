@@ -1,5 +1,6 @@
 use core::fmt;
 
+use ironplc_container::builtin::str_to_num;
 use ironplc_container::{ConstantIndex, FbTypeId, FunctionId, TaskId, VarIndex};
 
 /// Runtime traps that halt VM execution.
@@ -72,6 +73,70 @@ pub enum Trap {
         dst_bytes: u32,
         src_bytes: u32,
     },
+    /// A `STRING_TO_<numeric>` conversion compiled under the `trap` failure
+    /// policy (ADR-0049) was given a string that is not convertible to its
+    /// target: not a literal under the selected non-numeric policy, or a
+    /// literal whose value does not fit the target type.
+    ///
+    /// `value` is the offending string, so the message names what was
+    /// converted rather than only where.
+    StringNotConvertible {
+        target: str_to_num::Target,
+        value: StringPreview,
+    },
+}
+
+/// The start of a `STRING` value, carried in a [`Trap`] so a message can
+/// show the offending text.
+///
+/// A trap cannot own the string -- the VM is `no_std` and the value lives in
+/// the data region -- so this keeps a bounded copy of its first bytes and
+/// remembers whether more followed. Latin-1 bytes render as their characters.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StringPreview {
+    bytes: [u8; StringPreview::CAPACITY],
+    len: u8,
+    truncated: bool,
+}
+
+impl StringPreview {
+    /// How many bytes a preview keeps.
+    pub const CAPACITY: usize = 16;
+
+    /// A preview of `value`, keeping its first [`CAPACITY`](Self::CAPACITY)
+    /// bytes.
+    pub fn of(value: &[u8]) -> Self {
+        let len = value.len().min(Self::CAPACITY);
+        let mut bytes = [0u8; Self::CAPACITY];
+        bytes[..len].copy_from_slice(&value[..len]);
+        StringPreview {
+            bytes,
+            len: len as u8,
+            truncated: value.len() > len,
+        }
+    }
+}
+
+impl fmt::Display for StringPreview {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("'")?;
+        for &b in &self.bytes[..self.len as usize] {
+            // Latin-1 maps byte-for-byte onto the first 256 code points.
+            write!(f, "{}", b as char)?;
+        }
+        f.write_str("'")?;
+        if self.truncated {
+            f.write_str("...")?;
+        }
+        Ok(())
+    }
+}
+
+/// The IEC 61131-3 type name a `STRING_TO_<numeric>` target converts to.
+fn target_type_name(target: str_to_num::Target) -> &'static str {
+    match target {
+        str_to_num::Target::U32 => "UDINT",
+    }
 }
 
 // v_code() and exit_code() are generated from resources/problem-codes.csv
@@ -138,6 +203,13 @@ impl fmt::Display for Trap {
                     "region copy size mismatch: destination is {dst_bytes} bytes, source is {src_bytes} bytes"
                 )
             }
+            Trap::StringNotConvertible { target, value } => {
+                write!(
+                    f,
+                    "string {value} is not convertible to {}",
+                    target_type_name(*target)
+                )
+            }
         }
     }
 }
@@ -187,6 +259,20 @@ mod tests {
     )]
     #[case(Trap::UnexpectedEndOfBytecode, "bytecode ended mid-instruction")]
     #[case(Trap::CallStackOverflow, "call stack overflow")]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::U32,
+            value: StringPreview::of(b"12abc"),
+        },
+        "string '12abc' is not convertible to UDINT"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::U32,
+            value: StringPreview::of(b"0123456789abcdefghij"),
+        },
+        "string '0123456789abcdef'... is not convertible to UDINT"
+    )]
     #[case(Trap::InvalidCmpOp(0x07), "invalid comparison operator code: 0x07")]
     #[case(
         Trap::EncodingMismatch { expected: 1, actual: 2 },
@@ -217,6 +303,13 @@ mod tests {
             total_elements: 5,
         },
         "V4005"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::U32,
+            value: StringPreview::of(b""),
+        },
+        "V4006"
     )]
     #[case(Trap::StackOverflow, "V9001")]
     #[case(Trap::StackUnderflow, "V9002")]

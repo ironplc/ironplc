@@ -308,7 +308,10 @@ pub(crate) fn walk_struct_chain(
                 field_type,
             ))
         }
-        // Array access within struct chain handled in PR 8
+        // An `Array` record (`arr[i].field`, `s.items[i].field`) is resolved by
+        // `compile_array_struct` before the callers reach this walk; the
+        // remaining kinds (bit and partial access, deref, self) cannot own a
+        // field, so nothing is left to resolve here.
         _ => Err(Diagnostic::todo_with_span(record.span())),
     }
 }

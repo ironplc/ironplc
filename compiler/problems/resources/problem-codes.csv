@@ -114,3 +114,4 @@ P9997,NotSupported,Capability is not supported
 P9998,InternalError,Internal error indicating a bug in the compiler
 P9999,NotImplemented,Capability is not implemented (yet!)
 P2037,AggregateAssignmentTypeMismatch,Assignment between arrays or structures requires identical types
+P4050,ProgramVariableHidesGlobal,Program variable has the same name as a global variable

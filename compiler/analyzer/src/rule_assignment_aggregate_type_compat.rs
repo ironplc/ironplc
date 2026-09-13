@@ -433,10 +433,11 @@ END_PROGRAM
         assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
     }
 
-    /// A POU's own declaration shadows an outer one of the same name, so the
-    /// inner type is what gets compared.
+    /// A function block's own declaration hides an outer one of the same
+    /// name, so the inner type is what gets compared. (A program may not
+    /// reuse a global's name at all; that is `rule_program_var_hides_global`.)
     #[test]
-    fn apply_when_local_shadows_global_then_local_type_is_compared() {
+    fn apply_when_local_hides_global_then_local_type_is_compared() {
         let codes = problem_codes(
             "
 CONFIGURATION config
@@ -449,12 +450,19 @@ CONFIGURATION config
   END_RESOURCE
 END_CONFIGURATION
 
-PROGRAM main
+FUNCTION_BLOCK FB_Copy
 VAR
   g : ARRAY[1..2] OF DINT;
   a : ARRAY[1..2] OF DINT;
 END_VAR
   a := g;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+  fb : FB_Copy;
+END_VAR
+  fb();
 END_PROGRAM
 ",
         );

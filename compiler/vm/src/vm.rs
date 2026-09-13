@@ -14,6 +14,7 @@ use crate::frame_stack::{FbCallReturn, Frame, FrameStack};
 use crate::profile::InstructionProfile;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
 use crate::stack::OperandStack;
+use crate::str_to_num;
 use crate::string_ops;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
@@ -1559,6 +1560,20 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             core::cmp::Ordering::Greater => 1i32,
                         };
                         stack.push(Slot::from_i32(cmp_val))?;
+                    }
+                    // A `STRING_TO_<numeric>` conversion under behavior
+                    // policies (ADR-0049): the ID carries the target and
+                    // both policies, and `str_to_num` does the rest. An ID
+                    // in the block that names no conversion is unknown like
+                    // any other unassigned builtin.
+                    opcode::builtin::str_to_num::BASE..=opcode::builtin::str_to_num::END => {
+                        let Some(encoding) = opcode::builtin::str_to_num::decode(func_id) else {
+                            return Err(Trap::InvalidBuiltinFunction(FunctionId::new(func_id)));
+                        };
+                        let data_offset = stack.pop()?.as_i32() as usize;
+                        let bytes = string_ops::narrow_str_bytes(data_region, data_offset)?;
+                        let value = str_to_num::convert(encoding, bytes)?;
+                        stack.push(Slot::from_i32(value))?;
                     }
                     _ => builtin::dispatch(func_id, stack)?,
                 }

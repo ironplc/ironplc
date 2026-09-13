@@ -128,6 +128,43 @@ the same way:
        END_VAR
    END_PROGRAM
 
+A prefixed literal states its own type
+--------------------------------------
+
+An integer literal can name its type with a prefix, as in ``INT#42``. The
+prefix is a statement about the value, so the value is checked against the
+prefixed type as well as against the type it is stored into. ``INT#40000`` is
+not an ``INT``, whatever it is assigned to:
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           wide : DINT := INT#40000;  (* Error: an INT holds -32768 to 32767 *)
+       END_VAR
+   END_PROGRAM
+
+To fix this error, name the type the value belongs to, or drop the prefix so
+that the destination alone decides:
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           wide : DINT := DINT#40000;
+           other : DINT := 40000;
+       END_VAR
+   END_PROGRAM
+
+The two checks are independent. A literal that fits its own type but not the
+destination, such as ``small : SINT := INT#200``, is reported against the
+destination only, and one that fits neither is reported once for each.
+
+A radix form with an integer type prefix is checked by its value in the same
+way: ``INT#16#FFFF`` is 65535, which no ``INT`` can hold. A bit pattern that
+is meant to fill the word is spelled with a bit-string prefix, such as
+``WORD#16#FFFF``, which is not checked.
+
 Bit strings are not checked
 ---------------------------
 

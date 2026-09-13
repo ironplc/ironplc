@@ -10,6 +10,7 @@ pub(crate) mod intrinsic;
 mod profile;
 pub(crate) mod scheduler;
 pub(crate) mod stack;
+pub(crate) mod str_to_num;
 pub(crate) mod string_ops;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
@@ -20,6 +21,7 @@ mod vm;
 pub use buffers::VmBuffers;
 pub use debug::{BreakpointId, BreakpointTable, DebuggerHook, PauseReason, StepMode};
 pub use debug_hook::{DebugHook, HookAction, NoopDebugHook};
+pub use error::StringPreview;
 pub use frame_stack::{FbCallReturn, Frame, FrameStack};
 pub use freewheeling::{
     has_freewheeling_task, interval_from_ms, interval_us, resolve_cycle_time, IntervalError,
