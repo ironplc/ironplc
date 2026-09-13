@@ -28,7 +28,7 @@ peg = "0.8.5"
 ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
 
 [dev-dependencies]
-rstest = "0.26"
+rstest = "0.27"
 spec_test_macro = { path = "../spec_test_macro" }
 
 [lints]

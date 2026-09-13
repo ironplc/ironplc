@@ -192,10 +192,21 @@ struct FileArgs {
     #[arg(long)]
     allow_system_uptime_global: bool,
 
-    /// Allow implicit widening between bit-string and integer type families
-    /// (e.g. BYTE→INT, literal 0→BYTE). This is an extension.
+    /// Allow implicit widening from a bit-string type to a strictly wider
+    /// integer type (e.g. BYTE→INT). This is an extension.
     #[arg(long)]
     allow_cross_family_widening: bool,
+
+    /// Allow implicit conversion between UDINT and DWORD, in both directions,
+    /// at equal width. The two share a 32-bit slot, so this converts rather
+    /// than widens. This is an extension.
+    #[arg(long)]
+    allow_cross_family_conversion: bool,
+
+    /// Allow a bare integer literal where a bit-string type is expected
+    /// (e.g. 0 where BYTE is expected). This is an extension.
+    #[arg(long)]
+    allow_int_literal_to_bit_string: bool,
 
     /// Allow IEC 61131-3:2013 partial-access syntax: the bit form `.%Xn` (an
     /// alias for the short form `.n`) and the byte/word/dword/lword forms
@@ -295,6 +306,8 @@ impl FileArgs {
         options.allow_sizeof |= self.allow_sizeof;
         options.allow_system_uptime_global |= self.allow_system_uptime_global;
         options.allow_cross_family_widening |= self.allow_cross_family_widening;
+        options.allow_cross_family_conversion |= self.allow_cross_family_conversion;
+        options.allow_int_literal_to_bit_string |= self.allow_int_literal_to_bit_string;
         options.allow_partial_access_syntax |= self.allow_partial_access_syntax;
         options.allow_pragmas |= self.allow_pragmas;
         options.allow_short_circuit_operators |= self.allow_short_circuit_operators;
