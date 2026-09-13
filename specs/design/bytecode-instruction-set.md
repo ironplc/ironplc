@@ -646,7 +646,7 @@ These are dispatched inline in the VM main loop rather than through the shared b
 
 `CMP_STR` is how the compiler lowers `=`, `<>`, `<`, `<=`, `>`, `>=` on strings: emit `CMP_STR`, then compare its result to 0 with the ordinary integer comparison opcodes.
 
-`CONV_STR_TO_F32` is the conversion that has not yet moved onto the policy block below; it trims whitespace, accepts Rust's decimal syntax, and yields 0.0 on failure. `CONV_STR_TO_I32` behaves the same way for integers but codegen no longer emits it (every integer target up to 32 bits is on the block); the VM keeps its handler because a func_id is a permanent wire-format commitment.
+`CONV_STR_TO_I32` and `CONV_STR_TO_F32` trim whitespace, accept Rust's decimal syntax, and yield 0 or 0.0 on failure. Codegen no longer emits either (every `STRING_TO_<numeric>` target is on the policy block below); the VM keeps their handlers because a func_id is a permanent wire-format commitment.
 
 #### String-to-number under behavior policies
 
@@ -658,7 +658,7 @@ func_id = 0x0480 + target * 8 + non_numeric * 2 + failure
 
 `non_numeric` is 0 `reject`, 1 `ignore-trailing`, 2 `ignore-surrounding`; `failure` is 0 `trap`, 1 `zero`. Each target owns a stride of eight (two slots spare). The block runs to 0x04FF; `builtin::str_to_num::decode` recovers the target and policies from an ID, and an ID in the block that names no conversion traps `V9007` like any other unassigned func_id. The semantics of each alternative are specified in [behavior-policies.md](behavior-policies.md).
 
-All take one argument: `[data_offset] → [value]`, where the value is an I32 slot for the targets up to 32 bits and an I64 slot for the 64-bit targets. A `WSTRING` operand traps `V9014`.
+All take one argument: `[data_offset] → [value]`, where the value is an I32 slot for the integer targets up to 32 bits, an I64 slot for the 64-bit integer targets, and an F32 or F64 slot for the real targets. A `WSTRING` operand traps `V9014`.
 
 | func_id | Name | Non-numeric | Failure |
 |---------|------|-------------|---------|
@@ -710,6 +710,18 @@ All take one argument: `[data_offset] → [value]`, where the value is an I32 sl
 | 0x04BB | CONV_STR_TO_I64_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
 | 0x04BC | CONV_STR_TO_I64_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
 | 0x04BD | CONV_STR_TO_I64_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
+| 0x04C0 | CONV_STR_TO_F32_REJECT_TRAP | reject | trap `V4006` |
+| 0x04C1 | CONV_STR_TO_F32_REJECT_ZERO | reject | 0.0 |
+| 0x04C2 | CONV_STR_TO_F32_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x04C3 | CONV_STR_TO_F32_IGNORE_TRAILING_ZERO | ignore-trailing | 0.0 |
+| 0x04C4 | CONV_STR_TO_F32_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x04C5 | CONV_STR_TO_F32_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0.0 |
+| 0x04C8 | CONV_STR_TO_F64_REJECT_TRAP | reject | trap `V4006` |
+| 0x04C9 | CONV_STR_TO_F64_REJECT_ZERO | reject | 0.0 |
+| 0x04CA | CONV_STR_TO_F64_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x04CB | CONV_STR_TO_F64_IGNORE_TRAILING_ZERO | ignore-trailing | 0.0 |
+| 0x04CC | CONV_STR_TO_F64_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x04CD | CONV_STR_TO_F64_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0.0 |
 
 The targets, at the positions the block fixes (even positions unsigned, the odd position after each its signed counterpart, in width order 32, 8, 16, 64, then the reals). A bit-string type converts as the unsigned integer of its width. Out of range is a failure under every non-numeric alternative; the result is never wrapped or truncated.
 
@@ -723,8 +735,8 @@ The targets, at the positions the block fixes (even positions unsigned, the odd 
 | 5 | I16 | `STRING_TO_INT` | 0x04A8–0x04AD |
 | 6 | U64 | `STRING_TO_ULINT`, `STRING_TO_LWORD` | 0x04B0–0x04B5 |
 | 7 | I64 | `STRING_TO_LINT` | 0x04B8–0x04BD |
-| 8 | F32 | `STRING_TO_REAL` | 0x04C0–0x04C5, reserved |
-| 9 | F64 | `STRING_TO_LREAL` | 0x04C8–0x04CD, reserved |
+| 8 | F32 | `STRING_TO_REAL` | 0x04C0–0x04C5 |
+| 9 | F64 | `STRING_TO_LREAL` | 0x04C8–0x04CD |
 
 #### MUX
 

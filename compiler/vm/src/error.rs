@@ -148,6 +148,8 @@ fn target_type_name(target: str_to_num::Target) -> &'static str {
         str_to_num::Target::I16 => "INT",
         str_to_num::Target::U64 => "ULINT",
         str_to_num::Target::I64 => "LINT",
+        str_to_num::Target::F32 => "REAL",
+        str_to_num::Target::F64 => "LREAL",
     }
 }
 
@@ -333,6 +335,20 @@ mod tests {
             value: StringPreview::of(b"18446744073709551616"),
         },
         "string '1844674407370955'... is not convertible to ULINT"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::F32,
+            value: StringPreview::of(b"1e39"),
+        },
+        "string '1e39' is not convertible to REAL"
+    )]
+    #[case(
+        Trap::StringNotConvertible {
+            target: str_to_num::Target::F64,
+            value: StringPreview::of(b"NaN"),
+        },
+        "string 'NaN' is not convertible to LREAL"
     )]
     #[case(Trap::InvalidCmpOp(0x07), "invalid comparison operator code: 0x07")]
     #[case(

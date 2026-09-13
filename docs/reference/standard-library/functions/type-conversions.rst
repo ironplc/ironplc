@@ -438,6 +438,8 @@ selects it at compile time with two behavior policies; see
      - String to long word
    * - ``STRING_TO_REAL``
      - String to single-precision
+   * - ``STRING_TO_LREAL``
+     - String to double-precision
 
 String to Numeric Policies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -484,9 +486,15 @@ alternatives are encoded in the compiled program, so the same
       TwinCAT and RuSTy return 0.
 
 Under every alternative the accepted literal is the IEC 61131-3 literal of
-the target type: decimal digits with optional ``_`` separators
-(``'1_000'``), or a based literal (``'16#FF'``, ``'8#17'``, ``'2#1010'``),
-optionally signed. A typed prefix (``'UDINT#5'``) is not accepted.
+the target type. For an integer target that is decimal digits with optional
+``_`` separators (``'1_000'``), or a based literal (``'16#FF'``, ``'8#17'``,
+``'2#1010'``), optionally signed. For a real target it is a floating-point
+number, also in exponential notation: digits with an optional decimal point
+and fraction (``'9.876'``, ``'5'``, ``'.5'``) and an optional exponent
+(``'1.2E-34'``), optionally signed. A typed prefix (``'UDINT#5'``) is not
+accepted, and neither are the words ``inf`` and ``nan``. A decimal point is
+not part of an integer literal: ``STRING_TO_INT('12.5')`` is a failure under
+``reject`` and 12 under ``ignore-trailing``, which is what CODESYS documents.
 
 .. list-table:: Results of ``STRING_TO_UDINT`` by policy
    :header-rows: 1
@@ -615,8 +623,47 @@ produces zero, and is never 44. The ranges are those of the types:
 instruction, so a V4006 from one of them names the unsigned integer type of
 the same width.
 
-``STRING_TO_REAL`` does not yet honor the policies: it returns zero for a
-string that is not a ``REAL`` literal, whatever the policy selects.
+For a real target, a literal whose magnitude rounds to infinity at the
+target's precision (``'1e39'`` for ``REAL``, ``'1e309'`` for ``LREAL``) does
+not fit the target and is a failure, exactly as ``'300'`` does not fit
+``SINT``. A literal too small for the precision rounds to zero or to a
+subnormal and is not a failure. No conversion produces a NaN or an
+infinity: under ``zero`` a failure produces positive 0.0.
+
+.. list-table:: Results of ``STRING_TO_REAL`` by policy
+   :header-rows: 1
+   :widths: 24 19 19 19 19
+
+   * - Input
+     - ``reject`` + ``trap``
+     - ``reject`` + ``zero``
+     - ``ignore-trailing`` + ``zero``
+     - ``ignore-surrounding`` + ``zero``
+   * - ``'1.2E-34'``
+     - 1.2E-34
+     - 1.2E-34
+     - 1.2E-34
+     - 1.2E-34
+   * - ``'1.5abc'``
+     - V4006
+     - 0.0
+     - 1.5
+     - 1.5
+   * - ``'x=.5;'``
+     - V4006
+     - 0.0
+     - 0.0
+     - 0.5
+   * - ``'1e39'``
+     - V4006
+     - 0.0
+     - 0.0
+     - 0.0
+   * - ``'NaN'``
+     - V4006
+     - 0.0
+     - 0.0
+     - 0.0
 
 .. playground::
 

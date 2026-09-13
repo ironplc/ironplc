@@ -32,6 +32,8 @@ const FUNCTIONS: &[(&str, Target)] = &[
     ("LINT", Target::I64),
     ("ULINT", Target::U64),
     ("LWORD", Target::U64),
+    ("REAL", Target::F32),
+    ("LREAL", Target::F64),
 ];
 
 /// A program converting the STRING `'1'` to `x : <type_name>` with
@@ -144,7 +146,7 @@ fn codegen_spec_req_bp_001_builtin_selected_by_target_and_both_policies() {
 /// pushes, but not the conversion's doing).
 #[spec_test(REQ_BP_codegen_002)]
 fn codegen_spec_req_bp_002_no_truncation_after_the_builtin() {
-    for (type_name, _) in FUNCTIONS {
+    for (type_name, target) in FUNCTIONS {
         let source = format!(
             "PROGRAM main
 VAR
@@ -163,23 +165,19 @@ END_PROGRAM"
         let position = bytecode.iter().position(|b| *b == opcode::BUILTIN).unwrap();
         // BUILTIN carries a two-byte func_id; the right-hand operand load,
         // at the target's width, is what follows the conversion.
-        let load = match load_width(type_name) {
-            LoadWidth::I32 => opcode::LOAD_VAR_I32,
-            LoadWidth::I64 => opcode::LOAD_VAR_I64,
-        };
-        assert_eq!(bytecode[position + 3], load, "{type_name}");
+        assert_eq!(bytecode[position + 3], load_opcode(*target), "{type_name}");
     }
 }
 
-/// The slot width a `STRING_TO_<type_name>` result is loaded and compared at.
-enum LoadWidth {
-    I32,
-    I64,
-}
-
-fn load_width(type_name: &str) -> LoadWidth {
-    match type_name {
-        "LINT" | "ULINT" | "LWORD" => LoadWidth::I64,
-        _ => LoadWidth::I32,
+/// The load opcode of the slot width a conversion to `target` is compared
+/// at: the width the VM pushes for that target.
+fn load_opcode(target: Target) -> u8 {
+    match target {
+        Target::U8 | Target::I8 | Target::U16 | Target::I16 | Target::U32 | Target::I32 => {
+            opcode::LOAD_VAR_I32
+        }
+        Target::U64 | Target::I64 => opcode::LOAD_VAR_I64,
+        Target::F32 => opcode::LOAD_VAR_F32,
+        Target::F64 => opcode::LOAD_VAR_F64,
     }
 }

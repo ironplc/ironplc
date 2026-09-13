@@ -1223,9 +1223,9 @@ pub(crate) fn compile_string_conversion(
             emitter.emit_load_const_i32(pool_index);
 
             use opcode::builtin::str_to_num::{func_id as block_func_id, Target};
-            // An integer target is a policy-bearing conversion (ADR-0049):
-            // the func_id names the target and both selected policies, the
-            // VM range-checks against the target's own bounds, and no
+            // Every target is a policy-bearing conversion (ADR-0049): the
+            // func_id names the target and both selected policies, the VM
+            // range-checks against the target's own bounds, and no
             // truncation follows. `STRING_TO_SINT('300')` fails; it never
             // wraps to 44. A bit-string type has the signedness and value
             // width of the unsigned integer it aliases, so it lands on that
@@ -1246,11 +1246,8 @@ pub(crate) fn compile_string_conversion(
                 (OpWidth::W32, Signedness::Signed, 16) => block(Target::I16),
                 (OpWidth::W64, Signedness::Unsigned, 64) => block(Target::U64),
                 (OpWidth::W64, Signedness::Signed, 64) => block(Target::I64),
-                (OpWidth::F32, _, _) => opcode::builtin::CONV_STR_TO_F32,
-                // LREAL awaits its reserved position on the block.
-                (OpWidth::F64, _, _) => {
-                    return Err(Diagnostic::todo_with_span(func.name.span()));
-                }
+                (OpWidth::F32, _, _) => block(Target::F32),
+                (OpWidth::F64, _, _) => block(Target::F64),
                 // A 64-bit slot holds only the 64-bit value width.
                 (OpWidth::W64, _, _) => {
                     return Err(Diagnostic::internal_error_at(Label::span(

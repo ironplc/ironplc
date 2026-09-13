@@ -308,6 +308,26 @@ fn builtin_func_ids_when_string_to_int_policy_block_then_pinned_values() {
 }
 
 #[test]
+fn builtin_func_ids_when_string_to_real_policy_block_then_pinned_values() {
+    // The real targets of the STRING_TO_<numeric> block, after the integer
+    // targets: REAL at position 8, LREAL at 9.
+    use opcode::builtin::*;
+    assert_eq!(CONV_STR_TO_F32_REJECT_TRAP, 0x04C0);
+    assert_eq!(CONV_STR_TO_F32_REJECT_ZERO, 0x04C1);
+    assert_eq!(CONV_STR_TO_F32_IGNORE_TRAILING_TRAP, 0x04C2);
+    assert_eq!(CONV_STR_TO_F32_IGNORE_TRAILING_ZERO, 0x04C3);
+    assert_eq!(CONV_STR_TO_F32_IGNORE_SURROUNDING_TRAP, 0x04C4);
+    assert_eq!(CONV_STR_TO_F32_IGNORE_SURROUNDING_ZERO, 0x04C5);
+
+    assert_eq!(CONV_STR_TO_F64_REJECT_TRAP, 0x04C8);
+    assert_eq!(CONV_STR_TO_F64_REJECT_ZERO, 0x04C9);
+    assert_eq!(CONV_STR_TO_F64_IGNORE_TRAILING_TRAP, 0x04CA);
+    assert_eq!(CONV_STR_TO_F64_IGNORE_TRAILING_ZERO, 0x04CB);
+    assert_eq!(CONV_STR_TO_F64_IGNORE_SURROUNDING_TRAP, 0x04CC);
+    assert_eq!(CONV_STR_TO_F64_IGNORE_SURROUNDING_ZERO, 0x04CD);
+}
+
+#[test]
 fn opcode_constants_when_fb_family_then_pinned_bytes() {
     assert_eq!(opcode::FB_LOAD_INSTANCE, 0x98);
     assert_eq!(opcode::FB_STORE_PARAM, 0x9C);
