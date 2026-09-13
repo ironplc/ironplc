@@ -64,6 +64,7 @@ mod semantic_context;
 pub mod stages;
 mod string_similarity;
 pub mod symbol_environment;
+pub mod system_globals;
 mod type_attributes;
 mod type_category;
 mod type_compat;
