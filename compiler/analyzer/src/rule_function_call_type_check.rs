@@ -101,16 +101,18 @@ impl DiagnosticVisitor for RuleFunctionCallTypeCheck<'_> {
 impl RuleFunctionCallTypeCheck<'_> {
     /// Checks whether a function call expression assigned to a variable has a
     /// matching return type. Emits P4027 if there is a mismatch.
+    ///
+    /// Standard-library calls are checked like any other. Their declared
+    /// return type may be a generic category, but `xform_resolve_expr_types`
+    /// has already narrowed it to the concrete type of the argument the
+    /// category binds to; where it could not, `resolved_type` is `None` and
+    /// the call is skipped below. A call naming a function the environment
+    /// does not hold resolves to `None` the same way, so the signature
+    /// itself is never needed here.
     fn check_return_type(&mut self, target: &Variable, value: &Expr) {
         let ExprKind::Function(ref func_call) = value.kind else {
             return;
         };
-        let Some(signature) = self.context.functions.get(&func_call.name) else {
-            return;
-        };
-        if signature.is_stdlib() {
-            return;
-        }
         let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target else {
             return;
         };
@@ -357,7 +359,7 @@ END_PROGRAM",
     );
 
     rule_ctx_ok!(
-        apply_when_stdlib_function_then_skipped,
+        apply_when_stdlib_arg_matches_param_then_ok,
         "
 PROGRAM main
 VAR
@@ -365,6 +367,52 @@ VAR
     x : INT;
 END_VAR
     result := INT_TO_REAL(x);
+END_PROGRAM"
+    );
+
+    // A standard-library return type is checked against the assignment
+    // target like a user-defined one: INT_TO_REAL yields REAL, which does
+    // not fit an INT.
+    rule_ctx_err1!(
+        apply_when_stdlib_return_type_mismatches_target_then_error,
+        "
+PROGRAM main
+VAR
+    result : INT;
+    x : INT;
+END_VAR
+    result := INT_TO_REAL(x);
+END_PROGRAM",
+        Problem::FunctionCallReturnTypeMismatch
+    );
+
+    // Integer widening still applies to a standard-library return
+    // (ADR-0029, ADR-0031): INT_TO_DINT yields DINT, which fits a LINT.
+    rule_ctx_ok!(
+        apply_when_stdlib_return_widens_to_target_then_ok,
+        "
+PROGRAM main
+VAR
+    result : LINT;
+    x : INT;
+END_VAR
+    result := INT_TO_DINT(x);
+END_PROGRAM"
+    );
+
+    // A generic return type is narrowed by `xform_resolve_expr_types` before
+    // this rule runs, so ADD over INT arguments is an INT return and not a
+    // false P4027 against the ANY_NUM the signature declares.
+    rule_ctx_ok!(
+        apply_when_stdlib_generic_return_resolves_to_target_then_ok,
+        "
+PROGRAM main
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+END_VAR
+    result := ADD(a, b);
 END_PROGRAM"
     );
 
