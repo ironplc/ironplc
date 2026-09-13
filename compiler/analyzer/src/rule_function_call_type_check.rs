@@ -102,35 +102,35 @@ impl RuleFunctionCallTypeCheck<'_> {
     /// Checks whether a function call expression assigned to a variable has a
     /// matching return type. Emits P4027 if there is a mismatch.
     fn check_return_type(&mut self, target: &Variable, value: &Expr) {
-        if let ExprKind::Function(ref func_call) = value.kind {
-            if let Some(signature) = self.context.functions.get(&func_call.name) {
-                if signature.is_stdlib() {
-                    return;
-                }
-                if let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target {
-                    if let Some(target_type) = self.var_types.find(&nv.name) {
-                        if let Some(ref return_type) = value.resolved_type {
-                            if !are_types_compatible(target_type, return_type, self.options) {
-                                self.diagnostics.push(
-                                    Diagnostic::problem(
-                                        Problem::FunctionCallReturnTypeMismatch,
-                                        Label::span(
-                                            func_call.name.span(),
-                                            "Function call return type",
-                                        ),
-                                    )
-                                    .with_context(
-                                        "function",
-                                        &func_call.name.original().to_string(),
-                                    )
-                                    .with_context("return_type", &return_type.to_string())
-                                    .with_context("target_type", &target_type.to_string()),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
+        let ExprKind::Function(ref func_call) = value.kind else {
+            return;
+        };
+        let Some(signature) = self.context.functions.get(&func_call.name) else {
+            return;
+        };
+        if signature.is_stdlib() {
+            return;
+        }
+        let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target else {
+            return;
+        };
+        let Some(target_type) = self.var_types.find(&nv.name) else {
+            return;
+        };
+        let Some(ref return_type) = value.resolved_type else {
+            return;
+        };
+
+        if !are_types_compatible(target_type, return_type, self.options) {
+            self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::FunctionCallReturnTypeMismatch,
+                    Label::span(func_call.name.span(), "Function call return type"),
+                )
+                .with_context("function", &func_call.name.original().to_string())
+                .with_context("return_type", &return_type.to_string())
+                .with_context("target_type", &target_type.to_string()),
+            );
         }
     }
 
