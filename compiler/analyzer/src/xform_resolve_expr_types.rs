@@ -20,6 +20,7 @@ use crate::function_environment::FunctionEnvironment;
 use crate::intermediate_type::IntermediateType;
 use crate::intermediates::inherited_fields::collect_inherited_fields;
 use crate::scoped_table::{ScopedTable, Value};
+use crate::system_globals::SYSTEM_UPTIME_GLOBALS;
 use crate::type_environment::TypeEnvironment;
 use ironplc_parser::options::CompilerOptions;
 
@@ -43,12 +44,11 @@ pub fn apply(
     // Implicit system globals live in the outermost scope, so every POU
     // body sees them and a POU-local of the same name shadows them.
     if options.allow_system_uptime_global {
-        resolver
-            .var_types
-            .add(&Id::from("__SYSTEM_UP_TIME"), TypeName::from("TIME"));
-        resolver
-            .var_types
-            .add(&Id::from("__SYSTEM_UP_LTIME"), TypeName::from("LTIME"));
+        for global in &SYSTEM_UPTIME_GLOBALS {
+            resolver
+                .var_types
+                .add(&Id::from(global.name), TypeName::from(global.type_name));
+        }
     }
 
     resolver.fold_library(lib).map_err(|e| vec![e])

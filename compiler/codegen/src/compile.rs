@@ -64,6 +64,7 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
 use ironplc_problems::Problem;
 
+use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 use ironplc_analyzer::{FunctionEnvironment, SemanticContext, TypeEnvironment};
 
 use crate::emit::Emitter;
@@ -252,10 +253,11 @@ pub fn compile(
     // Prepend system uptime globals when the feature is enabled.
     let mut synthetic_globals: Vec<VarDecl> = Vec::new();
     if options.system_uptime_global {
-        synthetic_globals
-            .push(VarDecl::simple("__SYSTEM_UP_TIME", "TIME").with_type(VariableType::Global));
-        synthetic_globals
-            .push(VarDecl::simple("__SYSTEM_UP_LTIME", "LTIME").with_type(VariableType::Global));
+        for global in &SYSTEM_UPTIME_GLOBALS {
+            synthetic_globals.push(
+                VarDecl::simple(global.name, global.type_name).with_type(VariableType::Global),
+            );
+        }
     }
 
     // Collect top-level VAR_GLOBAL declarations (outside CONFIGURATION blocks).

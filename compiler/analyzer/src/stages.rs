@@ -29,6 +29,7 @@ use crate::{
     rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
     semantic_context::SemanticContext,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
+    system_globals::SYSTEM_UPTIME_GLOBALS,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
     xform_insert_implicit_deref, xform_int_to_bool_initializer, xform_mark_unwritten_constants,
@@ -170,20 +171,15 @@ pub fn resolve_types(
 
     // Register implicit system globals when the uptime feature is enabled.
     if options.allow_system_uptime_global {
-        symbol_environment
-            .insert(
-                &Id::from("__SYSTEM_UP_TIME"),
-                SymbolKind::Variable,
-                &ScopeKind::Global,
-            )
-            .map_err(|e| vec![e])?;
-        symbol_environment
-            .insert(
-                &Id::from("__SYSTEM_UP_LTIME"),
-                SymbolKind::Variable,
-                &ScopeKind::Global,
-            )
-            .map_err(|e| vec![e])?;
+        for global in &SYSTEM_UPTIME_GLOBALS {
+            symbol_environment
+                .insert(
+                    &Id::from(global.name),
+                    SymbolKind::Variable,
+                    &ScopeKind::Global,
+                )
+                .map_err(|e| vec![e])?;
+        }
     }
 
     // Resolve constant references in type parameters (STRING lengths, array bounds).
