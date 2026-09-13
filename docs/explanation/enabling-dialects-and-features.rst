@@ -85,7 +85,7 @@ Supported Dialects
    ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
    ``--allow-long-time-types``,
    ``--allow-ref-to``, ``--allow-reference-to``, ``--allow-pointer-to``,
-   ``--allow-adr``,
+   ``--allow-adr``, ``--allow-persistent-var``,
    ``--allow-ref-arithmetic``,
    ``--allow-ref-stack-variables``, ``--allow-ref-type-punning``,
    ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
@@ -127,6 +127,7 @@ Supported Dialects
    ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
    ``--allow-long-time-types``,
    ``--allow-reference-to``, ``--allow-pointer-to``, ``--allow-adr``,
+   ``--allow-persistent-var``,
    ``--allow-int-to-bool-initializer``,
    ``--allow-sizeof``, ``--allow-cross-family-widening``,
    ``--allow-cross-family-conversion``, ``--allow-int-literal-to-bit-string``,
@@ -274,6 +275,11 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    sub-objects (array elements, structure fields) and pointer arithmetic are
    not supported and are rejected with a diagnostic. See
    :doc:`/reference/extension-library/functions/adr`.
+
+``--allow-persistent-var``
+   Allow the Beckhoff TwinCAT / CODESYS ``PERSISTENT`` variable qualifier
+   (``VAR PERSISTENT`` / ``VAR_GLOBAL PERSISTENT``). This is an extension,
+   not part of the IEC 61131-3 standard.
 
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,

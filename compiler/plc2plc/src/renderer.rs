@@ -679,6 +679,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             DeclarationQualifier::Constant => self.write_ws("CONSTANT"),
             DeclarationQualifier::Retain => self.write_ws("RETAIN"),
             DeclarationQualifier::NonRetain => self.write_ws("NON_RETAIN"),
+            DeclarationQualifier::Persistent => self.write_ws("PERSISTENT"),
         }
 
         self.newline();
@@ -716,6 +717,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             DeclarationQualifier::Constant => self.write_ws("CONSTANT"),
             DeclarationQualifier::Retain => self.write_ws("RETAIN"),
             DeclarationQualifier::NonRetain => self.write_ws("NON_RETAIN"),
+            DeclarationQualifier::Persistent => self.write_ws("PERSISTENT"),
         }
 
         self.newline();
@@ -1237,6 +1239,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
                 DeclarationQualifier::Constant => "",
                 DeclarationQualifier::Retain => "RETAIN",
                 DeclarationQualifier::NonRetain => "NON_RETAIN",
+                // Unreachable via the grammar: `program_configuration()`'s
+                // `storage` is only ever produced from RETAIN/NON_RETAIN.
+                // Exhaustive match still needs an arm.
+                DeclarationQualifier::Persistent => "",
             };
             self.write_ws(storage);
         }
