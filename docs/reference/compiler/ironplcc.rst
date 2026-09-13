@@ -159,6 +159,11 @@ Options
    Allow the ``ADR()`` address-of operator, which returns a typed pointer to
    a variable for assignment to a ``POINTER TO`` variable.
 
+``--allow-persistent-var``
+   Allow the Beckhoff TwinCAT / CODESYS ``PERSISTENT`` variable qualifier
+   (``VAR PERSISTENT`` / ``VAR_GLOBAL PERSISTENT``). This is an extension,
+   not part of the IEC 61131-3 standard.
+
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
    ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``
