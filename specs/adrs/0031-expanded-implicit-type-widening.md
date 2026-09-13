@@ -3,6 +3,8 @@
 status: accepted
 date: 2026-04-03
 amended: 2026-09-12 (UDINT/DWORD equal-width exception recorded; status unchanged)
+amended: 2026-09-13 (the single cross-family flag split into three, one per
+rule; status unchanged — see the amendment note at the end)
 
 ## Context and Problem Statement
 
@@ -59,7 +61,10 @@ These conversions cross the ANY_BIT / ANY_INT boundary and are not part of the I
 * Bare integer literal → bit-string: `0` where BYTE is expected
 * Return type: function returning BYTE assigned to INT variable
 
-The flag is enabled by default in the `Rusty` dialect.
+These three rules are gated by three flags — `--allow-cross-family-widening`,
+`--allow-cross-family-conversion` and `--allow-int-literal-to-bit-string` —
+each enabled by default in the `Rusty`, `CODESYS` and `TwinCAT` dialects. See
+the amendment at the end for why they are three.
 
 ### Scope
 
@@ -131,3 +136,37 @@ means gathering that evidence again, not reasoning outward from this pair.
 This amendment corrects the record; the decision is unchanged. ADR-0031 is
 separately missing the REAL → LREAL arm, which shipped and is not enumerated
 here — see #1563 item 4.
+
+## Amendment: one flag became three, one per rule (2026-09-13)
+
+`--allow-cross-family-widening` gated three rules and named one of them:
+
+| Rule | Widens? | Now gated by |
+|---|---|---|
+| bit-string → strictly wider integer (`BYTE` → `INT`) | yes | `--allow-cross-family-widening` |
+| `UDINT` ↔ `DWORD` at equal width, both directions | no — a reinterpretation of the same 32 bits | `--allow-cross-family-conversion` |
+| bare integer literal where a bit-string is expected (`0` → `BYTE`) | no — literal typing, in the sense of ADR-0028 | `--allow-int-literal-to-bit-string` |
+
+Widening moves a value into a type that can hold strictly more. The equal-width
+rule moves nothing and runs in both directions, and literal typing is a third
+thing again. One name covering all three masked two of them: a user reading
+"widening" could not tell they were also enabling a bidirectional conversion.
+
+The predicate split the same way. `ElementaryTypeName::can_widen_cross_family_to`
+now answers only the strictly-wider question; `can_convert_cross_family_to` is
+the equal-width rule, scoped to exactly the verified pair as before. Each of
+the three sites in `compiler/analyzer/src/type_compat.rs` checks its own flag,
+and `apply_when_one_cross_family_flag_on_then_only_its_rule_is_accepted` in
+`rule_function_call_type_check.rs` pins the 3×3 grid: each program is accepted
+under exactly one flag and rejected under the other two and under none.
+
+All three flags are enabled in exactly the dialects the single flag was —
+`Rusty`, `CODESYS` and `TwinCAT` — so no dialect's behaviour changed. This
+amendment corrects the model, not the decision. Whether the conversion flag
+should be narrowed to the dialect its evidence came from is a separate
+decision, deliberately not taken here.
+
+This is a breaking change for anyone passing `--allow-cross-family-widening`
+explicitly and relying on it for `UDINT` ↔ `DWORD` or for bare literals: those
+now need the corresponding flag as well. Dialect presets are unaffected.
+

@@ -56,6 +56,7 @@ Supported Dialects
    ``--allow-ref-stack-variables``, ``--allow-ref-type-punning``,
    ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
    ``--allow-system-uptime-global``, ``--allow-cross-family-widening``,
+   ``--allow-cross-family-conversion``, ``--allow-int-literal-to-bit-string``,
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
@@ -88,7 +89,8 @@ Supported Dialects
    ``--allow-ref-arithmetic``,
    ``--allow-ref-stack-variables``, ``--allow-ref-type-punning``,
    ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
-   ``--allow-cross-family-widening``, ``--allow-partial-access-syntax``,
+   ``--allow-cross-family-widening``,
+   ``--allow-cross-family-conversion``, ``--allow-int-literal-to-bit-string``, ``--allow-partial-access-syntax``,
    ``--allow-pragmas``, ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
@@ -127,6 +129,7 @@ Supported Dialects
    ``--allow-reference-to``, ``--allow-pointer-to``, ``--allow-adr``,
    ``--allow-int-to-bool-initializer``,
    ``--allow-sizeof``, ``--allow-cross-family-widening``,
+   ``--allow-cross-family-conversion``, ``--allow-int-literal-to-bit-string``,
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
@@ -305,11 +308,22 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    uptime. This is an IronPLC runtime convention.
 
 ``--allow-cross-family-widening``
-   Allow implicit widening between bit-string and integer type families.
-   For example, passing a ``BYTE`` variable where an ``INT`` parameter is
-   expected, or passing a bare integer literal ``0`` where a ``BYTE``
+   Allow implicit widening from a bit-string type to a strictly wider
+   integer type. For example, passing a ``BYTE`` variable where an ``INT``
    parameter is expected. This is an extension supported by CODESYS,
    TwinCAT, and RuSTy.
+
+``--allow-cross-family-conversion``
+   Allow implicit conversion between ``UDINT`` and ``DWORD``, in both
+   directions. The two types share a 32-bit slot, so this converts rather
+   than widens, and it is the one case where an integer converts implicitly
+   to a bit-string. See :doc:`/explanation/type-conversions`. This is an
+   extension supported by CODESYS, TwinCAT, and RuSTy.
+
+``--allow-int-literal-to-bit-string``
+   Allow a bare integer literal where a bit-string type is expected. For
+   example, passing ``0`` where a ``BYTE`` parameter is expected. This is
+   an extension supported by CODESYS, TwinCAT, and RuSTy.
 
 ``--allow-partial-access-syntax``
    Allow IEC 61131-3:2013 partial-access syntax: the bit form ``.%Xn``

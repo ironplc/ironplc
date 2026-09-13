@@ -982,24 +982,15 @@ impl ElementaryTypeName {
         }
     }
 
-    /// Returns true if `self` can be implicitly widened to `target` under
+    /// Returns true if `self` can be implicitly *widened* to `target` under
     /// cross-family rules (requires `--allow-cross-family-widening`).
     ///
-    /// Allowed: bit-string → integer where target is strictly wider.
-    /// Not allowed (in general): integer → bit-string, or equal-width
-    /// bit-string ↔ integer -- both always require an explicit conversion.
-    ///
-    /// One verified exception: `UDINT` ↔ `DWORD` (32-bit), both
-    /// directions, despite being equal width. Beckhoff's own
-    /// documentation states no implicit conversion exists between
-    /// bit-string and integer types even at equal width, but this was
-    /// confirmed permissive against a real TcXaeShell build. Scoped to
-    /// exactly this pair -- other same-width
-    /// bit-string/unsigned-integer pairs (`BYTE`↔`USINT`, `WORD`↔`UINT`,
-    /// `LWORD`↔`ULINT`) and signed integers are not verified and must not
-    /// be assumed to behave the same.
+    /// Widening moves a value into a type that can hold strictly more: only
+    /// bit-string → integer, and only where the target is strictly wider.
+    /// Integer → bit-string never widens, and equal-width pairs widen
+    /// nothing, so neither is answered here. For the one equal-width pair
+    /// that converts implicitly, see [`Self::can_convert_cross_family_to`].
     pub fn can_widen_cross_family_to(&self, target: &ElementaryTypeName) -> bool {
-        use ElementaryTypeName::{DWORD, UDINT};
         use TypeFamily::*;
         let Some((src_family, src_bits)) = self.type_properties() else {
             return false;
@@ -1008,12 +999,42 @@ impl ElementaryTypeName {
             return false;
         };
         match (&src_family, &tgt_family) {
-            (BitString, UnsignedInteger) | (UnsignedInteger, BitString)
-                if matches!(self, DWORD | UDINT) && matches!(target, DWORD | UDINT) =>
-            {
-                true
-            }
             (BitString, SignedInteger | UnsignedInteger) => tgt_bits > src_bits,
+            _ => false,
+        }
+    }
+
+    /// Returns true if `self` can be implicitly *converted* to `target` at
+    /// equal width under cross-family rules (requires
+    /// `--allow-cross-family-conversion`).
+    ///
+    /// This is not widening: the two types occupy the same slot, so the
+    /// conversion is a bit-pattern no-op and runs in both directions. It is
+    /// also the one case where integer → bit-string is implicit.
+    ///
+    /// Exactly one pair qualifies: `UDINT` ↔ `DWORD` (32-bit). Beckhoff's own
+    /// documentation states no implicit conversion exists between bit-string
+    /// and integer types even at equal width, but this was confirmed
+    /// permissive against a real TcXaeShell build. Other same-width
+    /// bit-string/unsigned-integer pairs (`BYTE`↔`USINT`, `WORD`↔`UINT`,
+    /// `LWORD`↔`ULINT`) and signed integers are not verified and must not be
+    /// assumed to behave the same.
+    pub fn can_convert_cross_family_to(&self, target: &ElementaryTypeName) -> bool {
+        use ElementaryTypeName::{DWORD, UDINT};
+        use TypeFamily::*;
+        let Some((src_family, src_bits)) = self.type_properties() else {
+            return false;
+        };
+        let Some((tgt_family, tgt_bits)) = target.type_properties() else {
+            return false;
+        };
+        if src_bits != tgt_bits {
+            return false;
+        }
+        match (&src_family, &tgt_family) {
+            (BitString, UnsignedInteger) | (UnsignedInteger, BitString) => {
+                matches!(self, DWORD | UDINT) && matches!(target, DWORD | UDINT)
+            }
             _ => false,
         }
     }
@@ -3966,8 +3987,8 @@ mod tests {
     #[case::byte_to_sint(ElementaryTypeName::BYTE, ElementaryTypeName::SINT, false)]
     #[case::word_to_int(ElementaryTypeName::WORD, ElementaryTypeName::INT, false)]
     #[case::int_to_byte(ElementaryTypeName::INT, ElementaryTypeName::BYTE, false)]
-    #[case::udint_to_dword(ElementaryTypeName::UDINT, ElementaryTypeName::DWORD, true)]
-    #[case::dword_to_udint(ElementaryTypeName::DWORD, ElementaryTypeName::UDINT, true)]
+    #[case::udint_to_dword(ElementaryTypeName::UDINT, ElementaryTypeName::DWORD, false)]
+    #[case::dword_to_udint(ElementaryTypeName::DWORD, ElementaryTypeName::UDINT, false)]
     #[case::dint_to_dword(ElementaryTypeName::DINT, ElementaryTypeName::DWORD, false)]
     #[case::dword_to_dint(ElementaryTypeName::DWORD, ElementaryTypeName::DINT, false)]
     #[case::word_to_uint(ElementaryTypeName::WORD, ElementaryTypeName::UINT, false)]
@@ -3978,5 +3999,30 @@ mod tests {
         #[case] expected: bool,
     ) {
         assert_eq!(from.can_widen_cross_family_to(&to), expected);
+    }
+
+    /// Equal-width cross-family conversion is a separate rule from widening:
+    /// it converts nothing wider, runs in both directions, and is scoped to
+    /// the one verified pair.
+    #[rstest]
+    #[case::udint_to_dword(ElementaryTypeName::UDINT, ElementaryTypeName::DWORD, true)]
+    #[case::dword_to_udint(ElementaryTypeName::DWORD, ElementaryTypeName::UDINT, true)]
+    // Other equal-width bit-string/unsigned pairs are unverified, so rejected.
+    #[case::word_to_uint(ElementaryTypeName::WORD, ElementaryTypeName::UINT, false)]
+    #[case::uint_to_word(ElementaryTypeName::UINT, ElementaryTypeName::WORD, false)]
+    #[case::byte_to_usint(ElementaryTypeName::BYTE, ElementaryTypeName::USINT, false)]
+    #[case::lword_to_ulint(ElementaryTypeName::LWORD, ElementaryTypeName::ULINT, false)]
+    // Signed integers are excluded even at equal width.
+    #[case::dword_to_dint(ElementaryTypeName::DWORD, ElementaryTypeName::DINT, false)]
+    #[case::dint_to_dword(ElementaryTypeName::DINT, ElementaryTypeName::DWORD, false)]
+    // Widening is the other rule's job, not this one's.
+    #[case::byte_to_int(ElementaryTypeName::BYTE, ElementaryTypeName::INT, false)]
+    #[case::udint_to_lword(ElementaryTypeName::UDINT, ElementaryTypeName::LWORD, false)]
+    fn can_convert_cross_family_to_when_source_and_target_then_matches_expected(
+        #[case] from: ElementaryTypeName,
+        #[case] to: ElementaryTypeName,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(from.can_convert_cross_family_to(&to), expected);
     }
 }
