@@ -489,6 +489,21 @@ impl Expr {
             resolved_type: Some(type_name),
         }
     }
+
+    /// Creates a comparison of two expressions.
+    pub fn compare(op: CompareOp, left: Expr, right: Expr) -> Expr {
+        Expr::new(ExprKind::Compare(Box::new(CompareExpr { op, left, right })))
+    }
+
+    /// Creates an arithmetic or bitwise operation on two expressions.
+    pub fn binary(op: Operator, left: Expr, right: Expr) -> Expr {
+        Expr::new(ExprKind::BinaryOp(Box::new(BinaryExpr { op, left, right })))
+    }
+
+    /// Creates an operation on a single expression.
+    pub fn unary(op: UnaryOp, term: Expr) -> Expr {
+        Expr::new(ExprKind::UnaryOp(Box::new(UnaryExpr { op, term })))
+    }
 }
 
 impl fmt::Display for Expr {
@@ -535,26 +550,15 @@ pub enum ExprKind {
 
 impl ExprKind {
     pub fn compare(op: CompareOp, left: ExprKind, right: ExprKind) -> ExprKind {
-        ExprKind::Compare(Box::new(CompareExpr {
-            op,
-            left: Expr::new(left),
-            right: Expr::new(right),
-        }))
+        Expr::compare(op, Expr::new(left), Expr::new(right)).kind
     }
 
     pub fn binary(op: Operator, left: ExprKind, right: ExprKind) -> ExprKind {
-        ExprKind::BinaryOp(Box::new(BinaryExpr {
-            op,
-            left: Expr::new(left),
-            right: Expr::new(right),
-        }))
+        Expr::binary(op, Expr::new(left), Expr::new(right)).kind
     }
 
     pub fn unary(op: UnaryOp, term: ExprKind) -> ExprKind {
-        ExprKind::UnaryOp(Box::new(UnaryExpr {
-            op,
-            term: Expr::new(term),
-        }))
+        Expr::unary(op, Expr::new(term)).kind
     }
 
     pub fn named_variable(name: &str) -> ExprKind {

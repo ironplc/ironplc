@@ -95,51 +95,37 @@ fn late_resolved_or_enumerated(
     })
 }
 
+/// Returns the literal constant that an initializer expression denotes, if
+/// it denotes one: a literal, or a literal with one leading unary minus
+/// (e.g. `-123`, the shape `expression()` produces for a negative literal
+/// because it routes the sign through its own unary-operator handling).
+///
+/// Returns `None` for everything else, including a negation that has no
+/// natural literal form (`-TRUE`).
+fn literal_value_of(e: &Expr) -> Option<ConstantKind> {
+    match &e.kind {
+        ExprKind::Const(c) => Some(c.clone()),
+        ExprKind::UnaryOp(u) if u.op == UnaryOp::Neg => match &u.term.kind {
+            ExprKind::Const(c) => negate_literal_constant(c.clone()).ok(),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// Collapses an initializer expression to `Simple` when it is exactly a
 /// literal (optionally with one leading unary minus, e.g. `-123`), and
-/// otherwise wraps it as `SimpleExpr` (the constant-expression extension,
+/// otherwise keeps it as `SimpleExpr` (the constant-expression extension,
 /// folded by `xform_fold_initializer_expressions`).
-fn resolve_initializer_expr(type_name: TypeName, e: ExprKind) -> InitialValueAssignmentKind {
-    match e {
-        ExprKind::Const(c) => InitialValueAssignmentKind::Simple(SimpleInitializer {
+fn resolve_initializer_expr(type_name: TypeName, e: Expr) -> InitialValueAssignmentKind {
+    match literal_value_of(&e) {
+        Some(initial_value) => InitialValueAssignmentKind::Simple(SimpleInitializer {
             type_name,
-            initial_value: Some(c),
+            initial_value: Some(initial_value),
         }),
-        ExprKind::UnaryOp(u) if u.op == UnaryOp::Neg => {
-            let UnaryExpr { op, term } = *u;
-            let resolved_type = term.resolved_type.clone();
-            match term.kind {
-                ExprKind::Const(c) => match negate_literal_constant(c) {
-                    Ok(negated) => InitialValueAssignmentKind::Simple(SimpleInitializer {
-                        type_name,
-                        initial_value: Some(negated),
-                    }),
-                    Err(c) => InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
-                        type_name,
-                        initial_value: Expr::new(ExprKind::UnaryOp(Box::new(UnaryExpr {
-                            op,
-                            term: Expr {
-                                kind: ExprKind::Const(c),
-                                resolved_type,
-                            },
-                        }))),
-                    }),
-                },
-                other => InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
-                    type_name,
-                    initial_value: Expr::new(ExprKind::UnaryOp(Box::new(UnaryExpr {
-                        op,
-                        term: Expr {
-                            kind: other,
-                            resolved_type,
-                        },
-                    }))),
-                }),
-            }
-        }
-        other => InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
+        None => InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
             type_name,
-            initial_value: Expr::new(other),
+            initial_value: e,
         }),
     }
 }
@@ -825,7 +811,7 @@ parser! {
     // Rather than pick one and be wrong half the time, record the ambiguity
     // as `LateBound`; `xform_resolve_late_bound_expr_kind` resolves it once
     // declarations are known. A qualified `Type#VALUE` needs no such help.
-    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value__qualified() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / v:variable_identifier() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::LateBound(LateBound { value: v }) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)} / ex:expression() { StructInitialValueAssignmentKind::Expression(Expr::new(ex)) }) {
+    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value__qualified() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / v:variable_identifier() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::LateBound(LateBound { value: v }) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)} / ex:expression() { StructInitialValueAssignmentKind::Expression(ex) }) {
       StructureElementInit {
         name,
         init,
@@ -854,11 +840,10 @@ parser! {
       // constant-expression initializer referencing a variable" and "enum
       // type with an enum value default" — the latter interpretation must
       // still win, matching pre-existing disambiguation behavior.
-      match e {
-        ExprKind::Variable(_) | ExprKind::LateBound(_) => {
-          Err("ambiguous with enumerated value initializer")
-        }
-        other => Ok(resolve_initializer_expr(s, other)),
+      if matches!(e.kind, ExprKind::Variable(_) | ExprKind::LateBound(_)) {
+        Err("ambiguous with enumerated value initializer")
+      } else {
+        Ok(resolve_initializer_expr(s, e))
       }
     } / spec:enumerated_specification() _ tok(TokenType::Assignment) _ init:enumerated_value() {
       // An inline enumeration is unambiguous. A named type with a value is
@@ -1018,7 +1003,7 @@ parser! {
     //  }
     rule subscripted_variable() -> SymbolicVariableKind = symbolic_variable()
     rule subscript_list() -> Vec<Expr> = tok(TokenType::LeftBracket) _ list:subscript()++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightBracket) { list }
-    rule subscript() -> Expr = e:expression() { Expr::new(e) }
+    rule subscript() -> Expr = expression()
     rule structured_variable() -> (SymbolicVariableKind, Id) = r:record_variable() _ tok(TokenType::Period) _ f:field_selector() { (r, f) }
     rule record_variable() -> SymbolicVariableKind = symbolic_variable()
     rule field_selector() -> Id = identifier()
@@ -1645,7 +1630,7 @@ parser! {
       vec![n1, n2]
     }
     // TODO add simple_instruction_list , fbd_network, rung
-    rule transition_condition() -> Expr =  tok(TokenType::Assignment) _ expr:expression() _ tok(TokenType::Semicolon) { Expr::new(expr) }
+    rule transition_condition() -> Expr =  tok(TokenType::Assignment) _ expr:expression() _ tok(TokenType::Semicolon) { expr }
     rule action() -> ElementKind = tok(TokenType::Action) _ name:action_name() _ tok(TokenType::Colon) _ body:function_block_body() _ tok(TokenType::EndAction) {
       ElementKind::Action(Action {
         name,
@@ -1826,90 +1811,90 @@ parser! {
     // TODO this entire section
 
     // B.3.1 Expressions
-    pub rule expression() -> ExprKind = precedence!{
+    pub rule expression() -> Expr = precedence!{
       // or_expression
-      x:(@) _ tok(TokenType::Or) _ y:@ { ExprKind::compare(CompareOp::Or, x, y) }
-      x:(@) _ tok(TokenType::OrElse) _ y:@ { ExprKind::compare(CompareOp::OrElse, x, y) }
+      x:(@) _ tok(TokenType::Or) _ y:@ { Expr::compare(CompareOp::Or, x, y) }
+      x:(@) _ tok(TokenType::OrElse) _ y:@ { Expr::compare(CompareOp::OrElse, x, y) }
       --
       // xor_expression
-      x:(@) _ tok(TokenType::Xor) _ y:@ { ExprKind::compare(CompareOp::Xor, x, y) }
+      x:(@) _ tok(TokenType::Xor) _ y:@ { Expr::compare(CompareOp::Xor, x, y) }
       --
       // and_expression
-      x:(@) _ tok(TokenType::And) _ y:@ { ExprKind::compare(CompareOp::And, x, y ) }
-      x:(@) _ tok(TokenType::AndThen) _ y:@ { ExprKind::compare(CompareOp::AndThen, x, y ) }
+      x:(@) _ tok(TokenType::And) _ y:@ { Expr::compare(CompareOp::And, x, y) }
+      x:(@) _ tok(TokenType::AndThen) _ y:@ { Expr::compare(CompareOp::AndThen, x, y) }
       --
       // comparison
-      x:(@) _ tok(TokenType::Equal)_ y:@ { ExprKind::compare(CompareOp::Eq, x, y ) }
-      x:(@) _ tok(TokenType::NotEqual) _ y:@ { ExprKind::compare(CompareOp::Ne, x, y ) }
+      x:(@) _ tok(TokenType::Equal)_ y:@ { Expr::compare(CompareOp::Eq, x, y) }
+      x:(@) _ tok(TokenType::NotEqual) _ y:@ { Expr::compare(CompareOp::Ne, x, y) }
       --
       // equ_expression
-      x:(@) _ tok(TokenType::Less) _ y:@ { ExprKind::compare(CompareOp::Lt, x, y ) }
-      x:(@) _ tok(TokenType::Greater)_ y:@ { ExprKind::compare(CompareOp::Gt, x, y ) }
-      x:(@) _ tok(TokenType::LessEqual) _ y:@ { ExprKind::compare(CompareOp::LtEq, x, y) }
-      x:(@) _ tok(TokenType::GreaterEqual) _ y:@ { ExprKind::compare(CompareOp::GtEq, x, y) }
+      x:(@) _ tok(TokenType::Less) _ y:@ { Expr::compare(CompareOp::Lt, x, y) }
+      x:(@) _ tok(TokenType::Greater)_ y:@ { Expr::compare(CompareOp::Gt, x, y) }
+      x:(@) _ tok(TokenType::LessEqual) _ y:@ { Expr::compare(CompareOp::LtEq, x, y) }
+      x:(@) _ tok(TokenType::GreaterEqual) _ y:@ { Expr::compare(CompareOp::GtEq, x, y) }
       --
       // add_expression
-      x:(@) _ tok(TokenType::Plus) _ y:@ { ExprKind::binary(Operator::Add, x, y ) }
-      x:(@) _ tok(TokenType::Minus) _ y:@ { ExprKind::binary(Operator::Sub, x, y ) }
+      x:(@) _ tok(TokenType::Plus) _ y:@ { Expr::binary(Operator::Add, x, y) }
+      x:(@) _ tok(TokenType::Minus) _ y:@ { Expr::binary(Operator::Sub, x, y) }
       --
       // multiply_operator
-      x:(@) _ tok(TokenType::Star) _ y:@ { ExprKind::binary(Operator::Mul, x, y ) }
-      x:(@) _ tok(TokenType::Div)_ y:@ { ExprKind::binary(Operator::Div, x, y ) }
-      x:(@) _ tok(TokenType::Mod) _ y:@ { ExprKind::binary(Operator::Mod, x, y ) }
+      x:(@) _ tok(TokenType::Star) _ y:@ { Expr::binary(Operator::Mul, x, y) }
+      x:(@) _ tok(TokenType::Div)_ y:@ { Expr::binary(Operator::Div, x, y) }
+      x:(@) _ tok(TokenType::Mod) _ y:@ { Expr::binary(Operator::Mod, x, y) }
       --
       // power_expression
-      x:(@) _ tok(TokenType::Power) _ y:@ { ExprKind::binary(Operator::Pow, x, y ) }
+      x:(@) _ tok(TokenType::Power) _ y:@ { Expr::binary(Operator::Pow, x, y) }
       --
       // unary_expression
       p:unary_expression() { p }
       --
       // primary_expression
       // TODO missing items here
-      c:constant() { ExprKind::Const(c) }
+      c:constant() { Expr::new(ExprKind::Const(c)) }
       //ev:enumerated_value()
-      v:variable() { ExprKind::Variable(v) }
-      tok(TokenType::LeftParen) _ e:expression() _ tok(TokenType::RightParen) { ExprKind::Expression(Box::new(Expr::new(e))) }
+      v:variable() { Expr::new(ExprKind::Variable(v)) }
+      tok(TokenType::LeftParen) _ e:expression() _ tok(TokenType::RightParen) { Expr::new(ExprKind::Expression(Box::new(e))) }
       f:function_expression() { f }
     }
-    rule unary_expression() -> ExprKind = unary:unary_operator()? _ expr:primary_expression() carets:(_ c:tok(TokenType::Caret) { c })* {
+    rule unary_expression() -> Expr = unary:unary_operator()? _ expr:primary_expression() carets:(_ c:tok(TokenType::Caret) { c })* {
       let mut result = expr;
       for _ in &carets {
-        result = ExprKind::Deref(Box::new(Expr::new(result)));
+        result = Expr::new(ExprKind::Deref(Box::new(result)));
       }
       if let Some(op) = unary {
-        return ExprKind::unary(op, result);
+        return Expr::unary(op, result);
       }
       result
     }
     rule unary_operator() -> UnaryOp = tok(TokenType::Minus) {UnaryOp::Neg} / tok(TokenType::Not) {UnaryOp::Not}
-    rule primary_expression() -> ExprKind
+    rule primary_expression() -> Expr
       = constant:constant() {
-          ExprKind::Const(constant)
+          Expr::new(ExprKind::Const(constant))
         }
       // TODO enumerated value
       / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) {
-          ExprKind::Ref(Box::new(v))
+          Expr::new(ExprKind::Ref(Box::new(v)))
         }
       / t:tok(TokenType::Null) {
-          ExprKind::Null(t.span.clone())
+          Expr::new(ExprKind::Null(t.span.clone()))
         }
       / function:function_expression() {
           function
         }
       / id:identifier() _ !(tok(TokenType::LeftParen) / tok(TokenType::LeftBracket) / tok(TokenType::Period) / tok(TokenType::Caret)) {
-        ExprKind::LateBound(LateBound{ value: id })
+        Expr::new(ExprKind::LateBound(LateBound{ value: id }))
       }
       / variable:variable() {
-        ExprKind::Variable(variable)
+        Expr::new(ExprKind::Variable(variable))
       }
       / tok(TokenType::LeftParen) _ expression:expression() _ tok(TokenType::RightParen) {
         expression
       }
-    rule function_expression() -> ExprKind = name:function_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) {
-      ExprKind::Function(Function {
+    rule function_expression() -> Expr = name:function_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) {
+      Expr::new(ExprKind::Function(Function {
         name,
         param_assignment: params
-      })
+      }))
     }
 
     // B.3.2 Statements
@@ -1946,7 +1931,7 @@ parser! {
           ref_bind: false,
           set_bind: true,
           reset_bind: false,
-          value: Expr::new(expr),
+          value: expr,
           span: eq.span.clone(),
         })
       }
@@ -1957,7 +1942,7 @@ parser! {
           ref_bind: false,
           set_bind: false,
           reset_bind: true,
-          value: Expr::new(expr),
+          value: expr,
           span: eq.span.clone(),
         })
       }
@@ -1968,7 +1953,7 @@ parser! {
           ref_bind: false,
           set_bind: false,
           reset_bind: false,
-          value: Expr::new(expr),
+          value: expr,
           span: assign.span.clone(),
         })
       }
@@ -1979,7 +1964,7 @@ parser! {
           ref_bind: false,
           set_bind: false,
           reset_bind: false,
-          value: Expr::new(expr),
+          value: expr,
           span: assign.span.clone(),
         })
       }
@@ -2023,19 +2008,19 @@ parser! {
     } / name:(n:variable_name() _ tok(TokenType::Assignment) { n })? _ expr:expression() {
       match name {
         Some(n) => {
-          ParamAssignmentKind::NamedInput(NamedInput {name: n, expr: Expr::new(expr)} )
+          ParamAssignmentKind::NamedInput(NamedInput {name: n, expr} )
         },
         None => {
-          ParamAssignmentKind::positional(expr)
+          ParamAssignmentKind::PositionalInput(PositionalInput { expr })
         }
       }
     }
 
     // B.3.2.3 Selection statements
     rule selection_statement() -> StmtKind = if_statement() / case_statement()
-    rule if_statement() -> StmtKind = start:tok(TokenType::If) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list()? _ else_ifs:(tok(TokenType::Elsif) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list() {ElseIf{expr: Expr::new(expr), body}}) ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ end:tok(TokenType::EndIf) {
+    rule if_statement() -> StmtKind = start:tok(TokenType::If) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list()? _ else_ifs:(tok(TokenType::Elsif) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list() {ElseIf{expr, body}}) ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ end:tok(TokenType::EndIf) {
       StmtKind::If(If {
-        expr: Expr::new(expr),
+        expr,
         body: body.unwrap_or_default(),
         else_ifs,
         else_body: else_body.unwrap_or_default(),
@@ -2044,7 +2029,7 @@ parser! {
     }
     rule case_statement() -> StmtKind = start:tok(TokenType::Case) _ selector:expression() _ tok(TokenType::Of) _ cases:case_element() ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ end:tok(TokenType::EndCase) {
       StmtKind::Case(Case {
-        selector: Expr::new(selector),
+        selector,
         statement_groups: cases,
         else_body: else_body.unwrap_or_default(),
         span: SourceSpan::join(&start.span, &end.span),
@@ -2085,17 +2070,17 @@ parser! {
       }
     }
     rule control_variable() -> Id = identifier()
-    rule for_list() -> (Expr, Expr, Option<Expr>) = from:expression() _ tok(TokenType::To) _ to:expression() _ step:(tok(TokenType::By) _ s:expression() {Expr::new(s)})? { (Expr::new(from), Expr::new(to), step) }
+    rule for_list() -> (Expr, Expr, Option<Expr>) = from:expression() _ tok(TokenType::To) _ to:expression() _ step:(tok(TokenType::By) _ s:expression() { s })? { (from, to, step) }
     rule while_statement() -> While = start:tok(TokenType::While) _ condition:expression() _ tok(TokenType::Do) _ body:statement_list() _ end:tok(TokenType::EndWhile) {
       While {
-        condition: Expr::new(condition),
+        condition,
         body,
         span: SourceSpan::join(&start.span, &end.span),
       }
     }
     rule repeat_statement() -> Repeat = start:tok(TokenType::Repeat) _ body:statement_list() _ tok(TokenType::Until) _ until:expression() _ end:tok(TokenType::EndRepeat) {
       Repeat {
-        until: Expr::new(until),
+        until,
         body,
         span: SourceSpan::join(&start.span, &end.span),
       }
