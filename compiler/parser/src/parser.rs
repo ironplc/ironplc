@@ -1853,27 +1853,32 @@ parser! {
       c:constant() { Expr::new(ExprKind::Const(c)) }
       //ev:enumerated_value()
       v:variable() { Expr::new(ExprKind::Variable(v)) }
-      tok(TokenType::LeftParen) _ e:expression() _ tok(TokenType::RightParen) { Expr::new(ExprKind::Expression(Box::new(e))) }
+      lp:tok(TokenType::LeftParen) _ e:expression() _ rp:tok(TokenType::RightParen) { Expr::new(ExprKind::Expression(Box::new(e))).with_span(SourceSpan::join(&lp.span, &rp.span)) }
       f:function_expression() { f }
     }
     rule unary_expression() -> Expr = unary:unary_operator()? _ expr:primary_expression() carets:(_ c:tok(TokenType::Caret) { c })* {
       let mut result = expr;
-      for _ in &carets {
-        result = Expr::new(ExprKind::Deref(Box::new(result)));
+      for caret in &carets {
+        let span = SourceSpan::join(&result.span, &caret.span);
+        result = Expr::new(ExprKind::Deref(Box::new(result))).with_span(span);
       }
-      if let Some(op) = unary {
-        return Expr::unary(op, result);
+      if let Some((op, op_span)) = unary {
+        let span = SourceSpan::join(&op_span, &result.span);
+        return Expr::unary(op, result).with_span(span);
       }
       result
     }
-    rule unary_operator() -> UnaryOp = tok(TokenType::Minus) {UnaryOp::Neg} / tok(TokenType::Not) {UnaryOp::Not}
+    // The operator's span comes back with it: `UnaryExpr` holds only the
+    // operator kind, so this is the last point at which where the operator
+    // was written is still known.
+    rule unary_operator() -> (UnaryOp, SourceSpan) = t:tok(TokenType::Minus) {(UnaryOp::Neg, t.span.clone())} / t:tok(TokenType::Not) {(UnaryOp::Not, t.span.clone())}
     rule primary_expression() -> Expr
       = constant:constant() {
           Expr::new(ExprKind::Const(constant))
         }
       // TODO enumerated value
-      / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) {
-          Expr::new(ExprKind::Ref(Box::new(v)))
+      / start:tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ end:tok(TokenType::RightParen) {
+          Expr::new(ExprKind::Ref(Box::new(v))).with_span(SourceSpan::join(&start.span, &end.span))
         }
       / t:tok(TokenType::Null) {
           Expr::new(ExprKind::Null(t.span.clone()))
@@ -1887,14 +1892,15 @@ parser! {
       / variable:variable() {
         Expr::new(ExprKind::Variable(variable))
       }
-      / tok(TokenType::LeftParen) _ expression:expression() _ tok(TokenType::RightParen) {
-        expression
+      / lp:tok(TokenType::LeftParen) _ expression:expression() _ rp:tok(TokenType::RightParen) {
+        expression.with_span(SourceSpan::join(&lp.span, &rp.span))
       }
-    rule function_expression() -> Expr = name:function_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) {
+    rule function_expression() -> Expr = name:function_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
+      let span = SourceSpan::join(&name.span, &end.span);
       Expr::new(ExprKind::Function(Function {
         name,
         param_assignment: params
-      }))
+      })).with_span(span)
     }
 
     // B.3.2 Statements
