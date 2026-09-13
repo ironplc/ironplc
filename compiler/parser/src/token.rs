@@ -275,6 +275,8 @@ pub enum TokenType {
     Retain,
     #[token("NON_RETAIN", ignore(case))]
     NonRetain,
+    #[token("PERSISTENT", ignore(case))]
+    Persistent,
 
     #[token("RETURN", ignore(case))]
     Return,
@@ -590,6 +592,7 @@ impl TokenType {
             TokenType::EndResource => "'END_RESOURCE'",
             TokenType::Retain => "'RETAIN'",
             TokenType::NonRetain => "'NON_RETAIN'",
+            TokenType::Persistent => "'PERSISTENT'",
             TokenType::Return => "'RETURN'",
             TokenType::Step => "'STEP'",
             TokenType::Struct => "'STRUCT'",
@@ -817,6 +820,7 @@ mod tests {
             (EndResource, "END_RESOURCE"),
             (Retain, "RETAIN"),
             (NonRetain, "NON_RETAIN"),
+            (Persistent, "PERSISTENT"),
             (Return, "RETURN"),
             (Step, "STEP"),
             (Struct, "STRUCT"),
