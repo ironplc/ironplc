@@ -15,7 +15,6 @@ reference/compiler/problems/P0002
 reference/compiler/problems/P0003
 reference/compiler/problems/P0010
 reference/compiler/problems/P2001
-reference/compiler/problems/P2002
 reference/compiler/problems/P2003
 reference/compiler/problems/P2007
 reference/compiler/problems/P2008

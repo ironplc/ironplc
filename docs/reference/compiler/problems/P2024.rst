@@ -27,11 +27,25 @@ To fix this error, ensure the minimum value is less than or equal to the maximum
        MY_ARRAY : ARRAY [1..10] OF INT;
    END_TYPE
 
-This applies to all dimensions in multi-dimensional arrays:
+This applies to all dimensions in multi-dimensional arrays, and to arrays declared inline in a variable block as well as to named array types:
 
 .. code-block::
 
    TYPE
-       MATRIX : ARRAY [1..3, 1..4] OF REAL;  -- Valid
-       INVALID_MATRIX : ARRAY [3..1, 1..4] OF REAL;  -- Error: first dimension invalid
+       MATRIX : ARRAY [1..3, 1..4] OF REAL;  (* Valid *)
+       INVALID_MATRIX : ARRAY [3..1, 1..4] OF REAL;  (* Error: first dimension invalid *)
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           inverted : ARRAY [10..1] OF INT;  (* Error: minimum (10) > maximum (1) *)
+       END_VAR
+   END_PROGRAM
+
+A dimension whose minimum equals its maximum is valid and declares one element:
+
+.. code-block::
+
+   TYPE
+       ONE_ELEMENT : ARRAY [0..0] OF INT;  (* Valid: a single element at index 0 *)
    END_TYPE
