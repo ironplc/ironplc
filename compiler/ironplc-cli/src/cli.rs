@@ -366,29 +366,14 @@ fn handle_diagnostics(
     }
 }
 
-/// Builds the documentation URL for a diagnostic, tagged with the channel it
-/// was surfaced through.
+/// Builds the documentation URL for a diagnostic surfaced on the command line.
 ///
-/// The URL is a working docs link regardless; `channel=cli` marks the origin
-/// and `version` carries the client version (which the out-of-date banner in
-/// docs/_static/version-check.js reads), so we can also see where and on which
-/// version people reach these pages. `file`/`line` (the Rust source location
-/// that raised the diagnostic) are appended when present so a maintainer can see
-/// what a remote user hit.
+/// `channel=cli` marks the origin; everything else about the URL — the section
+/// the code documents into, the version, the Rust source location — is
+/// [`Diagnostic::help_url`]'s business, so the CLI cannot drift from the other
+/// channels.
 fn problem_help_url(diagnostic: &Diagnostic) -> String {
-    let version = env!("CARGO_PKG_VERSION");
-    let mut url = format!(
-        "https://www.ironplc.com/reference/{section}/problems/{code}.html?version={version}&channel=cli",
-        section = ironplc_dsl::diagnostic::docs_section(&diagnostic.code),
-        code = diagnostic.code,
-    );
-    if let Some(ref file) = diagnostic.source_file {
-        url.push_str(&format!("&file={file}"));
-    }
-    if let Some(line) = diagnostic.source_line {
-        url.push_str(&format!("&line={line}"));
-    }
-    url
+    diagnostic.help_url(env!("CARGO_PKG_VERSION"), "cli")
 }
 
 fn map_diagnostic(
