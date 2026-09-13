@@ -1,10 +1,14 @@
-//! Semantic rule that rejects a derived function block (via the
-//! `EXTENDS` extension) redeclaring a field
+//! Semantic rule that rejects a derived function block (declared with
+//! the IEC 61131-3 Edition 3 `EXTENDS` clause) redeclaring a field
 //! already declared on its base function block or any ancestor further
 //! up the `EXTENDS` chain.
 //!
 //! A redeclaration is rejected as a duplicate definition even when the
-//! redeclared field has a different type.
+//! redeclared field has a different type. Edition 3 inheritance gives a
+//! derived function block one set of fields and no way to hold a second
+//! field of an inherited name, and CODESYS and TwinCAT reject the same
+//! code. `EXTENDS` is Edition 3 syntax rather than a vendor extension,
+//! so this rule applies on every dialect (ADR-0051).
 //!
 //! ## Passes
 //!
