@@ -2970,8 +2970,11 @@ pub struct FunctionBlockDeclaration {
     /// `None` for an ordinary function block — the common case — so OOP is
     /// unrepresentable on a plain FB rather than "present but empty."
     /// `Some` only when the source actually uses `EXTENDS`, `IMPLEMENTS`,
-    /// or `ABSTRACT`. See `LanguageExtension` impl on `FunctionBlockOop` and
-    /// `specs/design/beckhoff-twincat-dialect.md` §1.4.
+    /// or `ABSTRACT`. See `FunctionBlockOop` for why the facet is its own
+    /// struct and why `base` is an `Option` where
+    /// `InterfaceDeclaration::extends` is a `Vec`, and the
+    /// `LanguageExtension` impl on it for why only the facet, and not the
+    /// whole declaration, is an extension.
     pub oop: Option<FunctionBlockOop>,
     /// `METHOD ... END_METHOD` blocks declared on this function block
     /// (OOP extension). Empty for an ordinary function block — same
