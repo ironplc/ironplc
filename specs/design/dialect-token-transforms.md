@@ -178,12 +178,9 @@ Source text
 │                                                 │
 │    c. Pragma collapsing                         │
 │       { ... } → single Pragma token.            │
-│       Must run after keyword promotion so that  │
-│       keywords inside pragmas are not promoted  │
-│       — wait, actually pragmas are collapsed    │
-│       into opaque text, so promotion of their   │
-│       contents doesn't matter. But collapsing   │
-│       must run before filtering so that { }     │
+│       Independent of keyword promotion: pragma  │
+│       contents are opaque text.                 │
+│       Must run before filtering so that { }     │
 │       tokens are consumed before the filter     │
 │       pass.                                     │
 │                                                 │
