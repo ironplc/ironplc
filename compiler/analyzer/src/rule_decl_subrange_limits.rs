@@ -56,30 +56,55 @@ impl DiagnosticVisitor for RuleDeclSubrangeLimits {
     }
 }
 
+/// The two ends of a range whose bounds are both literals, with their
+/// signed values.
+///
+/// A range keeps its ends as [`SignedIntegerRef`] because either may still
+/// name a constant; the rule only judges ranges whose ends have already
+/// been resolved to literals, and skips the others (an unresolved constant
+/// is reported by the resolver, not here).
+struct LiteralBounds<'a> {
+    start: &'a SignedInteger,
+    end: &'a SignedInteger,
+    min: i128,
+    max: i128,
+}
+
+impl<'a> LiteralBounds<'a> {
+    fn of(range: &'a Subrange) -> Option<Self> {
+        let start = range.start.as_signed_integer()?;
+        let end = range.end.as_signed_integer()?;
+        let min = start.clone().try_into().ok()?;
+        let max = end.clone().try_into().ok()?;
+        Some(Self {
+            start,
+            end,
+            min,
+            max,
+        })
+    }
+}
+
 impl Visitor<Infallible> for RuleDeclSubrangeLimits {
     type Value = ();
 
     fn visit_subrange(&mut self, node: &Subrange) -> Result<(), Infallible> {
-        let start = match node.start.as_signed_integer() {
-            Some(si) => si,
-            None => return Ok(()),
+        let Some(bounds) = LiteralBounds::of(node) else {
+            return Ok(());
         };
-        let end = match node.end.as_signed_integer() {
-            Some(si) => si,
-            None => return Ok(()),
-        };
-        let minimum: i128 = start.clone().try_into().expect("Value in range i128");
-        let maximum: i128 = end.clone().try_into().expect("Value in range i128");
 
-        if minimum >= maximum {
+        if bounds.min >= bounds.max {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::SubrangeMinStrictlyLessMax,
-                    Label::span(start.value.span(), "Expected smaller value"),
+                    Label::span(bounds.start.value.span(), "Expected smaller value"),
                 )
-                .with_context("minimum", &start.to_string())
-                .with_context("maximum", &end.to_string())
-                .with_secondary(Label::span(end.value.span(), "Expected greater value")),
+                .with_context("minimum", &bounds.start.to_string())
+                .with_context("maximum", &bounds.end.to_string())
+                .with_secondary(Label::span(
+                    bounds.end.value.span(),
+                    "Expected greater value",
+                )),
             );
         }
         Ok(())
