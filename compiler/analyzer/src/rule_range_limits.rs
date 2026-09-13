@@ -58,18 +58,18 @@ pub fn apply(
     _options: &CompilerOptions,
 ) -> SemanticResult {
     run_rule(
-        RuleDeclSubrangeLimits {
+        RuleRangeLimits {
             diagnostics: Vec::new(),
         },
         lib,
     )
 }
 
-struct RuleDeclSubrangeLimits {
+struct RuleRangeLimits {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl DiagnosticVisitor for RuleDeclSubrangeLimits {
+impl DiagnosticVisitor for RuleRangeLimits {
     fn into_diagnostics(self) -> Vec<Diagnostic> {
         self.diagnostics
     }
@@ -130,7 +130,7 @@ impl RangeContext {
     }
 }
 
-impl RuleDeclSubrangeLimits {
+impl RuleRangeLimits {
     fn check(&mut self, range: &Subrange, context: RangeContext) {
         let Some(bounds) = LiteralBounds::of(range) else {
             return;
@@ -153,7 +153,7 @@ impl RuleDeclSubrangeLimits {
     }
 }
 
-impl Visitor<Infallible> for RuleDeclSubrangeLimits {
+impl Visitor<Infallible> for RuleRangeLimits {
     type Value = ();
 
     fn visit_subrange_specification(
