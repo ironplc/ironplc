@@ -12,9 +12,12 @@ fn inheritance_options() -> CompilerOptions {
 
 /// Each case parses source under `allow_fb_inheritance`, renders it back
 /// to text, and re-parses the rendering to confirm it produces the same
-/// AST as the original. The re-parse is what proves the caret is rendered
-/// tight against its keyword and against whatever follows it -- a stray
-/// space either side fails to parse.
+/// AST as the original. The caret renders tight against its keyword and
+/// against whatever follows it because that is the canonical spelling, not
+/// because the parser demands it: `self_ref` always took a gap before the
+/// caret, and #1437 widened `symbolic_variable` to take one after. The
+/// `self_ref_caret` and `self_ref_chain` rows in
+/// `parser/src/tests/whitespace.rs` pin both.
 #[rstest]
 #[case::this_field_write(
     "

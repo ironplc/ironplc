@@ -1723,9 +1723,11 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             }
             dsl::textual::ExprKind::Deref(expr) => {
                 self.visit_expr(expr)?;
-                // No separating space: the parser's `unary_expression`
-                // rule allows no whitespace between the operand and the
-                // `^`, so `myRef ^` would not re-parse.
+                // No separating space: the tight spelling is the canonical
+                // output, not a parser constraint. #1437 widened
+                // `unary_expression` to take `_` before the caret, so
+                // `myRef ^` re-parses as well -- the `deref_operator` row in
+                // `parser/src/tests/whitespace.rs`.
                 self.write("^");
                 Ok(())
             }
@@ -1847,9 +1849,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_symbolic_variable_kind(&node.subscripted_variable)?;
 
-        // No space before `[`: the parser's `symbolic_variable` rule admits
-        // none between a variable and its subscript. Inside the brackets is
-        // fine -- `subscript_list` allows it.
+        // No space before `[`: the tight spelling is the canonical output,
+        // not a parser constraint -- `symbolic_variable` has admitted a gap
+        // before a subscript since #1437. Inside the brackets is fine too,
+        // and there `subscript_list` is what allows it.
         self.write("[");
         visit_comma_separated!(self, node.subscripts.iter(), Expr);
         self.write_ws("]");

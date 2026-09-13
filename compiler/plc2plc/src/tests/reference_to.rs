@@ -96,8 +96,11 @@ END_PROGRAM",
     "NULL"
 )]
 // Array subscripts, in expression and assignment-target position. A
-// subscript renders tight against its variable -- `symbolic_variable`
-// chains its elements with no whitespace rule between them.
+// subscript renders tight against its variable because that is the
+// canonical spelling, not because the parser requires it -- since #1437
+// `symbolic_variable` interposes `_` between the elements of a chain, so
+// `arr [0]` parses too (the `subscript_read` row in
+// `parser/src/tests/whitespace.rs`).
 #[case::subscript_expression(
     "PROGRAM main
 VAR
