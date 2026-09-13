@@ -67,6 +67,11 @@ the ``--library`` option to activate a library explicitly:
 
 The option is repeatable: pass ``--library`` once per library.
 
+An activated library's declarations join your project as ordinary source.
+A function or global variable in your project with the same name as one
+the library declares is reported as a duplicate, not treated as an
+override. Rename your declaration, or do not activate the library.
+
 -------------------------------------------
 Use Your Own Libraries
 -------------------------------------------

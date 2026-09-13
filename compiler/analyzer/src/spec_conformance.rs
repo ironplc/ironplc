@@ -319,10 +319,11 @@ fn analyzer_spec_req_cl_003_pi_folds_in_initializer() {
     );
 }
 
-/// REQ-CL-analyzer-004: A user declaration shadows an activated library
-/// declaration of the same name.
+/// REQ-CL-analyzer-004: A declaration in a function, function block or method
+/// hides an activated library global of the same name within that unit, as it
+/// hides any global (ADR-0051).
 #[spec_test(REQ_CL_analyzer_004)]
-fn analyzer_spec_req_cl_004_user_declaration_shadows_library() {
+fn analyzer_spec_req_cl_004_unit_local_hides_library_global() {
     let options = library_options();
     let library = pi_library(&options); // library global PI = 3.14159...
                                         // The FB declares its own local CONSTANT PI, which must win.
@@ -346,6 +347,35 @@ fn analyzer_spec_req_cl_004_user_declaration_shadows_library() {
     assert!(
         (value - 2.0 / 180.0).abs() < 1e-12,
         "expected the local PI (2.0) to shadow the library global, got {value}"
+    );
+}
+
+/// REQ-CL-analyzer-007: An activated library's declarations merge as ordinary
+/// source: a user declaration of the same name in the same scope is a
+/// duplicate and is diagnosed as one.
+#[spec_test(REQ_CL_analyzer_007)]
+fn analyzer_spec_req_cl_007_same_scope_redeclaration_is_duplicate() {
+    let options = library_options();
+    let library = parse_program(
+        "FUNCTION LTRUNC : LREAL VAR_INPUT IN : LREAL; END_VAR LTRUNC := IN; END_FUNCTION",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    // The user redeclares the library's function at the same (global) scope.
+    let user = parse_program(
+        "FUNCTION LTRUNC : LREAL VAR_INPUT IN : LREAL; END_VAR LTRUNC := 123.0; END_FUNCTION",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    let (_lib, ctx) = analyze(&[&library, &user], &options).unwrap();
+    let codes: Vec<&String> = ctx.diagnostics().iter().map(|d| &d.code).collect();
+    assert!(
+        codes
+            .iter()
+            .any(|c| c.as_str() == Problem::FunctionDeclNameDuplicated.code()),
+        "a redeclared library function must be a duplicate (P4016), got {codes:?}"
     );
 }
 
