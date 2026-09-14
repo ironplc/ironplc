@@ -4,7 +4,15 @@ P4014
 
 .. problem-summary:: P4014
 
-This error occurs when a symbol (variable, constant, or other identifier) is declared more than once in the same scope.
+This error occurs when a variable name is declared more than once in the
+same scope. A scope is a program, function, function block or method,
+counting every ``VAR``, ``VAR_INPUT``, ``VAR_OUTPUT`` and other block it
+contains, or the global scope, counting every ``VAR_GLOBAL`` block in the
+project wherever it sits.
+
+The comparison is case-insensitive, like all IEC 61131-3 identifiers. Two
+declarations of one name in a scope would leave the compiler to pick one,
+and the other would never be read; the compiler rejects the program instead.
 
 Example
 -------
@@ -13,23 +21,54 @@ The following code will generate error P4014:
 
 .. code-block::
 
-   FUNCTION_BLOCK Example
-   VAR
-       DuplicateName : INT;
-       DuplicateName : BOOL;  (* Error: Symbol name duplicated *)
-   END_VAR
-   END_FUNCTION_BLOCK
+   PROGRAM main
+     VAR_INPUT
+       start : BOOL;
+     END_VAR
+     VAR
+       start : INT;
+     END_VAR
+   END_PROGRAM
 
-The symbol ``DuplicateName`` is declared twice in the same variable section, which is not allowed.
+``start`` is declared as an input and again as a local variable of ``main``.
 
-To fix this error, ensure all symbol names are unique within their scope:
+To fix this error, remove one declaration or rename the variable:
 
 .. code-block::
 
-   FUNCTION_BLOCK Example
-   VAR
-       FirstVariable : INT;
-       SecondVariable : BOOL;  (* Correct: Different name *)
-   END_VAR
-   END_FUNCTION_BLOCK
+   PROGRAM main
+     VAR_INPUT
+       start : BOOL;
+     END_VAR
+     VAR
+       startCount : INT;
+     END_VAR
+   END_PROGRAM
 
+Compiler-provided globals
+-------------------------
+
+When ``--allow-system-uptime-global`` is on, the compiler declares the
+globals ``__SYSTEM_UP_TIME`` and ``__SYSTEM_UP_LTIME`` itself. A
+``VAR_GLOBAL`` that declares either name is reported with this error:
+
+.. code-block::
+
+   VAR_GLOBAL
+     __SYSTEM_UP_TIME : TIME;
+   END_VAR
+
+To read the compiler's uptime value, remove the declaration; the name is
+available without one. To keep a variable of your own, rename it. Names
+beginning with ``__`` are reserved for the compiler.
+
+Scopes and hiding
+-----------------
+
+This rule compares declarations within one scope only. Whether a variable
+in one scope may reuse the name of a variable in an enclosing scope is a
+separate question: a program may not reuse a global's name
+(:doc:`P4050 </reference/compiler/problems/P4050>`), while a function,
+function block or method may, and the local declaration then hides the
+outer one. A ``VAR_EXTERNAL`` names a global rather than declaring a new
+variable, so it is not a duplicate of that global.
