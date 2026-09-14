@@ -749,7 +749,7 @@ mod test {
 
     use ironplc_project::FileBackedProject;
 
-    use super::{LspProject, LspTokenType};
+    use super::{LspProject, LspTokenType, TOKEN_TYPE_LEGEND};
 
     #[cfg(target_os = "macos")]
     static FAKE_PATH: &str = "file:///localhost/first_steps.st";
@@ -1032,16 +1032,72 @@ mod test {
         );
     }
 
+    /// The only tokenizer test that runs over a whole real program.
+    /// `first_steps.st` covers every POU kind -- TYPE, FUNCTION,
+    /// FUNCTION_BLOCK, SFC steps, transitions and actions, CONFIGURATION --
+    /// so reconstructing every token from the deltas and matching it back
+    /// against the source proves the encoding holds across a long file and
+    /// every construct, which the two-line snippets above cannot.
     #[test]
-    fn tokenize_when_first_steps_then_has_tokens() {
+    fn tokenize_when_first_steps_then_tokens_match_source() {
         let mut proj = new_empty_project();
         let url = Uri::from_str(FAKE_PATH).unwrap();
         let content = read_shared_resource("first_steps.st");
-        proj.change_text_document(&url, content);
+        proj.change_text_document(&url, content.clone());
 
-        let result = proj.tokenize(&url);
+        let tokens = proj.tokenize(&url).unwrap();
+        assert!(!tokens.is_empty(), "expected tokens, got none");
 
-        assert!(result.is_ok());
+        // first_steps.st is ASCII, so a char index is also the UTF-16 offset
+        // the LSP protocol counts in and can index the line directly.
+        let lines: Vec<&str> = content.lines().collect();
+
+        let mut line: u32 = 0;
+        let mut col: u32 = 0;
+        let mut lexemes: Vec<(u32, u32, String)> = Vec::new();
+        for token in &tokens {
+            if token.delta_line == 0 {
+                col += token.delta_start;
+            } else {
+                line += token.delta_line;
+                col = token.delta_start;
+            }
+
+            assert!(
+                (token.token_type as usize) < TOKEN_TYPE_LEGEND.len(),
+                "token type {} at ({line},{col}) is outside the legend",
+                token.token_type
+            );
+
+            let source_line = lines
+                .get(line as usize)
+                .unwrap_or_else(|| panic!("token at line {line} is past the end of the file"));
+            let chars: Vec<char> = source_line.chars().collect();
+            let end = col as usize + token.length as usize;
+            assert!(
+                end <= chars.len(),
+                "token at ({line},{col}) of length {} runs past the end of {source_line:?}",
+                token.length
+            );
+
+            // A token must cover exactly a lexeme: non-empty, and with no
+            // whitespace at either edge. An off-by-one in the delta encoding
+            // shifts the span onto neighbouring whitespace and is caught here.
+            let lexeme: String = chars[col as usize..end].iter().collect();
+            assert!(
+                !lexeme.is_empty() && lexeme.trim().len() == lexeme.len(),
+                "token at ({line},{col}) covers {lexeme:?}, which is not a lexeme"
+            );
+            lexemes.push((line, col, lexeme));
+        }
+
+        // Anchor both ends of the file at positions the loop above verified
+        // against the source rather than assumed.
+        assert_eq!(lexemes.first().unwrap(), &(0, 0, "TYPE".to_owned()));
+        assert_eq!(
+            lexemes.last().unwrap(),
+            &(175, 0, "END_CONFIGURATION".to_owned())
+        );
     }
 
     #[test]
