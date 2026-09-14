@@ -101,36 +101,38 @@ impl DiagnosticVisitor for RuleFunctionCallTypeCheck<'_> {
 impl RuleFunctionCallTypeCheck<'_> {
     /// Checks whether a function call expression assigned to a variable has a
     /// matching return type. Emits P4027 if there is a mismatch.
+    ///
+    /// Standard-library calls are checked like any other. Their declared
+    /// return type may be a generic category, but `xform_resolve_expr_types`
+    /// has already narrowed it to the concrete type of the argument the
+    /// category binds to; where it could not, `resolved_type` is `None` and
+    /// the call is skipped below. A call naming a function the environment
+    /// does not hold resolves to `None` the same way, so the signature
+    /// itself is never needed here.
     fn check_return_type(&mut self, target: &Variable, value: &Expr) {
-        if let ExprKind::Function(ref func_call) = value.kind {
-            if let Some(signature) = self.context.functions.get(&func_call.name) {
-                if signature.is_stdlib() {
-                    return;
-                }
-                if let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target {
-                    if let Some(target_type) = self.var_types.find(&nv.name) {
-                        if let Some(ref return_type) = value.resolved_type {
-                            if !are_types_compatible(target_type, return_type, self.options) {
-                                self.diagnostics.push(
-                                    Diagnostic::problem(
-                                        Problem::FunctionCallReturnTypeMismatch,
-                                        Label::span(
-                                            func_call.name.span(),
-                                            "Function call return type",
-                                        ),
-                                    )
-                                    .with_context(
-                                        "function",
-                                        &func_call.name.original().to_string(),
-                                    )
-                                    .with_context("return_type", &return_type.to_string())
-                                    .with_context("target_type", &target_type.to_string()),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
+        let ExprKind::Function(ref func_call) = value.kind else {
+            return;
+        };
+        let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target else {
+            return;
+        };
+        let Some(target_type) = self.var_types.find(&nv.name) else {
+            return;
+        };
+        let Some(ref return_type) = value.resolved_type else {
+            return;
+        };
+
+        if !are_types_compatible(target_type, return_type, self.options) {
+            self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::FunctionCallReturnTypeMismatch,
+                    Label::span(func_call.name.span(), "Function call return type"),
+                )
+                .with_context("function", &func_call.name.original().to_string())
+                .with_context("return_type", &return_type.to_string())
+                .with_context("target_type", &target_type.to_string()),
+            );
         }
     }
 
@@ -357,7 +359,7 @@ END_PROGRAM",
     );
 
     rule_ctx_ok!(
-        apply_when_stdlib_function_then_skipped,
+        apply_when_stdlib_arg_matches_param_then_ok,
         "
 PROGRAM main
 VAR
@@ -365,6 +367,52 @@ VAR
     x : INT;
 END_VAR
     result := INT_TO_REAL(x);
+END_PROGRAM"
+    );
+
+    // A standard-library return type is checked against the assignment
+    // target like a user-defined one: INT_TO_REAL yields REAL, which does
+    // not fit an INT.
+    rule_ctx_err1!(
+        apply_when_stdlib_return_type_mismatches_target_then_error,
+        "
+PROGRAM main
+VAR
+    result : INT;
+    x : INT;
+END_VAR
+    result := INT_TO_REAL(x);
+END_PROGRAM",
+        Problem::FunctionCallReturnTypeMismatch
+    );
+
+    // Integer widening still applies to a standard-library return
+    // (ADR-0029, ADR-0031): INT_TO_DINT yields DINT, which fits a LINT.
+    rule_ctx_ok!(
+        apply_when_stdlib_return_widens_to_target_then_ok,
+        "
+PROGRAM main
+VAR
+    result : LINT;
+    x : INT;
+END_VAR
+    result := INT_TO_DINT(x);
+END_PROGRAM"
+    );
+
+    // A generic return type is narrowed by `xform_resolve_expr_types` before
+    // this rule runs, so ADD over INT arguments is an INT return and not a
+    // false P4027 against the ANY_NUM the signature declares.
+    rule_ctx_ok!(
+        apply_when_stdlib_generic_return_resolves_to_target_then_ok,
+        "
+PROGRAM main
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+END_VAR
+    result := ADD(a, b);
 END_PROGRAM"
     );
 

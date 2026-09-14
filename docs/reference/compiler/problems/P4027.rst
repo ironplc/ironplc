@@ -41,3 +41,23 @@ To fix this error, use an explicit type conversion:
 .. code-block::
 
    result := REAL_TO_INT(GET_VALUE(x));
+
+Standard library functions
+--------------------------
+
+The check applies to the standard library as well as to functions you write.
+A conversion function is the most common way to hit it, because its name says
+which type it returns:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       result : INT;
+       x : INT;
+   END_VAR
+       result := INT_TO_REAL(x);  (* Error: REAL return assigned to INT variable *)
+   END_PROGRAM
+
+Here ``INT_TO_REAL`` converts to ``REAL``, so the result does not fit ``result``.
+Either declare ``result`` as ``REAL``, or convert in the direction you meant.
