@@ -39,8 +39,9 @@ fn run_semantic_analysis(
     // Load the activated compatibility libraries first. Any that fail to load
     // (an unshipped name or malformed manifest) contribute a diagnostic but do
     // not prevent the rest of analysis. These declarations are injected ahead
-    // of user source (base stdlib -> library -> user), so a user declaration
-    // shadows a library declaration of the same name.
+    // of user source (base stdlib -> library -> user) and merge as ordinary
+    // source: a user declaration of the same name in the same scope is a
+    // duplicate, not an override (`REQ-CL-analyzer-007`).
     let (mut compat_libraries, compat_diagnostics) = source_project.load_activated_libraries();
     compat_libraries.extend(preparsed_libraries.iter().cloned());
     all_diagnostics.extend(compat_diagnostics);
@@ -80,12 +81,6 @@ fn run_semantic_analysis(
     if all_libraries.is_empty() && any_source_failed_to_parse {
         return (all_diagnostics, None, None);
     }
-
-    // A user-declared function takes precedence over a library function of
-    // the same name (`REQ-CL-analyzer-004`): drop the shadowed library
-    // declarations so the merge carries exactly one.
-    let compat_libraries =
-        ironplc_sources::libraries::remove_shadowed_functions(compat_libraries, &all_libraries);
 
     // Activation order: the compatibility libraries precede user source in the
     // merge (the base stdlib is seeded inside `analyze`).
@@ -451,7 +446,7 @@ mod test {
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use std::path::Path;
 
-    use super::{FileBackedProject, LibraryName, MemoryBackedProject, Project};
+    use super::{FileBackedProject, LibraryName, MemoryBackedProject, Problem, Project};
 
     #[test]
     fn change_text_document_when_overwrite_then_one_file() {
@@ -642,11 +637,10 @@ mod test {
         assert!(!result.is_empty());
     }
 
-    /// `REQ-CL-analyzer-004` for functions: a user-defined function named
-    /// `LTRUNC` takes precedence over the activated library's -- redeclaring
-    /// it is shadowing, not a duplicate-name error.
+    /// `REQ-CL-analyzer-007`: a user-defined function named `LTRUNC` is a
+    /// duplicate of the activated library's, not an override of it.
     #[test]
-    fn semantic_when_user_function_shadows_library_function_then_ok() {
+    fn semantic_when_user_function_named_like_library_function_then_duplicate() {
         let mut project = MemoryBackedProject::new(library_options());
         project.set_activated_libraries(vec![LibraryName::from("Tc2_Math")]);
         project.add_source(
@@ -658,9 +652,10 @@ mod test {
 
         let result = project.semantic();
         assert!(
-            result.is_empty(),
-            "shadowing a library function must not error: {:?}",
             result
+                .iter()
+                .any(|d| d.code == Problem::FunctionDeclNameDuplicated.code()),
+            "expected P4016 for the duplicated library function, got: {result:?}"
         );
     }
 
@@ -731,12 +726,11 @@ mod test {
         assert!(!result.is_empty());
     }
 
-    /// `REQ-CL-analyzer-004` holds for pre-parsed libraries too: redeclaring a
-    /// library function shadows it rather than colliding with it. The
-    /// playground composed its own pipeline without this step, so the same
-    /// source compiled in the CLI and errored in the browser.
+    /// `REQ-CL-analyzer-007` holds for pre-parsed libraries too: the
+    /// playground's path merges them exactly as the CLI merges bundled ones,
+    /// so a redeclared library function is a duplicate in both.
     #[test]
-    fn semantic_when_user_function_shadows_preparsed_library_function_then_ok() {
+    fn semantic_when_user_function_named_like_preparsed_library_function_then_duplicate() {
         let mut project = MemoryBackedProject::new(CompilerOptions::default());
         project.set_preparsed_libraries(vec![parse_library(LIB_FUNCTION)]);
         project.add_source(
@@ -746,9 +740,10 @@ mod test {
 
         let result = project.semantic();
         assert!(
-            result.is_empty(),
-            "shadowing a library function must not error: {:?}",
             result
+                .iter()
+                .any(|d| d.code == Problem::FunctionDeclNameDuplicated.code()),
+            "expected P4016 for the duplicated library function, got: {result:?}"
         );
     }
 

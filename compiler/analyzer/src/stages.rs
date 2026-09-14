@@ -16,12 +16,12 @@ use crate::{
     result::SemanticResult,
     rule_abstract_not_instantiated, rule_assignment_aggregate_type_compat,
     rule_bit_and_partial_access_range, rule_case_bit_string_label, rule_constant_range,
-    rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
+    rule_decl_names_unique, rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
     rule_enumeration_values_unique, rule_extends_field_duplicated,
     rule_function_block_call_unsupported, rule_function_block_invocation,
     rule_function_call_declared, rule_function_call_type_check, rule_method_call_declared,
     rule_mixed_located_var_declarations, rule_no_top_level_var_global,
-    rule_operator_operand_type_check, rule_pou_hierarchy, rule_program_task_definition_exists,
+    rule_operator_operand_type_check, rule_program_task_definition_exists,
     rule_program_var_hides_global, rule_ref_to, rule_stdlib_type_redefinition,
     rule_string_encoding_compat, rule_struct_initializer_expression_allowed,
     rule_task_names_unique, rule_unsupported_extension, rule_use_declared_enumerated_value,
@@ -190,6 +190,12 @@ pub fn resolve_types(
         xform_resolve_constant_expressions::apply(lib, options)
     });
 
+    // A repeated declaration name is diagnosed here, on the merged library,
+    // because the toposort below keeps one declaration per name and every
+    // later pass sees only that one. Analysis continues on the kept
+    // declaration so the rest of the library is still checked.
+    diagnostics.extend(rule_decl_names_unique::apply(&library));
+
     // Hard failure: declaration ordering is required for all subsequent transforms.
     // Also computes the set of declarations reachable from PROGRAM roots,
     // which codegen uses to skip unused functions.
@@ -352,7 +358,6 @@ pub(crate) fn semantic(
         rule_var_decl_initializer_type_compat::apply,
         rule_var_decl_global_const_requires_external_const::apply,
         rule_mixed_located_var_declarations::apply,
-        rule_pou_hierarchy::apply,
         rule_bit_and_partial_access_range::apply,
         rule_case_bit_string_label::apply,
         rule_constant_range::apply,
