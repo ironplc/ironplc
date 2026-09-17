@@ -72,7 +72,8 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
         .reachable_from(&data_type_visitor.program_nodes);
 
     // Split based on the type so that we put all of the data type declarations
-    // at the beginning.
+    // at the beginning. A name declared more than once keeps its last
+    // declaration; `rule_decl_names_unique` has already reported the others.
     let mut types_by_name: HashMap<Id, DataTypeDeclarationKind> = HashMap::new();
     let mut elems_by_name: HashMap<Id, LibraryElementKind> = HashMap::new();
     let mut global_var_decls: Vec<Vec<VarDecl>> = Vec::new();
