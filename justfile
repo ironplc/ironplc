@@ -204,9 +204,11 @@ endtoend-smoke-test compiler-version extension-version extension-name:
   Get-ChildItem "{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\examples\"
   Start-Process "`"{{env_var('LOCALAPPDATA')}}\Programs\Microsoft VS Code\code.exe`"" -ArgumentList "`"{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\examples\getting_started.st`""
 
-  # Check that the log file was created (indicating that VS Code correctly started the
-  # ironplcc language server). This path is a well-known path
-  Start-Sleep -s 30
+  # Wait for the log file to be created (indicating that VS Code correctly started the
+  # ironplcc language server). This path is a well-known path. A fresh VS Code
+  # install on a slow runner can take well over 30 seconds to activate the
+  # extension, so poll up to a deadline rather than sleeping a fixed time.
+  $deadline = (Get-Date).AddSeconds(180); while (-not (Test-Path "C:\\ironplcc.log" -PathType Leaf) -and ((Get-Date) -lt $deadline)) { Start-Sleep -s 5 }
   Get-ChildItem "C:\\"
 
   # Verify ironplcmcp is installed and speaks MCP by performing the required
@@ -240,9 +242,9 @@ _endtoend-smoke-unix:
 [unix]
 install-script-smoke compiler-version="":
   @just _install-script-smoke-clean
-  @just _install-script-smoke-run "{{compiler-version}}" ""
+  @just _install-script-smoke-run "{{compiler-version}}"
   @just _install-script-smoke-verify
-  @just _install-script-smoke-run "{{compiler-version}}" ""
+  @just _install-script-smoke-run "{{compiler-version}}"
   @just _install-script-smoke-verify
 
 # Install script smoke test against this revision's own tarball - Unix only.
@@ -272,8 +274,10 @@ install-script-smoke-local release-dir compiler-version:
 _install-script-smoke-clean:
   rm -rf "$HOME/.ironplc"
 
+# release-url: base URL for the release download tree; empty (the default)
+#              means "use the script's own default", the GitHub release.
 [unix]
-_install-script-smoke-run compiler-version release-url:
+_install-script-smoke-run compiler-version release-url="":
   #!/usr/bin/env sh
   set -eu
   export IRONPLC_RELEASE_URL="{{release-url}}"
