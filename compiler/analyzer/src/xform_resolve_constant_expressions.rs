@@ -42,7 +42,7 @@ struct ConstantInfo {
 /// `IntegerRef::Constant`/`SignedIntegerRef::Constant`, which is exactly the
 /// state reverting would leave *every* reference in -- including the ones that
 /// did resolve -- so reverting cannot be the safer option. Downstream handling
-/// of an unresolved `Constant` is already defined: `rule_decl_subrange_limits`
+/// of an unresolved `Constant` is already defined: `rule_range_limits`
 /// skips the node, the array and subrange intermediates report a problem, and
 /// codegen is never reached because `ironplc_project::compile` gates it on an
 /// empty diagnostic list.
