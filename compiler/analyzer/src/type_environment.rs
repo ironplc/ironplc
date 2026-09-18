@@ -249,29 +249,22 @@ impl TypeEnvironment {
 
     /// Adds the type into the environment.
     ///
-    /// Returns an error if a type already exists with the name
-    /// and does not insert the type.
+    /// A name already in the environment keeps its first type and the new
+    /// one is dropped. The repeat is not diagnosed here: the symbol
+    /// environment, built from the same sorted library, reports it (`P2007`,
+    /// or `P4013` for a function block), and resolution continues on the
+    /// first declaration. Reporting it here as well would mark one repeated
+    /// function block twice.
     pub fn insert_type(
         &mut self,
         type_name: &TypeName,
         symbol: crate::type_attributes::TypeAttributes,
-    ) -> Result<(), Diagnostic> {
-        self.table.insert(type_name.clone(), symbol).map_or_else(
-            || Ok(()),
-            |existing| {
-                Err(Diagnostic::problem(
-                    Problem::TypeDeclNameDuplicated,
-                    Label::span(type_name.span(), "Type declaration"),
-                )
-                .with_secondary(Label::span(existing.span(), "Previous declaration")))
-            },
-        )
+    ) {
+        self.table.entry(type_name.clone()).or_insert(symbol);
     }
 
-    /// Adds an alias type into the environment.
-    ///
-    /// Returns an error if a type already exists with the name
-    /// and does not insert the type.
+    /// Adds an alias type into the environment; a name already in the
+    /// environment keeps its first type, as for [`Self::insert_type`].
     ///
     /// Returns an error if the base type is not already in the type
     /// environment.
@@ -288,7 +281,8 @@ impl TypeEnvironment {
             .with_secondary(Label::span(base_type_name.span(), "Base type"))
         })?;
 
-        self.insert_type(type_name, base_intermediate_type.clone())
+        self.insert_type(type_name, base_intermediate_type.clone());
+        Ok(())
     }
 
     /// Gets the type from the environment.
@@ -548,14 +542,14 @@ impl TypeEnvironmentBuilder {
                 env.insert_type(
                     &TypeName::from(name),
                     crate::type_attributes::TypeAttributes::elementary(representation.clone()),
-                )?;
+                );
             }
         }
         if self.has_stdlib_function_blocks {
             for (name, type_attrs) in
                 crate::intermediates::stdlib_function_block::get_all_stdlib_function_blocks()
             {
-                env.insert_type(&TypeName::from(name), type_attrs)?;
+                env.insert_type(&TypeName::from(name), type_attrs);
             }
         }
         Ok(env)
@@ -582,21 +576,19 @@ mod tests {
     use ironplc_dsl::core::SourceSpan;
 
     #[test]
-    fn insert_type_when_type_already_exists_then_error() {
+    fn insert_type_when_type_already_exists_then_keeps_first() {
         let mut env = TypeEnvironment::new();
-        assert!(env
-            .insert_type(
-                &TypeName::from("TYPE"),
-                TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool)
-            )
-            .is_ok());
+        let first = SourceSpan::range(0, 4);
+        env.insert_type(
+            &TypeName::from("TYPE"),
+            TypeAttributes::new(first.clone(), IntermediateType::Bool),
+        );
+        env.insert_type(
+            &TypeName::from("TYPE"),
+            TypeAttributes::new(SourceSpan::range(10, 14), IntermediateType::Bool),
+        );
 
-        assert!(env
-            .insert_type(
-                &TypeName::from("TYPE"),
-                TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool)
-            )
-            .is_err());
+        assert_eq!(env.get(&TypeName::from("TYPE")).unwrap().span(), first);
     }
 
     #[test]
@@ -605,8 +597,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("TYPE"),
             TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
-        )
-        .unwrap();
+        );
         assert!(env
             .insert_alias(&TypeName::from("TYPE_ALIAS"), &TypeName::from("TYPE"))
             .is_ok());
@@ -777,8 +768,7 @@ mod tests {
                     }),
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Add a non-enumeration type
         env.insert_type(
@@ -789,8 +779,7 @@ mod tests {
                     size: ByteSized::B16,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Test the helper method
         assert!(env.is_enumeration(&TypeName::from("MY_ENUM")));
@@ -809,8 +798,7 @@ mod tests {
                     size: ByteSized::B32,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Test successful memory size retrieval
         assert_eq!(
@@ -830,8 +818,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_BOOL"),
             TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
-        )
-        .unwrap();
+        );
 
         env.insert_type(
             &TypeName::from("MY_ENUM"),
@@ -843,8 +830,7 @@ mod tests {
                     }),
                 },
             ),
-        )
-        .unwrap();
+        );
 
         env.insert_type(
             &TypeName::from("MY_SUBRANGE"),
@@ -858,8 +844,7 @@ mod tests {
                     max_value: 100,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         let categories = env.get_all_types_by_category();
 
@@ -889,8 +874,7 @@ mod tests {
                     size: ByteSized::B32,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Test valid usage contexts
         assert!(env
@@ -925,8 +909,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_BOOL"),
             TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
-        )
-        .unwrap();
+        );
 
         // Boolean is not numeric, should fail for subrange base
         assert!(env
@@ -945,8 +928,7 @@ mod tests {
                     size: ByteSized::B32,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Real is numeric but not integer, should fail for enumeration underlying
         assert!(env
@@ -969,8 +951,7 @@ mod tests {
                     fields: vec![],
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Function blocks cannot be array elements
         assert!(env
@@ -990,8 +971,7 @@ mod tests {
                     fields: vec![],
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Function blocks cannot be return types
         assert!(env
@@ -1016,8 +996,7 @@ mod tests {
                     }],
                 },
             ),
-        )
-        .unwrap();
+        );
 
         let result = env.resolve_array_type(&TypeName::from("MY_ARRAY"));
         assert!(result.is_some());
@@ -1035,8 +1014,7 @@ mod tests {
                     size: ByteSized::B16,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         assert!(env.resolve_array_type(&TypeName::from("MY_INT")).is_none());
     }
@@ -1084,8 +1062,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_STRUCT"),
             TypeAttributes::new(SourceSpan::default(), struct_type.clone()),
-        )
-        .unwrap();
+        );
 
         let result = env.resolve_struct_type(&TypeName::from("MY_STRUCT"));
         assert!(result.is_some());
@@ -1098,8 +1075,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_INT"),
             TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
-        )
-        .unwrap();
+        );
 
         assert!(env.resolve_struct_type(&TypeName::from("MY_INT")).is_none());
         assert!(env
@@ -1119,8 +1095,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_FB"),
             TypeAttributes::new(SourceSpan::default(), fb_type.clone()),
-        )
-        .unwrap();
+        );
 
         assert!(env.resolve_struct_type(&TypeName::from("MY_FB")).is_none());
         assert_eq!(
@@ -1136,8 +1111,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_STRUCT"),
             TypeAttributes::new(SourceSpan::default(), struct_type.clone()),
-        )
-        .unwrap();
+        );
 
         assert_eq!(
             env.resolve_member_access_type(&TypeName::from("MY_STRUCT")),
@@ -1151,8 +1125,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_BOOL"),
             TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
-        )
-        .unwrap();
+        );
 
         assert!(env
             .resolve_member_access_type(&TypeName::from("MY_BOOL"))

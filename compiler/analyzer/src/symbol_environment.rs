@@ -1,7 +1,8 @@
 use indexmap::IndexMap;
 use ironplc_dsl::common::{TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_problems::Problem;
 
 /// A scope's position in the nesting tree: the chain of declaration
 /// names from the library root.
@@ -60,6 +61,8 @@ pub enum SymbolKind {
     FunctionBlock,
     /// Program declaration
     Program,
+    /// Configuration declaration
+    Configuration,
     /// Type declaration
     Type,
     /// Constant declaration
@@ -145,6 +148,45 @@ impl SymbolInfo {
     }
 }
 
+/// The problem a second global declaration of `name` is, when `existing` and
+/// `repeat` are both declarations. The global scope also holds enumeration
+/// values, structure elements and global variables, whose uniqueness other
+/// rules own, so a pair involving one of those is `None`.
+fn repeated_declaration(existing: &SymbolKind, repeat: &SymbolKind) -> Option<Problem> {
+    let is_declaration = |kind: &SymbolKind| {
+        matches!(
+            kind,
+            SymbolKind::Type
+                | SymbolKind::FunctionBlock
+                | SymbolKind::Program
+                | SymbolKind::Configuration
+        )
+    };
+    if !is_declaration(existing) || !is_declaration(repeat) {
+        return None;
+    }
+    Some(match (existing, repeat) {
+        (SymbolKind::Type, SymbolKind::Type) => Problem::TypeDeclNameDuplicated,
+        _ => Problem::PouDeclNameDuplicated,
+    })
+}
+
+/// The diagnostic for `name` declared again at its own span when `first`
+/// already declares it. Shared with the transform that feeds this
+/// environment, which reports a function repeating a symbol the same way.
+pub(crate) fn duplicate_declaration(
+    problem: Problem,
+    name: &Id,
+    first: ironplc_dsl::core::SourceSpan,
+) -> Diagnostic {
+    Diagnostic::problem(
+        problem,
+        Label::span(name.span(), "Declaration repeats an earlier name"),
+    )
+    .with_context_id("name", name)
+    .with_secondary(Label::span(first, "First declaration"))
+}
+
 /// The main symbol environment that tracks all symbols across the library.
 ///
 /// Symbols are kept in insertion order so that every accessor that returns
@@ -166,12 +208,13 @@ impl SymbolEnvironment {
 
     /// Insert a symbol into the environment.
     ///
-    /// A name already present in the scope is overwritten, not diagnosed.
-    /// The environment is built inside a transform that reverts the whole
-    /// library on `Err`, so a duplicate reported from here would discard
-    /// every other resolution with it. Duplicate declarations are instead
-    /// diagnosed by the semantic rules, which see the whole library and
-    /// report every one.
+    /// In the global scope a type, function block, program or configuration
+    /// name is declared once. A second declaration is returned as a
+    /// diagnostic (`P2007` for a type repeating a type, `P4013` when a
+    /// program organization unit is involved) and the first declaration is
+    /// kept, so analysis continues on it. Every other kind and scope is
+    /// recorded without a uniqueness check, the later declaration replacing
+    /// the earlier one.
     pub fn insert(
         &mut self,
         name: &Id,
@@ -182,6 +225,11 @@ impl SymbolEnvironment {
 
         match scope {
             ScopeKind::Global => {
+                if let Some(existing) = self.global_symbols.get(name) {
+                    if let Some(problem) = repeated_declaration(&existing.kind, &symbol_info.kind) {
+                        return Err(duplicate_declaration(problem, name, existing.span.clone()));
+                    }
+                }
                 self.global_symbols.insert(name.clone(), symbol_info);
             }
             ScopeKind::Named(_) => {
@@ -724,6 +772,80 @@ mod tests {
         );
     }
 
+    // -----------------------------------------------------------------
+    // Repeated global declaration names.
+    // -----------------------------------------------------------------
+
+    fn global(env: &mut SymbolEnvironment, name: &str, kind: SymbolKind) -> Result<(), Diagnostic> {
+        env.insert(&Id::from(name), kind, &ScopeKind::Global)
+    }
+
+    #[test]
+    fn insert_when_function_block_repeats_function_block_then_p4013_and_first_kept() {
+        let mut env = SymbolEnvironment::new();
+        let first = Id::from("FB");
+        env.insert(&first, SymbolKind::FunctionBlock, &ScopeKind::Global)
+            .unwrap();
+
+        let error = global(&mut env, "fb", SymbolKind::FunctionBlock).unwrap_err();
+
+        assert_eq!(error.code, Problem::PouDeclNameDuplicated.code());
+        let kept = env.find(&Id::from("FB"), &ScopeKind::Global).unwrap();
+        assert_eq!(kept.span, first.span());
+    }
+
+    #[test]
+    fn insert_when_type_repeats_type_then_p2007() {
+        let mut env = SymbolEnvironment::new();
+        global(&mut env, "T", SymbolKind::Type).unwrap();
+
+        let error = global(&mut env, "T", SymbolKind::Type).unwrap_err();
+
+        assert_eq!(error.code, Problem::TypeDeclNameDuplicated.code());
+    }
+
+    #[test]
+    fn insert_when_function_block_repeats_type_then_p4013() {
+        let mut env = SymbolEnvironment::new();
+        global(&mut env, "T", SymbolKind::Type).unwrap();
+
+        let error = global(&mut env, "T", SymbolKind::FunctionBlock).unwrap_err();
+
+        assert_eq!(error.code, Problem::PouDeclNameDuplicated.code());
+    }
+
+    #[test]
+    fn insert_when_program_repeats_configuration_then_p4013() {
+        let mut env = SymbolEnvironment::new();
+        global(&mut env, "C", SymbolKind::Configuration).unwrap();
+
+        let error = global(&mut env, "C", SymbolKind::Program).unwrap_err();
+
+        assert_eq!(error.code, Problem::PouDeclNameDuplicated.code());
+    }
+
+    /// An enumeration value or structure element sharing a declaration's
+    /// name is not a repeated declaration; those names have their own rules.
+    #[test]
+    fn insert_when_enumeration_value_shares_type_name_then_ok() {
+        let mut env = SymbolEnvironment::new();
+        global(&mut env, "Red", SymbolKind::Type).unwrap();
+
+        assert!(global(&mut env, "Red", SymbolKind::EnumerationValue).is_ok());
+    }
+
+    #[test]
+    fn insert_when_name_repeated_in_named_scope_then_ok() {
+        let mut env = SymbolEnvironment::new();
+        let scope = ScopeKind::Named(Id::from("Unit").into());
+        env.insert(&Id::from("x"), SymbolKind::Variable, &scope)
+            .unwrap();
+
+        assert!(env
+            .insert(&Id::from("x"), SymbolKind::Variable, &scope)
+            .is_ok());
+    }
+
     /// The innermost declaration of a name wins, so a method local
     /// shadows a function block field of the same name.
     #[test]
@@ -824,8 +946,10 @@ mod tests {
             .unwrap();
         env.insert(&second, SymbolKind::Program, &ScopeKind::Global)
             .unwrap();
-        env.insert(&first, SymbolKind::Program, &ScopeKind::Global)
-            .unwrap();
+        // The repeat is reported and the first declaration stays in place.
+        assert!(env
+            .insert(&first, SymbolKind::Program, &ScopeKind::Global)
+            .is_err());
 
         let actual: Vec<&Id> = env.get_programs().into_iter().map(|(id, _)| id).collect();
         assert_eq!(actual, vec![&first, &second]);

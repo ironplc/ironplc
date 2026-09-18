@@ -21,7 +21,7 @@ use crate::{
     rule_function_block_call_unsupported, rule_function_block_invocation,
     rule_function_call_declared, rule_function_call_type_check, rule_method_call_declared,
     rule_mixed_located_var_declarations, rule_no_top_level_var_global,
-    rule_operator_operand_type_check, rule_pou_hierarchy, rule_program_task_definition_exists,
+    rule_operator_operand_type_check, rule_program_task_definition_exists,
     rule_program_var_hides_global, rule_ref_to, rule_stdlib_type_redefinition,
     rule_string_encoding_compat, rule_struct_initializer_expression_allowed,
     rule_task_names_unique, rule_unsupported_extension, rule_use_declared_enumerated_value,
@@ -192,7 +192,8 @@ pub fn resolve_types(
 
     // Hard failure: declaration ordering is required for all subsequent transforms.
     // Also computes the set of declarations reachable from PROGRAM roots,
-    // which codegen uses to skip unused functions.
+    // which codegen uses to skip unused functions. A repeated declaration
+    // name survives the sort; the environments built below diagnose it.
     let (mut library, reachable) = xform_toposort_declarations::apply(library)?;
 
     // A failure here reflects a fundamentally broken declaration (not an
@@ -254,7 +255,10 @@ pub fn resolve_types(
         xform_int_to_bool_initializer::apply(lib, &mut type_environment, options)
     });
 
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+    // Best effort: a repeated declaration name is diagnosed here, by the
+    // environments, and the first declaration is kept, so the rest of the
+    // library still resolves instead of reverting on the first repeat.
+    library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_resolve_symbol_and_function_environment::apply(
             lib,
             &mut symbol_environment,
@@ -352,7 +356,6 @@ pub(crate) fn semantic(
         rule_var_decl_initializer_type_compat::apply,
         rule_var_decl_global_const_requires_external_const::apply,
         rule_mixed_located_var_declarations::apply,
-        rule_pou_hierarchy::apply,
         rule_bit_and_partial_access_range::apply,
         rule_case_bit_string_label::apply,
         rule_constant_range::apply,

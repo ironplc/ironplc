@@ -72,104 +72,52 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
         .reachable_from(&data_type_visitor.program_nodes);
 
     // Split based on the type so that we put all of the data type declarations
-    // at the beginning.
-    let mut types_by_name: HashMap<Id, DataTypeDeclarationKind> = HashMap::new();
-    let mut elems_by_name: HashMap<Id, LibraryElementKind> = HashMap::new();
+    // at the beginning. Every declaration is kept, a repeated name included:
+    // the environments built from the sorted library diagnose the repeat and
+    // keep the first declaration, so dropping one here would hide it.
+    let mut types_by_name: HashMap<Id, Vec<DataTypeDeclarationKind>> = HashMap::new();
+    let mut elems_by_name: HashMap<Id, Vec<LibraryElementKind>> = HashMap::new();
     let mut global_var_decls: Vec<Vec<VarDecl>> = Vec::new();
     for element in lib.elements {
         match element {
             LibraryElementKind::DataTypeDeclaration(decl) => {
-                match decl {
-                    DataTypeDeclarationKind::Enumeration(decl) => {
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::Enumeration(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::Subrange(decl) => {
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::Subrange(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::Simple(decl) => {
-                        // Can refer to other declarations, but does not have any declarations itself
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::Simple(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::Array(decl) => {
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::Array(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::Structure(decl) => {
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::Structure(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::StructureInitialization(decl) => {
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::StructureInitialization(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::String(decl) => {
-                        // Can refer to other declarations, but does not have any declarations itself
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::String(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::Reference(decl) => {
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::Reference(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::LateBound(decl) => {
-                        types_by_name.insert(
-                            decl.data_type_name.name.clone(),
-                            DataTypeDeclarationKind::LateBound(decl),
-                        );
-                    }
-                }
+                types_by_name
+                    .entry(data_type_name(&decl))
+                    .or_default()
+                    .push(decl);
             }
             LibraryElementKind::FunctionDeclaration(decl) => {
-                elems_by_name.insert(
-                    decl.name.clone(),
-                    LibraryElementKind::FunctionDeclaration(decl),
-                );
+                elems_by_name
+                    .entry(decl.name.clone())
+                    .or_default()
+                    .push(LibraryElementKind::FunctionDeclaration(decl));
             }
             LibraryElementKind::FunctionBlockDeclaration(decl) => {
-                elems_by_name.insert(
-                    decl.name.name.clone(),
-                    LibraryElementKind::FunctionBlockDeclaration(decl),
-                );
+                elems_by_name
+                    .entry(decl.name.name.clone())
+                    .or_default()
+                    .push(LibraryElementKind::FunctionBlockDeclaration(decl));
             }
             LibraryElementKind::ProgramDeclaration(decl) => {
-                elems_by_name.insert(
-                    decl.name.clone(),
-                    LibraryElementKind::ProgramDeclaration(decl),
-                );
+                elems_by_name
+                    .entry(decl.name.clone())
+                    .or_default()
+                    .push(LibraryElementKind::ProgramDeclaration(decl));
             }
             LibraryElementKind::ConfigurationDeclaration(decl) => {
-                elems_by_name.insert(
-                    decl.name.clone(),
-                    LibraryElementKind::ConfigurationDeclaration(decl),
-                );
+                elems_by_name
+                    .entry(decl.name.clone())
+                    .or_default()
+                    .push(LibraryElementKind::ConfigurationDeclaration(decl));
             }
             LibraryElementKind::GlobalVarDeclarations(decls) => {
                 global_var_decls.push(decls);
             }
             LibraryElementKind::InterfaceDeclaration(decl) => {
-                elems_by_name.insert(
-                    decl.name.clone(),
-                    LibraryElementKind::InterfaceDeclaration(decl),
-                );
+                elems_by_name
+                    .entry(decl.name.clone())
+                    .or_default()
+                    .push(LibraryElementKind::InterfaceDeclaration(decl));
             }
         }
     }
@@ -180,14 +128,36 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
     for decls in global_var_decls {
         elements.push(LibraryElementKind::GlobalVarDeclarations(decls));
     }
-    elements.extend(sorted_ids.iter().filter_map(|id| {
-        types_by_name
-            .remove(id)
-            .map(LibraryElementKind::DataTypeDeclaration)
-    }));
-    elements.extend(sorted_ids.iter().filter_map(|id| elems_by_name.remove(id)));
+    elements.extend(
+        sorted_ids
+            .iter()
+            .filter_map(|id| types_by_name.remove(id))
+            .flatten()
+            .map(LibraryElementKind::DataTypeDeclaration),
+    );
+    elements.extend(
+        sorted_ids
+            .iter()
+            .filter_map(|id| elems_by_name.remove(id))
+            .flatten(),
+    );
 
     Ok((Library { elements }, reachable))
+}
+
+/// The declared name of a data type declaration.
+fn data_type_name(decl: &DataTypeDeclarationKind) -> Id {
+    match decl {
+        DataTypeDeclarationKind::Enumeration(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::Subrange(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::Simple(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::Array(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::Structure(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::StructureInitialization(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::String(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::Reference(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::LateBound(d) => d.data_type_name.name.clone(),
+    }
 }
 
 struct DeclarationsGraph {
@@ -645,7 +615,31 @@ mod tests {
     use super::*;
 
     use crate::test_helpers::parse_only;
+    use ironplc_parser::{options::CompilerOptions, parse_program};
     use ironplc_test::cast;
+
+    /// A repeated name keeps both declarations: the environments built from
+    /// the sorted library diagnose the repeat, so the sort must not hide it.
+    #[test]
+    fn apply_when_function_name_repeated_then_both_declarations_kept() {
+        let program = "
+FUNCTION F : INT
+  F := 1;
+END_FUNCTION
+
+FUNCTION F : INT
+  F := 2;
+END_FUNCTION";
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (sorted, _) = apply(library).unwrap();
+        let functions = sorted
+            .elements
+            .iter()
+            .filter(|e| matches!(e, LibraryElementKind::FunctionDeclaration(f) if f.name == Id::from("F")))
+            .count();
+        assert_eq!(functions, 2);
+    }
 
     #[test]
     fn apply_when_function_block_recursive_call_in_self_then_return_error() {

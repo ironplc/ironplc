@@ -162,11 +162,11 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 }
             }
             InitialValueAssignmentKind::String(string_initializer) => {
-                self.insert_type(&node.type_name, string::from(string_initializer))?;
+                self.insert_type(&node.type_name, string::from(string_initializer));
             }
             InitialValueAssignmentKind::EnumeratedValues(enumerated_values_initializer) => {
                 let attributes = enumeration::try_from_values(enumerated_values_initializer, None)?;
-                self.insert_type(&node.type_name, attributes)?;
+                self.insert_type(&node.type_name, attributes);
             }
             InitialValueAssignmentKind::EnumeratedType(_enumerated_initial_value_assignment) => {
                 // I don't think this is needed because this should refer to a declared type, not declare a type.
@@ -204,7 +204,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 let result = subrange::try_from(&node.type_name, spec, self)?;
                 match result {
                     subrange::IntermediateResult::Type(attributes) => {
-                        self.insert_type(&node.type_name, attributes)?;
+                        self.insert_type(&node.type_name, attributes);
                     }
                     subrange::IntermediateResult::Alias(base_type_name) => {
                         self.insert_alias(&node.type_name, &base_type_name)?;
@@ -228,7 +228,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 let result = array::try_from(&node.type_name, &array_init.spec, self)?;
                 match result {
                     array::IntermediateResult::Type(attributes) => {
-                        self.insert_type(&node.type_name, attributes)?;
+                        self.insert_type(&node.type_name, attributes);
                     }
                     array::IntermediateResult::Alias(base_type_name) => {
                         self.insert_alias(&node.type_name, &base_type_name)?;
@@ -276,7 +276,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                     spec_values,
                     node.spec_init.underlying_type.clone(),
                 )?;
-                self.insert_type(&node.type_name, attributes)?;
+                self.insert_type(&node.type_name, attributes);
             }
         }
 
@@ -287,7 +287,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         &mut self,
         node: StringDeclaration,
     ) -> Result<StringDeclaration, Diagnostic> {
-        self.insert_type(&node.type_name, string::from_decl(&node))?;
+        self.insert_type(&node.type_name, string::from_decl(&node));
         Ok(node)
     }
 
@@ -297,7 +297,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
     ) -> Result<StructureDeclaration, Diagnostic> {
         // Use the structure processing module to create the structure type
         let attrs = crate::intermediates::structure::try_from(&node.type_name, &node, self)?;
-        self.insert_type(&node.type_name, attrs)?;
+        self.insert_type(&node.type_name, attrs);
         Ok(node)
     }
 
@@ -309,7 +309,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
 
         match result {
             subrange::IntermediateResult::Type(attributes) => {
-                self.insert_type(&node.type_name, attributes)?;
+                self.insert_type(&node.type_name, attributes);
             }
             subrange::IntermediateResult::Alias(base_type_name) => {
                 self.insert_alias(&node.type_name, &base_type_name)?;
@@ -328,7 +328,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
 
         match result {
             array::IntermediateResult::Type(attributes) => {
-                self.insert_type(&node.type_name, attributes)?;
+                self.insert_type(&node.type_name, attributes);
             }
             array::IntermediateResult::Alias(base_type_name) => {
                 self.insert_alias(&node.type_name, &base_type_name)?;
@@ -375,7 +375,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 target_type: Box::new(target_type),
             },
         );
-        self.insert_type(&node.type_name, attrs)?;
+        self.insert_type(&node.type_name, attrs);
         Ok(node)
     }
 
@@ -457,7 +457,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 fields,
             },
         );
-        self.insert_type(&node.name, attrs)?;
+        self.insert_type(&node.name, attrs);
 
         Ok(node)
     }
@@ -483,7 +483,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
             node.name.span(),
             IntermediateType::Structure { fields: vec![] },
         );
-        self.insert_type(&TypeName::from_id(&node.name), attrs)?;
+        self.insert_type(&TypeName::from_id(&node.name), attrs);
         Ok(node)
     }
 
@@ -589,8 +589,10 @@ END_TYPE
         assert_eq!(result, expected)
     }
 
+    /// A repeated type name is the symbol environment's to report; the
+    /// type environment keeps the first declaration and resolution goes on.
     #[test]
-    fn apply_when_has_duplicate_items_then_error() {
+    fn apply_when_has_duplicate_items_then_keeps_first_without_error() {
         let program = "
 TYPE
 LEVEL : (CRITICAL) := CRITICAL;
@@ -601,9 +603,9 @@ END_TYPE
             ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironment::new();
-        let result = apply(input, &mut env);
-        let result = result.unwrap_err();
-        assert_eq!("P2007", result.first().unwrap().code);
+        let result = apply(input, &mut env).unwrap();
+        assert_eq!(result.elements.len(), 2);
+        assert!(env.get(&TypeName::from("LEVEL")).is_some());
     }
 
     #[test]

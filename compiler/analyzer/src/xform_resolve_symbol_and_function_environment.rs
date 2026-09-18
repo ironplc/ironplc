@@ -7,6 +7,14 @@
 //! Function signatures store type names (not resolved types) to allow building
 //! complete signatures even when type resolution fails. Types are resolved
 //! on-demand during validation via TypeEnvironment.
+//!
+//! A repeated declaration name is diagnosed here, by the environments: a
+//! function repeating a function is `P4016` from the function environment, a
+//! type repeating a type is `P2007` and any other pair of global declarations
+//! is `P4013` from the symbol environment. A function and a symbol of one
+//! name live in different environments, so this transform checks that pair
+//! itself. The first declaration is kept and analysis continues on it; the
+//! diagnostics are collected rather than aborting the walk.
 
 use ironplc_dsl::{
     common::{
@@ -18,43 +26,46 @@ use ironplc_dsl::{
     scope::ScopeNode,
     visitor::Visitor,
 };
+use ironplc_problems::Problem;
 use log::debug;
+use std::convert::Infallible;
 
 use crate::{
     function_environment::{FunctionEnvironment, FunctionSignature},
     intermediate_type::IntermediateFunctionParameter,
-    result::SemanticResult,
-    symbol_environment::{ScopeKind, ScopePath, SymbolEnvironment, SymbolKind},
+    symbol_environment::{
+        duplicate_declaration, ScopeKind, ScopePath, SymbolEnvironment, SymbolKind,
+    },
 };
 
+/// Populates the environments from `lib`. Always keeps the library: the
+/// diagnostics are the repeated declaration names, and analysis continues
+/// on the first declaration of each.
 pub fn apply(
     lib: Library,
     symbol_environment: &mut SymbolEnvironment,
     function_environment: &mut FunctionEnvironment,
-) -> Result<Library, Vec<Diagnostic>> {
-    apply_impl(&lib, symbol_environment, function_environment)?;
-
-    Ok(lib)
+) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
+    let diagnostics = apply_impl(&lib, symbol_environment, function_environment);
+    Ok((lib, diagnostics))
 }
 
 pub fn apply_impl(
     lib: &Library,
     symbol_env: &mut SymbolEnvironment,
     function_env: &mut FunctionEnvironment,
-) -> SemanticResult {
+) -> Vec<Diagnostic> {
     let mut resolver = EnvironmentResolver {
         symbol_env,
         function_env,
         scope: Vec::new(),
+        diagnostics: Vec::new(),
     };
-    let result = resolver.walk(lib).map_err(|e| vec![e]);
+    let Ok(()) = resolver.walk(lib);
 
     debug!("{:?}", resolver.symbol_env);
 
-    match result {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e),
-    }
+    resolver.diagnostics
 }
 
 struct EnvironmentResolver<'a> {
@@ -64,6 +75,7 @@ struct EnvironmentResolver<'a> {
     /// outermost first. A stack rather than a single name because
     /// declarations nest: a method is inside its function block.
     scope: Vec<Id>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> EnvironmentResolver<'a> {
@@ -74,15 +86,38 @@ impl<'a> EnvironmentResolver<'a> {
             ScopeKind::Named(ScopePath::new(self.scope.clone()))
         }
     }
+
+    /// Keeps the diagnostic an environment returned for a repeated name.
+    fn record(&mut self, result: Result<(), Diagnostic>) {
+        if let Err(diagnostic) = result {
+            self.diagnostics.push(diagnostic);
+        }
+    }
+
+    /// Declares `name` in the global scope. A function already holds the
+    /// name in the other environment, so that pair is checked here; every
+    /// other repeat is the symbol environment's to report.
+    fn declare_global(&mut self, name: &Id, kind: SymbolKind) {
+        if let Some(function) = self.function_env.get(name) {
+            self.diagnostics.push(duplicate_declaration(
+                Problem::PouDeclNameDuplicated,
+                name,
+                function.span.clone(),
+            ));
+            return;
+        }
+        let result = self.symbol_env.insert(name, kind, &ScopeKind::Global);
+        self.record(result);
+    }
 }
 
-impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
+impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
     type Value = ();
 
     /// Pushes the declaration the traversal is entering onto the scope
     /// stack, so the variables it declares are recorded against its own
     /// path rather than the enclosing declaration's.
-    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
         self.scope.push(match node {
             ScopeNode::Function(node) => node.name.clone(),
             ScopeNode::FunctionBlock(node) => node.name.name.clone(),
@@ -101,7 +136,7 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
     fn visit_var_decl(
         &mut self,
         node: &ironplc_dsl::common::VarDecl,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         let symbol_kind = match node.var_type {
             VariableType::Input => SymbolKind::Parameter,
             VariableType::Output => SymbolKind::OutputParameter,
@@ -111,24 +146,26 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
 
         match &node.identifier {
             ironplc_dsl::common::VariableIdentifier::Symbol(id) => {
-                self.symbol_env.insert_variable(
+                let result = self.symbol_env.insert_variable(
                     id,
                     symbol_kind,
                     &self.current_scope(),
                     node.var_type.clone(),
                     None,
-                )?;
+                );
+                self.record(result);
             }
             ironplc_dsl::common::VariableIdentifier::Direct(direct) => {
                 if let Some(name) = &direct.name {
                     let address = format_address(&direct.address_assignment);
-                    self.symbol_env.insert_variable(
+                    let result = self.symbol_env.insert_variable(
                         name,
                         symbol_kind,
                         &self.current_scope(),
                         node.var_type.clone(),
                         Some(address),
-                    )?;
+                    );
+                    self.record(result);
                 }
             }
         }
@@ -138,19 +175,20 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
     fn visit_edge_var_decl(
         &mut self,
         node: &ironplc_dsl::common::EdgeVarDecl,
-    ) -> Result<Self::Value, Diagnostic> {
-        self.symbol_env.insert(
+    ) -> Result<Self::Value, Infallible> {
+        let result = self.symbol_env.insert(
             &node.identifier,
             SymbolKind::EdgeVariable,
             &self.current_scope(),
-        )?;
+        );
+        self.record(result);
         node.recurse_visit(self)
     }
 
     fn visit_function_declaration(
         &mut self,
         node: &ironplc_dsl::common::FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         // Build function signature for function environment
         // (Functions are tracked in FunctionEnvironment, not SymbolEnvironment)
         // Collect parameters (INPUT, OUTPUT, INOUT variables)
@@ -206,10 +244,34 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
         // Store return type as TypeName (resolve later during validation)
         let return_type = Some(node.return_type.clone());
 
+        // A type, function block, program or configuration already holds
+        // the name in the symbol environment: the function repeats it, and
+        // that earlier declaration is kept. A function repeating a function
+        // is the function environment's own P4016.
+        if let Some(existing) = self.symbol_env.find(&node.name, &ScopeKind::Global) {
+            if existing.scope == ScopeKind::Global
+                && matches!(
+                    existing.kind,
+                    SymbolKind::Type
+                        | SymbolKind::FunctionBlock
+                        | SymbolKind::Program
+                        | SymbolKind::Configuration
+                )
+            {
+                self.diagnostics.push(duplicate_declaration(
+                    Problem::PouDeclNameDuplicated,
+                    &node.name,
+                    existing.span.clone(),
+                ));
+                return node.recurse_visit(self);
+            }
+        }
+
         // Build and insert function signature
         let signature =
             FunctionSignature::new(node.name.clone(), return_type, parameters, node.name.span());
-        self.function_env.insert(signature)?;
+        let result = self.function_env.insert(signature);
+        self.record(result);
 
         node.recurse_visit(self)
     }
@@ -217,70 +279,60 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
     fn visit_function_block_declaration(
         &mut self,
         node: &ironplc_dsl::common::FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
-        self.symbol_env.insert(
-            &node.name.name,
-            SymbolKind::FunctionBlock,
-            &ScopeKind::Global,
-        )?;
+    ) -> Result<Self::Value, Infallible> {
+        self.declare_global(&node.name.name, SymbolKind::FunctionBlock);
         node.recurse_visit(self)
     }
 
     fn visit_program_declaration(
         &mut self,
         node: &ironplc_dsl::common::ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
-        self.symbol_env
-            .insert(&node.name, SymbolKind::Program, &ScopeKind::Global)?;
+    ) -> Result<Self::Value, Infallible> {
+        self.declare_global(&node.name, SymbolKind::Program);
+        node.recurse_visit(self)
+    }
+
+    fn visit_configuration_declaration(
+        &mut self,
+        node: &ironplc_dsl::configuration::ConfigurationDeclaration,
+    ) -> Result<Self::Value, Infallible> {
+        self.declare_global(&node.name, SymbolKind::Configuration);
+        node.recurse_visit(self)
+    }
+
+    fn visit_interface_declaration(
+        &mut self,
+        node: &ironplc_dsl::common::InterfaceDeclaration,
+    ) -> Result<Self::Value, Infallible> {
+        self.declare_global(&node.name, SymbolKind::Type);
         node.recurse_visit(self)
     }
 
     fn visit_data_type_declaration_kind(
         &mut self,
         node: &ironplc_dsl::common::DataTypeDeclarationKind,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         match node {
             ironplc_dsl::common::DataTypeDeclarationKind::Simple(decl) => {
-                self.symbol_env.insert(
-                    &decl.type_name.name,
-                    SymbolKind::Type,
-                    &ScopeKind::Global,
-                )?;
+                self.declare_global(&decl.type_name.name, SymbolKind::Type);
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Structure(decl) => {
-                self.symbol_env.insert(
-                    &decl.type_name.name,
-                    SymbolKind::Type,
-                    &ScopeKind::Global,
-                )?;
+                self.declare_global(&decl.type_name.name, SymbolKind::Type);
             }
-            ironplc_dsl::common::DataTypeDeclarationKind::Enumeration(decl) => {
-                self.symbol_env.insert(
-                    &decl.type_name.name,
-                    SymbolKind::Type,
-                    &ScopeKind::Global,
-                )?;
+            ironplc_dsl::common::DataTypeDeclarationKind::Enumeration(_) => {
+                // Declared by `visit_enumeration_declaration`, which the
+                // recursion below reaches and which also records the values.
+                // Declaring it here too would report the type as its own
+                // repeat.
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Array(decl) => {
-                self.symbol_env.insert(
-                    &decl.type_name.name,
-                    SymbolKind::Type,
-                    &ScopeKind::Global,
-                )?;
+                self.declare_global(&decl.type_name.name, SymbolKind::Type);
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Subrange(decl) => {
-                self.symbol_env.insert(
-                    &decl.type_name.name,
-                    SymbolKind::Type,
-                    &ScopeKind::Global,
-                )?;
+                self.declare_global(&decl.type_name.name, SymbolKind::Type);
             }
             ironplc_dsl::common::DataTypeDeclarationKind::String(decl) => {
-                self.symbol_env.insert(
-                    &decl.type_name.name,
-                    SymbolKind::Type,
-                    &ScopeKind::Global,
-                )?;
+                self.declare_global(&decl.type_name.name, SymbolKind::Type);
             }
             ironplc_dsl::common::DataTypeDeclarationKind::LateBound(_) => {
                 // Skip late-bound types for now
@@ -289,11 +341,7 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
                 // Skip structure initializations for now
             }
             ironplc_dsl::common::DataTypeDeclarationKind::Reference(decl) => {
-                self.symbol_env.insert(
-                    &decl.type_name.name,
-                    SymbolKind::Type,
-                    &ScopeKind::Global,
-                )?;
+                self.declare_global(&decl.type_name.name, SymbolKind::Type);
             }
         }
         node.recurse_visit(self)
@@ -302,31 +350,32 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
     fn visit_structure_element_declaration(
         &mut self,
         node: &ironplc_dsl::common::StructureElementDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
-        self.symbol_env.insert(
+    ) -> Result<Self::Value, Infallible> {
+        let result = self.symbol_env.insert(
             &node.name,
             SymbolKind::StructureElement,
             &self.current_scope(),
-        )?;
+        );
+        self.record(result);
         node.recurse_visit(self)
     }
 
     fn visit_enumeration_declaration(
         &mut self,
         node: &ironplc_dsl::common::EnumerationDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
+    ) -> Result<Self::Value, Infallible> {
         // Add the enumeration type itself
-        self.symbol_env
-            .insert(&node.type_name.name, SymbolKind::Type, &ScopeKind::Global)?;
+        self.declare_global(&node.type_name.name, SymbolKind::Type);
 
         // Add each enumeration value
         if let ironplc_dsl::common::SpecificationKind::Inline(values) = &node.spec_init.spec {
             for value in &values.values {
-                self.symbol_env.insert_enumeration_value(
+                let result = self.symbol_env.insert_enumeration_value(
                     &value.value,
                     &node.type_name,
                     &ScopeKind::Global,
-                )?;
+                );
+                self.record(result);
             }
         }
 
@@ -358,6 +407,7 @@ fn format_address(addr: &AddressAssignment) -> String {
 mod test {
     use ironplc_dsl::common::{FunctionReturnType, TypeName};
     use ironplc_dsl::core::Id;
+    use ironplc_problems::Problem;
 
     use crate::{
         function_environment::FunctionEnvironment,
@@ -382,9 +432,9 @@ END_FUNCTION_BLOCK";
         let library = parse_and_resolve_types(program);
         let mut symbol_env = SymbolEnvironment::new();
         let mut function_env = FunctionEnvironment::new();
-        let result = apply_impl(&library, &mut symbol_env, &mut function_env);
+        let diagnostics = apply_impl(&library, &mut symbol_env, &mut function_env);
 
-        assert!(result.is_ok());
+        assert!(diagnostics.is_empty());
         let attributes = symbol_env
             .get(
                 &Id::from("LEVEL"),
@@ -418,9 +468,9 @@ END_FUNCTION_BLOCK";
         let library = parse_and_resolve_types(program);
         let mut symbol_env = SymbolEnvironment::new();
         let mut function_env = FunctionEnvironment::new();
-        let result = apply_impl(&library, &mut symbol_env, &mut function_env);
+        let diagnostics = apply_impl(&library, &mut symbol_env, &mut function_env);
 
-        assert!(result.is_ok());
+        assert!(diagnostics.is_empty());
 
         // Check that input parameters are captured
         let reset_symbol = symbol_env
@@ -478,9 +528,9 @@ END_FUNCTION";
         let library = parse_and_resolve_types(program);
         let mut symbol_env = SymbolEnvironment::new();
         let mut function_env = FunctionEnvironment::new();
-        let result = apply_impl(&library, &mut symbol_env, &mut function_env);
+        let diagnostics = apply_impl(&library, &mut symbol_env, &mut function_env);
 
-        assert!(result.is_ok());
+        assert!(diagnostics.is_empty());
 
         // Functions are NOT registered in symbol environment (only in function environment)
         assert!(symbol_env
@@ -526,9 +576,9 @@ END_FUNCTION";
         let library = parse_and_resolve_types(program);
         let mut symbol_env = SymbolEnvironment::new();
         let mut function_env = FunctionEnvironment::new();
-        let result = apply_impl(&library, &mut symbol_env, &mut function_env);
+        let diagnostics = apply_impl(&library, &mut symbol_env, &mut function_env);
 
-        assert!(result.is_ok());
+        assert!(diagnostics.is_empty());
 
         let func_sig = function_env.get(&Id::from("SPLIT")).unwrap();
         assert_eq!(func_sig.parameters.len(), 3);
@@ -554,7 +604,7 @@ END_FUNCTION";
         let (library, _context) = parse_and_resolve_types_with_options(program, &options);
         let mut symbol_env = SymbolEnvironment::new();
         let mut function_env = FunctionEnvironment::new();
-        apply_impl(&library, &mut symbol_env, &mut function_env).unwrap();
+        apply_impl(&library, &mut symbol_env, &mut function_env);
         (symbol_env, function_env)
     }
 
@@ -659,5 +709,253 @@ END_FUNCTION_BLOCK",
         assert!(symbol_env
             .find(&Id::from("speed"), &method_scope("FB_Motor", "SetSpeed"))
             .is_some());
+    }
+
+    // -----------------------------------------------------------------
+    // Repeated declaration names, through the whole resolution pipeline so
+    // the toposort's handling of a repeat is part of what is checked.
+    // -----------------------------------------------------------------
+
+    /// The problem codes analysis reports for `program`, in order.
+    fn analyzed_codes(program: &str) -> Vec<String> {
+        let options = ironplc_parser::options::CompilerOptions::default();
+        let library =
+            ironplc_parser::parse_program(program, &ironplc_dsl::core::FileId::default(), &options)
+                .unwrap();
+        let (_library, context) = crate::stages::analyze(&[&library], &options).unwrap();
+        context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.clone())
+            .collect()
+    }
+
+    #[test]
+    fn apply_when_function_repeats_function_then_p4016() {
+        assert_eq!(
+            analyzed_codes(
+                "
+FUNCTION Foo : BOOL
+  Foo := FALSE;
+END_FUNCTION
+
+FUNCTION Foo : BOOL
+  Foo := TRUE;
+END_FUNCTION"
+            ),
+            [Problem::FunctionDeclNameDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_function_block_repeats_function_block_then_p4013() {
+        assert_eq!(
+            analyzed_codes(
+                "
+FUNCTION_BLOCK Bar
+  VAR
+    X : BOOL;
+  END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Bar
+  VAR
+    Y : BOOL;
+  END_VAR
+END_FUNCTION_BLOCK"
+            ),
+            [Problem::PouDeclNameDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_program_repeats_program_then_p4013() {
+        assert_eq!(
+            analyzed_codes(
+                "
+PROGRAM Baz
+  VAR
+    X : BOOL;
+  END_VAR
+END_PROGRAM
+
+PROGRAM Baz
+  VAR
+    Y : BOOL;
+  END_VAR
+END_PROGRAM"
+            ),
+            [Problem::PouDeclNameDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_configuration_repeats_configuration_then_p4013() {
+        assert_eq!(
+            analyzed_codes(
+                "
+PROGRAM Prg1
+  VAR
+    X : BOOL;
+  END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg1
+  RESOURCE Res1 ON PLC
+    TASK Main(INTERVAL := T#20ms, PRIORITY := 1);
+    PROGRAM P1 WITH Main : Prg1;
+  END_RESOURCE
+END_CONFIGURATION
+
+CONFIGURATION Cfg1
+  RESOURCE Res2 ON PLC
+    TASK Main(INTERVAL := T#20ms, PRIORITY := 1);
+    PROGRAM P2 WITH Main : Prg1;
+  END_RESOURCE
+END_CONFIGURATION"
+            ),
+            [Problem::PouDeclNameDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_type_repeats_type_then_p2007() {
+        assert_eq!(
+            analyzed_codes(
+                "
+TYPE
+  the_struct : STRUCT
+    member : BOOL;
+  END_STRUCT;
+  the_struct : STRUCT
+    member : BOOL;
+  END_STRUCT;
+END_TYPE"
+            ),
+            [Problem::TypeDeclNameDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_function_block_repeats_function_then_p4013() {
+        assert_eq!(
+            analyzed_codes(
+                "
+FUNCTION Compute : INT
+  Compute := 0;
+END_FUNCTION
+
+FUNCTION_BLOCK Compute
+  VAR
+    X : INT;
+  END_VAR
+END_FUNCTION_BLOCK"
+            ),
+            [Problem::PouDeclNameDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_function_repeats_function_block_then_p4013() {
+        // The function block declares the name first in the sorted library,
+        // so the function is the repeat and the block is kept.
+        let program = "
+FUNCTION_BLOCK Compute
+  VAR
+    X : INT;
+  END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION Compute : INT
+  Compute := 0;
+END_FUNCTION";
+        assert_eq!(
+            analyzed_codes(program),
+            [Problem::PouDeclNameDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_function_block_repeats_type_then_p4013() {
+        assert_eq!(
+            analyzed_codes(
+                "
+TYPE
+  Shared : INT := 0;
+END_TYPE
+
+FUNCTION_BLOCK Shared
+  VAR
+    X : INT;
+  END_VAR
+END_FUNCTION_BLOCK"
+            ),
+            [Problem::PouDeclNameDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_names_differ_only_in_case_then_reported() {
+        assert_eq!(
+            analyzed_codes(
+                "
+FUNCTION foo : BOOL
+  foo := FALSE;
+END_FUNCTION
+
+FUNCTION FOO : BOOL
+  FOO := TRUE;
+END_FUNCTION"
+            ),
+            [Problem::FunctionDeclNameDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_name_declared_three_times_then_reports_each_later_one() {
+        assert_eq!(
+            analyzed_codes(
+                "
+FUNCTION Foo : BOOL
+  Foo := FALSE;
+END_FUNCTION
+
+FUNCTION Foo : BOOL
+  Foo := TRUE;
+END_FUNCTION
+
+FUNCTION Foo : BOOL
+  Foo := TRUE;
+END_FUNCTION"
+            )
+            .len(),
+            2
+        );
+    }
+
+    /// The first declaration is the one kept, so the rest of analysis sees
+    /// its signature.
+    #[test]
+    fn apply_when_function_repeated_then_first_signature_kept() {
+        let program = "
+FUNCTION Foo : BOOL
+  VAR_INPUT
+    a : INT;
+  END_VAR
+  Foo := FALSE;
+END_FUNCTION
+
+FUNCTION Foo : BOOL
+  Foo := TRUE;
+END_FUNCTION";
+        let library = parse_and_resolve_types(program);
+        let mut symbol_env = SymbolEnvironment::new();
+        let mut function_env = FunctionEnvironment::new();
+        let diagnostics = apply_impl(&library, &mut symbol_env, &mut function_env);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            function_env.get(&Id::from("Foo")).unwrap().parameters.len(),
+            1
+        );
     }
 }

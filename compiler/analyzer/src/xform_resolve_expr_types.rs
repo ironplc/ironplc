@@ -669,7 +669,7 @@ mod tests {
             .with_stdlib_functions()
             .build();
         let mut symbol_environment = SymbolEnvironment::new();
-        let library = xform_resolve_symbol_and_function_environment::apply(
+        let (library, _diagnostics) = xform_resolve_symbol_and_function_environment::apply(
             library,
             &mut symbol_environment,
             &mut function_environment,
