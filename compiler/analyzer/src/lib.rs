@@ -59,6 +59,7 @@ mod rule_var_decl_const_initialized;
 mod rule_var_decl_const_not_fb;
 mod rule_var_decl_global_const_requires_external_const;
 mod rule_var_decl_initializer_type_compat;
+mod rule_var_decl_names_unique;
 mod scoped_table;
 mod semantic_context;
 pub mod stages;
