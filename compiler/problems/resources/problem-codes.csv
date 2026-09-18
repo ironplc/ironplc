@@ -115,3 +115,4 @@ P9998,InternalError,Internal error indicating a bug in the compiler
 P9999,NotImplemented,Capability is not implemented (yet!)
 P2037,AggregateAssignmentTypeMismatch,Assignment between arrays or structures requires identical types
 P4050,ProgramVariableHidesGlobal,Program variable has the same name as a global variable
+P4051,FunctionBlockInFunction,Function declares or invokes a function block instance
