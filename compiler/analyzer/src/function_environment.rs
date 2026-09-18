@@ -105,9 +105,26 @@ impl FunctionSignature {
         self.span.is_builtin()
     }
 
+    /// The declared parameters a call supplies an argument for, in
+    /// declaration order.
+    ///
+    /// One definition, so the arity check and the positional binding below
+    /// cannot disagree about which parameters a caller has to pass.
+    ///
+    /// `VAR_IN_OUT` counts: the caller passes the variable the function
+    /// reads and writes through, so it is an argument at the call site
+    /// exactly as `VAR_INPUT` is. Counting only `VAR_INPUT` made every call
+    /// to a function declaring one look over-supplied, which is why
+    /// `is_input_compatible` and not `is_input` is the question to ask.
+    fn declared_inputs(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = &IntermediateFunctionParameter> + Clone {
+        self.parameters.iter().filter(|p| p.is_input_compatible())
+    }
+
     /// Returns the number of input parameters.
     pub fn input_parameter_count(&self) -> usize {
-        self.parameters.iter().filter(|p| p.is_input).count()
+        self.declared_inputs().count()
     }
 
     /// Pairs each positional input argument of a call with the parameter it
@@ -142,7 +159,7 @@ impl FunctionSignature {
     /// never when there is none, so a caller with no argument list to zip
     /// against must bound what it takes.
     pub fn input_parameters(&self) -> impl Iterator<Item = IntermediateFunctionParameter> + '_ {
-        let declared = self.parameters.iter().filter(|p| p.is_input);
+        let declared = self.declared_inputs();
         let extension = self
             .is_extensible
             .then(|| declared.clone().next_back())
