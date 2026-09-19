@@ -655,7 +655,7 @@ pub(crate) fn compile_user_function_block(
     ctx.current_function_id = Some(function_id);
 
     let mut fb_emitter = Emitter::new();
-    compile_body(&mut fb_emitter, ctx, &fb_decl.body)?;
+    compile_body(&mut fb_emitter, ctx, &fb_decl.body, &fb_decl.name.span())?;
     fb_emitter.emit_ret_void();
 
     ctx.current_function_id = saved_current_fn;

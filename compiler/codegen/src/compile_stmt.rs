@@ -8,7 +8,7 @@ use ironplc_dsl::common::{
     ConstantKind, FunctionBlockBodyKind, IntegerRef, SignedInteger, SignedIntegerRef,
     StringInitializer, StringSpecification,
 };
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     CaseSelectionKind, Expr, ExprKind, FbCall, ParamAssignmentKind, Statements, StmtKind,
@@ -33,17 +33,25 @@ use crate::string_width::compile_string_value;
 use ironplc_container::opcode;
 
 /// Compiles a function block body.
+///
+/// `pou_span` locates the program organization unit that owns the body. An
+/// SFC body carries no span of its own, so a diagnostic about the body kind
+/// points at the POU instead.
 pub(crate) fn compile_body(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     body: &FunctionBlockBodyKind,
+    pou_span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     match body {
         FunctionBlockBodyKind::Statements(statements) => {
             compile_statements(emitter, ctx, statements)
         }
         FunctionBlockBodyKind::Empty => Ok(()),
-        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::todo()),
+        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::not_implemented(Label::span(
+            pou_span.clone(),
+            "Sequential function chart body",
+        ))),
     }
 }
 

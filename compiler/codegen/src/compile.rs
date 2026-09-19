@@ -947,7 +947,12 @@ fn compile_program_with_functions(
     // emitted from inside the body records a call-graph edge.
     let mut scan_emitter = Emitter::new();
     ctx.current_function_id = Some(FunctionId::SCAN);
-    compile_body(&mut scan_emitter, &mut ctx, &program.body)?;
+    compile_body(
+        &mut scan_emitter,
+        &mut ctx,
+        &program.body,
+        &program.name.span(),
+    )?;
     ctx.current_function_id = None;
     scan_emitter.emit_ret_void();
 
