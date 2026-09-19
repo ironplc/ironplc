@@ -18,6 +18,10 @@ pub enum ContainerError {
     InvalidConstantIndex(ConstantIndex),
     /// A section's actual size does not match the declared size.
     SectionSizeMismatch,
+    /// The header's `content_hash` is set and does not match the type,
+    /// constant and code sections: the container was modified, corrupted
+    /// or truncated after it was written.
+    ContentHashMismatch,
     /// A task entry has an unrecognized task type tag.
     InvalidTaskType(u8),
     /// The debug section contains invalid data.
@@ -45,6 +49,10 @@ impl fmt::Display for ContainerError {
                 write!(f, "constant pool index out of bounds: {}", idx.raw())
             }
             ContainerError::SectionSizeMismatch => write!(f, "section size mismatch"),
+            ContainerError::ContentHashMismatch => write!(
+                f,
+                "content hash mismatch: the container was modified after it was compiled"
+            ),
             ContainerError::InvalidTaskType(t) => {
                 write!(f, "invalid task type tag: {t}")
             }
@@ -111,6 +119,12 @@ mod tests {
     fn container_error_display_when_section_size_mismatch_then_mentions_section() {
         let msg = ContainerError::SectionSizeMismatch.to_string();
         assert!(msg.contains("section"), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_display_when_content_hash_mismatch_then_mentions_hash() {
+        let msg = ContainerError::ContentHashMismatch.to_string();
+        assert!(msg.contains("content hash"), "got: {msg}");
     }
 
     #[test]

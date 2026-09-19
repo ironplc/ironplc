@@ -15,6 +15,7 @@ pub mod fb_type;
 mod header;
 pub mod id_types;
 mod instruction;
+pub mod integrity;
 pub mod opcode;
 pub mod policy;
 mod string_layout;

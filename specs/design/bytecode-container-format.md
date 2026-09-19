@@ -51,7 +51,7 @@ The format builds on:
 
 The task table format is defined in [Task Support Design](61131-task-support.md).
 
-> **Status — signature sections.** The content and debug signature sections that ADR-0007 defines are planned and not yet emitted or read; their directory entries are written as zero, so today the task table is the first section after the header. See [Content Signature Section](#content-signature-section) and the Implementation Status in [ADR-0007](../adrs/0007-dual-signature-integrity-model.md).
+> **Status — signature sections.** The content and debug signature sections that ADR-0007 defines are planned and not yet emitted or read; their directory entries are written as zero, so today the task table is the first section after the header. The hashes those signatures would sign — `content_hash` and `debug_hash` — are computed and checked (see [Content Hash Scope](#content-hash-scope)). See [Content Signature Section](#content-signature-section) and the Implementation Status in [ADR-0007](../adrs/0007-dual-signature-integrity-model.md).
 
 ## File Header
 
@@ -76,9 +76,9 @@ Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 
 | **REQ-CF-container-003** | 4 | format_version | u16 | Container format version (currently 3; bumped to 2 from 1 by ADR-0033 opcode-encoding migration, then to 3 by ADR-0035 WSTRING string-header/constant-pool encoding tags) |
 | | 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
 | **REQ-CF-container-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section (`FLAG_HAS_DEBUG_SECTION`); Bit 2: has type section (`FLAG_HAS_TYPE_SECTION`); bits 3–7 reserved. No bit indicates a signature section (see below) |
-| | 8 | content_hash | [u8; 32] | BLAKE3 over `type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope). **Planned** — currently written as all zeros |
+| | 8 | content_hash | [u8; 32] | BLAKE3 over `type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope). All zeros means no hash was computed |
 | | 40 | reserved_hash_slot | [u8; 32] | Reserved (formerly `source_hash`); must be zero. Per-file source integrity is now in the debug section's `SOURCE_FILE_TABLE` (tag 6). |
-| | 72 | debug_hash | [u8; 32] | BLAKE3 over debug section (all zeros if no debug section). **Planned** — currently written as all zeros |
+| | 72 | debug_hash | [u8; 32] | BLAKE3 over debug section (all zeros if no debug section, or if no hash was computed) |
 | | 104 | layout_hash | [u8; 32] | BLAKE3 over the memory layout signature (see Layout Hash and Online Change). **Planned** — currently written as all zeros |
 | | 136 | sig_section_offset | u32 | Offset of content signature section (0 if absent) |
 | | 140 | sig_section_size | u32 | Size of content signature section |
@@ -115,7 +115,9 @@ Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 
 
 **REQ-CF-container-016** A container with no signature sections has `sig_section_offset`, `sig_section_size`, `debug_sig_offset` and `debug_sig_size` all zero.
 
-**REQ-CF-codegen-025** The compiler does not yet compute `content_hash`, `debug_hash` or `layout_hash`; it writes all three as zeros, and a reader must not validate them. Tracked by the Implementation Status in [ADR-0007](../adrs/0007-dual-signature-integrity-model.md) and [issue #1583](https://github.com/ironplc/ironplc/issues/1583).
+**REQ-CF-codegen-025** The compiler does not yet compute `layout_hash`; it writes it as zeros, and a reader must not validate it. Tracked by the Implementation Status in [ADR-0007](../adrs/0007-dual-signature-integrity-model.md) and [issue #1583](https://github.com/ironplc/ironplc/issues/1583).
+
+**REQ-CF-codegen-026** Every container the compiler writes carries a nonzero `content_hash` and, when it has a debug section, a nonzero `debug_hash`, each reproducible from the section bytes the compiler wrote (see [Content Hash Scope](#content-hash-scope)).
 
 ### Resource Budget Calculation
 
@@ -562,7 +564,7 @@ See [Debugger Support](debugger-support.md) for the full debugger architecture i
 
 ## Loading Sequence
 
-> **Status.** Of the sequence below, steps 1–3 are implemented by the container reader, step 7 by `Container::read_from`, and step 12 by `VmBuffers::from_container`; the VM additionally rejects a zero `max_call_depth` with trap `V9017` at start. Steps 4–6, 8–11 and 13 are planned: the VM loads any container it can parse. See the Implementation Status in [ADR-0006](../adrs/0006-bytecode-verification-requirement.md) and [ADR-0007](../adrs/0007-dual-signature-integrity-model.md), tracked by [issue #1582](https://github.com/ironplc/ironplc/issues/1582) and [issue #1583](https://github.com/ironplc/ironplc/issues/1583).
+> **Status.** Of the sequence below, steps 1–3 are implemented by the container reader, steps 7–9 and 13b–13d by `Container::read_from` (steps 8–9 also by `ContainerRef::from_slice`), and step 12 by `VmBuffers::from_container`; the VM additionally rejects a zero `max_call_depth` with trap `V9017` at start. Steps 4–6, 10–11 and 13a are planned: there is no signature to verify, so an all-zero `content_hash` is accepted unchecked and the VM loads any container whose hash, if present, matches. See the Implementation Status in [ADR-0006](../adrs/0006-bytecode-verification-requirement.md) and [ADR-0007](../adrs/0007-dual-signature-integrity-model.md), tracked by [issue #1582](https://github.com/ironplc/ironplc/issues/1582) and [issue #1583](https://github.com/ironplc/ironplc/issues/1583).
 
 **REQ-CF-container-026** A header whose magic is not `0x49504C43` is rejected with `ContainerError::InvalidMagic`.
 
@@ -610,7 +612,21 @@ The content hash covers the type section, constant pool, and code section in fil
 
 Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 6): each entry carries a BLAKE3 hash over the exact source bytes the parser saw, so a debugger can detect drift between an `.iplc` and the user's working copy on a per-file basis. The header has no top-level `source_hash` field — the debug section's `debug_hash` (BLAKE3 over the whole debug section) transitively protects every per-file hash.
 
-Note: The content hash does not directly cover the header bytes. Instead, the content signature signs the content_hash value, and the VM verifies that the content_hash in the header matches the actual hash of the type+constant+code sections (step 9 in the loading sequence). To make the binding explicit: the content_hash is computed as `BLAKE3(type_section_bytes || const_section_bytes || code_section_bytes)`. None of this is computed today; see the status of the hash fields in [File Header](#file-header).
+Note: The content hash does not directly cover the header bytes. Instead, the content signature signs the content_hash value, and the VM verifies that the content_hash in the header matches the actual hash of the type+constant+code sections (step 9 in the loading sequence). To make the binding explicit: the content_hash is computed as `BLAKE3(type_section_bytes || const_section_bytes || code_section_bytes)`.
+
+**REQ-CF-container-028** `content_hash` is the BLAKE3 digest of the type section, constant pool and code section bytes concatenated in file order, each located by its section directory entry; an absent type section contributes no bytes.
+
+**REQ-CF-container-029** `debug_hash` is the BLAKE3 digest of the debug section bytes, and all zeros when the container has no debug section.
+
+**REQ-CF-container-030** A reader recomputes the content hash over the sections it located and rejects a container whose nonzero `content_hash` differs with `ContainerError::ContentHashMismatch`, before parsing any section.
+
+**REQ-CF-container-031** An all-zero `content_hash` means no hash was computed; a reader accepts such a container without a content hash check.
+
+**REQ-CF-container-032** A reader discards a debug section whose bytes do not reproduce a nonzero `debug_hash`; the container otherwise loads, so a modified debug section cannot stop execution.
+
+**REQ-CF-container-033** Removing the debug section (truncating the file at its offset and zeroing its directory entry, `debug_hash` and flag bit) leaves `content_hash` valid.
+
+The all-zero form exists for containers assembled without a writer that hashes — hand-built test fixtures and files that predate hashing. The compiler never writes it (REQ-CF-codegen-026). Until the content signature exists, an unhashed container is indistinguishable from an unsigned one and is accepted for the same reason: there is no trust anchor to reject it against. Once signatures land, the all-zero form will fail signature verification like any other unsigned container.
 
 ## Deterministic Ordering
 

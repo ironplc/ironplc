@@ -7,6 +7,11 @@ V6002
 The VM opened the file but could not parse it as a valid bytecode container. The
 file may be corrupted, truncated, or not an ``.iplc`` file.
 
+When the message says ``content hash mismatch``, the file parsed but its
+bytecode does not match the hash the compiler recorded in the header: the file
+was changed after it was compiled, whether by corruption in transfer or by
+editing. The VM refuses to run modified bytecode.
+
 Solutions
 ---------
 

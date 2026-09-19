@@ -5,6 +5,7 @@ use crate::code_section::CodeSection;
 use crate::constant_pool::ConstantPool;
 use crate::debug_section::DebugSection;
 use crate::header::{FileHeader, FLAG_HAS_DEBUG_SECTION, FLAG_HAS_TYPE_SECTION, HEADER_SIZE};
+use crate::integrity;
 use crate::task_table::TaskTable;
 use crate::type_section::TypeSection;
 use crate::ContainerError;
@@ -27,7 +28,9 @@ impl Container {
     ///
     /// Each section is serialized to a buffer first, so the header is
     /// derived from the bytes that actually reach the file — the section
-    /// directory from their lengths — before anything is written.
+    /// directory from their lengths, `content_hash` and `debug_hash` from
+    /// their contents — before anything is written. Whatever `self.header`
+    /// carries in those fields is replaced.
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
         let task_bytes = serialize(|buf| self.task_table.write_to(buf))?;
         let type_bytes = match &self.type_section {
@@ -71,6 +74,13 @@ impl Container {
             header.flags |= FLAG_HAS_DEBUG_SECTION;
         }
 
+        header.content_hash = integrity::content_hash(&type_bytes, &const_bytes, &code_bytes);
+        header.debug_hash = if self.debug_section.is_some() {
+            integrity::debug_hash(&debug_bytes)
+        } else {
+            integrity::NO_HASH
+        };
+
         header.write_to(w)?;
         w.write_all(&task_bytes)?;
         w.write_all(&type_bytes)?;
@@ -82,6 +92,13 @@ impl Container {
     }
 
     /// Reads a container from the given reader.
+    ///
+    /// Rejects the container with [`ContainerError::ContentHashMismatch`]
+    /// when the header carries a content hash that the type, constant and
+    /// code sections do not reproduce. A debug section whose bytes do not
+    /// reproduce a carried `debug_hash` is discarded, not fatal, so a
+    /// modified or stale debug section cannot stop a program from running
+    /// — that is the separation ADR-0007 asks for.
     pub fn read_from(r: &mut impl Read) -> Result<Self, ContainerError> {
         let header = FileHeader::read_from(r)?;
 
@@ -91,6 +108,23 @@ impl Container {
         r.read_to_end(&mut rest)?;
 
         let base = HEADER_SIZE as u32;
+
+        // Integrity first, so a modified file reports the modification
+        // rather than whatever parse error the modification happens to
+        // cause. An unhashed container skips this and is parsed as
+        // leniently as before.
+        if header.content_hash != integrity::NO_HASH {
+            integrity::check_content_hash(
+                &header.content_hash,
+                section_bytes(&rest, header.type_section_offset, header.type_section_size)?,
+                section_bytes(
+                    &rest,
+                    header.const_section_offset,
+                    header.const_section_size,
+                )?,
+                section_bytes(&rest, header.code_section_offset, header.code_section_size)?,
+            )?;
+        }
 
         let task_start = (header.task_section_offset - base) as usize;
         let task_end = task_start + header.task_section_size as usize;
@@ -125,11 +159,14 @@ impl Container {
             header.code_section_size,
         )?;
 
-        // Parse debug section if present (non-fatal on error).
+        // Parse debug section if present (non-fatal on error or on a
+        // debug hash mismatch).
         let debug_section = if header.debug_section_size > 0 {
             let debug_start = (header.debug_section_offset - base) as usize;
             let debug_end = debug_start + header.debug_section_size as usize;
-            if debug_end <= rest.len() {
+            if debug_end <= rest.len()
+                && integrity::debug_hash_matches(&header.debug_hash, &rest[debug_start..debug_end])
+            {
                 DebugSection::read_from(&mut Cursor::new(&rest[debug_start..debug_end])).ok()
             } else {
                 None
@@ -147,6 +184,20 @@ impl Container {
             debug_section,
         })
     }
+}
+
+/// The bytes of one section, located by its directory entry, within the
+/// bytes that follow the header. An absent section (size 0) is empty; an
+/// entry that points outside `rest` is a [`ContainerError::SectionSizeMismatch`].
+fn section_bytes(rest: &[u8], offset: u32, size: u32) -> Result<&[u8], ContainerError> {
+    if size == 0 {
+        return Ok(&[]);
+    }
+    let start = (offset as usize)
+        .checked_sub(HEADER_SIZE)
+        .ok_or(ContainerError::SectionSizeMismatch)?;
+    rest.get(start..start + size as usize)
+        .ok_or(ContainerError::SectionSizeMismatch)
 }
 
 /// Runs a section writer against a fresh buffer and returns the bytes.
@@ -169,7 +220,7 @@ mod tests {
     };
     use crate::id_types::{ConstantIndex, FunctionId, InstanceId, TaskId, VarIndex};
     use crate::test_support::{
-        round_trip, steel_thread_bytecode, steel_thread_single_function_container,
+        container_bytes, round_trip, steel_thread_bytecode, steel_thread_single_function_container,
         with_tampered_header,
     };
     use crate::ContainerBuilder;
@@ -332,9 +383,13 @@ mod tests {
         container.write_to(&mut buf).unwrap();
 
         // Inflate the declared type_section_size so ts_end exceeds available
-        // bytes, forcing the bounds check in read_from to return None.
+        // bytes, forcing the bounds check in read_from to return None. The
+        // lenient path is for unhashed containers, so drop the hash too.
         let n = buf.len() as u32;
-        let tampered = with_tampered_header(&buf, |h| h.type_section_size = n * 2);
+        let tampered = with_tampered_header(&buf, |h| {
+            h.type_section_size = n * 2;
+            h.content_hash = integrity::NO_HASH;
+        });
 
         let decoded = Container::read_from(&mut Cursor::new(&tampered)).unwrap();
         assert!(decoded.type_section.is_none());
@@ -369,6 +424,27 @@ mod tests {
 
         let decoded = Container::read_from(&mut Cursor::new(&tampered)).unwrap();
         assert!(decoded.debug_section.is_none());
+    }
+
+    #[test]
+    fn container_read_from_when_truncated_inside_code_section_then_section_size_mismatch() {
+        let buf = container_bytes(&steel_thread_single_function_container());
+        let truncated = &buf[..buf.len() - 1];
+        assert!(matches!(
+            Container::read_from(&mut Cursor::new(truncated)),
+            Err(ContainerError::SectionSizeMismatch)
+        ));
+    }
+
+    #[test]
+    fn container_read_from_when_hashed_and_section_offset_inside_header_then_section_size_mismatch()
+    {
+        let buf = container_bytes(&steel_thread_single_function_container());
+        let tampered = with_tampered_header(&buf, |h| h.code_section_offset = 0);
+        assert!(matches!(
+            Container::read_from(&mut Cursor::new(&tampered)),
+            Err(ContainerError::SectionSizeMismatch)
+        ));
     }
 
     #[test]

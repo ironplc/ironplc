@@ -25,10 +25,11 @@ use crate::header::{
     FORMAT_VERSION, HEADER_SIZE, MAGIC,
 };
 use crate::id_types::{FbTypeId, FunctionId};
+use crate::test_support::with_tampered_header;
 use crate::type_section::{
     ArrayDescriptor, FbTypeDescriptor, FieldEntry, FieldType, TypeSection, UserFbDescriptor,
 };
-use crate::{opcode, ConstType, ContainerError};
+use crate::{integrity, opcode, ConstType, Container, ContainerError, ContainerRef};
 
 // ---------------------------------------------------------------------------
 // Meta-test: completeness check
@@ -292,6 +293,140 @@ fn container_spec_req_cf_016_signature_directory_entries_are_zero() {
     assert_eq!(h.sig_section_size, 0);
     assert_eq!(h.debug_sig_offset, 0);
     assert_eq!(h.debug_sig_size, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Container Format — Content and Debug Hashes (REQ-CF-container-028 through
+// REQ-CF-container-033)
+// ---------------------------------------------------------------------------
+
+/// The bytes of one section, as the header's directory locates it.
+fn section(buf: &[u8], offset: u32, size: u32) -> &[u8] {
+    &buf[offset as usize..(offset + size) as usize]
+}
+
+/// The file index of the last byte of a section.
+fn last_byte_of(offset: u32, size: u32) -> usize {
+    (offset + size - 1) as usize
+}
+
+/// Asserts that both readers reject `buf` with `ContentHashMismatch` once
+/// the byte at `index` is flipped.
+fn assert_flipped_byte_is_rejected(buf: &[u8], index: usize) {
+    let mut tampered = buf.to_vec();
+    tampered[index] ^= 0xFF;
+    assert!(matches!(
+        Container::read_from(&mut Cursor::new(&tampered)),
+        Err(ContainerError::ContentHashMismatch)
+    ));
+    let mut offsets = vec![0u32; 4];
+    assert!(matches!(
+        ContainerRef::from_slice(&tampered, &mut offsets),
+        Err(ContainerError::ContentHashMismatch)
+    ));
+}
+
+/// REQ-CF-container-028: content_hash is BLAKE3 over the type section,
+/// constant pool and code section bytes in file order; an absent type
+/// section contributes nothing.
+#[spec_test(REQ_CF_container_028)]
+fn container_spec_req_cf_028_content_hash_covers_type_const_and_code() {
+    let (buf, h) = full_container_bytes();
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(section(&buf, h.type_section_offset, h.type_section_size));
+    hasher.update(section(&buf, h.const_section_offset, h.const_section_size));
+    hasher.update(section(&buf, h.code_section_offset, h.code_section_size));
+    assert_eq!(h.content_hash, *hasher.finalize().as_bytes());
+    assert_ne!(h.content_hash, integrity::NO_HASH);
+
+    let (buf, h) = minimal_container_bytes();
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(section(&buf, h.const_section_offset, h.const_section_size));
+    hasher.update(section(&buf, h.code_section_offset, h.code_section_size));
+    assert_eq!(h.content_hash, *hasher.finalize().as_bytes());
+}
+
+/// REQ-CF-container-029: debug_hash is BLAKE3 over the debug section bytes,
+/// and all zeros when there is no debug section.
+#[spec_test(REQ_CF_container_029)]
+fn container_spec_req_cf_029_debug_hash_covers_debug_section() {
+    let (buf, h) = full_container_bytes();
+    let debug = section(&buf, h.debug_section_offset, h.debug_section_size);
+    assert_eq!(h.debug_hash, *blake3::hash(debug).as_bytes());
+
+    let (_, h) = minimal_container_bytes();
+    assert_eq!(h.debug_hash, integrity::NO_HASH);
+}
+
+/// REQ-CF-container-030: a byte changed in any hashed section is rejected
+/// with ContentHashMismatch by both readers.
+#[spec_test(REQ_CF_container_030)]
+fn container_spec_req_cf_030_modified_hashed_section_is_rejected() {
+    let (buf, h) = full_container_bytes();
+    assert_flipped_byte_is_rejected(
+        &buf,
+        last_byte_of(h.type_section_offset, h.type_section_size),
+    );
+    assert_flipped_byte_is_rejected(
+        &buf,
+        last_byte_of(h.const_section_offset, h.const_section_size),
+    );
+    assert_flipped_byte_is_rejected(
+        &buf,
+        last_byte_of(h.code_section_offset, h.code_section_size),
+    );
+}
+
+/// REQ-CF-container-031: an all-zero content_hash is not checked, so a
+/// container that would otherwise be rejected loads.
+#[spec_test(REQ_CF_container_031)]
+fn container_spec_req_cf_031_zero_content_hash_is_not_checked() {
+    let (buf, h) = full_container_bytes();
+    let mut unhashed = with_tampered_header(&buf, |h| h.content_hash = integrity::NO_HASH);
+    unhashed[last_byte_of(h.code_section_offset, h.code_section_size)] ^= 0xFF;
+
+    assert!(Container::read_from(&mut Cursor::new(&unhashed)).is_ok());
+    let mut offsets = vec![0u32; 4];
+    assert!(ContainerRef::from_slice(&unhashed, &mut offsets).is_ok());
+}
+
+/// REQ-CF-container-032: a debug section that does not reproduce a nonzero
+/// debug_hash is discarded; the container still loads.
+#[spec_test(REQ_CF_container_032)]
+fn container_spec_req_cf_032_debug_hash_mismatch_discards_debug_section() {
+    let (mut buf, h) = full_container_bytes();
+    // Change a byte the parser accepts either way: the function name.
+    let debug = section(&buf, h.debug_section_offset, h.debug_section_size);
+    let name_at = debug.windows(4).position(|w| w == b"MAIN").unwrap();
+    buf[h.debug_section_offset as usize + name_at] = b'X';
+
+    let container = Container::read_from(&mut Cursor::new(&buf)).unwrap();
+    assert!(container.debug_section.is_none());
+    assert_eq!(container.code.functions.len(), 1);
+
+    // The same bytes parse once the hash says nothing about them, so it was
+    // the hash check that discarded the section, not the parser.
+    let unhashed = with_tampered_header(&buf, |h| h.debug_hash = integrity::NO_HASH);
+    let container = Container::read_from(&mut Cursor::new(&unhashed)).unwrap();
+    assert!(container.debug_section.is_some());
+}
+
+/// REQ-CF-container-033: stripping the debug section leaves content_hash
+/// valid, so the stripped container loads unchanged.
+#[spec_test(REQ_CF_container_033)]
+fn container_spec_req_cf_033_stripped_debug_section_keeps_content_hash_valid() {
+    let (buf, h) = full_container_bytes();
+    let stripped = with_tampered_header(&buf[..h.debug_section_offset as usize], |h| {
+        h.debug_section_offset = 0;
+        h.debug_section_size = 0;
+        h.debug_hash = integrity::NO_HASH;
+        h.flags &= !FLAG_HAS_DEBUG_SECTION;
+    });
+
+    let container = Container::read_from(&mut Cursor::new(&stripped)).unwrap();
+    assert_eq!(container.header.content_hash, h.content_hash);
+    assert!(container.debug_section.is_none());
+    assert_eq!(container.code.functions.len(), 1);
 }
 
 // ---------------------------------------------------------------------------

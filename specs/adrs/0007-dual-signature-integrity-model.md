@@ -4,6 +4,7 @@ status: proposed
 date: 2026-02-18
 amended: 2026-05-22 (BLAKE3 throughout; per-file source hashes moved to debug section)
 amended: 2026-09-11 (Implementation Status added; status unchanged)
+amended: 2026-09-19 (Implementation Status updated: content and debug hashes computed and checked; status unchanged)
 
 ## Context and Problem Statement
 
@@ -67,14 +68,28 @@ Verify by:
 4. Confirming each `SOURCE_FILE_TABLE` entry's hash matches a BLAKE3 computed over the corresponding source file
 5. Attempting to replace any per-file hash in the `SOURCE_FILE_TABLE` and confirming the debug signature rejects it
 
-## Implementation Status (as of 2026-09-11)
+## Implementation Status (as of 2026-09-19)
 
-This ADR is still `proposed`, and that is accurate: one of its three
-cryptographic elements exists, and neither signature does. Recorded here so a
+This ADR is still `proposed`, and that is accurate: all three of its
+cryptographic elements exist, and neither signature does. Recorded here so a
 reader is not left to infer it. Tracked by
 [issue #1583](https://github.com/ironplc/ironplc/issues/1583).
 
 What landed:
+
+* **Content hash (element 1) and debug hash (element 3).** `Container::write_to`
+  computes `content_hash` as BLAKE3 over the type, constant and code sections
+  and `debug_hash` as BLAKE3 over the debug section; `Container::read_from` and
+  the `no_std` `ContainerRef::from_slice` recompute the content hash and reject
+  a mismatch with `ContainerError::ContentHashMismatch`, and `read_from`
+  discards a debug section that does not reproduce `debug_hash`. This is the
+  hash half of Confirmation items 1–3: stripping the debug section leaves the
+  content hash valid, a changed code byte is rejected, and a changed debug byte
+  discards the debug info while the code still loads — each pinned by a
+  conformance test in `specs/design/bytecode-container-format.md`
+  (REQ-CF-container-028 through 033). An all-zero `content_hash` is accepted
+  unchecked, because without a signature there is nothing to reject an
+  unhashed container against; the compiler never writes one.
 
 * **Per-file source hashes (element 2), in full.** The debug section's
   `SOURCE_FILE_TABLE` carries one BLAKE3 digest per source file, computed in
@@ -82,18 +97,16 @@ What landed:
   the same bytes. The "which file drifted" granularity this ADR argued for is
   real and usable today.
 * BLAKE3 throughout, as the 2026-05-22 amendment recorded.
-* The container *shape* for the rest: `FileHeader` declares `content_hash`,
-  `debug_hash` and `layout_hash`, and the section directory reserves
+* The container *shape* for the rest: the section directory reserves
   `sig_section_offset` / `sig_section_size` and `debug_sig_offset` /
   `debug_sig_size`. The format does not need a version bump to carry
   signatures.
 
 What did not:
 
-* **The header hashes are never computed.** `content_hash`, `debug_hash` and
-  `layout_hash` are written as zeros; the only code that reads them is
-  `project::disassemble`, which prints them as hex. Elements 1 and 3 of the model
-  exist as field declarations only.
+* **`layout_hash` is never computed.** It is written as zeros and only
+  `project::disassemble` reads it. It is not part of this ADR's model; it
+  serves online change, and stays open with that feature.
 * **Neither signature exists.** Nothing writes the signature sections and nothing
   reads them; there is no key handling, and no signing crate is a dependency of
   any crate in the workspace. The algorithm question is settled on paper — this
@@ -102,16 +115,19 @@ What did not:
 * **The PLC does not reject anything.** "Required. The PLC rejects bytecode
   without a valid content signature" has no implementation; the VM loads any
   container it can parse.
-* Confirmation items 1, 2, 3 and 5 are open — each one tests a signature
-  verifying or rejecting, and there is no verification to exercise. Item 4 (each
-  `SOURCE_FILE_TABLE` entry's hash matches BLAKE3 over the file) is satisfied.
+* Confirmation items 1, 2, 3 and 5 are open in their signature form — each one
+  tests a signature verifying or rejecting, and there is no signature to
+  exercise. Their hash form (the same modification, caught by the hash rather
+  than by a signature over it) is what landed. Item 4 (each `SOURCE_FILE_TABLE`
+  entry's hash matches BLAKE3 over the file) is satisfied.
 
-The consequence worth stating plainly: the per-file hashes that *did* land are
-not tamper-evident on their own. This ADR makes them so via the debug signature
-that transitively covers them, and that signature does not exist — so an
-attacker who edits the debug section can edit the hashes in it to match. The
-offline-tampering protection the ADR claims for element 2 is not in force until
-element 3 is.
+The consequence worth stating plainly: the hashes are tamper-*evident*, not
+tamper-*proof*. An attacker who edits the code section can recompute
+`content_hash` to match, and one who edits the debug section can recompute
+`debug_hash` and the per-file hashes it covers. What the hashes catch today is
+corruption, truncation and modification by anyone who does not also rewrite
+the header. The protection this ADR claims against a deliberate attacker is
+not in force until the signatures are.
 
 The decision stands; the work is unfinished. The pull request that lands
 signature generation and verification is the one that flips this ADR to
