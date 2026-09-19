@@ -193,7 +193,7 @@ impl<'a> LspServer<'a> {
                         work_done_progress: None,
                     },
                     legend: SemanticTokensLegend {
-                        token_types: TOKEN_TYPE_LEGEND.into(),
+                        token_types: TOKEN_TYPE_LEGEND.to_vec(),
                         token_modifiers: vec![],
                     },
                     range: None,

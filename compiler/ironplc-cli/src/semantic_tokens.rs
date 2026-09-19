@@ -51,7 +51,7 @@ fn to_deltas(absolute: Vec<SemanticToken>) -> Vec<SemanticToken> {
 }
 
 // Token types that this produces.
-pub const TOKEN_TYPE_LEGEND: [SemanticTokenType; 6] = [
+pub static TOKEN_TYPE_LEGEND: [SemanticTokenType; 6] = [
     SemanticTokenType::VARIABLE,
     SemanticTokenType::KEYWORD,
     SemanticTokenType::MODIFIER,
@@ -259,157 +259,360 @@ impl From<LspTokenType> for Option<SemanticToken> {
 
 #[cfg(test)]
 mod test {
-    use ironplc_dsl::core::SourceSpan;
-    use ironplc_parser::token::{Token, TokenType};
+    use ironplc_dsl::core::FileId;
+    use ironplc_parser::options::CompilerOptions;
+    use ironplc_parser::token::TokenType;
+    use ironplc_parser::tokenize_program;
     use lsp_types::SemanticToken;
 
-    use super::LspTokenType;
+    use super::{to_semantic_tokens, TOKEN_TYPE_LEGEND};
+    use crate::test_helpers::resolve_lsp_tokens;
+
+    // The legend entries by the name the editor sees them under.
+    const COMMENT: &str = "comment";
+    const KEYWORD: &str = "keyword";
+    const MODIFIER: &str = "modifier";
+    const OPERATOR: &str = "operator";
+    const STRING: &str = "string";
+    const VARIABLE: &str = "variable";
+
+    /// Source that lexes to every `TokenType` except the braces, which only
+    /// survive as tokens when pragma collapsing is off (see the test below).
+    /// It does not need to parse, only to lex: `END_TASK` is not IEC 61131-3
+    /// but the lexer knows it, and the OOP, reference, pointer, long time
+    /// type, short-circuit, persistent, partial access, pragma and C-style
+    /// comment forms need their dialect gates on so nothing is demoted to an
+    /// identifier before it reaches the mapping.
+    const SOURCE: &str = r#"(* Every token type the lexer produces, so the tag of each one is checked. *)
+// C-style comments are tokens too
+/* and so are block ones */
+{attribute 'qualified_only'}
+TYPE
+  Point : STRUCT x : INT := 0; s : STRING[3] := 'abc'; w : WSTRING[3] := "abc"; END_STRUCT;
+  Level : (Low, High) := Low;
+  Small : INT (-1..1);
+  Words : ARRAY [0..3] OF WORD;
+END_TYPE
+
+INTERFACE ICounter
+  METHOD Reset END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK ABSTRACT Counter IMPLEMENTS ICounter
+  VAR_INPUT Up : BOOL R_EDGE; Down : BOOL F_EDGE; END_VAR
+  VAR_OUTPUT Count : DINT; END_VAR
+  VAR_IN_OUT Shared : LINT; END_VAR
+  VAR_TEMP Scratch : SINT; END_VAR
+  VAR RETAIN Kept : USINT; END_VAR
+  VAR NON_RETAIN Lost : UINT; END_VAR
+  VAR CONSTANT Limit : UDINT := UDINT#16#FF; END_VAR
+  VAR PERSISTENT Saved : ULINT := 8#17; END_VAR
+  VAR
+    Bits : BYTE := 2#1010; Wide : DWORD; Wider : LWORD;
+    Ratio : REAL := 1.5; Precise : LREAL := 2.5E3;
+    Elapsed : TIME; Long : LTIME; Day : DATE; LDay : LDATE;
+    Tick : TIME_OF_DAY; Tock : TOD; LTick : LTIME_OF_DAY; LTock : LTOD;
+    Stamp : DATE_AND_TIME; Stamp2 : DT; LStamp : LDATE_AND_TIME; LStamp2 : LDT;
+    Ptr : REF_TO INT := NULL; Alias : REFERENCE TO INT; Raw : POINTER TO INT;
+    Io AT %IX0.0 : BOOL; Partial AT %Q* : BOOL;
+  END_VAR
+  METHOD Reset
+    THIS^.Count := 0;
+    SUPER^.Reset();
+  END_METHOD
+  Count := 1 + 2 - 3 * 4 / 5 MOD 6 ** 7;
+  Count := REF(Count)^;
+  Up := Up AND Down OR Up XOR Down & NOT Up;
+  Up := Up AND_THEN Down OR_ELSE Up;
+  Up := 1 = 2 OR 3 <> 4 OR 5 < 6 OR 7 > 8 OR 9 <= 10 OR 11 >= 12;
+  Wider := Wide.%X0 + Wide.%B0 + Wide.%W0 + Wide.%D0 + Wide.%L0;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Derived EXTENDS Counter
+END_FUNCTION_BLOCK
+
+FUNCTION Clamp : ANY_NUM
+  VAR_INPUT
+    Value : ANY; Derived : ANY_DERIVED; Elementary : ANY_ELEMENTARY;
+    Magnitude : ANY_MAGNITUDE; RealValue : ANY_REAL; IntValue : ANY_INT;
+    BitValue : ANY_BIT; StringValue : ANY_STRING; DateValue : ANY_DATE;
+  END_VAR
+  VAR_EXTERNAL Shared : Point; END_VAR
+  IF Value > 1 THEN RETURN; ELSIF Value < 0 THEN Clamp := 0; ELSE Clamp := Value; END_IF;
+  CASE IntValue OF 1, 2..3: Clamp := 1; ELSE Clamp := 0; END_CASE;
+  FOR IntValue := 0 TO 10 BY 2 DO EXIT; END_FOR;
+  WHILE Value > 0 DO Value := Value - 1; END_WHILE;
+  REPEAT Value := Value + 1; UNTIL Value > 0 END_REPEAT;
+  Clamp := MAX(EN := TRUE, ENO => BitValue, IN1 := 1, IN2 := 2);
+  Clamp := SEL(G := FALSE, IN0 := 0, IN1 := 1);
+END_FUNCTION
+
+PROGRAM Main
+  VAR Counter1 : Counter; Running : BOOL; END_VAR
+  INITIAL_STEP Start: Startup(N); END_STEP
+  TRANSITION FROM Start TO Run := Running; END_TRANSITION
+  STEP Run: END_STEP
+  ACTION Startup: Running := TRUE; END_ACTION
+END_PROGRAM
+
+CONFIGURATION Config
+  VAR_GLOBAL Global : INT; END_VAR
+  VAR_ACCESS
+    Remote : Plc.Main1.Running : BOOL READ_ONLY;
+    Writable : Plc.Main1.Running : BOOL READ_WRITE;
+  END_VAR
+  RESOURCE Plc ON PLC
+    TASK Fast (INTERVAL := Period, PRIORITY := 1); END_TASK
+    PROGRAM Main1 WITH Fast : Main;
+  END_RESOURCE
+  VAR_CONFIG Plc.Main1.Counter1.Kept : USINT := 1; END_VAR
+END_CONFIGURATION"#;
+
+    /// The `(lexeme, legend name)` of every semantic token [`SOURCE`]
+    /// produces, one line here per line of source. Whatever is missing
+    /// (punctuation, numbers, whitespace) is dropped by the mapping.
+    #[rustfmt::skip]
+    const EXPECTED: &[(&str, &str)] = &[
+    ("(* Every token type the lexer produces, so the tag of each one is checked. *)", COMMENT),
+    ("// C-style comments are tokens too", COMMENT),
+    ("/* and so are block ones */", COMMENT),
+    ("{attribute 'qualified_only'}", KEYWORD),
+    ("TYPE", KEYWORD),
+    ("Point", VARIABLE), ("STRUCT", KEYWORD), ("x", VARIABLE), ("INT", KEYWORD),
+    (":=", OPERATOR), ("s", VARIABLE), ("STRING", KEYWORD), (":=", OPERATOR), ("'abc'", STRING),
+    ("w", VARIABLE), ("WSTRING", KEYWORD), (":=", OPERATOR), ("\"abc\"", STRING),
+    ("END_STRUCT", KEYWORD),
+    ("Level", VARIABLE), ("Low", VARIABLE), ("High", VARIABLE), (":=", OPERATOR),
+    ("Low", VARIABLE),
+    ("Small", VARIABLE), ("INT", KEYWORD), ("-", OPERATOR),
+    ("Words", VARIABLE), ("ARRAY", KEYWORD), ("OF", KEYWORD), ("WORD", KEYWORD),
+    ("END_TYPE", KEYWORD),
+    ("INTERFACE", KEYWORD), ("ICounter", VARIABLE),
+    ("METHOD", KEYWORD), ("Reset", VARIABLE), ("END_METHOD", KEYWORD),
+    ("END_INTERFACE", KEYWORD),
+    ("FUNCTION_BLOCK", KEYWORD), ("ABSTRACT", KEYWORD), ("Counter", VARIABLE),
+    ("IMPLEMENTS", KEYWORD), ("ICounter", VARIABLE),
+    ("VAR_INPUT", KEYWORD), ("Up", VARIABLE), ("BOOL", KEYWORD), ("R_EDGE", KEYWORD),
+    ("Down", VARIABLE), ("BOOL", KEYWORD), ("F_EDGE", KEYWORD), ("END_VAR", KEYWORD),
+    ("VAR_OUTPUT", KEYWORD), ("Count", VARIABLE), ("DINT", KEYWORD), ("END_VAR", KEYWORD),
+    ("VAR_IN_OUT", KEYWORD), ("Shared", VARIABLE), ("LINT", KEYWORD), ("END_VAR", KEYWORD),
+    ("VAR_TEMP", KEYWORD), ("Scratch", VARIABLE), ("SINT", KEYWORD), ("END_VAR", KEYWORD),
+    ("VAR", KEYWORD), ("RETAIN", MODIFIER), ("Kept", VARIABLE), ("USINT", KEYWORD),
+    ("END_VAR", KEYWORD),
+    ("VAR", KEYWORD), ("NON_RETAIN", MODIFIER), ("Lost", VARIABLE), ("UINT", KEYWORD),
+    ("END_VAR", KEYWORD),
+    ("VAR", KEYWORD), ("CONSTANT", MODIFIER), ("Limit", VARIABLE), ("UDINT", KEYWORD),
+    (":=", OPERATOR), ("UDINT", KEYWORD), ("END_VAR", KEYWORD),
+    ("VAR", KEYWORD), ("PERSISTENT", MODIFIER), ("Saved", VARIABLE), ("ULINT", KEYWORD),
+    (":=", OPERATOR), ("END_VAR", KEYWORD),
+    ("VAR", KEYWORD),
+    ("Bits", VARIABLE), ("BYTE", KEYWORD), (":=", OPERATOR), ("Wide", VARIABLE),
+    ("DWORD", KEYWORD), ("Wider", VARIABLE), ("LWORD", KEYWORD),
+    ("Ratio", VARIABLE), ("REAL", KEYWORD), (":=", OPERATOR), ("Precise", VARIABLE),
+    ("LREAL", KEYWORD), (":=", OPERATOR),
+    ("Elapsed", VARIABLE), ("TIME", KEYWORD), ("Long", VARIABLE), ("LTIME", KEYWORD),
+    ("Day", VARIABLE), ("DATE", KEYWORD), ("LDay", VARIABLE), ("LDATE", KEYWORD),
+    ("Tick", VARIABLE), ("TIME_OF_DAY", KEYWORD), ("Tock", VARIABLE), ("TOD", KEYWORD),
+    ("LTick", VARIABLE), ("LTIME_OF_DAY", KEYWORD), ("LTock", VARIABLE), ("LTOD", KEYWORD),
+    ("Stamp", VARIABLE), ("DATE_AND_TIME", KEYWORD), ("Stamp2", VARIABLE), ("DT", KEYWORD),
+    ("LStamp", VARIABLE), ("LDATE_AND_TIME", KEYWORD), ("LStamp2", VARIABLE), ("LDT", KEYWORD),
+    ("Ptr", VARIABLE), ("REF_TO", KEYWORD), ("INT", KEYWORD), (":=", OPERATOR),
+    ("NULL", KEYWORD), ("Alias", VARIABLE), ("REFERENCE", KEYWORD), ("TO", KEYWORD),
+    ("INT", KEYWORD), ("Raw", VARIABLE), ("POINTER", KEYWORD), ("TO", KEYWORD),
+    ("INT", KEYWORD),
+    ("Io", VARIABLE), ("AT", KEYWORD), ("%IX0.0", OPERATOR), ("BOOL", KEYWORD),
+    ("Partial", VARIABLE), ("AT", KEYWORD), ("%Q*", OPERATOR), ("BOOL", KEYWORD),
+    ("END_VAR", KEYWORD),
+    ("METHOD", KEYWORD), ("Reset", VARIABLE),
+    ("THIS", KEYWORD), ("^", OPERATOR), ("Count", VARIABLE), (":=", OPERATOR),
+    ("SUPER", KEYWORD), ("^", OPERATOR), ("Reset", VARIABLE),
+    ("END_METHOD", KEYWORD),
+    ("Count", VARIABLE), (":=", OPERATOR), ("+", OPERATOR), ("-", OPERATOR), ("*", OPERATOR),
+    ("/", OPERATOR), ("MOD", OPERATOR), ("**", OPERATOR),
+    ("Count", VARIABLE), (":=", OPERATOR), ("REF", KEYWORD), ("Count", VARIABLE),
+    ("^", OPERATOR),
+    ("Up", VARIABLE), (":=", OPERATOR), ("Up", VARIABLE), ("AND", OPERATOR), ("Down", VARIABLE),
+    ("OR", OPERATOR), ("Up", VARIABLE), ("XOR", OPERATOR), ("Down", VARIABLE), ("&", OPERATOR),
+    ("NOT", OPERATOR), ("Up", VARIABLE),
+    ("Up", VARIABLE), (":=", OPERATOR), ("Up", VARIABLE), ("AND_THEN", OPERATOR),
+    ("Down", VARIABLE), ("OR_ELSE", OPERATOR), ("Up", VARIABLE),
+    ("Up", VARIABLE), (":=", OPERATOR), ("=", OPERATOR), ("OR", OPERATOR), ("<>", OPERATOR),
+    ("OR", OPERATOR), ("<", OPERATOR), ("OR", OPERATOR), (">", OPERATOR), ("OR", OPERATOR),
+    ("<=", OPERATOR), ("OR", OPERATOR), (">=", OPERATOR),
+    ("Wider", VARIABLE), (":=", OPERATOR), ("Wide", VARIABLE), ("%X0", OPERATOR),
+    ("+", OPERATOR), ("Wide", VARIABLE), ("%B0", OPERATOR), ("+", OPERATOR), ("Wide", VARIABLE),
+    ("%W0", OPERATOR), ("+", OPERATOR), ("Wide", VARIABLE), ("%D0", OPERATOR), ("+", OPERATOR),
+    ("Wide", VARIABLE), ("%L0", OPERATOR),
+    ("END_FUNCTION_BLOCK", KEYWORD),
+    ("FUNCTION_BLOCK", KEYWORD), ("Derived", VARIABLE), ("EXTENDS", KEYWORD),
+    ("Counter", VARIABLE),
+    ("END_FUNCTION_BLOCK", KEYWORD),
+    ("FUNCTION", KEYWORD), ("Clamp", VARIABLE), ("ANY_NUM", KEYWORD),
+    ("VAR_INPUT", KEYWORD),
+    ("Value", VARIABLE), ("ANY", KEYWORD), ("Derived", VARIABLE), ("ANY_DERIVED", KEYWORD),
+    ("Elementary", VARIABLE), ("ANY_ELEMENTARY", KEYWORD),
+    ("Magnitude", VARIABLE), ("ANY_MAGNITUDE", KEYWORD), ("RealValue", VARIABLE),
+    ("ANY_REAL", KEYWORD), ("IntValue", VARIABLE), ("ANY_INT", KEYWORD),
+    ("BitValue", VARIABLE), ("ANY_BIT", KEYWORD), ("StringValue", VARIABLE),
+    ("ANY_STRING", KEYWORD), ("DateValue", VARIABLE), ("ANY_DATE", KEYWORD),
+    ("END_VAR", KEYWORD),
+    ("VAR_EXTERNAL", KEYWORD), ("Shared", VARIABLE), ("Point", VARIABLE), ("END_VAR", KEYWORD),
+    ("IF", KEYWORD), ("Value", VARIABLE), (">", OPERATOR), ("THEN", KEYWORD),
+    ("RETURN", KEYWORD), ("ELSIF", KEYWORD), ("Value", VARIABLE), ("<", OPERATOR),
+    ("THEN", KEYWORD), ("Clamp", VARIABLE), (":=", OPERATOR), ("ELSE", KEYWORD),
+    ("Clamp", VARIABLE), (":=", OPERATOR), ("Value", VARIABLE), ("END_IF", KEYWORD),
+    ("CASE", KEYWORD), ("IntValue", VARIABLE), ("OF", KEYWORD), ("Clamp", VARIABLE),
+    (":=", OPERATOR), ("ELSE", KEYWORD), ("Clamp", VARIABLE), (":=", OPERATOR),
+    ("END_CASE", KEYWORD),
+    ("FOR", KEYWORD), ("IntValue", VARIABLE), (":=", OPERATOR), ("TO", KEYWORD),
+    ("BY", KEYWORD), ("DO", KEYWORD), ("EXIT", KEYWORD), ("END_FOR", KEYWORD),
+    ("WHILE", KEYWORD), ("Value", VARIABLE), (">", OPERATOR), ("DO", KEYWORD),
+    ("Value", VARIABLE), (":=", OPERATOR), ("Value", VARIABLE), ("-", OPERATOR),
+    ("END_WHILE", KEYWORD),
+    ("REPEAT", KEYWORD), ("Value", VARIABLE), (":=", OPERATOR), ("Value", VARIABLE),
+    ("+", OPERATOR), ("UNTIL", KEYWORD), ("Value", VARIABLE), (">", OPERATOR),
+    ("END_REPEAT", KEYWORD),
+    ("Clamp", VARIABLE), (":=", OPERATOR), ("MAX", VARIABLE), ("EN", KEYWORD), (":=", OPERATOR),
+    ("TRUE", KEYWORD), ("ENO", KEYWORD), ("=>", OPERATOR), ("BitValue", VARIABLE),
+    ("IN1", VARIABLE), (":=", OPERATOR), ("IN2", VARIABLE), (":=", OPERATOR),
+    ("Clamp", VARIABLE), (":=", OPERATOR), ("SEL", VARIABLE), ("G", VARIABLE), (":=", OPERATOR),
+    ("FALSE", KEYWORD), ("IN0", VARIABLE), (":=", OPERATOR), ("IN1", VARIABLE),
+    (":=", OPERATOR),
+    ("END_FUNCTION", KEYWORD),
+    ("PROGRAM", KEYWORD), ("Main", VARIABLE),
+    ("VAR", KEYWORD), ("Counter1", VARIABLE), ("Counter", VARIABLE), ("Running", VARIABLE),
+    ("BOOL", KEYWORD), ("END_VAR", KEYWORD),
+    ("INITIAL_STEP", KEYWORD), ("Start", VARIABLE), ("Startup", VARIABLE), ("N", VARIABLE),
+    ("END_STEP", KEYWORD),
+    ("TRANSITION", KEYWORD), ("FROM", KEYWORD), ("Start", VARIABLE), ("TO", KEYWORD),
+    ("Run", VARIABLE), (":=", OPERATOR), ("Running", VARIABLE), ("END_TRANSITION", KEYWORD),
+    ("STEP", KEYWORD), ("Run", VARIABLE), ("END_STEP", KEYWORD),
+    ("ACTION", KEYWORD), ("Startup", VARIABLE), ("Running", VARIABLE), (":=", OPERATOR),
+    ("TRUE", KEYWORD), ("END_ACTION", KEYWORD),
+    ("END_PROGRAM", KEYWORD),
+    ("CONFIGURATION", KEYWORD), ("Config", VARIABLE),
+    ("VAR_GLOBAL", KEYWORD), ("Global", VARIABLE), ("INT", KEYWORD), ("END_VAR", KEYWORD),
+    ("VAR_ACCESS", KEYWORD),
+    ("Remote", VARIABLE), ("Plc", VARIABLE), ("Main1", VARIABLE), ("Running", VARIABLE),
+    ("BOOL", KEYWORD), ("READ_ONLY", KEYWORD),
+    ("Writable", VARIABLE), ("Plc", VARIABLE), ("Main1", VARIABLE), ("Running", VARIABLE),
+    ("BOOL", KEYWORD), ("READ_WRITE", KEYWORD),
+    ("END_VAR", KEYWORD),
+    ("RESOURCE", KEYWORD), ("Plc", VARIABLE), ("ON", KEYWORD), ("PLC", VARIABLE),
+    ("TASK", KEYWORD), ("Fast", VARIABLE), ("INTERVAL", VARIABLE), (":=", OPERATOR),
+    ("Period", VARIABLE), ("PRIORITY", VARIABLE), (":=", OPERATOR), ("END_TASK", KEYWORD),
+    ("PROGRAM", KEYWORD), ("Main1", VARIABLE), ("WITH", KEYWORD), ("Fast", VARIABLE),
+    ("Main", VARIABLE),
+    ("END_RESOURCE", KEYWORD),
+    ("VAR_CONFIG", KEYWORD), ("Plc", VARIABLE), ("Main1", VARIABLE), ("Counter1", VARIABLE),
+    ("Kept", VARIABLE), ("USINT", KEYWORD), (":=", OPERATOR), ("END_VAR", KEYWORD),
+    ("END_CONFIGURATION", KEYWORD),
+    ];
+
+    /// The token types the mapping drops. Each must lex from [`SOURCE`] so
+    /// that its absence from [`EXPECTED`] shows it was dropped, not that the
+    /// source never contained it.
+    const DROPPED: &[TokenType] = &[
+        TokenType::Newline,
+        TokenType::Whitespace,
+        TokenType::LeftParen,
+        TokenType::RightParen,
+        TokenType::LeftBracket,
+        TokenType::RightBracket,
+        TokenType::Comma,
+        TokenType::Semicolon,
+        TokenType::Colon,
+        TokenType::Period,
+        TokenType::Range,
+        TokenType::Hash,
+        TokenType::HexDigits,
+        TokenType::OctDigits,
+        TokenType::BinDigits,
+        TokenType::FloatingPoint,
+        TokenType::FixedPoint,
+        TokenType::Digits,
+    ];
+
+    /// Every keyword gate on, so the lexer keeps each dialect keyword as its
+    /// own token type instead of demoting it to an identifier.
+    fn every_keyword_enabled() -> CompilerOptions {
+        CompilerOptions {
+            allow_c_style_comments: true,
+            allow_fb_inheritance: true,
+            allow_long_time_types: true,
+            allow_partial_access_syntax: true,
+            allow_persistent_var: true,
+            allow_pointer_to: true,
+            allow_pragmas: true,
+            allow_ref_to: true,
+            allow_reference_to: true,
+            allow_short_circuit_operators: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    /// Decode the delta-encoded stream back to `(lexeme, legend name)` pairs.
+    fn tags<'a>(source: &'a str, tokens: &[SemanticToken]) -> Vec<(&'a str, &'static str)> {
+        resolve_lsp_tokens(source, tokens)
+            .into_iter()
+            .map(|(_, _, lexeme, ty)| (lexeme, TOKEN_TYPE_LEGEND[ty as usize].as_str()))
+            .collect()
+    }
 
     #[test]
-    fn from_lsp_token_type_for_semantic_token() {
-        // This test exists mostly for the purpose of code coverage.
-        let tok_types = vec![
-            TokenType::Newline,
-            TokenType::Whitespace,
-            TokenType::Comment,
-            TokenType::LeftParen,
-            TokenType::RightParen,
-            TokenType::LeftBrace,
-            TokenType::RightBrace,
-            TokenType::Comma,
-            TokenType::Semicolon,
-            TokenType::Colon,
-            TokenType::Period,
-            TokenType::Range,
-            TokenType::Hash,
-            TokenType::SingleByteString,
-            TokenType::DoubleByteString,
-            TokenType::Identifier,
-            TokenType::Digits,
-            TokenType::Action,
-            TokenType::EndAction,
-            TokenType::Array,
-            TokenType::Of,
-            TokenType::At,
-            TokenType::Case,
-            TokenType::Else,
-            TokenType::EndCase,
-            TokenType::For,
-            TokenType::Constant,
-            TokenType::Configuration,
-            TokenType::EndConfiguration,
-            TokenType::En,
-            TokenType::Eno,
-            TokenType::Exit,
-            TokenType::False,
-            TokenType::FEdge,
-            TokenType::To,
-            TokenType::By,
-            TokenType::Do,
-            TokenType::EndFor,
-            TokenType::Function,
-            TokenType::EndFunction,
-            TokenType::FunctionBlock,
-            TokenType::EndFunctionBlock,
-            TokenType::If,
-            TokenType::Then,
-            TokenType::Elsif,
-            TokenType::EndIf,
-            TokenType::InitialStep,
-            TokenType::EndStep,
-            TokenType::Program,
-            TokenType::With,
-            TokenType::EndProgram,
-            TokenType::REdge,
-            TokenType::ReadOnly,
-            TokenType::ReadWrite,
-            TokenType::Repeat,
-            TokenType::Until,
-            TokenType::EndRepeat,
-            TokenType::Resource,
-            TokenType::On,
-            TokenType::EndResource,
-            TokenType::Retain,
-            TokenType::NonRetain,
-            TokenType::Persistent,
-            TokenType::Return,
-            TokenType::Step,
-            TokenType::Struct,
-            TokenType::EndStruct,
-            TokenType::Task,
-            TokenType::EndTask,
-            TokenType::Transition,
-            TokenType::From,
-            TokenType::EndTransition,
-            TokenType::True,
-            TokenType::Type,
-            TokenType::EndType,
-            TokenType::Var,
-            TokenType::EndVar,
-            TokenType::VarInput,
-            TokenType::VarOutput,
-            TokenType::VarInOut,
-            TokenType::VarTemp,
-            TokenType::VarExternal,
-            TokenType::VarAccess,
-            TokenType::VarConfig,
-            TokenType::VarGlobal,
-            TokenType::While,
-            TokenType::EndWhile,
-            TokenType::Bool,
-            TokenType::Sint,
-            TokenType::Int,
-            TokenType::Dint,
-            TokenType::Lint,
-            TokenType::Usint,
-            TokenType::Uint,
-            TokenType::Udint,
-            TokenType::Ulint,
-            TokenType::Real,
-            TokenType::Lreal,
-            TokenType::Time,
-            TokenType::Date,
-            TokenType::TimeOfDay,
-            TokenType::DateAndTime,
-            TokenType::String,
-            TokenType::Byte,
-            TokenType::Word,
-            TokenType::Dword,
-            TokenType::Lword,
-            TokenType::WString,
-            TokenType::DirectAddressIncomplete,
-            TokenType::DirectAddress,
-            TokenType::Or,
-            TokenType::Xor,
-            TokenType::And,
-            TokenType::Equal,
-            TokenType::NotEqual,
-            TokenType::Less,
-            TokenType::Greater,
-            TokenType::LessEqual,
-            TokenType::GreaterEqual,
-            TokenType::Div,
-            TokenType::Star,
-            TokenType::Plus,
-            TokenType::Minus,
-            TokenType::Mod,
-            TokenType::Power,
-            TokenType::Caret,
-            TokenType::Not,
-            TokenType::Assignment,
-            TokenType::RightArrow,
-        ];
+    fn to_semantic_tokens_when_every_token_type_then_each_lexeme_carries_its_tag() {
+        let (tokens, diagnostics) =
+            tokenize_program(SOURCE, &FileId::default(), &every_keyword_enabled(), 0, 0);
+        assert!(
+            diagnostics.is_empty(),
+            "source must lex cleanly: {diagnostics:?}"
+        );
 
-        for tok_type in tok_types {
-            let token = Token {
-                token_type: tok_type,
-                text: "test".to_string(),
-                span: SourceSpan::default(),
-                line: 0,
-                col: 0,
-            };
-            let lsp_token = LspTokenType(token);
-            let _result: Option<SemanticToken> = lsp_token.into();
-        }
+        let lexed: Vec<TokenType> = tokens.iter().map(|t| t.token_type.clone()).collect();
+        let missing: Vec<&TokenType> = DROPPED.iter().filter(|t| !lexed.contains(t)).collect();
+        assert!(missing.is_empty(), "the source never lexes {missing:?}");
+
+        let actual = tags(SOURCE, &to_semantic_tokens(tokens));
+
+        let first_diff = actual.iter().zip(EXPECTED).position(|(a, e)| a != e);
+        assert!(
+            first_diff.is_none(),
+            "token {} is {:?}, expected {:?}",
+            first_diff.unwrap(),
+            actual[first_diff.unwrap()],
+            EXPECTED[first_diff.unwrap()]
+        );
+        assert_eq!(
+            actual.len(),
+            EXPECTED.len(),
+            "unexpected trailing tokens: {:?}",
+            &actual[actual.len().min(EXPECTED.len())..]
+        );
+    }
+
+    #[test]
+    fn to_semantic_tokens_when_pragmas_disabled_then_braces_dropped_and_contents_tagged() {
+        let source = "{attribute 'qualified_only'}";
+        let (tokens, diagnostics) = tokenize_program(
+            source,
+            &FileId::default(),
+            &CompilerOptions::default(),
+            0,
+            0,
+        );
+        assert!(
+            diagnostics.is_empty(),
+            "source must lex cleanly: {diagnostics:?}"
+        );
+
+        let lexed: Vec<TokenType> = tokens.iter().map(|t| t.token_type.clone()).collect();
+        assert!(lexed.contains(&TokenType::LeftBrace));
+        assert!(lexed.contains(&TokenType::RightBrace));
+
+        let actual = tags(source, &to_semantic_tokens(tokens));
+        assert_eq!(
+            actual,
+            [("attribute", VARIABLE), ("'qualified_only'", STRING)]
+        );
     }
 }
