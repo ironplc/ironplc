@@ -279,7 +279,10 @@ pub(crate) fn assign_variables(
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     // LateResolvedType should have been resolved before codegen.
                     // If we reach here, it indicates a bug in the compiler.
-                    return Err(Diagnostic::internal_error());
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        decl.identifier.span(),
+                        "Variable type was not resolved before code generation",
+                    )));
                 }
                 // Other initializer kinds (EnumeratedValues, etc.)
                 // do not yet have type info tracked in codegen.

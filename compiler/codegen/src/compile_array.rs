@@ -798,8 +798,11 @@ pub(crate) fn flatten_array_initial_values(
             ArrayInitialElementKind::Constant(value) => {
                 result.push(value.clone());
             }
-            ArrayInitialElementKind::EnumValue(_) => {
-                return Err(Diagnostic::todo());
+            ArrayInitialElementKind::EnumValue(value) => {
+                return Err(Diagnostic::not_implemented(Label::span(
+                    value.span(),
+                    "Enumerated value in an array initializer",
+                )));
             }
             ArrayInitialElementKind::Repeated(repeated) => {
                 let count = repeated.size.value as usize;

@@ -131,7 +131,12 @@ fn compile_statement(
                 let target_name = resolve_variable_name(&assignment.target);
                 let target_index = target_name
                     .and_then(|name| ctx.variables.get(name).copied())
-                    .ok_or_else(|| Diagnostic::todo())?;
+                    .ok_or_else(|| {
+                        Diagnostic::not_implemented(Label::span(
+                            assignment.target.span(),
+                            "Dereferenced assignment target is not a plain variable",
+                        ))
+                    })?;
 
                 // Compile the value expression (use DEFAULT_OP_TYPE; the referenced
                 // type determines the actual width at runtime).
@@ -789,7 +794,7 @@ fn compile_case_selector(
                     emitter.emit_eq_i64();
                 }
                 // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo()),
+                _ => return Err(non_integer_case_selector(selector_expr)),
             }
             Ok(())
         }
@@ -826,7 +831,7 @@ fn compile_case_selector(
                     emit_le(emitter, op_type);
                 }
                 // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo()),
+                _ => return Err(non_integer_case_selector(selector_expr)),
             }
 
             emitter.emit_bool_and();
@@ -874,11 +879,24 @@ fn compile_case_selector(
                     emitter.emit_eq_i64();
                 }
                 // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo()),
+                _ => return Err(non_integer_case_selector(selector_expr)),
             }
             Ok(())
         }
     }
+}
+
+/// Builds the P9999 for a `CASE` whose selector is not an integer type,
+/// pointing at the selector expression.
+///
+/// The analyzer accepts a `REAL` selector today (tracked in issue #1470), so
+/// codegen is where the program is first refused.
+#[track_caller]
+fn non_integer_case_selector(selector_expr: &Expr) -> Diagnostic {
+    Diagnostic::not_implemented(Label::span(
+        selector_expr.span(),
+        "CASE selector is not an integer type",
+    ))
 }
 
 /// Converts a `SignedInteger` AST node to an `i32` value.

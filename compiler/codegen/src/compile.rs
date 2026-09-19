@@ -511,7 +511,12 @@ fn sort_by_source_position<T>(items: &mut [&T], id: impl Fn(&T) -> &Id) {
 /// about, not only the one that tipped the count.
 fn multiple_programs_not_implemented(what: &str, names: &[&Id]) -> Diagnostic {
     let Some(second) = names.get(1) else {
-        return Diagnostic::internal_error();
+        // Callers only get here with two or more names, so the first name,
+        // when there is one, is the best location for the violation.
+        return Diagnostic::internal_error_at(Label::span(
+            names.first().map(|name| name.span()).unwrap_or_default(),
+            format!("Fewer than two {what}s reported as too many"),
+        ));
     };
     let mut diagnostic = Diagnostic::not_implemented(Label::span(
         second.span(),

@@ -291,10 +291,15 @@ pub(crate) fn compile_user_function(
 
             let data_offset = ctx.data_region_offset;
             let total_bytes = string_region_size(max_length, char_width);
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo())?;
+            ctx.data_region_offset =
+                ctx.data_region_offset
+                    .checked_add(total_bytes)
+                    .ok_or_else(|| {
+                        Diagnostic::not_implemented(Label::span(
+                            spec.keyword_span.clone(),
+                            "Data region overflow",
+                        ))
+                    })?;
 
             if max_length > ctx.max_string_capacity {
                 ctx.max_string_capacity = max_length;
