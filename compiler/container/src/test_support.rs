@@ -21,6 +21,7 @@ use std::vec::Vec;
 use crate::builder::ContainerBuilder;
 use crate::container::Container;
 use crate::debug_section::{iec_type_tag, var_section, VarNameEntry};
+use crate::header::{FileHeader, HEADER_SIZE};
 use crate::id_types::{FunctionId, VarIndex};
 use crate::opcode;
 
@@ -255,4 +256,15 @@ pub fn container_bytes(container: &Container) -> Vec<u8> {
 /// the writer computes are populated.
 pub fn round_trip(container: &Container) -> Container {
     Container::read_from(&mut Cursor::new(&container_bytes(container))).unwrap()
+}
+
+/// Rewrites the header of serialized container `data` with `tamper` applied,
+/// leaving every section byte as it was.
+pub fn with_tampered_header(data: &[u8], tamper: impl FnOnce(&mut FileHeader)) -> Vec<u8> {
+    let mut header = FileHeader::read_from(&mut Cursor::new(&data[..HEADER_SIZE])).unwrap();
+    tamper(&mut header);
+    let mut tampered = Vec::with_capacity(data.len());
+    header.write_to(&mut tampered).unwrap();
+    tampered.extend_from_slice(&data[HEADER_SIZE..]);
+    tampered
 }

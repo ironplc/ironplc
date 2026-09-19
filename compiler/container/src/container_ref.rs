@@ -331,7 +331,9 @@ mod tests {
     use std::vec::Vec;
 
     use crate::opcode;
-    use crate::test_support::{container_bytes, steel_thread_single_function_container};
+    use crate::test_support::{
+        container_bytes, steel_thread_single_function_container, with_tampered_header,
+    };
     use crate::ContainerBuilder;
 
     fn steel_thread_bytes() -> Vec<u8> {
@@ -613,17 +615,6 @@ mod tests {
             read_u16(&data, 2),
             Err(ContainerError::SectionSizeMismatch)
         ));
-    }
-
-    /// Rewrites the header of `data` with `tamper` applied.
-    fn with_tampered_header(data: &[u8], tamper: impl FnOnce(&mut FileHeader)) -> Vec<u8> {
-        let mut header =
-            FileHeader::read_from(&mut std::io::Cursor::new(&data[..HEADER_SIZE])).unwrap();
-        tamper(&mut header);
-        let mut tampered = Vec::with_capacity(data.len());
-        header.write_to(&mut tampered).unwrap();
-        tampered.extend_from_slice(&data[HEADER_SIZE..]);
-        tampered
     }
 
     #[test]

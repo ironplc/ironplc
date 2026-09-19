@@ -25,60 +25,58 @@ pub struct Container {
 impl Container {
     /// Writes the container to the given writer.
     ///
-    /// Computes section offsets and fills the header before writing
-    /// sections in file-layout order.
+    /// Each section is serialized to a buffer first, so the header is
+    /// derived from the bytes that actually reach the file — the section
+    /// directory from their lengths — before anything is written.
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
-        let task_section_offset = HEADER_SIZE as u32;
-        let task_section_size = self.task_table.section_size();
-
-        let mut next_offset = task_section_offset + task_section_size;
+        let task_bytes = serialize(|buf| self.task_table.write_to(buf))?;
+        let type_bytes = match &self.type_section {
+            Some(type_section) => serialize(|buf| type_section.write_to(buf))?,
+            None => Vec::new(),
+        };
+        let const_bytes = serialize(|buf| self.constant_pool.write_to(buf))?;
+        let code_bytes = serialize(|buf| self.code.write_to(buf))?;
+        let debug_bytes = match &self.debug_section {
+            Some(debug) => serialize(|buf| debug.write_to(buf))?,
+            None => Vec::new(),
+        };
 
         let mut header = self.header.clone();
-        header.task_section_offset = task_section_offset;
-        header.task_section_size = task_section_size;
+        let mut next_offset = HEADER_SIZE as u32;
+
+        header.task_section_offset = next_offset;
+        header.task_section_size = task_bytes.len() as u32;
+        next_offset += header.task_section_size;
 
         // Type section (optional, between task table and constant pool)
-        if let Some(type_section) = &self.type_section {
-            let type_section_size = type_section.section_size();
+        if self.type_section.is_some() {
             header.type_section_offset = next_offset;
-            header.type_section_size = type_section_size;
+            header.type_section_size = type_bytes.len() as u32;
             header.flags |= FLAG_HAS_TYPE_SECTION;
-            next_offset += type_section_size;
+            next_offset += header.type_section_size;
         }
 
-        let const_section_offset = next_offset;
-        let const_section_size = self.constant_pool.section_size();
-        header.const_section_offset = const_section_offset;
-        header.const_section_size = const_section_size;
-        next_offset = const_section_offset + const_section_size;
+        header.const_section_offset = next_offset;
+        header.const_section_size = const_bytes.len() as u32;
+        next_offset += header.const_section_size;
 
-        let code_section_offset = next_offset;
-        let code_section_size = self.code.section_size();
-        header.code_section_offset = code_section_offset;
-        header.code_section_size = code_section_size;
+        header.code_section_offset = next_offset;
+        header.code_section_size = code_bytes.len() as u32;
         header.num_functions = self.code.functions.len() as u16;
-        next_offset = code_section_offset + code_section_size;
+        next_offset += header.code_section_size;
 
-        if let Some(debug) = &self.debug_section {
-            let debug_section_size = debug.section_size();
+        if self.debug_section.is_some() {
             header.debug_section_offset = next_offset;
-            header.debug_section_size = debug_section_size;
+            header.debug_section_size = debug_bytes.len() as u32;
             header.flags |= FLAG_HAS_DEBUG_SECTION;
         }
 
         header.write_to(w)?;
-        self.task_table.write_to(w)?;
-
-        if let Some(type_section) = &self.type_section {
-            type_section.write_to(w)?;
-        }
-
-        self.constant_pool.write_to(w)?;
-        self.code.write_to(w)?;
-
-        if let Some(debug) = &self.debug_section {
-            debug.write_to(w)?;
-        }
+        w.write_all(&task_bytes)?;
+        w.write_all(&type_bytes)?;
+        w.write_all(&const_bytes)?;
+        w.write_all(&code_bytes)?;
+        w.write_all(&debug_bytes)?;
 
         Ok(())
     }
@@ -151,6 +149,15 @@ impl Container {
     }
 }
 
+/// Runs a section writer against a fresh buffer and returns the bytes.
+fn serialize(
+    write: impl FnOnce(&mut Vec<u8>) -> Result<(), ContainerError>,
+) -> Result<Vec<u8>, ContainerError> {
+    let mut buf = Vec::new();
+    write(&mut buf)?;
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,6 +170,7 @@ mod tests {
     use crate::id_types::{ConstantIndex, FunctionId, InstanceId, TaskId, VarIndex};
     use crate::test_support::{
         round_trip, steel_thread_bytecode, steel_thread_single_function_container,
+        with_tampered_header,
     };
     use crate::ContainerBuilder;
 
@@ -324,13 +332,9 @@ mod tests {
         container.write_to(&mut buf).unwrap();
 
         // Inflate the declared type_section_size so ts_end exceeds available
-        // bytes, forcing the bounds check at container.rs:109 to return None.
-        let mut header = FileHeader::read_from(&mut Cursor::new(&buf[..HEADER_SIZE])).unwrap();
-        header.type_section_size = buf.len() as u32 * 2;
-
-        let mut tampered = Vec::with_capacity(buf.len());
-        header.write_to(&mut tampered).unwrap();
-        tampered.extend_from_slice(&buf[HEADER_SIZE..]);
+        // bytes, forcing the bounds check in read_from to return None.
+        let n = buf.len() as u32;
+        let tampered = with_tampered_header(&buf, |h| h.type_section_size = n * 2);
 
         let decoded = Container::read_from(&mut Cursor::new(&tampered)).unwrap();
         assert!(decoded.type_section.is_none());
@@ -359,13 +363,9 @@ mod tests {
         container.write_to(&mut buf).unwrap();
 
         // Inflate the declared debug_section_size past the end of the buffer,
-        // triggering the bounds check that returns None at container.rs:135.
-        let mut header = FileHeader::read_from(&mut Cursor::new(&buf[..HEADER_SIZE])).unwrap();
-        header.debug_section_size = buf.len() as u32 * 2;
-
-        let mut tampered = Vec::with_capacity(buf.len());
-        header.write_to(&mut tampered).unwrap();
-        tampered.extend_from_slice(&buf[HEADER_SIZE..]);
+        // triggering the bounds check in read_from that returns None.
+        let n = buf.len() as u32;
+        let tampered = with_tampered_header(&buf, |h| h.debug_section_size = n * 2);
 
         let decoded = Container::read_from(&mut Cursor::new(&tampered)).unwrap();
         assert!(decoded.debug_section.is_none());
