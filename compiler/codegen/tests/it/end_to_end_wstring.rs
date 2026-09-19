@@ -607,3 +607,27 @@ END_PROGRAM
 ",
     &[(3, 1), (4, 0)],
 );
+
+// A wide literal passed straight to a WSTRING parameter, with no wide variable
+// in between. The analyzer used to type every character-string literal STRING
+// and reject this call with P4026.
+// n = var0.
+e2e_i32!(
+    function_when_wstring_parameter_given_wide_literal_then_runs,
+    "
+FUNCTION wide_len : INT
+  VAR_INPUT
+    w : WSTRING[10];
+  END_VAR
+  wide_len := LEN(w);
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := wide_len(\"abcd\");
+END_PROGRAM
+",
+    &[(0, 4)],
+);

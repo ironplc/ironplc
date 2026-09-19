@@ -80,8 +80,11 @@ impl Visitor<Infallible> for RuleUnsupportedExtension {
         // IMPLEMENTS, not ABSTRACT) is no longer flagged: field
         // inheritance through the EXTENDS chain is fully resolved, so
         // there's nothing left unsupported for that shape. IMPLEMENTS
-        // (interface dispatch) and ABSTRACT (instantiation-legality
-        // enforcement) remain unimplemented and still flag.
+        // (interface dispatch) remains unimplemented and still flags.
+        // ABSTRACT still flags because it is not executed: instantiation
+        // legality is enforced by `rule_abstract_not_instantiated`
+        // (P4045) for a direct variable declaration, but indirect
+        // instantiation (as an array element type) is still unchecked.
         if let Some(oop) = &node.oop {
             if !oop.implements.is_empty() || oop.is_abstract {
                 self.flag(oop);

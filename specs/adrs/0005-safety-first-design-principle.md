@@ -1,7 +1,8 @@
 # Safety-First Resolution of Design Trade-Offs
 
-status: proposed
+status: accepted
 date: 2026-02-18
+amended: 2026-09-11 (two applications in the table were later decided otherwise; opcode-budget premise aged)
 
 ## Context and Problem Statement
 
@@ -29,11 +30,16 @@ The principle is: **when a design choice improves safety (verification, type che
 
 ### How this principle was applied
 
+This table records how the principle was applied *at the time of writing*. Two
+of the five applications were later decided otherwise, by ADRs applying this
+same principle to better information; both are marked below. The principle is
+what this ADR decides. The table is illustration, and illustration ages.
+
 | Trade-off | Safety choice | Alternative | Opcodes spent |
 |---|---|---|---|
-| STRING vs WSTRING | Distinct BUILTIN func_id ranges for STRING and WSTRING | Polymorphic dispatch with runtime tag | +1 (BUILTIN opcode; func_id ranges preserve type safety) |
+| STRING vs WSTRING | ~~Distinct BUILTIN func_id ranges for STRING and WSTRING~~ — **superseded by ADR-0034**: one `STR_*` family carries `char_width` with the data, and the VM traps on an encoding mismatch. Safety is enforced at the operand, not the opcode. | Polymorphic dispatch with runtime tag | +1 (BUILTIN opcode; func_id ranges preserve type safety) |
 | Array access | Dedicated LOAD_ARRAY/STORE_ARRAY with mandatory bounds checking | Computed offsets via arithmetic | +2 |
-| TIME arithmetic | Dedicated TIME_ADD/TIME_SUB with type enforcement | Raw I64 arithmetic | +2 |
+| TIME arithmetic | ~~Dedicated TIME_ADD/TIME_SUB with type enforcement~~ — **superseded by ADR-0021**: TIME became a 32-bit millisecond integer, so TIME arithmetic *is* integer arithmetic. The type discipline moved to the analyzer, where the diagnostic beats a runtime trap. No such opcodes exist. | Raw I64 arithmetic | +2 |
 | CASE compilation | JMP_IF chains (no TABLE_SWITCH) | TABLE_SWITCH opcode | +0 (avoided complexity) |
 | Exponentiation | Library call (not an opcode) | Dedicated EXPT opcode | +0 (avoided complexity) |
 
@@ -89,6 +95,36 @@ When in doubt, encode type information and invariants in the opcode. Accept more
 * Bad, because some safe-in-practice designs are rejected in favor of provably-safe designs
 
 ## More Information
+
+### Postscript: the opcode budget is no longer slack (2026-09-11)
+
+The third decision driver reads "at 157 of 256 opcodes used, there are 99 slots
+available; economy is not a binding constraint," and the consequences repeat it
+as "the opcode budget (99 remaining slots) can absorb many more safety-oriented
+additions before becoming a constraint." That premise is gone.
+
+ADR-0033 re-encoded the opcode byte as `[op_class:6][type:2]`, which trades the
+flat 256-value space for 64 operation classes with four type variants each. The
+census today is 63 of 64 op-classes assigned, one free, asserted by
+`encoding_when_op_class_census_taken_then_one_slot_free` in
+`compiler/codegen/tests/it/wire_format.rs`; `encode_opcode` makes a 65th class a
+compile error rather than a silent wrap. ADR-0033's own amendment records that
+the headroom it predicted did not materialise.
+
+**The decision still holds, and the reasoning holds harder.** Safety-first was
+never argued *from* slack — it was argued from the asymmetry between a VM bug in
+a PLC (physical damage) and a larger interpreter binary (flash). That asymmetry
+is unchanged. What changed is the shape of the cost: a new safety distinction is
+no longer paid for out of a hundred spare bytes. It is paid for by moving the
+distinction out of the opcode byte and into the operand stream — either as a
+sub-opcode selecting a family member, which ADR-0033 calls mandatory rather than
+optional, or as typed data the instruction reads, which is how ADR-0034 folded
+WSTRING into the `STR_*` family at zero op-class cost. Both keep the property
+this principle is after: the distinction is still statically visible to the
+verifier, and the VM still enforces it. Only its address changed.
+
+So the checklist below is unchanged, with one addition: a change that would spend
+the last op-class slot needs to say why it cannot be a sub-opcode instead.
 
 ### Why PLC context makes safety-first the right default
 

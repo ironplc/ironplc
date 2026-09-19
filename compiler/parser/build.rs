@@ -5,5 +5,8 @@ fn main() {
         // Partial-access syntax (`REQ-PAB-parser-*`): tokens, grammar, AST and
         // gating.
         "partial-access-bit-syntax.md",
+        // Behavior policies (`REQ-BP-parser-*`): the option surface and the
+        // dialect presets.
+        "behavior-policies.md",
     ]);
 }

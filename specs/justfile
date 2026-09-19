@@ -6,7 +6,7 @@ set windows-shell := ["powershell.exe", "-c"]
 # comments, workflows and documentation all over the repository, not only here.
 
 alias ci := default
-default: adr-numbers plan-citations
+default: adr-numbers adr-front-matter plan-citations
 
 # Fail if one ADR number names more than one decision. The four-digit prefix of
 # a file in specs/adrs/ is that decision's identity: prose and code comments cite
@@ -30,6 +30,50 @@ adr-numbers:
     exit 1
   fi
   echo "ADR numbers: all unique. Check passed."
+
+# Fail if an ADR's front matter is missing or malformed. The status convention
+# in specs/steering/development-standards.md is written in that front matter:
+# `status:` and `date:` directly under the H1, and a status drawn from the four
+# documented values. An ADR that predates the convention (or drifts out of it)
+# is invisible to a status audit -- it reads as neither proposed nor accepted,
+# and a census that greps for `status:` silently skips it.
+adr-front-matter:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd {{justfile_directory()}}/..
+  failed=0
+  while read -r adr; do
+    # Line 1 is the H1, line 2 blank, then status: and date:. Read the first
+    # four lines rather than grepping the whole file so that a `status:` string
+    # quoted deeper in the prose cannot stand in for real front matter.
+    front=$(head -4 "$adr")
+    status=$(printf '%s\n' "$front" | sed -n 's/^status: //p')
+    date=$(printf '%s\n' "$front" | sed -n 's/^date: //p')
+    if [ -z "$status" ]; then
+      echo "error: $adr has no 'status:' in its front matter." >&2
+      failed=1
+      continue
+    fi
+    if [ -z "$date" ]; then
+      echo "error: $adr has no 'date:' in its front matter." >&2
+      failed=1
+    fi
+    case "$status" in
+      proposed|accepted|rejected) ;;
+      "superseded by ADR-"[0-9][0-9][0-9][0-9]*) ;;
+      *)
+        echo "error: $adr has status \"$status\", which is not one of" >&2
+        echo "proposed, accepted, rejected, or \"superseded by ADR-NNNN\"." >&2
+        failed=1
+        ;;
+    esac
+  done < <(git ls-files 'specs/adrs/*.md')
+  if [ "$failed" != "0" ]; then
+    echo >&2
+    echo "See specs/steering/development-standards.md for the status table." >&2
+    exit 1
+  fi
+  echo "ADR front matter: all well-formed. Check passed."
 
 # Fail if anything cites specs/plans/. A plan is deleted before its own PR
 # merges, so a reference to one is either already dead or about to be. Rationale

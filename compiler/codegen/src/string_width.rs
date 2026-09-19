@@ -271,10 +271,11 @@ pub(crate) fn resolve_operand_char_width(
 /// the encoding of a literal written into it, rather than being compared
 /// against it.
 ///
-/// For a `WSTRING` destination that path is currently unreachable: the
-/// analyzer types every character-string literal as `STRING`, so `w := "abc"`
-/// is rejected with P4035 before codegen runs. It is what a `STRING`
-/// destination needs, and is written to be correct if that typing is fixed.
+/// Where the analyzer type-checks the destination -- a simple named assignment
+/// target or a function parameter -- a literal that reaches here already
+/// spells the destination's encoding, because a mismatch is P4035 or P4026
+/// first. The destination still decides for the targets the analyzer does not
+/// check, such as an array element or a structure field.
 ///
 /// Any other expression carries an encoding of its own, and one that is not
 /// `char_width` has no valid bytecode for the store the caller is about to

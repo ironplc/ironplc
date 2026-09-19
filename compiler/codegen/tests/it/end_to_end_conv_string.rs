@@ -60,13 +60,15 @@ END_PROGRAM
 // =========================================================================
 // STRING_TO_<INTEGER>
 //
-// Parses a STRING literal into an integer slot. Invalid input yields 0.
+// The integer targets honor the string-to-number behavior policies; their
+// bounds, the invalid inputs and every policy combination are covered in
+// `end_to_end_string_to_int` and `end_to_end_string_to_udint`. This is the
+// round trip through the string form.
 // =========================================================================
 
 #[rstest]
 #[case::int_valid("INT", "123", 123)]
 #[case::int_negative("INT", "-456", -456)]
-#[case::int_invalid("INT", "abc", 0)]
 #[case::dint_large("DINT", "2147483647", 2147483647)]
 fn string_to_int(#[case] tgt: &str, #[case] input: &str, #[case] expected: i32) {
     let source = format!(
@@ -87,8 +89,9 @@ END_PROGRAM
 // =========================================================================
 // STRING_TO_REAL
 //
-// Kept as distinct assertions: the valid case needs a tolerance compare,
-// the invalid case an exact-zero compare.
+// The real targets honor the string-to-number behavior policies; their
+// grammar, the overflow and NaN rules, and every policy combination are
+// covered in `end_to_end_string_to_real`. This is the plain conversion.
 // =========================================================================
 
 e2e_f32_near!(
@@ -104,20 +107,6 @@ PROGRAM main
 END_PROGRAM
 ",
     &[(1, 2.5)],
-);
-
-e2e_f32!(
-    string_to_real_when_invalid_then_zero,
-    "
-PROGRAM main
-  VAR
-    s : STRING := 'xyz';
-    x : REAL;
-  END_VAR
-  x := STRING_TO_REAL(s);
-END_PROGRAM
-",
-    &[(1, 0.0)],
 );
 
 #[test]

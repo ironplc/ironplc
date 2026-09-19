@@ -20,6 +20,7 @@ use crate::function_environment::FunctionEnvironment;
 use crate::intermediate_type::IntermediateType;
 use crate::intermediates::inherited_fields::collect_inherited_fields;
 use crate::scoped_table::{ScopedTable, Value};
+use crate::system_globals::SYSTEM_UPTIME_GLOBALS;
 use crate::type_environment::TypeEnvironment;
 use ironplc_parser::options::CompilerOptions;
 
@@ -43,12 +44,11 @@ pub fn apply(
     // Implicit system globals live in the outermost scope, so every POU
     // body sees them and a POU-local of the same name shadows them.
     if options.allow_system_uptime_global {
-        resolver
-            .var_types
-            .add(&Id::from("__SYSTEM_UP_TIME"), TypeName::from("TIME"));
-        resolver
-            .var_types
-            .add(&Id::from("__SYSTEM_UP_LTIME"), TypeName::from("LTIME"));
+        for global in &SYSTEM_UPTIME_GLOBALS {
+            resolver
+                .var_types
+                .add(&Id::from(global.name), TypeName::from(global.type_name));
+        }
     }
 
     resolver.fold_library(lib).map_err(|e| vec![e])
@@ -372,7 +372,11 @@ impl ExprTypeResolver<'_> {
                 elem.into()
             }),
             ConstantKind::Boolean(_) => Some(TypeName::from("BOOL")),
-            ConstantKind::CharacterString(_) => Some(TypeName::from("STRING")),
+            // The delimiter is the type: `'abc'` is a STRING and `"abc"` a
+            // WSTRING (IEC 61131-3 Table 5). Typing every literal STRING made
+            // `w := "abc"` a P4035 and `f("abc")` a P4026 -- the analyzer
+            // never learned what the quotes already said.
+            ConstantKind::CharacterString(lit) => Some(TypeName::from(lit.width.keyword())),
             ConstantKind::Duration(_) => Some(TypeName::from("TIME")),
             ConstantKind::TimeOfDay(_) => Some(TypeName::from("TIME_OF_DAY")),
             ConstantKind::Date(_) => Some(TypeName::from("DATE")),
@@ -548,8 +552,12 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
             }
             ScopeNode::FunctionBlock(node) => {
                 // Inherited fields first so the function block's own
-                // fields, inserted next into the same scope, shadow a
-                // same-named ancestor field.
+                // fields, inserted next into the same scope, win for a
+                // name declared in both. A program that reaches code
+                // generation never has such a name --
+                // `rule_extends_field_duplicated` (`P4044`) rejects it --
+                // but that rule runs after this transform, so this pass
+                // still needs a defined answer.
                 if let Some(fields) = self.inherited_fields.get(&node.name).cloned() {
                     fields.iter().for_each(|v| self.insert(v));
                 }
@@ -1244,6 +1252,18 @@ END_VAR
     s := 'hello';
 END_FUNCTION_BLOCK",
         "STRING"
+    )]
+    // The quotes are the type: a double-quoted literal is a WSTRING, so the
+    // wide target accepts it. Typing it STRING made this assignment P4035.
+    #[case::wstring_literal(
+        "
+FUNCTION_BLOCK FB_TEST
+VAR
+    s : WSTRING;
+END_VAR
+    s := \"hello\";
+END_FUNCTION_BLOCK",
+        "WSTRING"
     )]
     #[case::untyped_integer_literal_resolves_any_int(
         "

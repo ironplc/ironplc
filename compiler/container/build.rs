@@ -7,5 +7,8 @@ fn main() {
         // This is the cross-crate conformance case: one design doc, two crates.
         "enumeration-codegen.md",
         "variable-value-rendering.md",
+        // Behavior policies (`REQ-BP-container-*`): the policy enums and the
+        // STRING_TO_<numeric> func_id block.
+        "behavior-policies.md",
     ]);
 }

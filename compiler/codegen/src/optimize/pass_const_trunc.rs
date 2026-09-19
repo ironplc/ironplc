@@ -41,8 +41,10 @@ pub(super) fn apply(
 
 /// Applies a `TRUNC_*` opcode to `value`, or `None` if `op` is not one.
 ///
-/// Mirrors the four truncation arms of the VM's dispatch loop exactly; a
-/// differential test in `optimize/tests.rs` pins the two together.
+/// Mirrors the four truncation arms of the VM's dispatch loop exactly; the
+/// differential test below pins the two together, and the end-to-end tests
+/// in `codegen/tests/it/end_to_end_const_trunc.rs` run the same values
+/// through the real VM.
 fn trunc_fold_value(op: u8, value: i32) -> Option<i32> {
     match op {
         opcode::TRUNC_I8 => Some((value as i8) as i32),
@@ -79,6 +81,7 @@ fn match_const_trunc(
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
+    use spec_test_macro::spec_test;
 
     use super::*;
 
@@ -96,7 +99,7 @@ mod tests {
         bytecode
     }
 
-    #[test]
+    #[spec_test(REQ_PEEP_codegen_040)]
     fn apply_when_constant_in_range_then_removes_trunc_and_keeps_load() {
         let mut constants = vec![PoolConstant::I32(42)];
         let (result, _) = apply(
@@ -111,7 +114,7 @@ mod tests {
         assert_eq!(constants, vec![PoolConstant::I32(42)]);
     }
 
-    #[test]
+    #[spec_test(REQ_PEEP_codegen_041)]
     fn apply_when_constant_out_of_range_then_rewrites_operand_to_folded_value() {
         // 300 does not fit u8; the truncated value 44 is appended to the pool
         // and the load rewritten to point at it.
@@ -131,7 +134,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[spec_test(REQ_PEEP_codegen_041)]
     fn apply_when_folded_value_already_in_pool_then_reuses_the_entry() {
         let mut constants = vec![PoolConstant::I32(44), PoolConstant::I32(300)];
         let mut bytecode = load_const_i32(1);
@@ -150,7 +153,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[spec_test(REQ_PEEP_codegen_044)]
     fn apply_when_pool_entry_is_not_i32_then_no_change() {
         let mut constants = vec![PoolConstant::I64(42)];
         let bytecode = const_then_trunc(opcode::TRUNC_I8);
@@ -159,7 +162,7 @@ mod tests {
         assert_eq!(result, bytecode);
     }
 
-    #[test]
+    #[spec_test(REQ_PEEP_codegen_044)]
     fn apply_when_pool_index_out_of_bounds_then_no_change() {
         let mut constants = Vec::new();
         let bytecode = const_then_trunc(opcode::TRUNC_I8);
@@ -168,7 +171,7 @@ mod tests {
         assert_eq!(result, bytecode);
     }
 
-    #[test]
+    #[spec_test(REQ_PEEP_codegen_043)]
     fn apply_when_dup_precedes_trunc_then_no_change() {
         // The emitter's consecutive-load peephole can leave a DUP where a
         // second load would have been. The value behind it is not visible to
@@ -184,7 +187,7 @@ mod tests {
         assert_eq!(result, bytecode);
     }
 
-    #[test]
+    #[spec_test(REQ_PEEP_codegen_043)]
     fn apply_when_second_instruction_is_not_trunc_then_no_change() {
         let mut constants = vec![PoolConstant::I32(42)];
         let mut bytecode = load_const_i32(0);
@@ -199,6 +202,24 @@ mod tests {
     #[test]
     fn trunc_fold_value_when_not_a_trunc_opcode_then_none() {
         assert!(trunc_fold_value(opcode::NEG_I32, 1).is_none());
+    }
+
+    /// Values whose wrapped result the VM is separately known to produce:
+    /// the paired end-to-end tests compute each of these during a scan and
+    /// read back the same number.
+    #[spec_test(REQ_PEEP_codegen_042)]
+    fn trunc_fold_value_when_out_of_range_then_wraps_like_the_vm() {
+        assert_eq!(trunc_fold_value(opcode::TRUNC_I8, 200), Some(-56));
+        assert_eq!(trunc_fold_value(opcode::TRUNC_U8, 300), Some(44));
+        assert_eq!(trunc_fold_value(opcode::TRUNC_I16, 40000), Some(-25536));
+        assert_eq!(trunc_fold_value(opcode::TRUNC_U16, 80000), Some(14464));
+
+        // A value already inside the narrow range is its own truncation, so
+        // the fold drops the instruction rather than changing the value.
+        assert_eq!(trunc_fold_value(opcode::TRUNC_I8, -128), Some(-128));
+        assert_eq!(trunc_fold_value(opcode::TRUNC_U8, 255), Some(255));
+        assert_eq!(trunc_fold_value(opcode::TRUNC_I16, 32767), Some(32767));
+        assert_eq!(trunc_fold_value(opcode::TRUNC_U16, 65535), Some(65535));
     }
 
     proptest! {

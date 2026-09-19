@@ -5,7 +5,10 @@ use clap::Parser;
 use ironplc_cli::cli;
 use ironplc_cli::logger;
 use ironplc_cli::lsp;
-use ironplc_parser::options::{describe_dialects, CompilerOptions, Dialect};
+use ironplc_parser::options::{
+    describe_dialects, BehaviorPolicy, CompilerOptions, Dialect, StringToNumFailure,
+    StringToNumNonNumeric,
+};
 use ironplc_sources::LibraryName;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -56,6 +59,35 @@ impl clap::ValueEnum for ClapDialect {
         Some(clap::builder::PossibleValue::new(self.0.cli_name()).help(self.0.description()))
     }
 }
+
+/// Declares a `clap::ValueEnum` newtype around a behavior policy enum, for
+/// the same orphan-rule reason as [`ClapDialect`]. The variants, their CLI
+/// names and their help text all come from the policy's own
+/// [`BehaviorPolicy`] impl, so the CLI cannot drift from the compiler.
+macro_rules! clap_policy {
+    ($name:ident, $policy:ident) => {
+        #[derive(Clone, Copy, Debug)]
+        struct $name($policy);
+
+        impl clap::ValueEnum for $name {
+            fn value_variants<'a>() -> &'a [Self] {
+                // SAFETY-free transmute avoidance: build the slice once from
+                // the policy's own list.
+                static VARIANTS: std::sync::OnceLock<Vec<$name>> = std::sync::OnceLock::new();
+                VARIANTS.get_or_init(|| $policy::ALL.iter().map(|p| $name(*p)).collect())
+            }
+
+            fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
+                Some(
+                    clap::builder::PossibleValue::new(self.0.cli_name()).help(self.0.description()),
+                )
+            }
+        }
+    };
+}
+
+clap_policy!(ClapStringToNumNonNumeric, StringToNumNonNumeric);
+clap_policy!(ClapStringToNumFailure, StringToNumFailure);
 
 /// Shared arguments for commands that operate on source files.
 #[derive(clap::Args, Debug)]
@@ -129,6 +161,12 @@ struct FileArgs {
     #[arg(long)]
     allow_adr: bool,
 
+    /// Allow the Beckhoff TwinCAT/CODESYS `PERSISTENT` variable qualifier.
+    /// This is an extension, not part of the IEC 61131-3 standard; the
+    /// `twincat` and `codesys` dialects enable it.
+    #[arg(long)]
+    allow_persistent_var: bool,
+
     /// Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types.
     /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
@@ -160,10 +198,21 @@ struct FileArgs {
     #[arg(long)]
     allow_system_uptime_global: bool,
 
-    /// Allow implicit widening between bit-string and integer type families
-    /// (e.g. BYTE→INT, literal 0→BYTE). This is an extension.
+    /// Allow implicit widening from a bit-string type to a strictly wider
+    /// integer type (e.g. BYTE→INT). This is an extension.
     #[arg(long)]
     allow_cross_family_widening: bool,
+
+    /// Allow implicit conversion between UDINT and DWORD, in both directions,
+    /// at equal width. The two share a 32-bit slot, so this converts rather
+    /// than widens. This is an extension.
+    #[arg(long)]
+    allow_cross_family_conversion: bool,
+
+    /// Allow a bare integer literal where a bit-string type is expected
+    /// (e.g. 0 where BYTE is expected). This is an extension.
+    #[arg(long)]
+    allow_int_literal_to_bit_string: bool,
 
     /// Allow IEC 61131-3:2013 partial-access syntax: the bit form `.%Xn` (an
     /// alias for the short form `.n`) and the byte/word/dword/lword forms
@@ -219,11 +268,31 @@ struct FileArgs {
     /// `--dialect=iec61131-3-ed3` and by the vendor dialects.
     #[arg(long)]
     allow_fb_inheritance: bool,
+
+    /// What STRING_TO_<numeric> treats as convertible when the string has
+    /// non-numeric characters. A behavior policy: the dialect selects an
+    /// alternative and this flag replaces it.
+    #[arg(long, value_name = "ALTERNATIVE")]
+    policy_string_to_num_non_numeric: Option<ClapStringToNumNonNumeric>,
+
+    /// What STRING_TO_<numeric> does when the string is not convertible. A
+    /// behavior policy: the dialect selects an alternative and this flag
+    /// replaces it.
+    #[arg(long, value_name = "ALTERNATIVE")]
+    policy_string_to_num_failure: Option<ClapStringToNumFailure>,
 }
 
 impl FileArgs {
     fn compiler_options(&self) -> CompilerOptions {
         let mut options = CompilerOptions::from_dialect(self.dialect.into());
+        // A policy flag replaces the dialect's selection (unlike an
+        // `--allow-*` flag, which can only enable).
+        if let Some(policy) = self.policy_string_to_num_non_numeric {
+            options.policy_string_to_num_non_numeric = policy.0;
+        }
+        if let Some(policy) = self.policy_string_to_num_failure {
+            options.policy_string_to_num_failure = policy.0;
+        }
         // Individual flags override (can only enable, never disable).
         options.allow_missing_semicolon |= self.allow_missing_semicolon;
         options.allow_top_level_var_global |= self.allow_top_level_var_global;
@@ -236,6 +305,7 @@ impl FileArgs {
         options.allow_reference_to |= self.allow_reference_to;
         options.allow_pointer_to |= self.allow_pointer_to;
         options.allow_adr |= self.allow_adr;
+        options.allow_persistent_var |= self.allow_persistent_var;
         options.allow_ref_arithmetic |= self.allow_ref_arithmetic;
         options.allow_ref_stack_variables |= self.allow_ref_stack_variables;
         options.allow_ref_type_punning |= self.allow_ref_type_punning;
@@ -243,6 +313,8 @@ impl FileArgs {
         options.allow_sizeof |= self.allow_sizeof;
         options.allow_system_uptime_global |= self.allow_system_uptime_global;
         options.allow_cross_family_widening |= self.allow_cross_family_widening;
+        options.allow_cross_family_conversion |= self.allow_cross_family_conversion;
+        options.allow_int_literal_to_bit_string |= self.allow_int_literal_to_bit_string;
         options.allow_partial_access_syntax |= self.allow_partial_access_syntax;
         options.allow_pragmas |= self.allow_pragmas;
         options.allow_short_circuit_operators |= self.allow_short_circuit_operators;
@@ -408,6 +480,73 @@ mod tests {
                 fd.option_key
             );
         }
+    }
+
+    /// Guards the hand-maintained `FileArgs` policy list the same way: every
+    /// behavior policy must be settable to each of its alternatives via its
+    /// `--policy-*` CLI form, and a policy flag replaces the dialect's own
+    /// selection rather than merely enabling.
+    #[test]
+    fn file_args_when_each_policy_alternative_passed_then_option_selected() {
+        #[derive(Parser)]
+        struct TestCli {
+            #[command(flatten)]
+            file_args: FileArgs,
+        }
+
+        for pd in CompilerOptions::POLICY_DESCRIPTORS {
+            for alt in pd.alternatives {
+                // `--dialect codesys` selects a non-default alternative for
+                // every policy, so the flag is proven to replace it.
+                let cli =
+                    TestCli::try_parse_from(["ironplcc", "--dialect", "codesys", pd.cli_flag, alt])
+                        .unwrap_or_else(|e| {
+                            panic!(
+                                "CLI does not accept `{} {alt}` (for CompilerOptions.{}): {e}",
+                                pd.cli_flag, pd.option_key
+                            )
+                        });
+                let options = cli.file_args.compiler_options();
+                assert_eq!(
+                    options.get_policy_by_key(pd.option_key),
+                    Some(*alt),
+                    "`{} {alt}` parsed but did not select it for CompilerOptions.{}",
+                    pd.cli_flag,
+                    pd.option_key
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn file_args_when_no_policy_flag_then_dialect_selection_kept() {
+        #[derive(Parser)]
+        struct TestCli {
+            #[command(flatten)]
+            file_args: FileArgs,
+        }
+        let cli = TestCli::try_parse_from(["ironplcc", "--dialect", "twincat"]).unwrap();
+        let options = cli.file_args.compiler_options();
+        assert_eq!(
+            options.policy_string_to_num_non_numeric,
+            StringToNumNonNumeric::IgnoreTrailing
+        );
+        assert_eq!(
+            options.policy_string_to_num_failure,
+            StringToNumFailure::Zero
+        );
+    }
+
+    #[test]
+    fn file_args_when_unknown_policy_alternative_then_rejected() {
+        #[derive(Parser)]
+        struct TestCli {
+            #[command(flatten)]
+            file_args: FileArgs,
+        }
+        let result =
+            TestCli::try_parse_from(["ironplcc", "--policy-string-to-num-failure", "wrap"]);
+        assert!(result.is_err());
     }
 
     /// Guards the hand-maintained VS Code `ironplc.dialect` settings schema

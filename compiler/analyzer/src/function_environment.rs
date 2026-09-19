@@ -116,8 +116,10 @@ impl FunctionSignature {
     ///
     /// Only positional inputs bind: by the time a call is checked,
     /// `xform_named_to_positional_args` has rewritten its named inputs, and
-    /// an output assignment binds no input. Arguments beyond the parameter
-    /// list are dropped; the arity check reports them.
+    /// an output assignment binds no input. A call that pass could not rewrite
+    /// keeps its named inputs and has already been diagnosed, so binding none
+    /// of them is right. Arguments beyond the parameter list are dropped; the
+    /// arity check reports them.
     pub fn bind_inputs<'a>(
         &'a self,
         params: &'a [ParamAssignmentKind],

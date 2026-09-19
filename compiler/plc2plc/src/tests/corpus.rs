@@ -35,3 +35,18 @@ fn write_to_string_when_corpus_source_then_round_trips(
 ) {
     assert_resource_renders_to(source, rendered, &CompilerOptions::default());
 }
+
+/// The OOP extension surface (EXTENDS/IMPLEMENTS/INTERFACE, ABSTRACT
+/// function blocks, METHOD declarations and calls, THIS^/SUPER^) needs
+/// `allow_fb_inheritance` on, unlike every other corpus entry above --
+/// so it gets its own case rather than a row in the default-options
+/// table, matching the same local-options pattern already used in
+/// `fb_inheritance.rs`, `methods.rs`, and `this_super.rs`.
+#[test]
+fn write_to_string_when_oop_corpus_source_then_round_trips() {
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    assert_resource_renders_to("oop.st", "oop_rendered.st", &options);
+}

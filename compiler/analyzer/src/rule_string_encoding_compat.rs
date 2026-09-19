@@ -8,10 +8,13 @@
 //! compile-time check is the primary guard.
 //!
 //! The rule reasons about the **declared** encoding of named string variables.
-//! It does not flag string literals (whose encoding adapts to the assignment
-//! target) or the results of string functions (whose encoding the analyzer
-//! collapses to a single `STRING` type name); those narrower cases rely on the
-//! runtime trap.
+//! It does not flag string literals, which carry their encoding in their
+//! delimiter and so are already typed `STRING` or `WSTRING` -- the ordinary
+//! type checks (P4035 for an assignment, P4026 for a call argument) reject a
+//! literal that does not match its destination. Nor does it flag the results
+//! of string functions, whose encoding the analyzer collapses to a single
+//! `STRING` type name; codegen resolves one encoding per operation and reports
+//! P4034 there.
 //!
 //! ## Fails
 //!
@@ -272,7 +275,7 @@ END_PROGRAM
 
     #[test]
     fn apply_when_wstring_assigned_literal_then_ok() {
-        // A literal's encoding adapts to the target; not flagged here.
+        // A wide literal matches a wide target; nothing to flag.
         let result = check(
             "
 PROGRAM main

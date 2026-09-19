@@ -10,8 +10,13 @@ use ironplc_dsl::common::{
 /// For every `FUNCTION_BLOCK` with an `EXTENDS` clause, returns the
 /// transitive list of fields inherited from its ancestor chain (not
 /// including its own fields). Base-to-derived order, so a caller that
-/// applies its own fields last gets correct shadowing (a redeclared
-/// field on a derived function block wins over the ancestor's).
+/// applies its own fields last resolves a name to the nearest
+/// declaration. No program that survives analysis has two declarations
+/// of one name to choose between -- `rule_extends_field_duplicated`
+/// (`P4044`) rejects a derived function block that redeclares an
+/// inherited field -- but that rule runs after the transforms that use
+/// this list, so the order still decides what those transforms see for
+/// a program on its way to being rejected.
 ///
 /// Assumes the `EXTENDS` graph is acyclic -- enforced by
 /// `xform_toposort_declarations`'s `RecursiveCycle` check, which runs
@@ -178,10 +183,14 @@ END_FUNCTION_BLOCK",
     }
 
     #[test]
-    fn collect_inherited_fields_when_shadowed_name_then_base_field_still_listed() {
-        // This function only returns the *inherited* set; shadowing
-        // (derived wins) is the responsibility of a caller that applies
-        // its own fields after these, e.g. by inserting into a HashMap.
+    fn collect_inherited_fields_when_derived_redeclares_name_then_base_field_still_listed() {
+        // This function only returns the *inherited* set. Resolving a
+        // name declared in both to the nearer declaration is the
+        // responsibility of a caller that applies its own fields after
+        // these, e.g. by inserting into a HashMap.
+        // `rule_extends_field_duplicated` (`P4044`) later rejects the
+        // function block below, so no program that survives analysis has
+        // a name declared in both.
         let lib = parse(
             "
 FUNCTION_BLOCK FB_Base

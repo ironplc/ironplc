@@ -4,8 +4,9 @@ Enabling Dialects and Features
 
 IronPLC lets you take code from another PLC environment and use it
 without changes. To support this, IronPLC uses **dialects** — named presets
-that select the IEC 61131-3 edition and a default set of extensions.
-Individual ``--allow-*`` flags provide fine-grained control on top of the
+that select the IEC 61131-3 edition, a default set of extensions, and the
+behavior policies the platform documents. Individual ``--allow-*`` flags and
+``--policy-*`` selections provide fine-grained control on top of the
 selected dialect.
 
 ---------------------------------
@@ -17,6 +18,10 @@ Supported Dialects
    This is the default when no dialect is specified.
 
    **Enables:** nothing beyond strict IEC 61131-3 (no extensions).
+
+   **Selects:** the default of every behavior policy
+   (``--policy-string-to-num-non-numeric reject``,
+   ``--policy-string-to-num-failure trap``).
 
 **iec61131-3-ed3**
    Strict IEC 61131-3:2013 (Edition 3). Enables Edition 3 keywords
@@ -35,6 +40,10 @@ Supported Dialects
    Edition 3 keywords), ``--allow-partial-access-syntax``, and
    ``--allow-fb-inheritance``.
 
+   **Selects:** the default of every behavior policy
+   (``--policy-string-to-num-non-numeric reject``,
+   ``--policy-string-to-num-failure trap``).
+
 **rusty**
    RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
    names like :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` remain available as identifiers) and enables
@@ -47,6 +56,7 @@ Supported Dialects
    ``--allow-ref-stack-variables``, ``--allow-ref-type-punning``,
    ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
    ``--allow-system-uptime-global``, ``--allow-cross-family-widening``,
+   ``--allow-cross-family-conversion``, ``--allow-int-literal-to-bit-string``,
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
@@ -54,6 +64,10 @@ Supported Dialects
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``, and
    ``--allow-fb-inheritance``.
+
+   **Selects:** ``--policy-string-to-num-non-numeric reject`` and
+   ``--policy-string-to-num-failure zero`` — RuSTy rejects a string with
+   trailing characters and never faults.
 
 **codesys**
    CODESYS-compatible dialect. Uses Edition 2 as a base and enables the
@@ -71,17 +85,23 @@ Supported Dialects
    ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
    ``--allow-long-time-types``,
    ``--allow-ref-to``, ``--allow-reference-to``, ``--allow-pointer-to``,
-   ``--allow-adr``,
+   ``--allow-adr``, ``--allow-persistent-var``,
    ``--allow-ref-arithmetic``,
    ``--allow-ref-stack-variables``, ``--allow-ref-type-punning``,
    ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
-   ``--allow-cross-family-widening``, ``--allow-partial-access-syntax``,
+   ``--allow-cross-family-widening``,
+   ``--allow-cross-family-conversion``, ``--allow-int-literal-to-bit-string``, ``--allow-partial-access-syntax``,
    ``--allow-pragmas``, ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``, and
    ``--allow-fb-inheritance``.
+
+   **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
+   ``--policy-string-to-num-failure zero`` — CODESYS stops parsing at the
+   first invalid character and returns 0 for a string that is not valid in
+   the target type.
 
 **twincat**
    Beckhoff TwinCAT-compatible dialect. TwinCAT 3 is built on the CODESYS V3
@@ -107,8 +127,10 @@ Supported Dialects
    ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
    ``--allow-long-time-types``,
    ``--allow-reference-to``, ``--allow-pointer-to``, ``--allow-adr``,
+   ``--allow-persistent-var``,
    ``--allow-int-to-bool-initializer``,
    ``--allow-sizeof``, ``--allow-cross-family-widening``,
+   ``--allow-cross-family-conversion``, ``--allow-int-literal-to-bit-string``,
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
@@ -116,6 +138,9 @@ Supported Dialects
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``, and
    ``--allow-fb-inheritance``.
+
+   **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
+   ``--policy-string-to-num-failure zero``, as ``codesys``.
 
 Editions are additive — enabling a later edition includes all features from
 earlier editions.
@@ -251,6 +276,11 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    not supported and are rejected with a diagnostic. See
    :doc:`/reference/extension-library/functions/adr`.
 
+``--allow-persistent-var``
+   Allow the Beckhoff TwinCAT / CODESYS ``PERSISTENT`` variable qualifier
+   (``VAR PERSISTENT`` / ``VAR_GLOBAL PERSISTENT``). This is an extension,
+   not part of the IEC 61131-3 standard.
+
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
    ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``
@@ -284,11 +314,22 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    uptime. This is an IronPLC runtime convention.
 
 ``--allow-cross-family-widening``
-   Allow implicit widening between bit-string and integer type families.
-   For example, passing a ``BYTE`` variable where an ``INT`` parameter is
-   expected, or passing a bare integer literal ``0`` where a ``BYTE``
+   Allow implicit widening from a bit-string type to a strictly wider
+   integer type. For example, passing a ``BYTE`` variable where an ``INT``
    parameter is expected. This is an extension supported by CODESYS,
    TwinCAT, and RuSTy.
+
+``--allow-cross-family-conversion``
+   Allow implicit conversion between ``UDINT`` and ``DWORD``, in both
+   directions. The two types share a 32-bit slot, so this converts rather
+   than widens, and it is the one case where an integer converts implicitly
+   to a bit-string. See :doc:`/explanation/type-conversions`. This is an
+   extension supported by CODESYS, TwinCAT, and RuSTy.
+
+``--allow-int-literal-to-bit-string``
+   Allow a bare integer literal where a bit-string type is expected. For
+   example, passing ``0`` where a ``BYTE`` parameter is expected. This is
+   an extension supported by CODESYS, TwinCAT, and RuSTy.
 
 ``--allow-partial-access-syntax``
    Allow IEC 61131-3:2013 partial-access syntax: the bit form ``.%Xn``
@@ -417,3 +458,37 @@ Or combine with a dialect:
    ironplcc check --dialect iec61131-3-ed3 --allow-c-style-comments main.st
 
 See :doc:`/reference/compiler/ironplcc` for all compiler options.
+
+---------------------------------
+Selecting Behavior Policies
+---------------------------------
+
+An extension is syntax the parser accepts. A **behavior policy** is
+different: it selects what a standard operation *does* where IEC 61131-3
+leaves the result to the implementer and real platforms disagree. Each
+policy has a small set of documented alternatives, the strict default is
+the standard's result (or a runtime error where the standard says
+"error"), and each dialect selects the alternative its platform documents.
+
+Unlike a flag, which can only enable, a ``--policy-*`` selection replaces
+the dialect's. Policies compose freely with each other and with any
+dialect, and the selected alternative is compiled into the program, so a
+:file:`.iplc` file behaves the same on every runtime that runs it.
+
+``--policy-string-to-num-non-numeric``
+   What ``STRING_TO_<numeric>`` treats as convertible when the string has
+   characters that are not part of a numeric literal: ``reject`` (default),
+   ``ignore-trailing``, or ``ignore-surrounding``.
+
+``--policy-string-to-num-failure``
+   What ``STRING_TO_<numeric>`` does when the string is not convertible:
+   ``trap`` (default, runtime error
+   :doc:`V4006 </reference/runtime/problems/V4006>`) or ``zero``.
+
+The alternatives, their results, and the dialects' selections are on
+:doc:`/reference/standard-library/functions/type-conversions`. To compile a
+CODESYS program with the strict failure behavior:
+
+.. code-block:: shell
+
+   ironplcc compile --dialect codesys --policy-string-to-num-failure trap -o main.iplc main.st

@@ -391,6 +391,284 @@ declare_builtins! {
     /// Floating-point modulo with the sign of the dividend on f32: the f32
     /// variant of [`MOD_F64`] (`x % 0.0` is NaN, not a trap).
     MOD_F32 = 0x03A6, args 2;
+
+    // =========================================================================
+    // STRING_TO_<numeric> under behavior policies (ADR-0049)
+    //
+    // One row per (target, non-numeric alternative, failure alternative), laid
+    // out in the block `str_to_num` describes so the VM can decode the two
+    // policies from the ID. Dispatched inline in the VM main loop like the
+    // other string conversions. Stack: pop data_offset (i32), push the value.
+    // =========================================================================
+
+    /// Parse a STRING to an unsigned 32-bit integer: the whole string must be
+    /// a literal (`reject`); a failure traps `V4006` (`trap`).
+    CONV_STR_TO_U32_REJECT_TRAP = 0x0480, args 1;
+
+    /// As [`CONV_STR_TO_U32_REJECT_TRAP`], but a failure yields 0 (`zero`).
+    CONV_STR_TO_U32_REJECT_ZERO = 0x0481, args 1;
+
+    /// Parse a STRING to an unsigned 32-bit integer: the leading literal is
+    /// converted and the rest ignored (`ignore-trailing`); a failure traps.
+    CONV_STR_TO_U32_IGNORE_TRAILING_TRAP = 0x0482, args 1;
+
+    /// As [`CONV_STR_TO_U32_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U32_IGNORE_TRAILING_ZERO = 0x0483, args 1;
+
+    /// Parse a STRING to an unsigned 32-bit integer: leading non-literal
+    /// characters are skipped, then the literal is converted and the rest
+    /// ignored (`ignore-surrounding`); a failure traps.
+    CONV_STR_TO_U32_IGNORE_SURROUNDING_TRAP = 0x0484, args 1;
+
+    /// As [`CONV_STR_TO_U32_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U32_IGNORE_SURROUNDING_ZERO = 0x0485, args 1;
+
+    /// Parse a STRING to a signed 32-bit integer (`STRING_TO_DINT`): the six
+    /// rows of target 1, laid out as the `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_I32_REJECT_TRAP = 0x0488, args 1;
+    /// As [`CONV_STR_TO_I32_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I32_REJECT_ZERO = 0x0489, args 1;
+    /// As [`CONV_STR_TO_I32_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_I32_IGNORE_TRAILING_TRAP = 0x048A, args 1;
+    /// As [`CONV_STR_TO_I32_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I32_IGNORE_TRAILING_ZERO = 0x048B, args 1;
+    /// As [`CONV_STR_TO_I32_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_I32_IGNORE_SURROUNDING_TRAP = 0x048C, args 1;
+    /// As [`CONV_STR_TO_I32_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I32_IGNORE_SURROUNDING_ZERO = 0x048D, args 1;
+
+    /// Parse a STRING to an unsigned 8-bit integer (`STRING_TO_USINT`,
+    /// `STRING_TO_BYTE`): the six rows of target 2, laid out as the
+    /// `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_U8_REJECT_TRAP = 0x0490, args 1;
+    /// As [`CONV_STR_TO_U8_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U8_REJECT_ZERO = 0x0491, args 1;
+    /// As [`CONV_STR_TO_U8_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_U8_IGNORE_TRAILING_TRAP = 0x0492, args 1;
+    /// As [`CONV_STR_TO_U8_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U8_IGNORE_TRAILING_ZERO = 0x0493, args 1;
+    /// As [`CONV_STR_TO_U8_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_U8_IGNORE_SURROUNDING_TRAP = 0x0494, args 1;
+    /// As [`CONV_STR_TO_U8_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U8_IGNORE_SURROUNDING_ZERO = 0x0495, args 1;
+
+    /// Parse a STRING to a signed 8-bit integer (`STRING_TO_SINT`): the six rows
+    /// of target 3, laid out as the `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_I8_REJECT_TRAP = 0x0498, args 1;
+    /// As [`CONV_STR_TO_I8_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I8_REJECT_ZERO = 0x0499, args 1;
+    /// As [`CONV_STR_TO_I8_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_I8_IGNORE_TRAILING_TRAP = 0x049A, args 1;
+    /// As [`CONV_STR_TO_I8_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I8_IGNORE_TRAILING_ZERO = 0x049B, args 1;
+    /// As [`CONV_STR_TO_I8_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_I8_IGNORE_SURROUNDING_TRAP = 0x049C, args 1;
+    /// As [`CONV_STR_TO_I8_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I8_IGNORE_SURROUNDING_ZERO = 0x049D, args 1;
+
+    /// Parse a STRING to an unsigned 16-bit integer (`STRING_TO_UINT`,
+    /// `STRING_TO_WORD`): the six rows of target 4, laid out as the
+    /// `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_U16_REJECT_TRAP = 0x04A0, args 1;
+    /// As [`CONV_STR_TO_U16_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U16_REJECT_ZERO = 0x04A1, args 1;
+    /// As [`CONV_STR_TO_U16_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_U16_IGNORE_TRAILING_TRAP = 0x04A2, args 1;
+    /// As [`CONV_STR_TO_U16_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U16_IGNORE_TRAILING_ZERO = 0x04A3, args 1;
+    /// As [`CONV_STR_TO_U16_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_U16_IGNORE_SURROUNDING_TRAP = 0x04A4, args 1;
+    /// As [`CONV_STR_TO_U16_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U16_IGNORE_SURROUNDING_ZERO = 0x04A5, args 1;
+
+    /// Parse a STRING to a signed 16-bit integer (`STRING_TO_INT`): the six rows
+    /// of target 5, laid out as the `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_I16_REJECT_TRAP = 0x04A8, args 1;
+    /// As [`CONV_STR_TO_I16_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I16_REJECT_ZERO = 0x04A9, args 1;
+    /// As [`CONV_STR_TO_I16_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_I16_IGNORE_TRAILING_TRAP = 0x04AA, args 1;
+    /// As [`CONV_STR_TO_I16_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I16_IGNORE_TRAILING_ZERO = 0x04AB, args 1;
+    /// As [`CONV_STR_TO_I16_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_I16_IGNORE_SURROUNDING_TRAP = 0x04AC, args 1;
+    /// As [`CONV_STR_TO_I16_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I16_IGNORE_SURROUNDING_ZERO = 0x04AD, args 1;
+
+    /// Parse a STRING to an unsigned 64-bit integer (`STRING_TO_ULINT`,
+    /// `STRING_TO_LWORD`): the six rows of target 6, laid out as the
+    /// `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_U64_REJECT_TRAP = 0x04B0, args 1;
+    /// As [`CONV_STR_TO_U64_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U64_REJECT_ZERO = 0x04B1, args 1;
+    /// As [`CONV_STR_TO_U64_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_U64_IGNORE_TRAILING_TRAP = 0x04B2, args 1;
+    /// As [`CONV_STR_TO_U64_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U64_IGNORE_TRAILING_ZERO = 0x04B3, args 1;
+    /// As [`CONV_STR_TO_U64_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_U64_IGNORE_SURROUNDING_TRAP = 0x04B4, args 1;
+    /// As [`CONV_STR_TO_U64_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_U64_IGNORE_SURROUNDING_ZERO = 0x04B5, args 1;
+
+    /// Parse a STRING to a signed 64-bit integer (`STRING_TO_LINT`): the six
+    /// rows of target 7, laid out as the `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_I64_REJECT_TRAP = 0x04B8, args 1;
+    /// As [`CONV_STR_TO_I64_REJECT_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I64_REJECT_ZERO = 0x04B9, args 1;
+    /// As [`CONV_STR_TO_I64_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_I64_IGNORE_TRAILING_TRAP = 0x04BA, args 1;
+    /// As [`CONV_STR_TO_I64_IGNORE_TRAILING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I64_IGNORE_TRAILING_ZERO = 0x04BB, args 1;
+    /// As [`CONV_STR_TO_I64_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_I64_IGNORE_SURROUNDING_TRAP = 0x04BC, args 1;
+    /// As [`CONV_STR_TO_I64_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.
+    CONV_STR_TO_I64_IGNORE_SURROUNDING_ZERO = 0x04BD, args 1;
+
+    /// Parse a STRING to a single-precision real (`STRING_TO_REAL`): the six
+    /// rows of target 8, laid out as the `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_F32_REJECT_TRAP = 0x04C0, args 1;
+    /// As [`CONV_STR_TO_F32_REJECT_TRAP`], but a failure yields 0.0.
+    CONV_STR_TO_F32_REJECT_ZERO = 0x04C1, args 1;
+    /// As [`CONV_STR_TO_F32_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_F32_IGNORE_TRAILING_TRAP = 0x04C2, args 1;
+    /// As [`CONV_STR_TO_F32_IGNORE_TRAILING_TRAP`], but a failure yields 0.0.
+    CONV_STR_TO_F32_IGNORE_TRAILING_ZERO = 0x04C3, args 1;
+    /// As [`CONV_STR_TO_F32_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_F32_IGNORE_SURROUNDING_TRAP = 0x04C4, args 1;
+    /// As [`CONV_STR_TO_F32_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.0.
+    CONV_STR_TO_F32_IGNORE_SURROUNDING_ZERO = 0x04C5, args 1;
+
+    /// Parse a STRING to a double-precision real (`STRING_TO_LREAL`): the six
+    /// rows of target 9, laid out as the `CONV_STR_TO_U32_*` rows are.
+    CONV_STR_TO_F64_REJECT_TRAP = 0x04C8, args 1;
+    /// As [`CONV_STR_TO_F64_REJECT_TRAP`], but a failure yields 0.0.
+    CONV_STR_TO_F64_REJECT_ZERO = 0x04C9, args 1;
+    /// As [`CONV_STR_TO_F64_REJECT_TRAP`] under `ignore-trailing`.
+    CONV_STR_TO_F64_IGNORE_TRAILING_TRAP = 0x04CA, args 1;
+    /// As [`CONV_STR_TO_F64_IGNORE_TRAILING_TRAP`], but a failure yields 0.0.
+    CONV_STR_TO_F64_IGNORE_TRAILING_ZERO = 0x04CB, args 1;
+    /// As [`CONV_STR_TO_F64_REJECT_TRAP`] under `ignore-surrounding`.
+    CONV_STR_TO_F64_IGNORE_SURROUNDING_TRAP = 0x04CC, args 1;
+    /// As [`CONV_STR_TO_F64_IGNORE_SURROUNDING_TRAP`], but a failure yields 0.0.
+    CONV_STR_TO_F64_IGNORE_SURROUNDING_ZERO = 0x04CD, args 1;
+}
+
+/// The `STRING_TO_<numeric>` func_id block (ADR-0049).
+///
+/// A conversion's func_id names its target type and both of its policies:
+///
+/// ```text
+/// func_id = BASE + target * TARGET_STRIDE + non_numeric * 2 + failure
+/// ```
+///
+/// Each target owns a stride of eight IDs: three non-numeric alternatives
+/// times two failure alternatives, with two spare for a further failure
+/// alternative. The block runs to [`END`], room for sixteen targets. Only the
+/// IDs whose target is assigned decode; the rest are unknown builtins and
+/// trap `V9007` like any other unassigned ID.
+///
+/// The named rows in [`declare_builtins!`] are the pinned encoding; the
+/// arithmetic here must agree with them, and a test checks that it does.
+pub mod str_to_num {
+    use crate::policy::{BehaviorPolicy, StringToNumFailure, StringToNumNonNumeric};
+
+    /// First func_id of the block.
+    pub const BASE: u16 = 0x0480;
+    /// Last func_id of the block (inclusive).
+    pub const END: u16 = 0x04FF;
+    /// func_ids per target type.
+    pub const TARGET_STRIDE: u16 = 8;
+
+    /// The numeric type a `STRING_TO_<numeric>` conversion produces.
+    ///
+    /// The discriminant is the target's position in the block. Even
+    /// positions are unsigned and the odd position after each is the signed
+    /// type of the same width, in width order 32, 8, 16, 64 (32 first
+    /// because `U32` landed at 0); the real targets follow. A bit-string
+    /// type (`BYTE`, `WORD`, `DWORD`, `LWORD`) converts as the unsigned
+    /// integer of its width and has no target of its own. Every
+    /// `STRING_TO_<numeric>` function is encoded here; positions 10 through
+    /// 15 are unassigned.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    #[repr(u16)]
+    pub enum Target {
+        /// `STRING_TO_UDINT` and `STRING_TO_DWORD` (an unsigned 32-bit integer).
+        U32 = 0,
+        /// `STRING_TO_DINT` (a signed 32-bit integer).
+        I32 = 1,
+        /// `STRING_TO_USINT` and `STRING_TO_BYTE` (an unsigned 8-bit integer).
+        U8 = 2,
+        /// `STRING_TO_SINT` (a signed 8-bit integer).
+        I8 = 3,
+        /// `STRING_TO_UINT` and `STRING_TO_WORD` (an unsigned 16-bit integer).
+        U16 = 4,
+        /// `STRING_TO_INT` (a signed 16-bit integer).
+        I16 = 5,
+        /// `STRING_TO_ULINT` and `STRING_TO_LWORD` (an unsigned 64-bit integer).
+        U64 = 6,
+        /// `STRING_TO_LINT` (a signed 64-bit integer).
+        I64 = 7,
+        /// `STRING_TO_REAL` (a single-precision real).
+        F32 = 8,
+        /// `STRING_TO_LREAL` (a double-precision real).
+        F64 = 9,
+    }
+
+    impl Target {
+        /// Every encoded target, in block order.
+        pub const ALL: &'static [Target] = &[
+            Target::U32,
+            Target::I32,
+            Target::U8,
+            Target::I8,
+            Target::U16,
+            Target::I16,
+            Target::U64,
+            Target::I64,
+            Target::F32,
+            Target::F64,
+        ];
+
+        fn from_index(index: u16) -> Option<Target> {
+            Self::ALL.get(index as usize).copied()
+        }
+    }
+
+    /// The two policies a decoded `STRING_TO_<numeric>` func_id carries.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct Encoding {
+        pub target: Target,
+        pub non_numeric: StringToNumNonNumeric,
+        pub failure: StringToNumFailure,
+    }
+
+    /// The func_id for a conversion to `target` under the two policies.
+    pub fn func_id(
+        target: Target,
+        non_numeric: StringToNumNonNumeric,
+        failure: StringToNumFailure,
+    ) -> u16 {
+        BASE + (target as u16) * TARGET_STRIDE + non_numeric.index() * 2 + failure.index()
+    }
+
+    /// Decodes a func_id in the block back to its target and policies, or
+    /// `None` when `func_id` is outside the block or names no assigned
+    /// conversion.
+    pub fn decode(func_id: u16) -> Option<Encoding> {
+        if !(BASE..=END).contains(&func_id) {
+            return None;
+        }
+        let offset = func_id - BASE;
+        let target = Target::from_index(offset / TARGET_STRIDE)?;
+        let within = offset % TARGET_STRIDE;
+        let non_numeric = StringToNumNonNumeric::from_index(within / 2)?;
+        let failure = StringToNumFailure::from_index(within % 2)?;
+        Some(Encoding {
+            target,
+            non_numeric,
+            failure,
+        })
+    }
 }
 
 // =========================================================================
@@ -482,6 +760,146 @@ pub fn arg_count_opt(func_id: u16) -> Option<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::policy::{BehaviorPolicy, StringToNumFailure, StringToNumNonNumeric};
+    use std::format;
+
+    #[test]
+    fn str_to_num_func_id_when_each_u32_combination_then_matches_declared_row() {
+        // The block arithmetic and the pinned rows are two statements of one
+        // encoding; this is the check that they agree.
+        use str_to_num::{func_id, Target};
+        use StringToNumFailure::{Trap, Zero};
+        use StringToNumNonNumeric::{IgnoreSurrounding, IgnoreTrailing, Reject};
+        assert_eq!(
+            func_id(Target::U32, Reject, Trap),
+            CONV_STR_TO_U32_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::U32, Reject, Zero),
+            CONV_STR_TO_U32_REJECT_ZERO
+        );
+        assert_eq!(
+            func_id(Target::U32, IgnoreTrailing, Trap),
+            CONV_STR_TO_U32_IGNORE_TRAILING_TRAP
+        );
+        assert_eq!(
+            func_id(Target::U32, IgnoreTrailing, Zero),
+            CONV_STR_TO_U32_IGNORE_TRAILING_ZERO
+        );
+        assert_eq!(
+            func_id(Target::U32, IgnoreSurrounding, Trap),
+            CONV_STR_TO_U32_IGNORE_SURROUNDING_TRAP
+        );
+        assert_eq!(
+            func_id(Target::U32, IgnoreSurrounding, Zero),
+            CONV_STR_TO_U32_IGNORE_SURROUNDING_ZERO
+        );
+    }
+
+    #[test]
+    fn str_to_num_func_id_when_each_target_then_first_row_is_at_its_stride() {
+        // Each target's six rows start at BASE + position * 8; the rows within
+        // a stride follow the U32 layout the test above pins.
+        use str_to_num::{func_id, Target};
+        use StringToNumFailure::Trap;
+        use StringToNumNonNumeric::Reject;
+        assert_eq!(
+            func_id(Target::I32, Reject, Trap),
+            CONV_STR_TO_I32_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::U8, Reject, Trap),
+            CONV_STR_TO_U8_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::I8, Reject, Trap),
+            CONV_STR_TO_I8_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::U16, Reject, Trap),
+            CONV_STR_TO_U16_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::I16, Reject, Trap),
+            CONV_STR_TO_I16_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::U64, Reject, Trap),
+            CONV_STR_TO_U64_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::I64, Reject, Trap),
+            CONV_STR_TO_I64_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::F32, Reject, Trap),
+            CONV_STR_TO_F32_REJECT_TRAP
+        );
+        assert_eq!(
+            func_id(Target::F64, Reject, Trap),
+            CONV_STR_TO_F64_REJECT_TRAP
+        );
+    }
+
+    #[test]
+    fn str_to_num_name_when_each_target_row_then_names_target_and_both_policies() {
+        // The disassembler shows the alternative: every row's name carries
+        // the target, the non-numeric alternative and the failure alternative.
+        for target in str_to_num::Target::ALL {
+            for non_numeric in StringToNumNonNumeric::ALL {
+                for failure in StringToNumFailure::ALL {
+                    let id = str_to_num::func_id(*target, *non_numeric, *failure);
+                    let row = name(id).unwrap();
+                    let expected = format!(
+                        "CONV_STR_TO_{target:?}_{}_{}",
+                        non_numeric.cli_name().replace('-', "_").to_uppercase(),
+                        failure.cli_name().to_uppercase()
+                    );
+                    assert_eq!(row, expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn str_to_num_decode_when_each_encoded_id_then_round_trips() {
+        for target in str_to_num::Target::ALL {
+            for non_numeric in StringToNumNonNumeric::ALL {
+                for failure in StringToNumFailure::ALL {
+                    let id = str_to_num::func_id(*target, *non_numeric, *failure);
+                    let decoded = str_to_num::decode(id).unwrap();
+                    assert_eq!(decoded.target, *target);
+                    assert_eq!(decoded.non_numeric, *non_numeric);
+                    assert_eq!(decoded.failure, *failure);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn str_to_num_decode_when_id_is_encoded_then_it_is_a_declared_row_and_vice_versa() {
+        // Every ID the block decodes is a named row, and every named row in
+        // the block decodes: neither the table nor the arithmetic can claim an
+        // ID the other does not.
+        for func_id in str_to_num::BASE..=str_to_num::END {
+            assert_eq!(
+                str_to_num::decode(func_id).is_some(),
+                name(func_id).is_some(),
+                "builtin 0x{func_id:04X}"
+            );
+        }
+    }
+
+    #[test]
+    fn str_to_num_decode_when_outside_block_or_spare_slot_then_none() {
+        assert_eq!(str_to_num::decode(str_to_num::BASE - 1), None);
+        assert_eq!(str_to_num::decode(str_to_num::END + 1), None);
+        // The two spare slots of the U32 stride.
+        assert_eq!(str_to_num::decode(0x0486), None);
+        assert_eq!(str_to_num::decode(0x0487), None);
+        // An unassigned target (position 10).
+        assert_eq!(str_to_num::decode(0x04D0), None);
+    }
 
     #[test]
     fn name_when_declared_builtin_then_returns_its_name() {

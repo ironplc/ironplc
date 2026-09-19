@@ -173,10 +173,26 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "PROGRAM main\nVAR\nt : TIME;\nEND_VAR\nt := __SYSTEM_UP_TIME;\nEND_PROGRAM",
     },
-    // Implicit widening across bit-string/integer families: literal 0 -> BYTE
-    // arg (P4026) is only allowed when the flag is on.
+    // Cross-family widening: a BYTE arg to a strictly wider INT parameter
+    // (P4026) is only allowed when the flag is on.
     FlagFixture {
         key: "allow_cross_family_widening",
+        prereqs: &[],
+        source: "FUNCTION TAKES_INT : INT\nVAR_INPUT\nx : INT;\nEND_VAR\nTAKES_INT := x;\nEND_FUNCTION\nPROGRAM main\nVAR\nresult : INT;\nb : BYTE;\nEND_VAR\nresult := TAKES_INT(b);\nEND_PROGRAM",
+    },
+    // Cross-family conversion at equal width: a UDINT arg to a DWORD
+    // parameter (P4026) is only allowed when the flag is on. This widens
+    // nothing, which is why it is not the widening flag.
+    FlagFixture {
+        key: "allow_cross_family_conversion",
+        prereqs: &[],
+        source: "FUNCTION TAKES_DWORD : DWORD\nVAR_INPUT\nx : DWORD;\nEND_VAR\nTAKES_DWORD := x;\nEND_FUNCTION\nPROGRAM main\nVAR\nresult : DWORD;\nu : UDINT;\nEND_VAR\nresult := TAKES_DWORD(u);\nEND_PROGRAM",
+    },
+    // A bare integer literal where a bit-string is expected: literal 0 ->
+    // BYTE arg (P4026) is only allowed when the flag is on. Literal typing,
+    // not widening.
+    FlagFixture {
+        key: "allow_int_literal_to_bit_string",
         prereqs: &[],
         source: "FUNCTION TAKES_BYTE : BYTE\nVAR_INPUT\nx : BYTE;\nEND_VAR\nTAKES_BYTE := x;\nEND_FUNCTION\nPROGRAM main\nVAR\nresult : BYTE;\nEND_VAR\nresult := TAKES_BYTE(0);\nEND_PROGRAM",
     },
@@ -247,6 +263,15 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_fb_inheritance",
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Base\nVAR\nx : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nFUNCTION_BLOCK FB_Derived EXTENDS FB_Base\nEND_FUNCTION_BLOCK",
+    },
+    // The Beckhoff TwinCAT/CODESYS PERSISTENT variable qualifier. With the
+    // flag off, PERSISTENT demotes to a plain identifier, so it collides with
+    // the following declaration name and fails to parse. With the flag on,
+    // it parses as the qualifier.
+    FlagFixture {
+        key: "allow_persistent_var",
+        prereqs: &["allow_top_level_var_global"],
+        source: "VAR_GLOBAL PERSISTENT\nnCounter : DINT;\nEND_VAR",
     },
 ];
 

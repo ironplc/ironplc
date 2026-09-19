@@ -1,6 +1,6 @@
 # ADR-0036: IronPLC Does Not Define Its Own Dialect
 
-status: proposed
+status: accepted
 date: 2026-07-12
 
 ## Context and Problem Statement

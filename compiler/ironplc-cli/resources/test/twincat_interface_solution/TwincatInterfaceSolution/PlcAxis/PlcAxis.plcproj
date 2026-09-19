@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <FileVersion>1.0.0.0</FileVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{f3c8a716-2d95-4e0b-9a6c-1b7e4f82d3c5}</ProjectGuid>
+    <SubObjectsSortedByName>True</SubObjectsSortedByName>
+    <DownloadApplicationInfo>true</DownloadApplicationInfo>
+    <DefaultNamespace>PlcAxis</DefaultNamespace>
+    <Name>PlcAxis</Name>
+    <ProgramVersion>3.1.4024.0</ProgramVersion>
+    <Application>{9d5b2c71-4a86-4e39-a0f5-3d6c17e8b942}</Application>
+    <TypeSystem>{c26f7e19-8b40-4d95-a713-6f0e2c58d1a4}</TypeSystem>
+    <Implicit_Task_Info>{2a94d5f7-1e63-4c88-9b05-7d4a3f6e0c21}</Implicit_Task_Info>
+    <Implicit_KindOfTask>{7e05c3a9-6b41-4d0f-8c72-1a9d5e3f6b84}</Implicit_KindOfTask>
+    <Implicit_Jitter_Distribution>{4c81a6f5-9e02-4b37-8d16-5f3a7c0e2b96}</Implicit_Jitter_Distribution>
+    <LibraryReferences>{8b3e5d17-0a49-4c6f-91d8-2e7c0f5a3b64}</LibraryReferences>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="POUs\I_Drivable.TcIO">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="POUs\FB_Axis.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="POUs\MAIN.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
+  <ProjectExtensions>
+    <PlcProjectOptions>
+      <XmlArchive>
+        <Data/>
+        <TypeList/>
+      </XmlArchive>
+    </PlcProjectOptions>
+  </ProjectExtensions>
+</Project>

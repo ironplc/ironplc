@@ -511,6 +511,7 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::EndVar => Some(KEYWORD_INDEX),
             TokenType::Retain => Some(MODIFIER_INDEX),
             TokenType::Constant => Some(MODIFIER_INDEX),
+            TokenType::Persistent => Some(MODIFIER_INDEX),
             TokenType::At => Some(KEYWORD_INDEX),
             TokenType::DirectAddress => Some(OPERATOR_INDEX),
             TokenType::PartialAccessBit => Some(OPERATOR_INDEX),
@@ -667,20 +668,10 @@ fn map_diagnostic(
 
     // `channel=extension` attributes the arrival to the editor integration (the
     // language server surfaces these diagnostics; we do not assume the editor is
-    // VS Code). `version` stays for the out-of-date banner in
-    // docs/_static/version-check.js. PostHog captures both as breakdown
-    // dimensions via `custom_campaign_params` in docs/_static/posthog-init.js.
-    let version = env!("CARGO_PKG_VERSION");
-    let mut url_string = format!(
-        "https://www.ironplc.com/reference/compiler/problems/{code}.html?version={version}&channel=extension",
-        code = diagnostic.code,
-    );
-    if let Some(ref file) = diagnostic.source_file {
-        url_string.push_str(&format!("&file={}", file));
-    }
-    if let Some(line) = diagnostic.source_line {
-        url_string.push_str(&format!("&line={}", line));
-    }
+    // VS Code). The shared builder supplies the rest, including the reference
+    // section: this used to be written out as `compiler`, which linked any
+    // non-`P` diagnostic to a page that does not exist.
+    let url_string = diagnostic.help_url(env!("CARGO_PKG_VERSION"), "extension");
     let code_description = match Uri::from_str(&url_string) {
         Ok(url) => Some(CodeDescription { href: url }),
         Err(_) => None,
@@ -758,7 +749,7 @@ mod test {
 
     use ironplc_project::FileBackedProject;
 
-    use super::{LspProject, LspTokenType};
+    use super::{LspProject, LspTokenType, TOKEN_TYPE_LEGEND};
 
     #[cfg(target_os = "macos")]
     static FAKE_PATH: &str = "file:///localhost/first_steps.st";
@@ -1041,16 +1032,72 @@ mod test {
         );
     }
 
+    /// The only tokenizer test that runs over a whole real program.
+    /// `first_steps.st` covers every POU kind -- TYPE, FUNCTION,
+    /// FUNCTION_BLOCK, SFC steps, transitions and actions, CONFIGURATION --
+    /// so reconstructing every token from the deltas and matching it back
+    /// against the source proves the encoding holds across a long file and
+    /// every construct, which the two-line snippets above cannot.
     #[test]
-    fn tokenize_when_first_steps_then_has_tokens() {
+    fn tokenize_when_first_steps_then_tokens_match_source() {
         let mut proj = new_empty_project();
         let url = Uri::from_str(FAKE_PATH).unwrap();
         let content = read_shared_resource("first_steps.st");
-        proj.change_text_document(&url, content);
+        proj.change_text_document(&url, content.clone());
 
-        let result = proj.tokenize(&url);
+        let tokens = proj.tokenize(&url).unwrap();
+        assert!(!tokens.is_empty(), "expected tokens, got none");
 
-        assert!(result.is_ok());
+        // first_steps.st is ASCII, so a char index is also the UTF-16 offset
+        // the LSP protocol counts in and can index the line directly.
+        let lines: Vec<&str> = content.lines().collect();
+
+        let mut line: u32 = 0;
+        let mut col: u32 = 0;
+        let mut lexemes: Vec<(u32, u32, String)> = Vec::new();
+        for token in &tokens {
+            if token.delta_line == 0 {
+                col += token.delta_start;
+            } else {
+                line += token.delta_line;
+                col = token.delta_start;
+            }
+
+            assert!(
+                (token.token_type as usize) < TOKEN_TYPE_LEGEND.len(),
+                "token type {} at ({line},{col}) is outside the legend",
+                token.token_type
+            );
+
+            let source_line = lines
+                .get(line as usize)
+                .unwrap_or_else(|| panic!("token at line {line} is past the end of the file"));
+            let chars: Vec<char> = source_line.chars().collect();
+            let end = col as usize + token.length as usize;
+            assert!(
+                end <= chars.len(),
+                "token at ({line},{col}) of length {} runs past the end of {source_line:?}",
+                token.length
+            );
+
+            // A token must cover exactly a lexeme: non-empty, and with no
+            // whitespace at either edge. An off-by-one in the delta encoding
+            // shifts the span onto neighbouring whitespace and is caught here.
+            let lexeme: String = chars[col as usize..end].iter().collect();
+            assert!(
+                !lexeme.is_empty() && lexeme.trim().len() == lexeme.len(),
+                "token at ({line},{col}) covers {lexeme:?}, which is not a lexeme"
+            );
+            lexemes.push((line, col, lexeme));
+        }
+
+        // Anchor both ends of the file at positions the loop above verified
+        // against the source rather than assumed.
+        assert_eq!(lexemes.first().unwrap(), &(0, 0, "TYPE".to_owned()));
+        assert_eq!(
+            lexemes.last().unwrap(),
+            &(175, 0, "END_CONFIGURATION".to_owned())
+        );
     }
 
     #[test]
@@ -1119,6 +1166,7 @@ mod test {
             TokenType::EndResource,
             TokenType::Retain,
             TokenType::NonRetain,
+            TokenType::Persistent,
             TokenType::Return,
             TokenType::Step,
             TokenType::Struct,
@@ -1312,6 +1360,44 @@ INVALID_SYNTAX"
         assert!(href.contains("&channel=extension"));
         assert!(!href.contains("&file="));
         assert!(!href.contains("&line="));
+    }
+
+    // Regression test for the language server formatting its own URL with the
+    // reference section written out as `compiler`, which sent every non-`P`
+    // diagnostic to a page that does not exist. `V####` codes document under
+    // `reference/runtime/`.
+    #[test]
+    fn map_diagnostic_when_runtime_code_then_url_uses_runtime_section() {
+        use ironplc_dsl::core::FileId;
+        use ironplc_dsl::diagnostic::{
+            Diagnostic as DslDiagnostic, Label as DslLabel, Location as DslLocation,
+        };
+
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        proj.change_text_document(&url, "PROGRAM Main\nEND_PROGRAM".to_owned());
+
+        let file_id = FileId::from_path(&std::path::PathBuf::from(url.path().as_str()));
+
+        let mut diag = DslDiagnostic::problem(
+            ironplc_problems::Problem::SyntaxError,
+            DslLabel {
+                location: DslLocation { start: 0, end: 7 },
+                file_id,
+                message: "some error".to_string(),
+            },
+        );
+        // The VM's trap codes are not in the `Problem` enum, so stand one in
+        // directly; `map_diagnostic` only ever reads the code.
+        diag.code = "V4001".to_string();
+
+        let lsp_diag = super::map_diagnostic(diag, proj.wrapped.as_ref());
+
+        let href = lsp_diag.code_description.unwrap().href.to_string();
+        assert!(
+            href.contains("/reference/runtime/problems/V4001.html"),
+            "V4001 documents under reference/runtime/, but the link is {href}",
+        );
     }
 
     #[test]

@@ -164,7 +164,14 @@ impl SymbolEnvironment {
         }
     }
 
-    /// Insert a symbol into the environment
+    /// Insert a symbol into the environment.
+    ///
+    /// A name already present in the scope is overwritten, not diagnosed.
+    /// The environment is built inside a transform that reverts the whole
+    /// library on `Err`, so a duplicate reported from here would discard
+    /// every other resolution with it. Duplicate declarations are instead
+    /// diagnosed by the semantic rules, which see the whole library and
+    /// report every one.
     pub fn insert(
         &mut self,
         name: &Id,
@@ -175,22 +182,10 @@ impl SymbolEnvironment {
 
         match scope {
             ScopeKind::Global => {
-                // Check for duplicate global symbols
-                if let Some(_existing) = self.global_symbols.get(name) {
-                    // For now, allow redefinition (this might be needed for forward declarations)
-                    // TODO: Implement proper duplicate detection
-                }
                 self.global_symbols.insert(name.clone(), symbol_info);
             }
             ScopeKind::Named(_) => {
                 let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
-
-                // Check for duplicate symbols in the same scope
-                if let Some(_existing) = scope_symbols.get(name) {
-                    // For now, allow redefinition (this might be needed for forward declarations)
-                    // TODO: Implement proper duplicate detection
-                }
-
                 scope_symbols.insert(name.clone(), symbol_info);
             }
         }

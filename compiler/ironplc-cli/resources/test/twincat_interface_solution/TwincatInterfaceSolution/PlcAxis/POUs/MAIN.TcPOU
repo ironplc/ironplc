@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="MAIN" Id="{5b0e3a86-7c41-4f95-9d02-8a6c1e5f3b74}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    axis : FB_Axis;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[axis.Start();]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
