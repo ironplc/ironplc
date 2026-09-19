@@ -20,7 +20,7 @@ use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
     char_width_for_string_type, emit_string_literal_load, string_region_size, CompileContext,
-    FbInstanceInfo, OpType, OpWidth, Signedness, StringVarInfo, VarTypeInfo, DEFAULT_OP_TYPE,
+    FbInstanceInfo, OpType, OpWidth, StringVarInfo, DEFAULT_OP_TYPE,
 };
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
@@ -213,16 +213,7 @@ pub(crate) fn assign_variables(
                     }
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
-                    // References are stored as 64-bit variable-table indices (unsigned).
-                    ctx.var_types.insert(
-                        id.clone(),
-                        VarTypeInfo {
-                            op_width: OpWidth::W64,
-                            signedness: Signedness::Unsigned,
-                            storage_bits: 64,
-                        },
-                    );
-                    crate::compile_array::register_ref_to_array_metadata(
+                    crate::compile_reference::register_reference_variable(
                         ctx, builder, id, index, ref_init,
                     )?;
                     (iec_type_tag::OTHER, "REF_TO".into())
