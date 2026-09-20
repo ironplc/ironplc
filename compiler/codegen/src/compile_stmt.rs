@@ -8,7 +8,7 @@ use ironplc_dsl::common::{
     BitStringLiteral, ConstantKind, FunctionBlockBodyKind, IntegerRef, SignedInteger,
     SignedIntegerRef, StringInitializer, StringSpecification,
 };
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     CaseSelectionKind, Expr, ExprKind, FbCall, ParamAssignmentKind, Statements, StmtKind,
@@ -33,17 +33,25 @@ use crate::string_width::compile_string_value;
 use ironplc_container::opcode;
 
 /// Compiles a function block body.
+///
+/// `pou_span` locates the program organization unit that owns the body. An
+/// SFC body carries no span of its own, so a diagnostic about the body kind
+/// points at the POU instead.
 pub(crate) fn compile_body(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     body: &FunctionBlockBodyKind,
+    pou_span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     match body {
         FunctionBlockBodyKind::Statements(statements) => {
             compile_statements(emitter, ctx, statements)
         }
         FunctionBlockBodyKind::Empty => Ok(()),
-        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::todo()),
+        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::not_implemented(Label::span(
+            pou_span.clone(),
+            "Sequential function chart body",
+        ))),
     }
 }
 
@@ -123,7 +131,12 @@ fn compile_statement(
                 let target_name = resolve_variable_name(&assignment.target);
                 let target_index = target_name
                     .and_then(|name| ctx.variables.get(name).copied())
-                    .ok_or_else(|| Diagnostic::todo())?;
+                    .ok_or_else(|| {
+                        Diagnostic::not_implemented(Label::span(
+                            assignment.target.span(),
+                            "Dereferenced assignment target is not a plain variable",
+                        ))
+                    })?;
 
                 // Compile the value expression (use DEFAULT_OP_TYPE; the referenced
                 // type determines the actual width at runtime).
@@ -788,7 +801,7 @@ impl CaseSelector<'_> {
             }
             // CASE with float types is not meaningful in IEC 61131-3.
             OpWidth::F32 | OpWidth::F64 => {
-                return Err(Diagnostic::todo_with_span(self.expr.span()));
+                return Err(non_integer_case_selector(self.expr));
             }
         }
         cmp(emitter, self.op_type);
@@ -872,6 +885,19 @@ fn compile_case_selector(
             selector.cmp_label(emitter, ctx, CaseLabelValue::Pattern(lit), emit_eq)
         }
     }
+}
+
+/// Builds the P9999 for a `CASE` whose selector is not an integer type,
+/// pointing at the selector expression.
+///
+/// The analyzer accepts a `REAL` selector today (tracked in issue #1470), so
+/// codegen is where the program is first refused.
+#[track_caller]
+fn non_integer_case_selector(selector_expr: &Expr) -> Diagnostic {
+    Diagnostic::not_implemented(Label::span(
+        selector_expr.span(),
+        "CASE selector is not an integer type",
+    ))
 }
 
 /// Converts a `SignedInteger` AST node to an `i32` value.

@@ -4,9 +4,7 @@
 //! array read/write compilation. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_dsl::common::{
-    ArrayInitialElementKind, ConstantKind, ReferenceInitializer, ReferenceTarget,
-};
+use ironplc_dsl::common::{ArrayInitialElementKind, ConstantKind};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variable};
@@ -444,15 +442,19 @@ pub(crate) fn array_spec_for_declaration(
                     "Array type resolved to a non-array representation",
                 )));
             };
-            array_spec_from_named(element_type, dimensions)
+            array_spec_from_named(element_type, dimensions, span)
         }
     }
 }
 
 /// Converts a named array type (from the TypeEnvironment) to a normalized ArraySpec.
+///
+/// `span` locates the declaration being compiled; the intermediate type has
+/// no span of its own.
 pub(crate) fn array_spec_from_named(
     element_type: &IntermediateType,
     dimensions: &[ArrayDimension],
+    span: &SourceSpan,
 ) -> Result<ArraySpec, Diagnostic> {
     let dims: Vec<(i32, i32)> = dimensions.iter().map(|d| (d.lower, d.upper)).collect();
     let ref_to = matches!(element_type, IntermediateType::Reference { .. });
@@ -461,7 +463,7 @@ pub(crate) fn array_spec_from_named(
     } else {
         element_type
     };
-    let element_type_name = intermediate_type_to_name(inner_type)?;
+    let element_type_name = intermediate_type_to_name(inner_type, span)?;
     let (string_max_len, string_char_width) = match inner_type {
         IntermediateType::String {
             max_len,
@@ -486,7 +488,7 @@ pub(crate) fn array_spec_from_named(
 /// Maps an IntermediateType to the IEC 61131-3 type name (as an Id) that
 /// `type_info::resolve_type_name()` can look up. Only primitive types are
 /// supported (arrays of complex types are out of scope).
-fn intermediate_type_to_name(ty: &IntermediateType) -> Result<Id, Diagnostic> {
+fn intermediate_type_to_name(ty: &IntermediateType, span: &SourceSpan) -> Result<Id, Diagnostic> {
     let name = match ty {
         IntermediateType::Bool => "BOOL",
         IntermediateType::Int {
@@ -538,7 +540,12 @@ fn intermediate_type_to_name(ty: &IntermediateType) -> Result<Id, Diagnostic> {
             size: ByteSized::B64,
         } => "LTIME",
         IntermediateType::String { .. } => "STRING",
-        _ => return Err(Diagnostic::todo()),
+        _ => {
+            return Err(Diagnostic::not_implemented(Label::span(
+                span.clone(),
+                "Unsupported array element type",
+            )))
+        }
     };
     Ok(Id::from(name))
 }
@@ -563,6 +570,50 @@ pub(crate) fn var_type_info_to_type_byte(vti: &VarTypeInfo) -> u8 {
         (OpWidth::F32, _) => 4,
         (OpWidth::F64, _) => 5,
     }
+}
+
+/// Builds the per-dimension metadata and the total element count for the
+/// given inclusive `(lower, upper)` bounds. Strides are computed in row-major
+/// order (the last dimension is contiguous). Shared by plain arrays and
+/// `REF_TO ARRAY` variables so both report the same diagnostics for arrays
+/// that are too large.
+pub(crate) fn compute_dimensions(
+    bounds: &[(i32, i32)],
+    span: &SourceSpan,
+) -> Result<(Vec<DimensionInfo>, u32), Diagnostic> {
+    // 1. Build DimensionInfo from normalized bounds
+    let mut dimensions: Vec<DimensionInfo> = Vec::new();
+    let mut total_elements: u32 = 1;
+    for &(lower, upper) in bounds {
+        let size = (upper as i64 - lower as i64 + 1) as u32;
+        dimensions.push(DimensionInfo {
+            lower_bound: lower,
+            size,
+            stride: 0,
+        });
+        total_elements = total_elements.checked_mul(size).ok_or_else(|| {
+            Diagnostic::not_implemented(Label::span(span.clone(), "Array too large"))
+        })?;
+    }
+
+    // 2. Validate element limit (i32 safety for flat-index arithmetic)
+    if total_elements > super::compile::MAX_DATA_REGION_SLOTS {
+        return Err(Diagnostic::not_implemented(Label::span(
+            span.clone(),
+            "Array exceeds maximum 32768 elements",
+        )));
+    }
+
+    // 3. Compute strides (reverse pass)
+    let n = dimensions.len();
+    if n > 0 {
+        dimensions[n - 1].stride = 1;
+        for k in (0..n - 1).rev() {
+            dimensions[k].stride = dimensions[k + 1].stride * dimensions[k + 1].size;
+        }
+    }
+
+    Ok((dimensions, total_elements))
 }
 
 /// Registers an array variable from a normalized ArraySpec.
@@ -600,39 +651,10 @@ pub(crate) fn register_array_variable(
         })?
     };
 
-    // 2. Build DimensionInfo from normalized bounds
-    let mut dimensions: Vec<DimensionInfo> = Vec::new();
-    let mut total_elements: u32 = 1;
-    for &(lower, upper) in &spec.dimensions {
-        let size = (upper as i64 - lower as i64 + 1) as u32;
-        dimensions.push(DimensionInfo {
-            lower_bound: lower,
-            size,
-            stride: 0,
-        });
-        total_elements = total_elements.checked_mul(size).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Array too large"))
-        })?;
-    }
+    // 2. Build DimensionInfo (with strides) and the element count
+    let (dimensions, total_elements) = compute_dimensions(&spec.dimensions, span)?;
 
-    // 3. Validate element limit (i32 safety for flat-index arithmetic)
-    if total_elements > super::compile::MAX_DATA_REGION_SLOTS {
-        return Err(Diagnostic::not_implemented(Label::span(
-            span.clone(),
-            "Array exceeds maximum 32768 elements",
-        )));
-    }
-
-    // 4. Compute strides (reverse pass)
-    let n = dimensions.len();
-    if n > 0 {
-        dimensions[n - 1].stride = 1;
-        for k in (0..n - 1).rev() {
-            dimensions[k].stride = dimensions[k + 1].stride * dimensions[k + 1].size;
-        }
-    }
-
-    // 5. Allocate data region space
+    // 3. Allocate data region space
     let data_offset = ctx.data_region_offset;
     let total_bytes = if is_string {
         // STRING/WSTRING elements: each element is [max_len:u16][cur_len:u16][data]
@@ -650,7 +672,7 @@ pub(crate) fn register_array_variable(
             Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
         })?;
 
-    // 6. Assert data_offset fits in i32 (stored in slot via LOAD_CONST_I32)
+    // 4. Assert data_offset fits in i32 (stored in slot via LOAD_CONST_I32)
     if data_offset > i32::MAX as u32 {
         return Err(Diagnostic::not_implemented(Label::span(
             span.clone(),
@@ -658,7 +680,7 @@ pub(crate) fn register_array_variable(
         )));
     }
 
-    // 7. Register descriptor in the container and get its index
+    // 5. Register descriptor in the container and get its index
     let (element_type_byte, element_extra) = if is_string {
         let element_field_type = if string_char_width.is_wide() {
             ironplc_container::FieldType::WString
@@ -671,7 +693,7 @@ pub(crate) fn register_array_variable(
     };
     let desc_index = builder.add_array_descriptor(element_type_byte, total_elements, element_extra);
 
-    // 8. Track max string capacity for temp buffer sizing.
+    // 6. Track max string capacity for temp buffer sizing.
     if is_string && string_max_len > ctx.max_string_capacity {
         ctx.max_string_capacity = string_max_len;
     }
@@ -679,7 +701,7 @@ pub(crate) fn register_array_variable(
         ctx.has_wide_string = true;
     }
 
-    // 9. Store in context
+    // 7. Store in context
     ctx.array_vars.insert(
         id.clone(),
         ArrayVarInfo {
@@ -711,73 +733,6 @@ pub(crate) fn register_array_variable(
     Ok((type_tag, type_name_str))
 }
 
-/// Registers array metadata for a `REF_TO ARRAY` variable so that
-/// `PT^[idx]` can be compiled with deref array opcodes.
-///
-/// No data region space is allocated — the reference parameter
-/// points to an array in the caller's scope.
-pub(crate) fn register_ref_to_array_metadata(
-    ctx: &mut CompileContext,
-    builder: &mut ContainerBuilder,
-    id: &Id,
-    var_index: VarIndex,
-    ref_init: &ReferenceInitializer,
-) -> Result<(), Diagnostic> {
-    if let ReferenceTarget::Array(subranges) = &ref_init.target {
-        let span = id.span();
-        let spec = array_spec_from_inline(subranges, &span)?;
-        let element_vti = if spec.ref_to {
-            VarTypeInfo {
-                op_width: OpWidth::W64,
-                signedness: Signedness::Unsigned,
-                storage_bits: 64,
-            }
-        } else {
-            super::type_info::resolve_type_name(&spec.element_type_name).unwrap_or(VarTypeInfo {
-                op_width: OpWidth::W32,
-                signedness: Signedness::Unsigned,
-                storage_bits: 32,
-            })
-        };
-        let element_type_byte = var_type_info_to_type_byte(&element_vti);
-        let mut dimensions = Vec::new();
-        let mut total_elements: u32 = 1;
-        for &(lower, upper) in &spec.dimensions {
-            let size = (upper as i64 - lower as i64 + 1) as u32;
-            dimensions.push(DimensionInfo {
-                lower_bound: lower,
-                size,
-                stride: 0,
-            });
-            total_elements *= size;
-        }
-        let n = dimensions.len();
-        if n > 0 {
-            dimensions[n - 1].stride = 1;
-            for k in (0..n - 1).rev() {
-                dimensions[k].stride = dimensions[k + 1].stride * dimensions[k + 1].size;
-            }
-        }
-        let desc_index = builder.add_array_descriptor(element_type_byte, total_elements, 0);
-        ctx.array_vars.insert(
-            id.clone(),
-            ArrayVarInfo {
-                var_index,
-                desc_index,
-                data_offset: 0,
-                element_var_type_info: element_vti,
-                total_elements,
-                dimensions,
-                is_string_element: false,
-                string_max_len: 0,
-                string_char_width: CharWidth::Narrow,
-                is_ref: true,
-            },
-        );
-    }
-    Ok(())
-}
-
 /// Recursively walks the `ArrayInitialElementKind` tree and produces
 /// a flat `Vec<ConstantKind>` of initial values in element order.
 pub(crate) fn flatten_array_initial_values(
@@ -789,8 +744,11 @@ pub(crate) fn flatten_array_initial_values(
             ArrayInitialElementKind::Constant(value) => {
                 result.push(value.clone());
             }
-            ArrayInitialElementKind::EnumValue(_) => {
-                return Err(Diagnostic::todo());
+            ArrayInitialElementKind::EnumValue(value) => {
+                return Err(Diagnostic::not_implemented(Label::span(
+                    value.span(),
+                    "Enumerated value in an array initializer",
+                )));
             }
             ArrayInitialElementKind::Repeated(repeated) => {
                 let count = repeated.size.value as usize;

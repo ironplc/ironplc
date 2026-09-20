@@ -18,8 +18,8 @@ use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 use super::compile::{
     char_width_for_string_type, finalize_function, string_region_size, CompileContext,
     CompiledFunction, CurrentFunctionReturn, OpType, OpWidth, SavedFbScope, Signedness,
-    StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo,
-    DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
+    StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, DEFAULT_OP_TYPE,
+    NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{
@@ -172,15 +172,7 @@ pub(crate) fn compile_user_function(
                     );
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
-                    ctx.var_types.insert(
-                        id.clone(),
-                        VarTypeInfo {
-                            op_width: OpWidth::W64,
-                            signedness: Signedness::Unsigned,
-                            storage_bits: 64,
-                        },
-                    );
-                    crate::compile_array::register_ref_to_array_metadata(
+                    crate::compile_reference::register_reference_variable(
                         ctx,
                         builder,
                         id,
@@ -239,15 +231,7 @@ pub(crate) fn compile_user_function(
                     );
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
-                    ctx.var_types.insert(
-                        id.clone(),
-                        VarTypeInfo {
-                            op_width: OpWidth::W64,
-                            signedness: Signedness::Unsigned,
-                            storage_bits: 64,
-                        },
-                    );
-                    crate::compile_array::register_ref_to_array_metadata(
+                    crate::compile_reference::register_reference_variable(
                         ctx,
                         builder,
                         id,
@@ -291,10 +275,15 @@ pub(crate) fn compile_user_function(
 
             let data_offset = ctx.data_region_offset;
             let total_bytes = string_region_size(max_length, char_width);
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo())?;
+            ctx.data_region_offset =
+                ctx.data_region_offset
+                    .checked_add(total_bytes)
+                    .ok_or_else(|| {
+                        Diagnostic::not_implemented(Label::span(
+                            spec.keyword_span.clone(),
+                            "Data region overflow",
+                        ))
+                    })?;
 
             if max_length > ctx.max_string_capacity {
                 ctx.max_string_capacity = max_length;
@@ -594,15 +583,7 @@ pub(crate) fn compile_user_function_block(
                     }
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
-                    ctx.var_types.insert(
-                        id.clone(),
-                        VarTypeInfo {
-                            op_width: OpWidth::W64,
-                            signedness: Signedness::Unsigned,
-                            storage_bits: 64,
-                        },
-                    );
-                    crate::compile_array::register_ref_to_array_metadata(
+                    crate::compile_reference::register_reference_variable(
                         ctx,
                         builder,
                         id,
@@ -655,7 +636,7 @@ pub(crate) fn compile_user_function_block(
     ctx.current_function_id = Some(function_id);
 
     let mut fb_emitter = Emitter::new();
-    compile_body(&mut fb_emitter, ctx, &fb_decl.body)?;
+    compile_body(&mut fb_emitter, ctx, &fb_decl.body, &fb_decl.name.span())?;
     fb_emitter.emit_ret_void();
 
     ctx.current_function_id = saved_current_fn;
