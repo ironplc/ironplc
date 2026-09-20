@@ -20,12 +20,21 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_problems::Problem;
 
+/// Populates the type environment (this also transforms late bound
+/// declarations).
+///
+/// A repeated type or function block name is returned as a diagnostic
+/// alongside the library rather than failing the pass: the environment keeps
+/// the first declaration and every other declaration still resolves. `Err`
+/// is reserved for a declaration that cannot be resolved at all.
 pub fn apply(
     lib: Library,
     type_environment: &mut TypeEnvironment,
-) -> Result<Library, Vec<Diagnostic>> {
-    // Populate environment (this also transforms late bound declarations).
-    type_environment.fold_library(lib).map_err(|err| vec![err])
+) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
+    let lib = type_environment
+        .fold_library(lib)
+        .map_err(|err| vec![err])?;
+    Ok((lib, type_environment.take_duplicates()))
 }
 
 impl TypeEnvironment {
@@ -560,7 +569,7 @@ LEVEL_ALIAS : LEVEL;
 END_TYPE
         ";
         let (result, _env) = parse_and_apply_with_elementary_types(program);
-        let result = result.unwrap();
+        let (result, _diagnostics) = result.unwrap();
 
         let expected = Library {
             elements: vec![
@@ -589,10 +598,10 @@ END_TYPE
         assert_eq!(result, expected)
     }
 
-    /// A repeated type name is the symbol environment's to report; the
-    /// type environment keeps the first declaration and resolution goes on.
+    /// A repeated type name is reported, and the pass still completes with
+    /// the first declaration resolved: the repeat does not revert the library.
     #[test]
-    fn apply_when_has_duplicate_items_then_keeps_first_without_error() {
+    fn apply_when_has_duplicate_items_then_p2007_and_first_kept() {
         let program = "
 TYPE
 LEVEL : (CRITICAL) := CRITICAL;
@@ -603,8 +612,10 @@ END_TYPE
             ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut env = TypeEnvironment::new();
-        let result = apply(input, &mut env).unwrap();
-        assert_eq!(result.elements.len(), 2);
+        let (library, diagnostics) = apply(input, &mut env).unwrap();
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, Problem::TypeDeclNameDuplicated.code());
+        assert_eq!(library.elements.len(), 2);
         assert!(env.get(&TypeName::from("LEVEL")).is_some());
     }
 
@@ -859,7 +870,10 @@ END_TYPE
     /// Helper function to parse 61131-3 code and apply type resolution with elementary types
     fn parse_and_apply_with_elementary_types(
         program: &str,
-    ) -> (Result<Library, Vec<Diagnostic>>, TypeEnvironment) {
+    ) -> (
+        Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>,
+        TypeEnvironment,
+    ) {
         let input =
             ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
@@ -874,7 +888,10 @@ END_TYPE
     /// Helper function to parse 61131-3 code and apply type resolution with empty environment
     fn parse_and_apply_with_empty_env(
         program: &str,
-    ) -> (Result<Library, Vec<Diagnostic>>, TypeEnvironment) {
+    ) -> (
+        Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>,
+        TypeEnvironment,
+    ) {
         let input =
             ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();

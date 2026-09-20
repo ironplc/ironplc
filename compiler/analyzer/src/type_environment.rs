@@ -12,6 +12,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::intermediate_type::{ByteSized, IntermediateType};
+use crate::symbol_environment::duplicate_declaration;
 
 /// Context for type usage validation
 #[derive(Debug, Clone, PartialEq)]
@@ -237,6 +238,12 @@ pub fn elementary_type(type_name: &TypeName) -> Option<&'static IntermediateType
 #[derive(Debug)]
 pub struct TypeEnvironment {
     table: HashMap<TypeName, crate::type_attributes::TypeAttributes>,
+    /// The repeated declarations met while populating, until the transform
+    /// that populates the environment drains them with
+    /// [`Self::take_duplicates`]. Recorded rather than returned so that a
+    /// repeat does not abort the fold that met it: the first declaration is
+    /// kept and every other declaration still resolves.
+    duplicates: Vec<Diagnostic>,
 }
 
 impl TypeEnvironment {
@@ -244,27 +251,52 @@ impl TypeEnvironment {
     pub fn new() -> Self {
         Self {
             table: HashMap::new(),
+            duplicates: Vec::new(),
         }
     }
 
     /// Adds the type into the environment.
     ///
-    /// A name already in the environment keeps its first type and the new
-    /// one is dropped. The repeat is not diagnosed here: the symbol
-    /// environment, built from the same sorted library, reports it (`P2007`,
-    /// or `P4013` for a function block), and resolution continues on the
-    /// first declaration. Reporting it here as well would mark one repeated
-    /// function block twice.
+    /// A name already in the environment keeps its first type; the repeat is
+    /// recorded as a diagnostic (`P2007`, or `P4013` when either declaration
+    /// is a function block, which is a program organization unit as well as
+    /// a type) and dropped. The environment owns this check for every kind
+    /// it holds: data types, function blocks and interfaces.
     pub fn insert_type(
         &mut self,
         type_name: &TypeName,
         symbol: crate::type_attributes::TypeAttributes,
     ) {
-        self.table.entry(type_name.clone()).or_insert(symbol);
+        let Some(existing) = self.table.get(type_name) else {
+            self.table.insert(type_name.clone(), symbol);
+            return;
+        };
+        let is_function_block = |attributes: &crate::type_attributes::TypeAttributes| {
+            matches!(
+                attributes.representation,
+                IntermediateType::FunctionBlock { .. }
+            )
+        };
+        let problem = if is_function_block(existing) || is_function_block(&symbol) {
+            Problem::PouDeclNameDuplicated
+        } else {
+            Problem::TypeDeclNameDuplicated
+        };
+        self.duplicates.push(duplicate_declaration(
+            problem,
+            &type_name.name,
+            existing.span(),
+        ));
     }
 
-    /// Adds an alias type into the environment; a name already in the
-    /// environment keeps its first type, as for [`Self::insert_type`].
+    /// The repeated declarations recorded by [`Self::insert_type`] since the
+    /// last call, in the order they were met.
+    pub fn take_duplicates(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.duplicates)
+    }
+
+    /// Adds an alias type into the environment; a repeated name is recorded
+    /// as for [`Self::insert_type`].
     ///
     /// Returns an error if the base type is not already in the type
     /// environment.
@@ -576,7 +608,7 @@ mod tests {
     use ironplc_dsl::core::SourceSpan;
 
     #[test]
-    fn insert_type_when_type_already_exists_then_keeps_first() {
+    fn insert_type_when_type_already_exists_then_p2007_and_first_kept() {
         let mut env = TypeEnvironment::new();
         let first = SourceSpan::range(0, 4);
         env.insert_type(
@@ -588,7 +620,55 @@ mod tests {
             TypeAttributes::new(SourceSpan::range(10, 14), IntermediateType::Bool),
         );
 
+        let duplicates = env.take_duplicates();
+        assert_eq!(duplicates.len(), 1);
+        assert_eq!(duplicates[0].code, Problem::TypeDeclNameDuplicated.code());
         assert_eq!(env.get(&TypeName::from("TYPE")).unwrap().span(), first);
+        assert!(env.take_duplicates().is_empty());
+    }
+
+    #[test]
+    fn insert_type_when_function_block_repeated_then_p4013() {
+        let mut env = TypeEnvironment::new();
+        let block = || {
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::FunctionBlock {
+                    name: "FB".to_string(),
+                    fields: vec![],
+                },
+            )
+        };
+        env.insert_type(&TypeName::from("FB"), block());
+        env.insert_type(&TypeName::from("FB"), block());
+
+        let duplicates = env.take_duplicates();
+        assert_eq!(duplicates.len(), 1);
+        assert_eq!(duplicates[0].code, Problem::PouDeclNameDuplicated.code());
+    }
+
+    #[test]
+    fn insert_type_when_function_block_repeats_type_then_p4013() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("Shared"),
+            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
+        );
+        env.insert_type(
+            &TypeName::from("Shared"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::FunctionBlock {
+                    name: "Shared".to_string(),
+                    fields: vec![],
+                },
+            ),
+        );
+
+        assert_eq!(
+            env.take_duplicates()[0].code,
+            Problem::PouDeclNameDuplicated.code()
+        );
     }
 
     #[test]

@@ -148,10 +148,12 @@ impl SymbolInfo {
     }
 }
 
-/// The problem a second global declaration of `name` is, when `existing` and
-/// `repeat` are both declarations. The global scope also holds enumeration
-/// values, structure elements and global variables, whose uniqueness other
-/// rules own, so a pair involving one of those is `None`.
+/// The problem a second global declaration of a name is, when `existing`
+/// and `repeat` are both declarations and at least one is a program or a
+/// configuration. A pair of types or function blocks is the type
+/// environment's to report. The global scope also holds enumeration values,
+/// structure elements and global variables, whose uniqueness other rules
+/// own, so a pair involving one of those is `None`.
 fn repeated_declaration(existing: &SymbolKind, repeat: &SymbolKind) -> Option<Problem> {
     let is_declaration = |kind: &SymbolKind| {
         matches!(
@@ -162,13 +164,15 @@ fn repeated_declaration(existing: &SymbolKind, repeat: &SymbolKind) -> Option<Pr
                 | SymbolKind::Configuration
         )
     };
+    let is_unit =
+        |kind: &SymbolKind| matches!(kind, SymbolKind::Program | SymbolKind::Configuration);
     if !is_declaration(existing) || !is_declaration(repeat) {
         return None;
     }
-    Some(match (existing, repeat) {
-        (SymbolKind::Type, SymbolKind::Type) => Problem::TypeDeclNameDuplicated,
-        _ => Problem::PouDeclNameDuplicated,
-    })
+    if !is_unit(existing) && !is_unit(repeat) {
+        return None;
+    }
+    Some(Problem::PouDeclNameDuplicated)
 }
 
 /// The diagnostic for `name` declared again at its own span when `first`
@@ -208,13 +212,15 @@ impl SymbolEnvironment {
 
     /// Insert a symbol into the environment.
     ///
-    /// In the global scope a type, function block, program or configuration
-    /// name is declared once. A second declaration is returned as a
-    /// diagnostic (`P2007` for a type repeating a type, `P4013` when a
-    /// program organization unit is involved) and the first declaration is
-    /// kept, so analysis continues on it. Every other kind and scope is
-    /// recorded without a uniqueness check, the later declaration replacing
-    /// the earlier one.
+    /// In the global scope a declaration name is declared once. A second
+    /// declaration is returned as a diagnostic (`P4013`) and the first
+    /// declaration is kept, so analysis continues on it. The type
+    /// environment owns the same check for the kinds it holds (data types,
+    /// function blocks, interfaces), so a pair of those is not reported
+    /// again here; this environment reports the pairs the type environment
+    /// never sees, those involving a program or a configuration. Every other
+    /// kind and scope is recorded without a uniqueness check, the later
+    /// declaration replacing the earlier one.
     pub fn insert(
         &mut self,
         name: &Id,
@@ -781,37 +787,37 @@ mod tests {
     }
 
     #[test]
-    fn insert_when_function_block_repeats_function_block_then_p4013_and_first_kept() {
+    fn insert_when_program_repeats_program_then_p4013_and_first_kept() {
         let mut env = SymbolEnvironment::new();
-        let first = Id::from("FB");
-        env.insert(&first, SymbolKind::FunctionBlock, &ScopeKind::Global)
+        let first = Id::from("Main");
+        env.insert(&first, SymbolKind::Program, &ScopeKind::Global)
             .unwrap();
 
-        let error = global(&mut env, "fb", SymbolKind::FunctionBlock).unwrap_err();
+        let error = global(&mut env, "main", SymbolKind::Program).unwrap_err();
 
         assert_eq!(error.code, Problem::PouDeclNameDuplicated.code());
-        let kept = env.find(&Id::from("FB"), &ScopeKind::Global).unwrap();
+        let kept = env.find(&Id::from("Main"), &ScopeKind::Global).unwrap();
         assert_eq!(kept.span, first.span());
     }
 
     #[test]
-    fn insert_when_type_repeats_type_then_p2007() {
+    fn insert_when_program_repeats_function_block_then_p4013() {
         let mut env = SymbolEnvironment::new();
-        global(&mut env, "T", SymbolKind::Type).unwrap();
+        global(&mut env, "T", SymbolKind::FunctionBlock).unwrap();
 
-        let error = global(&mut env, "T", SymbolKind::Type).unwrap_err();
-
-        assert_eq!(error.code, Problem::TypeDeclNameDuplicated.code());
-    }
-
-    #[test]
-    fn insert_when_function_block_repeats_type_then_p4013() {
-        let mut env = SymbolEnvironment::new();
-        global(&mut env, "T", SymbolKind::Type).unwrap();
-
-        let error = global(&mut env, "T", SymbolKind::FunctionBlock).unwrap_err();
+        let error = global(&mut env, "T", SymbolKind::Program).unwrap_err();
 
         assert_eq!(error.code, Problem::PouDeclNameDuplicated.code());
+    }
+
+    /// A repeated type or function block is the type environment's to
+    /// report, so it is recorded here without a second diagnostic.
+    #[test]
+    fn insert_when_function_block_repeats_type_then_ok_here() {
+        let mut env = SymbolEnvironment::new();
+        global(&mut env, "T", SymbolKind::Type).unwrap();
+
+        assert!(global(&mut env, "T", SymbolKind::FunctionBlock).is_ok());
     }
 
     #[test]
