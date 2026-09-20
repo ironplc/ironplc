@@ -27,7 +27,8 @@
    pool. That is no longer so -- a buffer is released when its value is
    copied out (ADR-0052), and a loop here would run -- but the unrolled form
    is what is tested against the specification's vectors, so rewriting it is
-   a change to make deliberately rather than in passing. *)
+   a change to make deliberately rather than in passing. Tracked as
+   https://github.com/ironplc/ironplc/issues/1748. *)
 FUNCTION LREAL_TO_FMTSTR : STRING
 VAR_INPUT
     in         : LREAL;   (* value to format *)

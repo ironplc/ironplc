@@ -348,12 +348,19 @@ mod tests {
     fn release_when_repeated_alloc_release_then_pool_of_one_suffices() {
         // What a string operation in a loop does: the pool holds a single
         // slot and every iteration allocates, consumes and releases it.
+        // A 32-byte pool holds exactly one 32-byte slot, so an iteration
+        // that failed to release would trap rather than return slot 0.
         let mut alloc = TempBufAllocator::new(32);
-        for _ in 0..1000 {
-            let slot = alloc.alloc(32, CharWidth::Narrow).unwrap();
-            assert_eq!(slot.buf_idx, 0);
-            alloc.release(slot.buf_idx as usize);
-        }
+        let every_iteration_reuses_slot_zero = (0..1000).all(|_| {
+            let buf_idx = match alloc.alloc(32, CharWidth::Narrow) {
+                Ok(slot) => slot.buf_idx,
+                Err(_) => return false,
+            };
+            alloc.release(buf_idx as usize);
+            buf_idx == 0
+        });
+
+        assert!(every_iteration_reuses_slot_zero);
     }
 
     #[test]

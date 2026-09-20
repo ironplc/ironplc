@@ -181,3 +181,43 @@ END_PROGRAM
         "idx"
     );
 }
+
+// --- String operations in a loop's condition ---
+
+// A loop condition is evaluated once per iteration plus once more. A string
+// comparison there materializes both operands into the data region through
+// temp buffers, so it draws on the pool as often as the body does.
+e2e_i32!(
+    end_to_end_when_string_compare_in_loop_condition_then_runs_every_iteration,
+    "
+PROGRAM main
+  VAR s : STRING[32]; i : INT; END_VAR
+  s := '';
+  i := 0;
+  WHILE s <> 'xxxxx' DO
+    s := CONCAT(s, 'x');
+    i := i + 1;
+  END_WHILE;
+END_PROGRAM
+",
+    &[(1, 5)],
+);
+
+// --- Numeric-to-string conversion in a loop ---
+
+/// The `*_TO_STRING` conversions are built-ins that write into a temp
+/// buffer, a third way to allocate one, so they need loop coverage too.
+#[test]
+fn end_to_end_when_int_to_string_in_loop_then_runs_every_iteration() {
+    let source = "
+PROGRAM main
+  VAR t : STRING[32]; i : INT; END_VAR
+  FOR i := 1 TO 300 DO
+    t := DINT_TO_STRING(42);
+  END_FOR;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(read_string(&bufs.data_region, string_offset(&[])), "42");
+}

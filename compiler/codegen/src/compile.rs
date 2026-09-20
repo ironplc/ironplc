@@ -176,9 +176,9 @@ pub(crate) fn encode_string_literal(chars: &[char], char_width: CharWidth) -> Ve
 ///
 /// Encodes the literal (Latin-1 for narrow, UTF-16LE for wide), registers it as
 /// a width-tagged constant-pool entry, and emits LOAD_CONST_STR (leaving
-/// `buf_idx` on the stack). The caller
-/// stores that temp buffer into a destination of the same width; the VM
-/// verifies the encoding match (ADR-0034).
+/// `buf_idx` on the stack). The caller stores that temp buffer into a
+/// destination of the same width; the VM verifies the encoding match
+/// (ADR-0034).
 pub(crate) fn emit_string_literal_load(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,

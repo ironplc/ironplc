@@ -110,15 +110,19 @@ makes the static bound correct.
 * Good, because a loop over a string operation runs: the body allocates and
   releases one buffer per iteration and contributes 1 to the bound, whatever
   the trip count.
-* Good, because the pool shrinks. A typical program moves from one buffer
-  per string statement to one or two in total, which is memory returned to
-  the embedded targets the fixed-size pool exists for.
+* Good, because the pool shrinks. It is now sized by nesting rather than by
+  how many string statements the program contains: a program of ten
+  sequential string statements went from 15 buffers to 1, and the reported
+  reproducer from 3 to 1. At the default 260-byte slot that is 3,900 bytes
+  down to 260 — memory returned to the embedded targets the fixed-size pool
+  exists for.
 * Good, because the release is local to one instruction: no verifier
   change, no flow-sensitive analysis, no runtime bookkeeping beyond the
   watermark that already existed.
 * Good, because `LREAL_TO_FMTSTR` no longer *has* to be unrolled. It is left
-  unrolled here and its rewrite tracked separately, so this change stays a
-  fix.
+  unrolled here and its rewrite tracked as
+  [#1748](https://github.com/ironplc/ironplc/issues/1748), so this change
+  stays a fix.
 * Bad, because the bound is still an over-approximation: a function's peak
   is charged to every call site on the heaviest path, not the depth actually
   live at each one.

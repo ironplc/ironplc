@@ -67,7 +67,6 @@ reference/runtime/problems/V9005
 reference/runtime/problems/V9006
 reference/runtime/problems/V9007
 reference/runtime/problems/V9008
-reference/runtime/problems/V9009
 reference/runtime/problems/V9010
 reference/runtime/problems/V9011
 reference/runtime/problems/V9012

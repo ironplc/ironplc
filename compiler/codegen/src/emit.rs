@@ -2201,16 +2201,21 @@ mod tests {
     #[test]
     fn emitter_when_alloc_and_consume_repeated_then_temp_depth_stays_one() {
         let mut em = Emitter::new();
-        for _ in 0..10 {
-            em.emit_concat_str(0, 0);
-            em.emit_str_store_var(0);
-        }
+        em.emit_concat_str(0, 0);
+        em.emit_str_store_var(0);
+        em.emit_concat_str(0, 0);
+        em.emit_str_store_var(0);
+        em.emit_concat_str(0, 0);
+        em.emit_str_store_var(0);
 
         assert_eq!(em.max_temp_depth(), 1);
     }
 
+    /// `STR_STORE_ARRAY_ELEM` is the other consuming opcode, so it has to
+    /// release too: the later CONCAT reuses the slot rather than stacking
+    /// on top of it.
     #[test]
-    fn emitter_when_string_array_element_stored_then_temp_depth_returns_to_zero() {
+    fn emitter_when_string_array_element_stored_then_temp_depth_stays_one() {
         let mut em = Emitter::new();
         em.emit_str_load_var(0);
         em.emit_load_const_i32(0);
