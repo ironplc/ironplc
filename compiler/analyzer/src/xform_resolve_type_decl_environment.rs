@@ -351,32 +351,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         &mut self,
         node: ReferenceDeclaration,
     ) -> Result<ReferenceDeclaration, Diagnostic> {
-        // Resolve the referenced type to build the Reference intermediate type.
-        let target_type = match &node.target {
-            ReferenceTarget::Named(referenced_type_name) => {
-                let referenced_attrs = self.get(referenced_type_name).ok_or_else(|| {
-                    Diagnostic::problem(
-                        Problem::ParentTypeNotDeclared,
-                        Label::span(node.type_name.span(), "Reference type declaration"),
-                    )
-                    .with_secondary(Label::span(referenced_type_name.span(), "Referenced type"))
-                })?;
-                referenced_attrs.representation.clone()
-            }
-            ReferenceTarget::Array(array_subranges) => {
-                // Resolve the inline array spec: REF_TO ARRAY[1..10] OF INT
-                let array_spec = SpecificationKind::Inline(array_subranges.clone());
-                let result = array::try_from(&node.type_name, &array_spec, self)?;
-                match result {
-                    array::IntermediateResult::Type(attrs) => attrs.representation,
-                    array::IntermediateResult::Alias(base_type_name) => self
-                        .get(&base_type_name)
-                        .ok_or_else(|| Diagnostic::internal_error())?
-                        .representation
-                        .clone(),
-                }
-            }
-        };
+        let target_type = self.resolve_reference_target(&node.type_name, &node.target)?;
 
         let attrs = crate::type_attributes::TypeAttributes::new(
             node.type_name.span(),

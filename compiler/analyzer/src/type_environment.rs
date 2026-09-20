@@ -5,13 +5,14 @@ use std::collections::HashMap;
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::{
-    common::TypeName,
+    common::{ReferenceTarget, SpecificationKind, TypeName},
     core::Located,
     diagnostic::{Diagnostic, Label},
 };
 use ironplc_problems::Problem;
 
 use crate::intermediate_type::{ByteSized, IntermediateType};
+use crate::intermediates::array;
 use crate::symbol_environment::duplicate_declaration;
 
 /// Context for type usage validation
@@ -322,6 +323,44 @@ impl TypeEnvironment {
         self.table.get(type_name)
     }
 
+    /// Resolves the type a `REF_TO` points at, whether it is named
+    /// (`REF_TO INT`, `REF_TO ARR4`) or an inline array
+    /// (`REF_TO ARRAY[0..3] OF INT`).
+    ///
+    /// `declaring` is the declaration that owns the target, used for the primary
+    /// diagnostic label.
+    pub fn resolve_reference_target(
+        &self,
+        declaring: &TypeName,
+        target: &ReferenceTarget,
+    ) -> Result<IntermediateType, Diagnostic> {
+        match target {
+            ReferenceTarget::Named(referenced_type_name) => {
+                let referenced_attrs = self.get(referenced_type_name).ok_or_else(|| {
+                    Diagnostic::problem(
+                        Problem::ParentTypeNotDeclared,
+                        Label::span(declaring.span(), "Reference type declaration"),
+                    )
+                    .with_secondary(Label::span(referenced_type_name.span(), "Referenced type"))
+                })?;
+                Ok(referenced_attrs.representation.clone())
+            }
+            ReferenceTarget::Array(array_subranges) => {
+                // Resolve the inline array spec: REF_TO ARRAY[1..10] OF INT
+                let array_spec = SpecificationKind::Inline(array_subranges.clone());
+                let result = array::try_from(declaring, &array_spec, self)?;
+                match result {
+                    array::IntermediateResult::Type(attrs) => Ok(attrs.representation),
+                    array::IntermediateResult::Alias(base_type_name) => Ok(self
+                        .get(&base_type_name)
+                        .ok_or_else(|| Diagnostic::internal_error())?
+                        .representation
+                        .clone()),
+                }
+            }
+        }
+    }
+
     /// Returns if the type is an enumeration.
     pub fn is_enumeration(&self, name: &TypeName) -> bool {
         self.table
@@ -604,6 +643,9 @@ mod tests {
         intermediate_type::{ArrayDimension, ByteSized, IntermediateType},
         type_attributes::TypeAttributes,
         type_category::TypeCategory,
+    };
+    use ironplc_dsl::common::{
+        ArrayElementType, ArraySubranges, Integer, SignedInteger, SignedIntegerRef, Subrange,
     };
     use ironplc_dsl::core::SourceSpan;
 
@@ -1213,5 +1255,118 @@ mod tests {
         assert!(env
             .resolve_member_access_type(&TypeName::from("NOT_FOUND"))
             .is_none());
+    }
+    fn subranges(element: &str) -> ArraySubranges {
+        ArraySubranges {
+            ranges: vec![Subrange {
+                start: SignedIntegerRef::Literal(SignedInteger {
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 0,
+                    },
+                    is_neg: false,
+                }),
+                end: SignedIntegerRef::Literal(SignedInteger {
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 3,
+                    },
+                    is_neg: false,
+                }),
+            }],
+            type_name: ArrayElementType::Named(TypeName::from(element)),
+            ref_to: None,
+        }
+    }
+
+    #[test]
+    fn resolve_reference_target_when_named_elementary_then_returns_elementary_type() {
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+
+        let result = env.resolve_reference_target(
+            &TypeName::from("INT_REF"),
+            &ReferenceTarget::Named(TypeName::from("INT")),
+        );
+
+        assert!(matches!(
+            result,
+            Ok(IntermediateType::Int {
+                size: ByteSized::B16
+            })
+        ));
+    }
+
+    #[test]
+    fn resolve_reference_target_when_named_array_then_returns_array_type() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("ARR4"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::Array {
+                    element_type: Box::new(IntermediateType::Int {
+                        size: ByteSized::B16,
+                    }),
+                    dimensions: vec![ArrayDimension { lower: 0, upper: 3 }],
+                },
+            ),
+        )
+        .unwrap();
+
+        let result = env.resolve_reference_target(
+            &TypeName::from("ARR_REF"),
+            &ReferenceTarget::Named(TypeName::from("ARR4")),
+        );
+
+        assert!(matches!(result, Ok(IntermediateType::Array { .. })));
+    }
+
+    #[test]
+    fn resolve_reference_target_when_inline_array_then_returns_array_type() {
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+
+        let result = env.resolve_reference_target(
+            &TypeName::from("ARR_REF"),
+            &ReferenceTarget::Array(subranges("INT")),
+        );
+
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        assert!(matches!(resolved, IntermediateType::Array { .. }));
+        assert_eq!(resolved.array_total_elements(), Some(4));
+    }
+
+    #[test]
+    fn resolve_reference_target_when_named_target_undeclared_then_parent_type_not_declared() {
+        let env = TypeEnvironment::new();
+
+        let result = env.resolve_reference_target(
+            &TypeName::from("BAD_REF"),
+            &ReferenceTarget::Named(TypeName::from("MISSING")),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().code,
+            Problem::ParentTypeNotDeclared.code()
+        );
+    }
+
+    #[test]
+    fn resolve_reference_target_when_inline_array_element_undeclared_then_error() {
+        let env = TypeEnvironment::new();
+
+        let result = env.resolve_reference_target(
+            &TypeName::from("BAD_REF"),
+            &ReferenceTarget::Array(subranges("MISSING")),
+        );
+
+        assert!(result.is_err());
     }
 }
