@@ -1,0 +1,110 @@
+=====
+P4052
+=====
+
+.. problem-summary:: P4052
+
+This error occurs when the selector of a ``CASE`` statement is not an integer
+or an enumeration.
+
+IEC 61131-3 defines the ``CASE`` statement over a selector of type ``ANY_INT``
+(``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``,
+``ULINT``) or an enumeration type. The labels of a ``CASE`` are integer
+literals, integer ranges and enumerated values, so a selector of any other
+type has no label it can be compared with. A subrange of an integer type is
+accepted, since it narrows an integer type.
+
+A ``REAL`` or ``LREAL`` selector is the usual cause. A floating-point value is
+rarely exactly equal to an integer label, so even where a compiler accepts one
+the branches seldom run as intended.
+
+The bit-string types ``BYTE``, ``WORD``, ``DWORD`` and ``LWORD`` are also
+rejected. A bit string is a pattern rather than a magnitude, and the standard
+does not list it as a ``CASE`` selector type.
+
+Example
+-------
+
+The following code will generate error P4052:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       level : REAL;
+       alarm : BOOL;
+   END_VAR
+       CASE level OF
+           1: alarm := TRUE;
+       END_CASE;
+   END_PROGRAM
+
+The variable ``level`` is ``REAL``, but ``CASE`` selects on an integer or an
+enumeration.
+
+To fix this error, select on an integer. Where the selector is a measurement,
+convert it to the integer the labels describe:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       level : REAL;
+       band : DINT;
+       alarm : BOOL;
+   END_VAR
+       band := REAL_TO_DINT(level);
+       CASE band OF
+           1: alarm := TRUE;
+       END_CASE;
+   END_PROGRAM
+
+Where the branches describe ranges of a continuous value, an ``IF`` statement
+with comparisons says so directly:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       level : REAL;
+       alarm : BOOL;
+   END_VAR
+       IF level >= 0.5 AND level < 1.5 THEN
+           alarm := TRUE;
+       END_IF;
+   END_PROGRAM
+
+Bit strings
+-----------
+
+The following code will generate error P4052:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flags : WORD;
+       alarm : BOOL;
+   END_VAR
+       CASE flags OF
+           1: alarm := TRUE;
+       END_CASE;
+   END_PROGRAM
+
+To fix this error, declare the selector as an integer type of the same width,
+or convert it at the ``CASE``:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flags : WORD;
+       alarm : BOOL;
+   END_VAR
+       CASE WORD_TO_UINT(flags) OF
+           1: alarm := TRUE;
+       END_CASE;
+   END_PROGRAM
+
+See :doc:`/reference/language/structured-text/case` for the ``CASE``
+statement.

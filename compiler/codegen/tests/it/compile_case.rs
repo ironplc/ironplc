@@ -2,7 +2,9 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{bc, parse_and_compile};
+use rstest::rstest;
+
+use crate::common::{bc, parse_and_compile, try_parse_and_compile};
 
 #[test]
 fn compile_when_case_single_arm_then_produces_eq_and_jmp() {
@@ -97,4 +99,34 @@ END_PROGRAM
             bc::ret_void(),
         ]
     );
+}
+
+/// Analysis rejects a `REAL` selector (P4052), so codegen treats one as a
+/// broken invariant. These tests resolve types without running the semantic
+/// rules, which is the only way to reach it.
+#[rstest]
+#[case::integer_label("1: alarm := TRUE;")]
+#[case::subrange_label("1..2: alarm := TRUE;")]
+fn compile_when_case_selector_is_real_then_internal_error_at_selector(#[case] arm: &str) {
+    let source = format!(
+        "
+PROGRAM main
+VAR
+    level : REAL;
+    alarm : BOOL;
+END_VAR
+    CASE level OF
+        {arm}
+    END_CASE;
+END_PROGRAM
+"
+    );
+    let result = try_parse_and_compile(&source, &CompilerOptions::default());
+
+    assert!(result.is_err());
+    let diagnostic = result.unwrap_err();
+    assert_eq!(diagnostic.code, "P9998");
+    let start = source.find("level OF").unwrap();
+    assert_eq!(diagnostic.primary.location.start, start);
+    assert_eq!(diagnostic.primary.location.end, start + "level".len());
 }

@@ -3,7 +3,7 @@ CASE
 ====
 
 The ``CASE`` statement selects one of several statement groups based on the
-value of an integer expression.
+value of an integer or enumeration expression.
 
 .. list-table::
    :widths: 30 70
@@ -25,8 +25,12 @@ Syntax
        statement_list ]
    END_CASE ;
 
-Each ``case_value`` is an integer literal or a subrange (``low .. high``).
-Multiple values can be listed separated by commas.
+Each ``case_value`` is an integer literal, a subrange (``low .. high``), or an
+enumerated value. Multiple values can be listed separated by commas.
+
+The selector expression must be of an integer type, a subrange of one, or an
+enumeration type. A selector of any other type, such as ``REAL`` or ``WORD``,
+is reported as :doc:`P4052 </reference/compiler/problems/P4052>`.
 
 Description
 -----------

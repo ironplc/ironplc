@@ -30,6 +30,7 @@ mod rule_abstract_not_instantiated;
 mod rule_assignment_aggregate_type_compat;
 mod rule_bit_and_partial_access_range;
 mod rule_case_bit_string_label;
+mod rule_case_selector_type;
 mod rule_constant_range;
 mod rule_decl_struct_element_unique_names;
 mod rule_enumeration_values_unique;
