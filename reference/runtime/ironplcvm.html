@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/V6003.html">V6003</a></li>
@@ -722,12 +731,40 @@ scheduling rounds.</p>
 <h2>Commands<a class="headerlink" href="#commands" title="Link to this heading">¶</a></h2>
 <dl>
 <dt><strong class="program">ironplcvm run</strong> [<em>OPTIONS</em>] <em>FILE</em></dt><dd><p>Load and execute a bytecode container (<code class="docutils literal notranslate"><span class="pre">.iplc</span></code>) file.</p>
-<dl class="simple">
+<dl>
 <dt><code class="docutils literal notranslate"><span class="pre">--dump-vars</span></code> <em>FILE</em></dt><dd><p>Write all variable values to the specified file after execution stops.
 The output contains one variable per line in the format <code class="docutils literal notranslate"><span class="pre">NAME:</span> <span class="pre">VALUE</span></code>,
 using the names recorded in the container’s debug section. A variable
 with no recorded name is reported as <code class="docutils literal notranslate"><span class="pre">var[N]</span></code>. Variables are dumped on
 both normal shutdown and after a runtime error.</p>
+<p>Each value is written as the IEC 61131-3 literal for its declared type,
+the same rendering the debugger and the playground show:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>msg: 'hello'
+wide: "hello"
+flag: TRUE
+n: 42
+ratio: 1.5
+mask: 16#ABCD
+span: T#1500ms
+day: D#2024-01-15
+clock: TOD#14:30:00
+stamp: DT#2024-01-15-14:30:00
+shade: GREEN (1)
+</pre></div>
+</div>
+<p>Durations are written in milliseconds (<code class="docutils literal notranslate"><span class="pre">T#1500ms</span></code>, not <code class="docutils literal notranslate"><span class="pre">T#1.5s</span></code>) so
+the value is exact and reparses as the same literal. A value that cannot
+be read — a string whose container carries no layout for it, or one whose
+layout does not fit the program’s data — is written as <code class="docutils literal notranslate"><span class="pre">&lt;unavailable&gt;</span></code>
+or <code class="docutils literal notranslate"><span class="pre">&lt;invalid&gt;</span></code> rather than as a number that would read like a value.</p>
+<p>Structures, arrays and function block instances are named by their type
+rather than shown, because the runtime does not yet record enough layout
+information to read their contents back:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>origin: &lt;POINT&gt;
+counts: &lt;ARRAY OF DINT&gt;
+timer: &lt;TON&gt;
+</pre></div>
+</div>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--scans</span></code> <em>N</em></dt><dd><p>Run exactly <em>N</em> scheduling rounds then stop. Without this option, the
 runtime runs continuously until interrupted with <kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">C</kbd>.</p>

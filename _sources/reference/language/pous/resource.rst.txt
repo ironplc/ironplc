@@ -40,6 +40,8 @@ Example
 A resource contains task declarations and associates programs with
 those tasks.
 
+.. include:: /includes/single-program-limitation.rst
+
 See Also
 --------
 

@@ -1,0 +1,112 @@
+=====
+P4049
+=====
+
+.. problem-summary:: P4049
+
+This error occurs when an operator is applied to an operand whose type the
+operator is not defined for.
+
+IEC 61131-3 defines the ``MOD`` operator only for the integer types (``SINT``,
+``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``). There
+is no floating-point remainder operator, so a ``REAL`` or ``LREAL`` operand is a
+type error.
+
+The bit-string operators ``AND``, ``OR``, ``XOR`` and ``NOT`` are defined over
+the bit-string types (``BOOL``, ``BYTE``, ``WORD``, ``DWORD``, ``LWORD``). An
+integer operand is a type error: ``x AND 3`` where ``x`` is a ``DINT`` does not
+mean a bitwise AND of the two numbers. Convert the operand to a bit-string type
+of the same width when a bit-wise result is what you want.
+
+The function form of an operator accepts the same operand types as the operator
+itself. A mismatch there is reported as :doc:`P4026` instead.
+
+Example
+-------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       angle : REAL := 400.5;
+       wrapped : REAL;
+   END_VAR
+       wrapped := angle MOD 360.0;
+   END_PROGRAM
+
+The variable ``angle`` is ``REAL``, but ``MOD`` accepts only integer operands.
+
+To fix this error, convert the operands to an integer type when an integer
+remainder is what you want:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       angle : REAL := 400.5;
+       wrapped : DINT;
+   END_VAR
+       wrapped := REAL_TO_DINT(angle) MOD 360;
+   END_PROGRAM
+
+For a floating-point remainder, subtract the truncated quotient. :doc:`TRUNC
+</reference/standard-library/functions/trunc>` drops the fractional part of the
+quotient, and the ``<INT>_TO_<REAL>`` conversion brings it back to the operand
+type:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       angle : REAL := 400.5;
+       wrapped : REAL;
+   END_VAR
+       wrapped := angle - DINT_TO_REAL(TRUNC(angle / 360.0)) * 360.0;  (* 40.5 *)
+   END_PROGRAM
+
+The result has the sign of the dividend, as ``MOD`` does for integers.
+
+Bit-string operators
+--------------------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flags : DINT := 10;
+       masked : DINT;
+   END_VAR
+       masked := flags AND 3;
+   END_PROGRAM
+
+The variable ``flags`` is a ``DINT``, but ``AND`` accepts only bit-string
+operands.
+
+To fix this error, declare the operands as a bit-string type of the width you
+want:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flags : BYTE := 16#0A;
+       masked : BYTE;
+   END_VAR
+       masked := flags AND 16#03;   (* 16#02 *)
+   END_PROGRAM
+
+The same applies to ``NOT``, whose operand is a single bit string:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flags : BYTE := 16#0F;
+       inverted : BYTE;
+   END_VAR
+       inverted := NOT flags;   (* 16#F0 *)
+   END_PROGRAM

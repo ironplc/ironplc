@@ -9,7 +9,7 @@
 <meta property="og:site_name" content="IronPLC" />
 <meta property="og:description" content="Shifts a bit string left by a specified number of positions. Signature: The return type matches the type of IN. SHL accepts BYTE, WORD, DWORD, LWORD for IN; N is INT. Inputs,,, Name, Type, Descript..." />
 <meta name="description" content="Shifts a bit string left by a specified number of positions. Signature: The return type matches the type of IN. SHL accepts BYTE, WORD, DWORD, LWORD for IN; N is INT. Inputs,,, Name, Type, Descript..." />
-<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="SHR" href="shr.html"><link rel="prev" title="MUX" href="mux.html">
+<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="SHR" href="shr.html"><link rel="prev" title="NOT" href="not.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/standard-library/functions/shl.html">
 
     <link rel="shortcut icon" href="../../../_static/favicon.ico"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="not.html">NOT</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6003.html">V6003</a></li>
@@ -816,14 +825,14 @@ position are discarded.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="mux.html">
+          <a class="prev-page" href="not.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">MUX</div>
+                <div class="title">NOT</div>
                 
               </div>
             </a>

@@ -11,19 +11,27 @@ for correctness — without changing the project.
 Check a Solution from the Command Line
 -------------------------------------------
 
-Point IronPLC at your solution directory and select the ``twincat``
-dialect:
+Point IronPLC at the directory that holds your :file:`.sln` file — or at
+the :file:`.sln` itself — and select the ``twincat`` dialect:
 
 .. code-block:: shell
 
    ironplcc check --dialect twincat path/to/my-solution
+   ironplcc check --dialect twincat path/to/my-solution/MySolution.sln
 
-IronPLC walks the solution layout the same way TwinCAT XAE does: past the
-:file:`.sln` and :file:`.tsproj` files, into each :file:`.plcproj` PLC
-project, which it reads to discover the :file:`.TcPOU`, :file:`.TcGVL`,
+IronPLC follows the solution layout the same way TwinCAT XAE does. It
+reads the :file:`.sln` to find the :file:`.tsproj` files, each
+:file:`.tsproj` to find the :file:`.plcproj` PLC projects, and each
+:file:`.plcproj` to find the :file:`.TcPOU`, :file:`.TcGVL`,
 :file:`.TcDUT`, and :file:`.TcIO` files to analyze. A solution that
 contains more than one PLC project is checked as a whole, so code in one
 project can use types and functions declared in another.
+
+Name the directory that holds the :file:`.sln`, not a directory above it.
+IronPLC does not search subdirectories for a project file. A directory
+that holds no :file:`.sln` or :file:`.plcproj` is checked as a folder of
+loose files instead, which ignores what the project files say — see
+:doc:`/reference/compiler/source-formats/twincat` for the full rules.
 
 On success, the command produces no output. If there are problems, IronPLC
 prints diagnostics with the file name, line number, and a description of

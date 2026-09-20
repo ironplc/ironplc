@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6003.html">V6003</a></li>
@@ -728,7 +737,12 @@ structure initializer is standard syntax and is always allowed.</p>
 <span class="n">END_FUNCTION_BLOCK</span>
 </pre></div>
 </div>
-<p>To fix this error, either use a constant value:</p>
+<p><code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> is itself an extension, so this example needs
+<code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code> as well as the flag below. Not every dialect that enables
+one enables the other, and some spell the pointer <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span> <span class="pre">FB_Device</span></code>
+instead – see <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for which
+dialect enables which flag.</p>
+<p>To fix this error, use a constant value:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION_BLOCK</span> <span class="n">FB_Example</span>
 <span class="n">VAR</span>
     <span class="n">tonDelta</span> <span class="p">:</span> <span class="n">TON</span> <span class="o">:=</span> <span class="p">(</span><span class="n">PT</span> <span class="o">:=</span> <span class="n">T</span><span class="c1">#100MS);</span>
@@ -740,6 +754,21 @@ structure initializer is standard syntax and is always allowed.</p>
 <p>Pass the <code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code> flag to enable it, or select a dialect that includes it. See
 <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for the dialects and flags
 reference.</p>
+</section>
+<section id="what-counts-as-a-constant-here">
+<h2>What counts as a constant here<a class="headerlink" href="#what-counts-as-a-constant-here" title="Link to this heading">¶</a></h2>
+<p>This error keys on the <em>shape</em> of the value, not on whether the value could
+be computed at compile time. A single literal (<code class="docutils literal notranslate"><span class="pre">(x</span> <span class="pre">:=</span> <span class="pre">1)</span></code>, <code class="docutils literal notranslate"><span class="pre">(x</span> <span class="pre">:=</span> <span class="pre">-1)</span></code>)
+is a <code class="docutils literal notranslate"><span class="pre">constant</span></code> in the standard grammar and is always accepted; an
+arithmetic expression over literals (<code class="docutils literal notranslate"><span class="pre">(x</span> <span class="pre">:=</span> <span class="pre">1</span> <span class="pre">+</span> <span class="pre">1)</span></code>) is not, and produces
+this error even though its result is fixed.</p>
+<p>That is the difference from
+<a class="reference internal" href="P4037.html"><span class="doc">P4037</span></a> and
+<code class="docutils literal notranslate"><span class="pre">--allow-constant-initializer-expressions</span></code>, which cover a plain <code class="docutils literal notranslate"><span class="pre">VAR</span></code>
+initializer and <em>do</em> fold the expression to a literal. A structured
+initializer value is not folded, because the extension exists for values
+that genuinely cannot be – a pointer dereference read when the instance is
+created. Write the computed value as a literal, or enable the flag above.</p>
 <div class="tip admonition">
 <p class="admonition-title">Think IronPLC is wrong about this?</p>
 <p>If you believe this diagnostic is incorrect, <a class="reference external" href="https://github.com/ironplc/ironplc/issues/new?template=compatibility_gap.md&amp;title=Diagnostic%20P4043%20appears%20incorrect&amp;labels=problem-code-feedback">open an issue on GitHub</a>
@@ -813,6 +842,7 @@ with a small sample that demonstrates the problem.</p>
             <ul>
 <li><a class="reference internal" href="#">P4043</a><ul>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#what-counts-as-a-constant-here">What counts as a constant here</a></li>
 </ul>
 </li>
 </ul>

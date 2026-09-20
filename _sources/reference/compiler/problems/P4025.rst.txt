@@ -4,7 +4,10 @@ P4025
 
 .. problem-summary:: P4025
 
-This error occurs when a bit access index on a variable exceeds the number of bits available in the variable's declared type.
+This error occurs when a bit access index on a variable exceeds the number
+of bits available in the variable's declared type, or when a partial access
+(``.%Bn``, ``.%Wn``, ``.%Dn``, ``.%Ln``) selects a slice the variable does
+not have.
 
 Each integer and bit string type has a fixed number of bits:
 
@@ -43,3 +46,26 @@ To fix this error, use an index within the valid range or use a wider type:
 
        myBool := myWord.8;  (* Correct: WORD has 16 bits, valid range is 0..15 *)
    END_FUNCTION_BLOCK
+
+Partial Access
+--------------
+
+The same check applies to the Edition 3 byte, word, double word, and long
+word forms. The slice must fit within the variable, and the index must not
+run past its last slice:
+
+.. playground::
+   :dialect: iec61131-3-ed3
+
+   FUNCTION_BLOCK FB1
+       VAR
+           myWord : WORD;
+           myByte : BYTE;
+       END_VAR
+
+       myByte := myWord.%B2;  (* Error: WORD has bytes 0..1 *)
+       myWord := myByte.%W0;  (* Error: a WORD does not fit in a BYTE *)
+   END_FUNCTION_BLOCK
+
+See :doc:`/reference/language/structured-text/bit-access` for the valid
+index range of each form.

@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V6003.html">V6003</a></li>
@@ -748,14 +757,12 @@ type. A function block type has at most one direct base type — the standard
 provides single inheritance for function block types. An instance of a derived
 type <em>is a</em> kind of its base type, so it can be used wherever the base type is
 expected.</p>
-<section id="hiding-inherited-names">
-<h3>Hiding inherited names<a class="headerlink" href="#hiding-inherited-names" title="Link to this heading">¶</a></h3>
-<p>A derived type can declare a variable whose name is already used by an
-inherited variable. The declaration in the derived type <strong>hides</strong> (or
-<em>shadows</em>) the inherited one: within the derived type’s own body the name
-refers to the member declared there, not to the one it inherited. The
-inherited member is not removed — it still exists on every instance and is
-reached through the base type.</p>
+<section id="inherited-names-cannot-be-redeclared">
+<h3>Inherited names cannot be redeclared<a class="headerlink" href="#inherited-names-cannot-be-redeclared" title="Link to this heading">¶</a></h3>
+<p>A derived type inherits every variable of its base type, and it cannot
+declare a variable of its own with one of those names. The following is
+rejected with <a class="reference internal" href="../reference/compiler/problems/P4044.html"><span class="doc">P4044</span></a>, whatever
+the type of the second declaration:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION_BLOCK</span> <span class="n">FB_Base</span>
     <span class="n">VAR</span>
         <span class="n">state</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
@@ -764,25 +771,36 @@ reached through the base type.</p>
 
 <span class="n">FUNCTION_BLOCK</span> <span class="n">FB_Derived</span> <span class="n">EXTENDS</span> <span class="n">FB_Base</span>
     <span class="n">VAR</span>
-        <span class="n">state</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+        <span class="n">state</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>   <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">state</span> <span class="ow">is</span> <span class="n">inherited</span> <span class="kn">from</span><span class="w"> </span><span class="nn">FB_Base</span> <span class="o">*</span><span class="p">)</span>
     <span class="n">END_VAR</span>
 <span class="n">END_FUNCTION_BLOCK</span>
 </pre></div>
 </div>
-<p>Inside <code class="docutils literal notranslate"><span class="pre">FB_Derived</span></code>, <code class="docutils literal notranslate"><span class="pre">state</span></code> names the <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> declared there; the
-inherited <code class="docutils literal notranslate"><span class="pre">INT</span></code> is hidden but still present on the instance.</p>
-<p>Hiding is different from declaring the same name twice in one place. Two
-declarations of the same name in a single scope — for example two variables in
-one <code class="docutils literal notranslate"><span class="pre">VAR</span></code> block — are a duplicate and are rejected
-(<a class="reference internal" href="../reference/compiler/problems/P4014.html"><span class="doc">P4014</span></a>). Hiding involves two
-<em>different</em> scopes, the base type and the derived type, so the name is
-resolved by choosing the nearer declaration rather than reported as an error.</p>
+<p>An instance of <code class="docutils literal notranslate"><span class="pre">FB_Derived</span></code> has exactly one <code class="docutils literal notranslate"><span class="pre">state</span></code>, the <code class="docutils literal notranslate"><span class="pre">INT</span></code> it
+inherits, and the derived type’s body and methods use that one. A derived
+type that needs another value declares it under a new name. Edition 3
+inheritance gives a derived type a single set of variables and no way to
+hold a second one of an inherited name; CODESYS and TwinCAT reject the
+same code as a duplicate definition.</p>
+<p>This is the same rule as declaring a name twice in one place, applied
+across the <code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code> chain: two declarations of one name in a single
+<code class="docutils literal notranslate"><span class="pre">VAR</span></code> block are rejected with
+<a class="reference internal" href="../reference/compiler/problems/P4014.html"><span class="doc">P4014</span></a>, and a derived type’s
+declarations are checked against everything it inherits as though they
+shared that block.</p>
+<p>Methods are different: a derived type may declare a method with the name
+of one it inherits. That <strong>overrides</strong> the inherited method — the derived
+type has one method of that name, and a call on the derived type runs it.</p>
+<p>Hiding does exist in one place: a method’s own parameters and local
+variables. A method local with the same name as a variable of the function
+block hides that variable within the method, and the method reaches the
+hidden one through <code class="docutils literal notranslate"><span class="pre">THIS^</span></code>.</p>
 </section>
 <section id="referring-to-the-instance-and-to-the-base-type">
 <h3>Referring to the instance and to the base type<a class="headerlink" href="#referring-to-the-instance-and-to-the-base-type" title="Link to this heading">¶</a></h3>
-<p>Hiding raises a question: once a derived type has hidden an inherited name,
-how does it reach the hidden one? The standard answers with two names for the
-instance a method is running on —
+<p>Hiding raises a question: once a method local has hidden a member of the
+instance, how does the method reach the hidden one? The standard answers
+with two names for the instance a method is running on —
 <a class="reference internal" href="../reference/language/object-orientation/this-and-super.html"><span class="doc">THIS and SUPER</span></a>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">THIS^</span></code> is the instance itself. It is what makes an instance variable
 reachable when a nearer name — a method parameter, say — hides it.</p>
@@ -886,8 +904,9 @@ extends it into a concrete type that can be instantiated.</p>
 <td><p>Deriving one type from another so it reuses the base type’s members.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Hiding (shadowing)</p></td>
-<td><p>A member declared in a derived type takes precedence, within that type,
-over an inherited member of the same name.</p></td>
+<td><p>A method’s parameter or local variable takes precedence, within that
+method, over a member of the instance with the same name. A derived
+type cannot hide an inherited variable; see above.</p></td>
 </tr>
 <tr class="row-even"><td><p>Interface</p></td>
 <td><p>A named set of method signatures with no implementation.</p></td>
@@ -939,7 +958,7 @@ class and function block inheritance)</p></li>
 <li><p><a class="reference external" href="https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_extending_function_block.html">CODESYS: Extension of a Function Block (EXTENDS)</a></p></li>
 <li><p><a class="reference external" href="https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_shadowing_rules.html">CODESYS: Shadowing Rules</a></p></li>
 <li><p><a class="reference external" href="https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_pointer_super.html">CODESYS: SUPER pointer</a></p></li>
-<li><p><a class="reference external" href="https://content.helpme-codesys.com/en/CODESYS%20Static%20Analysis/_san_rule_sa0013.html">CODESYS: Static Analysis SA0013 (Declarations with the same variable name)</a></p></li>
+<li><p><a class="reference external" href="https://infosys.beckhoff.com/content/1033/tc3_plc_intro/3537661579.html">Beckhoff: Inheritance principle</a></p></li>
 <li><p><a class="reference external" href="https://www.plccoder.com/the-hiding-attributes/">PLCCoder: IEC 61131-3 — The hiding attributes</a></p></li>
 <li><p><a class="reference external" href="https://stefanhenneken.net/2017/04/23/iec-61131-3-methods-properties-and-inheritance/">Stefan Henneken: IEC 61131-3 — Methods, Properties and Inheritance</a></p></li>
 </ul>
@@ -1012,7 +1031,7 @@ class and function block inheritance)</p></li>
 <li><a class="reference internal" href="#">Object Oriented Programming</a><ul>
 <li><a class="reference internal" href="#why-object-oriented-programming">Why object-oriented programming?</a></li>
 <li><a class="reference internal" href="#inheritance">Inheritance</a><ul>
-<li><a class="reference internal" href="#hiding-inherited-names">Hiding inherited names</a></li>
+<li><a class="reference internal" href="#inherited-names-cannot-be-redeclared">Inherited names cannot be redeclared</a></li>
 <li><a class="reference internal" href="#referring-to-the-instance-and-to-the-base-type">Referring to the instance and to the base type</a></li>
 </ul>
 </li>

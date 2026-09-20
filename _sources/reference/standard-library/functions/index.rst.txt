@@ -135,6 +135,14 @@ Bit String Functions
 
    * - Function
      - Description
+   * - :doc:`AND <and>`
+     - Bitwise AND
+   * - :doc:`OR <or>`
+     - Bitwise OR
+   * - :doc:`XOR <xor>`
+     - Bitwise exclusive OR
+   * - :doc:`NOT <not>`
+     - Bitwise complement
    * - :doc:`SHL <shl>`
      - Shift left
    * - :doc:`SHR <shr>`
@@ -257,6 +265,10 @@ Type Conversion Functions
    min
    limit
    mux
+   and
+   or
+   xor
+   not
    shl
    shr
    rol

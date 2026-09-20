@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V6003.html">V6003</a></li>
@@ -744,14 +753,49 @@ supported: a code point above U+FFFF has no representation, so surrogate pairs
 are not formed. Lengths — the declared maximum, and the value <code class="docutils literal notranslate"><span class="pre">LEN</span></code> returns —
 count code units, not bytes and not user-perceived characters.</p>
 <p>The maximum declared length is 65,535 code units.</p>
-<p><code class="docutils literal notranslate"><span class="pre">STRING</span></code> and <code class="docutils literal notranslate"><span class="pre">WSTRING</span></code> cannot be mixed. Assigning one to the other is a
-compile error (<a class="reference internal" href="../../../compiler/problems/P4034.html"><span class="doc">P4034</span></a>); the runtime also
-traps a mixed operation that reaches it.</p>
+<p><code class="docutils literal notranslate"><span class="pre">STRING</span></code> and <code class="docutils literal notranslate"><span class="pre">WSTRING</span></code> cannot be mixed. Assigning one to the other, or
+comparing or combining them in one operation, is a compile error
+(<a class="reference internal" href="../../../compiler/problems/P4034.html"><span class="doc">P4034</span></a>).</p>
+<p>The quotes select the type: <code class="docutils literal notranslate"><span class="pre">'abc'</span></code> is a <code class="docutils literal notranslate"><span class="pre">STRING</span></code> literal and <code class="docutils literal notranslate"><span class="pre">&quot;abc&quot;</span></code> a
+<code class="docutils literal notranslate"><span class="pre">WSTRING</span></code> one, so a literal used with a <code class="docutils literal notranslate"><span class="pre">WSTRING</span></code> is written with double
+quotes:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">VAR</span>
+    <span class="n">w</span> <span class="p">:</span> <span class="n">WSTRING</span><span class="p">[</span><span class="mi">10</span><span class="p">]</span> <span class="o">:=</span> <span class="s2">"abc"</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+    <span class="n">IF</span> <span class="n">w</span> <span class="o">=</span> <span class="s2">"abc"</span> <span class="n">THEN</span>
+        <span class="n">w</span> <span class="o">:=</span> <span class="n">CONCAT</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"d"</span><span class="p">);</span>
+    <span class="n">END_IF</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>A literal written with the wrong quotes is a type mismatch rather than a
+mixing error, so it is reported as
+<a class="reference internal" href="../../../compiler/problems/P4035.html"><span class="doc">P4035</span></a> for an assignment or
+<a class="reference internal" href="../../../compiler/problems/P4026.html"><span class="doc">P4026</span></a> for a call argument.</p>
+</section>
+<section id="example">
+<h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&source=ironplc-docs&host=reference%2Flanguage%2Fdata-types%2Felementary%2Fwstring&code=dW5pdCA6PSBXU1RSSU5HIyLCsEMiOwpjYXB0aW9uIDo9IENPTkNBVChXU1RSSU5HIyJLaWxuIHRlbXBlcmF0dXJlICIsIHVuaXQpOwpjYXB0aW9uX2xlbiA6PSBMRU4oY2FwdGlvbik7ICAgKCogY2FwdGlvbl9sZW4gPSAxOSAqKQ%3D%3D&vars=dW5pdCA6IFdTVFJJTkdbOF07IGNhcHRpb24gOiBXU1RSSU5HWzMyXTsgY2FwdGlvbl9sZW4gOiBJTlQ7" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:523px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">unit</span> <span class="o">:=</span> <span class="n">WSTRING</span><span class="c1">#"°C";</span>
+<span class="n">caption</span> <span class="o">:=</span> <span class="n">CONCAT</span><span class="p">(</span><span class="n">WSTRING</span><span class="c1">#"Kiln temperature ", unit);</span>
+<span class="n">caption_len</span> <span class="o">:=</span> <span class="n">LEN</span><span class="p">(</span><span class="n">caption</span><span class="p">);</span>   <span class="p">(</span><span class="o">*</span> <span class="n">caption_len</span> <span class="o">=</span> <span class="mi">19</span> <span class="o">*</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">caption</span></code> holds 19 code units and occupies 38 bytes. IronPLC displays a wide
+value as a double-quoted literal and escapes every code unit outside printable
+ASCII, so <code class="docutils literal notranslate"><span class="pre">caption</span></code> reads back as <code class="docutils literal notranslate"><span class="pre">&quot;Kiln</span> <span class="pre">temperature</span> <span class="pre">$00B0C&quot;</span></code> — <code class="docutils literal notranslate"><span class="pre">°</span></code> is the
+single code unit <code class="docutils literal notranslate"><span class="pre">$00B0</span></code>.</p>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p><a class="reference internal" href="string.html"><span class="doc">STRING</span></a> — single-byte character string</p></li>
+<li><p><a class="reference internal" href="../../../standard-library/functions/len.html"><span class="doc">LEN</span></a> — string length</p></li>
+<li><p><a class="reference internal" href="../../../standard-library/functions/concat.html"><span class="doc">CONCAT</span></a> — string concatenation</p></li>
 </ul>
 </section>
 </section>
@@ -822,6 +866,7 @@ traps a mixed operation that reaches it.</p>
 <li><a class="reference internal" href="#">WSTRING</a><ul>
 <li><a class="reference internal" href="#literals">Literals</a></li>
 <li><a class="reference internal" href="#encoding">Encoding</a></li>
+<li><a class="reference internal" href="#example">Example</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>

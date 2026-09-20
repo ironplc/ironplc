@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V6003.html">V6003</a></li>
@@ -760,7 +769,8 @@ behavior.</p>
 <h3>Informational Commands<a class="headerlink" href="#informational-commands" title="Link to this heading">¶</a></h3>
 <dl class="simple">
 <dt><strong class="program">ironplcc dialects</strong></dt><dd><p>Show available dialects and which features each enables. Use this to
-discover which <code class="docutils literal notranslate"><span class="pre">--allow-*</span></code> flags a dialect includes.</p>
+discover which <code class="docutils literal notranslate"><span class="pre">--allow-*</span></code> flags a dialect includes and which
+behavior policy alternatives it selects.</p>
 </dd>
 <dt><strong class="program">ironplcc version</strong></dt><dd><p>Print the version number of the compiler.</p>
 </dd>
@@ -837,6 +847,10 @@ explicit dereference (<code class="docutils literal notranslate"><span class="pr
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-adr</span></code></dt><dd><p>Allow the <code class="docutils literal notranslate"><span class="pre">ADR()</span></code> address-of operator, which returns a typed pointer to
 a variable for assignment to a <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span></code> variable.</p>
 </dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-persistent-var</span></code></dt><dd><p>Allow the Beckhoff TwinCAT / CODESYS <code class="docutils literal notranslate"><span class="pre">PERSISTENT</span></code> variable qualifier
+(<code class="docutils literal notranslate"><span class="pre">VAR</span> <span class="pre">PERSISTENT</span></code> / <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span> <span class="pre">PERSISTENT</span></code>). This is an extension,
+not part of the IEC 61131-3 standard.</p>
+</dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-ref-arithmetic</span></code></dt><dd><p>Allow arithmetic (<code class="docutils literal notranslate"><span class="pre">+</span></code>, <code class="docutils literal notranslate"><span class="pre">-</span></code>) and ordering comparisons (<code class="docutils literal notranslate"><span class="pre">&lt;</span></code>, <code class="docutils literal notranslate"><span class="pre">&gt;</span></code>,
 <code class="docutils literal notranslate"><span class="pre">&lt;=</span></code>, <code class="docutils literal notranslate"><span class="pre">&gt;=</span></code>) on <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> types. By default, only <code class="docutils literal notranslate"><span class="pre">=</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;&gt;</span></code>
 are permitted on references.</p>
@@ -861,13 +875,21 @@ TwinCAT, and RuSTy.</p>
 (<code class="docutils literal notranslate"><span class="pre">LTIME</span></code>) as implicit <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> values holding the VM’s monotonic
 uptime. This is an IronPLC runtime convention.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-cross-family-widening</span></code></dt><dd><p>Allow implicit widening between bit-string and integer type families
-(e.g. <code class="docutils literal notranslate"><span class="pre">BYTE</span></code> to <code class="docutils literal notranslate"><span class="pre">INT</span></code>, literal <code class="docutils literal notranslate"><span class="pre">0</span></code> to <code class="docutils literal notranslate"><span class="pre">BYTE</span></code>). This is a dialect
-extension supported by CODESYS, TwinCAT, and RuSTy.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-cross-family-widening</span></code></dt><dd><p>Allow implicit widening from a bit-string type to a strictly wider
+integer type (e.g. <code class="docutils literal notranslate"><span class="pre">BYTE</span></code> to <code class="docutils literal notranslate"><span class="pre">INT</span></code>). This is a dialect extension
+supported by CODESYS, TwinCAT, and RuSTy.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">--allow-partial-access-syntax</span></code></dt><dd><p>Allow IEC 61131-3:2013 partial-access bit syntax (<code class="docutils literal notranslate"><span class="pre">.%Xn</span></code>) as an alias
-for the short form <code class="docutils literal notranslate"><span class="pre">.n</span></code>. Byte/word/dword/lword partial access (<code class="docutils literal notranslate"><span class="pre">.%Bn</span></code>,
-<code class="docutils literal notranslate"><span class="pre">.%Wn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Dn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Ln</span></code>) is not yet supported.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-cross-family-conversion</span></code></dt><dd><p>Allow implicit conversion between <code class="docutils literal notranslate"><span class="pre">UDINT</span></code> and <code class="docutils literal notranslate"><span class="pre">DWORD</span></code> in both
+directions, at equal width — see <a class="reference internal" href="../../explanation/type-conversions.html"><span class="doc">Type Conversions</span></a>.
+This is a dialect extension supported by CODESYS, TwinCAT, and RuSTy.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-int-literal-to-bit-string</span></code></dt><dd><p>Allow a bare integer literal where a bit-string type is expected (e.g.
+<code class="docutils literal notranslate"><span class="pre">0</span></code> to <code class="docutils literal notranslate"><span class="pre">BYTE</span></code>). This is a dialect extension supported by CODESYS,
+TwinCAT, and RuSTy.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-partial-access-syntax</span></code></dt><dd><p>Allow IEC 61131-3:2013 partial-access syntax: the bit form <code class="docutils literal notranslate"><span class="pre">.%Xn</span></code> (an
+alias for the short form <code class="docutils literal notranslate"><span class="pre">.n</span></code>) and the byte, word, double word, and
+long word forms <code class="docutils literal notranslate"><span class="pre">.%Bn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Wn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Dn</span></code>, and <code class="docutils literal notranslate"><span class="pre">.%Ln</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-pragmas</span></code></dt><dd><p>Allow curly-brace pragmas such as <code class="docutils literal notranslate"><span class="pre">{attribute</span> <span class="pre">'qualified_only'}</span></code>. This
 is CODESYS-core syntax, inherited by TwinCAT and other CODESYS-based
@@ -914,7 +936,9 @@ permits only a constant, enumerated value, array initializer, or nested
 structure initializer here; this extension accepts a value
 computed at instantiation time. Produces
 <a class="reference internal" href="problems/P4043.html"><span class="doc">P4043</span></a> when used without this
-flag.</p>
+flag. The <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> in that example is a separate extension needing
+<code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code>; some dialects enable one without the other, and some
+spell the declaration <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span> <span class="pre">FB_Device</span></code> instead.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code></dt><dd><p>Allow the IEC 61131-3:2013 object-oriented syntax:
 <code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code>/<code class="docutils literal notranslate"><span class="pre">IMPLEMENTS</span></code>/<code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code> on <code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code>
@@ -925,6 +949,21 @@ parsed but not yet analyzed produce
 <a class="reference internal" href="problems/P9999.html"><span class="doc">P9999</span></a>. Enabled by
 <code class="docutils literal notranslate"><span class="pre">--dialect=iec61131-3-ed3</span></code>, <code class="docutils literal notranslate"><span class="pre">--dialect=rusty</span></code>, <code class="docutils literal notranslate"><span class="pre">--dialect=codesys</span></code>,
 and <code class="docutils literal notranslate"><span class="pre">--dialect=twincat</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span></code> <em>ALTERNATIVE</em></dt><dd><p>Select what <code class="docutils literal notranslate"><span class="pre">STRING_TO_&lt;numeric&gt;</span></code> treats as convertible when the string
+has non-numeric characters: <code class="docutils literal notranslate"><span class="pre">reject</span></code> (the whole string must be a
+literal; the default), <code class="docutils literal notranslate"><span class="pre">ignore-trailing</span></code> (convert the leading literal
+and ignore the rest), or <code class="docutils literal notranslate"><span class="pre">ignore-surrounding</span></code> (skip to the first
+literal, convert it, ignore the rest). A behavior policy: the dialect
+selects an alternative and this flag replaces it. See
+<a class="reference internal" href="../standard-library/functions/type-conversions.html"><span class="doc">Type Conversions</span></a>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span></code> <em>ALTERNATIVE</em></dt><dd><p>Select what <code class="docutils literal notranslate"><span class="pre">STRING_TO_&lt;numeric&gt;</span></code> does when the string is not
+convertible: <code class="docutils literal notranslate"><span class="pre">trap</span></code> (halt with
+<a class="reference internal" href="../runtime/problems/V4006.html"><span class="doc">V4006</span></a>; the default) or <code class="docutils literal notranslate"><span class="pre">zero</span></code>
+(produce zero and continue). A behavior policy: the dialect selects an
+alternative and this flag replaces it. See
+<a class="reference internal" href="../standard-library/functions/type-conversions.html"><span class="doc">Type Conversions</span></a>.</p>
 </dd>
 </dl>
 </section>

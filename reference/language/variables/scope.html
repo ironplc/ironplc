@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6003.html">V6003</a></li>
@@ -787,6 +796,11 @@ variables within program organization units.</p>
 <code class="code docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> and accessed from programs using <code class="code docutils literal notranslate"><span class="pre">VAR_EXTERNAL</span></code>.
 The <code class="code docutils literal notranslate"><span class="pre">VAR_EXTERNAL</span></code> declaration must match the name and type of the
 global variable it references.</p>
+<p>A program cannot declare a variable of its own with the same name as a
+global variable; that is reported as
+<a class="reference internal" href="../../compiler/problems/P4050.html"><span class="doc">P4050</span></a>. A function, function
+block or method may reuse a global’s name, and within that unit the local
+declaration hides the global.</p>
 <div class="tab-set docutils">
 <input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
 <iframe src="https://playground.ironplc.com/?embed=true&source=ironplc-docs&host=reference%2Flanguage%2Fvariables%2Fscope&code=Q09ORklHVVJBVElPTiBjb25maWcKICBWQVJfR0xPQkFMCiAgICBNYXhTcGVlZCA6IElOVCA6PSAxMDA7CiAgICBSZWFkaW5ncyA6IEFSUkFZWzEuLjNdIE9GIElOVCA6PSBbMTAsIDIwLCAzMF07CiAgRU5EX1ZBUgogIFJFU09VUkNFIHJlc291cmNlMSBPTiBQTEMKICAgIFRBU0sgcGxjX3Rhc2soSU5URVJWQUwgOj0gVCMxMDBtcywgUFJJT1JJVFkgOj0gMSk7CiAgICBQUk9HUkFNIHBsY190YXNrX2luc3RhbmNlIFdJVEggcGxjX3Rhc2sgOiBtYWluOwogIEVORF9SRVNPVVJDRQpFTkRfQ09ORklHVVJBVElPTgoKUFJPR1JBTSBtYWluCiAgVkFSX0VYVEVSTkFMCiAgICBNYXhTcGVlZCA6IElOVDsKICAgIFJlYWRpbmdzIDogQVJSQVlbMS4uM10gT0YgSU5UOwogIEVORF9WQVIKICBWQVIKICAgIGN1cnJlbnRTcGVlZCA6IElOVDsKICAgIGZpcnN0UmVhZGluZyA6IElOVDsKICBFTkRfVkFSCiAgY3VycmVudFNwZWVkIDo9IE1heFNwZWVkOwogIGZpcnN0UmVhZGluZyA6PSBSZWFkaW5nc1sxXTsKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:533px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>

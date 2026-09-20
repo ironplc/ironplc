@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6003.html">V6003</a></li>
@@ -729,13 +738,16 @@ when the flag is not enabled.</p>
 <td><p>Edition 3 (object-oriented programming)</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Parsed, analyzed, compiled and executed: a declaration is checked,
-and a call is resolved against the declared type of the instance,
-walking the <code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code> chain to find the method. A method body
-sets its return value by assigning the method’s own name; that
-value cannot be consumed at the call site yet (see
-<a class="reference internal" href="#method-limitations"><span class="std std-ref">Current limitations</span></a>). Enable with <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>;
-see <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a>.</p></td>
+<td><p>Parsed, analyzed, compiled and executed for a method declared on
+the instance’s own type: a declaration is checked, and a call is
+resolved against the declared type of the instance, walking the
+<code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code> chain to find the method. A call that the chain
+resolves to an inherited method is accepted by analysis but not
+yet compiled, and a method body sets its return value by assigning
+the method’s own name without that value being consumable at the
+call site (see <a class="reference internal" href="#method-limitations"><span class="std std-ref">Current limitations</span></a>). Enable with
+<code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>; see
+<a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a>.</p></td>
 </tr>
 </tbody>
 </table>
@@ -807,6 +819,13 @@ expression, so <code class="docutils literal notranslate"><span class="pre">x</s
 return value is discarded at the call site. Until that is supported, a
 method with a return type is useful only for what its body does — write
 the result to a field of the function block and read that field.</p>
+<p>A call to a method the instance’s type inherits through
+<a class="reference internal" href="extends.html"><span class="doc">EXTENDS</span></a> passes analysis but reports
+<a class="reference internal" href="../../compiler/problems/P9999.html"><span class="doc">P9999</span></a> when compiled. Code
+generation does not yet give a derived type storage for what it inherits,
+so there is nothing for the inherited body to run against. Declare the
+method on the type being called, or call it on an instance of the type
+that declares it, until inherited storage is compiled.</p>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>

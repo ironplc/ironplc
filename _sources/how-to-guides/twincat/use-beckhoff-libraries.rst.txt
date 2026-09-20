@@ -72,26 +72,30 @@ Use Your Own Libraries
 -------------------------------------------
 
 If you factor shared code into your own PLC library project, keep the
-library's *source* project inside the solution (or workspace) you give
-IronPLC. IronPLC merges every :file:`.plcproj` it discovers into one
+library's *source* project inside the solution you give IronPLC, and make
+sure the solution lists it. IronPLC finds the PLC projects by reading the
+:file:`.sln` and :file:`.tsproj` files, not by searching the directory
+tree. It merges every :file:`.plcproj` the solution names into one
 compilation unit, so your application resolves the library's functions,
 function blocks, and types directly from their source:
 
 .. code-block:: text
 
    MySolution/
-   ├── MySolution.sln
-   ├── App/
-   │   ├── App.plcproj
-   │   └── POUs/MAIN.TcPOU          (calls F_Scale)
-   └── MyLib/
-       ├── MyLib.plcproj
-       └── POUs/F_Scale.TcPOU
+   ├── MySolution.sln                (names MySolution/MySolution.tsproj)
+   └── MySolution/
+       ├── MySolution.tsproj         (names App.plcproj, MyLib.plcproj)
+       ├── App/
+       │   ├── App.plcproj
+       │   └── POUs/MAIN.TcPOU       (calls F_Scale)
+       └── MyLib/
+           ├── MyLib.plcproj
+           └── POUs/F_Scale.TcPOU
 
 IronPLC does not read precompiled or managed library files
 (:file:`.library` / :file:`.compiled-library`), so a library that exists
 only in TwinCAT's library repository is not visible to IronPLC — the
-library's source must be present in the directory you check.
+library's source must be part of the solution you check.
 
 -------------------------------------------
 About the Compatibility Libraries

@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V6003.html">V6003</a></li>
@@ -987,11 +996,15 @@ numeric bit container.</p>
 <h3>Cross-family widening<a class="headerlink" href="#cross-family-widening" title="Link to this heading">¶</a></h3>
 <p>Widening from a bit-string type to an integer type crosses the <code class="docutils literal notranslate"><span class="pre">ANY_BIT</span></code> /
 <code class="docutils literal notranslate"><span class="pre">ANY_INT</span></code> boundary and is not part of the IEC 61131-3 standard. IronPLC
-supports this as an extension behind the <code class="docutils literal notranslate"><span class="pre">--allow-cross-family-widening</span></code>
-flag (enabled by default in the <code class="docutils literal notranslate"><span class="pre">Rusty</span></code> dialect). See
-<a class="reference internal" href="enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for how to enable this flag.</p>
+supports this as an extension behind three flags, one per rule:
+<code class="docutils literal notranslate"><span class="pre">--allow-cross-family-widening</span></code> for widening to a strictly wider integer,
+<code class="docutils literal notranslate"><span class="pre">--allow-cross-family-conversion</span></code> for the one equal-width pair, and
+<code class="docutils literal notranslate"><span class="pre">--allow-int-literal-to-bit-string</span></code> for bare integer literals. All three are
+enabled by default in the <code class="docutils literal notranslate"><span class="pre">Rusty</span></code>, <code class="docutils literal notranslate"><span class="pre">CODESYS</span></code> and <code class="docutils literal notranslate"><span class="pre">TwinCAT</span></code> dialects. See
+<a class="reference internal" href="enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for how to enable them.</p>
 <p>When the flag is enabled, a bit-string type can widen to an integer type of
-strictly greater bit width:</p>
+strictly greater bit width. <code class="docutils literal notranslate"><span class="pre">DWORD</span></code> to <code class="docutils literal notranslate"><span class="pre">UDINT</span></code> is the one equal-width
+exception, described after the table:</p>
 <div class="table-wrapper docutils container" id="id4">
 <table class="docutils align-default" id="id4">
 <caption><span class="caption-text">Cross-family widening: bit-string to integer (requires <code class="docutils literal notranslate"><span class="pre">--allow-cross-family-widening</span></code>)</span><a class="headerlink" href="#id4" title="Link to this table">¶</a></caption>
@@ -1035,7 +1048,7 @@ strictly greater bit width:</p>
 <td><p>Yes</p></td>
 <td><p>No</p></td>
 <td><p>No</p></td>
-<td><p>No</p></td>
+<td><p>Yes</p></td>
 <td><p>Yes</p></td>
 </tr>
 <tr class="row-odd"><th class="stub"><p><strong>LWORD</strong></p></th>
@@ -1051,10 +1064,32 @@ strictly greater bit width:</p>
 </tbody>
 </table>
 </div>
-<p>The reverse direction (integer to bit-string) is never implicit — use explicit
-conversion functions such as <code class="docutils literal notranslate"><span class="pre">INT_TO_BYTE</span></code>.</p>
+<p>The reverse direction (integer to bit-string) is not implicit, apart from one
+pair. Use explicit conversion functions such as <code class="docutils literal notranslate"><span class="pre">INT_TO_BYTE</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">UDINT</span></code> and <code class="docutils literal notranslate"><span class="pre">DWORD</span></code> are the one pair that converts implicitly at equal
+width, and the one case where integer to bit-string is implicit. Both
+directions require the <code class="docutils literal notranslate"><span class="pre">--allow-cross-family-conversion</span></code> flag — this
+converts rather than widens, which is why it is not the widening flag. The two types
+share a 32-bit slot, so the conversion leaves the bit pattern unchanged:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">VAR</span>
+    <span class="n">udValue</span> <span class="p">:</span> <span class="n">UDINT</span> <span class="o">:=</span> <span class="mi">3000000000</span><span class="p">;</span>
+    <span class="n">dwValue</span> <span class="p">:</span> <span class="n">DWORD</span> <span class="o">:=</span> <span class="mi">16</span><span class="c1">#FFFFFFFF;</span>
+    <span class="n">dwFromUdint</span> <span class="p">:</span> <span class="n">DWORD</span><span class="p">;</span>
+    <span class="n">udFromDword</span> <span class="p">:</span> <span class="n">UDINT</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+    <span class="n">dwFromUdint</span> <span class="o">:=</span> <span class="n">udValue</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="mi">16</span><span class="c1">#B2D05E00, the same 32 bits *)</span>
+    <span class="n">udFromDword</span> <span class="o">:=</span> <span class="n">dwValue</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="mi">4294967295</span><span class="p">,</span> <span class="n">the</span> <span class="n">same</span> <span class="mi">32</span> <span class="n">bits</span> <span class="o">*</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The exception covers exactly this pair. The other equal-width bit-string and
+unsigned-integer pairs — <code class="docutils literal notranslate"><span class="pre">BYTE</span></code> and <code class="docutils literal notranslate"><span class="pre">USINT</span></code>, <code class="docutils literal notranslate"><span class="pre">WORD</span></code> and <code class="docutils literal notranslate"><span class="pre">UINT</span></code>,
+<code class="docutils literal notranslate"><span class="pre">LWORD</span></code> and <code class="docutils literal notranslate"><span class="pre">ULINT</span></code> — need an explicit conversion function in both
+directions, as do all signed integer types. Without the flag, IronPLC reports
+<a class="reference internal" href="../reference/compiler/problems/P4035.html"><span class="doc">P4035</span></a> for <code class="docutils literal notranslate"><span class="pre">UDINT</span></code> and <code class="docutils literal notranslate"><span class="pre">DWORD</span></code>
+too.</p>
 <p>Bare integer literals (e.g. <code class="docutils literal notranslate"><span class="pre">0</span></code>) can also be passed to bit-string parameters
-when the flag is enabled.</p>
+when <code class="docutils literal notranslate"><span class="pre">--allow-int-literal-to-bit-string</span></code> is enabled. This is literal typing
+rather than widening, so it has its own flag.</p>
 </section>
 </section>
 <section id="integer-and-real-types">

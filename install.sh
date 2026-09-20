@@ -17,14 +17,23 @@
 set -eu
 
 REPO="ironplc/ironplc"
-RELEASE_URL="https://github.com/${REPO}/releases/download"
+# Where release archives are fetched from. IRONPLC_RELEASE_URL exists so the
+# packaging tests can point the script at a tarball built from the working tree
+# (`just install-script-smoke-local`) instead of a published release; it is not
+# something a user needs to set. The archive and its `.sha256` are both read
+# from here, so an override moves the checksum's origin with the file it checks.
+RELEASE_URL="${IRONPLC_RELEASE_URL:-https://github.com/${REPO}/releases/download}"
 LATEST_API="https://api.github.com/repos/${REPO}/releases/latest"
 LATEST_REDIRECT="https://github.com/${REPO}/releases/latest"
 ISSUES_URL="https://github.com/${REPO}/issues"
 DEFAULT_INSTALL_DIR="${HOME}/.ironplc"
-# ironplcc is required. Older releases may not include ironplcvm or ironplcmcp.
-REQUIRED_BINARIES="ironplcc"
-OPTIONAL_BINARIES="ironplcvm ironplcmcp"
+# Every executable a release archive carries. There is no optional binary: the
+# compiler, the runtime, the MCP server and the debug server are one toolchain,
+# and the editor resolves ironplcvmd from beside ironplcc, so an install that
+# leaves one out is a broken install and fails rather than warns. This list must
+# match the workspace's [[bin]] targets -- the `shipped_binaries_guard` test
+# reads it from here and fails when it does not.
+BINARIES="ironplcc ironplcvm ironplcmcp ironplcvmd"
 
 # ---- output helpers -------------------------------------------------------
 
@@ -298,7 +307,7 @@ already_installed_same_version() {
     _existing="$(cat "$_version_file" 2>/dev/null || true)"
     [ -n "$_existing" ] || return 1
     [ "$_existing" = "$TAG" ] || return 1
-    for _bin in $REQUIRED_BINARIES; do
+    for _bin in $BINARIES; do
         [ -x "$INSTALL_DIR/bin/$_bin" ] || return 1
     done
     return 0
@@ -321,18 +330,10 @@ install_binaries() {
     tar -xzf "${_tmp}/${ARTIFACT_NAME}" -C "$_tmp"
 
     mkdir -p "${INSTALL_DIR}/bin"
-    for _bin in $REQUIRED_BINARIES; do
-        [ -f "${_tmp}/${_bin}" ] || die "archive is missing required binary: ${_bin}"
+    for _bin in $BINARIES; do
+        [ -f "${_tmp}/${_bin}" ] || die "archive is missing ${_bin}; this release cannot be installed"
         mv -f "${_tmp}/${_bin}" "${INSTALL_DIR}/bin/${_bin}"
         chmod +x "${INSTALL_DIR}/bin/${_bin}"
-    done
-    for _bin in $OPTIONAL_BINARIES; do
-        if [ -f "${_tmp}/${_bin}" ]; then
-            mv -f "${_tmp}/${_bin}" "${INSTALL_DIR}/bin/${_bin}"
-            chmod +x "${INSTALL_DIR}/bin/${_bin}"
-        else
-            warn "archive does not include ${_bin} (released before it existed); skipping"
-        fi
     done
 
     # Compatibility libraries ship beside the binaries; the compiler reads them
@@ -343,6 +344,13 @@ install_binaries() {
         mv -f "${_tmp}/resources" "${INSTALL_DIR}/bin/resources"
     else
         warn "archive does not include compatibility libraries (released before they existed); skipping"
+    fi
+
+    # The SBOM ships beside the binaries it describes.
+    if [ -f "${_tmp}/bom.cdx.json" ]; then
+        mv -f "${_tmp}/bom.cdx.json" "${INSTALL_DIR}/bin/bom.cdx.json"
+    else
+        warn "archive does not include an SBOM (released before it existed); skipping"
     fi
 
     # macOS may set com.apple.quarantine on extracted binaries. Best-effort removal.

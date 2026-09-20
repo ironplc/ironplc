@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6003.html">V6003</a></li>
@@ -758,28 +767,70 @@ automatically; see <a class="reference internal" href="../../../explanation/enab
 </section>
 <section id="project-discovery">
 <h2>Project Discovery<a class="headerlink" href="#project-discovery" title="Link to this heading">¶</a></h2>
-<p>When you point IronPLC at a directory, the compiler searches it
-recursively for <code class="file docutils literal notranslate"><span class="pre">.plcproj</span></code> files — the marker of a TwinCAT 3 PLC
-project. This means you can point IronPLC at any level of the Visual
-Studio solution layout that TwinCAT XAE creates:</p>
+<p>Point IronPLC at a TwinCAT project manifest — a <code class="file docutils literal notranslate"><span class="pre">.sln</span></code> or a
+<code class="file docutils literal notranslate"><span class="pre">.plcproj</span></code> — or at the directory that holds exactly one manifest:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--dialect<span class="w"> </span>twincat<span class="w"> </span>MySolution/MySolution.sln
+ironplcc<span class="w"> </span>check<span class="w"> </span>--dialect<span class="w"> </span>twincat<span class="w"> </span>MySolution
+</pre></div>
+</div>
+<p>IronPLC reads the directory you name and nothing below it. It does not
+search the tree for <code class="file docutils literal notranslate"><span class="pre">.plcproj</span></code> files. Instead it follows the chain
+of references that TwinCAT XAE follows: a <code class="file docutils literal notranslate"><span class="pre">.sln</span></code> names its
+<code class="file docutils literal notranslate"><span class="pre">.tsproj</span></code> files, each <code class="file docutils literal notranslate"><span class="pre">.tsproj</span></code> names its <code class="file docutils literal notranslate"><span class="pre">.plcproj</span></code>
+files, and each <code class="file docutils literal notranslate"><span class="pre">.plcproj</span></code> names the source files to analyze (its
+<code class="docutils literal notranslate"><span class="pre">&lt;Compile&gt;</span></code> items).</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>MySolution/
-├── MySolution.sln
+├── MySolution.sln              (names MySolution/MySolution.tsproj)
 └── MySolution/
-    ├── MySolution.tsproj
+    ├── MySolution.tsproj       (names PlcProject/PlcProject.plcproj)
     └── PlcProject/
-        ├── PlcProject.plcproj
+        ├── PlcProject.plcproj  (names POUs/MAIN.TcPOU, POUs/F_Helper.TcPOU)
         └── POUs/
             ├── MAIN.TcPOU
             └── F_Helper.TcPOU
 </pre></div>
 </div>
-<p>The <code class="file docutils literal notranslate"><span class="pre">.sln</span></code> and <code class="file docutils literal notranslate"><span class="pre">.tsproj</span></code> files are not themselves parsed;
-discovery walks past them to each <code class="file docutils literal notranslate"><span class="pre">.plcproj</span></code>, which it reads to
-determine the source files to analyze (the <code class="docutils literal notranslate"><span class="pre">&lt;Compile&gt;</span></code> items).</p>
-<p>When discovery finds more than one <code class="file docutils literal notranslate"><span class="pre">.plcproj</span></code>, all discovered
-projects are merged into a single compilation unit, so code in one
-project can use declarations from another. A project entry that cannot
-be resolved does not abort discovery of the remaining sources.</p>
+<p>For this layout, name <code class="file docutils literal notranslate"><span class="pre">MySolution/</span></code> or
+<code class="file docutils literal notranslate"><span class="pre">MySolution/MySolution.sln</span></code> to check the whole solution, or
+<code class="file docutils literal notranslate"><span class="pre">PlcProject/</span></code> or <code class="file docutils literal notranslate"><span class="pre">PlcProject/PlcProject.plcproj</span></code> to check that
+one PLC project.</p>
+<p>Every file in the chain is parsed, so every file in the chain must be
+correct. A manifest that cannot be read, that is not well-formed, or that
+names a file that does not exist reports
+<a class="reference internal" href="../problems/P6012.html"><span class="doc">P6012</span></a>. IronPLC reports the
+broken manifest rather than looking for the sources another way: the
+manifest is the record of which files belong to the project.</p>
+<p>A <code class="file docutils literal notranslate"><span class="pre">.tsproj</span></code> is part of the chain but is not an entry point. Name the
+<code class="file docutils literal notranslate"><span class="pre">.sln</span></code> above it or a <code class="file docutils literal notranslate"><span class="pre">.plcproj</span></code> below it.</p>
+<section id="solutions-with-several-plc-projects">
+<h3>Solutions with Several PLC Projects<a class="headerlink" href="#solutions-with-several-plc-projects" title="Link to this heading">¶</a></h3>
+<p>When the chain names more than one <code class="file docutils literal notranslate"><span class="pre">.plcproj</span></code> — an application
+project plus the library projects it uses — IronPLC merges them into a
+single compilation unit, so code in one project can use declarations from
+another. A <code class="docutils literal notranslate"><span class="pre">&lt;Compile&gt;</span></code> entry naming a file that does not exist is
+reported as a problem, and IronPLC still analyzes the entries that do
+resolve.</p>
+</section>
+<section id="directories-that-name-no-project">
+<h3>Directories That Name No Project<a class="headerlink" href="#directories-that-name-no-project" title="Link to this heading">¶</a></h3>
+<p>A directory holding <em>no</em> manifest — the solution’s parent directory, or a
+folder of loose TwinCAT files — is not a TwinCAT project. Neither is a
+directory holding <em>more than one</em> manifest, because it names no single
+project. In both cases IronPLC enumerates every supported file in the
+directory and its subdirectories and analyzes them together.</p>
+<p>That fallback differs from opening the project in two ways that matter:</p>
+<ul class="simple">
+<li><p>IronPLC does not read the <code class="docutils literal notranslate"><span class="pre">&lt;Compile&gt;</span></code> items, so it analyzes every
+supported file it finds — including files the project does not list,
+such as a POU excluded from the project or one left behind by a rename.</p></li>
+<li><p>IronPLC does not read the <code class="file docutils literal notranslate"><span class="pre">.plcproj</span></code> library references, so the
+referenced Beckhoff libraries are not activated. Use the <code class="docutils literal notranslate"><span class="pre">--library</span></code>
+option to activate them explicitly (see
+<a class="reference internal" href="../../../how-to-guides/twincat/use-beckhoff-libraries.html"><span class="doc">Use Beckhoff Libraries</span></a>).</p></li>
+</ul>
+<p>To analyze the project as TwinCAT defines it, name the manifest, or the
+directory that holds it, rather than a directory further up the tree.</p>
+</section>
 </section>
 <section id="library-references">
 <h2>Library References<a class="headerlink" href="#library-references" title="Link to this heading">¶</a></h2>
@@ -863,7 +914,11 @@ a package. Precompiled library files (<code class="file docutils literal notrans
 <li><a class="reference internal" href="#file-extensions">File Extensions</a></li>
 <li><a class="reference internal" href="#supported-languages">Supported Languages</a></li>
 <li><a class="reference internal" href="#supported-elements">Supported Elements</a></li>
-<li><a class="reference internal" href="#project-discovery">Project Discovery</a></li>
+<li><a class="reference internal" href="#project-discovery">Project Discovery</a><ul>
+<li><a class="reference internal" href="#solutions-with-several-plc-projects">Solutions with Several PLC Projects</a></li>
+<li><a class="reference internal" href="#directories-that-name-no-project">Directories That Name No Project</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#library-references">Library References</a></li>
 </ul>
 </li>

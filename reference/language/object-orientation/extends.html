@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6003.html">V6003</a></li>
@@ -721,12 +730,18 @@ flags reference.</p>
 <td><p>Edition 3 (object-oriented programming)</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Parsed and analyzed: an inherited variable resolves and type-checks
-in the derived type. Code generation does not yet give a derived
-type storage for what it inherits, so reading or writing an
-inherited variable reports
-<a class="reference internal" href="../../compiler/problems/P4007.html"><span class="doc">P4007</span></a> when compiled.
-Enable with <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>; see
+<td><p>On a function block, parsed and analyzed: an inherited variable
+resolves and type-checks in the derived type, a call resolves to a
+method declared anywhere up the <code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code> chain, and a derived
+type that redeclares an inherited variable reports
+<a class="reference internal" href="../../compiler/problems/P4044.html"><span class="doc">P4044</span></a>. Code generation
+does not yet give a derived type storage for what it inherits, so
+compiling a derived type reports
+<a class="reference internal" href="../../compiler/problems/P4007.html"><span class="doc">P4007</span></a> where it reads or
+writes an inherited variable and
+<a class="reference internal" href="../../compiler/problems/P9999.html"><span class="doc">P9999</span></a> where it calls an
+inherited method. On an interface, parsed only. Enable with
+<code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>; see
 <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a>.</p></td>
 </tr>
 </tbody>
@@ -765,6 +780,21 @@ END_INTERFACE
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">FB_AdvancedMotor</span></code> is the derived type and <code class="docutils literal notranslate"><span class="pre">FB_Motor</span></code> is its base type.
 A function block type extends at most one base type.</p>
+</section>
+<section id="what-a-derived-type-inherits">
+<h2>What a derived type inherits<a class="headerlink" href="#what-a-derived-type-inherits" title="Link to this heading">¶</a></h2>
+<p>A derived type has one set of variables: every variable its base type
+declares, plus the ones it declares itself. It cannot declare a variable
+with a name it inherits — that reports
+<a class="reference internal" href="../../compiler/problems/P4044.html"><span class="doc">P4044</span></a>, whatever type the second
+declaration gives and however far up the <code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code> chain the first one
+sits. Edition 3 gives a derived type no way to hold a second variable of an
+inherited name: <code class="docutils literal notranslate"><span class="pre">SUPER^</span></code> selects the base type’s <em>implementation</em> of a
+method, not a second variable of the same name.</p>
+<p>Methods work the other way round. A derived type may declare a method with
+the name of one it inherits, which <strong>overrides</strong> it: a call on the derived
+type runs the derived type’s method, and that method reaches the one it
+overrode through <a class="reference internal" href="this-and-super.html"><span class="doc">SUPER^</span></a>.</p>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
@@ -846,6 +876,7 @@ abstract types explained</p></li>
 <li><a class="reference internal" href="#">EXTENDS</a><ul>
 <li><a class="reference internal" href="#syntax">Syntax</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#what-a-derived-type-inherits">What a derived type inherits</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>

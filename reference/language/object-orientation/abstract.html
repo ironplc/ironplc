@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6003.html">V6003</a></li>
@@ -722,8 +731,15 @@ flags reference.</p>
 <td><p>Edition 3 (object-oriented programming)</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Parsed only — not yet analyzed or executed
-(<a class="reference internal" href="../../compiler/problems/P9999.html"><span class="doc">P9999</span></a>). Enable with
+<td><p>Parsed and analyzed: a variable declared with the type of an
+<code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code> function block reports
+<a class="reference internal" href="../../compiler/problems/P4045.html"><span class="doc">P4045</span></a>, while a concrete
+type that <a class="reference internal" href="extends.html"><span class="doc">extends</span></a> it instantiates normally. The
+check covers a direct declaration; it does not yet reject an
+<code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code> type used as the element type of an array. IronPLC
+does not yet execute an <code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code> function block, so declaring
+one also reports
+<a class="reference internal" href="../../compiler/problems/P9999.html"><span class="doc">P9999</span></a>. Enable with
 <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>; see
 <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a>.</p></td>
 </tr>
@@ -743,6 +759,10 @@ END_FUNCTION_BLOCK
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&dialect=iec61131-3-ed3&source=ironplc-docs&host=reference%2Flanguage%2Fobject-orientation%2Fabstract&code=RlVOQ1RJT05fQkxPQ0sgQUJTVFJBQ1QgRkJfQmFzZUF4aXMKICAgIFZBUgogICAgICAgIGVuYWJsZWQgOiBCT09MOwogICAgRU5EX1ZBUgpFTkRfRlVOQ1RJT05fQkxPQ0sKCkZVTkNUSU9OX0JMT0NLIEZCX0xpbmVhckF4aXMgRVhURU5EUyBGQl9CYXNlQXhpcwogICAgVkFSCiAgICAgICAgcG9zaXRpb24gOiBSRUFMOwogICAgRU5EX1ZBUgpFTkRfRlVOQ1RJT05fQkxPQ0sKClBST0dSQU0gbWFpbgogICAgVkFSCiAgICAgICAgYXhpcyA6IEZCX0xpbmVhckF4aXM7CiAgICBFTkRfVkFSCkVORF9QUk9HUkFN" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:533px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION_BLOCK</span> <span class="n">ABSTRACT</span> <span class="n">FB_BaseAxis</span>
     <span class="n">VAR</span>
         <span class="n">enabled</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
@@ -754,10 +774,36 @@ END_FUNCTION_BLOCK
         <span class="n">position</span> <span class="p">:</span> <span class="n">REAL</span><span class="p">;</span>
     <span class="n">END_VAR</span>
 <span class="n">END_FUNCTION_BLOCK</span>
+
+<span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">axis</span> <span class="p">:</span> <span class="n">FB_LinearAxis</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
+</div>
+</div>
 <p><code class="docutils literal notranslate"><span class="pre">FB_BaseAxis</span></code> cannot be instantiated on its own; <code class="docutils literal notranslate"><span class="pre">FB_LinearAxis</span></code> extends
-it and can be.</p>
+it and can be, so <code class="docutils literal notranslate"><span class="pre">axis</span></code> is a valid declaration.</p>
+<p>Naming the abstract type in the declaration instead reports
+<a class="reference internal" href="../../compiler/problems/P4045.html"><span class="doc">P4045</span></a>:</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--1-input--1" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&dialect=iec61131-3-ed3&source=ironplc-docs&host=reference%2Flanguage%2Fobject-orientation%2Fabstract&code=RlVOQ1RJT05fQkxPQ0sgQUJTVFJBQ1QgRkJfQmFzZUF4aXMKRU5EX0ZVTkNUSU9OX0JMT0NLCgpQUk9HUkFNIG1haW4KICAgIFZBUgogICAgICAgIGF4aXMgOiBGQl9CYXNlQXhpczsgICAgKCogUDQwNDU6IEZCX0Jhc2VBeGlzIGlzIEFCU1RSQUNUICopCiAgICBFTkRfVkFSCkVORF9QUk9HUkFN" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:393px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--1-input--2" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION_BLOCK</span> <span class="n">ABSTRACT</span> <span class="n">FB_BaseAxis</span>
+<span class="n">END_FUNCTION_BLOCK</span>
+
+<span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">axis</span> <span class="p">:</span> <span class="n">FB_BaseAxis</span><span class="p">;</span>    <span class="p">(</span><span class="o">*</span> <span class="n">P4045</span><span class="p">:</span> <span class="n">FB_BaseAxis</span> <span class="ow">is</span> <span class="n">ABSTRACT</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</div>
+</div>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
@@ -768,6 +814,8 @@ it and can be.</p>
 <li><p><a class="reference internal" href="../../../explanation/object-orientation.html"><span class="doc">Object Oriented Programming</span></a> — inheritance, interfaces, and
 abstract types explained</p></li>
 <li><p><a class="reference internal" href="../pous/function-block.html"><span class="doc">FUNCTION_BLOCK</span></a> — the <code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code> unit</p></li>
+<li><p><a class="reference internal" href="../../compiler/problems/P4045.html"><span class="doc">P4045</span></a> — the error reported for
+instantiating an abstract type</p></li>
 </ul>
 </section>
 </section>

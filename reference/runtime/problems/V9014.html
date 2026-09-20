@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="V6003.html">V6003</a></li>
@@ -704,8 +713,10 @@
 </dl>
 <p>The VM detected a string operation whose operand encoding (1 for <code class="docutils literal notranslate"><span class="pre">STRING</span></code>,
 2 for <code class="docutils literal notranslate"><span class="pre">WSTRING</span></code>) does not match the destination’s declared encoding.</p>
-<p>The analyzer rejects cross-encoding assignments and operations statically,
-so this trap is reached only via:</p>
+<p>Mixing <code class="docutils literal notranslate"><span class="pre">STRING</span></code> and <code class="docutils literal notranslate"><span class="pre">WSTRING</span></code> is a compile error
+(<a class="reference internal" href="../../compiler/problems/P4034.html"><span class="doc">P4034</span></a>), whether the two meet in an
+assignment or as the operands of one operation. A program compiled by
+<code class="docutils literal notranslate"><span class="pre">ironplcc</span></code> therefore does not reach this trap. Reaching it means one of:</p>
 <ol class="arabic simple">
 <li><p><strong>A compiler bug</strong> that emits a string opcode whose source and destination
 disagree on encoding.</p></li>
@@ -714,8 +725,8 @@ region headers, or temp buffer slots disagree on encoding.</p></li>
 </ol>
 <p>The runtime check is the defense-in-depth layer: even if a static check
 slips, the trap fires before silently corrupting data.</p>
-<p>This error should not occur during normal operation. It indicates a bug in
-the IronPLC compiler or VM, or a corrupted <code class="docutils literal notranslate"><span class="pre">.iplc</span></code> file.</p>
+<p>This error indicates a bug in the IronPLC compiler or VM, or a corrupted
+<code class="docutils literal notranslate"><span class="pre">.iplc</span></code> file — not a mistake in the program being run.</p>
 <p>Report this as a bug at <a class="reference external" href="https://github.com/ironplc/ironplc/issues">https://github.com/ironplc/ironplc/issues</a> with the
 <code class="docutils literal notranslate"><span class="pre">.iplc</span></code> file and the source program that produced it.</p>
 <div class="tip admonition">

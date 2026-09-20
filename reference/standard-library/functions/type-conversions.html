@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6003.html">V6003</a></li>
@@ -1272,7 +1281,209 @@ and bit string types are supported.</p>
 <section id="string-to-numeric">
 <h3>String to Numeric<a class="headerlink" href="#string-to-numeric" title="Link to this heading">¶</a></h3>
 <p>Conversions from string representation to numeric types. The string
-must contain a valid numeric literal for the target type.</p>
+must contain a valid numeric literal for the target type. What happens
+when it does not is implementer-specific in IEC 61131-3, so IronPLC
+selects it at compile time with two behavior policies; see
+<a class="reference internal" href="#string-to-numeric-policies">String to Numeric Policies</a>.</p>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 40.0%" />
+<col style="width: 60.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Function</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_SINT</span></code></p></td>
+<td><p>String to 8-bit signed</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_INT</span></code></p></td>
+<td><p>String to 16-bit signed</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_DINT</span></code></p></td>
+<td><p>String to 32-bit signed</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_LINT</span></code></p></td>
+<td><p>String to 64-bit signed</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_USINT</span></code></p></td>
+<td><p>String to 8-bit unsigned</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_UINT</span></code></p></td>
+<td><p>String to 16-bit unsigned</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_UDINT</span></code></p></td>
+<td><p>String to 32-bit unsigned</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_ULINT</span></code></p></td>
+<td><p>String to 64-bit unsigned</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_BYTE</span></code></p></td>
+<td><p>String to byte</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_WORD</span></code></p></td>
+<td><p>String to word</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_DWORD</span></code></p></td>
+<td><p>String to double word</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_LWORD</span></code></p></td>
+<td><p>String to long word</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_REAL</span></code></p></td>
+<td><p>String to single-precision</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_LREAL</span></code></p></td>
+<td><p>String to double-precision</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="string-to-numeric-policies">
+<h3>String to Numeric Policies<a class="headerlink" href="#string-to-numeric-policies" title="Link to this heading">¶</a></h3>
+<p>Real PLC platforms disagree about what <code class="docutils literal notranslate"><span class="pre">STRING_TO_INT('12abc')</span></code> returns,
+and IronPLC does not guess. Two behavior policies select the result at
+compile time. A dialect selects the alternatives its platform documents,
+and the <code class="docutils literal notranslate"><span class="pre">--policy-*</span></code> flags replace the dialect’s selection. The
+alternatives are encoded in the compiled program, so the same
+<code class="file docutils literal notranslate"><span class="pre">.iplc</span></code> behaves the same on every runtime.</p>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span></code></dt><dd><p>What counts as convertible when the string has characters that are not
+part of a numeric literal.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">reject</span></code> <em>(default)</em></dt><dd><p>The whole string, less surrounding whitespace, must be one literal.
+<code class="docutils literal notranslate"><span class="pre">'12abc'</span></code> is a failure. The strict choice, also what RuSTy does.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">ignore-trailing</span></code></dt><dd><p>The literal at the start of the string is converted and the rest is
+ignored. <code class="docutils literal notranslate"><span class="pre">'12abc'</span></code> converts to 12; <code class="docutils literal notranslate"><span class="pre">'abc12'</span></code> is a failure.
+CODESYS and TwinCAT stop at the first invalid character.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">ignore-surrounding</span></code></dt><dd><p>Characters that cannot start a literal are skipped, then the literal
+is converted and the rest is ignored. <code class="docutils literal notranslate"><span class="pre">'abc12'</span></code> and <code class="docutils literal notranslate"><span class="pre">'x=12;'</span></code> both
+convert to 12. Rockwell Logix <code class="docutils literal notranslate"><span class="pre">STOD</span></code> skips leading non-numeric
+characters this way.</p>
+</dd>
+</dl>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span></code></dt><dd><p>What happens when the string is not convertible: not a literal under the
+selected non-numeric policy, or a literal whose value does not fit the
+target type. A value out of range is a failure under every non-numeric
+alternative; nothing wraps.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">trap</span></code> <em>(default)</em></dt><dd><p>The program halts with runtime error
+<a class="reference internal" href="../../runtime/problems/V4006.html"><span class="doc">V4006</span></a>, which names the
+offending string.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">zero</span></code></dt><dd><p>The conversion produces zero and the program continues. CODESYS,
+TwinCAT and RuSTy return 0.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+<p>Under every alternative the accepted literal is the IEC 61131-3 literal of
+the target type. For an integer target that is decimal digits with optional
+<code class="docutils literal notranslate"><span class="pre">_</span></code> separators (<code class="docutils literal notranslate"><span class="pre">'1_000'</span></code>), or a based literal (<code class="docutils literal notranslate"><span class="pre">'16#FF'</span></code>, <code class="docutils literal notranslate"><span class="pre">'8#17'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">'2#1010'</span></code>), optionally signed. For a real target it is a floating-point
+number, also in exponential notation: digits with an optional decimal point
+and fraction (<code class="docutils literal notranslate"><span class="pre">'9.876'</span></code>, <code class="docutils literal notranslate"><span class="pre">'5'</span></code>, <code class="docutils literal notranslate"><span class="pre">'.5'</span></code>) and an optional exponent
+(<code class="docutils literal notranslate"><span class="pre">'1.2E-34'</span></code>), optionally signed. A typed prefix (<code class="docutils literal notranslate"><span class="pre">'UDINT#5'</span></code>) is not
+accepted, and neither are the words <code class="docutils literal notranslate"><span class="pre">inf</span></code> and <code class="docutils literal notranslate"><span class="pre">nan</span></code>. A decimal point is
+not part of an integer literal: <code class="docutils literal notranslate"><span class="pre">STRING_TO_INT('12.5')</span></code> is a failure under
+<code class="docutils literal notranslate"><span class="pre">reject</span></code> and 12 under <code class="docutils literal notranslate"><span class="pre">ignore-trailing</span></code>, which is what CODESYS documents.</p>
+<div class="table-wrapper colwidths-given docutils container" id="id1">
+<table class="docutils align-default" id="id1">
+<caption><span class="caption-text">Results of <code class="docutils literal notranslate"><span class="pre">STRING_TO_UDINT</span></code> by policy</span><a class="headerlink" href="#id1" title="Link to this table">¶</a></caption>
+<colgroup>
+<col style="width: 24.0%" />
+<col style="width: 19.0%" />
+<col style="width: 19.0%" />
+<col style="width: 19.0%" />
+<col style="width: 19.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Input</p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">reject</span></code> + <code class="docutils literal notranslate"><span class="pre">trap</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">reject</span></code> + <code class="docutils literal notranslate"><span class="pre">zero</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">ignore-trailing</span></code> + <code class="docutils literal notranslate"><span class="pre">zero</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">ignore-surrounding</span></code> + <code class="docutils literal notranslate"><span class="pre">zero</span></code></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">'4294967295'</span></code></p></td>
+<td><p>4294967295</p></td>
+<td><p>4294967295</p></td>
+<td><p>4294967295</p></td>
+<td><p>4294967295</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">'16#FF'</span></code></p></td>
+<td><p>255</p></td>
+<td><p>255</p></td>
+<td><p>255</p></td>
+<td><p>255</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">'12abc'</span></code></p></td>
+<td><p>V4006</p></td>
+<td><p>0</p></td>
+<td><p>12</p></td>
+<td><p>12</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">'abc12'</span></code></p></td>
+<td><p>V4006</p></td>
+<td><p>0</p></td>
+<td><p>0</p></td>
+<td><p>12</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">'4294967296'</span></code></p></td>
+<td><p>V4006</p></td>
+<td><p>0</p></td>
+<td><p>0</p></td>
+<td><p>0</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The dialects select the following alternatives:</p>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 40.0%" />
+<col style="width: 30.0%" />
+<col style="width: 30.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Dialect</p></th>
+<th class="head"><p>Non-numeric</p></th>
+<th class="head"><p>Failure</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">iec61131-3-ed2</span></code>, <code class="docutils literal notranslate"><span class="pre">iec61131-3-ed3</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">reject</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">trap</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">rusty</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">reject</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">zero</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">codesys</span></code>, <code class="docutils literal notranslate"><span class="pre">twincat</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ignore-trailing</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">zero</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>For a literal that does not fit the target type, the CODESYS documentation
+says the result depends on the processor. IronPLC does not emulate an
+undefined result: under the <code class="docutils literal notranslate"><span class="pre">codesys</span></code> and <code class="docutils literal notranslate"><span class="pre">twincat</span></code> dialects the failure
+policy applies and the result is zero. That is IronPLC’s choice, not a
+CODESYS behavior.</p>
+<p>A literal outside the target’s range is a failure under every non-numeric
+alternative, never a wrap: <code class="docutils literal notranslate"><span class="pre">STRING_TO_SINT('300')</span></code> halts with V4006 or
+produces zero, and is never 44. The ranges are those of the types:</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
@@ -1282,49 +1493,163 @@ must contain a valid numeric literal for the target type.</p>
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Function</p></th>
-<th class="head"><p>Description</p></th>
-<th class="head"><p>Support</p></th>
+<th class="head"><p>Smallest</p></th>
+<th class="head"><p>Largest</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_SINT</span></code></p></td>
-<td><p>String to 8-bit signed</p></td>
-<td><p>Supported</p></td>
+<td><p>-128</p></td>
+<td><p>127</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_INT</span></code></p></td>
-<td><p>String to 16-bit signed</p></td>
-<td><p>Supported</p></td>
+<td><p>-32768</p></td>
+<td><p>32767</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_DINT</span></code></p></td>
-<td><p>String to 32-bit signed</p></td>
-<td><p>Supported</p></td>
+<td><p>-2147483648</p></td>
+<td><p>2147483647</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_LINT</span></code></p></td>
-<td><p>String to 64-bit signed</p></td>
-<td><p>Not yet supported</p></td>
+<td><p>-9223372036854775808</p></td>
+<td><p>9223372036854775807</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_USINT</span></code></p></td>
-<td><p>String to 8-bit unsigned</p></td>
-<td><p>Supported</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_USINT</span></code>, <code class="docutils literal notranslate"><span class="pre">STRING_TO_BYTE</span></code></p></td>
+<td><p>0</p></td>
+<td><p>255</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_UINT</span></code></p></td>
-<td><p>String to 16-bit unsigned</p></td>
-<td><p>Supported</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_UINT</span></code>, <code class="docutils literal notranslate"><span class="pre">STRING_TO_WORD</span></code></p></td>
+<td><p>0</p></td>
+<td><p>65535</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_UDINT</span></code></p></td>
-<td><p>String to 32-bit unsigned</p></td>
-<td><p>Supported</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_UDINT</span></code>, <code class="docutils literal notranslate"><span class="pre">STRING_TO_DWORD</span></code></p></td>
+<td><p>0</p></td>
+<td><p>4294967295</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_REAL</span></code></p></td>
-<td><p>String to single-precision</p></td>
-<td><p>Supported</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_LREAL</span></code></p></td>
-<td><p>String to double-precision</p></td>
-<td><p>Not yet supported</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">STRING_TO_ULINT</span></code>, <code class="docutils literal notranslate"><span class="pre">STRING_TO_LWORD</span></code></p></td>
+<td><p>0</p></td>
+<td><p>18446744073709551615</p></td>
 </tr>
 </tbody>
 </table>
+</div>
+<div class="table-wrapper colwidths-given docutils container" id="id2">
+<table class="docutils align-default" id="id2">
+<caption><span class="caption-text">Results of <code class="docutils literal notranslate"><span class="pre">STRING_TO_SINT</span></code> by policy</span><a class="headerlink" href="#id2" title="Link to this table">¶</a></caption>
+<colgroup>
+<col style="width: 24.0%" />
+<col style="width: 19.0%" />
+<col style="width: 19.0%" />
+<col style="width: 19.0%" />
+<col style="width: 19.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Input</p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">reject</span></code> + <code class="docutils literal notranslate"><span class="pre">trap</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">reject</span></code> + <code class="docutils literal notranslate"><span class="pre">zero</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">ignore-trailing</span></code> + <code class="docutils literal notranslate"><span class="pre">zero</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">ignore-surrounding</span></code> + <code class="docutils literal notranslate"><span class="pre">zero</span></code></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">'-128'</span></code></p></td>
+<td><p>-128</p></td>
+<td><p>-128</p></td>
+<td><p>-128</p></td>
+<td><p>-128</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">'300'</span></code></p></td>
+<td><p>V4006</p></td>
+<td><p>0</p></td>
+<td><p>0</p></td>
+<td><p>0</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">'-5abc'</span></code></p></td>
+<td><p>V4006</p></td>
+<td><p>0</p></td>
+<td><p>-5</p></td>
+<td><p>-5</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">STRING_TO_BYTE</span></code>, <code class="docutils literal notranslate"><span class="pre">STRING_TO_WORD</span></code>, <code class="docutils literal notranslate"><span class="pre">STRING_TO_DWORD</span></code> and
+<code class="docutils literal notranslate"><span class="pre">STRING_TO_LWORD</span></code> convert exactly as <code class="docutils literal notranslate"><span class="pre">STRING_TO_USINT</span></code>, <code class="docutils literal notranslate"><span class="pre">STRING_TO_UINT</span></code>,
+<code class="docutils literal notranslate"><span class="pre">STRING_TO_UDINT</span></code> and <code class="docutils literal notranslate"><span class="pre">STRING_TO_ULINT</span></code> do, and compile to the same
+instruction, so a V4006 from one of them names the unsigned integer type of
+the same width.</p>
+<p>For a real target, a literal whose magnitude rounds to infinity at the
+target’s precision (<code class="docutils literal notranslate"><span class="pre">'1e39'</span></code> for <code class="docutils literal notranslate"><span class="pre">REAL</span></code>, <code class="docutils literal notranslate"><span class="pre">'1e309'</span></code> for <code class="docutils literal notranslate"><span class="pre">LREAL</span></code>) does
+not fit the target and is a failure, exactly as <code class="docutils literal notranslate"><span class="pre">'300'</span></code> does not fit
+<code class="docutils literal notranslate"><span class="pre">SINT</span></code>. A literal too small for the precision rounds to zero or to a
+subnormal and is not a failure. No conversion produces a NaN or an
+infinity: under <code class="docutils literal notranslate"><span class="pre">zero</span></code> a failure produces positive 0.0.</p>
+<div class="table-wrapper colwidths-given docutils container" id="id3">
+<table class="docutils align-default" id="id3">
+<caption><span class="caption-text">Results of <code class="docutils literal notranslate"><span class="pre">STRING_TO_REAL</span></code> by policy</span><a class="headerlink" href="#id3" title="Link to this table">¶</a></caption>
+<colgroup>
+<col style="width: 24.0%" />
+<col style="width: 19.0%" />
+<col style="width: 19.0%" />
+<col style="width: 19.0%" />
+<col style="width: 19.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Input</p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">reject</span></code> + <code class="docutils literal notranslate"><span class="pre">trap</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">reject</span></code> + <code class="docutils literal notranslate"><span class="pre">zero</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">ignore-trailing</span></code> + <code class="docutils literal notranslate"><span class="pre">zero</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">ignore-surrounding</span></code> + <code class="docutils literal notranslate"><span class="pre">zero</span></code></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">'1.2E-34'</span></code></p></td>
+<td><p>1.2E-34</p></td>
+<td><p>1.2E-34</p></td>
+<td><p>1.2E-34</p></td>
+<td><p>1.2E-34</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">'1.5abc'</span></code></p></td>
+<td><p>V4006</p></td>
+<td><p>0.0</p></td>
+<td><p>1.5</p></td>
+<td><p>1.5</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">'x=.5;'</span></code></p></td>
+<td><p>V4006</p></td>
+<td><p>0.0</p></td>
+<td><p>0.0</p></td>
+<td><p>0.5</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">'1e39'</span></code></p></td>
+<td><p>V4006</p></td>
+<td><p>0.0</p></td>
+<td><p>0.0</p></td>
+<td><p>0.0</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">'NaN'</span></code></p></td>
+<td><p>V4006</p></td>
+<td><p>0.0</p></td>
+<td><p>0.0</p></td>
+<td><p>0.0</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&source=ironplc-docs&host=reference%2Fstandard-library%2Ffunctions%2Ftype-conversions&code=UFJPR1JBTSBtYWluClZBUgogICAgdGV4dCA6IFNUUklORyA6PSAnNDI5NDk2NzI5NSc7CiAgICB2YWx1ZSA6IFVESU5UOwpFTkRfVkFSCnZhbHVlIDo9IFNUUklOR19UT19VRElOVCh0ZXh0KTsgICgqIHZhbHVlID0gNDI5NDk2NzI5NSAqKQpFTkRfUFJPR1JBTQ%3D%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:373px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+<span class="n">VAR</span>
+    <span class="n">text</span> <span class="p">:</span> <span class="n">STRING</span> <span class="o">:=</span> <span class="s1">'4294967295'</span><span class="p">;</span>
+    <span class="n">value</span> <span class="p">:</span> <span class="n">UDINT</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+<span class="n">value</span> <span class="o">:=</span> <span class="n">STRING_TO_UDINT</span><span class="p">(</span><span class="n">text</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">value</span> <span class="o">=</span> <span class="mi">4294967295</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</div>
 </div>
 </section>
 </section>
@@ -1340,9 +1665,9 @@ target type may be truncated or cause a runtime error.</p>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <div class="tab-set docutils">
-<input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
+<input checked="True" class="tab-input" id="tab-set--1-input--1" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--1">Try it</label><div class="tab-content docutils">
 <iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&source=ironplc-docs&host=reference%2Fstandard-library%2Ffunctions%2Ftype-conversions&code=aW50X3ZhbCA6PSBSRUFMX1RPX0lOVChSRUFMIzMuMTQpOyAgICAgKCogaW50X3ZhbCA9IDMgKikKcmVhbF92YWwgOj0gSU5UX1RPX1JFQUwoNDIpOyAgICAgICAgICAgICgqIHJlYWxfdmFsID0gNDIuMCAqKQpiaWdfdmFsIDo9IElOVF9UT19ESU5UKDEwMDApOyAgICAgICAgICAgKCogYmlnX3ZhbCA9IDEwMDAsIHdpZGVuaW5nICop&vars=aW50X3ZhbCA6IElOVDsgcmVhbF92YWwgOiBSRUFMOyBiaWdfdmFsIDogRElOVDs%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:523px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
-<input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">Source</label><div class="tab-content docutils">
+<input class="tab-input" id="tab-set--1-input--2" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">int_val</span> <span class="o">:=</span> <span class="n">REAL_TO_INT</span><span class="p">(</span><span class="n">REAL</span><span class="c1">#3.14);     (* int_val = 3 *)</span>
 <span class="n">real_val</span> <span class="o">:=</span> <span class="n">INT_TO_REAL</span><span class="p">(</span><span class="mi">42</span><span class="p">);</span>            <span class="p">(</span><span class="o">*</span> <span class="n">real_val</span> <span class="o">=</span> <span class="mf">42.0</span> <span class="o">*</span><span class="p">)</span>
 <span class="n">big_val</span> <span class="o">:=</span> <span class="n">INT_TO_DINT</span><span class="p">(</span><span class="mi">1000</span><span class="p">);</span>           <span class="p">(</span><span class="o">*</span> <span class="n">big_val</span> <span class="o">=</span> <span class="mi">1000</span><span class="p">,</span> <span class="n">widening</span> <span class="o">*</span><span class="p">)</span>
@@ -1446,6 +1771,7 @@ target type may be truncated or cause a runtime error.</p>
 <li><a class="reference internal" href="#date-and-time-conversions">Date-and-Time Conversions</a></li>
 <li><a class="reference internal" href="#numeric-to-string">Numeric to String</a></li>
 <li><a class="reference internal" href="#string-to-numeric">String to Numeric</a></li>
+<li><a class="reference internal" href="#string-to-numeric-policies">String to Numeric Policies</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#description">Description</a></li>

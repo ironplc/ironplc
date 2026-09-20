@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/compiler/problems/P2026.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Code, P2026,, Message, Constant value overflows the target type,." />
-<meta name="description" content="Code, P2026,, Message, Constant value overflows the target type,." />
+<meta property="og:description" content="Code, P2026,, Message, Constant value overflows the target type,. This error occurs when a constant does not fit the type it is stored into. Every integer type holds a fixed range of values: Intege..." />
+<meta name="description" content="Code, P2026,, Message, Constant value overflows the target type,. This error occurs when a constant does not fit the type it is stored into. Every integer type holds a fixed range of values: Intege..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P2027" href="P2027.html"><link rel="prev" title="P2025" href="P2025.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/compiler/problems/P2026.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -200,7 +200,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
       </label>
     </div>
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6003.html">V6003</a></li>
@@ -689,7 +698,7 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
           </label>
         </div>
@@ -702,11 +711,181 @@
 <dt><strong>Message</strong></dt><dd><p>Constant value overflows the target type</p>
 </dd>
 </dl>
+<p>This error occurs when a constant does not fit the type it is stored into.</p>
+<p>Every integer type holds a fixed range of values:</p>
+<div class="table-wrapper docutils container" id="id1">
+<table class="docutils align-default" id="id1">
+<caption><span class="caption-text">Integer type ranges</span><a class="headerlink" href="#id1" title="Link to this table">¶</a></caption>
+<thead>
+<tr class="row-odd"><th class="head stub"><p>Type</p></th>
+<th class="head"><p>Minimum</p></th>
+<th class="head"><p>Maximum</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><th class="stub"><p><strong>SINT</strong></p></th>
+<td><p>-128</p></td>
+<td><p>127</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p><strong>INT</strong></p></th>
+<td><p>-32768</p></td>
+<td><p>32767</p></td>
+</tr>
+<tr class="row-even"><th class="stub"><p><strong>DINT</strong></p></th>
+<td><p>-2147483648</p></td>
+<td><p>2147483647</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p><strong>LINT</strong></p></th>
+<td><p>-9223372036854775808</p></td>
+<td><p>9223372036854775807</p></td>
+</tr>
+<tr class="row-even"><th class="stub"><p><strong>USINT</strong></p></th>
+<td><p>0</p></td>
+<td><p>255</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p><strong>UINT</strong></p></th>
+<td><p>0</p></td>
+<td><p>65535</p></td>
+</tr>
+<tr class="row-even"><th class="stub"><p><strong>UDINT</strong></p></th>
+<td><p>0</p></td>
+<td><p>4294967295</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p><strong>ULINT</strong></p></th>
+<td><p>0</p></td>
+<td><p>18446744073709551615</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Storing a value outside that range would silently keep the low bits and
+discard the rest, so <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">:</span> <span class="pre">SINT</span> <span class="pre">:=</span> <span class="pre">200</span></code> would hold -56. Nothing in the
+program says the value changes, so the compiler reports it instead.</p>
+<section id="example">
+<h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
+<p>The following code will generate error P2026:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">count</span> <span class="p">:</span> <span class="n">USINT</span> <span class="o">:=</span> <span class="mi">300</span><span class="p">;</span>
+        <span class="n">total</span> <span class="p">:</span> <span class="n">SINT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">total</span> <span class="o">:=</span> <span class="mi">200</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">a</span> <span class="n">SINT</span> <span class="n">holds</span> <span class="o">-</span><span class="mi">128</span> <span class="n">to</span> <span class="mi">127</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>To fix this error, use a value the type can hold:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">count</span> <span class="p">:</span> <span class="n">USINT</span> <span class="o">:=</span> <span class="mi">200</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>Or declare a type wide enough for the value you want:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">count</span> <span class="p">:</span> <span class="n">UINT</span> <span class="o">:=</span> <span class="mi">300</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</section>
+<section id="where-the-check-applies">
+<h2>Where the check applies<a class="headerlink" href="#where-the-check-applies" title="Link to this heading">¶</a></h2>
+<p>The type a value is stored or compared as bounds the constants written for
+it. That includes an operand of an operator, because the operator does not
+widen the type:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">count</span> <span class="p">:</span> <span class="n">USINT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">count</span> <span class="o">:=</span> <span class="mi">255</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">the</span> <span class="nb">sum</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">a</span> <span class="n">USINT</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>It also includes a comparison and a <code class="code docutils literal notranslate"><span class="pre">CASE</span></code> label, where a constant the
+variable can never equal makes a branch that can never run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">total</span> <span class="p">:</span> <span class="n">SINT</span><span class="p">;</span>
+        <span class="n">result</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">IF</span> <span class="n">total</span> <span class="o">=</span> <span class="mi">200</span> <span class="n">THEN</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">a</span> <span class="n">SINT</span> <span class="ow">is</span> <span class="n">never</span> <span class="mi">200</span> <span class="o">*</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">:=</span> <span class="mi">1</span><span class="p">;</span>
+    <span class="n">END_IF</span><span class="p">;</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>A subrange type states its own range, and a constant outside it is reported
+the same way:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
+    <span class="n">Ratio</span> <span class="p">:</span> <span class="n">INT</span><span class="p">(</span><span class="mf">0..10</span><span class="p">);</span>
+<span class="n">END_TYPE</span>
+
+<span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">r</span> <span class="p">:</span> <span class="n">Ratio</span> <span class="o">:=</span> <span class="mi">20</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">Ratio</span> <span class="n">holds</span> <span class="mi">0</span> <span class="n">to</span> <span class="mi">10</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</section>
+<section id="a-prefixed-literal-states-its-own-type">
+<h2>A prefixed literal states its own type<a class="headerlink" href="#a-prefixed-literal-states-its-own-type" title="Link to this heading">¶</a></h2>
+<p>An integer literal can name its type with a prefix, as in <code class="docutils literal notranslate"><span class="pre">INT#42</span></code>. The
+prefix is a statement about the value, so the value is checked against the
+prefixed type as well as against the type it is stored into. <code class="docutils literal notranslate"><span class="pre">INT#40000</span></code> is
+not an <code class="docutils literal notranslate"><span class="pre">INT</span></code>, whatever it is assigned to:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">wide</span> <span class="p">:</span> <span class="n">DINT</span> <span class="o">:=</span> <span class="n">INT</span><span class="c1">#40000;  (* Error: an INT holds -32768 to 32767 *)</span>
+    <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>To fix this error, name the type the value belongs to, or drop the prefix so
+that the destination alone decides:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">wide</span> <span class="p">:</span> <span class="n">DINT</span> <span class="o">:=</span> <span class="n">DINT</span><span class="c1">#40000;</span>
+        <span class="n">other</span> <span class="p">:</span> <span class="n">DINT</span> <span class="o">:=</span> <span class="mi">40000</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>The two checks are independent. A literal that fits its own type but not the
+destination, such as <code class="docutils literal notranslate"><span class="pre">small</span> <span class="pre">:</span> <span class="pre">SINT</span> <span class="pre">:=</span> <span class="pre">INT#200</span></code>, is reported against the
+destination only, and one that fits neither is reported once for each.</p>
+<p>A radix form with an integer type prefix is checked by its value in the same
+way: <code class="docutils literal notranslate"><span class="pre">INT#16#FFFF</span></code> is 65535, which no <code class="docutils literal notranslate"><span class="pre">INT</span></code> can hold. A bit pattern that
+is meant to fill the word is spelled with a bit-string prefix, such as
+<code class="docutils literal notranslate"><span class="pre">WORD#16#FFFF</span></code>, which is not checked.</p>
+</section>
+<section id="bit-strings-are-not-checked">
+<h2>Bit strings are not checked<a class="headerlink" href="#bit-strings-are-not-checked" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">BYTE</span></code>, <code class="docutils literal notranslate"><span class="pre">WORD</span></code>, <code class="docutils literal notranslate"><span class="pre">DWORD</span></code> and <code class="docutils literal notranslate"><span class="pre">LWORD</span></code> hold bit patterns rather than
+magnitudes, and wrapping one is a legitimate thing for a program to want. A
+value too large for a bit string keeps its low bits without a diagnostic:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">pattern</span> <span class="p">:</span> <span class="n">BYTE</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">pattern</span> <span class="o">:=</span> <span class="mi">255</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Accepted</span><span class="p">:</span> <span class="n">a</span> <span class="n">BYTE</span> <span class="n">wraps</span> <span class="n">to</span> <span class="mi">0</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>How a constant was written makes no difference to the check. <code class="docutils literal notranslate"><span class="pre">16#1FF</span></code> is
+511 whichever radix it was spelled in, and a <code class="docutils literal notranslate"><span class="pre">USINT</span></code> cannot hold 511.</p>
 <div class="tip admonition">
 <p class="admonition-title">Think IronPLC is wrong about this?</p>
 <p>If you believe this diagnostic is incorrect, <a class="reference external" href="https://github.com/ironplc/ironplc/issues/new?template=compatibility_gap.md&amp;title=Diagnostic%20P2026%20appears%20incorrect&amp;labels=problem-code-feedback">open an issue on GitHub</a>
 with a small sample that demonstrates the problem.</p>
 </div>
+</section>
 </section>
 
         </article>
@@ -760,8 +939,30 @@ with a small sample that demonstrates the problem.</p>
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">P2026</a><ul>
+<li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#where-the-check-applies">Where the check applies</a></li>
+<li><a class="reference internal" href="#a-prefixed-literal-states-its-own-type">A prefixed literal states its own type</a></li>
+<li><a class="reference internal" href="#bit-strings-are-not-checked">Bit strings are not checked</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>

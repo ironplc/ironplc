@@ -57,6 +57,8 @@ source code).
 Within a single task, program instances execute in the order they are
 declared in the :code:`RESOURCE` block.
 
+.. include:: /includes/single-program-limitation.rst
+
 .. tip::
 
    Use higher-priority (lower-numbered) tasks for time-critical logic like

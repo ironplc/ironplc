@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.241.0">
+<meta name="ironplc-version" content="0.245.0">
 </head>
   <body>
     
@@ -387,6 +387,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/min.html">MIN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/limit.html">LIMIT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/and.html">AND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/or.html">OR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/xor.html">XOR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/not.html">NOT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/shl.html">SHL</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/shr.html">SHR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/rol.html">ROL</a></li>
@@ -560,6 +564,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4047.html">P4047</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4048.html">P4048</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4049.html">P4049</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4050.html">P4050</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4051.html">P4051</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -593,6 +601,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4003.html">V4003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4004.html">V4004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4005.html">V4005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4006.html">V4006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V6001.html">V6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V6002.html">V6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V6003.html">V6003</a></li>
@@ -742,6 +751,14 @@ priority, they run in declaration order (the order they appear in the
 source code).</p>
 <p>Within a single task, program instances execute in the order they are
 declared in the <code class="code docutils literal notranslate"><span class="pre">RESOURCE</span></code> block.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>IronPLC currently runs one <code class="docutils literal notranslate"><span class="pre">PROGRAM</span></code> per configuration. Declaring a
+second <code class="docutils literal notranslate"><span class="pre">PROGRAM</span></code>, or instantiating a program more than once across the
+<code class="docutils literal notranslate"><span class="pre">RESOURCE</span></code> blocks, is reported as <a class="reference internal" href="../reference/compiler/problems/P9999.html"><span class="doc">P9999</span></a>
+at compile time. Support for more than one program is tracked in
+<a class="reference external" href="https://github.com/ironplc/ironplc/issues/1613">issue #1613</a>.</p>
+</div>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
 <p>Use higher-priority (lower-numbered) tasks for time-critical logic like
