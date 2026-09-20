@@ -461,6 +461,10 @@ pub(crate) struct FieldInitInfo {
 /// Emits constant-load + STORE_ARRAY for each leaf field. Uses explicit
 /// initial values from `element_inits` when available, otherwise emits
 /// type-appropriate defaults (zero or subrange lower bound).
+///
+/// `span` locates the variable declaration being initialized; a nested field
+/// type the compiler cannot lay out is reported there.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn initialize_struct_fields(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -469,6 +473,7 @@ pub(crate) fn initialize_struct_fields(
     struct_data_offset: u32,
     fields: &[FieldInitInfo],
     element_inits: &[StructureElementInit],
+    span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     // Build a map of explicit initializers
     let init_map: HashMap<String, &StructInitialValueAssignmentKind> = element_inits
@@ -511,7 +516,7 @@ pub(crate) fn initialize_struct_fields(
                 };
 
             // Build inner field metadata with offsets adjusted to the parent's base.
-            let (inner_fields, _) = build_struct_fields(fields, &SourceSpan::default())?;
+            let (inner_fields, _) = build_struct_fields(fields, span)?;
             let inner_field_infos: Vec<FieldInitInfo> = inner_fields
                 .iter()
                 .map(|f| FieldInitInfo {
@@ -531,6 +536,7 @@ pub(crate) fn initialize_struct_fields(
                 struct_data_offset,
                 &inner_field_infos,
                 &nested_inits,
+                span,
             )?;
         } else if let IntermediateType::String { char_width, .. } = &field_info.field_type {
             // STRING field — initialize the header in the data region.

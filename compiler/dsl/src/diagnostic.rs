@@ -165,25 +165,6 @@ impl Diagnostic {
     }
 
     /// Creates a "todo" diagnostic associated with a file and line in the Rust
-    /// source code.
-    ///
-    /// Unlike other uses of problem, the location in this is related to the compiler
-    /// rather than the IEC 61131-3 source.
-    ///
-    /// The location is captured via `#[track_caller]`, so no `file!()`/`line!()`
-    /// need to be passed.
-    #[track_caller]
-    #[allow(deprecated)]
-    pub fn todo() -> Self {
-        let caller = std::panic::Location::caller();
-        Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(SourceSpan::default(), not_implemented_message(caller)),
-        )
-        .with_source(caller.file(), caller.line())
-    }
-
-    /// Creates a "todo" diagnostic associated with a file and line in the Rust
     /// source code. Also provides a location in IEC 61131-3 associated with the
     /// todo (but is not necessarily the origin).
     ///
@@ -505,16 +486,6 @@ pub fn problem_help_url(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn todo_when_called_then_creates_not_implemented_diagnostic() {
-        let line = line!() + 1;
-        let diag = Diagnostic::todo();
-        assert_eq!(diag.code, "P9999");
-        assert!(diag.primary.message.contains(file!()));
-        assert_eq!(diag.source_file.as_deref(), Some(file!()));
-        assert_eq!(diag.source_line, Some(line));
-    }
 
     #[test]
     fn todo_with_id_when_called_then_includes_id_location() {
