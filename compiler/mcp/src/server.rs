@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{ContentBlock, ServerCapabilities, ServerInfo};
+use rmcp::model::{ContentBlock, ServerCapabilities, ServerConfig};
 use rmcp::{tool, tool_handler, tool_router, ServerHandler};
 
 use crate::cache::ContainerCache;
@@ -242,8 +242,8 @@ impl IronPlcMcp {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for IronPlcMcp {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_instructions("IronPLC MCP server \u{2014} IEC 61131-3 compiler tools.")
     }
 }
