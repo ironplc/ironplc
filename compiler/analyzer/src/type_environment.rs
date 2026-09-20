@@ -1313,8 +1313,7 @@ mod tests {
                     dimensions: vec![ArrayDimension { lower: 0, upper: 3 }],
                 },
             ),
-        )
-        .unwrap();
+        );
 
         let result = env.resolve_reference_target(
             &TypeName::from("ARR_REF"),
