@@ -444,15 +444,19 @@ pub(crate) fn array_spec_for_declaration(
                     "Array type resolved to a non-array representation",
                 )));
             };
-            array_spec_from_named(element_type, dimensions)
+            array_spec_from_named(element_type, dimensions, span)
         }
     }
 }
 
 /// Converts a named array type (from the TypeEnvironment) to a normalized ArraySpec.
+///
+/// `span` locates the declaration being compiled; the intermediate type has
+/// no span of its own.
 pub(crate) fn array_spec_from_named(
     element_type: &IntermediateType,
     dimensions: &[ArrayDimension],
+    span: &SourceSpan,
 ) -> Result<ArraySpec, Diagnostic> {
     let dims: Vec<(i32, i32)> = dimensions.iter().map(|d| (d.lower, d.upper)).collect();
     let ref_to = matches!(element_type, IntermediateType::Reference { .. });
@@ -461,7 +465,7 @@ pub(crate) fn array_spec_from_named(
     } else {
         element_type
     };
-    let element_type_name = intermediate_type_to_name(inner_type)?;
+    let element_type_name = intermediate_type_to_name(inner_type, span)?;
     let (string_max_len, string_char_width) = match inner_type {
         IntermediateType::String {
             max_len,
@@ -486,7 +490,7 @@ pub(crate) fn array_spec_from_named(
 /// Maps an IntermediateType to the IEC 61131-3 type name (as an Id) that
 /// `type_info::resolve_type_name()` can look up. Only primitive types are
 /// supported (arrays of complex types are out of scope).
-fn intermediate_type_to_name(ty: &IntermediateType) -> Result<Id, Diagnostic> {
+fn intermediate_type_to_name(ty: &IntermediateType, span: &SourceSpan) -> Result<Id, Diagnostic> {
     let name = match ty {
         IntermediateType::Bool => "BOOL",
         IntermediateType::Int {
@@ -538,7 +542,12 @@ fn intermediate_type_to_name(ty: &IntermediateType) -> Result<Id, Diagnostic> {
             size: ByteSized::B64,
         } => "LTIME",
         IntermediateType::String { .. } => "STRING",
-        _ => return Err(Diagnostic::todo()),
+        _ => {
+            return Err(Diagnostic::not_implemented(Label::span(
+                span.clone(),
+                "Unsupported array element type",
+            )))
+        }
     };
     Ok(Id::from(name))
 }
@@ -789,8 +798,11 @@ pub(crate) fn flatten_array_initial_values(
             ArrayInitialElementKind::Constant(value) => {
                 result.push(value.clone());
             }
-            ArrayInitialElementKind::EnumValue(_) => {
-                return Err(Diagnostic::todo());
+            ArrayInitialElementKind::EnumValue(value) => {
+                return Err(Diagnostic::not_implemented(Label::span(
+                    value.span(),
+                    "Enumerated value in an array initializer",
+                )));
             }
             ArrayInitialElementKind::Repeated(repeated) => {
                 let count = repeated.size.value as usize;

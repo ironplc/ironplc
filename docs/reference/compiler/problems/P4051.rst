@@ -4,14 +4,18 @@ P4051
 
 .. problem-summary:: P4051
 
-This error occurs when a function declares a function block instance, invokes
-one, or calls a method on one. IEC 61131-3 defines a call hierarchy: a program
-may invoke functions and function blocks, a function block may invoke functions
-and function blocks, and a function may invoke only functions. A function has
-no state between calls, and a function block instance is state.
+This error occurs when a ``CASE`` label is written as a range whose minimum
+value is greater than its maximum value.
 
-Both the declaration and every invocation of the instance are reported, so the
-cause and each call site are marked.
+A ``CASE`` label range such as ``1..9:`` selects its branch for every
+selector value from the minimum through the maximum, inclusive. When the
+minimum is greater than the maximum there is no such value, so the branch
+can never be selected and the statements in it can never run. That is
+almost always a mistake, such as bounds written in the wrong order, so the
+compiler reports it rather than compiling a branch that is silently dead.
+
+A range whose minimum equals its maximum (``5..5:``) is valid: it selects
+exactly one value, the same as the plain label ``5:``.
 
 Example
 -------
@@ -20,52 +24,48 @@ The following code will generate error P4051:
 
 .. code-block::
 
-   FUNCTION Delayed : BOOL
-       VAR
-           timer : TON;   (* Error: a function block instance in a function *)
-       END_VAR
-       timer(IN := TRUE, PT := T#1s);   (* Error: invoked in a function *)
-       Delayed := timer.Q;
-   END_FUNCTION
+   PROGRAM main
+   VAR
+       x : INT;
+       y : INT;
+   END_VAR
+   CASE x OF
+       10..1: y := 1;  (* Error: minimum (10) > maximum (1) *)
+   END_CASE;
+   END_PROGRAM
 
-``Delayed`` would have to keep ``timer`` running between calls, which a
-function cannot do.
+The label ``10..1`` has a minimum value of 10 and a maximum value of 1, so
+no value of ``x`` falls within it.
 
-To fix this error, make the unit that needs the state a function block:
+To fix this error, write the bounds in ascending order:
 
 .. code-block::
 
-   FUNCTION_BLOCK Delayed
-       VAR_OUTPUT
-           Q : BOOL;
-       END_VAR
-       VAR
-           timer : TON;
-       END_VAR
-       timer(IN := TRUE, PT := T#1s);
-       Q := timer.Q;
-   END_FUNCTION_BLOCK
+   PROGRAM main
+   VAR
+       x : INT;
+       y : INT;
+   END_VAR
+   CASE x OF
+       1..10: y := 1;  (* Correct: selects 1 through 10 *)
+   END_CASE;
+   END_PROGRAM
 
-or keep the function stateless by computing from its inputs alone.
+The check applies to every range label in the ``CASE`` statement, including
+a range that is one of several labels on the same branch:
 
-Instances passed by reference
------------------------------
+.. code-block::
 
-IEC 61131-3 Edition 3 allows a function to receive a function block instance
-through ``VAR_IN_OUT``. The instance belongs to the caller, so the function
-stays stateless, and such a declaration is not reported. Note that IronPLC
-does not yet accept ``VAR_IN_OUT`` parameters on functions in calls, so this
-exemption matters only once that support lands. A ``VAR_INPUT`` instance is
-reported: passing an instance by value copies its state into the function.
+   CASE x OF
+       1..3, 7: y := 1;   (* Valid *)
+       3..1, 7: y := 1;   (* Error: the range 3..1 is inverted *)
+   END_CASE;
 
-See Also
---------
+The same rule applies to an array index range, reported as
+:doc:`P2024 </reference/compiler/problems/P2024>`. A subrange type is
+stricter, because a type with one value or none is not useful: its minimum
+must be strictly less than its maximum, reported as
+:doc:`P2002 </reference/compiler/problems/P2002>`.
 
-- :doc:`/reference/language/pous/function` — ``FUNCTION`` declaration syntax
-- :doc:`/reference/language/pous/function-block` — the stateful unit to use instead
-- :doc:`P4012` — invocation of a variable that is not a function block instance
-
-References
-----------
-
-* IEC 61131-3 §2.5.1 (Edition 2), §6.6.1 (Edition 3)
+See :doc:`/reference/language/structured-text/case` for the ``CASE``
+statement.

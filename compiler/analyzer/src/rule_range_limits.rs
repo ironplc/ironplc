@@ -1,7 +1,6 @@
-//! Semantic rule that checks the order of the two bounds of a range in a
-//! declaration.
+//! Semantic rule that checks the order of the two bounds of a range.
 //!
-//! What order is valid depends on what the range declares:
+//! What order is valid depends on what the range is for:
 //!
 //! * A **subrange type** narrows an integer type to the values between its
 //!   bounds, so the minimum must be strictly less than the maximum: a
@@ -12,12 +11,15 @@
 //!   an error. Reported as P2024, the same code the type-environment builder
 //!   uses for a `TYPE`-declared array, so an inverted array range gets one
 //!   code wherever it is declared. See 2.4.2.1.
+//! * A **`CASE` label range** selects a branch for every value between its
+//!   bounds, and one value is an ordinary label, so the minimum may equal
+//!   the maximum; an inverted range selects nothing, so the branch can never
+//!   run. Reported as P4051. See 3.3.2.3.
 //!
 //! The rule is keyed on the node that owns the range rather than on the bare
-//! `Subrange`, because the DSL reuses one `Subrange` struct for both of
-//! these and for `CASE` label ranges. Applying the subrange-type check to
-//! every `Subrange` is what once rejected `ARRAY[0..0]`. A `CASE` label
-//! range is not a declaration and is not checked here.
+//! `Subrange`, because the DSL reuses one `Subrange` struct for all three.
+//! Applying the subrange-type check to every `Subrange` is what once
+//! rejected `ARRAY[0..0]` and `CASE` label `5..5:`.
 //!
 //! ## Passes
 //!
@@ -26,6 +28,12 @@
 //!    VALID_RANGE : INT(-10..10);
 //!    ONE_ELEMENT : ARRAY[0..0] OF INT;
 //! END_TYPE
+//! PROGRAM main
+//!    VAR x : INT; y : INT; END_VAR
+//!    CASE x OF
+//!       5..5: y := 1;
+//!    END_CASE;
+//! END_PROGRAM
 //! ```
 //!
 //! ## Fails
@@ -35,11 +43,18 @@
 //!    SINGLE_VALUE : INT(5..5);
 //!    INVERTED : ARRAY[1..0] OF INT;
 //! END_TYPE
+//! PROGRAM main
+//!    VAR x : INT; y : INT; END_VAR
+//!    CASE x OF
+//!       10..1: y := 1;
+//!    END_CASE;
+//! END_PROGRAM
 //! ```
 use ironplc_dsl::{
     common::*,
     core::Located,
     diagnostic::{Diagnostic, Label},
+    textual::CaseSelectionKind,
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
@@ -58,18 +73,18 @@ pub fn apply(
     _options: &CompilerOptions,
 ) -> SemanticResult {
     run_rule(
-        RuleDeclSubrangeLimits {
+        RuleRangeLimits {
             diagnostics: Vec::new(),
         },
         lib,
     )
 }
 
-struct RuleDeclSubrangeLimits {
+struct RuleRangeLimits {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl DiagnosticVisitor for RuleDeclSubrangeLimits {
+impl DiagnosticVisitor for RuleRangeLimits {
     fn into_diagnostics(self) -> Vec<Diagnostic> {
         self.diagnostics
     }
@@ -104,13 +119,15 @@ impl<'a> LiteralBounds<'a> {
     }
 }
 
-/// What a range declares, which decides the bound orderings it may have.
+/// What a range is for, which decides the bound orderings it may have.
 #[derive(Clone, Copy)]
 enum RangeContext {
     /// `INT(-10..10)`: the set of values of a type.
     SubrangeType,
     /// `ARRAY[0..9]`: the index positions of one array dimension.
     ArrayDimension,
+    /// `CASE x OF 1..9:`: the selector values that pick a branch.
+    CaseLabel,
 }
 
 impl RangeContext {
@@ -118,7 +135,7 @@ impl RangeContext {
     fn accepts(self, min: i128, max: i128) -> bool {
         match self {
             RangeContext::SubrangeType => min < max,
-            RangeContext::ArrayDimension => min <= max,
+            RangeContext::ArrayDimension | RangeContext::CaseLabel => min <= max,
         }
     }
 
@@ -126,11 +143,12 @@ impl RangeContext {
         match self {
             RangeContext::SubrangeType => Problem::SubrangeMinStrictlyLessMax,
             RangeContext::ArrayDimension => Problem::ArrayDimensionInvalid,
+            RangeContext::CaseLabel => Problem::CaseLabelRangeInvalid,
         }
     }
 }
 
-impl RuleDeclSubrangeLimits {
+impl RuleRangeLimits {
     fn check(&mut self, range: &Subrange, context: RangeContext) {
         let Some(bounds) = LiteralBounds::of(range) else {
             return;
@@ -153,7 +171,7 @@ impl RuleDeclSubrangeLimits {
     }
 }
 
-impl Visitor<Infallible> for RuleDeclSubrangeLimits {
+impl Visitor<Infallible> for RuleRangeLimits {
     type Value = ();
 
     fn visit_subrange_specification(
@@ -167,6 +185,13 @@ impl Visitor<Infallible> for RuleDeclSubrangeLimits {
     fn visit_array_subranges(&mut self, node: &ArraySubranges) -> Result<(), Infallible> {
         for range in &node.ranges {
             self.check(range, RangeContext::ArrayDimension);
+        }
+        node.recurse_visit(self)
+    }
+
+    fn visit_case_selection_kind(&mut self, node: &CaseSelectionKind) -> Result<(), Infallible> {
+        if let CaseSelectionKind::Subrange(range) = node {
+            self.check(range, RangeContext::CaseLabel);
         }
         node.recurse_visit(self)
     }
@@ -268,5 +293,52 @@ PROGRAM main
         5..5: y := 1;
     END_CASE;
 END_PROGRAM"
+    );
+
+    rule_ok!(
+        apply_when_case_label_range_spans_zero_then_ok,
+        "
+PROGRAM main
+    VAR
+        x : INT;
+        y : INT;
+    END_VAR
+    CASE x OF
+        -1..1: y := 1;
+    END_CASE;
+END_PROGRAM"
+    );
+
+    rule_err1_at!(
+        apply_when_case_label_range_inverted_then_error,
+        "
+PROGRAM main
+    VAR
+        x : INT;
+        y : INT;
+    END_VAR
+    CASE x OF
+        10..1: y := 1;
+    END_CASE;
+END_PROGRAM",
+        Problem::CaseLabelRangeInvalid,
+        "10"
+    );
+
+    rule_errn!(
+        apply_when_case_label_range_inverted_twice_then_error_per_label,
+        "
+PROGRAM main
+    VAR
+        x : INT;
+        y : INT;
+    END_VAR
+    CASE x OF
+        10..1, 2: y := 1;
+        3..2: y := 2;
+    END_CASE;
+END_PROGRAM",
+        2,
+        Problem::CaseLabelRangeInvalid
     );
 }

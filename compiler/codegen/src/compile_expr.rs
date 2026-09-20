@@ -35,7 +35,7 @@ pub(crate) fn op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
     let resolved = expr
         .resolved_type
         .as_ref()
-        .ok_or_else(|| Diagnostic::todo())?;
+        .ok_or_else(|| unresolved_expr_type(expr))?;
     // Enum types resolve to user-defined names (e.g. "COLOR") which
     // resolve_type_name doesn't handle. Fall back to DINT since all
     // enums use W32/Signed at codegen level (REQ-EN-codegen-003).
@@ -95,9 +95,20 @@ pub(crate) fn storage_bits(expr: &Expr) -> Result<u8, Diagnostic> {
     let resolved = expr
         .resolved_type
         .as_ref()
-        .ok_or_else(|| Diagnostic::todo())?;
-    let info = resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo())?;
+        .ok_or_else(|| unresolved_expr_type(expr))?;
+    let info = resolve_type_name(&resolved.name).ok_or_else(|| unresolved_expr_type(expr))?;
     Ok(info.storage_bits)
+}
+
+/// Builds the P9999 for an expression whose type the analyzer did not resolve
+/// to one codegen knows, pointing at the expression.
+///
+/// The analyzer leaves `resolved_type` empty for constructs it does not type
+/// yet (a direct address such as `%QX0.0`, for example), so this is a gap in
+/// the compiler rather than an invalid program.
+#[track_caller]
+pub(crate) fn unresolved_expr_type(expr: &Expr) -> Diagnostic {
+    Diagnostic::not_implemented(Label::span(expr.span(), "Expression has no resolved type"))
 }
 
 /// Returns the operation type for compiling a condition expression.
@@ -368,7 +379,10 @@ pub(crate) fn compile_constant(
                 emitter.emit_load_const_f64(pool_index);
                 Ok(())
             }
-            _ => Err(Diagnostic::todo()),
+            _ => Err(Diagnostic::not_implemented(Label::span(
+                lit.span.clone(),
+                "Real literal in a non-floating-point context",
+            ))),
         },
         ConstantKind::Boolean(lit) => {
             match lit.value {

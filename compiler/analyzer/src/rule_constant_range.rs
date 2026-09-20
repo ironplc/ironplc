@@ -285,9 +285,9 @@ impl RuleConstantRange<'_> {
             .flat_map(|group| group.selectors.iter())
             .filter_map(|selection| match selection {
                 CaseSelectionKind::SignedInteger(value) => Some(value),
-                // A subrange label's bounds are checked against the base type
-                // by `rule_decl_subrange_limits`, and a bit-string label is a
-                // pattern.
+                // A subrange label's bounds are not checked against the
+                // selector type here; `rule_range_limits` checks their order.
+                // A bit-string label is a pattern.
                 _ => None,
             })
             .collect();

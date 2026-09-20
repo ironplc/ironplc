@@ -13,7 +13,7 @@ use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionReturnType, InitialValueAssignmentKind, MethodDeclaration,
 };
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
 use ironplc_analyzer::TypeEnvironment;
 
@@ -165,10 +165,13 @@ fn compile_user_method(
         Some(FunctionReturnType::Named(type_name)) => resolve_type_name(&type_name.name)
             .map(|info| (info.op_width, info.signedness))
             .unwrap_or(DEFAULT_OP_TYPE),
-        Some(FunctionReturnType::String(_)) | Some(FunctionReturnType::WString(_)) => {
+        Some(FunctionReturnType::String(spec)) | Some(FunctionReturnType::WString(spec)) => {
             // STRING/WSTRING method returns aren't implemented in this
             // slice.
-            return Err(Diagnostic::todo());
+            return Err(Diagnostic::not_implemented(Label::span(
+                spec.keyword_span.clone(),
+                "STRING return type of a METHOD",
+            )));
         }
         None => DEFAULT_OP_TYPE,
     };

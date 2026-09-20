@@ -279,7 +279,10 @@ pub(crate) fn assign_variables(
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     // LateResolvedType should have been resolved before codegen.
                     // If we reach here, it indicates a bug in the compiler.
-                    return Err(Diagnostic::internal_error());
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        decl.identifier.span(),
+                        "Variable type was not resolved before code generation",
+                    )));
                 }
                 // Other initializer kinds (EnumeratedValues, etc.)
                 // do not yet have type info tracked in codegen.
@@ -451,6 +454,7 @@ pub(crate) fn emit_initial_values(
                             data_offset,
                             &fields,
                             &[],
+                            &decl.identifier.span(),
                         )?;
                     } else if let Some(constant) = &simple.initial_value {
                         let var_index = ctx.var_index(id)?;
@@ -632,6 +636,7 @@ pub(crate) fn emit_initial_values(
                             data_offset,
                             &fields,
                             &struct_init.elements_init,
+                            &decl.identifier.span(),
                         )?;
                     }
                 }
@@ -844,6 +849,7 @@ pub(crate) fn emit_function_local_prologue(
             struct_info.data_offset,
             &fields,
             &[],
+            &return_id.span(),
         )?;
     } else if let Some(info) = ctx.string_vars.get(return_id) {
         // STRING/WSTRING return: initialize the string header in the data region.

@@ -37,7 +37,7 @@
 use core::fmt;
 use ironplc_dsl::{
     common::*,
-    core::{FileId, Id, SourceSpan},
+    core::{FileId, Id, Located, SourceSpan},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -486,7 +486,12 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                 let to = self.declarations.add_node(&node.name);
                 self.declarations.graph.add_edge(to, from, ());
             }
-            None => return Err(Diagnostic::todo()),
+            None => {
+                return Err(Diagnostic::not_implemented(Label::span(
+                    node.name.span(),
+                    "Function call outside a program organization unit",
+                )))
+            }
         }
 
         node.recurse_visit(self)
@@ -507,7 +512,12 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                 let to = self.declarations.add_node(&init.type_name.name);
                 self.declarations.graph.add_edge(to, from, ());
             }
-            None => return Err(Diagnostic::todo()),
+            None => {
+                return Err(Diagnostic::not_implemented(Label::span(
+                    init.type_name.span(),
+                    "Function block instance outside a program organization unit",
+                )))
+            }
         }
 
         Ok(())
