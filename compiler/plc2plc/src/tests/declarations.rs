@@ -134,3 +134,25 @@ END_FUNCTION_BLOCK
         &CompilerOptions::default(),
     );
 }
+
+#[test]
+fn write_to_string_when_string_initializer_then_round_trips() {
+    let source = "PROGRAM main
+VAR
+    s : STRING[10] := 'abc';
+    w : WSTRING[10] := \"xyz\";
+END_VAR
+END_PROGRAM";
+    let rendered = assert_round_trips(source, &CompilerOptions::default());
+    assert!(rendered.contains("STRING [ 10 ] :='abc'"), "{rendered}");
+    assert!(rendered.contains("WSTRING [ 10 ] :=\"xyz\""), "{rendered}");
+}
+
+#[test]
+fn write_to_string_when_string_type_declaration_initializer_then_round_trips() {
+    let source = "TYPE
+    T : STRING[5] := 'abc';
+END_TYPE";
+    let rendered = assert_round_trips(source, &CompilerOptions::default());
+    assert!(rendered.contains(":='abc'"), "{rendered}");
+}
