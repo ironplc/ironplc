@@ -52,12 +52,10 @@ pub fn apply(
     lib: Library,
     options: &CompilerOptions,
 ) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
-    let (constants, diagnostics) = collect_constants(&lib);
-
     let mut folder = InitializerFolder {
-        constants,
+        constants: collect_constants(&lib),
         options,
-        diagnostics,
+        diagnostics: Vec::new(),
     };
 
     // Diagnostics ride along with the normalized library rather than failing
@@ -85,31 +83,26 @@ pub fn apply(
 /// does not yet model. Handling those "half global" vars correctly is
 /// left for a follow-up rather than treating them as unconditionally
 /// global here.
-fn collect_constants(lib: &Library) -> (ScopedTable<'static, Id, ConstantKind>, Vec<Diagnostic>) {
+fn collect_constants(lib: &Library) -> ScopedTable<'static, Id, ConstantKind> {
     let mut constants = ScopedTable::new();
-    let mut diagnostics = Vec::new();
 
     for element in &lib.elements {
         if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
-            register_constants(&mut constants, decls, &mut diagnostics);
+            register_constants(&mut constants, decls);
         }
     }
 
-    (constants, diagnostics)
+    constants
 }
 
 /// Registers each `CONSTANT`-qualified, literal-valued declaration in
 /// `decls` into the current (innermost) scope of `constants`. A name
-/// already present *in that same scope* is a duplicate declaration and
-/// produces a diagnostic rather than silently overwriting the earlier
-/// value -- shadowing an outer scope's constant (e.g. a function-local
-/// constant with the same name as a global) is unaffected, since that
-/// lives in a different scope entirely.
-fn register_constants(
-    constants: &mut ScopedTable<Id, ConstantKind>,
-    decls: &[VarDecl],
-    diagnostics: &mut Vec<Diagnostic>,
-) {
+/// already present *in that same scope* keeps its first value: the repeat
+/// is the symbol environment's to report (P4014), so it is not diagnosed a
+/// second time from this table. Shadowing an outer scope's constant (e.g.
+/// a function-local constant with the same name as a global) is unaffected,
+/// since that lives in a different scope entirely.
+fn register_constants(constants: &mut ScopedTable<Id, ConstantKind>, decls: &[VarDecl]) {
     for decl in decls {
         if decl.qualifier != DeclarationQualifier::Constant {
             continue;
@@ -125,15 +118,7 @@ fn register_constants(
 
         if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
             if let Some(value) = &simple.initial_value {
-                if let Some((existing, _)) = constants.try_add(&name, value.clone()) {
-                    diagnostics.push(
-                        Diagnostic::problem(
-                            Problem::DefinitionNameDuplicated,
-                            Label::span(decl.identifier.span(), "Duplicate constant declaration"),
-                        )
-                        .with_context("name", &existing.to_string()),
-                    );
-                }
+                constants.try_add(&name, value.clone());
             }
         }
     }
@@ -304,7 +289,7 @@ impl Fold<Diagnostic> for InitializerFolder<'_> {
             ScopeNode::Program(node) => &node.variables,
             ScopeNode::Method(node) => &node.variables,
         };
-        register_constants(&mut self.constants, variables, &mut self.diagnostics);
+        register_constants(&mut self.constants, variables);
 
         Ok(())
     }
@@ -425,10 +410,10 @@ mod tests {
         assert!((real_value(var) - (4.25 / (180.0 * 3600.0))).abs() < f64::EPSILON);
     }
 
+    /// A repeated global constant keeps its first value here; the repeat is
+    /// the symbol environment's to report, so this pass stays clean.
     #[test]
-    fn apply_when_duplicate_global_constant_then_error() {
-        // Two VAR_GLOBAL CONSTANT declarations with the same name -- the
-        // second must not silently overwrite the first.
+    fn apply_when_duplicate_global_constant_then_first_value_kept() {
         let lib = parse(
             "
             VAR_GLOBAL CONSTANT
@@ -445,10 +430,9 @@ mod tests {
         ",
             &opts(),
         );
-        let diagnostics = apply_expect_diagnostics(lib, &opts());
-        assert!(diagnostics
-            .iter()
-            .any(|d| d.code == Problem::DefinitionNameDuplicated.code()));
+        let lib = apply_clean(lib, &opts());
+        let var = find_var_decl(&lib, "d2r");
+        assert!((real_value(var) - 360.0).abs() < f64::EPSILON);
     }
 
     #[test]
