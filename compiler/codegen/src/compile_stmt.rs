@@ -426,7 +426,6 @@ fn compile_statement(
                     emitter.emit_ret();
                 }
                 Some(CurrentFunctionReturn::String { data_offset }) => {
-                    ctx.num_temp_bufs += 1;
                     emitter.emit_str_load_var(data_offset);
                     emitter.emit_ret();
                 }
