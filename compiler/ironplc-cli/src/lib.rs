@@ -9,6 +9,7 @@ pub mod logger;
 pub mod lsp;
 pub mod lsp_project;
 pub mod lsp_runner;
+mod semantic_tokens;
 
 #[cfg(test)]
 mod test_helpers;
