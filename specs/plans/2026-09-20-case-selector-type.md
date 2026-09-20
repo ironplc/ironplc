@@ -104,8 +104,8 @@ ELSE, hex and binary labels), and `end_to_end_enum.rs` (enumeration
 selectors). No new tests are needed for a behaviour-preserving change.
 
 `compile_stmt.rs` is already over the 1000-line module limit. This prefactor
-shrinks it but does not bring it under; splitting the module is not part of
-this change.
+trades repeated branches for named types and leaves the length about
+unchanged; splitting the module is not part of this change.
 
 ### Analyzer: share the expression-to-representation lookup
 
@@ -143,7 +143,7 @@ Created:
 
 ## Tasks
 
-- [ ] Prefactor codegen: collapse `compile_case_selector` onto one label
+- [x] Prefactor codegen: collapse `compile_case_selector` onto one label
       comparison helper; float rejection in one place with the selector span
 - [ ] Prefactor analyzer: hoist the expression-to-representation lookup onto
       `TypeEnvironment`; `rule_constant_range` uses it
