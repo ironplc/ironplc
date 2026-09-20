@@ -159,8 +159,9 @@ pub(crate) fn char_width_for_string_type(width: &StringType) -> CharWidth {
 ///
 /// `char_width` selects the encoding per ADR-0016: `Narrow` for STRING
 /// (Latin-1, one byte per character), `Wide` for WSTRING (UTF-16LE, two
-/// bytes per code unit). Characters above U+FFFF are out of scope (BMP
-/// only); higher code points are truncated to their low 16 bits.
+/// bytes per code unit). The narrowing casts cannot lose information: the
+/// analyzer rejects a literal whose characters do not fit its type (P4052,
+/// at most U+00FF for STRING and U+FFFF for WSTRING) before codegen runs.
 pub(crate) fn encode_string_literal(chars: &[char], char_width: CharWidth) -> Vec<u8> {
     match char_width {
         CharWidth::Narrow => chars.iter().map(|&ch| ch as u8).collect(),
