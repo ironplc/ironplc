@@ -622,6 +622,7 @@ mod tests {
         ArrayElementType, ArraySubranges, Integer, SignedInteger, SignedIntegerRef, Subrange,
     };
     use ironplc_dsl::core::SourceSpan;
+    use rstest::rstest;
 
     #[test]
     fn insert_type_when_type_already_exists_then_error() {
@@ -1289,31 +1290,24 @@ mod tests {
         assert_eq!(resolved.array_total_elements(), Some(4));
     }
 
-    #[test]
-    fn resolve_reference_target_when_named_target_undeclared_then_parent_type_not_declared() {
+    #[rstest]
+    #[case::named(
+        ReferenceTarget::Named(TypeName::from("MISSING")),
+        Problem::ParentTypeNotDeclared
+    )]
+    #[case::inline_array_element(
+        ReferenceTarget::Array(subranges("MISSING")),
+        Problem::ArrayElementTypeNotDeclared
+    )]
+    fn resolve_reference_target_when_target_undeclared_then_error(
+        #[case] target: ReferenceTarget,
+        #[case] expected: Problem,
+    ) {
         let env = TypeEnvironment::new();
 
-        let result = env.resolve_reference_target(
-            &TypeName::from("BAD_REF"),
-            &ReferenceTarget::Named(TypeName::from("MISSING")),
-        );
+        let result = env.resolve_reference_target(&TypeName::from("BAD_REF"), &target);
 
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().code,
-            Problem::ParentTypeNotDeclared.code()
-        );
-    }
-
-    #[test]
-    fn resolve_reference_target_when_inline_array_element_undeclared_then_error() {
-        let env = TypeEnvironment::new();
-
-        let result = env.resolve_reference_target(
-            &TypeName::from("BAD_REF"),
-            &ReferenceTarget::Array(subranges("MISSING")),
-        );
-
-        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code, expected.code());
     }
 }
