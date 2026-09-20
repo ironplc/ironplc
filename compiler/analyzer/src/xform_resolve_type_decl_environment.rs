@@ -867,13 +867,12 @@ END_TYPE
         ));
     }
 
+    /// What `apply` returns: the resolved library with the repeats it met, or
+    /// the failure that reverted it.
+    type Applied = Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>;
+
     /// Helper function to parse 61131-3 code and apply type resolution with elementary types
-    fn parse_and_apply_with_elementary_types(
-        program: &str,
-    ) -> (
-        Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>,
-        TypeEnvironment,
-    ) {
+    fn parse_and_apply_with_elementary_types(program: &str) -> (Applied, TypeEnvironment) {
         let input =
             ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
@@ -886,12 +885,7 @@ END_TYPE
     }
 
     /// Helper function to parse 61131-3 code and apply type resolution with empty environment
-    fn parse_and_apply_with_empty_env(
-        program: &str,
-    ) -> (
-        Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>,
-        TypeEnvironment,
-    ) {
+    fn parse_and_apply_with_empty_env(program: &str) -> (Applied, TypeEnvironment) {
         let input =
             ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
