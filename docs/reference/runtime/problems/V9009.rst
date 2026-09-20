@@ -4,10 +4,26 @@ V9009
 
 .. problem-summary:: V9009
 
-The VM exhausted its pool of temporary buffers during string operations. This is
-an internal error indicating the compiler underestimated the number of temporary
-buffers needed for the program.
+A string operation asked the VM for a temporary buffer and the pool had no
+free slot, so the VM halted rather than overwrite a value still in use.
 
-.. include:: ../../../includes/internal-vm-error-cause.rst
+String operations such as ``CONCAT``, ``LEFT``, ``MID`` and ``INSERT`` write
+their result into a temporary buffer rather than straight into a variable.
+Those buffers come from a pool the VM allocates once, before the program
+starts, because the runtime allocates no memory while a program is running.
+The compiler sizes the pool from the program: it works out the most buffers
+that can be in use at the same moment along any path of calls, and records
+that number in the compiled file.
+
+A buffer is returned to the pool as soon as its value is copied into a
+variable, so repeating a string operation does not need more buffers than
+running it once. A loop that builds a string needs the same pool as the same
+statement outside a loop.
+
+Cause
+-----
+
+In the current compiler this indicates a defect: the pool was sized smaller
+than the program turned out to need.
 
 .. include:: ../../../includes/report-internal-vm-error.rst

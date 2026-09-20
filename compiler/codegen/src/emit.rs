@@ -82,12 +82,20 @@ pub struct Emitter {
     bytecode: Vec<u8>,
     max_stack_depth: u16,
     current_stack_depth: u16,
-    /// Number of emitted instructions that allocate a temporary string
-    /// buffer at run time (`LOAD_CONST_STR`, `STR_LOAD_VAR`, the string
-    /// functions that produce a result, ...). Counted here, beside the
-    /// opcode that allocates, so the container header's pool size cannot
-    /// drift from the bytecode that draws on the pool.
-    temp_buf_allocs: u16,
+    /// Temporary string buffers live at the current point of emission,
+    /// and the most that were ever live at once. Tracked here, beside the
+    /// opcode that allocates or consumes one, so the container header's
+    /// pool size cannot drift from the bytecode that draws on the pool.
+    ///
+    /// A buffer is allocated by the opcodes that push a `buf_idx`
+    /// (`LOAD_CONST_STR`, `STR_LOAD_VAR`, the string functions that
+    /// produce a result) and released by the opcodes that consume one
+    /// (`STR_STORE_VAR`, `STR_STORE_ARRAY_ELEM`), matching the VM's
+    /// allocator. So this is the count of buffers simultaneously live,
+    /// not the number of string operations: a string operation in a loop
+    /// allocates and releases one buffer per iteration and contributes 1.
+    max_temp_depth: u16,
+    current_temp_depth: u16,
     /// Bound positions for each label (None if not yet bound).
     labels: Vec<Option<usize>>,
     /// Jump operands that need backpatching.
@@ -197,7 +205,8 @@ impl Emitter {
             bytecode: Vec::new(),
             max_stack_depth: 0,
             current_stack_depth: 0,
-            temp_buf_allocs: 0,
+            max_temp_depth: 0,
+            current_temp_depth: 0,
             labels: Vec::new(),
             patches: Vec::new(),
             last_load: None,
@@ -575,6 +584,7 @@ impl Emitter {
         self.bytecode.extend_from_slice(&var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
         self.pop_stack(2);
+        self.release_temp_buf();
     }
 
     /// Emits BUILTIN with a function ID.
@@ -731,6 +741,7 @@ impl Emitter {
         self.emit_opcode(opcode::STR_STORE_VAR);
         self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
         self.pop_stack(1);
+        self.release_temp_buf();
     }
 
     /// Emits STR_LOAD_VAR with a data_offset operand.
@@ -1026,10 +1037,10 @@ impl Emitter {
         self.max_stack_depth
     }
 
-    /// Returns how many emitted instructions allocate a temporary string
-    /// buffer when they run.
-    pub fn temp_buf_allocs(&self) -> u16 {
-        self.temp_buf_allocs
+    /// Returns the most temporary string buffers this function ever holds
+    /// live at one time.
+    pub fn max_temp_depth(&self) -> u16 {
+        self.max_temp_depth
     }
 
     /// Returns the operand-stack depth the emitter is currently tracking.
@@ -1084,7 +1095,19 @@ impl Emitter {
 
     /// Records that the instruction just emitted allocates a temp buffer.
     fn alloc_temp_buf(&mut self) {
-        self.temp_buf_allocs = self.temp_buf_allocs.saturating_add(1);
+        self.current_temp_depth = self.current_temp_depth.saturating_add(1);
+        if self.current_temp_depth > self.max_temp_depth {
+            self.max_temp_depth = self.current_temp_depth;
+        }
+    }
+
+    /// Records that the instruction just emitted consumes a temp buffer.
+    ///
+    /// Saturates at zero, mirroring [`Self::pop_stack`]: a function whose
+    /// body consumes a buffer its caller produced (a `STRING`-returning
+    /// call) legitimately releases more than it allocated.
+    fn release_temp_buf(&mut self) {
+        self.current_temp_depth = self.current_temp_depth.saturating_sub(1);
     }
 }
 
@@ -2133,17 +2156,17 @@ mod tests {
     }
 
     #[test]
-    fn emitter_when_no_string_ops_then_zero_temp_buf_allocs() {
+    fn emitter_when_no_string_ops_then_zero_temp_depth() {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0);
         em.emit_store_var_i32(VarIndex::new(0));
         em.emit_builtin(opcode::builtin::EXPT_I32);
 
-        assert_eq!(em.temp_buf_allocs(), 0);
+        assert_eq!(em.max_temp_depth(), 0);
     }
 
     #[test]
-    fn emitter_when_each_allocating_string_op_then_counts_one_temp_buf() {
+    fn emitter_when_each_allocating_string_op_then_raises_temp_depth() {
         let mut em = Emitter::new();
         em.emit_load_const_str(0); // 1
         em.emit_str_load_var(0); // 2
@@ -2157,19 +2180,44 @@ mod tests {
         em.emit_concat_str(0, 0); // 10
         em.emit_builtin(opcode::builtin::CONV_I32_TO_STR); // 11
 
-        assert_eq!(em.temp_buf_allocs(), 11);
+        assert_eq!(em.max_temp_depth(), 11);
     }
 
     #[test]
-    fn emitter_when_string_consuming_ops_then_no_temp_buf_allocs() {
+    fn emitter_when_string_consuming_ops_then_no_temp_depth() {
         let mut em = Emitter::new();
-        em.emit_str_store_var(0);
-        em.emit_str_store_array_elem(VarIndex::new(0), 0);
         em.emit_len_str(0);
         em.emit_find_str(0, 0);
         em.emit_builtin(opcode::builtin::CMP_STR);
         em.emit_builtin(opcode::builtin::CONV_STR_TO_I32);
 
-        assert_eq!(em.temp_buf_allocs(), 0);
+        assert_eq!(em.max_temp_depth(), 0);
+    }
+
+    /// The shape a string statement compiles to: allocate a buffer, spill
+    /// it into the data region, and be back where we started. Repeating it
+    /// -- what a loop body does at run time -- must not raise the peak,
+    /// because the VM hands the same slot back each time.
+    #[test]
+    fn emitter_when_alloc_and_consume_repeated_then_temp_depth_stays_one() {
+        let mut em = Emitter::new();
+        for _ in 0..10 {
+            em.emit_concat_str(0, 0);
+            em.emit_str_store_var(0);
+        }
+
+        assert_eq!(em.max_temp_depth(), 1);
+    }
+
+    #[test]
+    fn emitter_when_string_array_element_stored_then_temp_depth_returns_to_zero() {
+        let mut em = Emitter::new();
+        em.emit_str_load_var(0);
+        em.emit_load_const_i32(0);
+        em.emit_str_store_array_elem(VarIndex::new(0), 0);
+        em.emit_concat_str(0, 0);
+        em.emit_str_store_var(0);
+
+        assert_eq!(em.max_temp_depth(), 1);
     }
 }
