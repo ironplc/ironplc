@@ -236,6 +236,16 @@ fn span_of_tokens(tokens: &[Token], start: usize, end: usize) -> SourceSpan {
     }
 }
 
+/// Returns the characters of a character-string token without its two
+/// delimiting quotes. The token text is the source as written: `$` escapes
+/// are not decoded.
+fn unquote(text: &str) -> Vec<char> {
+    let mut chars = text.chars();
+    chars.next();
+    chars.next_back();
+    chars.collect()
+}
+
 /// The default implementation of the parsing traits for `[T]` expects `T` to be
 /// `Copy`, as in the `[u8]` or simple enum cases. This wrapper exposes the
 /// elements by `&T` reference, which is `Copy`.
@@ -446,25 +456,26 @@ parser! {
       / tok(TokenType::False) { BooleanLiteral::new(Boolean::False) }
 
     // B.1.2.2 Character strings
-    rule character_string() -> Vec<char> = single_byte_character_string() / double_byte_character_string()
     // The literal keeps which of the two spellings the source used. A
     // declaration does not need this because its own STRING/WSTRING keyword
     // says the width, but a literal in a statement body has no such keyword.
-    rule character_string_literal() -> CharacterStringLiteral =
-      c:single_byte_character_string() { CharacterStringLiteral::new(c) }
-      / c:double_byte_character_string() { CharacterStringLiteral::new_wide(c) }
-    rule single_byte_character_string() -> Vec<char>  = (tok(TokenType::String) tok(TokenType::Hash))? t:tok(TokenType::SingleByteString) {
-      // The token includes the surrounding single quotes, so remove those when generating the literal
-      let mut chars = t.text.chars();
-      chars.next();
-      chars.next_back();
-      chars.collect()
+    // The span covers the optional type prefix as well as the quoted text,
+    // the same range `constant()` assigns, so a literal's span means one
+    // thing wherever the literal appears.
+    rule character_string_literal() -> CharacterStringLiteral = single_byte_character_string() / double_byte_character_string()
+    rule single_byte_character_string() -> CharacterStringLiteral = start:position!() (tok(TokenType::String) tok(TokenType::Hash))? t:tok(TokenType::SingleByteString) end:position!() {
+      CharacterStringLiteral {
+        value: unquote(&t.text),
+        width: StringType::String,
+        span: span_of_tokens(tokens, start, end),
+      }
     }
-    rule double_byte_character_string() -> Vec<char> = (tok(TokenType::WString) tok(TokenType::Hash))? t:tok(TokenType::DoubleByteString) {
-      let mut chars = t.text.chars();
-      chars.next();
-      chars.next_back();
-      chars.collect()
+    rule double_byte_character_string() -> CharacterStringLiteral = start:position!() (tok(TokenType::WString) tok(TokenType::Hash))? t:tok(TokenType::DoubleByteString) end:position!() {
+      CharacterStringLiteral {
+        value: unquote(&t.text),
+        width: StringType::WString,
+        span: span_of_tokens(tokens, start, end),
+      }
     }
 
     // B.1.2.3 Time literals
@@ -878,20 +889,23 @@ parser! {
       InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer::bare(i))
     }
     rule string_type_name() -> TypeName = type_name()
-    rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftBracket) _ length:integer_ref() _ tok(TokenType::RightBracket) _ init:(tok(TokenType::Assignment) _ str:character_string() {str})? {
+    // The standard's grammar accepts either delimiter for a string type
+    // declaration's default, and the declared width governs, so the literal
+    // takes the declared width rather than the one its delimiter spelled.
+    rule string_type_declaration() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftBracket) _ length:integer_ref() _ tok(TokenType::RightBracket) _ init:(tok(TokenType::Assignment) _ str:character_string_literal() {str})? {
       StringDeclaration {
         type_name,
         length,
+        init: init.map(|lit| CharacterStringLiteral { width: width.clone(), ..lit }),
         width,
-        init: init.map(|v| v.into_iter().collect()),
       }
     }
-    rule string_type_declaration__parenthesis() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftParen) _ length:integer_ref() _ tok(TokenType::RightParen) _ init:(tok(TokenType::Assignment) _ str:character_string() {str})? {
+    rule string_type_declaration__parenthesis() -> StringDeclaration = type_name:string_type_name() _ tok(TokenType::Colon) _ width:(tok(TokenType::String) { StringType::String } / tok(TokenType::WString) { StringType::WString }) _ tok(TokenType::LeftParen) _ length:integer_ref() _ tok(TokenType::RightParen) _ init:(tok(TokenType::Assignment) _ str:character_string_literal() {str})? {
       StringDeclaration {
         type_name,
         length,
+        init: init.map(|lit| CharacterStringLiteral { width: width.clone(), ..lit }),
         width,
-        init: init.map(|v| v.into_iter().collect()),
       }
     }
 

@@ -356,3 +356,69 @@ END_FUNCTION_BLOCK"
         "span of {constant:?} should cover the literal as written"
     );
 }
+
+/// A string initializer's literal carries the span of the quoted text, so a
+/// diagnostic about the literal can point at it rather than at the keyword.
+#[test]
+fn parse_program_when_string_initializer_then_literal_has_span_and_width() {
+    let program = "PROGRAM main
+VAR
+    s : STRING[10] := 'abc';
+    w : WSTRING[10] := \"xyz\";
+END_VAR
+END_PROGRAM";
+    let lib = parse_text(program);
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+
+    let s_init = cast!(
+        &prog.variables[0].initializer,
+        InitialValueAssignmentKind::String
+    );
+    let lit = s_init.initial_value.as_ref().unwrap();
+    assert_eq!(lit.value, vec!['a', 'b', 'c']);
+    assert_eq!(lit.width, StringType::String);
+    assert_eq!(&program[lit.span.start..lit.span.end], "'abc'");
+
+    let w_init = cast!(
+        &prog.variables[1].initializer,
+        InitialValueAssignmentKind::String
+    );
+    let lit = w_init.initial_value.as_ref().unwrap();
+    assert_eq!(lit.value, vec!['x', 'y', 'z']);
+    assert_eq!(lit.width, StringType::WString);
+    assert_eq!(&program[lit.span.start..lit.span.end], "\"xyz\"");
+}
+
+/// A typed literal's span covers the type prefix as well as the quoted text,
+/// the same range a literal in an expression gets.
+#[test]
+fn parse_program_when_prefixed_string_initializer_then_span_covers_prefix() {
+    let program = "PROGRAM main
+VAR
+    s : STRING[10] := STRING#'abc';
+END_VAR
+END_PROGRAM";
+    let lib = parse_text(program);
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let s_init = cast!(
+        &prog.variables[0].initializer,
+        InitialValueAssignmentKind::String
+    );
+    let lit = s_init.initial_value.as_ref().unwrap();
+    assert_eq!(&program[lit.span.start..lit.span.end], "STRING#'abc'");
+}
+
+/// A string type declaration's default value is a literal with a span too.
+#[test]
+fn parse_program_when_string_type_declaration_initializer_then_literal_has_span() {
+    let program = "TYPE
+    T : STRING[5] := 'abc';
+END_TYPE";
+    let lib = parse_text(program);
+    let decl = cast!(&lib.elements[0], LibraryElementKind::DataTypeDeclaration);
+    let decl = cast!(decl, DataTypeDeclarationKind::String);
+    let lit = decl.init.as_ref().unwrap();
+    assert_eq!(lit.value, vec!['a', 'b', 'c']);
+    assert_eq!(lit.width, StringType::String);
+    assert_eq!(&program[lit.span.start..lit.span.end], "'abc'");
+}
