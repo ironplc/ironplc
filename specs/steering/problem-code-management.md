@@ -268,12 +268,19 @@ return Err(Diagnostic::internal_error());
 
 // Unimplemented capability with the generic message; the `todo_with_*`
 // variants attach an IEC 61131-3 span (id, type name or span):
-return Err(Diagnostic::todo());
 return Err(Diagnostic::todo_with_span(span.clone()));
 ```
 
 None of these constructors take `file!()`/`line!()` — they are `#[track_caller]`
 and record the call site themselves.
+
+A P9999 always names a location in the IEC 61131-3 source: there is no
+span-less `todo()`. The compiler `file#Lline` tells a maintainer which code
+needs work, but only the program span tells the user which construct the
+compiler refused, and the CLI renders a diagnostic without one as `┌─ :1:1`
+with an empty file name. When the helper raising the diagnostic has no span in
+scope, add a parameter and pass the span of the declaration or statement being
+compiled rather than defaulting it.
 
 
 ### Error Message Guidelines
