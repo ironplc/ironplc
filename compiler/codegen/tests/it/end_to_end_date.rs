@@ -9,8 +9,10 @@
 //! - DATE_AND_TIME (DT): stored as u32 seconds since 1970-01-01
 
 use ironplc_parser::options::CompilerOptions;
+use ironplc_problems::Problem;
+use rstest::rstest;
 
-use crate::common::parse_and_run;
+use crate::common::{parse_and_run, try_parse_and_compile};
 
 #[test]
 fn end_to_end_when_date_assignment_then_value_is_seconds_since_epoch() {
@@ -98,3 +100,33 @@ END_PROGRAM
 ",
     &[(2, 1)],
 );
+
+/// A date past 2106-02-07 has no unsigned 32-bit second count, so codegen
+/// reports it rather than emitting the truncated date that count would give.
+///
+/// `rule_date_literal_range` reports the same problem first in a full
+/// compile; this path is reachable because the codegen tests resolve types
+/// without running the semantic rules.
+#[rstest]
+#[case::date("d : DATE;", "d := D#2200-01-01;")]
+#[case::date_before_epoch("d : DATE;", "d := D#1969-12-31;")]
+#[case::date_and_time("d : DATE_AND_TIME;", "d := DT#2200-01-01-00:00:00;")]
+fn compile_when_date_literal_is_unrepresentable_then_reports_out_of_range(
+    #[case] declaration: &str,
+    #[case] statement: &str,
+) {
+    let source = format!(
+        "
+PROGRAM main
+  VAR
+    {declaration}
+  END_VAR
+  {statement}
+END_PROGRAM
+"
+    );
+
+    let diagnostic = try_parse_and_compile(&source, &CompilerOptions::default()).unwrap_err();
+
+    assert_eq!(diagnostic.code, Problem::DateLiteralOutOfRange.code());
+}

@@ -16,8 +16,8 @@ use crate::{
     result::SemanticResult,
     rule_abstract_not_instantiated, rule_assignment_aggregate_type_compat,
     rule_bit_and_partial_access_range, rule_case_bit_string_label, rule_case_selector_type,
-    rule_constant_range, rule_decl_struct_element_unique_names, rule_enum_base_type_allowed,
-    rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
+    rule_constant_range, rule_date_literal_range, rule_decl_struct_element_unique_names,
+    rule_enum_base_type_allowed, rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
     rule_extends_field_duplicated, rule_function_block_call_unsupported,
     rule_function_block_invocation, rule_function_call_declared, rule_function_call_type_check,
     rule_method_call_declared, rule_mixed_located_var_declarations, rule_no_top_level_var_global,
@@ -333,6 +333,7 @@ pub(crate) fn semantic(
     let functions: Vec<fn(&Library, &SemanticContext, &CompilerOptions) -> SemanticResult> = vec![
         rule_abstract_not_instantiated::apply,
         rule_assignment_aggregate_type_compat::apply,
+        rule_date_literal_range::apply,
         rule_decl_struct_element_unique_names::apply,
         rule_range_limits::apply,
         rule_enum_base_type_allowed::apply,
