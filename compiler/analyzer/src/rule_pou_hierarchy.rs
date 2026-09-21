@@ -1,44 +1,57 @@
-//! Rule that checks the hierarchy of declarations.
+//! Semantic rule that program organization units respect the IEC 61131-3
+//! call hierarchy.
 //!
-//! This rule passes when:
+//! A program may invoke functions and function blocks; a function block may
+//! invoke functions and function blocks; a function may invoke only
+//! functions (Ed.2 §2.5.1, Ed.3 §6.6.1). The distinction is state: a function
+//! has none, so it declares no function block instance and invokes none.
+//! The one exception is an instance the caller passes in through
+//! `VAR_IN_OUT`, which Ed.3 permits because the state stays the caller's.
 //!
-//! 1. Programs only call function or function blocks
-//! 2. Function blocks only call functions or function blocks.
-//! 3. Functions call only other functions.
+//! Only a function can break the hierarchy in a way this rule has to find.
+//! The other direction, a function or function block reaching for a program,
+//! cannot be written: a program is not a type, so naming one as a variable
+//! type is an undeclared type (`P2008`), and invoking one names no variable
+//! in scope (`P4012`). A program is instantiated only by a `PROGRAM ... WITH`
+//! in a resource. `stages.rs` pins that, since it holds for the whole
+//! pipeline rather than for this rule.
+//!
+//! This rule therefore reports only what a function declares and calls: each
+//! offending declaration, and each invocation of it and method call on it, so
+//! both the declaration and every call site are marked. Function block and
+//! program bodies are walked like any other, and yield nothing because the
+//! rule only records instances while inside a function.
 //!
 //! ## Passes
 //!
 //! ```ignore
-//! FUNCTION_BLOCK Callee
-//!    VAR
-//!       IN1: BOOL;
+//! FUNCTION Twice : INT
+//!    VAR_INPUT
+//!       x : INT;
 //!    END_VAR
-//! END_FUNCTION_BLOCK
-//!
-//! FUNCTION_BLOCK Caller
-//!    VAR
-//!       CalleeInstance : Callee;
-//!    END_VAR
-//! END_FUNCTION_BLOCK
+//!    Twice := Double(x);
+//! END_FUNCTION
 //! ```
 //!
 //! ## Fails
 //!
 //! ```ignore
-//! FUNCTION_BLOCK SelfRecursive
+//! FUNCTION Delayed : BOOL
 //!    VAR
-//!       SelfRecursiveInstance : SelfRecursive;
+//!       timer : TON;
 //!    END_VAR
-//! END_FUNCTION_BLOCK
+//!    timer(IN := TRUE, PT := T#1s);
+//!    Delayed := timer.Q;
+//! END_FUNCTION
 //! ```
-
 use std::collections::HashMap;
 use std::convert::Infallible;
 
 use ironplc_dsl::{
-    common::{FunctionBlockDeclaration, FunctionDeclaration, Library, ProgramDeclaration},
-    core::{Id, Located, SourceSpan},
+    common::*,
+    core::{Id, Located},
     diagnostic::{Diagnostic, Label},
+    textual::{FbCall, MethodCall, MethodReceiver},
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
@@ -55,271 +68,296 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    run_rule(HierarchyVisitor::new(), lib)
+    run_rule(
+        RulePouHierarchy {
+            function: None,
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
-#[derive(Debug)]
-enum PouKind {
-    Function,
-    FunctionBlock,
-    Program,
-    Config,
+const HELP: &str = "A function has no state. Move the function block instance to a \
+                    function block or program, or pass it in through VAR_IN_OUT.";
+
+struct RulePouHierarchy {
+    /// The function being walked, with the function block instances it
+    /// declared outside `VAR_IN_OUT`. `None` outside any function.
+    function: Option<InFunction>,
+    diagnostics: Vec<Diagnostic>,
 }
 
-struct HierarchyVisitor {
-    pou_types: HashMap<Id, (PouKind, SourceSpan)>,
-    problems: Vec<Diagnostic>,
-    context_type: Option<(PouKind, SourceSpan)>,
+struct InFunction {
+    name: Id,
+    /// Instances already reported at their declaration, by variable name,
+    /// so that every invocation of one is reported too.
+    stateful_instances: HashMap<Id, TypeName>,
 }
 
-impl HierarchyVisitor {
-    fn new() -> Self {
-        Self {
-            pou_types: HashMap::new(),
-            problems: Vec::new(),
-            context_type: None,
-        }
+impl RulePouHierarchy {
+    /// Reports `call` when it invokes an instance the function declared
+    /// outside `VAR_IN_OUT`. An instance the function did not declare at
+    /// all is `P4012`'s to report, not this rule's.
+    fn check_invocation(&mut self, instance: &Id, call: &impl Located, label: &str) {
+        let Some(function) = &self.function else {
+            return;
+        };
+        let Some(fb_type) = function.stateful_instances.get(instance) else {
+            return;
+        };
+        self.diagnostics.push(
+            Diagnostic::problem(
+                Problem::FunctionBlockInFunction,
+                Label::span(call.span(), label),
+            )
+            .with_context_id("function", &function.name)
+            .with_context_id("instance", instance)
+            .with_context_type("function block", fb_type)
+            .with_help(HELP),
+        );
     }
 }
 
-impl DiagnosticVisitor for HierarchyVisitor {
+impl DiagnosticVisitor for RulePouHierarchy {
     fn into_diagnostics(self) -> Vec<Diagnostic> {
-        self.problems
+        self.diagnostics
     }
 }
 
-impl Visitor<Infallible> for HierarchyVisitor {
+impl Visitor<Infallible> for RulePouHierarchy {
     type Value = ();
 
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
     ) -> Result<Self::Value, Infallible> {
-        if let Some(existing) = self
-            .pou_types
-            .insert(node.name.clone(), (PouKind::Function, node.name.span()))
-        {
-            self.problems.push(
+        let mut stateful_instances = HashMap::new();
+        for decl in &node.variables {
+            // Type resolution has turned every instance declaration into a
+            // function block initializer, so the initializer kind is the test.
+            let InitialValueAssignmentKind::FunctionBlock(init) = &decl.initializer else {
+                continue;
+            };
+            if decl.var_type == VariableType::InOut {
+                continue;
+            }
+            let Some(name) = decl.identifier.symbolic_id() else {
+                continue;
+            };
+            self.diagnostics.push(
                 Diagnostic::problem(
-                    Problem::PouDeclNameDuplicated,
-                    Label::span(node.name.span(), "POU"),
+                    Problem::FunctionBlockInFunction,
+                    Label::span(
+                        decl.identifier.span(),
+                        "Function block instance declared in a function",
+                    ),
                 )
-                .with_secondary(Label::span(existing.1, "POU")),
+                .with_context_id("function", &node.name)
+                .with_context_type("function block", &init.type_name)
+                .with_help(HELP),
             );
+            stateful_instances.insert(name.clone(), init.type_name.clone());
         }
-        self.context_type = Some((PouKind::Function, node.name.span()));
 
-        node.recurse_visit(self)
+        self.function = Some(InFunction {
+            name: node.name.clone(),
+            stateful_instances,
+        });
+        let result = node.recurse_visit(self);
+        self.function = None;
+        result
     }
 
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        if let Some(existing) = self.pou_types.insert(
-            node.name.name.clone(),
-            (PouKind::FunctionBlock, node.name.span()),
-        ) {
-            self.problems.push(
-                Diagnostic::problem(
-                    Problem::PouDeclNameDuplicated,
-                    Label::span(node.name.span(), "POU"),
-                )
-                .with_secondary(Label::span(existing.1, "POU")),
-            );
-        }
-        self.context_type = Some((PouKind::FunctionBlock, node.name.span()));
-
-        node.recurse_visit(self)
+    fn visit_fb_call(&mut self, node: &FbCall) -> Result<Self::Value, Infallible> {
+        self.check_invocation(&node.var_name, node, "Function block invoked in a function");
+        Ok(())
     }
 
-    fn visit_program_declaration(
-        &mut self,
-        node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        if let Some(existing) = self
-            .pou_types
-            .insert(node.name.clone(), (PouKind::Program, node.name.span()))
-        {
-            self.problems.push(
-                Diagnostic::problem(
-                    Problem::PouDeclNameDuplicated,
-                    Label::span(node.name.span(), "POU"),
-                )
-                .with_secondary(Label::span(existing.1, "POU")),
-            );
+    fn visit_method_call(&mut self, node: &MethodCall) -> Result<Self::Value, Infallible> {
+        if let MethodReceiver::Instance(instance) = &node.receiver {
+            self.check_invocation(instance, node, "Function block method called in a function");
         }
-        self.context_type = Some((PouKind::Program, node.name.span()));
-
-        node.recurse_visit(self)
-    }
-
-    fn visit_configuration_declaration(
-        &mut self,
-        node: &ironplc_dsl::configuration::ConfigurationDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        if let Some(existing) = self
-            .pou_types
-            .insert(node.name.clone(), (PouKind::Config, node.name.span()))
-        {
-            self.problems.push(
-                Diagnostic::problem(
-                    Problem::PouDeclNameDuplicated,
-                    Label::span(node.name.span(), "POU"),
-                )
-                .with_secondary(Label::span(existing.1, "POU")),
-            );
-        }
-        self.context_type = Some((PouKind::Config, node.name.span()));
-
-        node.recurse_visit(self)
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        rule_pou_hierarchy::apply,
-        semantic_context::SemanticContextBuilder,
-        test_helpers::{parse_and_resolve_types, parse_only},
-    };
     use ironplc_parser::options::CompilerOptions;
-    use rstest::rstest;
+    use ironplc_problems::Problem;
 
-    /// A duplicated POU name (across each declaration kind) is an error. Each
-    /// case parses without type resolution, applies the rule against a fresh
-    /// empty context, and expects an error; each row still runs as an
-    /// individually-named test.
-    #[rstest]
-    #[case::duplicate_function_name(
-        "
-        FUNCTION Foo : BOOL
-            Foo := FALSE;
-        END_FUNCTION
-
-        FUNCTION Foo : BOOL
-            Foo := TRUE;
-        END_FUNCTION"
-    )]
-    #[case::duplicate_function_block_name(
-        "
-        FUNCTION_BLOCK Bar
-            VAR
-                X : BOOL;
-            END_VAR
-        END_FUNCTION_BLOCK
-
-        FUNCTION_BLOCK Bar
-            VAR
-                Y : BOOL;
-            END_VAR
-        END_FUNCTION_BLOCK"
-    )]
-    #[case::duplicate_program_name(
-        "
-        PROGRAM Baz
-            VAR
-                X : BOOL;
-            END_VAR
-        END_PROGRAM
-
-        PROGRAM Baz
-            VAR
-                Y : BOOL;
-            END_VAR
-        END_PROGRAM"
-    )]
-    #[case::duplicate_configuration_name(
-        "
-        FUNCTION_BLOCK Fb1
-            VAR
-                X : BOOL;
-            END_VAR
-        END_FUNCTION_BLOCK
-
-        PROGRAM Prg1
-            VAR
-                inst : Fb1;
-            END_VAR
-        END_PROGRAM
-
-        CONFIGURATION Cfg1
-            RESOURCE Res1 ON PLC
-                TASK Main(INTERVAL := T#20ms, PRIORITY := 1);
-                PROGRAM P1 WITH Main : Prg1;
-            END_RESOURCE
-        END_CONFIGURATION
-
-        CONFIGURATION Cfg1
-            RESOURCE Res2 ON PLC
-                TASK Main(INTERVAL := T#20ms, PRIORITY := 1);
-                PROGRAM P2 WITH Main : Prg1;
-            END_RESOURCE
-        END_CONFIGURATION"
-    )]
-    fn apply_when_duplicate_pou_name_then_error(#[case] program: &str) {
-        let library = parse_only(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
+    fn oop_options() -> CompilerOptions {
+        CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        }
     }
 
     rule_ok!(
-        apply_when_program_uses_function_block_instance_then_ok,
+        apply_when_function_calls_function_then_ok,
         "
-        FUNCTION_BLOCK COUNTER
-            VAR
-                count : INT;
-            END_VAR
-            count := count + 1;
-        END_FUNCTION_BLOCK
+FUNCTION Double : INT
+  VAR_INPUT
+    x : INT;
+  END_VAR
+  Double := x * 2;
+END_FUNCTION
 
-        PROGRAM main
-            VAR
-                c : COUNTER;
-            END_VAR
-            c();
-        END_PROGRAM"
+FUNCTION Twice : INT
+  VAR_INPUT
+    x : INT;
+  END_VAR
+  Twice := Double(x);
+END_FUNCTION"
     );
 
     rule_ok!(
-        apply_when_function_block_uses_function_block_instance_then_ok,
+        apply_when_program_and_function_block_declare_and_invoke_function_blocks_then_ok,
         "
-        FUNCTION_BLOCK Callee
-            VAR
-                IN1 : BOOL;
-            END_VAR
-        END_FUNCTION_BLOCK
+FUNCTION_BLOCK Callee
+  VAR_INPUT
+    IN1 : BOOL;
+  END_VAR
+END_FUNCTION_BLOCK
 
-        FUNCTION_BLOCK Caller
-            VAR
-                CalleeInstance : Callee;
-            END_VAR
-        END_FUNCTION_BLOCK"
+FUNCTION_BLOCK Caller
+  VAR
+    inner : Callee;
+    timer : TON;
+  END_VAR
+  inner(IN1 := TRUE);
+  timer(IN := TRUE, PT := T#1s);
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    outer : Caller;
+  END_VAR
+  outer();
+END_PROGRAM"
     );
 
-    #[test]
-    fn apply_when_function_invokes_function_block_then_error() {
-        let program = "
-        FUNCTION_BLOCK Callee
-            VAR
-               IN1: BOOL;
-            END_VAR
+    rule_err1_at!(
+        apply_when_function_declares_function_block_instance_then_error_at_declaration,
+        "
+FUNCTION_BLOCK Callee
+  VAR_INPUT
+    IN1 : BOOL;
+  END_VAR
+END_FUNCTION_BLOCK
 
-        END_FUNCTION_BLOCK
+FUNCTION Caller : BOOL
+  VAR
+    inst : Callee;
+  END_VAR
+  Caller := FALSE;
+END_FUNCTION",
+        Problem::FunctionBlockInFunction,
+        "inst"
+    );
 
-        FUNCTION Caller : BOOL
-            VAR
-                CalleeInstance : Callee;
-            END_VAR
+    // The declaration and the invocation are each reported, so both the
+    // cause and the call site are marked.
+    rule_errn!(
+        apply_when_function_declares_and_invokes_function_block_then_reports_both,
+        "
+FUNCTION Delayed : BOOL
+  VAR
+    timer : TON;
+  END_VAR
+  timer(IN := TRUE, PT := T#1s);
+  Delayed := timer.Q;
+END_FUNCTION",
+        2,
+        Problem::FunctionBlockInFunction
+    );
 
-            Caller := FALSE;
-        END_FUNCTION";
+    rule_errn!(
+        apply_when_function_invokes_instance_twice_then_reports_each_invocation,
+        "
+FUNCTION Delayed : BOOL
+  VAR
+    timer : TON;
+  END_VAR
+  timer(IN := TRUE, PT := T#1s);
+  timer(IN := FALSE, PT := T#1s);
+  Delayed := timer.Q;
+END_FUNCTION",
+        3,
+        Problem::FunctionBlockInFunction
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let _ = apply(&library, &context, &CompilerOptions::default());
-        // TODO
-        // assert!(result.is_ok());
-    }
+    rule_err1!(
+        apply_when_function_declares_function_block_as_temp_then_error,
+        "
+FUNCTION Delayed : BOOL
+  VAR_TEMP
+    timer : TON;
+  END_VAR
+  Delayed := FALSE;
+END_FUNCTION",
+        Problem::FunctionBlockInFunction
+    );
+
+    // Passing an instance by value would copy its state into the function,
+    // so an input is as stateful as a local.
+    rule_err1!(
+        apply_when_function_declares_function_block_as_input_then_error,
+        "
+FUNCTION Delayed : BOOL
+  VAR_INPUT
+    timer : TON;
+  END_VAR
+  Delayed := timer.Q;
+END_FUNCTION",
+        Problem::FunctionBlockInFunction
+    );
+
+    // Ed.3 permits a function block instance as VAR_IN_OUT of a function:
+    // the state stays the caller's.
+    rule_ok!(
+        apply_when_function_declares_function_block_as_in_out_then_ok,
+        "
+FUNCTION Delayed : BOOL
+  VAR_IN_OUT
+    timer : TON;
+  END_VAR
+  timer(IN := TRUE, PT := T#1s);
+  Delayed := timer.Q;
+END_FUNCTION"
+    );
+
+    rule_errn_with!(
+        apply_when_function_calls_method_on_own_instance_then_reports_declaration_and_call,
+        oop_options(),
+        "
+FUNCTION_BLOCK FB_Motor
+  VAR
+    running : BOOL;
+  END_VAR
+  METHOD Start
+    running := TRUE;
+  END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION Spin : BOOL
+  VAR
+    motor : FB_Motor;
+  END_VAR
+  motor.Start();
+  Spin := TRUE;
+END_FUNCTION",
+        2,
+        Problem::FunctionBlockInFunction
+    );
+
+    // An instance the function never declared is P4012's to report.
+    rule_ok!(
+        apply_when_function_invokes_undeclared_instance_then_not_this_rule,
+        "
+FUNCTION Delayed : BOOL
+  timer(IN := TRUE, PT := T#1s);
+  Delayed := FALSE;
+END_FUNCTION"
+    );
 }

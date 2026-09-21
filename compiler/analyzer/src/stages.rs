@@ -725,4 +725,109 @@ END_FUNCTION_BLOCK";
             .collect();
         assert!(codes.is_empty(), "expected no diagnostics, got: {codes:?}");
     }
+
+    // ---------------------------------------------------------------------
+    // The call hierarchy's other direction: a program is not a type, so no
+    // POU can declare an instance of one or invoke one. Nothing enforces
+    // this in a rule; it falls out of a program not being in the type
+    // environment, which makes it the pipeline's behaviour to pin.
+    // ---------------------------------------------------------------------
+
+    /// The codes reported for a POU that names `Target`, a program, as the
+    /// type of a variable and then invokes that variable.
+    fn codes_for_pou_referencing_a_program(pou: &str) -> Vec<String> {
+        let program = format!(
+            "
+PROGRAM Target
+VAR
+    x : INT;
+END_VAR
+    x := 1;
+END_PROGRAM
+
+{pou}"
+        );
+        let lib = parse_program(&program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+        context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.clone())
+            .collect()
+    }
+
+    #[test]
+    fn analyze_when_function_block_declares_program_instance_then_undeclared_type() {
+        let codes = codes_for_pou_referencing_a_program(
+            "
+FUNCTION_BLOCK Caller
+VAR
+    p : Target;
+END_VAR
+    p();
+END_FUNCTION_BLOCK",
+        );
+        assert_eq!(vec!["P2008", "P4012"], codes);
+    }
+
+    #[test]
+    fn analyze_when_function_declares_program_instance_then_undeclared_type() {
+        let codes = codes_for_pou_referencing_a_program(
+            "
+FUNCTION Caller : BOOL
+VAR
+    p : Target;
+END_VAR
+    p();
+    Caller := TRUE;
+END_FUNCTION",
+        );
+        assert_eq!(vec!["P2008", "P4012"], codes);
+    }
+
+    // A program may not invoke a program either; only a resource instantiates
+    // one.
+    #[test]
+    fn analyze_when_program_declares_program_instance_then_undeclared_type() {
+        let codes = codes_for_pou_referencing_a_program(
+            "
+PROGRAM Caller
+VAR
+    p : Target;
+END_VAR
+    p();
+END_PROGRAM",
+        );
+        assert_eq!(vec!["P2008", "P4012"], codes);
+    }
+
+    #[test]
+    fn analyze_when_function_block_invokes_program_by_name_then_not_in_scope() {
+        let codes = codes_for_pou_referencing_a_program(
+            "
+FUNCTION_BLOCK Caller
+VAR
+    y : INT;
+END_VAR
+    Target();
+    y := 2;
+END_FUNCTION_BLOCK",
+        );
+        assert_eq!(vec!["P4012"], codes);
+    }
+
+    // The one legitimate way to instantiate a program stays legitimate.
+    #[test]
+    fn analyze_when_resource_instantiates_program_then_ok() {
+        let codes = codes_for_pou_referencing_a_program(
+            "
+CONFIGURATION Config
+RESOURCE Res ON PLC
+    TASK T(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM Inst WITH T : Target;
+END_RESOURCE
+END_CONFIGURATION",
+        );
+        assert!(codes.is_empty(), "expected no diagnostics, got: {codes:?}");
+    }
 }
