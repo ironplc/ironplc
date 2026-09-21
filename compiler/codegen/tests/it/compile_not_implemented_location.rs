@@ -8,36 +8,6 @@ use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
 #[rstest]
-#[case::case_on_real_selector(
-    "
-PROGRAM main
-VAR
-    level : REAL;
-    alarm : BOOL;
-END_VAR
-    CASE level OF
-        1: alarm := TRUE;
-    END_CASE;
-END_PROGRAM
-",
-    "level OF",
-    "level"
-)]
-#[case::case_subrange_on_real_selector(
-    "
-PROGRAM main
-VAR
-    level : REAL;
-    alarm : BOOL;
-END_VAR
-    CASE level OF
-        1..2: alarm := TRUE;
-    END_CASE;
-END_PROGRAM
-",
-    "level OF",
-    "level"
-)]
 #[case::direct_address_write(
     "
 PROGRAM main

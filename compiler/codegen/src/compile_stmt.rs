@@ -886,14 +886,14 @@ fn compile_case_selector(
     }
 }
 
-/// Builds the P9999 for a `CASE` whose selector is not an integer type,
-/// pointing at the selector expression.
+/// Builds the internal error for a `CASE` whose selector is not an integer
+/// type, pointing at the selector expression.
 ///
-/// The analyzer accepts a `REAL` selector today (tracked in issue #1470), so
-/// codegen is where the program is first refused.
+/// Analysis rejects such a selector (P4053) before codegen runs, so reaching
+/// this is a broken invariant rather than a missing capability.
 #[track_caller]
 fn non_integer_case_selector(selector_expr: &Expr) -> Diagnostic {
-    Diagnostic::not_implemented(Label::span(
+    Diagnostic::internal_error_at(Label::span(
         selector_expr.span(),
         "CASE selector is not an integer type",
     ))
