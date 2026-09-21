@@ -1771,6 +1771,10 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 // Update destination cur_length (code units).
                 string_ops::str_write_cur_len(data_region, data_offset, copy_units as u16);
+
+                // The value has been copied out, so the buffer holding it
+                // is dead: hand its slot back for the next allocation.
+                temp_alloc.release(buf_idx);
             }
 
             // STR_LOAD_VAR: Copy a string from the data region into a temp
@@ -2390,6 +2394,10 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 // Update destination cur_length (code units).
                 string_ops::str_write_cur_len(data_region, elem_offset, copy_units as u16);
+
+                // The value has been copied out, so the buffer holding it
+                // is dead: hand its slot back for the next allocation.
+                temp_alloc.release(buf_idx);
             }
 
             opcode::POP => {

@@ -149,4 +149,64 @@ mod test {
             "y column should reflect characters consumed by the comment"
         );
     }
+
+    #[test]
+    fn tokenize_when_line_comment_then_newline_is_its_own_token() {
+        use dsl::core::FileId;
+        let (tokens, diagnostics) = super::tokenize("// c\nx", &FileId::default(), 0, 0);
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+
+        let types: Vec<&TokenType> = tokens.iter().map(|t| &t.token_type).collect();
+        assert_eq!(
+            types,
+            [
+                &TokenType::Comment,
+                &TokenType::Newline,
+                &TokenType::Identifier
+            ]
+        );
+        assert_eq!(tokens[0].text, "// c");
+        assert_eq!(tokens[0].span.end - tokens[0].span.start, "// c".len());
+        assert_eq!((tokens[2].line, tokens[2].col), (1, 0));
+    }
+
+    #[test]
+    fn tokenize_when_line_comment_before_crlf_then_newline_is_its_own_token() {
+        use dsl::core::FileId;
+        let (tokens, diagnostics) = super::tokenize("// c\r\nx", &FileId::default(), 0, 0);
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+
+        let types: Vec<&TokenType> = tokens.iter().map(|t| &t.token_type).collect();
+        assert_eq!(
+            types,
+            [
+                &TokenType::Comment,
+                &TokenType::Newline,
+                &TokenType::Identifier
+            ]
+        );
+        assert_eq!(tokens[0].text, "// c");
+        assert_eq!((tokens[2].line, tokens[2].col), (1, 0));
+    }
+
+    #[test]
+    fn tokenize_when_line_comment_at_end_of_file_then_comment_is_last_token() {
+        use dsl::core::FileId;
+        let (tokens, diagnostics) = super::tokenize("x\n// c", &FileId::default(), 0, 0);
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+
+        let last = tokens.last().unwrap();
+        assert_eq!(last.token_type, TokenType::Comment);
+        assert_eq!(last.text, "// c");
+        assert_eq!((last.line, last.col), (1, 0));
+    }
 }
