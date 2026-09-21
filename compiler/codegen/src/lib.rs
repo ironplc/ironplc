@@ -49,7 +49,7 @@ mod emit;
 mod optimize;
 mod source_lookup;
 mod stack_balance;
-mod string_width;
+mod string_expr_type;
 mod type_info;
 
 pub use compile::{compile, CodegenOptions, StringToNumPolicies};

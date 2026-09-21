@@ -15,7 +15,9 @@ use super::compile::{
 };
 use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
-use crate::string_width::{compile_string_value, encoding_mismatch, resolve_operand_char_width};
+use crate::string_expr_type::{
+    compile_string_value, encoding_mismatch, resolve_operand_char_width,
+};
 
 /// Compiles the LEN standard function call.
 ///
