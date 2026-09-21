@@ -180,6 +180,17 @@ impl fmt::Display for TimeOfDayLiteral {
     }
 }
 
+/// The number of seconds from the Unix epoch to midnight on `date`, negative
+/// for a date before the epoch.
+///
+/// Shared by the two date literal types so that a date and a date-and-time
+/// agree on where the epoch is and what a day is worth.
+fn seconds_to_midnight(date: &Date) -> i64 {
+    const UNIX_EPOCH_JULIAN_DAY: i32 = 2_440_588; // 1970-01-01
+    let days = i64::from(date.to_julian_day() - UNIX_EPOCH_JULIAN_DAY);
+    days * i64::from(Second::per(Day))
+}
+
 // See section 2.2.3
 #[derive(Debug, PartialEq, Clone)]
 pub struct DateLiteral {
@@ -204,17 +215,20 @@ impl DateLiteral {
         (year, month.into(), day)
     }
 
-    /// Returns seconds since the Unix epoch (1970-01-01) as a u32.
+    /// Returns seconds since the Unix epoch (1970-01-01).
     ///
     /// The IEC 61131-3 DATE type is stored as a u32 count of seconds since
     /// 1970-01-01, matching the CODESYS/Beckhoff industry standard. The
     /// resolution is logically 1 day but the storage unit is seconds for
     /// compatibility with DATE_AND_TIME.
-    pub fn seconds_since_epoch(&self) -> u32 {
-        const UNIX_EPOCH_JULIAN_DAY: i32 = 2_440_588; // 1970-01-01
-        let julian_day = self.value.to_julian_day();
-        let days = (julian_day - UNIX_EPOCH_JULIAN_DAY) as u32;
-        days * 86_400
+    ///
+    /// The count returned is the literal's own, which is not always a value
+    /// the storage can hold: it is negative for a date before the epoch and
+    /// beyond `u32::MAX` for one after 2106-02-07. It is computed wider than
+    /// the storage so that those dates arrive at the caller to be judged
+    /// rather than trapping here.
+    pub fn seconds_since_epoch(&self) -> i64 {
+        seconds_to_midnight(&self.value)
     }
 }
 
@@ -254,17 +268,20 @@ impl DateAndTimeLiteral {
         self.value.as_hms_micro()
     }
 
-    /// Returns seconds since the Unix epoch (1970-01-01 00:00:00) as a u32.
+    /// Returns seconds since the Unix epoch (1970-01-01 00:00:00).
     ///
     /// The IEC 61131-3 DATE_AND_TIME type is stored as a u32 count of seconds
     /// since 1970-01-01, matching the CODESYS/Beckhoff industry standard.
     /// Resolution is 1 second.
-    pub fn seconds_since_epoch(&self) -> u32 {
-        const UNIX_EPOCH_JULIAN_DAY: i32 = 2_440_588; // 1970-01-01
-        let days = (self.value.date().to_julian_day() - UNIX_EPOCH_JULIAN_DAY) as u32;
+    ///
+    /// As with [`DateLiteral::seconds_since_epoch`], the count is the
+    /// literal's own and may lie outside what the storage holds.
+    pub fn seconds_since_epoch(&self) -> i64 {
         let (h, m, s, _micro) = self.hmsm();
-        let tod_secs = (h as u32) * 3_600 + (m as u32) * 60 + (s as u32);
-        days * 86_400 + tod_secs
+        let tod_secs = i64::from(h) * i64::from(Second::per(Hour))
+            + i64::from(m) * i64::from(Second::per(Minute))
+            + i64::from(s);
+        seconds_to_midnight(&self.value.date()) + tod_secs
     }
 }
 

@@ -251,6 +251,32 @@ fn compile_compare(
     Ok(())
 }
 
+/// Compiles a count of seconds since 1970-01-01, pushing it onto the stack.
+///
+/// A date is stored as unsigned 32-bit seconds since the Unix epoch
+/// (ADR-0025), and `DATE`, `LDATE`, `DT` and `LDT` all lower through here, so
+/// the count narrows to that storage whatever width the operation is at. The
+/// 64-bit types are wider in storage only; they hold the same second count.
+fn compile_epoch_seconds(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    seconds: i64,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let stored = seconds as u32;
+    match op_type.0 {
+        OpWidth::W64 => {
+            let pool_index = ctx.add_i64_constant(i64::from(stored));
+            emitter.emit_load_const_i64(pool_index);
+        }
+        _ => {
+            let pool_index = ctx.add_i32_constant(stored as i32);
+            emitter.emit_load_const_i32(pool_index);
+        }
+    }
+    Ok(())
+}
+
 /// Compiles a constant literal, pushing it onto the stack.
 pub(crate) fn compile_constant(
     emitter: &mut Emitter,
@@ -430,32 +456,10 @@ pub(crate) fn compile_constant(
             Ok(())
         }
         ConstantKind::Date(lit) => {
-            let secs = lit.seconds_since_epoch();
-            match op_type.0 {
-                OpWidth::W64 => {
-                    let pool_index = ctx.add_i64_constant(secs as i64);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                _ => {
-                    let pool_index = ctx.add_i32_constant(secs as i32);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-            }
-            Ok(())
+            compile_epoch_seconds(emitter, ctx, lit.seconds_since_epoch(), op_type)
         }
         ConstantKind::DateAndTime(lit) => {
-            let secs = lit.seconds_since_epoch();
-            match op_type.0 {
-                OpWidth::W64 => {
-                    let pool_index = ctx.add_i64_constant(secs as i64);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                _ => {
-                    let pool_index = ctx.add_i32_constant(secs as i32);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-            }
-            Ok(())
+            compile_epoch_seconds(emitter, ctx, lit.seconds_since_epoch(), op_type)
         }
         ConstantKind::BitStringLiteral(lit) => {
             let span = lit.value.span();
