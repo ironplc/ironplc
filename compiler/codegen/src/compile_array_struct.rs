@@ -395,24 +395,10 @@ pub(crate) fn register_struct_array_variable(
         )));
     }
 
-    let data_offset = ctx.data_region_offset;
     let total_bytes = total_slots.checked_mul(8).ok_or_else(|| {
         Diagnostic::not_supported(Label::span(span.clone(), "Data region overflow"))
     })?;
-    ctx.data_region_offset = ctx
-        .data_region_offset
-        .checked_add(total_bytes)
-        .ok_or_else(|| {
-            Diagnostic::not_supported(Label::span(span.clone(), "Data region overflow"))
-        })?;
-
-    // The offset is stored in the variable slot via LOAD_CONST_I32.
-    if ctx.data_region_offset > i32::MAX as u32 {
-        return Err(Diagnostic::not_supported(Label::span(
-            span.clone(),
-            "Data region exceeds 2 GiB limit",
-        )));
-    }
+    let data_offset = crate::data_region::reserve(ctx, total_bytes, span)?;
 
     let desc_index =
         builder.add_array_descriptor(ironplc_container::FieldType::Slot as u8, total_slots, 0);

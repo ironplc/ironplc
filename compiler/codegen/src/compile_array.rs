@@ -655,32 +655,18 @@ pub(crate) fn register_array_variable(
     let (dimensions, total_elements) = compute_dimensions(&spec.dimensions, span)?;
 
     // 3. Allocate data region space
-    let data_offset = ctx.data_region_offset;
     let total_bytes = if is_string {
         // STRING/WSTRING elements: each element is [max_len:u16][cur_len:u16][data]
         let element_stride = super::compile::string_region_size(string_max_len, string_char_width);
         total_elements.checked_mul(element_stride).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
+            Diagnostic::not_supported(Label::span(span.clone(), "Data region overflow"))
         })?
     } else {
         total_elements * 8
     };
-    ctx.data_region_offset = ctx
-        .data_region_offset
-        .checked_add(total_bytes)
-        .ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
-        })?;
+    let data_offset = crate::data_region::reserve(ctx, total_bytes, span)?;
 
-    // 4. Assert data_offset fits in i32 (stored in slot via LOAD_CONST_I32)
-    if data_offset > i32::MAX as u32 {
-        return Err(Diagnostic::not_implemented(Label::span(
-            span.clone(),
-            "Data region exceeds 2 GiB limit",
-        )));
-    }
-
-    // 5. Register descriptor in the container and get its index
+    // 4. Register descriptor in the container and get its index
     let (element_type_byte, element_extra) = if is_string {
         let element_field_type = if string_char_width.is_wide() {
             ironplc_container::FieldType::WString
@@ -693,7 +679,7 @@ pub(crate) fn register_array_variable(
     };
     let desc_index = builder.add_array_descriptor(element_type_byte, total_elements, element_extra);
 
-    // 6. Track max string capacity for temp buffer sizing.
+    // 5. Track max string capacity for temp buffer sizing.
     if is_string && string_max_len > ctx.max_string_capacity {
         ctx.max_string_capacity = string_max_len;
     }
@@ -701,7 +687,7 @@ pub(crate) fn register_array_variable(
         ctx.has_wide_string = true;
     }
 
-    // 7. Store in context
+    // 6. Store in context
     ctx.array_vars.insert(
         id.clone(),
         ArrayVarInfo {
