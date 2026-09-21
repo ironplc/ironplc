@@ -221,3 +221,133 @@ END_PROGRAM
 
     assert_eq!(read_string(&bufs.data_region, string_offset(&[])), "42");
 }
+
+// --- The scan cycle is a loop too ---
+
+/// The loops above are inside one scan. This one is the outer loop: the
+/// same statement runs once per scan, hundreds of times over.
+///
+/// It is the same failure mode one level up. If the allocator's watermark
+/// survived a scan boundary the way it used to survive a loop iteration,
+/// a program would run for a while and then trap `V9009` on scan N, which
+/// is far harder to attribute than failing on iteration two.
+#[test]
+fn end_to_end_when_string_op_runs_every_scan_then_survives_many_scans() {
+    let source = "
+PROGRAM main
+  VAR s : STRING[32]; t : STRING[32]; END_VAR
+  s := 'hello';
+  t := CONCAT(s, 'x');
+END_PROGRAM
+";
+    crate::common::parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
+        for _ in 0..500 {
+            vm.run_round(0).expect("every scan should run");
+        }
+    });
+}
+
+/// Both loops at once: a loop inside a scan, across many scans.
+#[test]
+fn end_to_end_when_loop_runs_every_scan_then_survives_many_scans() {
+    let source = "
+PROGRAM main
+  VAR s : STRING[32]; t : STRING[32]; i : INT; END_VAR
+  s := 'hi';
+  FOR i := 1 TO 20 DO
+    t := CONCAT(s, 'x');
+  END_FOR;
+END_PROGRAM
+";
+    crate::common::parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
+        for _ in 0..200 {
+            vm.run_round(0).expect("every scan should run");
+        }
+    });
+}
+
+// --- The remaining string-producing shapes, in a loop ---
+
+/// `REPLACE`, `INSERT` and `DELETE` in one loop body. The tests above loop
+/// `CONCAT`, `LEFT` and `MID`; these are the rest of the family, and three
+/// in a single body also checks that consecutive operations reuse the slot
+/// rather than stacking.
+#[test]
+fn end_to_end_when_replace_insert_delete_in_loop_then_runs_every_iteration() {
+    let source = "
+PROGRAM main
+  VAR t : STRING[32]; i : INT; END_VAR
+  t := 'abcdef';
+  FOR i := 1 TO 50 DO
+    t := REPLACE(t, 'X', 1, 1);
+    t := INSERT(t, 'Y', 1);
+    t := DELETE(t, 1, 1);
+  END_FOR;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // Each iteration replaces the first character with X, inserts Y before
+    // it, then deletes that Y again, so the string settles after the first.
+    assert_eq!(read_string(&bufs.data_region, string_offset(&[])), "Ybcdef");
+}
+
+/// A nested string expression inside a loop. Nesting spills each inner
+/// result to a data-region slot, so the whole expression still needs one
+/// buffer however deep it goes -- and that has to hold on every iteration.
+#[test]
+fn end_to_end_when_nested_concat_in_loop_then_runs_every_iteration() {
+    let source = "
+PROGRAM main
+  VAR s : STRING[32]; t : STRING[32]; i : INT; END_VAR
+  s := 'q';
+  FOR i := 1 TO 50 DO
+    t := CONCAT(CONCAT(s, 'a'), CONCAT(s, 'b'));
+  END_FOR;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(read_string(&bufs.data_region, string_offset(&[32])), "qaqb");
+}
+
+/// Reading a string array element in a loop. The test above writes one;
+/// `STR_LOAD_ARRAY_ELEM` is the other array opcode that draws on the pool.
+#[test]
+fn end_to_end_when_string_array_element_read_in_loop_then_runs_every_iteration() {
+    let source = "
+PROGRAM main
+  VAR names : ARRAY[1..3] OF STRING[16]; t : STRING[16]; i : INT; END_VAR
+  names[1] := 'aa';
+  FOR i := 1 TO 50 DO
+    t := names[1];
+  END_FOR;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // `t` follows the array's three elements in the data region.
+    assert_eq!(
+        read_string(&bufs.data_region, string_offset(&[16, 16, 16])),
+        "aa"
+    );
+}
+
+/// A structure's STRING field assigned in a loop, which reaches the pool
+/// through the struct field path rather than the plain variable one.
+#[test]
+fn end_to_end_when_struct_string_field_assigned_in_loop_then_runs_every_iteration() {
+    let source = "
+TYPE Rec : STRUCT name : STRING[16]; END_STRUCT; END_TYPE
+
+PROGRAM main
+  VAR r : Rec; i : INT; END_VAR
+  FOR i := 1 TO 50 DO
+    r.name := CONCAT('id', 'x');
+  END_FOR;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(read_string(&bufs.data_region, string_offset(&[])), "idx");
+}
