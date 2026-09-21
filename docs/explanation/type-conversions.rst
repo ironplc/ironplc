@@ -20,11 +20,12 @@ variables, and bare integer literals.
 The general rule is: an implicit conversion is allowed when the source type's
 full value range is exactly representable in the target type.
 
-IronPLC supports three categories of implicit widening:
+IronPLC supports four categories of implicit widening:
 
 1. **Integer widening** — within signed, unsigned, and cross-sign integer types
 2. **Integer to real widening** — when the conversion is lossless
-3. **Bit-string widening** — within the ``ANY_BIT`` family (``BOOL`` excluded)
+3. **Real widening** — ``REAL`` to ``LREAL``, which is always lossless
+4. **Bit-string widening** — within the ``ANY_BIT`` family (``BOOL`` excluded)
 
 Integer widening
 ~~~~~~~~~~~~~~~~
