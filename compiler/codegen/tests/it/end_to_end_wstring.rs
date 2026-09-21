@@ -631,3 +631,28 @@ END_PROGRAM
 ",
     &[(0, 4)],
 );
+
+/// A WSTRING operation in a loop reuses one temp buffer per iteration, the
+/// same discipline `end_to_end_string_loop.rs` pins for narrow strings.
+/// WSTRING is worth its own case because temp-buffer slots are sized in wide
+/// bytes when any wide string is present.
+#[test]
+fn wstring_when_concat_in_loop_then_runs_every_iteration() {
+    let source = "
+PROGRAM main
+  VAR
+    ws : WSTRING[32];
+    i : INT;
+  END_VAR
+  ws := \"\";
+  FOR i := 1 TO 200 DO
+    ws := CONCAT(ws, \"x\");
+  END_FOR;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // 200 iterations, truncated to the declared 32 code units.
+    assert_eq!(read_cur_length(&bufs.data_region, 0), 32);
+    assert_eq!(read_wstring(&bufs.data_region, 0), "x".repeat(32));
+}

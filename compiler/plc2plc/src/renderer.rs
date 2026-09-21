@@ -58,16 +58,23 @@ struct LibraryRenderer {
     indents: usize,
 }
 
+/// The spelling of a character string: its characters as written, inside
+/// the delimiter `width` selects. The characters are not re-encoded; see
+/// `visit_character_string_literal` for why.
+fn character_string_text(width: &StringType, value: &[char]) -> String {
+    let delimiter = width.delimiter();
+    let mut val = String::from(delimiter);
+    val.extend(value.iter());
+    val.push(delimiter);
+    val
+}
+
 impl LibraryRenderer {
     fn new() -> Self {
         Self {
             buffer: String::new(),
             indents: 0,
         }
-    }
-
-    fn write_char(&mut self, val: char) {
-        self.buffer.push(val);
     }
 
     fn write(&mut self, val: &str) {
@@ -250,11 +257,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         // Escaping can only become correct once the parser decodes escapes and
         // `value` holds decoded characters -- see the character-string arm of
         // the round-trip tests.
-        let delimiter = node.width.delimiter();
-        let mut val = String::from(delimiter);
-        val.extend(node.value.iter());
-        val.push(delimiter);
-        self.write_ws(&val);
+        self.write_ws(&character_string_text(&node.width, &node.value));
         Ok(())
     }
 
@@ -562,13 +565,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("]");
 
         if let Some(init) = &node.init {
-            let delimiter = node.width.delimiter();
-
             self.write_ws(":=");
-
-            self.write_char(delimiter);
-            self.write(init);
-            self.write_char(delimiter);
+            self.write(&character_string_text(&init.width, &init.value));
         }
 
         Ok(())
@@ -823,14 +821,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         if let Some(init) = &node.initial_value {
             self.write_ws(":=");
-
-            let delimiter = node.width.delimiter();
-
-            self.write_char(delimiter);
-            for c in init.iter() {
-                self.write_char(*c);
-            }
-            self.write_char(delimiter);
+            self.write(&character_string_text(&init.width, &init.value));
         }
 
         Ok(())

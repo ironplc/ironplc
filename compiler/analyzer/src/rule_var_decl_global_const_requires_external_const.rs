@@ -76,7 +76,9 @@ pub fn apply(
             // A located CONSTANT declaration (`AT %QW0 : INT`) is not
             // handled yet. Record that and keep collecting, so the rule
             // still reports on every other declaration.
-            VariableIdentifier::Direct(_) => diagnostics.push(Diagnostic::todo()),
+            VariableIdentifier::Direct(_) => diagnostics.push(Diagnostic::not_implemented(
+                Label::span(decl.identifier.span(), "Located CONSTANT declaration"),
+            )),
         }
     }
 

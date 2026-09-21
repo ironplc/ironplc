@@ -159,8 +159,9 @@ pub(crate) fn char_width_for_string_type(width: &StringType) -> CharWidth {
 ///
 /// `char_width` selects the encoding per ADR-0016: `Narrow` for STRING
 /// (Latin-1, one byte per character), `Wide` for WSTRING (UTF-16LE, two
-/// bytes per code unit). Characters above U+FFFF are out of scope (BMP
-/// only); higher code points are truncated to their low 16 bits.
+/// bytes per code unit). The narrowing casts cannot lose information: the
+/// analyzer rejects a literal whose characters do not fit its type (P4052,
+/// at most U+00FF for STRING and U+FFFF for WSTRING) before codegen runs.
 pub(crate) fn encode_string_literal(chars: &[char], char_width: CharWidth) -> Vec<u8> {
     match char_width {
         CharWidth::Narrow => chars.iter().map(|&ch| ch as u8).collect(),
@@ -174,10 +175,10 @@ pub(crate) fn encode_string_literal(chars: &[char], char_width: CharWidth) -> Ve
 /// Loads a string literal into a temp buffer at the given encoding width.
 ///
 /// Encodes the literal (Latin-1 for narrow, UTF-16LE for wide), registers it as
-/// a width-tagged constant-pool entry, accounts for the temp buffer it lands
-/// in, and emits LOAD_CONST_STR (leaving `buf_idx` on the stack). The caller
-/// stores that temp buffer into a destination of the same width; the VM
-/// verifies the encoding match (ADR-0034).
+/// a width-tagged constant-pool entry, and emits LOAD_CONST_STR (leaving
+/// `buf_idx` on the stack). The caller stores that temp buffer into a
+/// destination of the same width; the VM verifies the encoding match
+/// (ADR-0034).
 pub(crate) fn emit_string_literal_load(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -190,7 +191,6 @@ pub(crate) fn emit_string_literal_load(
     } else {
         ctx.add_str_constant(bytes)
     };
-    ctx.num_temp_bufs += 1;
     emitter.emit_load_const_str(pool_index);
 }
 
@@ -511,7 +511,12 @@ fn sort_by_source_position<T>(items: &mut [&T], id: impl Fn(&T) -> &Id) {
 /// about, not only the one that tipped the count.
 fn multiple_programs_not_implemented(what: &str, names: &[&Id]) -> Diagnostic {
     let Some(second) = names.get(1) else {
-        return Diagnostic::internal_error();
+        // Callers only get here with two or more names, so the first name,
+        // when there is one, is the best location for the violation.
+        return Diagnostic::internal_error_at(Label::span(
+            names.first().map(|name| name.span()).unwrap_or_default(),
+            format!("Fewer than two {what}s reported as too many"),
+        ));
     };
     let mut diagnostic = Diagnostic::not_implemented(Label::span(
         second.span(),
@@ -602,6 +607,9 @@ pub(crate) struct CompiledFunction {
     pub(crate) function_id: FunctionId,
     pub(crate) bytecode: Vec<u8>,
     pub(crate) max_stack_depth: u16,
+    /// Most temp string buffers the body ever holds live at once; see
+    /// [`FinalizedFunction::max_temp_depth`].
+    pub(crate) max_temp_depth: u16,
     pub(crate) num_locals: u16,
     pub(crate) num_params: u16,
     pub(crate) name: String,
@@ -640,6 +648,11 @@ pub(crate) fn intern_i32_constant(constants: &mut Vec<PoolConstant>, value: i32)
 pub(crate) struct FinalizedFunction {
     pub(crate) bytecode: Vec<u8>,
     pub(crate) max_stack_depth: u16,
+    /// Most temporary string buffers this function ever holds live at one
+    /// time. The VM releases a buffer when the instruction consuming it
+    /// runs, so this bounds the function's own draw on the pool however
+    /// many times its string operations execute.
+    pub(crate) max_temp_depth: u16,
     /// Per-statement line-map entries with `bytecode_offset` already
     /// remapped through the optimizer's old→new offset table. Entries
     /// whose pre-optimization offset fell on an instruction that was
@@ -664,11 +677,13 @@ pub(crate) fn finalize_function(
     emitter.apply_optimized(optimized, &offset_map);
     let bytecode = emitter.bytecode().to_vec();
     let max_stack_depth = emitter.max_stack_depth();
+    let max_temp_depth = emitter.max_temp_depth();
     let line_map =
         crate::optimize::remap_line_map(raw_line_map, &offset_map, bytecode.len() as u16)?;
     Ok(FinalizedFunction {
         bytecode,
         max_stack_depth,
+        max_temp_depth,
         line_map,
     })
 }
@@ -947,7 +962,12 @@ fn compile_program_with_functions(
     // emitted from inside the body records a call-graph edge.
     let mut scan_emitter = Emitter::new();
     ctx.current_function_id = Some(FunctionId::SCAN);
-    compile_body(&mut scan_emitter, &mut ctx, &program.body)?;
+    compile_body(
+        &mut scan_emitter,
+        &mut ctx,
+        &program.body,
+        &program.name.span(),
+    )?;
     ctx.current_function_id = None;
     scan_emitter.emit_ret_void();
 
@@ -957,21 +977,6 @@ fn compile_program_with_functions(
     // Configure data region for STRING variables.
     if ctx.data_region_offset > 0 {
         builder = builder.data_region_bytes(ctx.data_region_offset);
-        if ctx.num_temp_bufs > 0 {
-            // Temp-buffer slots are uniform. When any wide string exists, size
-            // each slot in wide bytes so an intermediate WSTRING value of up to
-            // max_string_capacity code units fits (the VM allocator divides the
-            // slot capacity by the value's char_width). Narrow-only programs
-            // keep the original byte-identical sizing.
-            let temp_char_width = if ctx.has_wide_string {
-                WIDE_CHAR_WIDTH
-            } else {
-                NARROW_CHAR_WIDTH
-            };
-            builder = builder
-                .num_temp_bufs(ctx.num_temp_bufs)
-                .max_temp_buf_bytes(string_region_size(ctx.max_string_capacity, temp_char_width));
-        }
     }
 
     // Compute the max stack depth needed by any user-defined FB body or
@@ -997,6 +1002,40 @@ fn compile_program_with_functions(
     builder = add_line_map_entries(builder, FunctionId::INIT, &init.line_map);
 
     let scan = finalize_function(&mut scan_emitter, &mut ctx)?;
+
+    // Size the temp string buffer pool. A callee's buffers sit on top of
+    // whatever its caller holds live, so the bound is the heaviest path
+    // through the call graph, each function weighted by the most buffers
+    // it holds live at once. The init function is not reachable from SCAN
+    // (it only stores initial values), so it is bounded separately.
+    let temp_depths: HashMap<FunctionId, u16> = compiled_functions
+        .iter()
+        .chain(compiled_fb_bodies.iter())
+        .chain(compiled_methods.iter())
+        .map(|c| (c.function_id, c.max_temp_depth))
+        .chain(core::iter::once((FunctionId::SCAN, scan.max_temp_depth)))
+        .collect();
+    let num_temp_bufs = crate::call_graph::longest_path(&ctx.call_graph, FunctionId::SCAN, |f| {
+        temp_depths.get(&f).copied().unwrap_or(0)
+    })?
+    .max(init.max_temp_depth);
+
+    if ctx.data_region_offset > 0 && num_temp_bufs > 0 {
+        // Temp-buffer slots are uniform. When any wide string exists, size
+        // each slot in wide bytes so an intermediate WSTRING value of up to
+        // max_string_capacity code units fits (the VM allocator divides the
+        // slot capacity by the value's char_width). Narrow-only programs
+        // keep the original byte-identical sizing.
+        let temp_char_width = if ctx.has_wide_string {
+            WIDE_CHAR_WIDTH
+        } else {
+            NARROW_CHAR_WIDTH
+        };
+        builder = builder
+            .num_temp_bufs(num_temp_bufs)
+            .max_temp_buf_bytes(string_region_size(ctx.max_string_capacity, temp_char_width));
+    }
+
     builder = builder.add_function(
         FunctionId::SCAN,
         &scan.bytecode,
@@ -1318,14 +1357,6 @@ pub(crate) struct CompileContext {
     /// True when any WSTRING (wide) string is declared. Temp buffers are then
     /// sized in wide bytes so an intermediate wide value fits (ADR-0035).
     pub(crate) has_wide_string: bool,
-    /// Number of temp buffers needed: one per string-operation call site,
-    /// counted across every function, not just the init function.
-    ///
-    /// This is a count of *static* sites, but the VM rewinds its allocator only
-    /// on function return, so a site inside a loop consumes one buffer per
-    /// iteration. A loop over a string operation therefore exhausts the pool
-    /// and traps `V9009`.
-    pub(crate) num_temp_bufs: u16,
     /// Debug info: variable name entries collected during assign_variables.
     pub(crate) debug_var_names: Vec<VarNameEntry>,
     /// Debug info: STRING variable data-region layouts collected during assign_variables.
@@ -1390,7 +1421,6 @@ impl CompileContext {
             data_region_offset: 0,
             max_string_capacity: 0,
             has_wide_string: false,
-            num_temp_bufs: 0,
             debug_var_names: Vec::new(),
             debug_string_layouts: Vec::new(),
             debug_source_files: crate::source_lookup::SourceFileRegistry::new(),

@@ -378,9 +378,9 @@ fn transform_data_type(data_type: &DataType, file_id: &FileId) -> Result<TypeNam
         DataType::Derived(derived) => Ok(make_type_name(&derived.name, file_id)),
 
         // Complex types that need context
-        DataType::Array(_) => Err(Diagnostic::todo()),
-        DataType::Enum(_) => Err(Diagnostic::todo()),
-        DataType::Struct(_) => Err(Diagnostic::todo()),
+        DataType::Array(_) => Err(unsupported_data_type(file_id, "Array data type")),
+        DataType::Enum(_) => Err(unsupported_data_type(file_id, "Enumeration data type")),
+        DataType::Struct(_) => Err(unsupported_data_type(file_id, "Structure data type")),
 
         // Generic types (usually for library functions)
         DataType::Any => Ok(TypeName::from("ANY")),
@@ -395,9 +395,21 @@ fn transform_data_type(data_type: &DataType, file_id: &FileId) -> Result<TypeNam
         DataType::AnyDate => Ok(TypeName::from("ANY_DATE")),
 
         // Subranges and pointers
-        DataType::SubrangeSigned(_) | DataType::SubrangeUnsigned(_) => Err(Diagnostic::todo()),
-        DataType::Pointer(_) => Err(Diagnostic::todo()),
+        DataType::SubrangeSigned(_) | DataType::SubrangeUnsigned(_) => {
+            Err(unsupported_data_type(file_id, "Subrange data type"))
+        }
+        DataType::Pointer(_) => Err(unsupported_data_type(file_id, "Pointer data type")),
     }
+}
+
+/// Builds the P9999 for a PLCopen XML data type the importer does not
+/// transform yet.
+///
+/// The XML model records no position for a data type node, so the label
+/// names the file rather than a span within it.
+#[track_caller]
+fn unsupported_data_type(file_id: &FileId, what: &str) -> Diagnostic {
+    Diagnostic::not_implemented(Label::file(file_id.clone(), what))
 }
 
 /// Transform a POU (Program Organization Unit)

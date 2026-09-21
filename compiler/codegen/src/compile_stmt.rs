@@ -5,10 +5,10 @@
 //! keep module sizes within the 1000-line guideline.
 
 use ironplc_dsl::common::{
-    ConstantKind, FunctionBlockBodyKind, IntegerRef, SignedInteger, SignedIntegerRef,
-    StringInitializer, StringSpecification,
+    BitStringLiteral, ConstantKind, FunctionBlockBodyKind, IntegerRef, SignedInteger,
+    SignedIntegerRef, StringInitializer, StringSpecification,
 };
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     CaseSelectionKind, Expr, ExprKind, FbCall, ParamAssignmentKind, Statements, StmtKind,
@@ -22,7 +22,7 @@ use super::compile::{
 };
 use super::compile_expr::{
     compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
-    condition_op_type, emit_add, emit_classified_cmp_br, emit_ge, emit_le, emit_load_var,
+    condition_op_type, emit_add, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, emit_load_var,
     emit_store_var, emit_truncation, extract_bit_access_target, extract_partial_access_target,
     op_type, resolve_variable, resolve_variable_name, signed_integer_to_i64, try_classify_cmp,
     variable_span, ClassifiedCmp,
@@ -33,17 +33,25 @@ use crate::string_width::compile_string_value;
 use ironplc_container::opcode;
 
 /// Compiles a function block body.
+///
+/// `pou_span` locates the program organization unit that owns the body. An
+/// SFC body carries no span of its own, so a diagnostic about the body kind
+/// points at the POU instead.
 pub(crate) fn compile_body(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     body: &FunctionBlockBodyKind,
+    pou_span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     match body {
         FunctionBlockBodyKind::Statements(statements) => {
             compile_statements(emitter, ctx, statements)
         }
         FunctionBlockBodyKind::Empty => Ok(()),
-        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::todo()),
+        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::not_implemented(Label::span(
+            pou_span.clone(),
+            "Sequential function chart body",
+        ))),
     }
 }
 
@@ -123,7 +131,12 @@ fn compile_statement(
                 let target_name = resolve_variable_name(&assignment.target);
                 let target_index = target_name
                     .and_then(|name| ctx.variables.get(name).copied())
-                    .ok_or_else(|| Diagnostic::todo())?;
+                    .ok_or_else(|| {
+                        Diagnostic::not_implemented(Label::span(
+                            assignment.target.span(),
+                            "Dereferenced assignment target is not a plain variable",
+                        ))
+                    })?;
 
                 // Compile the value expression (use DEFAULT_OP_TYPE; the referenced
                 // type determines the actual width at runtime).
@@ -413,7 +426,6 @@ fn compile_statement(
                     emitter.emit_ret();
                 }
                 Some(CurrentFunctionReturn::String { data_offset }) => {
-                    ctx.num_temp_bufs += 1;
                     emitter.emit_str_load_var(data_offset);
                     emitter.emit_ret();
                 }
@@ -720,14 +732,17 @@ fn compile_case(
     // Enum selectors have a resolved type that is the enum name (e.g. "COLOR"),
     // which resolve_type_name doesn't handle. Fall back to W32/Signed (DINT)
     // since all enums use DINT at codegen level (REQ-EN-codegen-003).
-    let op_type = op_type(&case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE);
+    let selector = CaseSelector {
+        expr: &case_stmt.selector,
+        op_type: op_type(&case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE),
+    };
 
     for group in &case_stmt.statement_groups {
         let next_label = emitter.create_label();
 
         // Compile selector comparisons with OR logic.
         for (i, selection) in group.selectors.iter().enumerate() {
-            compile_case_selector(emitter, ctx, &case_stmt.selector, selection, op_type)?;
+            compile_case_selector(emitter, ctx, &selector, selection)?;
             if i > 0 {
                 emitter.emit_bool_or();
             }
@@ -751,6 +766,87 @@ fn compile_case(
     Ok(())
 }
 
+/// The selector of a `CASE` statement: the expression every label is
+/// compared against, and the width the comparison is made at.
+struct CaseSelector<'a> {
+    expr: &'a Expr,
+    op_type: OpType,
+}
+
+impl CaseSelector<'_> {
+    /// Emits `selector <cmp> label` at the selector's width, leaving a
+    /// boolean result on the stack.
+    ///
+    /// The width is decided here, once, for every label kind. A `CASE`
+    /// compares its selector against integer labels, so only an integer
+    /// width is meaningful; a float-width selector is rejected against the
+    /// selector expression.
+    fn cmp_label(
+        &self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        label: CaseLabelValue<'_>,
+        cmp: fn(&mut Emitter, OpType),
+    ) -> Result<(), Diagnostic> {
+        compile_expr(emitter, ctx, self.expr, self.op_type)?;
+        match self.op_type.0 {
+            OpWidth::W32 => {
+                let pool_index = ctx.add_i32_constant(label.to_i32()?);
+                emitter.emit_load_const_i32(pool_index);
+            }
+            OpWidth::W64 => {
+                let pool_index = ctx.add_i64_constant(label.to_i64()?);
+                emitter.emit_load_const_i64(pool_index);
+            }
+            // CASE with float types is not meaningful in IEC 61131-3.
+            OpWidth::F32 | OpWidth::F64 => {
+                return Err(non_integer_case_selector(self.expr));
+            }
+        }
+        cmp(emitter, self.op_type);
+        Ok(())
+    }
+}
+
+/// How a `CASE` label's value narrows to the selector's width.
+enum CaseLabelValue<'a> {
+    /// A decimal literal (`5:`, or a bound of `-3..7:`): a magnitude that
+    /// must fit the signed range of the width.
+    Signed(&'a SignedInteger),
+    /// A radix-prefixed literal (`16#D012:`, `2#1010:`): a bit pattern that
+    /// must fit the unsigned range of the width, the same narrowing as
+    /// `ConstantKind::BitStringLiteral` in compile_expr.rs.
+    Pattern(&'a BitStringLiteral),
+}
+
+impl CaseLabelValue<'_> {
+    fn to_i32(&self) -> Result<i32, Diagnostic> {
+        match self {
+            CaseLabelValue::Signed(si) => signed_integer_to_i32(si),
+            CaseLabelValue::Pattern(lit) => u32::try_from(lit.value.value)
+                .map(|value| value as i32)
+                .map_err(|_| bit_string_overflow(lit)),
+        }
+    }
+
+    fn to_i64(&self) -> Result<i64, Diagnostic> {
+        match self {
+            CaseLabelValue::Signed(si) => signed_integer_to_i64(si),
+            CaseLabelValue::Pattern(lit) => u64::try_from(lit.value.value)
+                .map(|value| value as i64)
+                .map_err(|_| bit_string_overflow(lit)),
+        }
+    }
+}
+
+fn bit_string_overflow(lit: &BitStringLiteral) -> Diagnostic {
+    Diagnostic::problem(
+        Problem::ConstantOverflow,
+        Label::span(lit.value.span(), "Bit string literal"),
+    )
+    .with_context("value", &lit.value.value.to_string())
+}
+
 /// Compiles a single case selector, leaving a boolean result on the stack.
 ///
 /// - `SignedInteger`: `selector == value`
@@ -760,73 +856,24 @@ fn compile_case(
 fn compile_case_selector(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    selector_expr: &Expr,
+    selector: &CaseSelector,
     selection: &CaseSelectionKind,
-    op_type: OpType,
 ) -> Result<(), Diagnostic> {
     match selection {
         CaseSelectionKind::SignedInteger(si) => {
-            compile_expr(emitter, ctx, selector_expr, op_type)?;
-            match op_type.0 {
-                OpWidth::W32 => {
-                    let value = signed_integer_to_i32(si)?;
-                    let pool_index = ctx.add_i32_constant(value);
-                    emitter.emit_load_const_i32(pool_index);
-                    emitter.emit_eq_i32();
-                }
-                OpWidth::W64 => {
-                    let value = signed_integer_to_i64(si)?;
-                    let pool_index = ctx.add_i64_constant(value);
-                    emitter.emit_load_const_i64(pool_index);
-                    emitter.emit_eq_i64();
-                }
-                // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo()),
-            }
-            Ok(())
+            selector.cmp_label(emitter, ctx, CaseLabelValue::Signed(si), emit_eq)
         }
         CaseSelectionKind::Subrange(sr) => {
-            // (selector >= start) AND (selector <= end)
-            compile_expr(emitter, ctx, selector_expr, op_type)?;
-            match op_type.0 {
-                OpWidth::W32 => {
-                    let start_si = resolve_signed_integer_ref(&sr.start)?;
-                    let start = signed_integer_to_i32(start_si)?;
-                    let start_index = ctx.add_i32_constant(start);
-                    emitter.emit_load_const_i32(start_index);
-                    emit_ge(emitter, op_type);
-
-                    compile_expr(emitter, ctx, selector_expr, op_type)?;
-                    let end_si = resolve_signed_integer_ref(&sr.end)?;
-                    let end = signed_integer_to_i32(end_si)?;
-                    let end_index = ctx.add_i32_constant(end);
-                    emitter.emit_load_const_i32(end_index);
-                    emit_le(emitter, op_type);
-                }
-                OpWidth::W64 => {
-                    let start_si = resolve_signed_integer_ref(&sr.start)?;
-                    let start = signed_integer_to_i64(start_si)?;
-                    let start_index = ctx.add_i64_constant(start);
-                    emitter.emit_load_const_i64(start_index);
-                    emit_ge(emitter, op_type);
-
-                    compile_expr(emitter, ctx, selector_expr, op_type)?;
-                    let end_si = resolve_signed_integer_ref(&sr.end)?;
-                    let end = signed_integer_to_i64(end_si)?;
-                    let end_index = ctx.add_i64_constant(end);
-                    emitter.emit_load_const_i64(end_index);
-                    emit_le(emitter, op_type);
-                }
-                // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo()),
-            }
-
+            let start = resolve_signed_integer_ref(&sr.start)?;
+            selector.cmp_label(emitter, ctx, CaseLabelValue::Signed(start), emit_ge)?;
+            let end = resolve_signed_integer_ref(&sr.end)?;
+            selector.cmp_label(emitter, ctx, CaseLabelValue::Signed(end), emit_le)?;
             emitter.emit_bool_and();
             Ok(())
         }
         CaseSelectionKind::EnumeratedValue(ev) => {
             // REQ-EN-codegen-040: Load selector, load ordinal constant, compare with EQ_I32.
-            compile_expr(emitter, ctx, selector_expr, op_type)?;
+            compile_expr(emitter, ctx, selector.expr, selector.op_type)?;
             let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?;
             let pool_index = ctx.add_i32_constant(ordinal);
             emitter.emit_load_const_i32(pool_index);
@@ -834,43 +881,22 @@ fn compile_case_selector(
             Ok(())
         }
         CaseSelectionKind::BitStringLiteral(lit) => {
-            // A radix-prefixed literal (16#D012:, 2#1010:) used as a CASE
-            // label -- selector == value, same shape as SignedInteger,
-            // reusing the same u32/u64 narrowing already used for
-            // ConstantKind::BitStringLiteral in compile_expr.rs.
-            compile_expr(emitter, ctx, selector_expr, op_type)?;
-            let span = lit.value.span();
-            match op_type.0 {
-                OpWidth::W32 => {
-                    let value = u32::try_from(lit.value.value).map_err(|_| {
-                        Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(span.clone(), "Bit string literal"),
-                        )
-                        .with_context("value", &lit.value.value.to_string())
-                    })? as i32;
-                    let pool_index = ctx.add_i32_constant(value);
-                    emitter.emit_load_const_i32(pool_index);
-                    emitter.emit_eq_i32();
-                }
-                OpWidth::W64 => {
-                    let value = u64::try_from(lit.value.value).map_err(|_| {
-                        Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(span.clone(), "Bit string literal"),
-                        )
-                        .with_context("value", &lit.value.value.to_string())
-                    })? as i64;
-                    let pool_index = ctx.add_i64_constant(value);
-                    emitter.emit_load_const_i64(pool_index);
-                    emitter.emit_eq_i64();
-                }
-                // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo()),
-            }
-            Ok(())
+            selector.cmp_label(emitter, ctx, CaseLabelValue::Pattern(lit), emit_eq)
         }
     }
+}
+
+/// Builds the internal error for a `CASE` whose selector is not an integer
+/// type, pointing at the selector expression.
+///
+/// Analysis rejects such a selector (P4053) before codegen runs, so reaching
+/// this is a broken invariant rather than a missing capability.
+#[track_caller]
+fn non_integer_case_selector(selector_expr: &Expr) -> Diagnostic {
+    Diagnostic::internal_error_at(Label::span(
+        selector_expr.span(),
+        "CASE selector is not an integer type",
+    ))
 }
 
 /// Converts a `SignedInteger` AST node to an `i32` value.
