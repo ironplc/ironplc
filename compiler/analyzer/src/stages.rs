@@ -173,7 +173,7 @@ pub fn resolve_types(
     if options.allow_system_uptime_global {
         for global in &SYSTEM_UPTIME_GLOBALS {
             symbol_environment
-                .insert(
+                .insert_compiler_provided(
                     &Id::from(global.name),
                     SymbolKind::Variable,
                     &ScopeKind::Global,
