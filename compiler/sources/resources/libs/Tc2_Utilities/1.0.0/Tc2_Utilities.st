@@ -20,12 +20,15 @@
    the last place, FALSE truncates toward zero. NaN, +/-infinity, and
    |in| >= 2^63 are out of domain and return ''.
 
-   The digit rendering is deliberately unrolled -- one block per decimal
-   weight, highest first -- rather than looped: the VM sizes its temporary
-   string-buffer pool by counting string-operation call sites statically and
-   releases the buffers only on function return, so a string operation inside
-   a loop would exhaust the pool. Unrolled, every call site executes at most
-   once per call, which is exactly the model the pool is sized for. *)
+   The digit rendering is unrolled -- one block per decimal weight, highest
+   first -- rather than looped. This was once forced: the VM released a
+   temporary string buffer only when the call frame returned, so a CONCAT or
+   MID inside a loop drew a fresh buffer per iteration and exhausted the
+   pool. That is no longer so -- a buffer is released when its value is
+   copied out (ADR-0052), and a loop here would run -- but the unrolled form
+   is what is tested against the specification's vectors, so rewriting it is
+   a change to make deliberately rather than in passing. Tracked as
+   https://github.com/ironplc/ironplc/issues/1748. *)
 FUNCTION LREAL_TO_FMTSTR : STRING
 VAR_INPUT
     in         : LREAL;   (* value to format *)

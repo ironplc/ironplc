@@ -176,9 +176,9 @@ pub(crate) fn encode_string_literal(chars: &[char], char_width: CharWidth) -> Ve
 ///
 /// Encodes the literal (Latin-1 for narrow, UTF-16LE for wide), registers it as
 /// a width-tagged constant-pool entry, and emits LOAD_CONST_STR (leaving
-/// `buf_idx` on the stack). The caller
-/// stores that temp buffer into a destination of the same width; the VM
-/// verifies the encoding match (ADR-0034).
+/// `buf_idx` on the stack). The caller stores that temp buffer into a
+/// destination of the same width; the VM verifies the encoding match
+/// (ADR-0034).
 pub(crate) fn emit_string_literal_load(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -607,9 +607,9 @@ pub(crate) struct CompiledFunction {
     pub(crate) function_id: FunctionId,
     pub(crate) bytecode: Vec<u8>,
     pub(crate) max_stack_depth: u16,
-    /// Number of temp-buffer-allocating instructions in the body; see
-    /// [`FinalizedFunction::temp_buf_allocs`].
-    pub(crate) temp_buf_allocs: u16,
+    /// Most temp string buffers the body ever holds live at once; see
+    /// [`FinalizedFunction::max_temp_depth`].
+    pub(crate) max_temp_depth: u16,
     pub(crate) num_locals: u16,
     pub(crate) num_params: u16,
     pub(crate) name: String,
@@ -648,12 +648,11 @@ pub(crate) fn intern_i32_constant(constants: &mut Vec<PoolConstant>, value: i32)
 pub(crate) struct FinalizedFunction {
     pub(crate) bytecode: Vec<u8>,
     pub(crate) max_stack_depth: u16,
-    /// Number of instructions in the body that allocate a temporary string
-    /// buffer. The container's pool is sized from the sum over every
-    /// function, because the VM releases temp buffers only on function
-    /// return: each static site consumes a buffer each time it runs, so a
-    /// site inside a loop exhausts the pool and traps `V9009`.
-    pub(crate) temp_buf_allocs: u16,
+    /// Most temporary string buffers this function ever holds live at one
+    /// time. The VM releases a buffer when the instruction consuming it
+    /// runs, so this bounds the function's own draw on the pool however
+    /// many times its string operations execute.
+    pub(crate) max_temp_depth: u16,
     /// Per-statement line-map entries with `bytecode_offset` already
     /// remapped through the optimizer's old→new offset table. Entries
     /// whose pre-optimization offset fell on an instruction that was
@@ -678,13 +677,13 @@ pub(crate) fn finalize_function(
     emitter.apply_optimized(optimized, &offset_map);
     let bytecode = emitter.bytecode().to_vec();
     let max_stack_depth = emitter.max_stack_depth();
-    let temp_buf_allocs = emitter.temp_buf_allocs();
+    let max_temp_depth = emitter.max_temp_depth();
     let line_map =
         crate::optimize::remap_line_map(raw_line_map, &offset_map, bytecode.len() as u16)?;
     Ok(FinalizedFunction {
         bytecode,
         max_stack_depth,
-        temp_buf_allocs,
+        max_temp_depth,
         line_map,
     })
 }
@@ -1004,17 +1003,23 @@ fn compile_program_with_functions(
 
     let scan = finalize_function(&mut scan_emitter, &mut ctx)?;
 
-    // Size the temp string buffer pool: one buffer per allocating
-    // instruction, summed over every function in the container.
-    let num_temp_bufs = compiled_functions
+    // Size the temp string buffer pool. A callee's buffers sit on top of
+    // whatever its caller holds live, so the bound is the heaviest path
+    // through the call graph, each function weighted by the most buffers
+    // it holds live at once. The init function is not reachable from SCAN
+    // (it only stores initial values), so it is bounded separately.
+    let temp_depths: HashMap<FunctionId, u16> = compiled_functions
         .iter()
         .chain(compiled_fb_bodies.iter())
         .chain(compiled_methods.iter())
-        .map(|c| c.temp_buf_allocs)
-        .fold(
-            init.temp_buf_allocs.saturating_add(scan.temp_buf_allocs),
-            u16::saturating_add,
-        );
+        .map(|c| (c.function_id, c.max_temp_depth))
+        .chain(core::iter::once((FunctionId::SCAN, scan.max_temp_depth)))
+        .collect();
+    let num_temp_bufs = crate::call_graph::longest_path(&ctx.call_graph, FunctionId::SCAN, |f| {
+        temp_depths.get(&f).copied().unwrap_or(0)
+    })?
+    .max(init.max_temp_depth);
+
     if ctx.data_region_offset > 0 && num_temp_bufs > 0 {
         // Temp-buffer slots are uniform. When any wide string exists, size
         // each slot in wide bytes so an intermediate WSTRING value of up to
