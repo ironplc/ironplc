@@ -42,7 +42,7 @@ Functions may have ``VAR_INPUT`` parameters and local ``VAR`` variables.
 Functions must not have ``VAR_OUTPUT`` or ``VAR_IN_OUT`` parameters
 (use function blocks for those). Because a function has no state, it
 cannot declare or invoke a function block instance; that is reported as
-:doc:`P4053 </reference/compiler/problems/P4053>`.
+:doc:`P4054 </reference/compiler/problems/P4054>`.
 
 Calling a Function
 ------------------

@@ -4,14 +4,23 @@ P4053
 
 .. problem-summary:: P4053
 
-This error occurs when a function declares a function block instance, invokes
-one, or calls a method on one. IEC 61131-3 defines a call hierarchy: a program
-may invoke functions and function blocks, a function block may invoke functions
-and function blocks, and a function may invoke only functions. A function has
-no state between calls, and a function block instance is state.
+This error occurs when the selector of a ``CASE`` statement is not an integer
+or an enumeration.
 
-Both the declaration and every invocation of the instance are reported, so the
-cause and each call site are marked.
+IEC 61131-3 defines the ``CASE`` statement over a selector of type ``ANY_INT``
+(``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``,
+``ULINT``) or an enumeration type. The labels of a ``CASE`` are integer
+literals, integer ranges and enumerated values, so a selector of any other
+type has no label it can be compared with. A subrange of an integer type is
+accepted, since it narrows an integer type.
+
+A ``REAL`` or ``LREAL`` selector is the usual cause. A floating-point value is
+rarely exactly equal to an integer label, so even where a compiler accepts one
+the branches seldom run as intended.
+
+The bit-string types ``BYTE``, ``WORD``, ``DWORD`` and ``LWORD`` are also
+rejected. A bit string is a pattern rather than a magnitude, and the standard
+does not list it as a ``CASE`` selector type.
 
 Example
 -------
@@ -20,52 +29,82 @@ The following code will generate error P4053:
 
 .. code-block::
 
-   FUNCTION Delayed : BOOL
-       VAR
-           timer : TON;   (* Error: a function block instance in a function *)
-       END_VAR
-       timer(IN := TRUE, PT := T#1s);   (* Error: invoked in a function *)
-       Delayed := timer.Q;
-   END_FUNCTION
+   PROGRAM main
+   VAR
+       level : REAL;
+       alarm : BOOL;
+   END_VAR
+       CASE level OF
+           1: alarm := TRUE;
+       END_CASE;
+   END_PROGRAM
 
-``Delayed`` would have to keep ``timer`` running between calls, which a
-function cannot do.
+The variable ``level`` is ``REAL``, but ``CASE`` selects on an integer or an
+enumeration.
 
-To fix this error, make the unit that needs the state a function block:
+To fix this error, select on an integer. Where the selector is a measurement,
+convert it to the integer the labels describe:
 
 .. code-block::
 
-   FUNCTION_BLOCK Delayed
-       VAR_OUTPUT
-           Q : BOOL;
-       END_VAR
-       VAR
-           timer : TON;
-       END_VAR
-       timer(IN := TRUE, PT := T#1s);
-       Q := timer.Q;
-   END_FUNCTION_BLOCK
+   PROGRAM main
+   VAR
+       level : REAL;
+       band : DINT;
+       alarm : BOOL;
+   END_VAR
+       band := REAL_TO_DINT(level);
+       CASE band OF
+           1: alarm := TRUE;
+       END_CASE;
+   END_PROGRAM
 
-or keep the function stateless by computing from its inputs alone.
+Where the branches describe ranges of a continuous value, an ``IF`` statement
+with comparisons says so directly:
 
-Instances passed by reference
------------------------------
+.. code-block::
 
-IEC 61131-3 Edition 3 allows a function to receive a function block instance
-through ``VAR_IN_OUT``. The instance belongs to the caller, so the function
-stays stateless, and such a declaration is not reported. Note that IronPLC
-does not yet accept ``VAR_IN_OUT`` parameters on functions in calls, so this
-exemption matters only once that support lands. A ``VAR_INPUT`` instance is
-reported: passing an instance by value copies its state into the function.
+   PROGRAM main
+   VAR
+       level : REAL;
+       alarm : BOOL;
+   END_VAR
+       IF level >= 0.5 AND level < 1.5 THEN
+           alarm := TRUE;
+       END_IF;
+   END_PROGRAM
 
-See Also
---------
+Bit strings
+-----------
 
-- :doc:`/reference/language/pous/function` — ``FUNCTION`` declaration syntax
-- :doc:`/reference/language/pous/function-block` — the stateful unit to use instead
-- :doc:`P4012` — invocation of a variable that is not a function block instance
+The following code will generate error P4053:
 
-References
-----------
+.. code-block::
 
-* IEC 61131-3 §2.5.1 (Edition 2), §6.6.1 (Edition 3)
+   PROGRAM main
+   VAR
+       flags : WORD;
+       alarm : BOOL;
+   END_VAR
+       CASE flags OF
+           1: alarm := TRUE;
+       END_CASE;
+   END_PROGRAM
+
+To fix this error, declare the selector as an integer type of the same width,
+or convert it at the ``CASE``:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flags : WORD;
+       alarm : BOOL;
+   END_VAR
+       CASE WORD_TO_UINT(flags) OF
+           1: alarm := TRUE;
+       END_CASE;
+   END_PROGRAM
+
+See :doc:`/reference/language/structured-text/case` for the ``CASE``
+statement.

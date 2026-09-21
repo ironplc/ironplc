@@ -832,13 +832,19 @@ Two storage areas hold strings:
 - **Data region** — string *variables* (and string array elements) live in the unified data region (ADR-0017), addressed by a compile-time-constant `data_offset`. `char_width` is written once at initialization and never changes.
 - **Temp buffer pool** — a pre-allocated pool of fixed-size buffers holding intermediate results. A buffer is addressed by a small `buf_idx`, which is what string-producing operations push onto the stack. The container header declares `num_temp_bufs` and `max_temp_buf_bytes`; codegen sizes them from the program's string expressions. Exhausting the pool traps `V9009 TempBufferExhausted`.
 
-Codegen sizes the pool by counting string-operation *call sites* statically,
-and the VM rewinds the allocator only on function return. A string operation
-inside a loop therefore allocates a fresh buffer on every iteration while
-having been counted once, and a loop that runs more than a couple of times
-traps `V9009`. This is why the bundled `Tc2_Utilities` `LREAL_TO_FMTSTR`
-renders digits as unrolled per-weight blocks rather than a loop: rewriting it
-as a loop would trap.
+**The pool is a stack, not an arena** ([ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md)).
+A temp buffer is owned by the operand-stack slot holding its `buf_idx` and is
+released by the instruction that consumes that slot — `STR_STORE_VAR` or
+`STR_STORE_ARRAY_ELEM`, once the value has been copied out. Because the
+operand stack is LIFO, the buffer being consumed is the one most recently
+allocated, so releasing it is a bump-pointer decrement. The frame-return
+rewind remains as a backstop for any buffer a body leaves live.
+
+The pool size is therefore a bound on buffers live *simultaneously*, not a
+count of string operations in the source. A string operation inside a loop
+allocates and releases one buffer per iteration and contributes 1, whatever
+the trip count — which is what makes a static size sound for a dynamic
+iteration count.
 
 Because `buf_idx` is a small integer, `DUP` and `SWAP` copy only the index — never buffer contents. Real copies happen at `STR_STORE_VAR` and inside the string operation handlers.
 
@@ -879,7 +885,15 @@ The string function opcodes take their string inputs as *compile-time data offse
 
 Results always go to a temp buffer. If a result exceeds the temp buffer's capacity it is truncated, matching standard PLC string truncation semantics.
 
-**Buffer lifecycle.** Temp buffers are allocated from the pool as string operations run, and the allocation mark is restored per call frame. A temp `buf_idx` is valid until the next operation that allocates from the pool; the compiler ensures no `buf_idx` stays live across such an operation, in practice by emitting `STR_STORE_VAR` as soon as a string expression completes. The pool size in the header guarantees the pool is never exhausted if that analysis is correct; if it is wrong the VM traps `V9009` rather than corrupting data.
+**Buffer lifecycle.** Temp buffers are allocated from the pool as string operations run, released by the instruction that consumes the `buf_idx`, and the allocation mark is additionally restored per call frame. A temp `buf_idx` is valid until the next operation that allocates from the pool; the compiler ensures no `buf_idx` stays live across such an operation, in practice by emitting `STR_STORE_VAR` as soon as a string expression completes. The pool size in the header guarantees the pool is never exhausted if that analysis is correct; if it is wrong the VM traps `V9009` rather than corrupting data.
+
+Codegen sizes the pool by tracking, per function, the most buffers live at
+one time — incrementing at each allocating opcode it emits and decrementing
+at each consuming one. A callee's buffers sit on top of whatever its caller
+holds live, so the header value is the heaviest path through the static call
+graph with each function weighted by its own maximum, the same walk that
+produces `max_call_depth`. The init function is not reachable from the scan
+function, so it is bounded separately and the larger of the two wins.
 
 ---
 

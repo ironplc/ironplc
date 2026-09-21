@@ -350,11 +350,12 @@ Acquisition uses a stack-like allocator (bump pointer): each acquire increments 
 - BUILTIN string functions that take string inputs (STR_LEN, STR_FIND, STR_CONCAT, etc.)
 - STR_STORE_VAR / WSTR_STORE_VAR (copies temp buffer contents into a variable buffer)
 
-**Release.** Temp buffers are released in two ways:
-1. **At function return.** When `RET` or `RET_VOID` executes, the temp pool watermark is reset to the value recorded in the call frame's `temp_str_base`. This releases all temp buffers acquired during the function call, preventing leaks from any control flow path (including early returns).
-2. **At scan cycle end.** After EXECUTE completes, all temp buffers are released (watermark reset to 0). This is a safety net; well-compiled bytecode releases all temps via function returns.
+**Release.** Temp buffers are released in three ways:
+1. **When the buffer is consumed.** `STR_STORE_VAR` and `STR_STORE_ARRAY_ELEM` pop a `buf_idx` and copy the buffer's contents into the data region. Once copied, the buffer is dead and the watermark drops back past it, so the slot is reused by the next acquire. Because the operand stack is LIFO, the buffer being consumed is the one most recently acquired; a `buf_idx` that is not the top allocation is left alone. This is the release that bounds a loop — a string operation in a loop body acquires and releases one buffer per iteration. See [ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md).
+2. **At function return.** When `RET` or `RET_VOID` executes, the temp pool watermark is reset to the value recorded in the call frame's `temp_str_base`. This releases any temp buffers the body left live on some control-flow path (including early returns), and releases the buffer a `STRING`-returning function leaves for its caller.
+3. **At scan cycle end.** After EXECUTE completes, all temp buffers are released (watermark reset to 0). This is a safety net; well-compiled bytecode releases all temps via the two paths above.
 
-**Pool exhaustion.** If an acquire would exceed the pool size (`num_temp_str_bufs` or `num_temp_wstr_bufs`), the VM traps with a pool-exhaustion fault. The compiler must size the temp pools to cover the deepest string expression nesting in the program. The formula is: for each function, count the maximum number of temp buffers simultaneously live at any point in the function body. The header fields are set to the maximum across all functions.
+**Pool exhaustion.** If an acquire would exceed the pool size (`num_temp_str_bufs` or `num_temp_wstr_bufs`), the VM traps with a pool-exhaustion fault. The compiler must size the temp pools to cover the deepest string expression nesting in the program. The formula is: for each function, count the maximum number of temp buffers simultaneously live at any point in the function body; then take the heaviest path through the call graph, since a callee's buffers sit on top of its caller's. The count is of buffers live *at once*, not of string operations: a loop body contributes its own depth however many times it runs.
 
 ### Compiler Invariant
 
@@ -373,7 +374,7 @@ BUILTIN         0x0101    -- STR_CONCAT: pops 2 buf_idx, acquires temp, pushes t
 STR_STORE_VAR   0x0002    -- copies temp buffer contents into result's variable buffer
 ```
 
-The temp buffer is live from BUILTIN (acquire) until the function returns (watermark reset). In simple cases like this, only one temp buffer is ever live at a time.
+The temp buffer is live from BUILTIN (acquire) until `STR_STORE_VAR` copies it out (release). In simple cases like this, only one temp buffer is ever live at a time — and that stays true if the statement sits inside a loop, because each iteration releases the buffer the previous one acquired.
 
 ### Example: Nested String Expression
 
@@ -387,7 +388,7 @@ STR_LOAD_VAR    0x0001    -- push b (variable buffer)
 BUILTIN         0x0101    -- STR_CONCAT(a, b): acquires temp[0], pushes temp[0] buf_idx
 STR_LOAD_VAR    0x0002    -- push c (variable buffer)
 BUILTIN         0x0101    -- STR_CONCAT(temp[0], c): acquires temp[1], pushes temp[1] buf_idx
-STR_STORE_VAR   0x0003    -- copies temp[1] into result; watermark resets at function return
+STR_STORE_VAR   0x0003    -- copies temp[1] into result and releases it
 ```
 
 At peak, 2 temp buffers are live simultaneously. The compiler must set `num_temp_str_bufs >= 2` for this function.

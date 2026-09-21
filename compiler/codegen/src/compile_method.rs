@@ -244,6 +244,7 @@ fn compile_user_method(
         function_id,
         bytecode: finalized.bytecode,
         max_stack_depth: finalized.max_stack_depth,
+        max_temp_depth: finalized.max_temp_depth,
         num_locals,
         num_params,
         name: method.name.to_string(),

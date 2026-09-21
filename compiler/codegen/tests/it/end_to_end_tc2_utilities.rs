@@ -7,9 +7,9 @@
 //! equality — the spec's fixed-point formatting is deterministic, digit for
 //! digit.
 
+use crate::common::read_string;
 use ironplc_analyzer::stages::analyze;
 use ironplc_codegen::compile;
-use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
@@ -50,15 +50,6 @@ fn run_with_tc2_utilities(source: &str) -> VmBuffers {
         vm.run_round(0).expect("VM run must not trap");
     }
     bufs
-}
-
-/// Reads a STRING value from the data region at the given byte offset.
-fn read_string(data_region: &[u8], data_offset: usize) -> String {
-    let cur_len =
-        u16::from_le_bytes([data_region[data_offset + 2], data_region[data_offset + 3]]) as usize;
-    let data_start = data_offset + STRING_HEADER_BYTES;
-    let bytes = &data_region[data_start..data_start + cur_len];
-    bytes.iter().map(|&b| b as char).collect()
 }
 
 /// Formats one call `LREAL_TO_FMTSTR(x, <precision>, <round>)` where `x` is
