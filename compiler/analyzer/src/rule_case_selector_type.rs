@@ -199,8 +199,15 @@ END_PROGRAM"
     #[case::dword("DWORD")]
     #[case::lword("LWORD")]
     #[case::string("STRING")]
+    #[case::wstring("WSTRING")]
     #[case::time("TIME")]
+    #[case::ltime("LTIME")]
     #[case::date("DATE")]
+    #[case::ldate("LDATE")]
+    #[case::time_of_day("TIME_OF_DAY")]
+    #[case::ltime_of_day("LTIME_OF_DAY")]
+    #[case::date_and_time("DATE_AND_TIME")]
+    #[case::ldate_and_time("LDATE_AND_TIME")]
     fn apply_when_selector_is_not_integer_then_p4053(#[case] declared_type: &str) {
         let diagnostics = diagnostics_for(&program_selecting_on(declared_type));
 
