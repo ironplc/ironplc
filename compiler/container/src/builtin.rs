@@ -757,9 +757,34 @@ pub fn arg_count_opt(func_id: u16) -> Option<u16> {
     declared_arg_count(func_id).or_else(|| Some(mux_info(func_id)? + 1))
 }
 
+/// Whether the built-in `func_id` writes its result into a freshly
+/// allocated temporary string buffer and pushes that buffer's index.
+///
+/// These are the numeric-to-string conversions. Codegen's emitter uses this
+/// to account for the temp buffer beside the opcode that allocates it, so the
+/// container header's pool size cannot drift from the bytecode that draws on
+/// the pool; a new string-producing built-in must be added here.
+pub fn allocates_temp_buf(func_id: u16) -> bool {
+    matches!(func_id, CONV_I32_TO_STR | CONV_U32_TO_STR | CONV_F32_TO_STR)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn allocates_temp_buf_when_numeric_to_string_then_true() {
+        assert!(allocates_temp_buf(CONV_I32_TO_STR));
+        assert!(allocates_temp_buf(CONV_U32_TO_STR));
+        assert!(allocates_temp_buf(CONV_F32_TO_STR));
+    }
+
+    #[test]
+    fn allocates_temp_buf_when_string_consuming_or_numeric_then_false() {
+        assert!(!allocates_temp_buf(CONV_STR_TO_I32));
+        assert!(!allocates_temp_buf(CMP_STR));
+        assert!(!allocates_temp_buf(EXPT_I32));
+    }
     use crate::policy::{BehaviorPolicy, StringToNumFailure, StringToNumNonNumeric};
     use std::format;
 

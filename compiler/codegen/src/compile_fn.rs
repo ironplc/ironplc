@@ -387,7 +387,6 @@ pub(crate) fn compile_user_function(
     if let Some(ref str_info) = return_string_info {
         // For STRING return: load the return string from the data region into
         // a temp buffer, leaving buf_idx on the stack for the caller.
-        ctx.num_temp_bufs += 1;
         func_emitter.emit_str_load_var(str_info.data_offset);
     } else {
         emit_load_var(&mut func_emitter, return_var_index, return_op_type);
@@ -477,6 +476,7 @@ pub(crate) fn compile_user_function(
         function_id,
         bytecode: finalized.bytecode,
         max_stack_depth: finalized.max_stack_depth,
+        temp_buf_allocs: finalized.temp_buf_allocs,
         num_locals,
         num_params,
         name: func_name.to_string(),
@@ -665,6 +665,7 @@ pub(crate) fn compile_user_function_block(
             function_id,
             bytecode: finalized.bytecode,
             max_stack_depth: finalized.max_stack_depth,
+            temp_buf_allocs: finalized.temp_buf_allocs,
             num_locals,
             num_params: 0,
             name: fb_name,

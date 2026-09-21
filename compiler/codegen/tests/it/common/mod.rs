@@ -577,6 +577,28 @@ macro_rules! assert_bytecode {
 ///
 /// The analyzer populates `Expr.resolved_type` and resolves type aliases in
 /// variable declarations, which codegen requires.
+/// Reads a STRING value from the data region at the given byte offset.
+pub fn read_string(data_region: &[u8], data_offset: usize) -> String {
+    let cur_len =
+        u16::from_le_bytes([data_region[data_offset + 2], data_region[data_offset + 3]]) as usize;
+    let data_start = data_offset + ironplc_container::STRING_HEADER_BYTES;
+    let bytes = &data_region[data_start..data_start + cur_len];
+    bytes.iter().map(|&b| b as char).collect()
+}
+
+/// Computes the data_offset of a STRING variable given the declared max
+/// lengths of the string variables that precede it in declaration order.
+///
+/// Each STRING variable occupies `STRING_HEADER_BYTES + max_length` bytes,
+/// so `string_offset(&[])` is the first declared string and
+/// `string_offset(&[254, 254])` is the third.
+pub fn string_offset(preceding_max_lengths: &[u16]) -> usize {
+    preceding_max_lengths
+        .iter()
+        .map(|&ml| ironplc_container::STRING_HEADER_BYTES + ml as usize)
+        .sum()
+}
+
 pub fn parse(source: &str, options: &CompilerOptions) -> (Library, SemanticContext) {
     let library = parse_program(source, &FileId::default(), options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], options).unwrap();

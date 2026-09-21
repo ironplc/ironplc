@@ -1,18 +1,9 @@
 //! End-to-end integration tests for structure field read support.
 //! Compiles ST programs with struct field access and runs them through the VM.
 
-use crate::common::{parse_and_run, try_parse_and_compile};
+use crate::common::{parse_and_run, read_string, try_parse_and_compile};
 use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::{CompilerOptions, Dialect};
-
-/// Reads a STRING value from the data region at the given byte offset.
-fn read_string(data_region: &[u8], data_offset: usize) -> String {
-    let cur_len =
-        u16::from_le_bytes([data_region[data_offset + 2], data_region[data_offset + 3]]) as usize;
-    let data_start = data_offset + STRING_HEADER_BYTES;
-    let bytes = &data_region[data_start..data_start + cur_len];
-    bytes.iter().map(|&b| b as char).collect()
-}
 
 // --- Scalar field read/write ---
 
