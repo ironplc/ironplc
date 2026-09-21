@@ -192,13 +192,15 @@ pub fn resolve_types(
 
     // Hard failure: declaration ordering is required for all subsequent transforms.
     // Also computes the set of declarations reachable from PROGRAM roots,
-    // which codegen uses to skip unused functions.
+    // which codegen uses to skip unused functions. A repeated declaration
+    // name survives the sort; the environments built below diagnose it.
     let (mut library, reachable) = xform_toposort_declarations::apply(library)?;
 
-    // A failure here reflects a fundamentally broken declaration (not an
-    // unrelated one), so reverting the whole library to its pre-transform
-    // state on error is correct.
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+    // Best effort: a repeated type or function block name is diagnosed by
+    // the type environment, which keeps the first declaration, so the rest
+    // of the library still resolves. `Err` is a declaration that cannot be
+    // resolved at all, which still reverts.
+    library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_resolve_type_decl_environment::apply(lib, &mut type_environment)
     });
 
@@ -254,7 +256,10 @@ pub fn resolve_types(
         xform_int_to_bool_initializer::apply(lib, &mut type_environment, options)
     });
 
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+    // Best effort: a repeated declaration name is diagnosed here, by the
+    // environments, and the first declaration is kept, so the rest of the
+    // library still resolves instead of reverting on the first repeat.
+    library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_resolve_symbol_and_function_environment::apply(
             lib,
             &mut symbol_environment,

@@ -374,8 +374,7 @@ mod tests {
                     }],
                 },
             ),
-        )
-        .unwrap();
+        );
 
         let spec = SpecificationKind::Named(TypeName::from("BASE_ARRAY"));
         let result = try_from(&TypeName::from("ALIAS_ARRAY"), &spec, &env).unwrap();
