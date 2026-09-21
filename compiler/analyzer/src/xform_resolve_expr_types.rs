@@ -660,8 +660,9 @@ mod tests {
             .with_stdlib_function_blocks()
             .build()
             .unwrap();
-        let library =
-            xform_resolve_type_decl_environment::apply(library, &mut type_environment).unwrap();
+        let library = xform_resolve_type_decl_environment::apply(library, &mut type_environment)
+            .unwrap()
+            .0;
         let library = xform_resolve_late_bound_expr_kind::apply(library, &mut type_environment)
             .unwrap()
             .0;
@@ -669,7 +670,7 @@ mod tests {
             .with_stdlib_functions()
             .build();
         let mut symbol_environment = SymbolEnvironment::new();
-        let library = xform_resolve_symbol_and_function_environment::apply(
+        let (library, _diagnostics) = xform_resolve_symbol_and_function_environment::apply(
             library,
             &mut symbol_environment,
             &mut function_environment,

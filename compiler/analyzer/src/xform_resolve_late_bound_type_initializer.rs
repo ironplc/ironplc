@@ -63,19 +63,16 @@ pub fn apply(
 }
 
 impl ScopedTable<'_, TypeName, TypeDefinitionKind> {
+    /// Records the kind of `to_add`, keeping the first kind recorded for a
+    /// name declared more than once. The repeat is not diagnosed here: the
+    /// symbol environment reports it, and this pass resolves initializers
+    /// against the declaration that is kept.
     fn add_if_new(
         &mut self,
         to_add: &TypeName,
         kind: TypeDefinitionKind,
     ) -> Result<(), Diagnostic> {
-        if let Some(existing) = self.try_add(to_add, kind) {
-            return Err(Diagnostic::problem(
-                Problem::DefinitionNameDuplicated,
-                Label::span(to_add.span(), format!("Duplicated definition {to_add}")),
-            )
-            .with_secondary(Label::span(existing.0.span(), "First definition")));
-        }
-
+        self.try_add(to_add, kind);
         Ok(())
     }
 }
@@ -545,8 +542,10 @@ END_FUNCTION_BLOCK
         }
     }
 
+    /// A repeated type name is the symbol environment's to report; this
+    /// pass keeps the first declaration and resolves against it.
     #[test]
-    fn apply_when_duplicated_type_then_error() {
+    fn apply_when_duplicated_type_then_first_kept_without_error() {
         let program = "
 TYPE
     the_struct : STRUCT
@@ -568,12 +567,8 @@ END_FUNCTION_BLOCK
             ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironment::new();
-        let result = apply(input, &mut type_environment);
-        assert!(result.is_err());
-
-        let err = result.unwrap_err();
-        assert_eq!(1, err.len());
-        assert_eq!(Problem::DefinitionNameDuplicated.code(), err[0].code);
+        let (_library, diagnostics) = apply(input, &mut type_environment).unwrap();
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     #[test]
