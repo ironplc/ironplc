@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/compiler/problems/P4014.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Code, P4014,, Message, Symbol declaration name is duplicated,. This error occurs when a symbol (variable, constant, or other identifier) is declared more than once in the same scope. Example: The f..." />
-<meta name="description" content="Code, P4014,, Message, Symbol declaration name is duplicated,. This error occurs when a symbol (variable, constant, or other identifier) is declared more than once in the same scope. Example: The f..." />
+<meta property="og:description" content="Code, P4014,, Message, Symbol declaration name is duplicated,. This error occurs when a variable name is declared more than once in the same scope. A scope is a program, function, function block or..." />
+<meta name="description" content="Code, P4014,, Message, Symbol declaration name is duplicated,. This error occurs when a variable name is declared more than once in the same scope. A scope is a program, function, function block or..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P4015" href="P4015.html"><link rel="prev" title="P4013" href="P4013.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/compiler/problems/P4014.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.245.0">
+<meta name="ironplc-version" content="0.246.0">
 </head>
   <body>
     
@@ -568,6 +568,8 @@
 <li class="toctree-l4"><a class="reference internal" href="P4050.html">P4050</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4051.html">P4051</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4052.html">P4052</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4053.html">P4053</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4054.html">P4054</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -711,28 +713,63 @@
 <dt><strong>Message</strong></dt><dd><p>Symbol declaration name is duplicated</p>
 </dd>
 </dl>
-<p>This error occurs when a symbol (variable, constant, or other identifier) is declared more than once in the same scope.</p>
+<p>This error occurs when a variable name is declared more than once in the
+same scope. A scope is a program, function, function block or method,
+counting every <code class="docutils literal notranslate"><span class="pre">VAR</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code> and other block it
+contains, or the global scope, counting every <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> block in the
+project wherever it sits.</p>
+<p>The comparison is case-insensitive, like all IEC 61131-3 identifiers. Two
+declarations of one name in a scope would leave the compiler to pick one,
+and the other would never be read; the compiler rejects the program instead.</p>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <p>The following code will generate error P4014:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION_BLOCK</span> <span class="n">Example</span>
-<span class="n">VAR</span>
-    <span class="n">DuplicateName</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
-    <span class="n">DuplicateName</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">Symbol</span> <span class="n">name</span> <span class="n">duplicated</span> <span class="o">*</span><span class="p">)</span>
-<span class="n">END_VAR</span>
-<span class="n">END_FUNCTION_BLOCK</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+  <span class="n">VAR_INPUT</span>
+    <span class="n">start</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+  <span class="n">END_VAR</span>
+  <span class="n">VAR</span>
+    <span class="n">start</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+  <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
-<p>The symbol <code class="docutils literal notranslate"><span class="pre">DuplicateName</span></code> is declared twice in the same variable section, which is not allowed.</p>
-<p>To fix this error, ensure all symbol names are unique within their scope:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION_BLOCK</span> <span class="n">Example</span>
-<span class="n">VAR</span>
-    <span class="n">FirstVariable</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
-    <span class="n">SecondVariable</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">Different</span> <span class="n">name</span> <span class="o">*</span><span class="p">)</span>
-<span class="n">END_VAR</span>
-<span class="n">END_FUNCTION_BLOCK</span>
+<p><code class="docutils literal notranslate"><span class="pre">start</span></code> is declared as an input and again as a local variable of <code class="docutils literal notranslate"><span class="pre">main</span></code>.</p>
+<p>To fix this error, remove one declaration or rename the variable:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+  <span class="n">VAR_INPUT</span>
+    <span class="n">start</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+  <span class="n">END_VAR</span>
+  <span class="n">VAR</span>
+    <span class="n">startCount</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+  <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
+</section>
+<section id="compiler-provided-globals">
+<h2>Compiler-provided globals<a class="headerlink" href="#compiler-provided-globals" title="Link to this heading">¶</a></h2>
+<p>When <code class="docutils literal notranslate"><span class="pre">--allow-system-uptime-global</span></code> is on, the compiler declares the
+globals <code class="docutils literal notranslate"><span class="pre">__SYSTEM_UP_TIME</span></code> and <code class="docutils literal notranslate"><span class="pre">__SYSTEM_UP_LTIME</span></code> itself. A
+<code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> that declares either name is reported with this error:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">VAR_GLOBAL</span>
+  <span class="n">__SYSTEM_UP_TIME</span> <span class="p">:</span> <span class="n">TIME</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+</pre></div>
+</div>
+<p>To read the compiler’s uptime value, remove the declaration; the name is
+available without one. To keep a variable of your own, rename it. Names
+beginning with <code class="docutils literal notranslate"><span class="pre">__</span></code> are reserved for the compiler.</p>
+</section>
+<section id="scopes-and-hiding">
+<h2>Scopes and hiding<a class="headerlink" href="#scopes-and-hiding" title="Link to this heading">¶</a></h2>
+<p>This rule compares declarations within one scope only. Whether a variable
+in one scope may reuse the name of a variable in an enclosing scope is a
+separate question: a program may not reuse a global’s name
+(<a class="reference internal" href="P4050.html"><span class="doc">P4050</span></a>), while a function,
+function block or method may, and the local declaration then hides the
+outer one. A <code class="docutils literal notranslate"><span class="pre">VAR_EXTERNAL</span></code> names a global rather than declaring a new
+variable, so it is not a duplicate of that global.</p>
 <div class="tip admonition">
 <p class="admonition-title">Think IronPLC is wrong about this?</p>
 <p>If you believe this diagnostic is incorrect, <a class="reference external" href="https://github.com/ironplc/ironplc/issues/new?template=compatibility_gap.md&amp;title=Diagnostic%20P4014%20appears%20incorrect&amp;labels=problem-code-feedback">open an issue on GitHub</a>
@@ -806,6 +843,8 @@ with a small sample that demonstrates the problem.</p>
             <ul>
 <li><a class="reference internal" href="#">P4014</a><ul>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#compiler-provided-globals">Compiler-provided globals</a></li>
+<li><a class="reference internal" href="#scopes-and-hiding">Scopes and hiding</a></li>
 </ul>
 </li>
 </ul>

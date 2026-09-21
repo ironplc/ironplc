@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/language/structured-text/case.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="The CASE statement selects one of several statement groups based on the value of an integer expression.,, IEC 61131-3, Section 3.3.2.3,, Support, Supported,,,, Syntax: Each case_value is an integer..." />
-<meta name="description" content="The CASE statement selects one of several statement groups based on the value of an integer expression.,, IEC 61131-3, Section 3.3.2.3,, Support, Supported,,,, Syntax: Each case_value is an integer..." />
+<meta property="og:description" content="The CASE statement selects one of several statement groups based on the value of an integer or enumeration expression.,, IEC 61131-3, Section 3.3.2.3,, Support, Supported,,,, Syntax: Each case_valu..." />
+<meta name="description" content="The CASE statement selects one of several statement groups based on the value of an integer or enumeration expression.,, IEC 61131-3, Section 3.3.2.3,, Support, Supported,,,, Syntax: Each case_valu..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="FOR" href="for.html"><link rel="prev" title="IF" href="if.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/structured-text/case.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.245.0">
+<meta name="ironplc-version" content="0.246.0">
 </head>
   <body>
     
@@ -568,6 +568,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4050.html">P4050</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4051.html">P4051</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4052.html">P4052</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4053.html">P4053</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4054.html">P4054</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -706,7 +708,7 @@
           <section id="case">
 <h1>CASE<a class="headerlink" href="#case" title="Link to this heading">¶</a></h1>
 <p>The <code class="docutils literal notranslate"><span class="pre">CASE</span></code> statement selects one of several statement groups based on the
-value of an integer expression.</p>
+value of an integer or enumeration expression.</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
@@ -733,8 +735,11 @@ value of an integer expression.</p>
 END_CASE ;
 </pre></div>
 </div>
-<p>Each <code class="docutils literal notranslate"><span class="pre">case_value</span></code> is an integer literal or a subrange (<code class="docutils literal notranslate"><span class="pre">low</span> <span class="pre">..</span> <span class="pre">high</span></code>).
-Multiple values can be listed separated by commas.</p>
+<p>Each <code class="docutils literal notranslate"><span class="pre">case_value</span></code> is an integer literal, a subrange (<code class="docutils literal notranslate"><span class="pre">low</span> <span class="pre">..</span> <span class="pre">high</span></code>), or an
+enumerated value. Multiple values can be listed separated by commas.</p>
+<p>The selector expression must be of an integer type, a subrange of one, or an
+enumeration type. A selector of any other type, such as <code class="docutils literal notranslate"><span class="pre">REAL</span></code> or <code class="docutils literal notranslate"><span class="pre">WORD</span></code>,
+is reported as <a class="reference internal" href="../../compiler/problems/P4053.html"><span class="doc">P4053</span></a>.</p>
 </section>
 <section id="description">
 <h2>Description<a class="headerlink" href="#description" title="Link to this heading">¶</a></h2>

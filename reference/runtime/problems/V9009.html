@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/runtime/problems/V9009.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Code, V9009,, Message, Temporary buffer pool exhausted,. The VM exhausted its pool of temporary buffers during string operations. This is an internal error indicating the compiler underestimated th..." />
-<meta name="description" content="Code, V9009,, Message, Temporary buffer pool exhausted,. The VM exhausted its pool of temporary buffers during string operations. This is an internal error indicating the compiler underestimated th..." />
+<meta property="og:description" content="Code, V9009,, Message, Temporary buffer pool exhausted,. A string operation asked the VM for a temporary buffer and the pool had no free slot, so the VM halted rather than overwrite a value still i..." />
+<meta name="description" content="Code, V9009,, Message, Temporary buffer pool exhausted,. A string operation asked the VM for a temporary buffer and the pool had no free slot, so the VM halted rather than overwrite a value still i..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="V9010" href="V9010.html"><link rel="prev" title="V9008" href="V9008.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/runtime/problems/V9009.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.245.0">
+<meta name="ironplc-version" content="0.246.0">
 </head>
   <body>
     
@@ -200,7 +200,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
       </label>
     </div>
@@ -568,6 +568,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4050.html">P4050</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4051.html">P4051</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4052.html">P4052</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4053.html">P4053</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4054.html">P4054</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -698,7 +700,7 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
           </label>
         </div>
@@ -711,11 +713,23 @@
 <dt><strong>Message</strong></dt><dd><p>Temporary buffer pool exhausted</p>
 </dd>
 </dl>
-<p>The VM exhausted its pool of temporary buffers during string operations. This is
-an internal error indicating the compiler underestimated the number of temporary
-buffers needed for the program.</p>
-<p>This error should not occur during normal operation. It indicates a bug in the
-IronPLC compiler or VM.</p>
+<p>A string operation asked the VM for a temporary buffer and the pool had no
+free slot, so the VM halted rather than overwrite a value still in use.</p>
+<p>String operations such as <code class="docutils literal notranslate"><span class="pre">CONCAT</span></code>, <code class="docutils literal notranslate"><span class="pre">LEFT</span></code>, <code class="docutils literal notranslate"><span class="pre">MID</span></code> and <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> write
+their result into a temporary buffer rather than straight into a variable.
+Those buffers come from a pool the VM allocates once, before the program
+starts, because the runtime allocates no memory while a program is running.
+The compiler sizes the pool from the program: it works out the most buffers
+that can be in use at the same moment along any path of calls, and records
+that number in the compiled file.</p>
+<p>A buffer is returned to the pool as soon as its value is copied into a
+variable, so repeating a string operation does not need more buffers than
+running it once. A loop that builds a string needs the same pool as the same
+statement outside a loop.</p>
+<section id="cause">
+<h2>Cause<a class="headerlink" href="#cause" title="Link to this heading">¶</a></h2>
+<p>In the current compiler this indicates a defect: the pool was sized smaller
+than the program turned out to need.</p>
 <p>Report this as a bug at <a class="reference external" href="https://github.com/ironplc/ironplc/issues">https://github.com/ironplc/ironplc/issues</a> with the
 <code class="docutils literal notranslate"><span class="pre">.iplc</span></code> file and the source program that produced it.</p>
 <div class="tip admonition">
@@ -723,6 +737,7 @@ IronPLC compiler or VM.</p>
 <p>If you believe this diagnostic is incorrect, <a class="reference external" href="https://github.com/ironplc/ironplc/issues/new?template=compatibility_gap.md&amp;title=Diagnostic%20V9009%20appears%20incorrect&amp;labels=problem-code-feedback">open an issue on GitHub</a>
 with a small sample that demonstrates the problem.</p>
 </div>
+</section>
 </section>
 
         </article>
@@ -776,8 +791,27 @@ with a small sample that demonstrates the problem.</p>
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">V9009</a><ul>
+<li><a class="reference internal" href="#cause">Cause</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>
