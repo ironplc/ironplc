@@ -26,7 +26,7 @@ Add full function block (FB) infrastructure to the compiler and VM, enabling sta
 
 The design follows the existing specs:
 - [ADR-0003](../../specs/adrs/0003-plc-standard-function-blocks-as-intrinsics.md): Standard FBs as VM intrinsics via FB_CALL
-- [Bytecode Instruction Set](../../specs/design/bytecode-instruction-set.md): FB opcode definitions (0xC0-0xC3)
+- [Bytecode Instruction Set](../../specs/design/bytecode-instruction-set.md): FB opcode definitions (0x98-0xA4)
 - [Bytecode Container Format](../../specs/design/bytecode-container-format.md): Type section with FB type descriptors
 - [Runtime Execution Model](../../specs/design/runtime-execution-model.md): FB instance memory, clock snapshot, intrinsic dispatch
 
@@ -39,10 +39,10 @@ The VM reads only the fixed-size header, never the type section. The compiler pr
 ### Container
 
 **Opcodes** (`opcode.rs`):
-- `FB_LOAD_INSTANCE` (0xC0) - operand: u16 variable index
-- `FB_STORE_PARAM` (0xC1) - operand: u8 field index
-- `FB_LOAD_PARAM` (0xC2) - operand: u8 field index
-- `FB_CALL` (0xC3) - operand: u16 type_id
+- `FB_LOAD_INSTANCE` (0x98) - operand: u16 variable index
+- `FB_STORE_PARAM` (0x9C) - operand: u8 field index
+- `FB_LOAD_PARAM` (0xA0) - operand: u8 field index
+- `FB_CALL` (0xA4) - operand: u16 type_id
 
 Well-known intrinsic type IDs (e.g., `FB_TYPE_TON: u16 = 0x0010`).
 

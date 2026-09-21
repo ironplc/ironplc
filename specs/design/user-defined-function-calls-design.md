@@ -41,7 +41,7 @@ See [ADR-0047](../../specs/adrs/0047-exact-type-matching-for-function-arguments.
 
 ### CALL opcode (not inlining)
 
-User-defined function calls use the `CALL` opcode (0xB3), already specified in the bytecode instruction set. Each function body is compiled once into the container. This avoids code bloat from inlining and cleanly models the calling semantics.
+User-defined function calls use the `CALL` opcode (0x84), already specified in the bytecode instruction set. Each function body is compiled once into the container. This avoids code bloat from inlining and cleanly models the calling semantics.
 
 ## Architecture
 
@@ -68,10 +68,10 @@ New problem codes: `FunctionCallArgTypeMismatch`, `FunctionCallReturnTypeMismatc
 
 1. Iterate `FunctionEnvironment` for non-stdlib functions. Find matching `FunctionDeclaration` in the library.
 2. Assign function IDs starting at 2 (0 = init, 1 = scan). Store name→ID mapping in `CompileContext`.
-3. For each function, compile independently with variable indices starting at 0:
-   - Parameters occupy slots 0..num_params-1
-   - Local variables occupy subsequent slots
-   - The return variable (same name as function, per IEC 61131-3) occupies one of these slots
+3. For each function, compile into its own region of the flat variable table (ADR-0046), based at the `var_offset` codegen assigns it. Indices in the emitted bytecode are absolute, not region-relative:
+   - Parameters occupy `var_offset .. var_offset + num_params`, in declaration order
+   - Local variables (VAR) occupy the slots after them
+   - The return variable (same name as function, per IEC 61131-3) occupies the last slot of the region
    - Body is compiled, then `LOAD_VAR <return_slot>` + `RET` is emitted at the end
 4. Add each function to the container via `ContainerBuilder::add_function`.
 
@@ -79,26 +79,26 @@ New problem codes: `FunctionCallArgTypeMismatch`, `FunctionCallReturnTypeMismatc
 
 1. Look up function name in the name→ID mapping
 2. Compile each positional argument using the parameter's resolved type for opcode selection
-3. Emit `CALL func_id`
+3. Emit `CALL func_id, var_offset` — `var_offset` is the base of the callee's region in the flat variable table (ADR-0046)
 4. Return value is on the stack for the caller to use
 
 ### Container
 
-**`FuncEntry` change:** Add `num_params: u16` field. The CALL opcode handler uses this to know how many values to pop from the operand stack into the function's parameter variable slots. For init/scan functions, `num_params` is 0.
+**`FuncEntry` change:** Add `num_params: u16` field. The CALL opcode handler uses this to know how many values to pop from the operand stack into the function's parameter variable slots. For init/scan functions, `num_params` is 0. The entry's full wire layout is in [Bytecode Container Format](bytecode-container-format.md) (REQ-CF-container-022).
 
 ### VM
 
-**`CALL` opcode (0xB3)** — Operand: `u16` function ID
+**`CALL` opcode (0x84)** — Operands: `u16` function ID, `u16` variable offset
 
-1. Look up `FuncEntry` by function ID (bytecode, num_locals, num_params)
-2. Allocate a variable scope region for the function (num_locals slots)
-3. Pop num_params values from the operand stack into the function's parameter slots (slots 0..num_params-1), in reverse order (last arg popped first into highest param slot)
-4. Recursively call `execute()` with the function's bytecode and new scope
-5. After `execute()` returns, the return value is on the operand stack
+1. Look up `FuncEntry` by function ID (code_offset, code_length, num_locals, num_params)
+2. Build the callee's variable scope from the `var_offset` operand — the base of its region in the flat variable table (ADR-0046) — spanning num_locals slots. The scope bounds which indices the callee may touch (its own region plus the shared globals); it does not rebase them, so the body's operands are absolute indices
+3. Pop num_params values from the operand stack into the function's parameter slots (`var_offset .. var_offset + num_params`), in reverse order, so the leftmost argument lands in the lowest slot
+4. Push a call frame for the callee onto the frame stack and continue executing at the function's bytecode; exceeding the container's declared call depth traps `V9012 CallStackOverflow`
+5. When the callee returns, the return value is on the operand stack
 
-**`RET` opcode (0xB4)** — No operands
+**`RET` opcode (0x88)** — No operands
 
-1. Return from `execute()`. The top of the operand stack holds the return value, which remains on the stack for the caller.
+1. Pop the callee's frame and resume the caller. The top of the operand stack holds the return value, which remains on the stack for the caller.
 
 ### Debug Section
 
@@ -132,13 +132,13 @@ END_PROGRAM
 
 **Container layout:**
 - Function 0 (init): program variable initializers, `RET_VOID`
-- Function 1 (scan): `LOAD_CONST 3`, `LOAD_CONST 7`, `CALL 2`, `STORE_VAR result`, `RET_VOID`
-- Function 2 (ADD_INTS): num_params=2, num_locals=3. `LOAD_VAR 0`, `LOAD_VAR 1`, `ADD_I32`, `STORE_VAR 2`, `LOAD_VAR 2`, `RET`
+- Function 1 (scan): `LOAD_CONST 3`, `LOAD_CONST 7`, `CALL 2, 1`, `STORE_VAR result`, `RET_VOID`
+- Function 2 (ADD_INTS): num_params=2, num_locals=3, var_offset=1 (slots 1-3: `A`, `B`, `ADD_INTS`). `LOAD_VAR 1`, `LOAD_VAR 2`, `ADD_I32`, `STORE_VAR 3`, `LOAD_VAR 3`, `RET`
 
-**VM execution of `CALL 2`:**
+**VM execution of `CALL 2, 1`:**
 1. Look up function 2: num_params=2, num_locals=3
-2. Allocate variable scope at next available region
-3. Pop 7 → slot 1 (B), pop 3 → slot 0 (A)
-4. Execute function 2: A + B = 10, store to slot 2, load slot 2, RET
-5. Return value 10 on stack, restore caller scope
+2. Build the callee's scope over slots 1-3 — the num_locals=3 region based at the `var_offset` operand (1)
+3. Pop 7 → slot 2 (B), pop 3 → slot 1 (A)
+4. Execute function 2: A + B = 10, store to slot 3, load slot 3, RET
+5. Return value 10 on stack, pop the callee's frame
 6. Caller stores 10 into `result`
