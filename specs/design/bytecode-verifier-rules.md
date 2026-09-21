@@ -18,7 +18,7 @@ All verifier errors use codes in the format `R####` (R0001 through R9999). Codes
 |-------|----------|
 | R0001–R0099 | Structural validity (opcodes, operands, instruction boundaries) |
 | R0100–R0199 | Type metadata consistency (constants, variables, arrays) |
-| R0200–R0299 | Stack discipline (depth, underflow, overflow) |
+| R0200–R0299 | Stack discipline (depth, underflow, overflow) of the operand stack and of the temp string buffer pool, which is also a stack |
 | R0300–R0399 | Stack type correctness |
 | R0400–R0499 | Control flow (jumps, returns, call depth) |
 | R0500–R0599 | Function block protocol |
@@ -163,6 +163,39 @@ No instruction may pop from an empty stack. The verifier checks that the stack d
 The stack depth must never exceed the function's declared `max_stack_depth` (from the code section's function directory). The verifier tracks the maximum depth reached on all paths and checks it against the declared maximum.
 
 **Error**: `R0203(offset, opcode, depth_after, declared_max)`
+
+### Rule R0204: No Temp Buffer Pool Overflow
+
+The number of temporary string buffers held live must never exceed the
+container header's `num_temp_bufs`.
+
+Temp buffers form a stack: a string-producing instruction takes the next
+slot, and `STR_STORE_VAR` / `STR_STORE_ARRAY_ELEM` hand a slot back once
+they have copied its contents into the data region
+([ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md)). The
+verifier tracks the depth of that stack on all paths, exactly as R0203
+tracks the operand stack, and checks the maximum against the declared pool.
+
+Two differences from R0203 follow from what is being counted:
+
+- The pool is sized for the whole program, not per function, so a callee's
+  depth is added to its caller's and the bound applies to the heaviest path
+  through the call graph. A function no entry point reaches never runs and
+  is not charged.
+- Temp depth may legitimately differ where two paths merge — one arm may
+  leave a string for the caller and the other not — so a merge takes the
+  larger depth rather than reporting the R0200-style conflict that
+  operand-stack depth would.
+
+**This rule is a guard around a design that would be better without it.**
+The pool exists only because the size has to be fixed at compile time, and
+any such number can be wrong. Giving string results compile-time
+data-region scratch slots — as nested string expressions already use —
+would remove `num_temp_bufs`, the allocator, the `V9009` trap and this rule
+together. Until then, this rule turns a runtime trap into a compile-time
+rejection naming the instruction.
+
+**Error**: `R0204(function_id, offset, depth, declared_pool)`
 
 ### Rule R0300: Stack Type Correctness
 
@@ -377,6 +410,7 @@ Multiple errors may be reported in a single verification pass (the verifier does
 | R0201 | Stack Type Consistency at Merge Points | Stack discipline |
 | R0202 | No Stack Underflow | Stack discipline |
 | R0203 | No Stack Overflow | Stack discipline |
+| R0204 | No Temp Buffer Pool Overflow | Stack discipline |
 | R0300 | Stack Type Correctness | Stack type correctness |
 | R0301 | Function Call Parameter Type Correctness | Stack type correctness |
 | R0302 | Field Access Type Correctness | Stack type correctness |

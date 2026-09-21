@@ -2,6 +2,7 @@
 
 status: accepted
 date: 2026-09-20
+amended: 2026-09-21 (R0204 closes the recorded gap for codegen defects)
 
 ## Context and Problem Statement
 
@@ -132,6 +133,13 @@ makes the static bound correct.
   the emitter itself, but nothing proves the header value against the
   bytecode the way `verify_stack_balance` proves operand-stack discipline.
 
+  *Amended 2026-09-21: verifier rule R0204 now does prove it, by walking
+  the shipped bytecode's control-flow graph. That closes this gap for a
+  codegen defect. It does not close it for a VM defect — R0204 models the
+  release contract this ADR specifies, so a VM that failed to honour that
+  contract would still be caught only by the runtime tests. Nor does it
+  make the pool a good idea; see the note on that below.*
+
 ### Confirmation
 
 `compiler/codegen/tests/it/end_to_end_string_loop.rs` runs the reported
@@ -175,6 +183,26 @@ is unit-tested in `compiler/vm/src/string_ops.rs`.
   the VM allocates nothing and runs in bounded time per scan.
 * Bad, because it buys nothing here. The lifetime is already statically
   evident from the instruction that consumes the value.
+
+## The design that would make this decision unnecessary
+
+Everything above is about *when* a pooled buffer is released. The deeper
+question is why the result of a string operation goes to a pool at all.
+
+Nested string expressions already spill into data-region scratch slots
+chosen at compile time — that is why `CONCAT(CONCAT(a, b), c)` needs one
+buffer rather than two, and why the operand model in
+`specs/design/bytecode-instruction-set.md` describes string function inputs
+as compile-time offsets. If a string operation's *own result* went to such a
+slot as well, `num_temp_bufs`, `max_temp_buf_bytes`, the bump allocator, its
+watermark, the `V9009` trap and verifier rule R0204 would all cease to
+exist, and a string result would be addressed the way every other piece of
+data-region storage already is.
+
+That change alters the meaning of `buf_idx` throughout the instruction set,
+so it is not made here. It is recorded because the next person to touch this
+area should know that the pool is the thing worth removing, not the thing
+worth extending.
 
 ## More Information
 

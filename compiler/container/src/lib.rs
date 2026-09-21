@@ -24,6 +24,8 @@ mod task_type;
 #[cfg(feature = "std")]
 mod builder;
 #[cfg(feature = "std")]
+mod cfg;
+#[cfg(feature = "std")]
 mod code_section;
 #[cfg(feature = "std")]
 mod constant_pool;
@@ -43,6 +45,8 @@ pub mod test_support;
 mod type_section;
 #[cfg(feature = "std")]
 pub mod verify;
+#[cfg(feature = "std")]
+pub mod verify_temp_bufs;
 
 // Always-available re-exports
 pub use char_width::CharWidth;
@@ -87,6 +91,8 @@ pub use type_section::{
 };
 #[cfg(feature = "std")]
 pub use verify::{verify_stack_balance, StackImbalance};
+#[cfg(feature = "std")]
+pub use verify_temp_bufs::{verify_temp_buffer_bound, TempBufferOverrun};
 
 // Spec conformance testing infrastructure (test-only)
 #[cfg(test)]

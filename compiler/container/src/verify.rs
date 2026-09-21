@@ -47,9 +47,10 @@ use std::fmt;
 use std::vec;
 use std::vec::Vec;
 
+use crate::cfg::{self, CfgError, Flow};
 use crate::code_section::CodeSection;
 use crate::id_types::FunctionId;
-use crate::opcode::{self, DecodeStop, Opcode};
+use crate::opcode::{self, Opcode};
 
 /// Depth the operand stack must have when a `RET` executes: the single
 /// return value the caller's `CALL` accounts for.
@@ -266,17 +267,26 @@ impl Effect {
     }
 }
 
-/// Where control can go after an instruction.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Flow {
-    /// Continue at the next instruction.
-    Next,
-    /// Continue only at the branch target.
-    Jump(isize),
-    /// Continue at either the branch target or the next instruction.
-    Branch(isize),
-    /// Leave the function, requiring this operand-stack depth.
-    Return(u16),
+/// Turns a [`CfgError`] from the shared walk into the matching
+/// [`StackImbalance`] variant, adding the function this pass is verifying.
+fn from_cfg(function_id: FunctionId, err: CfgError) -> StackImbalance {
+    match err {
+        CfgError::UnknownOpcode { offset, byte } => StackImbalance::UnknownOpcode {
+            function_id,
+            offset,
+            byte,
+        },
+        CfgError::TruncatedInstruction { offset, opcode } => StackImbalance::TruncatedInstruction {
+            function_id,
+            offset,
+            opcode,
+        },
+        CfgError::InvalidJumpTarget { offset, target } => StackImbalance::InvalidJumpTarget {
+            function_id,
+            offset,
+            target,
+        },
+    }
 }
 
 /// Verifies operand-stack discipline for every function in `code`.
@@ -310,7 +320,7 @@ fn verify_function(
     // Phase 1: instruction boundaries. Bodies are emitted as a contiguous
     // instruction stream with no interleaved data, so a linear decode from
     // offset 0 enumerates exactly the valid branch targets.
-    let boundaries = instruction_boundaries(function_id, bytecode)?;
+    let boundaries = cfg::instruction_boundaries(bytecode).map_err(|e| from_cfg(function_id, e))?;
 
     // Phase 2: abstract interpretation. `depth_at[pc]` is the operand-stack
     // depth on entry to the instruction at `pc`, once some path has reached
@@ -368,26 +378,45 @@ fn verify_function(
             });
         }
 
-        match flow_of(op, operands) {
+        match cfg::flow_of(op, operands) {
             Flow::Next => {
                 propagate(function_id, &mut depth_at, &mut work, pc + size, out)?;
             }
             Flow::Jump(target) => {
-                let target = branch_target(function_id, pc, size, target, &boundaries, len)?;
+                let target = resolve(function_id, pc, size, target, &boundaries, len)?;
                 propagate(function_id, &mut depth_at, &mut work, target, out)?;
             }
             Flow::Branch(target) => {
-                let resolved = branch_target(function_id, pc, size, target, &boundaries, len)?;
+                let resolved = resolve(function_id, pc, size, target, &boundaries, len)?;
                 propagate(function_id, &mut depth_at, &mut work, resolved, out)?;
                 propagate(function_id, &mut depth_at, &mut work, pc + size, out)?;
             }
-            Flow::Return(expected) => {
+            Flow::Return => {
+                // `flow_of` yields Return only for RET and RET_VOID, so the
+                // depth each owes follows from the opcode.
+                let expected = if op == opcode::RET {
+                    RET_DEPTH
+                } else {
+                    RET_VOID_DEPTH
+                };
                 return_check(function_id, pc, expected, out)?;
             }
         }
     }
 
     Ok(())
+}
+
+/// Resolves a branch operand, tagging any failure with this function.
+fn resolve(
+    function_id: FunctionId,
+    pc: usize,
+    size: usize,
+    relative: isize,
+    boundaries: &[bool],
+    len: usize,
+) -> Result<usize, StackImbalance> {
+    cfg::branch_target(pc, size, relative, boundaries, len).map_err(|e| from_cfg(function_id, e))
 }
 
 /// Records `depth` as the entry depth of the instruction at `target`, or
@@ -443,66 +472,6 @@ fn return_check(
 ///
 /// Branch offsets are relative to the byte *after* the i16 operand, which
 /// is the end of the instruction.
-fn branch_target(
-    function_id: FunctionId,
-    pc: usize,
-    size: usize,
-    relative: isize,
-    boundaries: &[bool],
-    len: usize,
-) -> Result<usize, StackImbalance> {
-    let target = pc as isize + size as isize + relative;
-    let invalid = StackImbalance::InvalidJumpTarget {
-        function_id,
-        offset: pc,
-        target,
-    };
-    if target < 0 || target as usize > len {
-        return Err(invalid);
-    }
-    let target = target as usize;
-    // `len` (one past the end) is a legal target: it falls off the body,
-    // which the VM treats as RET_VOID.
-    if target < len && !boundaries[target] {
-        return Err(invalid);
-    }
-    Ok(target)
-}
-
-/// Marks every byte offset that starts an instruction, by decoding the
-/// body linearly from offset 0.
-///
-/// Unlike the passes that only look for a pattern, this one rejects the
-/// container over any byte it cannot read: an offset this walk does not mark
-/// is one the abstract interpretation would refuse to branch to, so a body
-/// that does not decode cleanly cannot be verified at all.
-fn instruction_boundaries(
-    function_id: FunctionId,
-    bytecode: &[u8],
-) -> Result<Vec<bool>, StackImbalance> {
-    let mut boundaries = vec![false; bytecode.len()];
-    for decoded in opcode::decode_body(bytecode) {
-        match decoded {
-            Ok(instruction) => boundaries[instruction.offset] = true,
-            Err(DecodeStop::UnknownOpcode { offset, byte }) => {
-                return Err(StackImbalance::UnknownOpcode {
-                    function_id,
-                    offset,
-                    byte,
-                })
-            }
-            Err(DecodeStop::Truncated { offset, opcode }) => {
-                return Err(StackImbalance::TruncatedInstruction {
-                    function_id,
-                    offset,
-                    opcode,
-                })
-            }
-        }
-    }
-    Ok(boundaries)
-}
-
 /// The operand-stack depth a `METHOD_CALL` callee leaves for its caller:
 /// [`RET_DEPTH`] when the method has a return value, [`RET_VOID_DEPTH`]
 /// when it is void.
@@ -524,32 +493,6 @@ fn method_return_depth(code: &CodeSection, callee: FunctionId) -> u16 {
         RET_DEPTH
     } else {
         RET_VOID_DEPTH
-    }
-}
-
-/// Reads a little-endian `u16` from the start of `operands`.
-fn u16_at(operands: &[u8], index: usize) -> u16 {
-    u16::from_le_bytes([operands[index], operands[index + 1]])
-}
-
-/// Reads a little-endian `i16` from `operands` at `index`.
-fn i16_at(operands: &[u8], index: usize) -> i16 {
-    i16::from_le_bytes([operands[index], operands[index + 1]])
-}
-
-/// Control-flow successors of an instruction.
-///
-/// Only branch and return opcodes deviate from straight-line flow, so this
-/// match lists them explicitly and everything else falls through.
-fn flow_of(op: Opcode, operands: &[u8]) -> Flow {
-    match op {
-        opcode::JMP => Flow::Jump(i16_at(operands, 0) as isize),
-        opcode::JMP_IF_NOT => Flow::Branch(i16_at(operands, 0) as isize),
-        // CMP_BR: [cmp_op u8][var u16][const u16][target i16]
-        opcode::CMP_BR_I32 | opcode::CMP_BR_I64 => Flow::Branch(i16_at(operands, 5) as isize),
-        opcode::RET => Flow::Return(RET_DEPTH),
-        opcode::RET_VOID => Flow::Return(RET_VOID_DEPTH),
-        _ => Flow::Next,
     }
 }
 
@@ -627,7 +570,7 @@ fn effect_of(
 
         // --- Variable-effect instructions ---
         BUILTIN => {
-            let builtin_id = u16_at(operands, 0);
+            let builtin_id = cfg::u16_at(operands, 0);
             let args = opcode::builtin::arg_count_opt(builtin_id).ok_or(
                 StackImbalance::UnknownBuiltin {
                     function_id,
@@ -639,7 +582,7 @@ fn effect_of(
             Effect::new(args, 1)
         }
         CALL => {
-            let callee = FunctionId::new(u16_at(operands, 0));
+            let callee = FunctionId::new(cfg::u16_at(operands, 0));
             let entry = code
                 .get_function(callee)
                 .ok_or(StackImbalance::UnknownCallee {
@@ -652,7 +595,7 @@ fn effect_of(
             Effect::new(entry.num_params, RET_DEPTH)
         }
         METHOD_CALL => {
-            let callee = FunctionId::new(u16_at(operands, 0));
+            let callee = FunctionId::new(cfg::u16_at(operands, 0));
             let entry = code
                 .get_function(callee)
                 .ok_or(StackImbalance::UnknownCallee {
