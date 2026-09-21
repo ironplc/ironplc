@@ -277,7 +277,6 @@ fn compile_user_function_call(
             // encoding, and the copy below has to agree with it.
             let src_offset =
                 resolve_string_arg(emitter, ctx, arg, &func.name.span(), str_info.char_width)?;
-            ctx.num_temp_bufs += 1;
             emitter.emit_str_load_var(src_offset);
             emitter.emit_str_store_var(str_info.data_offset);
 
@@ -1212,7 +1211,6 @@ pub(crate) fn compile_string_conversion(
                 }
             };
             emitter.emit_builtin(func_id);
-            ctx.num_temp_bufs += 1;
             Ok(())
         }
         StringConversion::StringToNum { target } => {

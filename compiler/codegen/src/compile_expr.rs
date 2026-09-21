@@ -397,7 +397,6 @@ pub(crate) fn compile_constant(
             // emit_str_store_var to copy the value into the target data region.
             let bytes = encode_string_literal(&lit.value, NARROW_CHAR_WIDTH);
             let pool_index = ctx.add_str_constant(bytes);
-            ctx.num_temp_bufs += 1;
             emitter.emit_load_const_str(pool_index);
             Ok(())
         }
@@ -698,7 +697,6 @@ pub(crate) fn compile_variable_read(
                     ))
                 })?;
                 let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
-                ctx.num_temp_bufs += 1;
                 emitter.emit_str_load_var(byte_offset);
                 return Ok(());
             }
@@ -717,7 +715,6 @@ pub(crate) fn compile_variable_read(
             if let Some(var_name) = resolve_variable_name(variable) {
                 if let Some(info) = ctx.string_vars.get(var_name) {
                     let data_offset = info.data_offset;
-                    ctx.num_temp_bufs += 1;
                     emitter.emit_str_load_var(data_offset);
                     return Ok(());
                 }
@@ -749,7 +746,6 @@ pub(crate) fn compile_variable_read(
                         &span,
                     )?;
                     if is_string_elem {
-                        ctx.num_temp_bufs += 1;
                         emitter.emit_str_load_array_elem(arr_var_index, arr_desc_index);
                     } else {
                         emitter.emit_load_array(arr_var_index, arr_desc_index);
@@ -822,7 +818,6 @@ pub(crate) fn compile_variable_read(
                         &span,
                     )?;
                     // 3. Load string element.
-                    ctx.num_temp_bufs += 1;
                     emitter.emit_str_load_array_elem(scratch_var_index, string_desc_index);
                 }
             }

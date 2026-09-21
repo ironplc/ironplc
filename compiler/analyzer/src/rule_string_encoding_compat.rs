@@ -14,7 +14,8 @@
 //! literal that does not match its destination. Nor does it flag the results
 //! of string functions, whose encoding the analyzer collapses to a single
 //! `STRING` type name; codegen resolves one encoding per operation and reports
-//! P4034 there.
+//! P4034 there. Whether the characters of a literal fit its encoding is
+//! `rule_string_literal_char_range` (P4052).
 //!
 //! ## Fails
 //!

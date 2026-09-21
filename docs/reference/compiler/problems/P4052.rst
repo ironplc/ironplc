@@ -1,0 +1,72 @@
+=====
+P4052
+=====
+
+.. problem-summary:: P4052
+
+This error occurs when a character string literal contains a character that
+its string type cannot store.
+
+A ``STRING`` stores one byte per character, encoded as Latin-1 (ISO 8859-1).
+That covers the characters from U+0000 to U+00FF: ASCII, the Western
+European accented letters, and common symbols such as ``°``, ``±`` and
+``µ``. A ``STRING`` literal, written with single quotes, may contain only
+those characters.
+
+A ``WSTRING`` stores one 16-bit code unit per character, so it holds the
+characters of the Unicode Basic Multilingual Plane, from U+0000 to U+FFFF.
+That covers nearly every script in use, including Chinese, Japanese, Korean,
+Cyrillic, Greek and Arabic. A ``WSTRING`` literal, written with double
+quotes, may contain only those characters. Characters above U+FFFF, such as
+emoji and some rare ideographs, cannot be stored in either type.
+
+The compiler reports the error rather than storing the character's low byte,
+because doing that would silently change the value: ``'等'`` (U+7B49) would
+become ``'I'`` (U+0049), and two different literals could compare equal.
+Some other toolchains store ``?`` in place of such a character; IronPLC
+does not substitute a value it was not given.
+
+Example
+-------
+
+The following code will generate error P4052:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       name : STRING[10] := '等';  (* Error: U+7B49 does not fit in a STRING *)
+       face : WSTRING[10];
+   END_VAR
+       face := "😀";  (* Error: U+1F600 does not fit in a WSTRING *)
+   END_PROGRAM
+
+The first literal contains a Chinese character, which is above U+00FF. The
+second contains an emoji, which is above U+FFFF.
+
+To fix a ``STRING`` literal, write the text as a ``WSTRING`` literal with
+double quotes and declare the variable as ``WSTRING``:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       name : WSTRING[10] := "等";
+   END_VAR
+   END_PROGRAM
+
+A character above U+FFFF has no wider string type to move to; replace it
+with a character the ``WSTRING`` can hold.
+
+The check applies to a literal wherever it appears: in an expression, in the
+initial value of a variable, in the default of a string type declaration,
+and in the elements of an array or structure initializer.
+
+A literal's type is decided by its quotes, so a single-quoted literal is
+checked against the ``STRING`` range even when it is assigned to a
+``WSTRING`` variable. Mixing the two types is reported separately as
+:doc:`P4034 </reference/compiler/problems/P4034>`.
+
+See :doc:`/reference/language/data-types/elementary/string` and
+:doc:`/reference/language/data-types/elementary/wstring` for the two
+string types.
