@@ -577,6 +577,12 @@ pub(crate) fn var_type_info_to_type_byte(vti: &VarTypeInfo) -> u8 {
 /// order (the last dimension is contiguous). Shared by plain arrays and
 /// `REF_TO ARRAY` variables so both report the same diagnostics for arrays
 /// that are too large.
+///
+/// An array over the element limit reports P9997 (`NotSupported`) rather than
+/// P9999 (`NotImplemented`): the cap exists so that flat-index arithmetic
+/// stays within i32, which is a fixed property of the bytecode format and not
+/// a feature awaiting work. A program that reaches it has to hold less data,
+/// so promising "not yet" would be a promise the compiler cannot keep.
 pub(crate) fn compute_dimensions(
     bounds: &[(i32, i32)],
     span: &SourceSpan,
@@ -592,13 +598,13 @@ pub(crate) fn compute_dimensions(
             stride: 0,
         });
         total_elements = total_elements.checked_mul(size).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Array too large"))
+            Diagnostic::not_supported(Label::span(span.clone(), "Array too large"))
         })?;
     }
 
     // 2. Validate element limit (i32 safety for flat-index arithmetic)
     if total_elements > super::compile::MAX_DATA_REGION_SLOTS {
-        return Err(Diagnostic::not_implemented(Label::span(
+        return Err(Diagnostic::not_supported(Label::span(
             span.clone(),
             "Array exceeds maximum 32768 elements",
         )));
