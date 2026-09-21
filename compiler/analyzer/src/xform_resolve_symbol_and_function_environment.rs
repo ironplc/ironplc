@@ -718,11 +718,20 @@ END_FUNCTION_BLOCK",
 
     /// The problem codes analysis reports for `program`, in order.
     fn analyzed_codes(program: &str) -> Vec<String> {
-        let options = ironplc_parser::options::CompilerOptions::default();
+        analyzed_codes_with(
+            program,
+            &ironplc_parser::options::CompilerOptions::default(),
+        )
+    }
+
+    fn analyzed_codes_with(
+        program: &str,
+        options: &ironplc_parser::options::CompilerOptions,
+    ) -> Vec<String> {
         let library =
-            ironplc_parser::parse_program(program, &ironplc_dsl::core::FileId::default(), &options)
+            ironplc_parser::parse_program(program, &ironplc_dsl::core::FileId::default(), options)
                 .unwrap();
-        let (_library, context) = crate::stages::analyze(&[&library], &options).unwrap();
+        let (_library, context) = crate::stages::analyze(&[&library], options).unwrap();
         context
             .diagnostics()
             .iter()
@@ -957,5 +966,392 @@ END_FUNCTION";
             function_env.get(&Id::from("Foo")).unwrap().parameters.len(),
             1
         );
+    }
+
+    // -----------------------------------------------------------------
+    // Repeated variable names in one scope (P4014), through the whole
+    // pipeline. Cross-scope hiding is ADR-0051's question and stays allowed.
+    // -----------------------------------------------------------------
+
+    const CONFIG: &str = "
+CONFIGURATION config
+  VAR_GLOBAL
+    MaxSpeed : INT := 100;
+  END_VAR
+  RESOURCE res ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : main;
+  END_RESOURCE
+END_CONFIGURATION
+";
+
+    fn with_config(pou: &str) -> String {
+        format!("{CONFIG}{pou}")
+    }
+
+    fn top_level_globals() -> ironplc_parser::options::CompilerOptions {
+        ironplc_parser::options::CompilerOptions {
+            allow_top_level_var_global: true,
+            ..ironplc_parser::options::CompilerOptions::default()
+        }
+    }
+
+    fn top_level_globals_and_uptime() -> ironplc_parser::options::CompilerOptions {
+        ironplc_parser::options::CompilerOptions {
+            allow_system_uptime_global: true,
+            ..top_level_globals()
+        }
+    }
+
+    fn oop() -> ironplc_parser::options::CompilerOptions {
+        ironplc_parser::options::CompilerOptions {
+            allow_fb_inheritance: true,
+            ..ironplc_parser::options::CompilerOptions::default()
+        }
+    }
+
+    #[test]
+    fn apply_when_variable_names_unique_across_blocks_then_no_diagnostics() {
+        assert!(analyzed_codes(
+            "
+PROGRAM main
+  VAR_INPUT
+    start : BOOL;
+  END_VAR
+  VAR
+    running : BOOL;
+  END_VAR
+END_PROGRAM"
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn apply_when_variable_repeated_in_one_block_then_p4014() {
+        assert_eq!(
+            analyzed_codes(
+                "
+PROGRAM main
+  VAR
+    count : INT;
+    second : INT;
+    COUNT : BOOL;
+  END_VAR
+END_PROGRAM"
+            ),
+            [Problem::SymbolDeclDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_variable_repeated_across_blocks_then_p4014() {
+        assert_eq!(
+            analyzed_codes(
+                "
+FUNCTION_BLOCK fb
+  VAR_INPUT
+    start : BOOL;
+  END_VAR
+  VAR
+    start : INT;
+  END_VAR
+END_FUNCTION_BLOCK"
+            ),
+            [Problem::SymbolDeclDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_function_input_repeated_as_output_then_p4014() {
+        assert_eq!(
+            analyzed_codes(
+                "
+FUNCTION f : INT
+  VAR_INPUT
+    Count : INT;
+  END_VAR
+  VAR_OUTPUT
+    COUNT : INT;
+  END_VAR
+  f := Count;
+END_FUNCTION"
+            ),
+            [Problem::SymbolDeclDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_variable_declared_three_times_then_reports_each_later_one() {
+        assert_eq!(
+            analyzed_codes(
+                "
+PROGRAM main
+  VAR
+    x : INT;
+    x : INT;
+    x : INT;
+  END_VAR
+END_PROGRAM"
+            )
+            .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn apply_when_edge_variable_named_like_variable_then_p4014() {
+        assert_eq!(
+            analyzed_codes(
+                "
+FUNCTION_BLOCK fb
+  VAR_INPUT
+    trigger : BOOL R_EDGE;
+  END_VAR
+  VAR
+    trigger : INT;
+  END_VAR
+END_FUNCTION_BLOCK"
+            ),
+            [Problem::SymbolDeclDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_global_repeated_across_configuration_and_resource_then_p4014() {
+        assert_eq!(
+            analyzed_codes(
+                "
+CONFIGURATION config
+  VAR_GLOBAL
+    Limit : INT;
+  END_VAR
+  RESOURCE res ON PLC
+    VAR_GLOBAL
+      Limit : INT;
+    END_VAR
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+END_PROGRAM"
+            ),
+            [Problem::SymbolDeclDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_global_repeated_across_top_level_and_configuration_then_p4014() {
+        assert_eq!(
+            analyzed_codes_with(
+                &with_config(
+                    "
+VAR_GLOBAL
+  MaxSpeed : INT;
+END_VAR
+
+PROGRAM main
+END_PROGRAM"
+                ),
+                &top_level_globals()
+            ),
+            [Problem::SymbolDeclDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_global_constant_repeated_then_p4014_once() {
+        // The initializer-folding pass keeps its own table of constants and
+        // must not report the repeat a second time.
+        let options = ironplc_parser::options::CompilerOptions {
+            allow_constant_initializer_expressions: true,
+            ..top_level_globals()
+        };
+        assert_eq!(
+            analyzed_codes_with(
+                "
+VAR_GLOBAL CONSTANT
+  SCALE : LREAL := 2.0;
+END_VAR
+VAR_GLOBAL CONSTANT
+  SCALE : LREAL := 3.0;
+END_VAR
+PROGRAM main
+  VAR
+    d2r : LREAL := SCALE*180.0;
+  END_VAR
+END_PROGRAM",
+                &options
+            ),
+            [Problem::SymbolDeclDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_program_names_global_through_var_external_then_no_diagnostics() {
+        assert!(analyzed_codes(&with_config(
+            "
+PROGRAM main
+  VAR_EXTERNAL
+    MaxSpeed : INT;
+  END_VAR
+END_PROGRAM"
+        ))
+        .is_empty());
+    }
+
+    #[test]
+    fn apply_when_var_external_declared_twice_then_p4014() {
+        assert_eq!(
+            analyzed_codes(&with_config(
+                "
+PROGRAM main
+  VAR_EXTERNAL
+    MaxSpeed : INT;
+  END_VAR
+  VAR_EXTERNAL
+    MaxSpeed : INT;
+  END_VAR
+END_PROGRAM"
+            )),
+            [Problem::SymbolDeclDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_function_local_named_like_global_then_no_diagnostics() {
+        assert!(analyzed_codes(&with_config(
+            "
+FUNCTION f : INT
+  VAR
+    MaxSpeed : INT := 5;
+  END_VAR
+  f := MaxSpeed;
+END_FUNCTION
+
+PROGRAM main
+END_PROGRAM"
+        ))
+        .is_empty());
+    }
+
+    #[test]
+    fn apply_when_method_local_named_like_function_block_field_then_no_diagnostics() {
+        assert!(analyzed_codes_with(
+            "
+FUNCTION_BLOCK fb
+  VAR
+    speed : INT;
+  END_VAR
+  METHOD get : INT
+    VAR
+      speed : INT;
+    END_VAR
+    get := speed;
+  END_METHOD
+END_FUNCTION_BLOCK",
+            &oop()
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn apply_when_method_variable_repeated_then_p4014() {
+        assert_eq!(
+            analyzed_codes_with(
+                "
+FUNCTION_BLOCK fb
+  METHOD get : INT
+    VAR_INPUT
+      speed : INT;
+    END_VAR
+    VAR
+      speed : INT;
+    END_VAR
+    get := speed;
+  END_METHOD
+END_FUNCTION_BLOCK",
+                &oop()
+            ),
+            [Problem::SymbolDeclDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_located_variables_have_no_name_then_no_diagnostics() {
+        assert!(analyzed_codes(
+            "
+PROGRAM main
+  VAR
+    AT %IX0.0 : BOOL;
+    AT %IX0.1 : BOOL;
+  END_VAR
+END_PROGRAM"
+        )
+        .is_empty());
+    }
+
+    /// Issue #1525: a global that redeclares a compiler-provided uptime global.
+    #[test]
+    fn apply_when_global_redeclares_system_uptime_with_flag_on_then_p4014() {
+        assert_eq!(
+            analyzed_codes_with(
+                "
+VAR_GLOBAL
+  __SYSTEM_UP_TIME : TIME;
+END_VAR
+
+PROGRAM main
+  VAR
+    seen : TIME;
+  END_VAR
+  seen := __SYSTEM_UP_TIME;
+END_PROGRAM",
+                &top_level_globals_and_uptime()
+            ),
+            [Problem::SymbolDeclDuplicated.code()]
+        );
+    }
+
+    #[test]
+    fn apply_when_global_named_system_uptime_with_flag_off_then_no_diagnostics() {
+        assert!(analyzed_codes_with(
+            "
+VAR_GLOBAL
+  __SYSTEM_UP_TIME : TIME;
+END_VAR
+
+PROGRAM main
+  VAR
+    seen : TIME;
+  END_VAR
+  seen := __SYSTEM_UP_TIME;
+END_PROGRAM",
+            &top_level_globals()
+        )
+        .is_empty());
+    }
+
+    /// The primary label is on the later declaration and the secondary on
+    /// the first, so the user sees both.
+    #[test]
+    fn apply_when_variable_repeated_then_labels_point_at_both_declarations() {
+        let program = "
+PROGRAM main
+  VAR
+    count : INT;
+    COUNT : BOOL;
+  END_VAR
+END_PROGRAM";
+        let library = parse_and_resolve_types(program);
+        let mut symbol_env = SymbolEnvironment::new();
+        let mut function_env = FunctionEnvironment::new();
+        let diagnostics = apply_impl(&library, &mut symbol_env, &mut function_env);
+        assert_eq!(diagnostics.len(), 1);
+        let first = program.find("count").unwrap();
+        let second = program.find("COUNT").unwrap();
+        assert_eq!(diagnostics[0].primary.location.start, second);
+        assert_eq!(diagnostics[0].secondary[0].location.start, first);
     }
 }

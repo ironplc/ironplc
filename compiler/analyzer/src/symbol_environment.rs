@@ -102,6 +102,10 @@ pub struct SymbolInfo {
     pub address: Option<String>,
     /// Source location information
     pub span: ironplc_dsl::core::SourceSpan,
+    /// Declared by the compiler rather than by source, such as the implicit
+    /// uptime globals. There is no source location to point at, and a user
+    /// declaration of the name is reported as reserved.
+    pub compiler_provided: bool,
 }
 
 impl SymbolInfo {
@@ -117,7 +121,13 @@ impl SymbolInfo {
             variable_type: None,
             address: None,
             span,
+            compiler_provided: false,
         }
+    }
+
+    fn with_compiler_provided(mut self) -> Self {
+        self.compiler_provided = true;
+        self
     }
 
     pub fn with_external(mut self, is_external: bool) -> Self {
@@ -146,6 +156,45 @@ impl SymbolInfo {
         self.address = Some(addr);
         self
     }
+}
+
+/// Whether `kind` is a variable: the kinds a `VAR*` block declares.
+fn is_variable(kind: &SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::Variable
+            | SymbolKind::Parameter
+            | SymbolKind::OutputParameter
+            | SymbolKind::InOutParameter
+            | SymbolKind::EdgeVariable
+            | SymbolKind::Constant
+    )
+}
+
+/// The problem a second declaration of a name in one scope is: `P4014` for
+/// a variable repeating a variable, otherwise whatever a repeated global
+/// declaration is.
+fn repeated_symbol(existing: &SymbolKind, repeat: &SymbolKind) -> Option<Problem> {
+    if is_variable(existing) && is_variable(repeat) {
+        return Some(Problem::SymbolDeclDuplicated);
+    }
+    repeated_declaration(existing, repeat)
+}
+
+/// The diagnostic for a source declaration of a name the compiler provides.
+fn reserved_name(name: &Id) -> Diagnostic {
+    Diagnostic::problem(
+        Problem::SymbolDeclDuplicated,
+        Label::span(
+            name.span(),
+            "Variable name is reserved for a compiler-provided global",
+        ),
+    )
+    .with_context_id("name", name)
+    .with_help(
+        "The compiler declares this global when --allow-system-uptime-global is on. \
+         Remove the declaration to read the compiler's value, or rename the variable.",
+    )
 }
 
 /// The problem a second global declaration of a name is, when `existing`
@@ -212,42 +261,43 @@ impl SymbolEnvironment {
 
     /// Insert a symbol into the environment.
     ///
-    /// In the global scope a declaration name is declared once. A second
-    /// declaration is returned as a diagnostic (`P4013`) and the first
-    /// declaration is kept, so analysis continues on it. The type
+    /// A name declared twice in one scope is returned as a diagnostic and
+    /// the first declaration is kept, so analysis continues on it: `P4014`
+    /// for a variable repeating a variable in any scope, `P4013` for a
+    /// program or configuration repeating a global declaration. The type
     /// environment owns the same check for the kinds it holds (data types,
     /// function blocks, interfaces), so a pair of those is not reported
-    /// again here; this environment reports the pairs the type environment
-    /// never sees, those involving a program or a configuration. Every other
-    /// kind and scope is recorded without a uniqueness check, the later
-    /// declaration replacing the earlier one.
+    /// again here. Every other pair is recorded without a uniqueness check,
+    /// the later declaration replacing the earlier one.
     pub fn insert(
         &mut self,
         name: &Id,
         kind: SymbolKind,
         scope: &ScopeKind,
     ) -> Result<(), Diagnostic> {
-        let symbol_info = SymbolInfo::new(kind, scope.clone(), name.span());
+        self.insert_symbol(name, SymbolInfo::new(kind, scope.clone(), name.span()))
+    }
 
-        match scope {
-            ScopeKind::Global => {
-                if let Some(existing) = self.global_symbols.get(name) {
-                    if let Some(problem) = repeated_declaration(&existing.kind, &symbol_info.kind) {
-                        return Err(duplicate_declaration(problem, name, existing.span.clone()));
-                    }
-                }
-                self.global_symbols.insert(name.clone(), symbol_info);
-            }
-            ScopeKind::Named(_) => {
-                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
-                scope_symbols.insert(name.clone(), symbol_info);
-            }
-        }
-
-        Ok(())
+    /// Insert a symbol the compiler declares, such as an implicit global.
+    ///
+    /// A later source declaration of the name is reported as reserved rather
+    /// than as a repeat of a declaration the user could go and look at.
+    pub fn insert_compiler_provided(
+        &mut self,
+        name: &Id,
+        kind: SymbolKind,
+        scope: &ScopeKind,
+    ) -> Result<(), Diagnostic> {
+        self.insert_symbol(
+            name,
+            SymbolInfo::new(kind, scope.clone(), name.span()).with_compiler_provided(),
+        )
     }
 
     /// Insert a variable with direction and optional hardware address.
+    ///
+    /// A name already declared in the scope is returned as `P4014`, as for
+    /// [`Self::insert`].
     pub fn insert_variable(
         &mut self,
         name: &Id,
@@ -264,17 +314,25 @@ impl SymbolEnvironment {
         if variable_type == VariableType::External {
             symbol_info = symbol_info.with_external(true);
         }
+        self.insert_symbol(name, symbol_info)
+    }
 
-        match scope {
-            ScopeKind::Global => {
-                self.global_symbols.insert(name.clone(), symbol_info);
+    /// The one insertion path: checks the scope for a repeated name, then
+    /// records the symbol in that scope.
+    fn insert_symbol(&mut self, name: &Id, info: SymbolInfo) -> Result<(), Diagnostic> {
+        let symbols = match &info.scope {
+            ScopeKind::Global => &mut self.global_symbols,
+            ScopeKind::Named(_) => self.scoped_symbols.entry(info.scope.clone()).or_default(),
+        };
+        if let Some(existing) = symbols.get(name) {
+            if existing.compiler_provided && is_variable(&info.kind) {
+                return Err(reserved_name(name));
             }
-            ScopeKind::Named(_) => {
-                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
-                scope_symbols.insert(name.clone(), symbol_info);
+            if let Some(problem) = repeated_symbol(&existing.kind, &info.kind) {
+                return Err(duplicate_declaration(problem, name, existing.span.clone()));
             }
         }
-
+        symbols.insert(name.clone(), info);
         Ok(())
     }
 
@@ -645,12 +703,14 @@ mod tests {
     fn edge_cases_and_error_conditions_when_handling_edge_cases_then_handles_correctly() {
         let mut env = SymbolEnvironment::new();
 
-        // Test inserting same symbol multiple times (should not panic)
+        // A name declared twice in one scope is reported rather than
+        // silently overwriting the first declaration.
         let id = Id::from("DUPLICATE_VAR");
         env.insert(&id, SymbolKind::Variable, &ScopeKind::Global)
             .unwrap();
-        env.insert(&id, SymbolKind::Variable, &ScopeKind::Global)
-            .unwrap(); // Should not panic
+        assert!(env
+            .insert(&id, SymbolKind::Variable, &ScopeKind::Global)
+            .is_err());
 
         // Test finding symbol in wrong scope
         let global_id = Id::from("GLOBAL_ONLY");
@@ -830,6 +890,100 @@ mod tests {
         assert_eq!(error.code, Problem::PouDeclNameDuplicated.code());
     }
 
+    #[test]
+    fn insert_variable_when_name_repeated_in_scope_then_p4014_and_first_kept() {
+        let mut env = SymbolEnvironment::new();
+        let scope = ScopeKind::Named(Id::from("Unit").into());
+        env.insert_variable(
+            &Id::from("x"),
+            SymbolKind::Parameter,
+            &scope,
+            VariableType::Input,
+            None,
+        )
+        .unwrap();
+
+        let error = env
+            .insert_variable(
+                &Id::from("X"),
+                SymbolKind::Variable,
+                &scope,
+                VariableType::Var,
+                None,
+            )
+            .unwrap_err();
+
+        assert_eq!(error.code, Problem::SymbolDeclDuplicated.code());
+        let kept = env.find(&Id::from("x"), &scope).unwrap();
+        assert_eq!(kept.kind, SymbolKind::Parameter);
+    }
+
+    #[test]
+    fn insert_variable_when_same_name_in_two_scopes_then_ok() {
+        let mut env = SymbolEnvironment::new();
+        env.insert_variable(
+            &Id::from("x"),
+            SymbolKind::Variable,
+            &ScopeKind::Global,
+            VariableType::Global,
+            None,
+        )
+        .unwrap();
+
+        assert!(env
+            .insert_variable(
+                &Id::from("x"),
+                SymbolKind::Variable,
+                &ScopeKind::Named(Id::from("Unit").into()),
+                VariableType::Var,
+                None,
+            )
+            .is_ok());
+    }
+
+    #[test]
+    fn insert_variable_when_name_is_compiler_provided_then_reserved() {
+        let mut env = SymbolEnvironment::new();
+        env.insert_compiler_provided(
+            &Id::from("__SYSTEM_UP_TIME"),
+            SymbolKind::Variable,
+            &ScopeKind::Global,
+        )
+        .unwrap();
+
+        let error = env
+            .insert_variable(
+                &Id::from("__SYSTEM_UP_TIME"),
+                SymbolKind::Variable,
+                &ScopeKind::Global,
+                VariableType::Global,
+                None,
+            )
+            .unwrap_err();
+
+        assert_eq!(error.code, Problem::SymbolDeclDuplicated.code());
+        assert!(error.primary.message.contains("reserved"));
+        assert!(error.secondary.is_empty());
+    }
+
+    /// A global variable and a type of one name are different namespaces
+    /// as far as this environment is concerned; other rules decide that.
+    #[test]
+    fn insert_variable_when_name_matches_type_then_ok() {
+        let mut env = SymbolEnvironment::new();
+        global(&mut env, "T", SymbolKind::Type).unwrap();
+
+        assert!(env
+            .insert_variable(
+                &Id::from("T"),
+                SymbolKind::Variable,
+                &ScopeKind::Global,
+                VariableType::Global,
+                None,
+            )
+            .is_ok());
+    }
+
     /// An enumeration value or structure element sharing a declaration's
     /// name is not a repeated declaration; those names have their own rules.
     #[test]
@@ -841,15 +995,17 @@ mod tests {
     }
 
     #[test]
-    fn insert_when_name_repeated_in_named_scope_then_ok() {
+    fn insert_when_name_repeated_in_named_scope_then_p4014() {
         let mut env = SymbolEnvironment::new();
         let scope = ScopeKind::Named(Id::from("Unit").into());
         env.insert(&Id::from("x"), SymbolKind::Variable, &scope)
             .unwrap();
 
-        assert!(env
+        let error = env
             .insert(&Id::from("x"), SymbolKind::Variable, &scope)
-            .is_ok());
+            .unwrap_err();
+
+        assert_eq!(error.code, Problem::SymbolDeclDuplicated.code());
     }
 
     /// The innermost declaration of a name wins, so a method local
