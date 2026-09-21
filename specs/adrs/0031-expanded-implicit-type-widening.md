@@ -5,6 +5,8 @@ date: 2026-04-03
 amended: 2026-09-12 (UDINT/DWORD equal-width exception recorded; status unchanged)
 amended: 2026-09-13 (the single cross-family flag split into three, one per
 rule; status unchanged — see the amendment note at the end)
+amended: 2026-09-21 (REAL → LREAL widening recorded; status unchanged — see the
+amendment note at the end)
 
 ## Context and Problem Statement
 
@@ -44,6 +46,17 @@ An integer type can implicitly widen to a real type when all values of the sourc
 * Any integer type → LREAL (64-bit float, 52-bit mantissa)
 
 Not allowed (lossy): DINT(32), LINT(64), UDINT(32), ULINT(64) → REAL. Use explicit conversion (e.g. `DINT_TO_REAL(x)`) or widen to LREAL.
+
+#### REAL → LREAL (lossless)
+
+A REAL value can implicitly widen to LREAL. Every 32-bit float is exactly
+representable in 64-bit, so the conversion never loses a value.
+
+Not allowed (lossy): LREAL(64) → REAL(32). Use explicit conversion
+(`LREAL_TO_REAL(x)`).
+
+This arm was not part of the original decision. It shipped later and is
+recorded by *Amendment: REAL widens to LREAL*.
 
 #### Bit-string widening
 
@@ -85,7 +98,7 @@ This applies to:
 
 * **ADR-0047** (exact type matching): Still applies for non-widening cases
 * **ADR-0028** (literal type inference): Bare literal → REAL/LREAL remains as-is; bare literal → ANY_BIT is new and gated
-* **ADR-0029** (integer widening): Extended to include integer → real (lossless) and bit-string widening within ANY_BIT
+* **ADR-0029** (integer widening): Extended to include integer → real (lossless), real → real (REAL → LREAL, added by amendment) and bit-string widening within ANY_BIT
 
 ## Amendment: UDINT and DWORD widen in both directions at equal width (2026-09-12)
 
@@ -133,9 +146,10 @@ history at all, so the summary in `common.rs` is the whole of the surviving
 evidence. Extending the exception to the other equal-width pairs therefore
 means gathering that evidence again, not reasoning outward from this pair.
 
-This amendment corrects the record; the decision is unchanged. ADR-0031 is
-separately missing the REAL → LREAL arm, which shipped and is not enumerated
-here — see #1563 item 4.
+This amendment corrects the record; the decision is unchanged. ADR-0031 was
+also missing the REAL → LREAL arm when this amendment was written; that arm is
+now enumerated under Standard Widening and recorded by *Amendment: REAL widens
+to LREAL*.
 
 ## Amendment: one flag became three, one per rule (2026-09-13)
 
@@ -170,3 +184,50 @@ This is a breaking change for anyone passing `--allow-cross-family-widening`
 explicitly and relying on it for `UDINT` ↔ `DWORD` or for bare literals: those
 now need the corresponding flag as well. Dialect presets are unaffected.
 
+## Amendment: REAL widens to LREAL (2026-09-21)
+
+This ADR's Standard Widening section enumerated two arms — integer → real and
+bit-string — and the compiler has shipped a third since #1245 landed
+(`03a7c855`, 2026-07-28, roughly four months after this decision).
+`ElementaryTypeName::can_widen_to` carries a `(Real, Real)` arm allowing a
+narrower real to widen to a wider one, which for the two real types IronPLC has
+means exactly REAL → LREAL.
+
+It belongs in Standard Widening, by this ADR's own test: IEC 61131-3 places
+REAL and LREAL under ANY_REAL, and every 32-bit float is exactly representable
+in 64 bits, so the source type's full value range survives. The reverse
+direction is narrowing and stays rejected.
+
+The omission was easy to miss and hard to see through. ADR-0029 explicitly
+excluded REAL/LREAL, this ADR's Context lists five motivating cases and none of
+them is real → real, and the arm arrived in a commit titled `feat(twincat)`.
+That title describes the motivating case — a Beckhoff library function
+declaring an LREAL parameter, called with a typed REAL variable — not the
+scope. The arm went into `can_widen_to`, which no flag guards, so it applies in
+every dialect including plain `iec61131-3`. A reader taking ADR-0029 and this
+ADR together would have concluded an explicit `REAL_TO_LREAL` call was still
+required.
+
+Measured on this tree with no flags and no `--dialect` (`r : REAL := 1.5`,
+`l : LREAL`, `GivesReal`/`TakesLreal` returning and taking REAL/LREAL):
+
+| Statement | Conversion | Result |
+|---|---|---|
+| `l := r;` | REAL variable → LREAL variable | accepted |
+| `l := TakesLreal(r);` | REAL argument → LREAL parameter | accepted |
+| `l := GivesReal(r);` | REAL return → LREAL variable | accepted |
+| `r := l;` | LREAL variable → REAL variable | `P4035` |
+| `r := TakesReal(l);` | LREAL argument → REAL parameter | `P4026` |
+
+Three tests pin this. `common.rs` covers the predicate in both directions
+(`real_to_lreal` accepted, `lreal_to_real` rejected), and
+`apply_when_typed_real_var_arg_to_lreal_param_then_ok` and
+`apply_when_typed_lreal_var_arg_to_real_param_then_error` in
+`compiler/analyzer/src/rule_function_call_type_check.rs` cover both directions
+through the function-call rule, next to the bare-literal case that has always
+worked by the separate path of ADR-0028.
+
+The user documentation already described the arm (`docs/explanation/type-conversions.rst`,
+"Real widening"), though its introduction still counted three categories of
+widening while listing four below; that count is corrected alongside this
+amendment. This amendment corrects the record; the behaviour is unchanged.
