@@ -216,9 +216,6 @@ pub(crate) fn compile_replace(
     compile_expr(emitter, ctx, args[2], op_type)?;
     compile_expr(emitter, ctx, args[3], op_type)?;
 
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
-
     emitter.emit_replace_str(in1_offset, in2_offset);
     Ok(())
 }
@@ -248,9 +245,6 @@ pub(crate) fn compile_insert(
     let op_type = DEFAULT_OP_TYPE;
     compile_expr(emitter, ctx, args[2], op_type)?;
 
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
-
     emitter.emit_insert_str(in1_offset, in2_offset);
     Ok(())
 }
@@ -258,8 +252,7 @@ pub(crate) fn compile_insert(
 /// Compiles a string function call of the form `FN(IN, ARG1)`.
 ///
 /// Resolves IN to a data_offset, compiles ARG1 as an integer expression
-/// onto the stack, accounts for the result temp buffer, then emits the
-/// opcode supplied by `emit`.
+/// onto the stack, then emits the opcode supplied by `emit`.
 fn compile_string_2arg(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -279,8 +272,6 @@ fn compile_string_2arg(
     let op_type = DEFAULT_OP_TYPE;
     compile_expr(emitter, ctx, args[1], op_type)?;
 
-    ctx.num_temp_bufs += 1;
-
     emit(emitter, in_offset);
     Ok(())
 }
@@ -288,8 +279,7 @@ fn compile_string_2arg(
 /// Compiles a string function call of the form `FN(IN, ARG1, ARG2)`.
 ///
 /// Resolves IN to a data_offset, compiles ARG1 and ARG2 as integer
-/// expressions onto the stack, accounts for the result temp buffer, then
-/// emits the opcode supplied by `emit`.
+/// expressions onto the stack, then emits the opcode supplied by `emit`.
 fn compile_string_3arg(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -309,8 +299,6 @@ fn compile_string_3arg(
     let op_type = DEFAULT_OP_TYPE;
     compile_expr(emitter, ctx, args[1], op_type)?;
     compile_expr(emitter, ctx, args[2], op_type)?;
-
-    ctx.num_temp_bufs += 1;
 
     emit(emitter, in_offset);
     Ok(())
@@ -385,9 +373,6 @@ pub(crate) fn compile_concat(
     let char_width = resolve_operand_char_width(ctx, &[args[0], args[1]], &span)?;
     let in1_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
     let in2_offset = resolve_string_arg(emitter, ctx, args[1], &span, char_width)?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
 
     emitter.emit_concat_str(in1_offset, in2_offset);
     Ok(())

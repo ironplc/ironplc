@@ -2,28 +2,8 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
-use ironplc_container::STRING_HEADER_BYTES;
+use crate::common::{parse_and_run, read_string, string_offset};
 use proptest::prelude::*;
-
-/// Reads a STRING value from the data region at the given byte offset.
-fn read_string(data_region: &[u8], data_offset: usize) -> String {
-    let cur_len =
-        u16::from_le_bytes([data_region[data_offset + 2], data_region[data_offset + 3]]) as usize;
-    let data_start = data_offset + STRING_HEADER_BYTES;
-    let bytes = &data_region[data_start..data_start + cur_len];
-    bytes.iter().map(|&b| b as char).collect()
-}
-
-/// Computes the data_offset of a STRING variable given its position
-/// in the declaration order and preceding string max lengths.
-/// Each STRING variable occupies STRING_HEADER_BYTES + max_length bytes.
-fn string_offset(preceding_max_lengths: &[u16]) -> usize {
-    preceding_max_lengths
-        .iter()
-        .map(|&ml| STRING_HEADER_BYTES + ml as usize)
-        .sum()
-}
 
 /// Generates printable ASCII strings safe for IEC 61131-3 string literals.
 /// Excludes single quote (0x27) and dollar sign (0x24, the escape character).

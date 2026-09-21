@@ -1829,8 +1829,11 @@ pub struct StringDeclaration {
     /// The size of a single 'character'
     #[recurse(ignore)]
     pub width: StringType,
-    #[recurse(ignore)]
-    pub init: Option<String>,
+    /// Default value of the type. The literal's width is the declared width
+    /// (the grammar accepts either delimiter here and the declaration
+    /// decides), and it keeps its own span so a check on the literal can
+    /// point at it.
+    pub init: Option<CharacterStringLiteral>,
 }
 
 /// Location prefix for directly represented variables.
@@ -2780,9 +2783,10 @@ pub struct StringInitializer {
     #[recurse(ignore)]
     pub width: StringType,
     /// Default value of the string. If not specified, then
-    /// the default value is the empty string.
-    #[recurse(ignore)]
-    pub initial_value: Option<Vec<char>>,
+    /// the default value is the empty string. The literal keeps the width
+    /// its delimiter spelled and its own span, so a check on the literal
+    /// can point at it.
+    pub initial_value: Option<CharacterStringLiteral>,
 
     #[located(position)]
     pub keyword_span: SourceSpan,

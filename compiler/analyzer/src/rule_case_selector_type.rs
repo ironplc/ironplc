@@ -54,10 +54,10 @@
 //!     flags : WORD;
 //!     alarm : BOOL;
 //! END_VAR
-//!     CASE level OF          (* P4052: REAL is not an integer *)
+//!     CASE level OF          (* P4053: REAL is not an integer *)
 //!         1: alarm := TRUE;
 //!     END_CASE;
-//!     CASE flags OF          (* P4052: WORD is a bit string *)
+//!     CASE flags OF          (* P4053: WORD is a bit string *)
 //!         1: alarm := TRUE;
 //!     END_CASE;
 //! END_PROGRAM
@@ -201,7 +201,7 @@ END_PROGRAM"
     #[case::string("STRING")]
     #[case::time("TIME")]
     #[case::date("DATE")]
-    fn apply_when_selector_is_not_integer_then_p4052(#[case] declared_type: &str) {
+    fn apply_when_selector_is_not_integer_then_p4053(#[case] declared_type: &str) {
         let diagnostics = diagnostics_for(&program_selecting_on(declared_type));
 
         assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
@@ -295,7 +295,7 @@ END_PROGRAM"
     );
 
     rule_ctx_err1!(
-        apply_when_selector_is_alias_of_real_then_p4052,
+        apply_when_selector_is_alias_of_real_then_p4053,
         "
 TYPE
     Level : REAL := 0.0;
@@ -314,7 +314,7 @@ END_PROGRAM",
     );
 
     rule_ctx_err1!(
-        apply_when_selector_is_real_expression_then_p4052,
+        apply_when_selector_is_real_expression_then_p4053,
         "
 PROGRAM main
 VAR

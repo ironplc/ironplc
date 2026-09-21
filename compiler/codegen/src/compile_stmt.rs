@@ -426,7 +426,6 @@ fn compile_statement(
                     emitter.emit_ret();
                 }
                 Some(CurrentFunctionReturn::String { data_offset }) => {
-                    ctx.num_temp_bufs += 1;
                     emitter.emit_str_load_var(data_offset);
                     emitter.emit_ret();
                 }
@@ -890,7 +889,7 @@ fn compile_case_selector(
 /// Builds the internal error for a `CASE` whose selector is not an integer
 /// type, pointing at the selector expression.
 ///
-/// Analysis rejects such a selector (P4052) before codegen runs, so reaching
+/// Analysis rejects such a selector (P4053) before codegen runs, so reaching
 /// this is a broken invariant rather than a missing capability.
 #[track_caller]
 fn non_integer_case_selector(selector_expr: &Expr) -> Diagnostic {

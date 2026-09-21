@@ -30,7 +30,7 @@ enumerated value. Multiple values can be listed separated by commas.
 
 The selector expression must be of an integer type, a subrange of one, or an
 enumeration type. A selector of any other type, such as ``REAL`` or ``WORD``,
-is reported as :doc:`P4052 </reference/compiler/problems/P4052>`.
+is reported as :doc:`P4053 </reference/compiler/problems/P4053>`.
 
 Description
 -----------

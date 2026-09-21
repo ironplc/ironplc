@@ -101,7 +101,7 @@ END_PROGRAM
     );
 }
 
-/// Analysis rejects a `REAL` selector (P4052), so codegen treats one as a
+/// Analysis rejects a `REAL` selector (P4053), so codegen treats one as a
 /// broken invariant. These tests resolve types without running the semantic
 /// rules, which is the only way to reach it.
 #[rstest]

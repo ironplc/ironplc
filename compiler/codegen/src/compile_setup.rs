@@ -475,8 +475,8 @@ pub(crate) fn emit_initial_values(
                         // If there's an initial value, load and store it. The
                         // literal is encoded at the variable's width so the
                         // store's encoding check passes (ADR-0034).
-                        if let Some(chars) = &string_init.initial_value {
-                            emit_string_literal_load(emitter, ctx, chars, char_width);
+                        if let Some(lit) = &string_init.initial_value {
+                            emit_string_literal_load(emitter, ctx, &lit.value, char_width);
                             emitter.emit_str_store_var(data_offset);
                         }
                     }
@@ -764,8 +764,8 @@ pub(crate) fn emit_function_local_prologue(
                         let char_width = info.char_width;
                         emitter.emit_str_init(data_offset, max_length, char_width);
 
-                        if let Some(chars) = &string_init.initial_value {
-                            emit_string_literal_load(emitter, ctx, chars, char_width);
+                        if let Some(lit) = &string_init.initial_value {
+                            emit_string_literal_load(emitter, ctx, &lit.value, char_width);
                             emitter.emit_str_store_var(data_offset);
                         }
                     }

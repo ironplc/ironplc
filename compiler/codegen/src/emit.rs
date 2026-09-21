@@ -82,6 +82,12 @@ pub struct Emitter {
     bytecode: Vec<u8>,
     max_stack_depth: u16,
     current_stack_depth: u16,
+    /// Number of emitted instructions that allocate a temporary string
+    /// buffer at run time (`LOAD_CONST_STR`, `STR_LOAD_VAR`, the string
+    /// functions that produce a result, ...). Counted here, beside the
+    /// opcode that allocates, so the container header's pool size cannot
+    /// drift from the bytecode that draws on the pool.
+    temp_buf_allocs: u16,
     /// Bound positions for each label (None if not yet bound).
     labels: Vec<Option<usize>>,
     /// Jump operands that need backpatching.
@@ -191,6 +197,7 @@ impl Emitter {
             bytecode: Vec::new(),
             max_stack_depth: 0,
             current_stack_depth: 0,
+            temp_buf_allocs: 0,
             labels: Vec::new(),
             patches: Vec::new(),
             last_load: None,
@@ -558,6 +565,7 @@ impl Emitter {
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
         self.pop_stack(1);
         self.push_stack(1);
+        self.alloc_temp_buf();
     }
 
     /// Emits STR_STORE_ARRAY_ELEM with var_index and desc_index operands.
@@ -579,6 +587,9 @@ impl Emitter {
         let arg_count = opcode::builtin::arg_count(func_id);
         if arg_count > 1 {
             self.pop_stack(arg_count - 1);
+        }
+        if opcode::builtin::allocates_temp_buf(func_id) {
+            self.alloc_temp_buf();
         }
     }
 
@@ -711,6 +722,7 @@ impl Emitter {
         self.emit_opcode(opcode::LOAD_CONST_STR);
         self.bytecode.extend_from_slice(&pool_index.to_le_bytes());
         self.push_stack(1);
+        self.alloc_temp_buf();
     }
 
     /// Emits STR_STORE_VAR with a data_offset operand.
@@ -728,6 +740,7 @@ impl Emitter {
         self.emit_opcode(opcode::STR_LOAD_VAR);
         self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
         self.push_stack(1);
+        self.alloc_temp_buf();
     }
 
     /// Emits LEN_STR with a data_offset operand.
@@ -762,6 +775,7 @@ impl Emitter {
             .extend_from_slice(&in2_data_offset.to_le_bytes());
         // Net effect: pop 2 (L, P), push 1 (buf_idx) = pop 1
         self.pop_stack(1);
+        self.alloc_temp_buf();
     }
 
     /// Emits INSERT_STR with two data_offset operands.
@@ -774,6 +788,7 @@ impl Emitter {
         self.bytecode
             .extend_from_slice(&in2_data_offset.to_le_bytes());
         // Net effect: pop 1 (P), push 1 (buf_idx) = 0
+        self.alloc_temp_buf();
     }
 
     /// Emits DELETE_STR with a data_offset operand.
@@ -785,6 +800,7 @@ impl Emitter {
             .extend_from_slice(&in1_data_offset.to_le_bytes());
         // Net effect: pop 2 (L, P), push 1 (buf_idx) = pop 1
         self.pop_stack(1);
+        self.alloc_temp_buf();
     }
 
     /// Emits LEFT_STR with a data_offset operand.
@@ -795,6 +811,7 @@ impl Emitter {
         self.bytecode
             .extend_from_slice(&in_data_offset.to_le_bytes());
         // Net effect: pop 1 (L), push 1 (buf_idx) = 0
+        self.alloc_temp_buf();
     }
 
     /// Emits RIGHT_STR with a data_offset operand.
@@ -805,6 +822,7 @@ impl Emitter {
         self.bytecode
             .extend_from_slice(&in_data_offset.to_le_bytes());
         // Net effect: pop 1 (L), push 1 (buf_idx) = 0
+        self.alloc_temp_buf();
     }
 
     /// Emits MID_STR with a data_offset operand.
@@ -816,6 +834,7 @@ impl Emitter {
             .extend_from_slice(&in_data_offset.to_le_bytes());
         // Net effect: pop 2 (L, P), push 1 (buf_idx) = pop 1
         self.pop_stack(1);
+        self.alloc_temp_buf();
     }
 
     /// Emits CONCAT_STR with two data_offset operands.
@@ -827,6 +846,7 @@ impl Emitter {
         self.bytecode
             .extend_from_slice(&in2_data_offset.to_le_bytes());
         self.push_stack(1);
+        self.alloc_temp_buf();
     }
 
     /// Emits POP (discards top of stack).
@@ -1006,6 +1026,12 @@ impl Emitter {
         self.max_stack_depth
     }
 
+    /// Returns how many emitted instructions allocate a temporary string
+    /// buffer when they run.
+    pub fn temp_buf_allocs(&self) -> u16 {
+        self.temp_buf_allocs
+    }
+
     /// Returns the operand-stack depth the emitter is currently tracking.
     ///
     /// Pair with [`Self::reset_stack_depth`] around the arms of a branch.
@@ -1054,6 +1080,11 @@ impl Emitter {
 
     fn pop_stack(&mut self, count: u16) {
         self.current_stack_depth = self.current_stack_depth.saturating_sub(count);
+    }
+
+    /// Records that the instruction just emitted allocates a temp buffer.
+    fn alloc_temp_buf(&mut self) {
+        self.temp_buf_allocs = self.temp_buf_allocs.saturating_add(1);
     }
 }
 
@@ -2099,5 +2130,46 @@ mod tests {
         let second = em.take_line_map();
         assert_eq!(second.len(), 1);
         assert_eq!(second[0].source_line.raw(), 2);
+    }
+
+    #[test]
+    fn emitter_when_no_string_ops_then_zero_temp_buf_allocs() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0);
+        em.emit_store_var_i32(VarIndex::new(0));
+        em.emit_builtin(opcode::builtin::EXPT_I32);
+
+        assert_eq!(em.temp_buf_allocs(), 0);
+    }
+
+    #[test]
+    fn emitter_when_each_allocating_string_op_then_counts_one_temp_buf() {
+        let mut em = Emitter::new();
+        em.emit_load_const_str(0); // 1
+        em.emit_str_load_var(0); // 2
+        em.emit_str_load_array_elem(VarIndex::new(0), 0); // 3
+        em.emit_replace_str(0, 0); // 4
+        em.emit_insert_str(0, 0); // 5
+        em.emit_delete_str(0); // 6
+        em.emit_left_str(0); // 7
+        em.emit_right_str(0); // 8
+        em.emit_mid_str(0); // 9
+        em.emit_concat_str(0, 0); // 10
+        em.emit_builtin(opcode::builtin::CONV_I32_TO_STR); // 11
+
+        assert_eq!(em.temp_buf_allocs(), 11);
+    }
+
+    #[test]
+    fn emitter_when_string_consuming_ops_then_no_temp_buf_allocs() {
+        let mut em = Emitter::new();
+        em.emit_str_store_var(0);
+        em.emit_str_store_array_elem(VarIndex::new(0), 0);
+        em.emit_len_str(0);
+        em.emit_find_str(0, 0);
+        em.emit_builtin(opcode::builtin::CMP_STR);
+        em.emit_builtin(opcode::builtin::CONV_STR_TO_I32);
+
+        assert_eq!(em.temp_buf_allocs(), 0);
     }
 }

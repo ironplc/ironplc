@@ -4,23 +4,27 @@ P4052
 
 .. problem-summary:: P4052
 
-This error occurs when the selector of a ``CASE`` statement is not an integer
-or an enumeration.
+This error occurs when a character string literal contains a character that
+its string type cannot store.
 
-IEC 61131-3 defines the ``CASE`` statement over a selector of type ``ANY_INT``
-(``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``,
-``ULINT``) or an enumeration type. The labels of a ``CASE`` are integer
-literals, integer ranges and enumerated values, so a selector of any other
-type has no label it can be compared with. A subrange of an integer type is
-accepted, since it narrows an integer type.
+A ``STRING`` stores one byte per character, encoded as Latin-1 (ISO 8859-1).
+That covers the characters from U+0000 to U+00FF: ASCII, the Western
+European accented letters, and common symbols such as ``°``, ``±`` and
+``µ``. A ``STRING`` literal, written with single quotes, may contain only
+those characters.
 
-A ``REAL`` or ``LREAL`` selector is the usual cause. A floating-point value is
-rarely exactly equal to an integer label, so even where a compiler accepts one
-the branches seldom run as intended.
+A ``WSTRING`` stores one 16-bit code unit per character, so it holds the
+characters of the Unicode Basic Multilingual Plane, from U+0000 to U+FFFF.
+That covers nearly every script in use, including Chinese, Japanese, Korean,
+Cyrillic, Greek and Arabic. A ``WSTRING`` literal, written with double
+quotes, may contain only those characters. Characters above U+FFFF, such as
+emoji and some rare ideographs, cannot be stored in either type.
 
-The bit-string types ``BYTE``, ``WORD``, ``DWORD`` and ``LWORD`` are also
-rejected. A bit string is a pattern rather than a magnitude, and the standard
-does not list it as a ``CASE`` selector type.
+The compiler reports the error rather than storing the character's low byte,
+because doing that would silently change the value: ``'等'`` (U+7B49) would
+become ``'I'`` (U+0049), and two different literals could compare equal.
+Some other toolchains store ``?`` in place of such a character; IronPLC
+does not substitute a value it was not given.
 
 Example
 -------
@@ -31,80 +35,38 @@ The following code will generate error P4052:
 
    PROGRAM main
    VAR
-       level : REAL;
-       alarm : BOOL;
+       name : STRING[10] := '等';  (* Error: U+7B49 does not fit in a STRING *)
+       face : WSTRING[10];
    END_VAR
-       CASE level OF
-           1: alarm := TRUE;
-       END_CASE;
+       face := "😀";  (* Error: U+1F600 does not fit in a WSTRING *)
    END_PROGRAM
 
-The variable ``level`` is ``REAL``, but ``CASE`` selects on an integer or an
-enumeration.
+The first literal contains a Chinese character, which is above U+00FF. The
+second contains an emoji, which is above U+FFFF.
 
-To fix this error, select on an integer. Where the selector is a measurement,
-convert it to the integer the labels describe:
+To fix a ``STRING`` literal, write the text as a ``WSTRING`` literal with
+double quotes and declare the variable as ``WSTRING``:
 
 .. code-block::
 
    PROGRAM main
    VAR
-       level : REAL;
-       band : DINT;
-       alarm : BOOL;
+       name : WSTRING[10] := "等";
    END_VAR
-       band := REAL_TO_DINT(level);
-       CASE band OF
-           1: alarm := TRUE;
-       END_CASE;
    END_PROGRAM
 
-Where the branches describe ranges of a continuous value, an ``IF`` statement
-with comparisons says so directly:
+A character above U+FFFF has no wider string type to move to; replace it
+with a character the ``WSTRING`` can hold.
 
-.. code-block::
+The check applies to a literal wherever it appears: in an expression, in the
+initial value of a variable, in the default of a string type declaration,
+and in the elements of an array or structure initializer.
 
-   PROGRAM main
-   VAR
-       level : REAL;
-       alarm : BOOL;
-   END_VAR
-       IF level >= 0.5 AND level < 1.5 THEN
-           alarm := TRUE;
-       END_IF;
-   END_PROGRAM
+A literal's type is decided by its quotes, so a single-quoted literal is
+checked against the ``STRING`` range even when it is assigned to a
+``WSTRING`` variable. Mixing the two types is reported separately as
+:doc:`P4034 </reference/compiler/problems/P4034>`.
 
-Bit strings
------------
-
-The following code will generate error P4052:
-
-.. code-block::
-
-   PROGRAM main
-   VAR
-       flags : WORD;
-       alarm : BOOL;
-   END_VAR
-       CASE flags OF
-           1: alarm := TRUE;
-       END_CASE;
-   END_PROGRAM
-
-To fix this error, declare the selector as an integer type of the same width,
-or convert it at the ``CASE``:
-
-.. code-block::
-
-   PROGRAM main
-   VAR
-       flags : WORD;
-       alarm : BOOL;
-   END_VAR
-       CASE WORD_TO_UINT(flags) OF
-           1: alarm := TRUE;
-       END_CASE;
-   END_PROGRAM
-
-See :doc:`/reference/language/structured-text/case` for the ``CASE``
-statement.
+See :doc:`/reference/language/data-types/elementary/string` and
+:doc:`/reference/language/data-types/elementary/wstring` for the two
+string types.
