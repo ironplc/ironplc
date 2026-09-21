@@ -24,6 +24,8 @@ mod task_type;
 #[cfg(feature = "std")]
 mod builder;
 #[cfg(feature = "std")]
+mod cfg;
+#[cfg(feature = "std")]
 mod code_section;
 #[cfg(feature = "std")]
 mod constant_pool;

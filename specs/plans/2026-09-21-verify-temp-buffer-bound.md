@@ -75,19 +75,19 @@ re-confirm codegen's arithmetic rather than its output.
 
 ## Prefactoring
 
-`container/src/verify.rs` is 1258 lines, already past the 1000-line module
-limit, and the CFG machinery a second analysis needs is private to it:
-`instruction_boundaries`, `branch_target`, `flow_of`, `Flow`, `u16_at`,
-`i16_at`.
+The CFG machinery a second analysis needs is private to
+`container/src/verify.rs`: `instruction_boundaries`, `branch_target`,
+`flow_of`, `Flow`, `u16_at`, `i16_at`. Without extracting it the new rule
+would duplicate the walk, which the development standards forbid.
 
-Extract that machinery into its own module, leaving `verify_stack_balance`
-behaviourally identical and both modules under the limit. The existing
-verifier tests must pass unchanged; that is the check that the extraction
-changed shape and not behaviour.
+Extract it into its own module, leaving `verify_stack_balance`
+behaviourally identical. The existing verifier tests must pass unchanged;
+that is the check that the extraction changed shape and not behaviour.
 
-Without it the new rule would either duplicate the walk — the exact
-duplication the development standards forbid — or push a module that is
-already oversized further over.
+Size is a secondary motive and only partly served. `verify.rs` is 1258
+lines, of which roughly 580 are tests, so its code is already inside the
+1000-line limit and the extraction moves about 100 lines out. The reason to
+do it is reuse, not the line count.
 
 ## Design doc reference
 
