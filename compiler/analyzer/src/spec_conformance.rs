@@ -377,6 +377,22 @@ fn analyzer_spec_req_cl_007_same_scope_redeclaration_is_duplicate() {
             .any(|c| c.as_str() == Problem::FunctionDeclNameDuplicated.code()),
         "a redeclared library function must be a duplicate (P4016), got {codes:?}"
     );
+
+    // The same for a global: the user's own PI repeats the library's.
+    let library = pi_library(&options);
+    let user = parse_program(
+        "VAR_GLOBAL CONSTANT PI : LREAL := 3.0; END_VAR",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    let (_lib, ctx) = analyze(&[&library, &user], &options).unwrap();
+    let codes: Vec<&String> = ctx.diagnostics().iter().map(|d| &d.code).collect();
+    assert_eq!(
+        codes,
+        [Problem::SymbolDeclDuplicated.code()],
+        "a redeclared library global must be one duplicate (P4014)"
+    );
 }
 
 /// REQ-CL-analyzer-006: Selecting a dialect does not activate any compatibility
