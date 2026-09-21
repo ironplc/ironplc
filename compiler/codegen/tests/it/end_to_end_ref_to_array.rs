@@ -173,3 +173,29 @@ END_PROGRAM
 ",
     &[(2, 42)],
 );
+
+// A named reference type whose target is itself a named array type reaches
+// codegen with the named target, so it takes the same path.
+// var layout: arr=0, pt=1, v=2
+e2e_i32_with!(
+    end_to_end_when_ref_type_alias_of_named_array_type_then_reads_element,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
+TYPE
+  ARR4 : ARRAY[0..3] OF INT;
+  ArrRef : REF_TO ARR4;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARR4;
+    pt : ArrRef;
+    v : INT;
+  END_VAR
+  arr[0] := 12;
+  pt := REF(arr);
+  v := pt^[0];
+END_PROGRAM
+",
+    &[(2, 12)],
+);
