@@ -7,16 +7,32 @@
 //! (e.g. `scaled : LREAL := SCALE*4.0;`). The parser accepts this broader
 //! form unconditionally, producing `InitialValueAssignmentKind::SimpleExpr`
 //! — a placeholder that this pass always normalizes away before any other
-//! semantic pass runs:
+//! semantic pass runs, so that no downstream pass ever sees `SimpleExpr`.
+//! Two independent questions decide what the normalized `Simple` looks
+//! like:
 //!
-//! - If the expression fully reduces to a constant (substituting references
-//!   to known `CONSTANT`-qualified declarations, then folding arithmetic),
-//!   it is rewritten to the ordinary `InitialValueAssignmentKind::Simple`
-//!   shape.
-//! - Otherwise (the expression references a non-constant, or
-//!   `--allow-constant-initializer-expressions` is disabled), a diagnostic
-//!   is emitted and the initializer is normalized to an uninitialized
-//!   `Simple` so downstream passes never see `SimpleExpr`.
+//! - **Is the expression allowed here?** With
+//!   `--allow-constant-initializer-expressions` disabled, every `SimpleExpr`
+//!   is diagnosed (P4037) whatever it contains. With it enabled, only an
+//!   expression that fails to reduce is diagnosed (P4038, or P4039/P4040
+//!   when the fold itself has no defined result).
+//! - **Does it reduce?** Substituting references to known
+//!   `CONSTANT`-qualified declarations and then folding arithmetic either
+//!   yields a constant or does not. When it does, the resulting `Simple`
+//!   carries that value — *including* when the flag is off and P4037 has
+//!   already failed the build. Only an expression that does not reduce
+//!   normalizes to an uninitialized `Simple`.
+//!
+//! Folding an initializer the flag has already rejected looks pointless,
+//! since the build fails either way. It is what stops a `VAR CONSTANT` from
+//! *also* being reported as uninitialized (P4008) when it plainly carries an
+//! initializer; that cascade belongs to the unfoldable case alone, in either
+//! flag state.
+//!
+//! One asymmetry follows from the order the disabled-flag arm works in: it
+//! diagnoses first, then folds, and keeps only the fold's outcome, not its
+//! error. So `bad : INT := 10/ZERO` reports P4037 alone there, where the
+//! enabled arm reports P4039.
 //!
 //! ## Before
 //!
