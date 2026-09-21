@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_compile;
+use crate::common::{parse_and_compile, try_parse_and_compile};
 
 #[test]
 fn compile_when_struct_var_with_init_then_allocates_data_region() {
@@ -373,4 +373,57 @@ END_PROGRAM
     let desc = wstr_desc.unwrap();
     assert_eq!(desc.total_elements, 3);
     assert_eq!(desc.element_extra, 10);
+}
+
+/// Compiles `source` with default options and asserts codegen rejects it with
+/// `expected_code`.
+fn assert_codegen_rejects_with(source: &str, what: &str, expected_code: &str) {
+    let result = try_parse_and_compile(source, &CompilerOptions::default());
+    assert!(result.is_err(), "expected compilation to fail for {}", what);
+    assert_eq!(result.unwrap_err().code, expected_code, "for {}", what);
+}
+
+// A structure over the slot limit reaches a fixed property of the bytecode
+// format -- the same one an array reaches -- so it reports P9997
+// (NotSupported) rather than P9999 (NotImplemented).
+#[test]
+fn compile_when_struct_exceeds_slot_limit_then_not_supported() {
+    assert_codegen_rejects_with(
+        "
+TYPE Readings : STRUCT
+  samples : ARRAY[1..40000] OF DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    r : Readings;
+  END_VAR
+END_PROGRAM
+",
+        "a structure over the slot limit",
+        "P9997",
+    );
+}
+
+// The counterpart guard: a field type the compiler does not handle *yet* is
+// not a capacity limit, so the sweep to P9997 must leave it reporting P9999.
+#[test]
+fn compile_when_struct_has_function_block_field_then_not_implemented() {
+    assert_codegen_rejects_with(
+        "
+TYPE Gate : STRUCT
+  timer : TON;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    g : Gate;
+  END_VAR
+END_PROGRAM
+",
+        "a structure holding a function block",
+        "P9999",
+    );
 }
