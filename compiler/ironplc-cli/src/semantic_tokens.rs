@@ -572,7 +572,22 @@ END_CONFIGURATION"#;
         let missing: Vec<&TokenType> = DROPPED.iter().filter(|t| !lexed.contains(t)).collect();
         assert!(missing.is_empty(), "the source never lexes {missing:?}");
 
-        let actual = tags(SOURCE, &to_semantic_tokens(tokens));
+        let semantic = to_semantic_tokens(tokens);
+
+        // A token's length must cover exactly its lexeme: a `//` comment used
+        // to carry its line terminator, so its highlight ran past the line.
+        let overlong: Vec<(&str, u32)> = resolve_lsp_tokens(SOURCE, &semantic)
+            .iter()
+            .zip(&semantic)
+            .filter(|((_, _, lexeme, _), t)| t.length as usize != lexeme.len())
+            .map(|((_, _, lexeme, _), t)| (*lexeme, t.length))
+            .collect();
+        assert!(
+            overlong.is_empty(),
+            "token length does not match its lexeme: {overlong:?}"
+        );
+
+        let actual = tags(SOURCE, &semantic);
 
         let first_diff = actual.iter().zip(EXPECTED).position(|(a, e)| a != e);
         assert!(
