@@ -8,11 +8,19 @@
 //! The one exception is an instance the caller passes in through
 //! `VAR_IN_OUT`, which Ed.3 permits because the state stays the caller's.
 //!
-//! Only functions can break the hierarchy in this syntax: a program is not a
-//! type and cannot be invoked, so nothing declares or calls one. The rule
-//! therefore looks inside functions only. Each offending declaration is
-//! reported, and so is each invocation of it and each method call on it, so
-//! both the declaration and every call site are marked.
+//! Only a function can break the hierarchy in a way this rule has to find.
+//! The other direction, a function or function block reaching for a program,
+//! cannot be written: a program is not a type, so naming one as a variable
+//! type is an undeclared type (`P2008`), and invoking one names no variable
+//! in scope (`P4012`). A program is instantiated only by a `PROGRAM ... WITH`
+//! in a resource. `stages.rs` pins that, since it holds for the whole
+//! pipeline rather than for this rule.
+//!
+//! This rule therefore reports only what a function declares and calls: each
+//! offending declaration, and each invocation of it and method call on it, so
+//! both the declaration and every call site are marked. Function block and
+//! program bodies are walked like any other, and yield nothing because the
+//! rule only records instances while inside a function.
 //!
 //! ## Passes
 //!
@@ -158,23 +166,6 @@ impl Visitor<Infallible> for RulePouHierarchy {
         let result = node.recurse_visit(self);
         self.function = None;
         result
-    }
-
-    // A function block or program may declare and invoke function blocks,
-    // and a function cannot be nested in either, so there is nothing to
-    // find inside them.
-    fn visit_function_block_declaration(
-        &mut self,
-        _node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        Ok(())
-    }
-
-    fn visit_program_declaration(
-        &mut self,
-        _node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        Ok(())
     }
 
     fn visit_fb_call(&mut self, node: &FbCall) -> Result<Self::Value, Infallible> {
