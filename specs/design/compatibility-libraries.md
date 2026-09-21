@@ -168,8 +168,19 @@ Testable behavior:
 - **REQ-CL-analyzer-003** When a math compatibility library is active, `PI`
   resolves as a constant and folds at compile time, so it is usable in a `VAR`
   initializer (e.g. `d2r : LREAL := PI/180.0;`).
-- **REQ-CL-analyzer-004** A user declaration shadows an activated library
-  declaration of the same name.
+- **REQ-CL-analyzer-004** A declaration in a function, function block or
+  method hides an activated library global of the same name within that
+  unit, as it hides any global (ADR-0051).
+- **REQ-CL-analyzer-007** An activated library's declarations merge as
+  ordinary source: a user declaration of the same name in the same scope is
+  a duplicate and is diagnosed as one.
+
+Library declarations are not special. Before `REQ-CL-analyzer-007`, a user
+function named like a library function caused the library's function to be
+dropped before the merge, so the user's won silently. That let a library
+body that called the dropped function call the user's version instead, with
+whatever signature and behaviour that had. A user who does not want a
+library's declaration does not activate the library, or renames their own.
 
 ### Activation channels
 
