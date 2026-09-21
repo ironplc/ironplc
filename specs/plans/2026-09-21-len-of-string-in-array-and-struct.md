@@ -79,12 +79,12 @@ field clippy reports as dead.
 
 ## Tasks
 
-- [ ] Widen the string-expression walk to `StringShape`
-- [ ] Size the operand temporary from the shape
-- [ ] Cover `LEN` of a `STRING`/`WSTRING` array element and structure field,
+- [x] Widen the string-expression walk to `StringShape`
+- [x] Size the operand temporary from the shape
+- [x] Cover `LEN` of a `STRING`/`WSTRING` array element and structure field,
       including a capacity above 254 in each shape
-- [ ] De-stage the `ARRAY OF STRING` copy test and delete its citation
-- [ ] `cd compiler && just`
+- [x] De-stage the `ARRAY OF STRING` copy test and delete its citation
+- [x] `cd compiler && just`
 
 ## Out of scope
 
@@ -93,4 +93,4 @@ analyzer and reaches codegen, which reads the first element's header and
 returns a number. The cause is general rather than string-specific: an
 expression whose type is an anonymous array gets no `resolved_type`, so
 `rule_function_call_type_check` skips it and `ABS(a)` and `n := a` are accepted
-too. Filed separately.
+too. Filed as #1761.
