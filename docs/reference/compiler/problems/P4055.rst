@@ -1,0 +1,50 @@
+=====
+P4055
+=====
+
+.. problem-summary:: P4055
+
+This error occurs when a member of an enumeration declaration is given an
+explicit value (e.g. ``TYPE E_ModeLanguage : (Deutsch := 1, English := 2);
+END_TYPE``) without the ``--allow-enum-explicit-values`` compiler flag.
+
+The IEC 61131-3:2003 (Edition 2) grammar for an enumerated specification
+(Annex B) is ``enumerated_specification ::= '(' enumerated_value {','
+enumerated_value} ')' | enumerated_type_name``, where an ``enumerated_value``
+is a name and nothing else — the members take consecutive values starting at
+zero, and there is no way to say otherwise. Assigning a member its own value
+was added in IEC 61131-3:2013 (Edition 3), and CODESYS, TwinCAT and RuSTy
+accept it as well.
+
+A declaration whose members are all bare names is Edition 2 syntax and is
+always allowed, as is a default value (``:= GREEN``), which selects the
+initial member rather than renumbering one.
+
+Example
+-------
+
+The following code will generate error P4055:
+
+.. code-block::
+
+   TYPE
+       E_ModeLanguage : (Deutsch := 1, English := 2);
+   END_TYPE
+
+To fix this error, let the members take their declaration order:
+
+.. code-block::
+
+   TYPE
+       E_ModeLanguage : (Deutsch, English);
+   END_TYPE
+
+That changes the values: ``Deutsch`` becomes 0 and ``English`` becomes 1. When
+the specific numbers matter — because the values are exchanged with another
+system, or an existing value has to stay put as members are added — enable the
+extension instead.
+
+Or enable the extension:
+
+.. |flag| replace:: ``--allow-enum-explicit-values``
+.. include:: /includes/enabled-by-flag.rst

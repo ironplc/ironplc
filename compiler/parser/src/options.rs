@@ -479,6 +479,11 @@ define_compiler_options! {
     [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
     allow_fb_inheritance,
 
+    "Allow explicit per-member values in an enumeration declaration, e.g. (Deutsch := 1, English := 2) (standardized in IEC 61131-3:2013)",
+    "--allow-enum-explicit-values",
+    [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
+    allow_enum_explicit_values,
+
     policies {
         "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",
         "--policy-string-to-num-non-numeric",
@@ -576,9 +581,9 @@ mod tests {
 
     /// IEC 61131-3 Ed. 3 is a preset assembled from the descriptors tagged with
     /// `Iec61131_3Ed3`: the long-time-type keywords, the `REF_TO`/`REF`/`NULL`
-    /// reference keywords, partial-access syntax, and the object-oriented
-    /// syntax (`allow_fb_inheritance`) that is the headline addition of the
-    /// 2013 edition.
+    /// reference keywords, partial-access syntax, explicit enumeration member
+    /// values, and the object-oriented syntax (`allow_fb_inheritance`) that is
+    /// the headline addition of the 2013 edition.
     #[test]
     fn ed3_dialect_enables_edition3_descriptors() {
         assert_enabled_flags(
@@ -588,6 +593,7 @@ mod tests {
                 "allow_ref_to",
                 "allow_partial_access_syntax",
                 "allow_fb_inheritance",
+                "allow_enum_explicit_values",
             ],
         );
     }
@@ -625,6 +631,7 @@ mod tests {
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
                 "allow_fb_inheritance",
+                "allow_enum_explicit_values",
             ],
         );
     }
@@ -670,6 +677,7 @@ mod tests {
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
                 "allow_fb_inheritance",
+                "allow_enum_explicit_values",
             ],
         );
     }
@@ -715,6 +723,7 @@ mod tests {
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
                 "allow_fb_inheritance",
+                "allow_enum_explicit_values",
             ],
         );
     }
