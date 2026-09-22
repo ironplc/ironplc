@@ -282,6 +282,16 @@ Options
    ``--dialect=iec61131-3-ed3``, ``--dialect=rusty``, ``--dialect=codesys``,
    and ``--dialect=twincat``.
 
+``--allow-enum-explicit-values``
+   Allow a member of an enumeration declaration to be given an explicit value
+   (e.g. ``(Deutsch := 1, English := 2)``). The IEC 61131-3:2003 (Edition 2)
+   grammar lets an enumeration list only bare member names, which take
+   consecutive values from zero; explicit values were added in Edition 3 and
+   are accepted by the vendor dialects. Produces
+   :doc:`P4055 </reference/compiler/problems/P4055>` when used without this
+   flag. Enabled by ``--dialect=iec61131-3-ed3``, ``--dialect=rusty``,
+   ``--dialect=codesys``, and ``--dialect=twincat``.
+
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
    Select what ``STRING_TO_<numeric>`` treats as convertible when the string
    has non-numeric characters: ``reject`` (the whole string must be a
