@@ -292,6 +292,18 @@ Options
    flag. Enabled by ``--dialect=iec61131-3-ed3``, ``--dialect=rusty``,
    ``--dialect=codesys``, and ``--dialect=twincat``.
 
+``--allow-enum-base-type``
+   Allow the base-type suffix on an enumeration declaration (e.g.
+   ``(A, B) WORD``), naming the elementary type the members are stored in.
+   IEC 61131-3 has no such form — nothing may follow an enumerated
+   specification — so the suffix is a CODESYS/TwinCAT extension. Without it
+   the compiler picks the smallest type that holds every member's value.
+   Produces :doc:`P4056 </reference/compiler/problems/P4056>` when used
+   without this flag. Enabled by ``--dialect=rusty``, ``--dialect=codesys``,
+   and ``--dialect=twincat``; unlike
+   ``--allow-enum-explicit-values`` it is *not* Edition 3 syntax, so
+   ``--dialect=iec61131-3-ed3`` does not enable it.
+
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
    Select what ``STRING_TO_<numeric>`` treats as convertible when the string
    has non-numeric characters: ``reject`` (the whole string must be a

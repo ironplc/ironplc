@@ -63,7 +63,8 @@ Supported Dialects
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``,
-   ``--allow-fb-inheritance``, and ``--allow-enum-explicit-values``.
+   ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``, and
+   ``--allow-enum-base-type``.
 
    **Selects:** ``--policy-string-to-num-non-numeric reject`` and
    ``--policy-string-to-num-failure zero`` — RuSTy rejects a string with
@@ -96,7 +97,8 @@ Supported Dialects
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``,
-   ``--allow-fb-inheritance``, and ``--allow-enum-explicit-values``.
+   ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``, and
+   ``--allow-enum-base-type``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero`` — CODESYS stops parsing at the
@@ -137,7 +139,8 @@ Supported Dialects
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``,
-   ``--allow-fb-inheritance``, and ``--allow-enum-explicit-values``.
+   ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``, and
+   ``--allow-enum-base-type``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero``, as ``codesys``.
@@ -457,6 +460,19 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    names is standard syntax and is always allowed, as is a default value
    (``(RED, GREEN, BLUE) := GREEN``), which selects the initial member rather
    than renumbering one.
+
+``--allow-enum-base-type``
+   Allow the base-type suffix on an :doc:`enumeration
+   </reference/language/data-types/derived/enumerated-types>` declaration
+   (e.g. ``(A, B) WORD``), naming the elementary type the members are stored
+   in. IEC 61131-3 has no such form — an enumerated specification is a list
+   of member names or another enumerated type's name, and nothing may follow
+   it — so the suffix is a CODESYS/TwinCAT extension. Without this flag it
+   produces :doc:`P4056 </reference/compiler/problems/P4056>`, and the
+   compiler sizes the type from the members instead. Note that this is not
+   Edition 3 syntax, so ``iec61131-3-ed3`` does not enable it, which is where
+   it differs from ``--allow-enum-explicit-values`` above — the two often
+   appear together in vendor code but are separate questions.
 
 Pass the flag when running :program:`ironplcc`:
 

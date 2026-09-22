@@ -82,6 +82,7 @@ Base Type
 A declaration can name the elementary type the members are stored in:
 
 .. playground::
+   :allows: enum-base-type
 
    TYPE
        Color : (Red, Green, Blue) INT;
@@ -98,9 +99,13 @@ A declaration can name the elementary type the members are stored in:
    END_PROGRAM
 
 Without it, IronPLC picks the smallest type that holds every member's value.
-The suffix is a CODESYS/TwinCAT extension beyond IEC 61131-3 rather than
-standard syntax; IronPLC currently accepts it under every dialect, including
-strict Edition 2.
+
+The suffix is a CODESYS/TwinCAT extension beyond IEC 61131-3, so the default
+strict Edition 2 dialect rejects it with
+:doc:`/reference/compiler/problems/P4056`. Unlike explicit values it is not
+Edition 3 syntax either, so ``iec61131-3-ed3`` does not accept it — select a
+vendor dialect or pass ``--allow-enum-base-type``, and see
+:doc:`/explanation/enabling-dialects-and-features`.
 
 Related Problem Codes
 ---------------------
@@ -108,6 +113,8 @@ Related Problem Codes
 - :doc:`/reference/compiler/problems/P2003` — Duplicate enumeration value
 - :doc:`/reference/compiler/problems/P4055` — Explicit enumeration member
   value requires a dialect or flag
+- :doc:`/reference/compiler/problems/P4056` — Enumeration base-type suffix
+  requires a dialect or flag
 
 See Also
 --------

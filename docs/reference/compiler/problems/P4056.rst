@@ -1,0 +1,50 @@
+=====
+P4056
+=====
+
+.. problem-summary:: P4056
+
+This error occurs when an enumeration declaration carries a base-type suffix
+(e.g. ``TYPE E_Small : (A, B) WORD; END_TYPE``) without the
+``--allow-enum-base-type`` compiler flag.
+
+The suffix names the elementary type the members are stored in. IEC 61131-3
+has no such form: its ``enumerated_specification`` (Annex B) is a
+parenthesized list of member names or the name of another enumerated type,
+and nothing may follow it. The suffix is a CODESYS and TwinCAT extension.
+
+Unlike explicit member values, which
+:doc:`P4055 </reference/compiler/problems/P4055>` gates, this is *not* an
+Edition 3 addition — selecting ``--dialect=iec61131-3-ed3`` does not enable
+it. The two constructs often appear together in vendor code but answer
+different questions about the standard.
+
+Example
+-------
+
+The following code will generate error P4056:
+
+.. code-block::
+
+   TYPE
+       E_Small : (A, B) WORD;
+   END_TYPE
+
+To fix this error, drop the suffix and let the compiler size the type:
+
+.. code-block::
+
+   TYPE
+       E_Small : (A, B);
+   END_TYPE
+
+IronPLC then picks the smallest elementary type that holds every member's
+value, so ``(A, B)`` occupies one byte where ``(A, B) WORD`` asked for two.
+Automatic sizing is what every other IEC 61131-3 enumeration gets, and it is
+the right answer unless a fixed width is part of an interface the program
+does not control.
+
+Or enable the extension:
+
+.. |flag| replace:: ``--allow-enum-base-type``
+.. include:: /includes/enabled-by-flag.rst

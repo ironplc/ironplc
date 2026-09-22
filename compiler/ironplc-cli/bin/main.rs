@@ -275,6 +275,12 @@ struct FileArgs {
     #[arg(long)]
     allow_enum_explicit_values: bool,
 
+    /// Allow the base-type suffix on an enumeration declaration (e.g.
+    /// `(A, B) WORD`), naming the elementary type the members are stored in.
+    /// This is a dialect extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_enum_base_type: bool,
+
     /// What STRING_TO_<numeric> treats as convertible when the string has
     /// non-numeric characters. A behavior policy: the dialect selects an
     /// alternative and this flag replaces it.
@@ -332,6 +338,7 @@ impl FileArgs {
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
         options.allow_fb_inheritance |= self.allow_fb_inheritance;
         options.allow_enum_explicit_values |= self.allow_enum_explicit_values;
+        options.allow_enum_base_type |= self.allow_enum_base_type;
         options
     }
 }
