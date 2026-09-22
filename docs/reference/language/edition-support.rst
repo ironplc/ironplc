@@ -67,6 +67,10 @@ Edition 3 introduced the following features, which require
      - Object orientation
      - Name the instance a method runs on, or that instance seen as its
        base type
+   * - :doc:`Explicit enumeration values <data-types/derived/enumerated-types>`
+     - Data type
+     - Give an enumeration member its own value instead of the one its
+       declaration order implies
 
 Edition 2 (2003) Features
 =========================

@@ -576,3 +576,70 @@ END_PROGRAM
         });
     assert_eq!(desc.element_type, 3);
 }
+
+/// Compiles `source` with default options and asserts codegen rejects it with
+/// `expected_code`.
+fn assert_codegen_rejects_with(source: &str, what: &str, expected_code: &str) {
+    let result = try_parse_and_compile(source, &CompilerOptions::default());
+    assert!(result.is_err(), "expected compilation to fail for {}", what);
+    assert_eq!(result.unwrap_err().code, expected_code, "for {}", what);
+}
+
+// The element cap, the data region ceiling and the arithmetic that enforces
+// them are fixed properties of the bytecode format, not features awaiting
+// work, so an array that reaches one reports P9997 (NotSupported). P9999
+// (NotImplemented) promises "not yet", which is a promise no later release
+// can keep here -- and an array of a primitive type has to report the same
+// code as the array of structures that reaches the identical limit.
+
+// This is the array-of-a-primitive example in
+// docs/reference/compiler/problems/P9997.rst; keep the two in step.
+#[test]
+fn compile_when_array_exceeds_element_limit_then_not_supported() {
+    assert_codegen_rejects_with(
+        "
+PROGRAM main
+  VAR
+    readings : ARRAY[1..40000] OF DINT;
+  END_VAR
+END_PROGRAM
+",
+        "an array over the element limit",
+        "P9997",
+    );
+}
+
+#[test]
+fn compile_when_multidim_array_exceeds_element_limit_then_not_supported() {
+    // 200 * 200 = 40000 elements: each dimension is small, their product is
+    // not, so this reaches the cap only after the dimensions are multiplied
+    // out.
+    assert_codegen_rejects_with(
+        "
+PROGRAM main
+  VAR
+    grid : ARRAY[1..200, 1..200] OF DINT;
+  END_VAR
+END_PROGRAM
+",
+        "a multidimensional array over the element limit",
+        "P9997",
+    );
+}
+
+#[test]
+fn compile_when_array_of_string_exceeds_element_limit_then_not_supported() {
+    // STRING elements take a different sizing path (a per-element stride
+    // rather than 8 bytes a slot) but the same element cap.
+    assert_codegen_rejects_with(
+        "
+PROGRAM main
+  VAR
+    names : ARRAY[1..40000] OF STRING[10];
+  END_VAR
+END_PROGRAM
+",
+        "an array of STRING over the element limit",
+        "P9997",
+    );
+}
