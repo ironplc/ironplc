@@ -32,6 +32,7 @@ mod rule_bit_and_partial_access_range;
 mod rule_case_bit_string_label;
 mod rule_case_selector_type;
 mod rule_constant_range;
+mod rule_date_literal_range;
 mod rule_decl_struct_element_unique_names;
 mod rule_enum_base_type_allowed;
 mod rule_enum_explicit_value_allowed;

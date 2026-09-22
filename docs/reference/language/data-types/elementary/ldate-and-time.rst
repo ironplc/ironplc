@@ -10,13 +10,19 @@ LDATE_AND_TIME
    :widths: 30 70
 
    * - **Size**
-     - 64 bits (millisecond resolution)
+     - 64 bits (second resolution)
    * - **Default**
-     - ``LDT#0001-01-01-00:00:00``
+     - ``LDT#1970-01-01-00:00:00``
+   * - **Range**
+     - ``LDT#1970-01-01-00:00:00`` to ``LDT#2106-02-07-06:28:15``
    * - **IEC 61131-3**
      - Section 2.3.1 (Edition 3)
    * - **Support**
      - Supported (:doc:`Edition 3 </reference/language/edition-support>`)
+
+A date is stored as a count of seconds since 1970-01-01, so a literal
+outside ``LDT#1970-01-01-00:00:00`` to ``LDT#2106-02-07-06:28:15`` is reported as
+:doc:`P2038 </reference/compiler/problems/P2038>`.
 
 Literals
 --------
