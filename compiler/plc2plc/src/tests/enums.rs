@@ -23,6 +23,8 @@ END_TYPE
 
 #[test]
 fn write_to_string_when_enum_base_type_suffix_then_round_trips() {
+    // This snippet needs both enum flags: the suffix and the explicit values
+    // are separate extensions that happen to appear together in vendor code.
     assert_round_trips(
         "
 TYPE
@@ -31,6 +33,7 @@ END_TYPE
 ",
         &CompilerOptions {
             allow_enum_explicit_values: true,
+            allow_enum_base_type: true,
             ..CompilerOptions::default()
         },
     );

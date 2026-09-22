@@ -120,3 +120,4 @@ P4052,StringLiteralCharOutOfRange,Character string literal contains a character 
 P4053,CaseSelectorTypeInvalid,CASE selector is not an integer or enumeration type
 P4054,FunctionBlockInFunction,Function declares or invokes a function block instance
 P4055,EnumExplicitValueNotAllowed,Explicit enumeration member value requires choosing a dialect or --allow-enum-explicit-values flag
+P4056,EnumBaseTypeNotAllowed,Enumeration base-type suffix requires choosing a dialect or --allow-enum-base-type flag

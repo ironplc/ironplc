@@ -484,6 +484,11 @@ define_compiler_options! {
     [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
     allow_enum_explicit_values,
 
+    "Allow the base-type suffix on an enumeration declaration, e.g. (A, B) WORD, naming the elementary type the members are stored in",
+    "--allow-enum-base-type",
+    [Rusty, Codesys, TwinCat],
+    allow_enum_base_type,
+
     policies {
         "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",
         "--policy-string-to-num-non-numeric",
@@ -632,6 +637,7 @@ mod tests {
                 "allow_struct_initializer_expressions",
                 "allow_fb_inheritance",
                 "allow_enum_explicit_values",
+                "allow_enum_base_type",
             ],
         );
     }
@@ -678,6 +684,7 @@ mod tests {
                 "allow_struct_initializer_expressions",
                 "allow_fb_inheritance",
                 "allow_enum_explicit_values",
+                "allow_enum_base_type",
             ],
         );
     }
@@ -724,6 +731,7 @@ mod tests {
                 "allow_struct_initializer_expressions",
                 "allow_fb_inheritance",
                 "allow_enum_explicit_values",
+                "allow_enum_base_type",
             ],
         );
     }
