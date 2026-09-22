@@ -46,6 +46,8 @@ values starting at zero, so ``Red`` is 0, ``Yellow`` is 1 and ``Green`` is 2.
 Explicit Values
 ---------------
 
+.. include:: ../../../../includes/requires-edition3.rst
+
 A member can be given its own value instead of the one its position implies.
 Members that follow continue from the value before them, so ``Type_ANY`` below
 is 1 and ``Type_BOOL`` is 2:
@@ -67,17 +69,13 @@ is 1 and ``Type_BOOL`` is 2:
        END_IF;
    END_PROGRAM
 
-This is IEC 61131-3:2013 (Edition 3) syntax, not Edition 2, so the default
-strict Edition 2 dialect rejects it with
-:doc:`/reference/compiler/problems/P4055`. Select a dialect that includes it
-or pass ``--allow-enum-explicit-values`` — see
-:doc:`/explanation/enabling-dialects-and-features`.
-
 Values are not checked for uniqueness: ``(A := 1, B := 1)`` gives two names
 for the same value and is accepted. Only the *names* must differ.
 
-Base Type
----------
+Base Type (Language Extension)
+------------------------------
+
+.. include:: ../../../../includes/requires-dialect-extension.rst
 
 A declaration can name the elementary type the members are stored in:
 
@@ -99,13 +97,6 @@ A declaration can name the elementary type the members are stored in:
    END_PROGRAM
 
 Without it, IronPLC picks the smallest type that holds every member's value.
-
-The suffix is a CODESYS/TwinCAT extension beyond IEC 61131-3, so the default
-strict Edition 2 dialect rejects it with
-:doc:`/reference/compiler/problems/P4056`. Unlike explicit values it is not
-Edition 3 syntax either, so ``iec61131-3-ed3`` does not accept it — select a
-vendor dialect or pass ``--allow-enum-base-type``, and see
-:doc:`/explanation/enabling-dialects-and-features`.
 
 Related Problem Codes
 ---------------------
