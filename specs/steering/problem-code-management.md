@@ -96,8 +96,8 @@ To fix this error, [specific guidance]:
 - Examples: P6001 (CannotCanonicalizePath), P6004 (CannotReadFile)
 
 #### Internal Errors (P9000+)
-- Compiler bugs and unimplemented features
-- Examples: P9998 (InternalError), P9999 (NotImplemented)
+- Compiler bugs, unimplemented features, and limits the compiler will not lift
+- Examples: P9997 (NotSupported), P9998 (InternalError), P9999 (NotImplemented)
 
 ### VS Code Extension Error Codes (E-prefix)
 
@@ -239,22 +239,29 @@ Diagnostic::problem(
 .with_secondary(Label::span(base_type_name.span(), "Base type not found"))
 ```
 
-#### Compiler-located problems (P9998 / P9999)
+#### Compiler-located problems (P9997 / P9998 / P9999)
 
-`Problem::NotImplemented` (P9999) and `Problem::InternalError` (P9998) describe a
-gap in the *compiler*, not the program. Their most useful "location" is the
-compiler `file#Lline` that produced them — the telemetry dashboards rank that to
-point maintainers at the code that needs work. Constructing them via
-`Diagnostic::problem(...)` drops that location, so **both variants are
-`#[deprecated]` and the workspace denies the `deprecated` lint — using them
-directly does not compile.** Use the dedicated constructors, which capture the
-call site's location automatically via `#[track_caller]`:
+`Problem::NotSupported` (P9997), `Problem::NotImplemented` (P9999) and
+`Problem::InternalError` (P9998) describe a gap in the *compiler*, not the
+program. Their most useful "location" is the compiler `file#Lline` that produced
+them — the telemetry dashboards rank that to point maintainers at the code that
+needs work. Constructing them via `Diagnostic::problem(...)` drops that location,
+so **all three variants are `#[deprecated]` and the workspace denies the
+`deprecated` lint — using them directly does not compile.** Use the dedicated
+constructors, which capture the call site's location automatically via
+`#[track_caller]`:
 
 ```rust
 // Unimplemented capability, with a descriptive label + IEC span:
 return Err(Diagnostic::not_implemented(Label::span(
     span.clone(),
     format!("Structure field '{}' exceeds maximum nesting depth", field.name),
+)));
+
+// Capability the compiler will not offer, with a descriptive label + IEC span:
+return Err(Diagnostic::not_supported(Label::span(
+    span.clone(),
+    "Array exceeds maximum 32768 elements",
 )));
 
 // "Should never happen" invariant violation, with a custom label:
@@ -273,6 +280,32 @@ return Err(Diagnostic::todo_with_span(span.clone()));
 
 None of these constructors take `file!()`/`line!()` — they are `#[track_caller]`
 and record the call site themselves.
+
+##### Choosing between P9997 and P9999
+
+P9999 promises *not yet*: a later release is expected to accept the program, and
+the Playground offers a **Submit Code** button on it so the program can be sent
+in and the work prioritized. P9997 makes no such promise — the program itself has
+to change.
+
+So the question is not "does the compiler reject this?" but "would accepting it
+be a feature or a redesign?":
+
+| The compiler refuses because… | Code |
+|---|---|
+| the construct is not built yet (an element type, a field type, a statement form) | P9999 |
+| the program reached a fixed limit of the bytecode format — a slot index, an `i32` data region offset, a `u32` count that overflowed | P9997 |
+| an invariant the analyzer should have enforced was violated | P9998 |
+
+**One limit reports one code.** The limits in the second row are reachable from
+several places — an array of a primitive, an array of structures and a structure
+all reach the 32768-slot cap — and a program that hits the same wall two ways and
+is told two different things has been told that one of them is wrong. When a
+check duplicates one that already exists elsewhere, share the code that raises it
+(`codegen/src/data_region.rs` is the shared data region reservation) rather than
+writing a second copy that can drift. Mark any such shared helper
+`#[track_caller]` so the `file#Lline` still names the site that reached the
+limit.
 
 A P9999 always names a location in the IEC 61131-3 source: there is no
 span-less `todo()`. The compiler `file#Lline` tells a maintainer which code

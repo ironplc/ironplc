@@ -73,7 +73,8 @@ pub(crate) fn are_types_compatible(
         }
     }
     // Implicit widening: integer-to-integer, integer-to-real (lossless),
-    // bit-string-to-bit-string. See ADR-0029 and ADR-0031.
+    // real-to-real (REAL → LREAL), bit-string-to-bit-string. See ADR-0029 and
+    // ADR-0031.
     if let Ok(actual_elem) = ElementaryTypeName::try_from(&actual.name) {
         if let Ok(expected_elem) = ElementaryTypeName::try_from(&expected.name) {
             if actual_elem.can_widen_to(&expected_elem) {
