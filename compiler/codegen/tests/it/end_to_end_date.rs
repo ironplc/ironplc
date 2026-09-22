@@ -130,3 +130,36 @@ END_PROGRAM
 
     assert_eq!(diagnostic.code, Problem::DateLiteralOutOfRange.code());
 }
+
+/// A date has no floating-point representation, and the analyzer rejects the
+/// assignment that would ask for one (P4035), so a date literal reaching
+/// codegen at a float operation width is a broken invariant.
+///
+/// Before the match over operation widths was made exhaustive, this fell
+/// through to the integer arm and stored the second count's bit pattern in a
+/// float slot.
+#[rstest]
+#[case::real("r : REAL;", "r := D#2024-01-01;")]
+#[case::lreal("r : LREAL;", "r := DT#2024-01-01-12:30:00;")]
+fn compile_when_date_literal_is_float_width_then_internal_error(
+    #[case] declaration: &str,
+    #[case] statement: &str,
+) {
+    let source = format!(
+        "
+PROGRAM main
+  VAR
+    {declaration}
+  END_VAR
+  {statement}
+END_PROGRAM
+"
+    );
+
+    let diagnostic = try_parse_and_compile(&source, &CompilerOptions::default()).unwrap_err();
+
+    // The `Problem::InternalError` variant is deprecated in favour of the
+    // `Diagnostic::internal_error_at` constructor, so the code is named here
+    // the way `compile_case` names it.
+    assert_eq!(diagnostic.code, "P9998");
+}

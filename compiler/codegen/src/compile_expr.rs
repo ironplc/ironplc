@@ -267,24 +267,37 @@ fn compile_epoch_seconds(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     seconds: i64,
-    span: SourceSpan,
+    span: &SourceSpan,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     let stored = u32::try_from(seconds).map_err(|_| {
         Diagnostic::problem(
             Problem::DateLiteralOutOfRange,
-            Label::span(span, "Date literal"),
+            Label::span(span.clone(), "Date literal"),
         )
         .with_context("seconds since 1970-01-01", &seconds.to_string())
     })?;
     match op_type.0 {
+        OpWidth::W32 => {
+            let pool_index = ctx.add_i32_constant(stored as i32);
+            emitter.emit_load_const_i32(pool_index);
+        }
         OpWidth::W64 => {
             let pool_index = ctx.add_i64_constant(i64::from(stored));
             emitter.emit_load_const_i64(pool_index);
         }
-        _ => {
-            let pool_index = ctx.add_i32_constant(stored as i32);
-            emitter.emit_load_const_i32(pool_index);
+        // A date is a count, not a measurement, so no floating-point type
+        // holds one, and the analyzer rejects the assignment that would ask
+        // for it (P4035). Reaching here means analysis was skipped, which is
+        // a broken invariant rather than a missing capability: the catch-all
+        // this replaced emitted an integer load, storing the second count's
+        // bit pattern into a float slot to be read back as a number
+        // unrelated to the date.
+        OpWidth::F32 | OpWidth::F64 => {
+            return Err(Diagnostic::internal_error_at(Label::span(
+                span.clone(),
+                "Date literal compiled at a floating-point operation width",
+            )))
         }
     }
     Ok(())
@@ -468,20 +481,12 @@ pub(crate) fn compile_constant(
             }
             Ok(())
         }
-        ConstantKind::Date(lit) => compile_epoch_seconds(
-            emitter,
-            ctx,
-            lit.seconds_since_epoch(),
-            lit.span.clone(),
-            op_type,
-        ),
-        ConstantKind::DateAndTime(lit) => compile_epoch_seconds(
-            emitter,
-            ctx,
-            lit.seconds_since_epoch(),
-            lit.span.clone(),
-            op_type,
-        ),
+        ConstantKind::Date(lit) => {
+            compile_epoch_seconds(emitter, ctx, lit.seconds_since_epoch(), &lit.span, op_type)
+        }
+        ConstantKind::DateAndTime(lit) => {
+            compile_epoch_seconds(emitter, ctx, lit.seconds_since_epoch(), &lit.span, op_type)
+        }
         ConstantKind::BitStringLiteral(lit) => {
             let span = lit.value.span();
             match op_type {
