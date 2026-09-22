@@ -600,51 +600,45 @@ pub(crate) fn allocate_struct_variable(
         unreachable!("resolve_struct_type guarantees Structure variant");
     };
 
-    // Compute total slots
-    let total_slots = struct_type.slot_count().map_err(|e| {
-        let msg = match e {
-            SlotCountError::UnsupportedFieldType => {
-                "Structure contains unsupported field types (STRING, WSTRING, or FunctionBlock)"
-            }
-            SlotCountError::MaxDepthExceeded => {
-                "Structure exceeds maximum nesting depth (possible recursive type)"
-            }
-            SlotCountError::Overflow => "Structure is too large (slot count overflows u32)",
-        };
-        Diagnostic::not_implemented(Label::span(span.clone(), msg))
+    // Compute total slots.
+    //
+    // Overflowing the slot count is a fixed limit of the bytecode format, so
+    // it reports P9997 (NotSupported). The other two failures are not limits:
+    // an unsupported field type is a capability the compiler does not offer
+    // *yet*, and exceeding the nesting depth means a recursive type reached
+    // codegen that the analyzer's toposort should have rejected. Both report
+    // P9999 (NotImplemented), which is the code that invites the program in.
+    let total_slots = struct_type.slot_count().map_err(|e| match e {
+        SlotCountError::UnsupportedFieldType => Diagnostic::not_implemented(Label::span(
+            span.clone(),
+            "Structure contains unsupported field types (STRING, WSTRING, or FunctionBlock)",
+        )),
+        SlotCountError::MaxDepthExceeded => Diagnostic::not_implemented(Label::span(
+            span.clone(),
+            "Structure exceeds maximum nesting depth (possible recursive type)",
+        )),
+        SlotCountError::Overflow => Diagnostic::not_supported(Label::span(
+            span.clone(),
+            "Structure is too large (slot count overflows u32)",
+        )),
     })?;
 
     // Enforce slot limit (matches existing array limit for i32 flat-index safety)
     if total_slots > super::compile::MAX_DATA_REGION_SLOTS {
-        return Err(Diagnostic::not_implemented(Label::span(
+        return Err(Diagnostic::not_supported(Label::span(
             span.clone(),
             "Structure exceeds maximum 32768 slots",
         )));
     }
 
     // Allocate data region space
-    let data_offset = ctx.data_region_offset;
     let total_bytes = total_slots.checked_mul(8).ok_or_else(|| {
-        Diagnostic::not_implemented(Label::span(
+        Diagnostic::not_supported(Label::span(
             span.clone(),
             "Structure size overflows (slots * 8)",
         ))
     })?;
-    ctx.data_region_offset = ctx
-        .data_region_offset
-        .checked_add(total_bytes)
-        .ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
-        })?;
-
-    // Guard against i32 truncation (data_offset is stored as i32 in the
-    // variable slot, matching the array pattern)
-    if ctx.data_region_offset > i32::MAX as u32 {
-        return Err(Diagnostic::not_implemented(Label::span(
-            span.clone(),
-            "Data region exceeds 2 GiB limit",
-        )));
-    }
+    let data_offset = crate::data_region::reserve(ctx, total_bytes, span)?;
 
     // Register array descriptor (treating struct as flat slot array).
     let desc_index = builder.add_array_descriptor(FieldType::Slot as u8, total_slots, 0);
@@ -684,7 +678,7 @@ pub(crate) fn allocate_struct_variable(
                         acc.checked_mul(size)
                     })
                     .ok_or_else(|| {
-                        Diagnostic::not_implemented(Label::span(span.clone(), "Array too large"))
+                        Diagnostic::not_supported(Label::span(span.clone(), "Array too large"))
                     })?;
                 // Allocate scratch variable once for all STRING/WSTRING array fields.
                 if scratch_var_index.is_none() {

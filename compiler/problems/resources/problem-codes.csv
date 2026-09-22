@@ -119,3 +119,4 @@ P4051,CaseLabelRangeInvalid,CASE label range minimum value is greater than the m
 P4052,StringLiteralCharOutOfRange,Character string literal contains a character that the string type cannot represent
 P4053,CaseSelectorTypeInvalid,CASE selector is not an integer or enumeration type
 P4054,FunctionBlockInFunction,Function declares or invokes a function block instance
+P4055,EnumExplicitValueNotAllowed,Explicit enumeration member value requires choosing a dialect or --allow-enum-explicit-values flag

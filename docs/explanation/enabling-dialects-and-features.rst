@@ -37,8 +37,8 @@ Supported Dialects
    ``THIS``, and ``SUPER``). No extensions.
 
    **Enables:** ``--allow-long-time-types``, ``--allow-ref-to`` (the
-   Edition 3 keywords), ``--allow-partial-access-syntax``, and
-   ``--allow-fb-inheritance``.
+   Edition 3 keywords), ``--allow-partial-access-syntax``,
+   ``--allow-fb-inheritance``, and ``--allow-enum-explicit-values``.
 
    **Selects:** the default of every behavior policy
    (``--policy-string-to-num-non-numeric reject``,
@@ -62,8 +62,8 @@ Supported Dialects
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
-   ``--allow-struct-initializer-expressions``, and
-   ``--allow-fb-inheritance``.
+   ``--allow-struct-initializer-expressions``,
+   ``--allow-fb-inheritance``, and ``--allow-enum-explicit-values``.
 
    **Selects:** ``--policy-string-to-num-non-numeric reject`` and
    ``--policy-string-to-num-failure zero`` — RuSTy rejects a string with
@@ -95,8 +95,8 @@ Supported Dialects
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
-   ``--allow-struct-initializer-expressions``, and
-   ``--allow-fb-inheritance``.
+   ``--allow-struct-initializer-expressions``,
+   ``--allow-fb-inheritance``, and ``--allow-enum-explicit-values``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero`` — CODESYS stops parsing at the
@@ -136,8 +136,8 @@ Supported Dialects
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
-   ``--allow-struct-initializer-expressions``, and
-   ``--allow-fb-inheritance``.
+   ``--allow-struct-initializer-expressions``,
+   ``--allow-fb-inheritance``, and ``--allow-enum-explicit-values``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero``, as ``codesys``.
@@ -444,6 +444,19 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    :doc:`P9999 </reference/compiler/problems/P9999>` rather than a parse
    error. Enabled by ``--dialect=iec61131-3-ed3``, ``--dialect=rusty``,
    ``--dialect=codesys``, and ``--dialect=twincat``.
+
+``--allow-enum-explicit-values``
+   Allow a member of an :doc:`enumeration
+   </reference/language/data-types/derived/enumerated-types>` declaration to
+   be given an explicit value (e.g. ``(Deutsch := 1, English := 2)``). The
+   IEC 61131-3:2003 (Edition 2) grammar lets an enumeration list only bare
+   member names, which take consecutive values starting at zero; explicit
+   values were added in Edition 3 and are accepted by CODESYS, TwinCAT and
+   RuSTy. Without this flag, an explicit value produces
+   :doc:`P4055 </reference/compiler/problems/P4055>`. A list of bare member
+   names is standard syntax and is always allowed, as is a default value
+   (``(RED, GREEN, BLUE) := GREEN``), which selects the initial member rather
+   than renumbering one.
 
 Pass the flag when running :program:`ironplcc`:
 
