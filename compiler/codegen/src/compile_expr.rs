@@ -251,6 +251,44 @@ fn compile_compare(
     Ok(())
 }
 
+/// Compiles the integer count a time-like literal stores, pushing it onto the
+/// stack: milliseconds for a duration or a time of day, seconds since
+/// 1970-01-01 for a date or a date-and-time.
+///
+/// Every one of these is a count rather than a measurement, so no
+/// floating-point type holds one and the analyzer rejects the assignment that
+/// would ask for it (P4035). Reaching a float width here is a broken
+/// invariant rather than a missing capability, and saying so beats what the
+/// catch-all these arms shared used to do: emit an integer load, leaving the
+/// count's bit pattern in a float slot to be read back as a number unrelated
+/// to the literal.
+fn compile_time_count(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    count: i64,
+    literal: &str,
+    span: &SourceSpan,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    match op_type.0 {
+        OpWidth::W32 => {
+            let pool_index = ctx.add_i32_constant(count as i32);
+            emitter.emit_load_const_i32(pool_index);
+        }
+        OpWidth::W64 => {
+            let pool_index = ctx.add_i64_constant(count);
+            emitter.emit_load_const_i64(pool_index);
+        }
+        OpWidth::F32 | OpWidth::F64 => {
+            return Err(Diagnostic::internal_error_at(Label::span(
+                span.clone(),
+                format!("{literal} compiled at a floating-point operation width"),
+            )))
+        }
+    }
+    Ok(())
+}
+
 /// Compiles a count of seconds since 1970-01-01, pushing it onto the stack.
 ///
 /// A date is stored as unsigned 32-bit seconds since the Unix epoch
@@ -261,8 +299,8 @@ fn compile_compare(
 /// A count that does not fit is reported rather than truncated: truncating it
 /// would emit a different date than the program wrote. `rule_date_literal_range`
 /// reports the same problem against the literal before compilation reaches
-/// here, so this arm is what stands between a caller that skipped the semantic
-/// rules -- a test, a tool -- and a silently wrong date.
+/// here, so this stands between a caller that skipped the semantic rules -- a
+/// test, a tool -- and a silently wrong date.
 fn compile_epoch_seconds(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -277,30 +315,14 @@ fn compile_epoch_seconds(
         )
         .with_context("seconds since 1970-01-01", &seconds.to_string())
     })?;
-    match op_type.0 {
-        OpWidth::W32 => {
-            let pool_index = ctx.add_i32_constant(stored as i32);
-            emitter.emit_load_const_i32(pool_index);
-        }
-        OpWidth::W64 => {
-            let pool_index = ctx.add_i64_constant(i64::from(stored));
-            emitter.emit_load_const_i64(pool_index);
-        }
-        // A date is a count, not a measurement, so no floating-point type
-        // holds one, and the analyzer rejects the assignment that would ask
-        // for it (P4035). Reaching here means analysis was skipped, which is
-        // a broken invariant rather than a missing capability: the catch-all
-        // this replaced emitted an integer load, storing the second count's
-        // bit pattern into a float slot to be read back as a number
-        // unrelated to the date.
-        OpWidth::F32 | OpWidth::F64 => {
-            return Err(Diagnostic::internal_error_at(Label::span(
-                span.clone(),
-                "Date literal compiled at a floating-point operation width",
-            )))
-        }
-    }
-    Ok(())
+    compile_time_count(
+        emitter,
+        ctx,
+        i64::from(stored),
+        "Date literal",
+        span,
+        op_type,
+    )
 }
 
 /// Compiles a constant literal, pushing it onto the stack.
@@ -452,35 +474,22 @@ pub(crate) fn compile_constant(
             emitter.emit_load_const_str(pool_index);
             Ok(())
         }
-        ConstantKind::Duration(lit) => {
-            match op_type.0 {
-                OpWidth::W64 => {
-                    let milliseconds = lit.interval.whole_milliseconds() as i64;
-                    let pool_index = ctx.add_i64_constant(milliseconds);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                _ => {
-                    let milliseconds = lit.interval.whole_milliseconds() as i32;
-                    let pool_index = ctx.add_i32_constant(milliseconds);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-            }
-            Ok(())
-        }
-        ConstantKind::TimeOfDay(lit) => {
-            let ms = lit.whole_milliseconds();
-            match op_type.0 {
-                OpWidth::W64 => {
-                    let pool_index = ctx.add_i64_constant(ms as i64);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                _ => {
-                    let pool_index = ctx.add_i32_constant(ms as i32);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-            }
-            Ok(())
-        }
+        ConstantKind::Duration(lit) => compile_time_count(
+            emitter,
+            ctx,
+            lit.interval.whole_milliseconds() as i64,
+            "Duration literal",
+            &lit.span,
+            op_type,
+        ),
+        ConstantKind::TimeOfDay(lit) => compile_time_count(
+            emitter,
+            ctx,
+            i64::from(lit.whole_milliseconds()),
+            "Time-of-day literal",
+            &lit.span,
+            op_type,
+        ),
         ConstantKind::Date(lit) => {
             compile_epoch_seconds(emitter, ctx, lit.seconds_since_epoch(), &lit.span, op_type)
         }

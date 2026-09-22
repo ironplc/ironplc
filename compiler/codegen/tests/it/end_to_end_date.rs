@@ -131,17 +131,22 @@ END_PROGRAM
     assert_eq!(diagnostic.code, Problem::DateLiteralOutOfRange.code());
 }
 
-/// A date has no floating-point representation, and the analyzer rejects the
-/// assignment that would ask for one (P4035), so a date literal reaching
+/// A duration, a time of day and a date are all counts rather than
+/// measurements, so none has a floating-point representation, and the
+/// analyzer rejects the assignment that would ask for one (P4035). Reaching
 /// codegen at a float operation width is a broken invariant.
 ///
-/// Before the match over operation widths was made exhaustive, this fell
-/// through to the integer arm and stored the second count's bit pattern in a
-/// float slot.
+/// Before the match over operation widths was made exhaustive, every one of
+/// these fell through to the integer arm and left the count's bit pattern in
+/// a float slot.
 #[rstest]
-#[case::real("r : REAL;", "r := D#2024-01-01;")]
-#[case::lreal("r : LREAL;", "r := DT#2024-01-01-12:30:00;")]
-fn compile_when_date_literal_is_float_width_then_internal_error(
+#[case::date_into_real("r : REAL;", "r := D#2024-01-01;")]
+#[case::date_and_time_into_lreal("r : LREAL;", "r := DT#2024-01-01-12:30:00;")]
+#[case::duration_into_real("r : REAL;", "r := T#1s;")]
+#[case::duration_into_lreal("r : LREAL;", "r := T#1s;")]
+#[case::time_of_day_into_real("r : REAL;", "r := TOD#12:30:00;")]
+#[case::time_of_day_into_lreal("r : LREAL;", "r := TOD#12:30:00;")]
+fn compile_when_time_literal_is_float_width_then_internal_error(
     #[case] declaration: &str,
     #[case] statement: &str,
 ) {
