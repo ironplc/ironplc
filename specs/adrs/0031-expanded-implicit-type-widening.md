@@ -104,17 +104,23 @@ This applies to:
 
 This ADR states one cross-family rule — bit-string to integer, target strictly
 wider — and the compiler has shipped a second one since the UDINT/DWORD work
-landed. `ElementaryTypeName::can_widen_cross_family_to`
-(`compiler/dsl/src/common.rs:1001-1019`) allows `UDINT` and `DWORD` to convert
-implicitly in *both* directions under `--allow-cross-family-widening`, despite
-the two being equal width. That also makes it the one case where integer to
-bit-string is implicit, a direction this ADR does not mention at all.
+landed. `ElementaryTypeName::can_widen_cross_family_to` allows `UDINT` and
+`DWORD` to convert implicitly in *both* directions under
+`--allow-cross-family-widening`, despite the two being equal width. That also
+makes it the one case where integer to bit-string is implicit, a direction this
+ADR does not mention at all.
+
+The rule kept its behaviour but changed hands the next day: the amendment below
+moved it to `ElementaryTypeName::can_convert_cross_family_to` under
+`--allow-cross-family-conversion`. Read the predicate and flag named above as
+the record of what shipped on 2026-09-12, not as current names.
 
 The exception is deliberate and evidence-backed. Beckhoff's own documentation
 states no implicit conversion exists between bit-string and integer types even
 at equal width, but a real TcXaeShell build accepted it, so IronPLC follows the
 implementation rather than the documentation. The rationale, including the
-scoping argument, lives in the doc comment at `common.rs:985-1000`.
+scoping argument, lives in the doc comment on the predicate that carries the
+rule — today `can_convert_cross_family_to` in `compiler/dsl/src/common.rs`.
 
 Measured on this tree with the flag enabled (`udValue : UDINT := 3000000000`,
 `dwValue : DWORD := 16#FFFFFFFF`):
