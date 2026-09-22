@@ -2,6 +2,7 @@
 
 status: accepted
 date: 2026-03-07
+amended: 2026-09-20 (a literal whose characters the type cannot hold is rejected, not narrowed)
 
 ## Context and Problem Statement
 
@@ -65,6 +66,7 @@ On little-endian hardware, UTF-16LE code units can be read and written as native
 * Good, because EtherNet/IP (CIP) STRING2 data can be copied directly into WSTRING variables without re-encoding
 * Good, because both encodings are fixed-width within the Basic Multilingual Plane, making IEC 61131-3 string functions (MID, LEFT, RIGHT, FIND, LEN) straightforward to implement
 * Neutral, because Latin-1 STRING is limited to 256 characters (Western European languages, common symbols); programs needing broader character support must use WSTRING
+* Good, because a literal containing a character its type cannot hold (above U+00FF in a STRING literal, above U+FFFF in a WSTRING literal) is rejected at analysis with P4052 rather than silently narrowed to its low byte or low 16 bits; CODESYS and TwinCAT substitute `?` instead, which is the candidate for a behavior policy in issue #1744
 * Neutral, because UTF-16 characters outside the Basic Multilingual Plane (code points above U+FFFF) require surrogate pairs, which IEC 61131-3 UCS-2 semantics do not address; this is a limitation of the standard, not of this encoding choice
 * Bad, because exchanging WSTRING data with big-endian systems requires byte-swapping at the protocol boundary -- but this cost is paid once per exchange, not on every character access
 

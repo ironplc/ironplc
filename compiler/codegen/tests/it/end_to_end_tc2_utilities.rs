@@ -7,14 +7,14 @@
 //! equality — the spec's fixed-point formatting is deterministic, digit for
 //! digit.
 
+use crate::common::read_string;
 use ironplc_analyzer::stages::analyze;
 use ironplc_codegen::compile;
-use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
-use ironplc_sources::libraries::{remove_shadowed_functions, LibraryName, LibraryRegistry};
+use ironplc_sources::libraries::{LibraryName, LibraryRegistry};
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::VmBuffers;
 
@@ -28,9 +28,7 @@ fn run_with_tc2_utilities(source: &str) -> VmBuffers {
         .expect("bundled Tc2_Utilities must load")
         .library;
     let user = parse_program(source, &FileId::default(), &options).unwrap();
-    // The same user-shadowing filter the project pipeline applies.
-    let compat = remove_shadowed_functions(vec![compat], &[&user]);
-    let analyze_input: Vec<&Library> = compat.iter().chain(std::iter::once(&user)).collect();
+    let analyze_input: Vec<&Library> = vec![&compat, &user];
     let (analyzed, context) = analyze(&analyze_input, &options).unwrap();
     assert!(
         !context.has_diagnostics(),
@@ -52,15 +50,6 @@ fn run_with_tc2_utilities(source: &str) -> VmBuffers {
         vm.run_round(0).expect("VM run must not trap");
     }
     bufs
-}
-
-/// Reads a STRING value from the data region at the given byte offset.
-fn read_string(data_region: &[u8], data_offset: usize) -> String {
-    let cur_len =
-        u16::from_le_bytes([data_region[data_offset + 2], data_region[data_offset + 3]]) as usize;
-    let data_start = data_offset + STRING_HEADER_BYTES;
-    let bytes = &data_region[data_start..data_start + cur_len];
-    bytes.iter().map(|&b| b as char).collect()
 }
 
 /// Formats one call `LREAL_TO_FMTSTR(x, <precision>, <round>)` where `x` is
@@ -238,33 +227,4 @@ END_PROGRAM
 ";
     let bufs = run_with_tc2_utilities(source);
     assert_eq!(read_string(&bufs.data_region, 0), "123.46");
-}
-
-// ---------------------------------------------------------------------------
-// Shadowing — a user-defined LREAL_TO_FMTSTR takes precedence.
-// ---------------------------------------------------------------------------
-
-#[test]
-fn end_to_end_when_user_function_shadows_lreal_to_fmtstr_then_user_body_runs() {
-    let bufs = run_with_tc2_utilities(
-        "FUNCTION LREAL_TO_FMTSTR : STRING
-VAR_INPUT
-    in : LREAL;
-    iPrecision : INT;
-    bRound : BOOL;
-END_VAR
-    LREAL_TO_FMTSTR := 'shadowed';
-END_FUNCTION
-PROGRAM main
-VAR
-    s : STRING;
-    x : LREAL;
-END_VAR
-    x := 123.456;
-    s := LREAL_TO_FMTSTR(x, 2, TRUE);
-END_PROGRAM
-",
-    );
-    // The user's body (the constant), not the library's formatter.
-    assert_eq!(read_string(&bufs.data_region, 0), "shadowed");
 }

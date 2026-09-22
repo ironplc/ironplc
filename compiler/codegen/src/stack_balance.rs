@@ -15,7 +15,7 @@
 //! module supplies the codegen-facing entry point and turns a violation
 //! into a compiler diagnostic.
 
-use ironplc_container::Container;
+use ironplc_container::{Container, FunctionId};
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
@@ -36,6 +36,58 @@ pub(crate) fn verify_container(container: &Container) -> Result<(), Diagnostic> 
         Diagnostic::internal_error_at(Label::file(
             FileId::default(),
             format!("codegen emitted bytecode that is not stack-balanced{rule}: {imbalance}"),
+        ))
+    })?;
+
+    verify_temp_buffer_pool(container)
+}
+
+/// Verifies that the container's declared temp string buffer pool covers
+/// every path through its own bytecode (verifier rule R0204).
+///
+/// Same posture as the stack-balance check above: a violation is a codegen
+/// defect, so it is P9998 rather than a user-facing error. Without this the
+/// same defect reaches the VM and surfaces as a `V9009` trap at run time,
+/// which is what issue #1590 did to every program with a string operation
+/// in a loop.
+///
+/// This is a guard around a design that would be better without it; see the
+/// module documentation on [`ironplc_container::verify_temp_bufs`] for the
+/// change that would make the pool, the trap and this check all unnecessary.
+fn verify_temp_buffer_pool(container: &Container) -> Result<(), Diagnostic> {
+    let fb_types = container
+        .type_section
+        .as_ref()
+        .map(|ts| ts.user_fb_types.as_slice())
+        .unwrap_or(&[]);
+
+    // Every call chain the VM can start: each program's scan function and
+    // its init function.
+    let mut entries: Vec<FunctionId> = Vec::new();
+    for program in &container.task_table.programs {
+        for id in [program.entry_function_id, program.init_function_id] {
+            if !entries.contains(&id) {
+                entries.push(id);
+            }
+        }
+    }
+
+    ironplc_container::verify_temp_buffer_bound(
+        &container.code,
+        fb_types,
+        &entries,
+        container.header.num_temp_bufs,
+    )
+    .map_err(|overrun| {
+        let rule = overrun
+            .rule()
+            .map(|r| format!(" (verifier rule {r})"))
+            .unwrap_or_default();
+        Diagnostic::internal_error_at(Label::file(
+            FileId::default(),
+            format!(
+                "codegen declared a temporary string buffer pool too small for the bytecode                  it emitted{rule}: {overrun}"
+            ),
         ))
     })
 }
@@ -251,5 +303,65 @@ mod tests {
         // The linear counter that a cheaper check would have asserted on is
         // non-zero here, on a body that is in fact perfectly balanced.
         assert_ne!(emitter.max_stack_depth(), 0);
+    }
+}
+
+#[cfg(test)]
+mod temp_buffer_tests {
+    use ironplc_container::{ContainerBuilder, FunctionId};
+
+    use crate::emit::Emitter;
+    use crate::stack_balance::verify_container;
+
+    /// A body that allocates one temp buffer and hands it back, wrapped in
+    /// a container whose declared pool the caller chooses.
+    ///
+    /// `Emitter` is used rather than hand-written bytes so the body is
+    /// stack-balanced by construction; the stack rule runs first and would
+    /// otherwise mask what these tests are about.
+    fn container_declaring(num_temp_bufs: u16) -> ironplc_container::Container {
+        let mut emitter = Emitter::new();
+        emitter.emit_concat_str(0, 0);
+        emitter.emit_str_store_var(0);
+        emitter.emit_ret_void();
+        let max_stack_depth = emitter.max_stack_depth();
+        let bytecode = emitter.bytecode().to_vec();
+
+        ContainerBuilder::new()
+            .num_variables(4)
+            .max_call_depth(1)
+            .num_temp_bufs(num_temp_bufs)
+            .max_temp_buf_bytes(260)
+            .data_region_bytes(512)
+            .add_function(FunctionId::INIT, &bytecode, max_stack_depth, 4, 0)
+            .init_function_id(FunctionId::INIT)
+            .entry_function_id(FunctionId::INIT)
+            .build()
+    }
+
+    #[test]
+    fn verify_container_when_pool_covers_bytecode_then_ok() {
+        assert!(verify_container(&container_declaring(1)).is_ok());
+    }
+
+    /// The wiring test for R0204: a container that under-declares its pool
+    /// must be rejected at compile time. Without this check the same
+    /// container reaches the VM and traps `V9009` at run time, which is
+    /// what issue #1590 did.
+    #[test]
+    fn verify_container_when_pool_is_too_small_then_internal_error() {
+        let result = verify_container(&container_declaring(0));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn verify_container_when_pool_is_too_small_then_names_rule_r0204() {
+        let err = verify_container(&container_declaring(0)).unwrap_err();
+
+        assert!(
+            format!("{err:?}").contains("R0204"),
+            "diagnostic should name the rule: {err:?}"
+        );
     }
 }

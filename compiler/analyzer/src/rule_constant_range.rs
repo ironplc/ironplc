@@ -219,16 +219,6 @@ impl RuleConstantRange<'_> {
         }
     }
 
-    /// The type an expression resolves to, when the analyzer gave it one.
-    ///
-    /// A bare literal resolves to a generic type (`ANY_INT`), which is not in
-    /// the type environment, so it answers `None` rather than a range of its
-    /// own.
-    fn expr_type(&self, expr: &Expr) -> Option<IntermediateType> {
-        let resolved = expr.resolved_type.as_ref()?;
-        Some(self.type_environment.get(resolved)?.representation.clone())
-    }
-
     /// The type an assignment writes through `target`.
     ///
     /// This is the value written, not the variable selected from: `x.3 := v`
@@ -259,11 +249,11 @@ impl RuleConstantRange<'_> {
     /// `IF c = 200` compares at `c`'s type, so a literal that `c` can never
     /// hold makes the comparison unsatisfiable rather than false.
     fn check_compare(&mut self, compare: &CompareExpr) {
-        if let Some(left) = self.expr_type(&compare.left) {
-            self.check_expr(&compare.right, &left);
+        if let Some(left) = self.type_environment.representation_of_expr(&compare.left) {
+            self.check_expr(&compare.right, left);
         }
-        if let Some(right) = self.expr_type(&compare.right) {
-            self.check_expr(&compare.left, &right);
+        if let Some(right) = self.type_environment.representation_of_expr(&compare.right) {
+            self.check_expr(&compare.left, right);
         }
     }
 
@@ -272,10 +262,10 @@ impl RuleConstantRange<'_> {
     /// A label the selector can never equal selects a group that can never
     /// run.
     fn check_case(&mut self, node: &Case) {
-        let Some(selector) = self.expr_type(&node.selector) else {
+        let Some(selector) = self.type_environment.representation_of_expr(&node.selector) else {
             return;
         };
-        let Some((minimum, maximum)) = value_range::of(&selector) else {
+        let Some((minimum, maximum)) = value_range::of(selector) else {
             return;
         };
 

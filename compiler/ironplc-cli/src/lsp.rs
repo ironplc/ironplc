@@ -18,7 +18,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::collections::HashSet;
 use std::str::FromStr;
 
-use crate::lsp_project::{LspProject, UriKey, TOKEN_TYPE_LEGEND};
+use crate::lsp_project::{LspProject, UriKey};
+use crate::semantic_tokens::TOKEN_TYPE_LEGEND;
 use ironplc_project::disassemble;
 use ironplc_project::FileBackedProject;
 
@@ -192,7 +193,7 @@ impl<'a> LspServer<'a> {
                         work_done_progress: None,
                     },
                     legend: SemanticTokensLegend {
-                        token_types: TOKEN_TYPE_LEGEND.into(),
+                        token_types: TOKEN_TYPE_LEGEND.to_vec(),
                         token_modifiers: vec![],
                     },
                     range: None,

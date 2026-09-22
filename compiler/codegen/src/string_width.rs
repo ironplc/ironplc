@@ -1,4 +1,4 @@
-//! The encoding of a string expression.
+//! The shape of a string expression: its encoding and its capacity.
 //!
 //! `STRING` and `WSTRING` are the same shape to almost everything in codegen —
 //! a data-region slot with a header, addressed by a byte offset — and differ
@@ -7,12 +7,15 @@
 //! that width at runtime and traps (`V9014`) when a source and a destination
 //! disagree, so the temporary that [`crate::compile_string::resolve_string_arg`]
 //! allocates for an operand has to be initialized at the width that operand
-//! yields.
+//! yields. That temporary also has to be wide enough to hold the operand: a
+//! slot narrower than the value stored into it truncates it, and `LEN` of the
+//! truncated copy is not the length of the operand.
 //!
-//! Answering "which width is that?" is a question about types, not about
-//! bytecode, and it is the question this module exists to answer.
-//! [`string_expr_char_width`] answers it for one expression; the helpers
-//! below it are the cases it delegates to.
+//! Both are questions about types rather than about bytecode, and they are the
+//! questions this module exists to answer. The declaration that states an
+//! operand's encoding is the one that states its capacity, so
+//! [`string_expr_shape`] answers both from one walk; the helpers below it are
+//! the cases it delegates to.
 //!
 //! Two further questions belong with it. An operation with several string
 //! operands needs them to share an encoding, which
@@ -35,13 +38,30 @@ use ironplc_problems::Problem;
 
 use super::compile::{
     char_width_for_string_type, emit_string_literal_load, CompileContext, DEFAULT_OP_TYPE,
-    NARROW_CHAR_WIDTH,
+    DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
 };
 use super::compile_expr::{compile_expr, variable_span};
 use super::compile_string::collect_positional_args;
 use crate::emit::Emitter;
 
-/// Returns the encoding a string-valued expression produces.
+/// What a string-valued expression is, before any bytecode runs.
+///
+/// The two properties travel together because the same declaration states
+/// both, and because the temporary that holds an operand needs both to be
+/// initialized: `STR_INIT` writes the capacity and the encoding into the
+/// slot's header in one go.
+#[derive(Clone, Copy)]
+pub(crate) struct StringShape {
+    /// Per-code-unit byte width: `Narrow` for STRING, `Wide` for WSTRING.
+    pub(crate) char_width: CharWidth,
+    /// The capacity in code units the expression's declaration gives it, and
+    /// `None` for an expression that has no declaration of its own -- a
+    /// literal, or a function result. Such a value is held at the capacity a
+    /// bare `STRING` declaration would give it.
+    pub(crate) max_length: Option<u16>,
+}
+
+/// Returns the encoding and capacity a string-valued expression produces.
 ///
 /// Every string slot records its encoding in its header and the VM rejects a
 /// store whose source and destination disagree (ADR-0034), so the temporary
@@ -50,21 +70,29 @@ use crate::emit::Emitter;
 /// known at compile time: a literal spells it, a declaration states it, and
 /// every string function returns the encoding of its first string argument.
 ///
+/// The capacity is known wherever a declaration states one, which is what
+/// keeps `LEN(x[1])` from answering with a truncated copy's length when the
+/// element is declared wider than the default.
+///
 /// An expression whose width cannot be determined is a compiler bug rather
 /// than a program error -- the analyzer has already established that this
 /// argument is a string. Report it as one instead of guessing a width, which
 /// would defer the same problem to an encoding-mismatch trap at run time.
-pub(crate) fn string_expr_char_width(
+pub(crate) fn string_expr_shape(
     ctx: &CompileContext,
     expr: &Expr,
-) -> Result<CharWidth, Diagnostic> {
+) -> Result<StringShape, Diagnostic> {
     match &expr.kind {
-        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
-            Ok(char_width_for_string_type(&lit.width))
-        }
-        ExprKind::Expression(inner) => string_expr_char_width(ctx, inner),
-        ExprKind::Variable(variable) => variable_char_width(ctx, variable),
-        ExprKind::Function(func) => function_char_width(ctx, expr, func),
+        ExprKind::Const(ConstantKind::CharacterString(lit)) => Ok(StringShape {
+            char_width: char_width_for_string_type(&lit.width),
+            max_length: None,
+        }),
+        ExprKind::Expression(inner) => string_expr_shape(ctx, inner),
+        ExprKind::Variable(variable) => variable_shape(ctx, variable),
+        ExprKind::Function(func) => Ok(StringShape {
+            char_width: function_char_width(ctx, expr, func)?,
+            max_length: None,
+        }),
         _ => Err(unknown_string_encoding(
             expr.span(),
             "a string expression of an unexpected kind",
@@ -72,13 +100,22 @@ pub(crate) fn string_expr_char_width(
     }
 }
 
-/// Returns the encoding of a string variable, array element or structure field.
+/// Returns the encoding a string-valued expression produces.
+pub(crate) fn string_expr_char_width(
+    ctx: &CompileContext,
+    expr: &Expr,
+) -> Result<CharWidth, Diagnostic> {
+    string_expr_shape(ctx, expr).map(|shape| shape.char_width)
+}
+
+/// Returns the shape of a string variable, array element or structure field.
 ///
-/// Subscripts and dereferences do not change the encoding, so the access is
+/// Subscripts and dereferences change neither the encoding nor the capacity --
+/// both belong to the element rather than to the array -- so the access is
 /// walked back to the variable it is rooted in: a name, resolved against the
 /// declared strings and string arrays, or a structure field, whose declared
-/// type carries the width.
-fn variable_char_width(ctx: &CompileContext, variable: &Variable) -> Result<CharWidth, Diagnostic> {
+/// type carries them.
+fn variable_shape(ctx: &CompileContext, variable: &Variable) -> Result<StringShape, Diagnostic> {
     let Variable::Symbolic(kind) = variable else {
         return Err(unknown_string_encoding(
             variable_span(variable),
@@ -89,12 +126,18 @@ fn variable_char_width(ctx: &CompileContext, variable: &Variable) -> Result<Char
     match access_root(kind) {
         SymbolicVariableKind::Named(named) => {
             if let Some(info) = ctx.string_vars.get(&named.name) {
-                return Ok(info.char_width);
+                return Ok(StringShape {
+                    char_width: info.char_width,
+                    max_length: Some(info.max_length),
+                });
             }
             ctx.array_vars
                 .get(&named.name)
                 .filter(|info| info.is_string_element)
-                .map(|info| info.string_char_width)
+                .map(|info| StringShape {
+                    char_width: info.string_char_width,
+                    max_length: Some(info.string_max_len),
+                })
                 .ok_or_else(|| {
                     unknown_string_encoding(
                         variable_span(variable),
@@ -112,7 +155,7 @@ fn variable_char_width(ctx: &CompileContext, variable: &Variable) -> Result<Char
             .map_err(|_| {
                 unknown_string_encoding(variable_span(variable), "an unresolvable structure field")
             })?;
-            string_char_width_of(&field_type).ok_or_else(|| {
+            string_shape_of(&field_type).ok_or_else(|| {
                 unknown_string_encoding(
                     variable_span(variable),
                     "a structure field that is not a string",
@@ -140,11 +183,23 @@ fn access_root(kind: &SymbolicVariableKind) -> &SymbolicVariableKind {
     }
 }
 
-/// Returns the encoding of a STRING type, or of a STRING array's element.
-fn string_char_width_of(field_type: &IntermediateType) -> Option<CharWidth> {
+/// Returns the shape of a STRING type, or of a STRING array's element.
+///
+/// A declaration that names no length -- a bare `STRING` field -- has no
+/// capacity of its own and takes the default. So does one whose length does
+/// not fit a `u16`, which is not a length any slot can be given: the analyzer
+/// rejects it before codegen sees the field, and answering `None` here keeps
+/// an unreachable case from silently wrapping to a small capacity.
+fn string_shape_of(field_type: &IntermediateType) -> Option<StringShape> {
     match field_type {
-        IntermediateType::String { char_width, .. } => Some(*char_width),
-        IntermediateType::Array { element_type, .. } => string_char_width_of(element_type),
+        IntermediateType::String {
+            char_width,
+            max_len,
+        } => Some(StringShape {
+            char_width: *char_width,
+            max_length: max_len.and_then(|len| u16::try_from(len).ok()),
+        }),
+        IntermediateType::Array { element_type, .. } => string_shape_of(element_type),
         _ => None,
     }
 }
@@ -224,6 +279,25 @@ fn unknown_string_encoding(span: SourceSpan, what: &str) -> Diagnostic {
         span,
         format!("Cannot determine the string encoding of {what}"),
     ))
+}
+
+/// The capacity to give the temporary data-region slot that holds `expr`.
+///
+/// An operand declared as a string states its own capacity, and a temporary
+/// narrower than that truncates the value copied into it -- which `LEN` then
+/// reports as the operand's length. An expression with no declaration of its
+/// own gets the capacity a bare `STRING` declaration would give it.
+///
+/// An expression whose shape cannot be worked out gets that default too.
+/// Sizing a slot is not the place to discover that a string operand is not a
+/// string: the caller already holds an encoding for it, obtained from the
+/// declared destination where this module could not name one, and reporting
+/// here would turn that accommodation into a hard error.
+pub(crate) fn string_operand_capacity(ctx: &CompileContext, expr: &Expr) -> u16 {
+    string_expr_shape(ctx, expr)
+        .ok()
+        .and_then(|shape| shape.max_length)
+        .unwrap_or(DEFAULT_STRING_MAX_LENGTH)
 }
 
 /// Resolves the single encoding every operand of one string operation shares.

@@ -334,8 +334,7 @@ mod tests {
                     max_value: 100,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Create an alias specification: BASE_RANGE
         let spec = SpecificationKind::Named(TypeName::from("BASE_RANGE"));
@@ -472,8 +471,7 @@ mod tests {
                     char_width: CharWidth::Narrow,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Create a subrange specification with non-numeric base type
         let spec = SpecificationKind::Inline(SubrangeSpecification {

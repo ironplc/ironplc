@@ -116,3 +116,7 @@ P9999,NotImplemented,Capability is not implemented (yet!)
 P2037,AggregateAssignmentTypeMismatch,Assignment between arrays or structures requires identical types
 P4050,ProgramVariableHidesGlobal,Program variable has the same name as a global variable
 P4051,CaseLabelRangeInvalid,CASE label range minimum value is greater than the maximum
+P4052,StringLiteralCharOutOfRange,Character string literal contains a character that the string type cannot represent
+P4053,CaseSelectorTypeInvalid,CASE selector is not an integer or enumeration type
+P4054,FunctionBlockInFunction,Function declares or invokes a function block instance
+P4055,EnumExplicitValueNotAllowed,Explicit enumeration member value requires choosing a dialect or --allow-enum-explicit-values flag

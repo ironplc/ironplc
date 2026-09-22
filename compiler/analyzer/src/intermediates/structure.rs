@@ -26,7 +26,7 @@ pub fn try_from(
 
     for element in &spec.elements {
         // Resolve the field type from the initial value assignment
-        let field_type = resolve_field_type(&element.init, type_environment)?;
+        let field_type = resolve_field_type(element, type_environment)?;
 
         // Determine if this field has a default value
         let has_default = field_has_default(&element.init, type_environment);
@@ -173,12 +173,12 @@ fn nested_structure_has_all_defaults(
     fields.iter().all(|field| field.has_default)
 }
 
-/// Resolves the field type from an initial value assignment
+/// Resolves the field type from the field's initial value assignment
 fn resolve_field_type(
-    init: &InitialValueAssignmentKind,
+    element: &StructureElementDeclaration,
     type_environment: &TypeEnvironment,
 ) -> Result<IntermediateType, Diagnostic> {
-    match init {
+    match &element.init {
         InitialValueAssignmentKind::Simple(simple_init) => {
             // Handle simple field types like BOOL, INT, etc.
             let type_attrs = type_environment
@@ -287,7 +287,10 @@ fn resolve_field_type(
         }
         _other => {
             // Other types are not yet supported
-            Err(Diagnostic::todo())
+            Err(Diagnostic::not_implemented(Label::span(
+                element.name.span(),
+                "Structure field with an unsupported type",
+            )))
         }
     }
 }

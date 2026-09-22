@@ -21,6 +21,7 @@ use super::compile::{
 use super::compile_expr::{
     compile_expr, emit_add, emit_arithmetic_op, emit_compare_op, emit_div, emit_mod, emit_mul,
     emit_not, emit_sub, emit_truncation, op_type, op_type_from_expr, storage_bits,
+    unresolved_expr_type,
 };
 use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
@@ -276,7 +277,6 @@ fn compile_user_function_call(
             // encoding, and the copy below has to agree with it.
             let src_offset =
                 resolve_string_arg(emitter, ctx, arg, &func.name.span(), str_info.char_width)?;
-            ctx.num_temp_bufs += 1;
             emitter.emit_str_load_var(src_offset);
             emitter.emit_str_store_var(str_info.data_offset);
 
@@ -752,8 +752,8 @@ fn sizeof_from_resolved_type(expr: &Expr) -> Result<u32, Diagnostic> {
     let resolved = expr
         .resolved_type
         .as_ref()
-        .ok_or_else(|| Diagnostic::todo())?;
-    let info = resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo())?;
+        .ok_or_else(|| unresolved_expr_type(expr))?;
+    let info = resolve_type_name(&resolved.name).ok_or_else(|| unresolved_expr_type(expr))?;
     // Ceiling division: types like BOOL (1 bit) still occupy 1 byte.
     Ok((info.storage_bits as u32).div_ceil(8))
 }
@@ -1211,7 +1211,6 @@ pub(crate) fn compile_string_conversion(
                 }
             };
             emitter.emit_builtin(func_id);
-            ctx.num_temp_bufs += 1;
             Ok(())
         }
         StringConversion::StringToNum { target } => {

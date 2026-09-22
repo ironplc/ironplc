@@ -11,20 +11,11 @@
 use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::{parse_and_run, read_string};
 
 /// Reads the `max_length` header field (code units).
 fn read_max_length(data_region: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([data_region[offset], data_region[offset + 1]])
-}
-
-/// Reads a STRING value from the data region at the given byte offset.
-fn read_string(data_region: &[u8], data_offset: usize) -> String {
-    let cur_len =
-        u16::from_le_bytes([data_region[data_offset + 2], data_region[data_offset + 3]]) as usize;
-    let data_start = data_offset + STRING_HEADER_BYTES;
-    let bytes = &data_region[data_start..data_start + cur_len];
-    bytes.iter().map(|&b| b as char).collect()
 }
 
 /// Reads a WSTRING value (UTF-16LE code units) from the data region.

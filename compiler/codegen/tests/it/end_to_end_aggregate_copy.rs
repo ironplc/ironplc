@@ -261,9 +261,6 @@ END_PROGRAM
 // copy is correct precisely because the analyzer has already required
 // identical types, so each destination header is overwritten with the same
 // max_length it had.
-//
-// The elements are staged through plain STRING variables because LEN() of an
-// array element is not implemented (codegen/src/compile_string.rs).
 e2e_i32!(
     end_to_end_when_string_array_copied_then_source_is_not_aliased,
     "
@@ -271,21 +268,17 @@ PROGRAM main
   VAR
     x : ARRAY[1..2] OF STRING[8];
     y : ARRAY[1..2] OF STRING[8];
-    sx : STRING[8];
-    sy : STRING[8];
     rx : DINT;
     ry : DINT;
   END_VAR
   y[1] := 'abc';
   x := y;
   x[1] := 'wxyz';
-  sx := x[1];
-  sy := y[1];
-  rx := LEN(sx);
-  ry := LEN(sy);
+  rx := LEN(x[1]);
+  ry := LEN(y[1]);
 END_PROGRAM
 ",
-    &[(4, 4), (5, 3)],
+    &[(2, 4), (3, 3)],
 );
 
 // An array whose elements are structures is not covered here: declaring one

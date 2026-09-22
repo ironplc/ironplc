@@ -220,7 +220,7 @@ fn render_initial_value(init: &InitialValueAssignmentKind) -> Option<String> {
         InitialValueAssignmentKind::String(s) => s
             .initial_value
             .as_ref()
-            .map(|chars| format!("'{}'", chars.iter().collect::<String>())),
+            .map(|lit| format!("'{}'", lit.value.iter().collect::<String>())),
         InitialValueAssignmentKind::EnumeratedType(e) => {
             e.initial_value.as_ref().map(|v| v.value.to_string())
         }
