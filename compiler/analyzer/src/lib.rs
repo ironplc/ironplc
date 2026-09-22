@@ -33,6 +33,7 @@ mod rule_case_bit_string_label;
 mod rule_case_selector_type;
 mod rule_constant_range;
 mod rule_decl_struct_element_unique_names;
+mod rule_enum_explicit_value_allowed;
 mod rule_enumeration_values_unique;
 mod rule_extends_field_duplicated;
 mod rule_function_block_call_unsupported;
