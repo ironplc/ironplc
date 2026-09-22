@@ -1,6 +1,6 @@
 # ADR-0040: Dialect Violations Are Diagnosed in a Policy Phase, Not by Gating the Grammar
 
-status: proposed
+status: accepted
 date: 2026-07-24
 
 ## Context and Problem Statement

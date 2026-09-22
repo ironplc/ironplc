@@ -48,9 +48,10 @@ pub(crate) fn resolve_initializer(
         InitialValueAssignmentKind::Simple(si) => {
             Some(type_env.get(&si.type_name)?.representation.clone())
         }
-        InitialValueAssignmentKind::LateResolvedType(tn) => {
-            Some(type_env.get(tn)?.representation.clone())
-        }
+        InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+            type_name: tn,
+            ..
+        }) => Some(type_env.get(tn)?.representation.clone()),
         InitialValueAssignmentKind::Structure(si) => {
             Some(type_env.get(&si.type_name)?.representation.clone())
         }

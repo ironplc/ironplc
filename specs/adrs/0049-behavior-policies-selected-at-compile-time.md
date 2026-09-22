@@ -1,6 +1,6 @@
 # Behavior Policies Are Selected at Compile Time and Encoded in the Bytecode
 
-status: proposed
+status: accepted
 date: 2026-09-03
 supersedes: ADR-0002
 
@@ -295,6 +295,44 @@ the source is compiled.
   standard operation remains an intrinsic because it is standard surface.
 * [ADR-0010](0010-no-std-vm-for-embedded-targets.md): rule 6 is how an
   embedded build stays small.
+
+### What landed (2026-09-06)
+
+The machinery and the first application landed for `STRING_TO_UDINT`, and
+are described in [behavior-policies.md](../design/behavior-policies.md). Two
+details differ from the table above, both within the discretion the table
+leaves to the design document:
+
+* The *scan* policy landed as `--policy-string-to-num-non-numeric` with three
+  alternatives: `reject` (*whole*), `ignore-trailing` (*prefix*), and
+  `ignore-surrounding`, which skips leading non-literal characters before
+  converting the prefix. The third is offered because Rockwell documents it
+  for `STOD` (rule 5); no preset selects it.
+* The *failure* policy landed as `--policy-string-to-num-failure` with
+  `trap` and `zero`. RuSTy's preset selects `zero`, per its documented
+  "never fault" contract.
+
+The remaining `STRING_TO_*` targets keep their single-encoding builtins until
+each moves onto the func_id block; the `flag` failure alternative and the
+non-trapping validator library function are separate follow-ups. Confirmation
+criteria 1 through 5 hold for the landed policy:
+`compiler/vm/src/` matches the policy names only in the dispatch arm that
+decodes them from the func_id.
+
+### What landed (2026-09-11)
+
+The 8-, 16- and 32-bit integer targets (`SINT`, `INT`, `DINT`, `USINT`,
+`UINT`, `BYTE`, `WORD`, `DWORD`) moved onto the func_id block, tracked by
+[#1683](https://github.com/ironplc/ironplc/issues/1683). Each instantiates
+the one integer scanner with its own bounds, and the `TRUNC_*` that used to
+follow the conversion is gone: `STRING_TO_SINT('300')` fails as the
+*First application* section says, and never wraps to 44. The 64-bit integer
+targets (`LINT`, `ULINT`, `LWORD`) followed on 2026-09-12 through the same
+scanner, and the real targets (`REAL`, `LREAL`) the same day through a
+second scanner behind the same policies, which completes the first
+application: every `STRING_TO_<numeric>` function is on the block. Two
+real-only decisions are recorded in the design document: a magnitude that
+rounds to infinity is a range failure, and nothing produces a NaN.
 
 ### Sources for the survey
 

@@ -16,12 +16,15 @@ mod header;
 pub mod id_types;
 mod instruction;
 pub mod opcode;
+pub mod policy;
 mod string_layout;
 mod task_type;
 
 // Only available with std
 #[cfg(feature = "std")]
 mod builder;
+#[cfg(feature = "std")]
+mod cfg;
 #[cfg(feature = "std")]
 mod code_section;
 #[cfg(feature = "std")]
@@ -42,13 +45,18 @@ pub mod test_support;
 mod type_section;
 #[cfg(feature = "std")]
 pub mod verify;
+#[cfg(feature = "std")]
+pub mod verify_temp_bufs;
 
 // Always-available re-exports
 pub use char_width::CharWidth;
 pub use const_type::ConstType;
 pub use container_ref::{ContainerRef, ProgramEntryRef, TaskEntryRef};
 pub use error::ContainerError;
-pub use header::{FileHeader, FLAG_HAS_SYSTEM_UPTIME, FORMAT_VERSION, HEADER_SIZE, MAGIC};
+pub use header::{
+    FileHeader, FLAG_HAS_DEBUG_SECTION, FLAG_HAS_SYSTEM_UPTIME, FLAG_HAS_TYPE_SECTION,
+    FORMAT_VERSION, HEADER_SIZE, MAGIC,
+};
 pub use id_types::{
     ConstantIndex, FbTypeId, FunctionId, InstanceId, SlotIndex, SourceColumn, SourceFileId,
     SourceLine, TaskId, VarIndex,
@@ -83,6 +91,8 @@ pub use type_section::{
 };
 #[cfg(feature = "std")]
 pub use verify::{verify_stack_balance, StackImbalance};
+#[cfg(feature = "std")]
+pub use verify_temp_bufs::{verify_temp_buffer_bound, TempBufferOverrun};
 
 // Spec conformance testing infrastructure (test-only)
 #[cfg(test)]
@@ -91,3 +101,5 @@ mod spec_requirements {
 }
 #[cfg(test)]
 mod spec_conformance;
+#[cfg(test)]
+mod spec_conformance_behavior_policies;

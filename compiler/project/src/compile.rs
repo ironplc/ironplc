@@ -89,9 +89,7 @@ pub fn compile(
 
     // Generate bytecode, skipping user-defined functions not reachable from
     // the PROGRAM root to reduce container size.
-    let codegen_options = CodegenOptions {
-        system_uptime_global: compiler_options.allow_system_uptime_global,
-    };
+    let codegen_options = CodegenOptions::from(compiler_options);
 
     match ironplc_codegen::compile(library, context, &codegen_options, source_lookup) {
         Ok(container) => CompileOutput {

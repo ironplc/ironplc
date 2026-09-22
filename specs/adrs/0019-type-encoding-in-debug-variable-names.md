@@ -1,7 +1,8 @@
 # ADR-0019: Type Encoding in Debug Variable Names
 
-status: proposed
+status: accepted
 date: 2026-03-08
+amended: 2026-09-11 (tag table did not match the assignments that shipped)
 
 ## Context and Problem Statement
 
@@ -91,11 +92,23 @@ The `iec_type_tag` drives bit interpretation (how to read the raw `u64` slot val
 | 16 | WSTRING | data region | deferred |
 | 17 | TIME | `raw as i32` (milliseconds) | `T#...` |
 | 18 | LTIME | `raw as i64` (milliseconds) | `T#...` |
-| 19 | DATE | reserved | deferred |
-| 20 | TIME_OF_DAY | reserved | deferred |
-| 21 | DATE_AND_TIME | reserved | deferred |
-| 22–254 | — | reserved | — |
+| 19 | DATE | `raw as u32` (seconds since 1970-01-01, ADR-0025) | `D#...` |
+| 20 | LDATE | `raw as u64` (seconds since 1970-01-01) | `LDATE#...` |
+| 21 | TIME_OF_DAY | `raw as u32` (ms since midnight) | `TOD#...` |
+| 22 | LTOD | `raw as u64` (ms since midnight) | `LTOD#...` |
+| 23 | DATE_AND_TIME | `raw as u32` (seconds since 1970-01-01) | `DT#...` |
+| 24 | LDT | `raw as u64` (seconds since 1970-01-01) | `LDT#...` |
+| 25 | STRUCT | data region (slot holds the offset, not the value) | render the fields |
+| 26 | ARRAY | data region (slot holds the offset, not the value) | render the elements |
+| 27 | FB_INSTANCE | data region (slot holds the offset, not the value) | render the members |
+| 28–254 | — | reserved | — |
 | 255 | OTHER | fallback | display type_name + raw decimal |
+
+The tags above are the assignments that shipped, which are not the ones this ADR
+originally listed — see
+[Amendment: the tag assignments moved as the type set grew](#amendment-the-tag-assignments-moved-as-the-type-set-grew-2026-09-11).
+`iec_type_tag` in `compiler/container/src/debug_section.rs` is the normative
+list; this table describes it.
 
 For user-defined types (ENUM, subrange), the `iec_type_tag` is set to the **underlying primitive type** (e.g., tag 2 for `INT`-based enum), and `type_name` carries the user-defined name (e.g., `"TrafficLight"`). This means the value can always be displayed correctly using just the tag, even without understanding the derived type's definition.
 
@@ -137,3 +150,29 @@ The Type Section's `var_type` encoding (I32, U32, I64, etc.) describes **storage
 ### Future: ENUM Display
 
 When an enum definition table (Tag 4/5) is added, the debugger will look up the raw value in the enum definition to display the member name (e.g., `"Green"` instead of `2`). The `iec_type_tag` provides the fallback display format until then.
+
+## Amendment: the tag assignments moved as the type set grew (2026-09-11)
+
+Option C shipped and is what the debug section carries: a `VarNameEntry` holds
+both an `iec_type_tag` driving bit interpretation and a `type_name` string
+driving display. That decision is unchanged.
+
+The *numbers* drifted. As written, this ADR assigned 19 = DATE,
+20 = TIME_OF_DAY, 21 = DATE_AND_TIME and reserved everything from 22. What
+shipped interleaves each L-prefixed variant next to its 32-bit counterpart
+(20 = LDATE, 22 = LTOD, 24 = LDT) and then spends 25–27 on the aggregate tags
+STRUCT, ARRAY and FB_INSTANCE — which this ADR did not anticipate at all, and
+which exist because their slot holds a data-region offset rather than a value,
+so a renderer that displayed the slot would print an address.
+
+A reader who took tag 20 from this ADR would have decoded an `LDATE` as a
+`TIME_OF_DAY`. The table has been corrected to match the code.
+
+ADR-0021 asked for exactly this fix — "ADR-0019's table should be updated
+accordingly", of tag 17's reinterpretation from microseconds to milliseconds —
+and it was never done. That instruction has now been carried out (tag 17 reads
+milliseconds; tag 18 was added for LTIME), five months late. The general lesson
+is the one #1586 exists for: an ADR that tells a *different* ADR to update itself
+has no mechanism behind it, and the correction does not happen. Where an ADR
+depends on a value the code also holds, it should name the code as the normative
+source, which this table now does.

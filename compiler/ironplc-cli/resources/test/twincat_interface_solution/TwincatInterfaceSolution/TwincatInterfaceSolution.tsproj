@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<TcSmProject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TcSmVersion="1.0" TcVersion="3.1.4024.0">
+	<Project ProjectGUID="{6A1D9E42-3F58-4C0A-B2E7-8D4E15C9A036}" ShowHideConfigurations="#x106">
+		<Plc>
+			<Project GUID="{F3C8A716-2D95-4E0B-9A6C-1B7E4F82D3C5}" Name="PlcAxis" PrjFilePath="PlcAxis\PlcAxis.plcproj" TmcFilePath="" ReloadTmc="true" AmsPort="851" FileArchiveSettings="#x000e" SymbolicMapping="true"/>
+		</Plc>
+	</Project>
+</TcSmProject>

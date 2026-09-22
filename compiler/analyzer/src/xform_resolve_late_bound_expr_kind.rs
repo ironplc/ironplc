@@ -122,9 +122,10 @@ impl DeclarationResolver<'_> {
             InitialValueAssignmentKind::Structure(_) => VariableType::Structure,
             InitialValueAssignmentKind::Array(_) => VariableType::Array,
             InitialValueAssignmentKind::Reference(_) => VariableType::Reference,
-            InitialValueAssignmentKind::LateResolvedType(type_name) => {
-                VariableType::LateResolvedType(type_name.clone())
-            }
+            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name,
+                ..
+            }) => VariableType::LateResolvedType(type_name.clone()),
             // Not yet folded to a literal (extension, folded by a
             // later pass); treat like `Simple` for type-inference purposes.
             InitialValueAssignmentKind::SimpleExpr(_) => VariableType::Simple,
@@ -166,6 +167,34 @@ impl DeclarationResolver<'_> {
 }
 
 impl Fold<Diagnostic> for DeclarationResolver<'_> {
+    /// Resolves a bare identifier used as a structure or function-block
+    /// member initializer value.
+    ///
+    /// `(x := g)` is one token in a position that accepts both an enumerated
+    /// value and a variable reference, so the parser records it as
+    /// `LateBound` rather than guessing. Deciding it needs the declarations,
+    /// which is what this pass has: `resolve_late_bound` already makes
+    /// exactly this call for every other bare identifier.
+    ///
+    /// A variable reference becomes an `Expression` -- a value read at
+    /// instantiation time, gated by `--allow-struct-initializer-expressions`
+    /// (P4043). Anything else is an enumerated value, standard syntax that
+    /// the gate must never see.
+    fn fold_struct_initial_value_assignment_kind(
+        &mut self,
+        node: StructInitialValueAssignmentKind,
+    ) -> Result<StructInitialValueAssignmentKind, Diagnostic> {
+        if let StructInitialValueAssignmentKind::LateBound(late_bound) = node {
+            return Ok(match self.resolve_late_bound(late_bound.value) {
+                ExprKind::EnumeratedValue(value) => {
+                    StructInitialValueAssignmentKind::EnumeratedValue(value)
+                }
+                resolved => StructInitialValueAssignmentKind::Expression(Expr::new(resolved)),
+            });
+        }
+        node.recurse_fold(self)
+    }
+
     fn fold_function_declaration(
         &mut self,
         node: FunctionDeclaration,

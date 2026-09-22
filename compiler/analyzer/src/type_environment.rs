@@ -5,13 +5,16 @@ use std::collections::HashMap;
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::{
-    common::TypeName,
+    common::{ReferenceTarget, SpecificationKind, TypeName},
     core::Located,
     diagnostic::{Diagnostic, Label},
+    textual::Expr,
 };
 use ironplc_problems::Problem;
 
 use crate::intermediate_type::{ByteSized, IntermediateType};
+use crate::intermediates::array;
+use crate::symbol_environment::duplicate_declaration;
 
 /// Context for type usage validation
 #[derive(Debug, Clone, PartialEq)]
@@ -237,6 +240,12 @@ pub fn elementary_type(type_name: &TypeName) -> Option<&'static IntermediateType
 #[derive(Debug)]
 pub struct TypeEnvironment {
     table: HashMap<TypeName, crate::type_attributes::TypeAttributes>,
+    /// The repeated declarations met while populating, until the transform
+    /// that populates the environment drains them with
+    /// [`Self::take_duplicates`]. Recorded rather than returned so that a
+    /// repeat does not abort the fold that met it: the first declaration is
+    /// kept and every other declaration still resolves.
+    duplicates: Vec<Diagnostic>,
 }
 
 impl TypeEnvironment {
@@ -244,34 +253,52 @@ impl TypeEnvironment {
     pub fn new() -> Self {
         Self {
             table: HashMap::new(),
+            duplicates: Vec::new(),
         }
     }
 
     /// Adds the type into the environment.
     ///
-    /// Returns an error if a type already exists with the name
-    /// and does not insert the type.
+    /// A name already in the environment keeps its first type; the repeat is
+    /// recorded as a diagnostic (`P2007`, or `P4013` when either declaration
+    /// is a function block, which is a program organization unit as well as
+    /// a type) and dropped. The environment owns this check for every kind
+    /// it holds: data types, function blocks and interfaces.
     pub fn insert_type(
         &mut self,
         type_name: &TypeName,
         symbol: crate::type_attributes::TypeAttributes,
-    ) -> Result<(), Diagnostic> {
-        self.table.insert(type_name.clone(), symbol).map_or_else(
-            || Ok(()),
-            |existing| {
-                Err(Diagnostic::problem(
-                    Problem::TypeDeclNameDuplicated,
-                    Label::span(type_name.span(), "Type declaration"),
-                )
-                .with_secondary(Label::span(existing.span(), "Previous declaration")))
-            },
-        )
+    ) {
+        let Some(existing) = self.table.get(type_name) else {
+            self.table.insert(type_name.clone(), symbol);
+            return;
+        };
+        let is_function_block = |attributes: &crate::type_attributes::TypeAttributes| {
+            matches!(
+                attributes.representation,
+                IntermediateType::FunctionBlock { .. }
+            )
+        };
+        let problem = if is_function_block(existing) || is_function_block(&symbol) {
+            Problem::PouDeclNameDuplicated
+        } else {
+            Problem::TypeDeclNameDuplicated
+        };
+        self.duplicates.push(duplicate_declaration(
+            problem,
+            &type_name.name,
+            existing.span(),
+        ));
     }
 
-    /// Adds an alias type into the environment.
-    ///
-    /// Returns an error if a type already exists with the name
-    /// and does not insert the type.
+    /// The repeated declarations recorded by [`Self::insert_type`] since the
+    /// last call, in the order they were met.
+    pub fn take_duplicates(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.duplicates)
+    }
+
+    /// Adds an alias type into the environment; a repeated name is recorded
+    /// as for [`Self::insert_type`].
     ///
     /// Returns an error if the base type is not already in the type
     /// environment.
@@ -288,12 +315,62 @@ impl TypeEnvironment {
             .with_secondary(Label::span(base_type_name.span(), "Base type"))
         })?;
 
-        self.insert_type(type_name, base_intermediate_type.clone())
+        self.insert_type(type_name, base_intermediate_type.clone());
+        Ok(())
     }
 
     /// Gets the type from the environment.
     pub fn get(&self, type_name: &TypeName) -> Option<&crate::type_attributes::TypeAttributes> {
         self.table.get(type_name)
+    }
+
+    /// Resolves the type a `REF_TO` points at, whether it is named
+    /// (`REF_TO INT`, `REF_TO ARR4`) or an inline array
+    /// (`REF_TO ARRAY[0..3] OF INT`).
+    ///
+    /// `declaring` is the declaration that owns the target, used for the primary
+    /// diagnostic label.
+    pub fn resolve_reference_target(
+        &self,
+        declaring: &TypeName,
+        target: &ReferenceTarget,
+    ) -> Result<IntermediateType, Diagnostic> {
+        match target {
+            ReferenceTarget::Named(referenced_type_name) => {
+                let referenced_attrs = self.get(referenced_type_name).ok_or_else(|| {
+                    Diagnostic::problem(
+                        Problem::ParentTypeNotDeclared,
+                        Label::span(declaring.span(), "Reference type declaration"),
+                    )
+                    .with_secondary(Label::span(referenced_type_name.span(), "Referenced type"))
+                })?;
+                Ok(referenced_attrs.representation.clone())
+            }
+            ReferenceTarget::Array(array_subranges) => {
+                // Resolve the inline array spec: REF_TO ARRAY[1..10] OF INT
+                let array_spec = SpecificationKind::Inline(array_subranges.clone());
+                let result = array::try_from(declaring, &array_spec, self)?;
+                match result {
+                    array::IntermediateResult::Type(attrs) => Ok(attrs.representation),
+                    array::IntermediateResult::Alias(base_type_name) => Ok(self
+                        .get(&base_type_name)
+                        .ok_or_else(|| Diagnostic::internal_error())?
+                        .representation
+                        .clone()),
+                }
+            }
+        }
+    }
+
+    /// The representation of the type an expression resolved to, when the
+    /// analyzer gave it one that is in the environment.
+    ///
+    /// A bare literal resolves to a generic category (`ANY_INT`), which is
+    /// not in the environment, so it answers `None` rather than a
+    /// representation of its own.
+    pub fn representation_of_expr(&self, expr: &Expr) -> Option<&IntermediateType> {
+        let resolved = expr.resolved_type.as_ref()?;
+        Some(&self.get(resolved)?.representation)
     }
 
     /// Returns if the type is an enumeration.
@@ -548,14 +625,14 @@ impl TypeEnvironmentBuilder {
                 env.insert_type(
                     &TypeName::from(name),
                     crate::type_attributes::TypeAttributes::elementary(representation.clone()),
-                )?;
+                );
             }
         }
         if self.has_stdlib_function_blocks {
             for (name, type_attrs) in
                 crate::intermediates::stdlib_function_block::get_all_stdlib_function_blocks()
             {
-                env.insert_type(&TypeName::from(name), type_attrs)?;
+                env.insert_type(&TypeName::from(name), type_attrs);
             }
         }
         Ok(env)
@@ -579,24 +656,73 @@ mod tests {
         type_attributes::TypeAttributes,
         type_category::TypeCategory,
     };
+    use ironplc_dsl::common::{
+        ArrayElementType, ArraySubranges, Integer, SignedInteger, SignedIntegerRef, Subrange,
+    };
     use ironplc_dsl::core::SourceSpan;
 
     #[test]
-    fn insert_type_when_type_already_exists_then_error() {
+    fn insert_type_when_type_already_exists_then_p2007_and_first_kept() {
         let mut env = TypeEnvironment::new();
-        assert!(env
-            .insert_type(
-                &TypeName::from("TYPE"),
-                TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool)
-            )
-            .is_ok());
+        let first = SourceSpan::range(0, 4);
+        env.insert_type(
+            &TypeName::from("TYPE"),
+            TypeAttributes::new(first.clone(), IntermediateType::Bool),
+        );
+        env.insert_type(
+            &TypeName::from("TYPE"),
+            TypeAttributes::new(SourceSpan::range(10, 14), IntermediateType::Bool),
+        );
 
-        assert!(env
-            .insert_type(
-                &TypeName::from("TYPE"),
-                TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool)
+        let duplicates = env.take_duplicates();
+        assert_eq!(duplicates.len(), 1);
+        assert_eq!(duplicates[0].code, Problem::TypeDeclNameDuplicated.code());
+        assert_eq!(env.get(&TypeName::from("TYPE")).unwrap().span(), first);
+        assert!(env.take_duplicates().is_empty());
+    }
+
+    #[test]
+    fn insert_type_when_function_block_repeated_then_p4013() {
+        let mut env = TypeEnvironment::new();
+        let block = || {
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::FunctionBlock {
+                    name: "FB".to_string(),
+                    fields: vec![],
+                },
             )
-            .is_err());
+        };
+        env.insert_type(&TypeName::from("FB"), block());
+        env.insert_type(&TypeName::from("FB"), block());
+
+        let duplicates = env.take_duplicates();
+        assert_eq!(duplicates.len(), 1);
+        assert_eq!(duplicates[0].code, Problem::PouDeclNameDuplicated.code());
+    }
+
+    #[test]
+    fn insert_type_when_function_block_repeats_type_then_p4013() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("Shared"),
+            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
+        );
+        env.insert_type(
+            &TypeName::from("Shared"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::FunctionBlock {
+                    name: "Shared".to_string(),
+                    fields: vec![],
+                },
+            ),
+        );
+
+        assert_eq!(
+            env.take_duplicates()[0].code,
+            Problem::PouDeclNameDuplicated.code()
+        );
     }
 
     #[test]
@@ -605,8 +731,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("TYPE"),
             TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
-        )
-        .unwrap();
+        );
         assert!(env
             .insert_alias(&TypeName::from("TYPE_ALIAS"), &TypeName::from("TYPE"))
             .is_ok());
@@ -777,8 +902,7 @@ mod tests {
                     }),
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Add a non-enumeration type
         env.insert_type(
@@ -789,8 +913,7 @@ mod tests {
                     size: ByteSized::B16,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Test the helper method
         assert!(env.is_enumeration(&TypeName::from("MY_ENUM")));
@@ -809,8 +932,7 @@ mod tests {
                     size: ByteSized::B32,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Test successful memory size retrieval
         assert_eq!(
@@ -830,8 +952,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_BOOL"),
             TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
-        )
-        .unwrap();
+        );
 
         env.insert_type(
             &TypeName::from("MY_ENUM"),
@@ -843,8 +964,7 @@ mod tests {
                     }),
                 },
             ),
-        )
-        .unwrap();
+        );
 
         env.insert_type(
             &TypeName::from("MY_SUBRANGE"),
@@ -858,8 +978,7 @@ mod tests {
                     max_value: 100,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         let categories = env.get_all_types_by_category();
 
@@ -889,8 +1008,7 @@ mod tests {
                     size: ByteSized::B32,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Test valid usage contexts
         assert!(env
@@ -925,8 +1043,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_BOOL"),
             TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
-        )
-        .unwrap();
+        );
 
         // Boolean is not numeric, should fail for subrange base
         assert!(env
@@ -945,8 +1062,7 @@ mod tests {
                     size: ByteSized::B32,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Real is numeric but not integer, should fail for enumeration underlying
         assert!(env
@@ -969,8 +1085,7 @@ mod tests {
                     fields: vec![],
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Function blocks cannot be array elements
         assert!(env
@@ -990,8 +1105,7 @@ mod tests {
                     fields: vec![],
                 },
             ),
-        )
-        .unwrap();
+        );
 
         // Function blocks cannot be return types
         assert!(env
@@ -1016,8 +1130,7 @@ mod tests {
                     }],
                 },
             ),
-        )
-        .unwrap();
+        );
 
         let result = env.resolve_array_type(&TypeName::from("MY_ARRAY"));
         assert!(result.is_some());
@@ -1035,8 +1148,7 @@ mod tests {
                     size: ByteSized::B16,
                 },
             ),
-        )
-        .unwrap();
+        );
 
         assert!(env.resolve_array_type(&TypeName::from("MY_INT")).is_none());
     }
@@ -1084,8 +1196,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_STRUCT"),
             TypeAttributes::new(SourceSpan::default(), struct_type.clone()),
-        )
-        .unwrap();
+        );
 
         let result = env.resolve_struct_type(&TypeName::from("MY_STRUCT"));
         assert!(result.is_some());
@@ -1098,8 +1209,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_INT"),
             TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
-        )
-        .unwrap();
+        );
 
         assert!(env.resolve_struct_type(&TypeName::from("MY_INT")).is_none());
         assert!(env
@@ -1119,8 +1229,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_FB"),
             TypeAttributes::new(SourceSpan::default(), fb_type.clone()),
-        )
-        .unwrap();
+        );
 
         assert!(env.resolve_struct_type(&TypeName::from("MY_FB")).is_none());
         assert_eq!(
@@ -1136,8 +1245,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_STRUCT"),
             TypeAttributes::new(SourceSpan::default(), struct_type.clone()),
-        )
-        .unwrap();
+        );
 
         assert_eq!(
             env.resolve_member_access_type(&TypeName::from("MY_STRUCT")),
@@ -1151,8 +1259,7 @@ mod tests {
         env.insert_type(
             &TypeName::from("MY_BOOL"),
             TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
-        )
-        .unwrap();
+        );
 
         assert!(env
             .resolve_member_access_type(&TypeName::from("MY_BOOL"))
@@ -1160,5 +1267,117 @@ mod tests {
         assert!(env
             .resolve_member_access_type(&TypeName::from("NOT_FOUND"))
             .is_none());
+    }
+    fn subranges(element: &str) -> ArraySubranges {
+        ArraySubranges {
+            ranges: vec![Subrange {
+                start: SignedIntegerRef::Literal(SignedInteger {
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 0,
+                    },
+                    is_neg: false,
+                }),
+                end: SignedIntegerRef::Literal(SignedInteger {
+                    value: Integer {
+                        span: SourceSpan::default(),
+                        value: 3,
+                    },
+                    is_neg: false,
+                }),
+            }],
+            type_name: ArrayElementType::Named(TypeName::from(element)),
+            ref_to: None,
+        }
+    }
+
+    #[test]
+    fn resolve_reference_target_when_named_elementary_then_returns_elementary_type() {
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+
+        let result = env.resolve_reference_target(
+            &TypeName::from("INT_REF"),
+            &ReferenceTarget::Named(TypeName::from("INT")),
+        );
+
+        assert!(matches!(
+            result,
+            Ok(IntermediateType::Int {
+                size: ByteSized::B16
+            })
+        ));
+    }
+
+    #[test]
+    fn resolve_reference_target_when_named_array_then_returns_array_type() {
+        let mut env = TypeEnvironment::new();
+        env.insert_type(
+            &TypeName::from("ARR4"),
+            TypeAttributes::new(
+                SourceSpan::default(),
+                IntermediateType::Array {
+                    element_type: Box::new(IntermediateType::Int {
+                        size: ByteSized::B16,
+                    }),
+                    dimensions: vec![ArrayDimension { lower: 0, upper: 3 }],
+                },
+            ),
+        );
+
+        let result = env.resolve_reference_target(
+            &TypeName::from("ARR_REF"),
+            &ReferenceTarget::Named(TypeName::from("ARR4")),
+        );
+
+        assert!(matches!(result, Ok(IntermediateType::Array { .. })));
+    }
+
+    #[test]
+    fn resolve_reference_target_when_inline_array_then_returns_array_type() {
+        let env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+
+        let result = env.resolve_reference_target(
+            &TypeName::from("ARR_REF"),
+            &ReferenceTarget::Array(subranges("INT")),
+        );
+
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        assert!(matches!(resolved, IntermediateType::Array { .. }));
+        assert_eq!(resolved.array_total_elements(), Some(4));
+    }
+
+    #[test]
+    fn resolve_reference_target_when_named_target_undeclared_then_parent_type_not_declared() {
+        let env = TypeEnvironment::new();
+
+        let result = env.resolve_reference_target(
+            &TypeName::from("BAD_REF"),
+            &ReferenceTarget::Named(TypeName::from("MISSING")),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().code,
+            Problem::ParentTypeNotDeclared.code()
+        );
+    }
+
+    #[test]
+    fn resolve_reference_target_when_inline_array_element_undeclared_then_error() {
+        let env = TypeEnvironment::new();
+
+        let result = env.resolve_reference_target(
+            &TypeName::from("BAD_REF"),
+            &ReferenceTarget::Array(subranges("MISSING")),
+        );
+
+        assert!(result.is_err());
     }
 }

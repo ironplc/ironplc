@@ -358,9 +358,9 @@ However, if opcode budget preservation is preferred, Approach B works entirely w
 
 ### 5.3 Element Type Byte for Structure Descriptors
 
-Array descriptors include an `element_type` byte that encodes the element's data type. The existing encoding uses values 0-5 for primitive types (I32, U32, I64, U64, F32, F64). Structures are heterogeneous (different fields have different types), so no single primitive type applies.
+Array descriptors include an `element_type` byte that encodes the element's data type. The existing encoding assigns values 0-9 to the concrete types (see REQ-CF-container-009 in the [container format](bytecode-container-format.md)). Structures are heterogeneous (different fields have different types), so no single concrete type applies.
 
-**Decision**: Define `SLOT = 6` as a new element type byte for structure descriptors:
+**Decision**: Define `SLOT = 10` as a new element type byte for structure descriptors:
 
 | Type byte | Meaning |
 |-----------|---------|
@@ -370,12 +370,16 @@ Array descriptors include an `element_type` byte that encodes the element's data
 | 3 | U64 |
 | 4 | F32 |
 | 5 | F64 |
-| **6** | **SLOT** — heterogeneous structure field |
+| 6 | STRING |
+| 7 | WSTRING |
+| 8 | FB_INSTANCE |
+| 9 | TIME |
+| **10** | **SLOT** — heterogeneous structure field |
 
 The VM's LOAD_ARRAY/STORE_ARRAY instructions do **not** check the element type byte at runtime — they only use `total_elements` for bounds checking and always read/write 8 bytes. The type byte serves three purposes:
 1. **Bytecode verifier**: Can distinguish structure descriptors from typed array descriptors and skip per-element type enforcement for SLOT descriptors.
 2. **Debug tools**: Can identify which descriptors belong to structure variables.
-3. **Descriptor deduplication**: The container builder caches descriptors on `(element_type, total_elements)`. Using SLOT=6 prevents false merging of a structure descriptor with an unrelated I64 array of the same element count.
+3. **Descriptor deduplication**: The container builder caches descriptors on `(element_type, total_elements)`. Using SLOT=10 prevents false merging of a structure descriptor with an unrelated I64 array of the same element count.
 
 ---
 
@@ -518,7 +522,7 @@ The bytecode verifier sees LOAD_ARRAY/STORE_ARRAY operations on what appear to b
 - Stack depth is correct (value + index for store, index for load)
 - Type byte matches descriptor's element type
 
-For structures reusing the array infrastructure, the descriptor's `element_type` uses the `SLOT` type byte (value 6, see section 5.3). The verifier must recognize this value and skip per-element type enforcement for SLOT descriptors, since structure fields are heterogeneous. Bounds checking still applies. Per-field type correctness is guaranteed by the compiler's type checker, not the verifier.
+For structures reusing the array infrastructure, the descriptor's `element_type` uses the `SLOT` type byte (value 10, see section 5.3). The verifier must recognize this value and skip per-element type enforcement for SLOT descriptors, since structure fields are heterogeneous. Bounds checking still applies. Per-field type correctness is guaranteed by the compiler's type checker, not the verifier.
 
 ---
 

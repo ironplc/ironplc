@@ -4,7 +4,9 @@ P2002
 
 .. problem-summary:: P2002
 
-This error occurs when a subrange declaration has a minimum value that is not strictly less than the maximum value.
+This error occurs when a subrange type declaration has a minimum value that is not strictly less than the maximum value.
+
+A subrange type narrows an integer type to the values between its bounds, so a subrange of one value or none is not a useful type. This check applies only to subrange types. An array index range may have equal bounds, because ``ARRAY[0..0]`` is an ordinary array of one element; an inverted array index range is reported as :doc:`P2024 </reference/compiler/problems/P2024>`.
 
 Example
 -------
@@ -15,9 +17,10 @@ The following code will generate error P2002:
 
    TYPE
        InvalidRange : INT(10..-10);  (* Error: minimum (10) >= maximum (-10) *)
+       SingleValue : INT(5..5);      (* Error: minimum (5) >= maximum (5) *)
    END_TYPE
 
-The subrange declaration has a minimum value of 10 and maximum value of -10, but the minimum must be strictly less than the maximum.
+The subrange declarations have a minimum value that is not strictly less than the maximum value.
 
 To fix this error, ensure the minimum value is less than the maximum value:
 
@@ -26,4 +29,3 @@ To fix this error, ensure the minimum value is less than the maximum value:
    TYPE
        ValidRange : INT(-10..10);  (* Correct: minimum (-10) < maximum (10) *)
    END_TYPE
-

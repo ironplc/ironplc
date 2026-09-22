@@ -41,10 +41,18 @@ pub(crate) struct TempBufferSlot {
     pub max_len: u16,
 }
 
-/// Bump allocator for temporary string buffers.
+/// Stack allocator for temporary string buffers.
 ///
 /// Wraps the raw `u16` counter so that callers cannot manually
 /// increment it — all allocations must go through [`Self::alloc`].
+///
+/// A temp buffer is owned by the operand-stack slot holding its
+/// `buf_idx`, and lives until the instruction that consumes that slot
+/// ([`Self::release`]). Because the operand stack is LIFO, so is the
+/// pool: the buffer being consumed is the one most recently allocated.
+/// Releasing on consume — rather than only when the call frame returns —
+/// is what lets a string operation inside a loop reuse one buffer per
+/// iteration instead of drawing a fresh one each time round.
 pub(crate) struct TempBufAllocator {
     next: u16,
     max_temp_buf_bytes: usize,
@@ -73,6 +81,29 @@ impl TempBufAllocator {
     /// since `mark` was captured.
     pub fn rewind_to(&mut self, mark: u16) {
         self.next = mark;
+    }
+
+    /// Release the buffer `buf_idx` names, if it is the most recently
+    /// allocated one.
+    ///
+    /// Called by the opcodes that consume a `buf_idx` off the operand
+    /// stack (`STR_STORE_VAR`, `STR_STORE_ARRAY_ELEM`) once they have
+    /// copied the buffer's contents out.
+    ///
+    /// Anything that is not the top allocation is left alone, which
+    /// keeps the allocator a stack under every input:
+    ///
+    /// - A `buf_idx` at or above `next` is a value a callee returned,
+    ///   whose frame return already rewound past it. Rewinding *to* it
+    ///   would hand the same slot out twice.
+    /// - A `buf_idx` below the top would strand the slots above it. That
+    ///   ordering cannot arise from bytecode this compiler emits, and
+    ///   declining to reuse the slot is the conservative answer for
+    ///   bytecode that does.
+    pub fn release(&mut self, buf_idx: usize) {
+        if buf_idx + 1 == self.next as usize {
+            self.next = buf_idx as u16;
+        }
     }
 
     /// Allocate the next temp buffer slot for a string of the given
@@ -120,6 +151,21 @@ pub(crate) fn read_string_header(
     let cur_len = str_read_cur_len(data_region, offset) as usize;
     let data_start = offset + STRING_HEADER_BYTES;
     Ok((cur_len, data_start, char_width))
+}
+
+/// Resolve a `STRING` operand at `offset` in `data_region` to the bytes of
+/// its current value, for the `STRING_TO_*` conversions.
+///
+/// The conversions read Latin-1 digits, so a `WSTRING` operand traps
+/// [`Trap::EncodingMismatch`] (ADR-0034) rather than being misread as
+/// narrow bytes. The read is bounds-checked; a header past the end of the
+/// region traps [`Trap::DataRegionOutOfBounds`], and a value that runs past
+/// the end is clipped to the region.
+pub(crate) fn narrow_str_bytes(data_region: &[u8], offset: usize) -> Result<&[u8], Trap> {
+    let (cur_len, data_start, char_width) = read_string_header(data_region, offset)?;
+    verify_encoding(CharWidth::Narrow, char_width)?;
+    let end = (data_start + cur_len).min(data_region.len());
+    Ok(&data_region[data_start..end])
 }
 
 /// Copy `units` code units (`units * char_width` bytes) from `src` starting at
@@ -285,6 +331,61 @@ mod tests {
         let second = alloc.alloc(64, CharWidth::Narrow).unwrap();
         assert_eq!(second.buf_idx, 1);
         assert_eq!(second.buf_start, 32);
+    }
+
+    #[test]
+    fn release_when_top_allocation_then_slot_is_reused() {
+        let mut alloc = TempBufAllocator::new(32);
+        let first = alloc.alloc(64, CharWidth::Narrow).unwrap();
+        alloc.release(first.buf_idx as usize);
+        let second = alloc.alloc(64, CharWidth::Narrow).unwrap();
+
+        assert_eq!(second.buf_idx, first.buf_idx);
+        assert_eq!(second.buf_start, first.buf_start);
+    }
+
+    #[test]
+    fn release_when_repeated_alloc_release_then_pool_of_one_suffices() {
+        // What a string operation in a loop does: the pool holds a single
+        // slot and every iteration allocates, consumes and releases it.
+        // A 32-byte pool holds exactly one 32-byte slot, so an iteration
+        // that failed to release would trap rather than return slot 0.
+        let mut alloc = TempBufAllocator::new(32);
+        let every_iteration_reuses_slot_zero = (0..1000).all(|_| {
+            let buf_idx = match alloc.alloc(32, CharWidth::Narrow) {
+                Ok(slot) => slot.buf_idx,
+                Err(_) => return false,
+            };
+            alloc.release(buf_idx as usize);
+            buf_idx == 0
+        });
+
+        assert!(every_iteration_reuses_slot_zero);
+    }
+
+    #[test]
+    fn release_when_not_top_allocation_then_leaves_allocator_alone() {
+        // A 96-byte pool, so three 32-byte slots are available.
+        let mut alloc = TempBufAllocator::new(32);
+        let first = alloc.alloc(96, CharWidth::Narrow).unwrap();
+        let second = alloc.alloc(96, CharWidth::Narrow).unwrap();
+        alloc.release(first.buf_idx as usize);
+        let third = alloc.alloc(96, CharWidth::Narrow).unwrap();
+
+        assert_eq!(second.buf_idx, 1);
+        assert_eq!(third.buf_idx, 2);
+    }
+
+    #[test]
+    fn release_when_index_at_or_above_next_then_does_not_hand_out_twice() {
+        // A callee's returned buf_idx sits above `next` once the frame
+        // return has rewound. Releasing it must not move `next` forward.
+        let mut alloc = TempBufAllocator::new(32);
+        alloc.release(0);
+        alloc.release(7);
+        let slot = alloc.alloc(64, CharWidth::Narrow).unwrap();
+
+        assert_eq!(slot.buf_idx, 0);
     }
 
     #[test]

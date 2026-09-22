@@ -520,7 +520,9 @@ Builtins are monomorphized by the compiler: a generic IEC 61131-3 signature (`AN
 | 0x0422–0x0430 | `MUX` on I64 (base 0x0420 + arity) |
 | 0x0442–0x0450 | `MUX` on F32 (base 0x0440 + arity) |
 | 0x0462–0x0470 | `MUX` on F64 (base 0x0460 + arity) |
-| 0x0471–0xFFFF | Unassigned |
+| 0x0471–0x047F | Unassigned |
+| 0x0480–0x04FF | `STRING_TO_<numeric>` under behavior policies (base 0x0480 + target × 8 + policies); see [String-to-number under behavior policies](#string-to-number-under-behavior-policies) |
+| 0x0500–0xFFFF | Unassigned |
 
 #### Numeric and selection builtins
 
@@ -644,6 +646,98 @@ These are dispatched inline in the VM main loop rather than through the shared b
 
 `CMP_STR` is how the compiler lowers `=`, `<>`, `<`, `<=`, `>`, `>=` on strings: emit `CMP_STR`, then compare its result to 0 with the ordinary integer comparison opcodes.
 
+`CONV_STR_TO_I32` and `CONV_STR_TO_F32` trim whitespace, accept Rust's decimal syntax, and yield 0 or 0.0 on failure. Codegen no longer emits either (every `STRING_TO_<numeric>` target is on the policy block below); the VM keeps their handlers because a func_id is a permanent wire-format commitment.
+
+#### String-to-number under behavior policies
+
+A `STRING_TO_<numeric>` conversion whose behavior is selected at compile time ([ADR-0049](../adrs/0049-behavior-policies-selected-at-compile-time.md)) is encoded as a func_id that names its target type and both of its policies, following rule 3 of the encoding (the func_id names the family member):
+
+```text
+func_id = 0x0480 + target * 8 + non_numeric * 2 + failure
+```
+
+`non_numeric` is 0 `reject`, 1 `ignore-trailing`, 2 `ignore-surrounding`; `failure` is 0 `trap`, 1 `zero`. Each target owns a stride of eight (two slots spare). The block runs to 0x04FF; `builtin::str_to_num::decode` recovers the target and policies from an ID, and an ID in the block that names no conversion traps `V9007` like any other unassigned func_id. The semantics of each alternative are specified in [behavior-policies.md](behavior-policies.md).
+
+All take one argument: `[data_offset] → [value]`, where the value is an I32 slot for the integer targets up to 32 bits, an I64 slot for the 64-bit integer targets, and an F32 or F64 slot for the real targets. A `WSTRING` operand traps `V9014`.
+
+| func_id | Name | Non-numeric | Failure |
+|---------|------|-------------|---------|
+| 0x0480 | CONV_STR_TO_U32_REJECT_TRAP | reject | trap `V4006` |
+| 0x0481 | CONV_STR_TO_U32_REJECT_ZERO | reject | 0 |
+| 0x0482 | CONV_STR_TO_U32_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x0483 | CONV_STR_TO_U32_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
+| 0x0484 | CONV_STR_TO_U32_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x0485 | CONV_STR_TO_U32_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
+| 0x0488 | CONV_STR_TO_I32_REJECT_TRAP | reject | trap `V4006` |
+| 0x0489 | CONV_STR_TO_I32_REJECT_ZERO | reject | 0 |
+| 0x048A | CONV_STR_TO_I32_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x048B | CONV_STR_TO_I32_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
+| 0x048C | CONV_STR_TO_I32_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x048D | CONV_STR_TO_I32_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
+| 0x0490 | CONV_STR_TO_U8_REJECT_TRAP | reject | trap `V4006` |
+| 0x0491 | CONV_STR_TO_U8_REJECT_ZERO | reject | 0 |
+| 0x0492 | CONV_STR_TO_U8_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x0493 | CONV_STR_TO_U8_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
+| 0x0494 | CONV_STR_TO_U8_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x0495 | CONV_STR_TO_U8_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
+| 0x0498 | CONV_STR_TO_I8_REJECT_TRAP | reject | trap `V4006` |
+| 0x0499 | CONV_STR_TO_I8_REJECT_ZERO | reject | 0 |
+| 0x049A | CONV_STR_TO_I8_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x049B | CONV_STR_TO_I8_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
+| 0x049C | CONV_STR_TO_I8_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x049D | CONV_STR_TO_I8_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
+| 0x04A0 | CONV_STR_TO_U16_REJECT_TRAP | reject | trap `V4006` |
+| 0x04A1 | CONV_STR_TO_U16_REJECT_ZERO | reject | 0 |
+| 0x04A2 | CONV_STR_TO_U16_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x04A3 | CONV_STR_TO_U16_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
+| 0x04A4 | CONV_STR_TO_U16_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x04A5 | CONV_STR_TO_U16_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
+| 0x04A8 | CONV_STR_TO_I16_REJECT_TRAP | reject | trap `V4006` |
+| 0x04A9 | CONV_STR_TO_I16_REJECT_ZERO | reject | 0 |
+| 0x04AA | CONV_STR_TO_I16_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x04AB | CONV_STR_TO_I16_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
+| 0x04AC | CONV_STR_TO_I16_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x04AD | CONV_STR_TO_I16_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
+| 0x04B0 | CONV_STR_TO_U64_REJECT_TRAP | reject | trap `V4006` |
+| 0x04B1 | CONV_STR_TO_U64_REJECT_ZERO | reject | 0 |
+| 0x04B2 | CONV_STR_TO_U64_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x04B3 | CONV_STR_TO_U64_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
+| 0x04B4 | CONV_STR_TO_U64_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x04B5 | CONV_STR_TO_U64_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
+| 0x04B8 | CONV_STR_TO_I64_REJECT_TRAP | reject | trap `V4006` |
+| 0x04B9 | CONV_STR_TO_I64_REJECT_ZERO | reject | 0 |
+| 0x04BA | CONV_STR_TO_I64_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x04BB | CONV_STR_TO_I64_IGNORE_TRAILING_ZERO | ignore-trailing | 0 |
+| 0x04BC | CONV_STR_TO_I64_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x04BD | CONV_STR_TO_I64_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0 |
+| 0x04C0 | CONV_STR_TO_F32_REJECT_TRAP | reject | trap `V4006` |
+| 0x04C1 | CONV_STR_TO_F32_REJECT_ZERO | reject | 0.0 |
+| 0x04C2 | CONV_STR_TO_F32_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x04C3 | CONV_STR_TO_F32_IGNORE_TRAILING_ZERO | ignore-trailing | 0.0 |
+| 0x04C4 | CONV_STR_TO_F32_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x04C5 | CONV_STR_TO_F32_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0.0 |
+| 0x04C8 | CONV_STR_TO_F64_REJECT_TRAP | reject | trap `V4006` |
+| 0x04C9 | CONV_STR_TO_F64_REJECT_ZERO | reject | 0.0 |
+| 0x04CA | CONV_STR_TO_F64_IGNORE_TRAILING_TRAP | ignore-trailing | trap `V4006` |
+| 0x04CB | CONV_STR_TO_F64_IGNORE_TRAILING_ZERO | ignore-trailing | 0.0 |
+| 0x04CC | CONV_STR_TO_F64_IGNORE_SURROUNDING_TRAP | ignore-surrounding | trap `V4006` |
+| 0x04CD | CONV_STR_TO_F64_IGNORE_SURROUNDING_ZERO | ignore-surrounding | 0.0 |
+
+The targets, at the positions the block fixes (even positions unsigned, the odd position after each its signed counterpart, in width order 32, 8, 16, 64, then the reals). A bit-string type converts as the unsigned integer of its width. Out of range is a failure under every non-numeric alternative; the result is never wrapped or truncated.
+
+| Position | Target | Functions | func_ids |
+|---|---|---|---|
+| 0 | U32 | `STRING_TO_UDINT`, `STRING_TO_DWORD` | 0x0480–0x0485 |
+| 1 | I32 | `STRING_TO_DINT` | 0x0488–0x048D |
+| 2 | U8 | `STRING_TO_USINT`, `STRING_TO_BYTE` | 0x0490–0x0495 |
+| 3 | I8 | `STRING_TO_SINT` | 0x0498–0x049D |
+| 4 | U16 | `STRING_TO_UINT`, `STRING_TO_WORD` | 0x04A0–0x04A5 |
+| 5 | I16 | `STRING_TO_INT` | 0x04A8–0x04AD |
+| 6 | U64 | `STRING_TO_ULINT`, `STRING_TO_LWORD` | 0x04B0–0x04B5 |
+| 7 | I64 | `STRING_TO_LINT` | 0x04B8–0x04BD |
+| 8 | F32 | `STRING_TO_REAL` | 0x04C0–0x04C5 |
+| 9 | F64 | `STRING_TO_LREAL` | 0x04C8–0x04CD |
+
 #### MUX
 
 `MUX` is extensible — the number of `IN` arguments varies per call site — so its arity is encoded in the func_id: `BASE + n`, where `n` is the number of `IN` arguments (2..16). The call pops `n + 1` values: the `n` inputs plus the `K` selector.
@@ -738,13 +832,19 @@ Two storage areas hold strings:
 - **Data region** — string *variables* (and string array elements) live in the unified data region (ADR-0017), addressed by a compile-time-constant `data_offset`. `char_width` is written once at initialization and never changes.
 - **Temp buffer pool** — a pre-allocated pool of fixed-size buffers holding intermediate results. A buffer is addressed by a small `buf_idx`, which is what string-producing operations push onto the stack. The container header declares `num_temp_bufs` and `max_temp_buf_bytes`; codegen sizes them from the program's string expressions. Exhausting the pool traps `V9009 TempBufferExhausted`.
 
-Codegen sizes the pool by counting string-operation *call sites* statically,
-and the VM rewinds the allocator only on function return. A string operation
-inside a loop therefore allocates a fresh buffer on every iteration while
-having been counted once, and a loop that runs more than a couple of times
-traps `V9009`. This is why the bundled `Tc2_Utilities` `LREAL_TO_FMTSTR`
-renders digits as unrolled per-weight blocks rather than a loop: rewriting it
-as a loop would trap.
+**The pool is a stack, not an arena** ([ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md)).
+A temp buffer is owned by the operand-stack slot holding its `buf_idx` and is
+released by the instruction that consumes that slot — `STR_STORE_VAR` or
+`STR_STORE_ARRAY_ELEM`, once the value has been copied out. Because the
+operand stack is LIFO, the buffer being consumed is the one most recently
+allocated, so releasing it is a bump-pointer decrement. The frame-return
+rewind remains as a backstop for any buffer a body leaves live.
+
+The pool size is therefore a bound on buffers live *simultaneously*, not a
+count of string operations in the source. A string operation inside a loop
+allocates and releases one buffer per iteration and contributes 1, whatever
+the trip count — which is what makes a static size sound for a dynamic
+iteration count.
 
 Because `buf_idx` is a small integer, `DUP` and `SWAP` copy only the index — never buffer contents. Real copies happen at `STR_STORE_VAR` and inside the string operation handlers.
 
@@ -785,7 +885,15 @@ The string function opcodes take their string inputs as *compile-time data offse
 
 Results always go to a temp buffer. If a result exceeds the temp buffer's capacity it is truncated, matching standard PLC string truncation semantics.
 
-**Buffer lifecycle.** Temp buffers are allocated from the pool as string operations run, and the allocation mark is restored per call frame. A temp `buf_idx` is valid until the next operation that allocates from the pool; the compiler ensures no `buf_idx` stays live across such an operation, in practice by emitting `STR_STORE_VAR` as soon as a string expression completes. The pool size in the header guarantees the pool is never exhausted if that analysis is correct; if it is wrong the VM traps `V9009` rather than corrupting data.
+**Buffer lifecycle.** Temp buffers are allocated from the pool as string operations run, released by the instruction that consumes the `buf_idx`, and the allocation mark is additionally restored per call frame. A temp `buf_idx` is valid until the next operation that allocates from the pool; the compiler ensures no `buf_idx` stays live across such an operation, in practice by emitting `STR_STORE_VAR` as soon as a string expression completes. The pool size in the header guarantees the pool is never exhausted if that analysis is correct; if it is wrong the VM traps `V9009` rather than corrupting data.
+
+Codegen sizes the pool by tracking, per function, the most buffers live at
+one time — incrementing at each allocating opcode it emits and decrementing
+at each consuming one. A callee's buffers sit on top of whatever its caller
+holds live, so the header value is the heaviest path through the static call
+graph with each function weighted by its own maximum, the same walk that
+produces `max_call_depth`. The init function is not reachable from the scan
+function, so it is bounded separately and the larger of the two wins.
 
 ---
 
@@ -1077,6 +1185,7 @@ Verification runs on the bytecode that ships, independently of the emitter's own
 | V4003 | WatchdogTimeout | A task exceeded its watchdog interval |
 | V4004 | NullDereference | Indirect access through the NULL sentinel |
 | V4005 | ArrayIndexOutOfBounds | Flat index outside the descriptor's `total_elements` |
+| V4006 | StringNotConvertible | `CONV_STR_TO_*_TRAP` given a string that is not convertible to its target |
 | V9001 / V9002 | StackOverflow / StackUnderflow | Operand stack limits |
 | V9003 | InvalidInstruction | Unassigned opcode byte |
 | V9004 | InvalidConstantIndex | Constant pool index out of range or wrong type |

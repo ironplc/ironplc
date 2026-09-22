@@ -20,7 +20,7 @@ use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
     char_width_for_string_type, emit_string_literal_load, string_region_size, CompileContext,
-    FbInstanceInfo, OpType, OpWidth, Signedness, StringVarInfo, VarTypeInfo, DEFAULT_OP_TYPE,
+    FbInstanceInfo, OpType, OpWidth, StringVarInfo, DEFAULT_OP_TYPE,
 };
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
@@ -121,6 +121,10 @@ pub(crate) fn assign_variables(
                     }
                 }
                 InitialValueAssignmentKind::FunctionBlock(fb_init) => {
+                    // A member initializer (`(PT := T#100MS)`) is applied by
+                    // `emit_initial_values`, which runs after the instance
+                    // has its slot offset -- each member store addresses the
+                    // instance through it. Nothing to do here but size it.
                     let fb_name = fb_init.type_name.to_string().to_uppercase();
                     if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
                         // Standard library function block.
@@ -209,17 +213,8 @@ pub(crate) fn assign_variables(
                     }
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
-                    // References are stored as 64-bit variable-table indices (unsigned).
-                    ctx.var_types.insert(
-                        id.clone(),
-                        VarTypeInfo {
-                            op_width: OpWidth::W64,
-                            signedness: Signedness::Unsigned,
-                            storage_bits: 64,
-                        },
-                    );
-                    crate::compile_array::register_ref_to_array_metadata(
-                        ctx, builder, id, index, ref_init,
+                    crate::compile_reference::register_reference_variable(
+                        ctx, builder, types, id, index, ref_init,
                     )?;
                     (iec_type_tag::OTHER, "REF_TO".into())
                 }
@@ -275,7 +270,10 @@ pub(crate) fn assign_variables(
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     // LateResolvedType should have been resolved before codegen.
                     // If we reach here, it indicates a bug in the compiler.
-                    return Err(Diagnostic::internal_error());
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        decl.identifier.span(),
+                        "Variable type was not resolved before code generation",
+                    )));
                 }
                 // Other initializer kinds (EnumeratedValues, etc.)
                 // do not yet have type info tracked in codegen.
@@ -447,6 +445,7 @@ pub(crate) fn emit_initial_values(
                             data_offset,
                             &fields,
                             &[],
+                            &decl.identifier.span(),
                         )?;
                     } else if let Some(constant) = &simple.initial_value {
                         let var_index = ctx.var_index(id)?;
@@ -476,13 +475,13 @@ pub(crate) fn emit_initial_values(
                         // If there's an initial value, load and store it. The
                         // literal is encoded at the variable's width so the
                         // store's encoding check passes (ADR-0034).
-                        if let Some(chars) = &string_init.initial_value {
-                            emit_string_literal_load(emitter, ctx, chars, char_width);
+                        if let Some(lit) = &string_init.initial_value {
+                            emit_string_literal_load(emitter, ctx, &lit.value, char_width);
                             emitter.emit_str_store_var(data_offset);
                         }
                     }
                 }
-                InitialValueAssignmentKind::FunctionBlock(_) => {
+                InitialValueAssignmentKind::FunctionBlock(fb_init) => {
                     if let Some(fb_info) = ctx.fb_instances.get(id) {
                         let data_offset = fb_info.data_offset;
                         let var_index = fb_info.var_index;
@@ -490,6 +489,17 @@ pub(crate) fn emit_initial_values(
                         let offset_const = ctx.add_i32_constant(data_offset as i32);
                         emitter.emit_load_const_i32(offset_const);
                         emitter.emit_store_var_i32(var_index);
+
+                        // `timer : TON := (PT := T#100MS)` sets the instance's
+                        // own members. The slot offset has to be in place
+                        // first, because each member store addresses the
+                        // instance through it.
+                        crate::compile_fb_init::emit_fb_instance_member_initializers(
+                            emitter,
+                            ctx,
+                            id,
+                            &fb_init.init,
+                        )?;
                     }
                 }
                 InitialValueAssignmentKind::Array(array_init) => {
@@ -617,6 +627,7 @@ pub(crate) fn emit_initial_values(
                             data_offset,
                             &fields,
                             &struct_init.elements_init,
+                            &decl.identifier.span(),
                         )?;
                     }
                 }
@@ -753,8 +764,8 @@ pub(crate) fn emit_function_local_prologue(
                         let char_width = info.char_width;
                         emitter.emit_str_init(data_offset, max_length, char_width);
 
-                        if let Some(chars) = &string_init.initial_value {
-                            emit_string_literal_load(emitter, ctx, chars, char_width);
+                        if let Some(lit) = &string_init.initial_value {
+                            emit_string_literal_load(emitter, ctx, &lit.value, char_width);
                             emitter.emit_str_store_var(data_offset);
                         }
                     }
@@ -829,6 +840,7 @@ pub(crate) fn emit_function_local_prologue(
             struct_info.data_offset,
             &fields,
             &[],
+            &return_id.span(),
         )?;
     } else if let Some(info) = ctx.string_vars.get(return_id) {
         // STRING/WSTRING return: initialize the string header in the data region.

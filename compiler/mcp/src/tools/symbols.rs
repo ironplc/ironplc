@@ -336,25 +336,20 @@ fn empty_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::test_support::ed2_options;
+    use crate::tools::test_support::{
+        ed2_options, source, unnamed_source, ENUM_TYPE_PROGRAM, PROGRAM_WITH_VAR,
+        SEMANTIC_ERROR_PROGRAM, VALID_PROGRAM,
+    };
 
     #[test]
     fn build_response_when_valid_program_then_ok_true() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), None);
+        let resp = build_response(&source(VALID_PROGRAM), &ed2_options(), None);
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
     }
 
     #[test]
     fn build_response_when_program_with_vars_then_variables_populated() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nVAR x : INT; END_VAR\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), None);
+        let resp = build_response(&source(PROGRAM_WITH_VAR), &ed2_options(), None);
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert_eq!(resp.programs.len(), 1);
         assert_eq!(resp.programs[0].name, "p");
@@ -383,11 +378,7 @@ mod tests {
 
     #[test]
     fn build_response_when_local_var_then_direction_is_local() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nVAR x : INT; END_VAR\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), None);
+        let resp = build_response(&source(PROGRAM_WITH_VAR), &ed2_options(), None);
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         let var = &resp.programs[0].variables[0];
         assert_eq!(var.direction, "Local");
@@ -414,11 +405,7 @@ mod tests {
 
     #[test]
     fn build_response_when_enum_type_then_types_has_enumeration() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "TYPE\nMyEnum : (A, B, C);\nEND_TYPE\nPROGRAM p\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), None);
+        let resp = build_response(&source(ENUM_TYPE_PROGRAM), &ed2_options(), None);
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         let t = resp.types.iter().find(|t| t.name == "MyEnum").unwrap();
         assert_eq!(t.kind, "enumeration");
@@ -439,43 +426,27 @@ mod tests {
 
     #[test]
     fn build_response_when_pou_filter_unknown_then_found_false() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), Some("nonexistent"));
+        let resp = build_response(&source(VALID_PROGRAM), &ed2_options(), Some("nonexistent"));
         assert!(!resp.ok);
         assert_eq!(resp.found, Some(false));
     }
 
     #[test]
     fn build_response_when_semantic_error_then_ok_false() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), None);
+        let resp = build_response(&source(SEMANTIC_ERROR_PROGRAM), &ed2_options(), None);
         assert!(!resp.ok);
         assert!(!resp.diagnostics.is_empty());
     }
 
     #[test]
     fn build_response_when_invalid_sources_then_error_diagnostic() {
-        let sources = vec![SourceInput {
-            name: String::new(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), None);
+        let resp = build_response(&unnamed_source(), &ed2_options(), None);
         assert!(!resp.ok);
     }
 
     #[test]
     fn build_response_when_invalid_options_then_error_diagnostic() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &serde_json::json!({}), None);
+        let resp = build_response(&source(VALID_PROGRAM), &serde_json::json!({}), None);
         assert!(!resp.ok);
     }
 }

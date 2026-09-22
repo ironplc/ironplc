@@ -110,7 +110,10 @@ impl RuleRefTo<'_> {
         match init {
             InitialValueAssignmentKind::Simple(si) => Some(si.type_name.clone()),
             InitialValueAssignmentKind::Reference(ri) => ri.target.type_name().cloned(),
-            InitialValueAssignmentKind::LateResolvedType(tn) => Some(tn.clone()),
+            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name: tn,
+                ..
+            }) => Some(tn.clone()),
             _ => None,
         }
     }
@@ -132,7 +135,10 @@ impl RuleRefTo<'_> {
         match self.var_types.get(id) {
             Some(InitialValueAssignmentKind::Reference(_)) => true,
             Some(InitialValueAssignmentKind::Simple(si)) => self.is_reference_type(&si.type_name),
-            Some(InitialValueAssignmentKind::LateResolvedType(tn)) => self.is_reference_type(tn),
+            Some(InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name: tn,
+                ..
+            })) => self.is_reference_type(tn),
             _ => false,
         }
     }

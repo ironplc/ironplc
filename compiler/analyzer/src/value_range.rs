@@ -35,7 +35,7 @@ pub fn of(representation: &IntermediateType) -> Option<(i128, i128)> {
         IntermediateType::Int { size } => Some(for_integer(u32::from(size.as_bytes()) * 8, true)),
         IntermediateType::UInt { size } => Some(for_integer(u32::from(size.as_bytes()) * 8, false)),
         // A subrange states its own bounds, which are narrower than the base
-        // type's by construction (`rule_decl_subrange_limits` rejects the
+        // type's by construction (`rule_range_limits` rejects the
         // rest).
         IntermediateType::Subrange {
             min_value,

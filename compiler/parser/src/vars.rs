@@ -80,7 +80,7 @@ impl From<IncomplVarDecl> for VarDecl {
                 })
             }
             VariableSpecificationKind::Ambiguous(node) => {
-                InitialValueAssignmentKind::LateResolvedType(node)
+                InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer::bare(node))
             }
         };
 

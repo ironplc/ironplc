@@ -58,16 +58,23 @@ struct LibraryRenderer {
     indents: usize,
 }
 
+/// The spelling of a character string: its characters as written, inside
+/// the delimiter `width` selects. The characters are not re-encoded; see
+/// `visit_character_string_literal` for why.
+fn character_string_text(width: &StringType, value: &[char]) -> String {
+    let delimiter = width.delimiter();
+    let mut val = String::from(delimiter);
+    val.extend(value.iter());
+    val.push(delimiter);
+    val
+}
+
 impl LibraryRenderer {
     fn new() -> Self {
         Self {
             buffer: String::new(),
             indents: 0,
         }
-    }
-
-    fn write_char(&mut self, val: char) {
-        self.buffer.push(val);
     }
 
     fn write(&mut self, val: &str) {
@@ -147,6 +154,25 @@ impl LibraryRenderer {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Renders the `name : associations END_STEP` tail shared by
+    /// `INITIAL_STEP` and `STEP`; the caller writes the keyword.
+    fn write_step_body(&mut self, node: &dsl::sfc::Step) -> Result<(), Diagnostic> {
+        self.visit_id(&node.name)?;
+        self.write_ws(":");
+        self.newline();
+
+        self.indent();
+        for elem in node.action_associations.iter() {
+            self.visit_action_association(elem)?;
+            self.newline();
+        }
+        self.outdent();
+
+        self.write_ws("END_STEP");
+        self.newline();
         Ok(())
     }
 }
@@ -231,11 +257,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         // Escaping can only become correct once the parser decodes escapes and
         // `value` holds decoded characters -- see the character-string arm of
         // the round-trip tests.
-        let delimiter = node.width.delimiter();
-        let mut val = String::from(delimiter);
-        val.extend(node.value.iter());
-        val.push(delimiter);
-        self.write_ws(&val);
+        self.write_ws(&character_string_text(&node.width, &node.value));
         Ok(())
     }
 
@@ -477,6 +499,31 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    fn visit_late_resolved_initializer(
+        &mut self,
+        node: &LateResolvedInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)?;
+
+        match &node.initial_value {
+            None => {}
+            Some(LateResolvedInitialValue::Members(elements)) => {
+                self.write_ws(":=");
+                self.write_ws("(");
+
+                visit_comma_separated!(self, elements.iter(), StructureElementInit);
+
+                self.write_ws(")");
+            }
+            Some(LateResolvedInitialValue::Value(value)) => {
+                self.write_ws(":=");
+                self.visit_id(value)?;
+            }
+        }
+
+        Ok(())
+    }
+
     // 2.3.3.1
     fn visit_structure_element_init(
         &mut self,
@@ -518,13 +565,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("]");
 
         if let Some(init) = &node.init {
-            let delimiter = node.width.delimiter();
-
             self.write_ws(":=");
-
-            self.write_char(delimiter);
-            self.write(init);
-            self.write_char(delimiter);
+            self.write(&character_string_text(&init.width, &init.value));
         }
 
         Ok(())
@@ -635,6 +677,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             DeclarationQualifier::Constant => self.write_ws("CONSTANT"),
             DeclarationQualifier::Retain => self.write_ws("RETAIN"),
             DeclarationQualifier::NonRetain => self.write_ws("NON_RETAIN"),
+            DeclarationQualifier::Persistent => self.write_ws("PERSISTENT"),
         }
 
         self.newline();
@@ -672,6 +715,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             DeclarationQualifier::Constant => self.write_ws("CONSTANT"),
             DeclarationQualifier::Retain => self.write_ws("RETAIN"),
             DeclarationQualifier::NonRetain => self.write_ws("NON_RETAIN"),
+            DeclarationQualifier::Persistent => self.write_ws("PERSISTENT"),
         }
 
         self.newline();
@@ -777,14 +821,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         if let Some(init) = &node.initial_value {
             self.write_ws(":=");
-
-            let delimiter = node.width.delimiter();
-
-            self.write_char(delimiter);
-            for c in init.iter() {
-                self.write_char(*c);
-            }
-            self.write_char(delimiter);
+            self.write(&character_string_text(&init.width, &init.value));
         }
 
         Ok(())
@@ -1071,12 +1108,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     // 2.6.2
     fn visit_network(&mut self, node: &dsl::sfc::Network) -> Result<Self::Value, Diagnostic> {
         self.write_ws("INITIAL_STEP");
-        self.visit_id(&node.initial_step.name)?;
-        self.write_ws(":");
-        self.newline();
-
-        self.write_ws("END_STEP");
-        self.newline();
+        self.write_step_body(&node.initial_step)?;
         self.newline();
 
         for elem in node.elements.iter() {
@@ -1089,20 +1121,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     // 2.6.2
     fn visit_step(&mut self, node: &dsl::sfc::Step) -> Result<Self::Value, Diagnostic> {
         self.write_ws("STEP");
-        self.visit_id(&node.name)?;
-        self.write_ws(":");
-        self.newline();
-
-        self.indent();
-        for elem in node.action_associations.iter() {
-            self.visit_action_association(elem)?;
-            self.newline();
-        }
-        self.outdent();
-
-        self.write_ws("END_STEP");
-        self.newline();
-        Ok(())
+        self.write_step_body(node)
     }
 
     // 2.6.3
@@ -1211,6 +1230,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
                 DeclarationQualifier::Constant => "",
                 DeclarationQualifier::Retain => "RETAIN",
                 DeclarationQualifier::NonRetain => "NON_RETAIN",
+                // Unreachable via the grammar: `program_configuration()`'s
+                // `storage` is only ever produced from RETAIN/NON_RETAIN.
+                // Exhaustive match still needs an arm.
+                DeclarationQualifier::Persistent => "",
             };
             self.write_ws(storage);
         }
@@ -1401,6 +1424,22 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &dsl::textual::Assignment,
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_variable(&node.target)?;
+        if node.set_bind {
+            // Reproduce the TwinCAT/CODESYS `S=` set-bind operator.
+            self.write_ws("S=");
+            self.visit_expr(&node.value)?;
+            self.write_ws(";");
+            self.newline();
+            return Ok(());
+        }
+        if node.reset_bind {
+            // Reproduce the TwinCAT/CODESYS `R=` reset-bind operator.
+            self.write_ws("R=");
+            self.visit_expr(&node.value)?;
+            self.write_ws(";");
+            self.newline();
+            return Ok(());
+        }
         if node.ref_bind {
             // Reproduce the TwinCAT/CODESYS `REF=` binding. The value is always
             // an `ExprKind::Ref(referent)`; render `target REF= referent`.
@@ -1675,9 +1714,11 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             }
             dsl::textual::ExprKind::Deref(expr) => {
                 self.visit_expr(expr)?;
-                // No separating space: the parser's `unary_expression`
-                // rule allows no whitespace between the operand and the
-                // `^`, so `myRef ^` would not re-parse.
+                // No separating space: the tight spelling is the canonical
+                // output, not a parser constraint. #1437 widened
+                // `unary_expression` to take `_` before the caret, so
+                // `myRef ^` re-parses as well -- the `deref_operator` row in
+                // `parser/src/tests/whitespace.rs`.
                 self.write("^");
                 Ok(())
             }
@@ -1799,9 +1840,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_symbolic_variable_kind(&node.subscripted_variable)?;
 
-        // No space before `[`: the parser's `symbolic_variable` rule admits
-        // none between a variable and its subscript. Inside the brackets is
-        // fine -- `subscript_list` allows it.
+        // No space before `[`: the tight spelling is the canonical output,
+        // not a parser constraint -- `symbolic_variable` has admitted a gap
+        // before a subscript since #1437. Inside the brackets is fine too,
+        // and there `subscript_list` is what allows it.
         self.write("[");
         visit_comma_separated!(self, node.subscripts.iter(), Expr);
         self.write_ws("]");

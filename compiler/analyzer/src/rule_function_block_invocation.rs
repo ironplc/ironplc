@@ -185,6 +185,26 @@ impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
 #[cfg(test)]
 mod tests {
     rule_ok!(
+        apply_when_instance_declared_with_member_initializer_then_ok,
+        "
+FUNCTION_BLOCK Callee
+VAR_INPUT
+    IN1 : BOOL;
+END_VAR
+VAR
+    count : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    inst : Callee := (count := 1);
+END_VAR
+    inst(IN1 := TRUE);
+END_PROGRAM"
+    );
+
+    rule_ok!(
         apply_when_no_names_uses_default_then_return_ok,
         "
 FUNCTION_BLOCK Callee

@@ -80,37 +80,27 @@ pub fn build_response(sources: &[SourceInput], options_value: &serde_json::Value
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::test_support::ed2_options;
+    use crate::tools::test_support::{
+        ed2_options, source, unnamed_source, with_program, SYNTAX_ERROR_PROGRAM, VALID_PROGRAM,
+    };
 
     #[test]
     fn build_response_when_valid_program_then_ok_true() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&source(VALID_PROGRAM), &ed2_options());
         assert!(resp.ok);
         assert!(resp.diagnostics.is_empty());
     }
 
     #[test]
     fn build_response_when_syntax_error_then_ok_false_with_diagnostics() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&source(SYNTAX_ERROR_PROGRAM), &ed2_options());
         assert!(!resp.ok);
         assert!(!resp.diagnostics.is_empty());
     }
 
     #[test]
     fn build_response_when_valid_program_then_structure_has_program() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&source(VALID_PROGRAM), &ed2_options());
         assert_eq!(resp.structure.len(), 1);
         assert_eq!(resp.structure[0].kind, "program");
         assert_eq!(resp.structure[0].name.as_deref(), Some("p"));
@@ -118,10 +108,9 @@ mod tests {
 
     #[test]
     fn build_response_when_function_and_program_then_structure_has_both() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "FUNCTION f : INT\nVAR_INPUT x : INT; END_VAR\nf := x;\nEND_FUNCTION\nPROGRAM p\nEND_PROGRAM".into(),
-        }];
+        let sources = source(&with_program(
+            "FUNCTION f : INT\nVAR_INPUT x : INT; END_VAR\nf := x;\nEND_FUNCTION",
+        ));
         let resp = build_response(&sources, &ed2_options());
         assert_eq!(resp.structure.len(), 2);
         let kinds: Vec<&str> = resp.structure.iter().map(|s| s.kind.as_str()).collect();
@@ -155,22 +144,14 @@ mod tests {
 
     #[test]
     fn build_response_when_invalid_sources_then_error_diagnostic() {
-        let sources = vec![SourceInput {
-            name: String::new(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&unnamed_source(), &ed2_options());
         assert!(!resp.ok);
         assert!(!resp.diagnostics.is_empty());
     }
 
     #[test]
     fn build_response_when_invalid_options_then_error_diagnostic() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &serde_json::json!({}));
+        let resp = build_response(&source(VALID_PROGRAM), &serde_json::json!({}));
         assert!(!resp.ok);
         assert!(!resp.diagnostics.is_empty());
     }
@@ -194,11 +175,7 @@ mod tests {
 
     #[test]
     fn build_response_when_valid_then_structure_has_byte_offsets() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&source(VALID_PROGRAM), &ed2_options());
         let entry = &resp.structure[0];
         // "PROGRAM p" — 'p' starts at byte 8
         assert_eq!(entry.start, 8);

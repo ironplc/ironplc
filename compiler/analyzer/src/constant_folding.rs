@@ -10,7 +10,7 @@
 //! internals.
 
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::SourceSpan;
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::*;
 use ironplc_problems::Problem;
@@ -50,7 +50,7 @@ pub(crate) fn integer_value(lit: &IntegerLiteral) -> i128 {
 }
 
 /// Builds a `ConstantKind::IntegerLiteral` from an i128 result value.
-pub(crate) fn make_integer_constant(value: i128) -> ConstantKind {
+pub(crate) fn make_integer_constant(value: i128, span: SourceSpan) -> ConstantKind {
     let (unsigned, is_neg) = if value < 0 {
         ((-value) as u128, true)
     } else {
@@ -59,7 +59,7 @@ pub(crate) fn make_integer_constant(value: i128) -> ConstantKind {
     ConstantKind::IntegerLiteral(IntegerLiteral {
         value: SignedInteger {
             value: Integer {
-                span: SourceSpan::default(),
+                span,
                 value: unsigned,
             },
             is_neg,
@@ -69,10 +69,11 @@ pub(crate) fn make_integer_constant(value: i128) -> ConstantKind {
 }
 
 /// Builds a `ConstantKind::RealLiteral` from an f64 result value.
-pub(crate) fn make_real_constant(value: f64) -> ConstantKind {
+pub(crate) fn make_real_constant(value: f64, span: SourceSpan) -> ConstantKind {
     ConstantKind::RealLiteral(RealLiteral {
         value,
         data_type: None,
+        span,
     })
 }
 
@@ -159,6 +160,10 @@ pub(crate) fn const_as_f64(kind: &ExprKind) -> Option<f64> {
 /// operation itself has no defined result (e.g. division by zero,
 /// overflow).
 pub(crate) fn try_fold_binary(binary: &BinaryExpr) -> Result<Option<ExprKind>, FoldError> {
+    // The folded literal stands where the whole expression stood, so it
+    // takes the whole expression's span -- a diagnostic reported on the
+    // result must still point at the source the reader wrote.
+    let span = SourceSpan::join(&binary.left.span(), &binary.right.span());
     match (&binary.left.kind, &binary.right.kind) {
         (
             ExprKind::Const(ConstantKind::IntegerLiteral(left)),
@@ -173,14 +178,14 @@ pub(crate) fn try_fold_binary(binary: &BinaryExpr) -> Result<Option<ExprKind>, F
                 return Ok(None);
             }
             let result = fold_integer_binary(&binary.op, lv, rv)?;
-            Ok(Some(ExprKind::Const(make_integer_constant(result))))
+            Ok(Some(ExprKind::Const(make_integer_constant(result, span))))
         }
         (
             ExprKind::Const(ConstantKind::RealLiteral(left)),
             ExprKind::Const(ConstantKind::RealLiteral(right)),
         ) => {
             let result = fold_real_binary(&binary.op, left.value, right.value)?;
-            Ok(result.map(|value| ExprKind::Const(make_real_constant(value))))
+            Ok(result.map(|value| ExprKind::Const(make_real_constant(value, span))))
         }
         // Mixed integer + real: promote the integer to f64 and fold as real.
         (
@@ -198,7 +203,7 @@ pub(crate) fn try_fold_binary(binary: &BinaryExpr) -> Result<Option<ExprKind>, F
                 return Ok(None);
             };
             let result = fold_real_binary(&binary.op, lv, rv)?;
-            Ok(result.map(|value| ExprKind::Const(make_real_constant(value))))
+            Ok(result.map(|value| ExprKind::Const(make_real_constant(value, span))))
         }
         _ => Ok(None),
     }
@@ -214,11 +219,14 @@ pub(crate) fn try_fold_unary(unary: &UnaryExpr) -> Option<ExprKind> {
         UnaryOp::Neg => match &unary.term.kind {
             ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
                 let value = integer_value(lit);
-                Some(ExprKind::Const(make_integer_constant(-value)))
+                Some(ExprKind::Const(make_integer_constant(
+                    -value,
+                    unary.term.span(),
+                )))
             }
-            ExprKind::Const(ConstantKind::RealLiteral(lit)) => {
-                Some(ExprKind::Const(make_real_constant(-lit.value)))
-            }
+            ExprKind::Const(ConstantKind::RealLiteral(lit)) => Some(ExprKind::Const(
+                make_real_constant(-lit.value, unary.term.span()),
+            )),
             _ => None,
         },
         UnaryOp::Not => None,

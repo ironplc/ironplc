@@ -13,12 +13,13 @@ use std::collections::HashMap;
 
 use ironplc_dsl::common::{FunctionReturnType, TypeName};
 use ironplc_dsl::core::{Id, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Expr, ParamAssignmentKind};
 use ironplc_problems::Problem;
 
 use crate::intermediate_type::IntermediateFunctionParameter;
 use crate::intermediates::stdlib_function::get_all_stdlib_functions;
+use crate::symbol_environment::duplicate_declaration;
 
 /// Represents a function signature in the function environment.
 ///
@@ -116,8 +117,10 @@ impl FunctionSignature {
     ///
     /// Only positional inputs bind: by the time a call is checked,
     /// `xform_named_to_positional_args` has rewritten its named inputs, and
-    /// an output assignment binds no input. Arguments beyond the parameter
-    /// list are dropped; the arity check reports them.
+    /// an output assignment binds no input. A call that pass could not rewrite
+    /// keeps its named inputs and has already been diagnosed, so binding none
+    /// of them is right. Arguments beyond the parameter list are dropped; the
+    /// arity check reports them.
     pub fn bind_inputs<'a>(
         &'a self,
         params: &'a [ParamAssignmentKind],
@@ -186,18 +189,16 @@ impl FunctionEnvironment {
     /// Returns an error if a function already exists with the same name.
     pub fn insert(&mut self, signature: FunctionSignature) -> Result<(), Diagnostic> {
         let key = signature.name.lower_case().to_string();
-        let span = signature.span.clone();
 
-        self.table.insert(key, signature).map_or_else(
-            || Ok(()),
-            |existing| {
-                Err(Diagnostic::problem(
-                    Problem::FunctionDeclNameDuplicated,
-                    Label::span(span, "Function declaration"),
-                )
-                .with_secondary(Label::span(existing.span, "Previous declaration")))
-            },
-        )
+        if let Some(existing) = self.table.get(&key) {
+            return Err(duplicate_declaration(
+                Problem::FunctionDeclNameDuplicated,
+                &signature.name,
+                existing.span.clone(),
+            ));
+        }
+        self.table.insert(key, signature);
+        Ok(())
     }
 
     /// Gets a function signature by name.

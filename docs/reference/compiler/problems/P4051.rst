@@ -1,0 +1,71 @@
+=====
+P4051
+=====
+
+.. problem-summary:: P4051
+
+This error occurs when a ``CASE`` label is written as a range whose minimum
+value is greater than its maximum value.
+
+A ``CASE`` label range such as ``1..9:`` selects its branch for every
+selector value from the minimum through the maximum, inclusive. When the
+minimum is greater than the maximum there is no such value, so the branch
+can never be selected and the statements in it can never run. That is
+almost always a mistake, such as bounds written in the wrong order, so the
+compiler reports it rather than compiling a branch that is silently dead.
+
+A range whose minimum equals its maximum (``5..5:``) is valid: it selects
+exactly one value, the same as the plain label ``5:``.
+
+Example
+-------
+
+The following code will generate error P4051:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       x : INT;
+       y : INT;
+   END_VAR
+   CASE x OF
+       10..1: y := 1;  (* Error: minimum (10) > maximum (1) *)
+   END_CASE;
+   END_PROGRAM
+
+The label ``10..1`` has a minimum value of 10 and a maximum value of 1, so
+no value of ``x`` falls within it.
+
+To fix this error, write the bounds in ascending order:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       x : INT;
+       y : INT;
+   END_VAR
+   CASE x OF
+       1..10: y := 1;  (* Correct: selects 1 through 10 *)
+   END_CASE;
+   END_PROGRAM
+
+The check applies to every range label in the ``CASE`` statement, including
+a range that is one of several labels on the same branch:
+
+.. code-block::
+
+   CASE x OF
+       1..3, 7: y := 1;   (* Valid *)
+       3..1, 7: y := 1;   (* Error: the range 3..1 is inverted *)
+   END_CASE;
+
+The same rule applies to an array index range, reported as
+:doc:`P2024 </reference/compiler/problems/P2024>`. A subrange type is
+stricter, because a type with one value or none is not useful: its minimum
+must be strictly less than its maximum, reported as
+:doc:`P2002 </reference/compiler/problems/P2002>`.
+
+See :doc:`/reference/language/structured-text/case` for the ``CASE``
+statement.

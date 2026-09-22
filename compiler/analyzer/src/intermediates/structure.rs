@@ -26,7 +26,7 @@ pub fn try_from(
 
     for element in &spec.elements {
         // Resolve the field type from the initial value assignment
-        let field_type = resolve_field_type(&element.init, type_environment)?;
+        let field_type = resolve_field_type(element, type_environment)?;
 
         // Determine if this field has a default value
         let has_default = field_has_default(&element.init, type_environment);
@@ -127,7 +127,9 @@ fn field_has_default(
             // Array has a default if it has initial values (non-empty vec)
             !array_init.initial_values.is_empty()
         }
-        InitialValueAssignmentKind::LateResolvedType(type_name) => {
+        InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+            type_name, ..
+        }) => {
             // Late resolved types don't carry initial value information themselves,
             // but they may reference a structure type with all defaults
             nested_structure_has_all_defaults(type_name, type_environment)
@@ -171,12 +173,12 @@ fn nested_structure_has_all_defaults(
     fields.iter().all(|field| field.has_default)
 }
 
-/// Resolves the field type from an initial value assignment
+/// Resolves the field type from the field's initial value assignment
 fn resolve_field_type(
-    init: &InitialValueAssignmentKind,
+    element: &StructureElementDeclaration,
     type_environment: &TypeEnvironment,
 ) -> Result<IntermediateType, Diagnostic> {
-    match init {
+    match &element.init {
         InitialValueAssignmentKind::Simple(simple_init) => {
             // Handle simple field types like BOOL, INT, etc.
             let type_attrs = type_environment
@@ -189,7 +191,9 @@ fn resolve_field_type(
                 })?;
             Ok(type_attrs.representation.clone())
         }
-        InitialValueAssignmentKind::LateResolvedType(type_name) => {
+        InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+            type_name, ..
+        }) => {
             // LateResolvedType may appear when the field references a user-defined type.
             // Since types are processed in topological order, the referenced type should
             // already be in the environment.
@@ -283,7 +287,10 @@ fn resolve_field_type(
         }
         _other => {
             // Other types are not yet supported
-            Err(Diagnostic::todo())
+            Err(Diagnostic::not_implemented(Label::span(
+                element.name.span(),
+                "Structure field with an unsupported type",
+            )))
         }
     }
 }

@@ -4,23 +4,18 @@
 //! INSERT, DELETE, LEFT, RIGHT, MID, CONCAT) and string comparison.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
-use ironplc_analyzer::IntermediateType;
 use ironplc_container::opcode;
 use ironplc_container::CharWidth;
-use ironplc_dsl::common::ConstantKind;
 use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{
-    CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind, SymbolicVariableKind,
-    Variable,
-};
+use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
 
-use super::compile::{
-    char_width_for_string_type, emit_string_literal_load, string_region_size, CompileContext,
-    DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
-};
-use super::compile_expr::{compile_expr, resolve_variable_name, variable_span};
+use super::compile::{string_region_size, CompileContext, DEFAULT_OP_TYPE};
+use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
+use crate::string_width::{
+    compile_string_value, encoding_mismatch, resolve_operand_char_width, string_operand_capacity,
+};
 
 /// Compiles the LEN standard function call.
 ///
@@ -41,7 +36,9 @@ pub(crate) fn compile_len(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0]], &span)?;
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
 
     emitter.emit_len_str(in_offset);
     Ok(())
@@ -56,9 +53,12 @@ pub(crate) fn compile_string_compare(
     ctx: &mut CompileContext,
     compare: &CompareExpr,
 ) -> Result<(), Diagnostic> {
-    let span = SourceSpan::default();
-    let left_offset = resolve_string_arg(emitter, ctx, &compare.left, &span)?;
-    let right_offset = resolve_string_arg(emitter, ctx, &compare.right, &span)?;
+    let span = compare.left.span();
+    // CMP_STR compares two data-region slots and requires them to agree on an
+    // encoding, so the pair resolves one width and both are produced at it.
+    let char_width = resolve_operand_char_width(ctx, &[&compare.left, &compare.right], &span)?;
+    let left_offset = resolve_string_arg(emitter, ctx, &compare.left, &span, char_width)?;
+    let right_offset = resolve_string_arg(emitter, ctx, &compare.right, &span, char_width)?;
 
     // Push data_offsets as stack values.
     let left_pool = ctx.add_i32_constant(left_offset as i32);
@@ -85,162 +85,19 @@ pub(crate) fn compile_string_compare(
     Ok(())
 }
 
-/// Returns the encoding a string-valued expression produces.
-///
-/// Every string slot records its encoding in its header and the VM rejects a
-/// store whose source and destination disagree (ADR-0034), so the temporary
-/// that [`resolve_string_arg`] allocates has to be initialized at the width
-/// the expression yields rather than at a fixed one. The width is always
-/// known at compile time: a literal spells it, a declaration states it, and
-/// every string function returns the encoding of its first string argument.
-///
-/// An expression whose width cannot be determined is a compiler bug rather
-/// than a program error -- the analyzer has already established that this
-/// argument is a string. Report it as one instead of guessing a width, which
-/// would defer the same problem to an encoding-mismatch trap at run time.
-fn string_expr_char_width(ctx: &CompileContext, expr: &Expr) -> Result<CharWidth, Diagnostic> {
-    match &expr.kind {
-        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
-            Ok(char_width_for_string_type(&lit.width))
-        }
-        ExprKind::Expression(inner) => string_expr_char_width(ctx, inner),
-        ExprKind::Variable(variable) => variable_char_width(ctx, variable),
-        ExprKind::Function(func) => function_char_width(ctx, func),
-        _ => Err(unknown_string_encoding(
-            expr.span(),
-            "a string expression of an unexpected kind",
-        )),
-    }
-}
-
-/// Returns the encoding of a string variable, array element or structure field.
-///
-/// Subscripts and dereferences do not change the encoding, so the access is
-/// walked back to the variable it is rooted in: a name, resolved against the
-/// declared strings and string arrays, or a structure field, whose declared
-/// type carries the width.
-fn variable_char_width(ctx: &CompileContext, variable: &Variable) -> Result<CharWidth, Diagnostic> {
-    let Variable::Symbolic(kind) = variable else {
-        return Err(unknown_string_encoding(
-            variable_span(variable),
-            "a directly represented variable",
-        ));
-    };
-
-    match access_root(kind) {
-        SymbolicVariableKind::Named(named) => {
-            if let Some(info) = ctx.string_vars.get(&named.name) {
-                return Ok(info.char_width);
-            }
-            ctx.array_vars
-                .get(&named.name)
-                .filter(|info| info.is_string_element)
-                .map(|info| info.string_char_width)
-                .ok_or_else(|| {
-                    unknown_string_encoding(
-                        variable_span(variable),
-                        "a variable that is not a declared string",
-                    )
-                })
-        }
-        SymbolicVariableKind::Structured(structured) => {
-            let (_, _, field_type) = crate::compile_struct::walk_struct_chain(
-                ctx,
-                &structured.record,
-                &structured.field,
-                0,
-            )
-            .map_err(|_| {
-                unknown_string_encoding(variable_span(variable), "an unresolvable structure field")
-            })?;
-            string_char_width_of(&field_type).ok_or_else(|| {
-                unknown_string_encoding(
-                    variable_span(variable),
-                    "a structure field that is not a string",
-                )
-            })
-        }
-        _ => Err(unknown_string_encoding(
-            variable_span(variable),
-            "a variable access of an unexpected kind",
-        )),
-    }
-}
-
-/// Walks past subscripts and dereferences to the variable an access is rooted
-/// in. `s.names[i]` roots in the structure field `s.names`, `arr[i][j]` in the
-/// name `arr`.
-fn access_root(kind: &SymbolicVariableKind) -> &SymbolicVariableKind {
-    let mut current = kind;
-    loop {
-        current = match current {
-            SymbolicVariableKind::Array(array) => array.subscripted_variable.as_ref(),
-            SymbolicVariableKind::Deref(deref) => deref.variable.as_ref(),
-            other => return other,
-        };
-    }
-}
-
-/// Returns the encoding of a STRING type, or of a STRING array's element.
-fn string_char_width_of(field_type: &IntermediateType) -> Option<CharWidth> {
-    match field_type {
-        IntermediateType::String { char_width, .. } => Some(*char_width),
-        IntermediateType::Array { element_type, .. } => string_char_width_of(element_type),
-        _ => None,
-    }
-}
-
-/// Returns the encoding of a function call's string result.
-///
-/// The standard string functions return the encoding of their first string
-/// argument; a user-defined function declares its return type.
-fn function_char_width(ctx: &CompileContext, func: &Function) -> Result<CharWidth, Diagnostic> {
-    let name = func.name.lower_case();
-    match name.as_str() {
-        "concat" | "left" | "right" | "mid" | "insert" | "delete" | "replace" => {
-            match collect_positional_args(func).first() {
-                Some(first) => string_expr_char_width(ctx, first),
-                None => Err(unknown_string_encoding(
-                    func.name.span(),
-                    "a string function call with no arguments",
-                )),
-            }
-        }
-        _ => ctx
-            .user_functions
-            .get(name.as_str())
-            .and_then(|info| info.return_string_info.as_ref())
-            .map(|info| info.char_width)
-            .ok_or_else(|| {
-                unknown_string_encoding(
-                    func.name.span(),
-                    "a function call that does not return a string",
-                )
-            }),
-    }
-}
-
-/// Reports that codegen could not determine a string expression's encoding.
-fn unknown_string_encoding(span: SourceSpan, what: &str) -> Diagnostic {
-    Diagnostic::internal_error_at(Label::span(
-        span,
-        format!("Cannot determine the string encoding of {what}"),
-    ))
-}
-
 /// Allocates a data region slot for an intermediate string value.
 ///
 /// Returns the slot's data_offset with its header already initialized at
-/// `char_width`. A wide slot also marks the program as holding a wide string
-/// so temp buffers are sized in wide bytes (ADR-0035) even when no WSTRING
-/// variable is declared.
+/// `max_length` and `char_width`. A wide slot also marks the program as
+/// holding a wide string so temp buffers are sized in wide bytes (ADR-0035)
+/// even when no WSTRING variable is declared.
 fn allocate_string_temp(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     char_width: CharWidth,
+    max_length: u16,
     func_span: &SourceSpan,
 ) -> Result<u32, Diagnostic> {
-    let max_length = DEFAULT_STRING_MAX_LENGTH;
     let data_offset = ctx.data_region_offset;
     let total_bytes = string_region_size(max_length, char_width);
     ctx.data_region_offset = ctx
@@ -265,35 +122,36 @@ fn allocate_string_temp(
 /// A simple named STRING/WSTRING variable resolves to the offset of its own
 /// slot. Everything else -- a literal, a nested string function call, a
 /// structure field or array element -- is materialized into a temporary slot
-/// allocated at the expression's encoding, and that slot's offset is
-/// returned.
+/// allocated at the expression's encoding and capacity, and that slot's offset
+/// is returned. The capacity comes from the operand rather than being fixed,
+/// because a slot narrower than the operand truncates it on the way in and
+/// every reader of the slot -- `LEN` first among them -- would then be
+/// measuring the copy instead of the operand.
 pub(crate) fn resolve_string_arg(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     arg: &Expr,
     func_span: &SourceSpan,
+    char_width: CharWidth,
 ) -> Result<u32, Diagnostic> {
-    // Fast path: a simple named variable already owns a data region slot.
+    // Fast path: a simple named variable already owns a data region slot. Its
+    // declared encoding is fixed, so a caller that needs a different one
+    // (STRING_TO_INT, which parses Latin-1, is the case that reaches here) has
+    // no bytecode to emit rather than a slot to reuse.
     if let ExprKind::Variable(variable) = &arg.kind {
         if let Some(var_name) = resolve_variable_name(variable) {
             if let Some(info) = ctx.string_vars.get(var_name) {
+                if info.char_width != char_width {
+                    return Err(encoding_mismatch(char_width, info.char_width, func_span));
+                }
                 return Ok(info.data_offset);
             }
         }
     }
 
-    let char_width = string_expr_char_width(ctx, arg)?;
-    let data_offset = allocate_string_temp(emitter, ctx, char_width, func_span)?;
-
-    match &arg.kind {
-        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
-            emit_string_literal_load(emitter, ctx, &lit.value, char_width);
-        }
-        // A complex variable (structure field, array element) or a general
-        // expression such as a nested function call: compiling it leaves a
-        // temp buffer index on the stack.
-        _ => compile_expr(emitter, ctx, arg, DEFAULT_OP_TYPE)?,
-    }
+    let max_length = string_operand_capacity(ctx, arg);
+    let data_offset = allocate_string_temp(emitter, ctx, char_width, max_length, func_span)?;
+    compile_string_value(emitter, ctx, arg, char_width)?;
     emitter.emit_str_store_var(data_offset);
 
     Ok(data_offset)
@@ -326,8 +184,10 @@ pub(crate) fn compile_find(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0], args[1]], &span)?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &span, char_width)?;
 
     emitter.emit_find_str(in1_offset, in2_offset);
     Ok(())
@@ -350,16 +210,15 @@ pub(crate) fn compile_replace(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0], args[1]], &span)?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &span, char_width)?;
 
     // Compile L and P integer expressions onto the stack.
     let op_type = DEFAULT_OP_TYPE;
     compile_expr(emitter, ctx, args[2], op_type)?;
     compile_expr(emitter, ctx, args[3], op_type)?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
 
     emitter.emit_replace_str(in1_offset, in2_offset);
     Ok(())
@@ -381,15 +240,14 @@ pub(crate) fn compile_insert(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0], args[1]], &span)?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &span, char_width)?;
 
     // Compile P integer expression onto the stack.
     let op_type = DEFAULT_OP_TYPE;
     compile_expr(emitter, ctx, args[2], op_type)?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
 
     emitter.emit_insert_str(in1_offset, in2_offset);
     Ok(())
@@ -398,8 +256,7 @@ pub(crate) fn compile_insert(
 /// Compiles a string function call of the form `FN(IN, ARG1)`.
 ///
 /// Resolves IN to a data_offset, compiles ARG1 as an integer expression
-/// onto the stack, accounts for the result temp buffer, then emits the
-/// opcode supplied by `emit`.
+/// onto the stack, then emits the opcode supplied by `emit`.
 fn compile_string_2arg(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -412,12 +269,12 @@ fn compile_string_2arg(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0]], &span)?;
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
 
     let op_type = DEFAULT_OP_TYPE;
     compile_expr(emitter, ctx, args[1], op_type)?;
-
-    ctx.num_temp_bufs += 1;
 
     emit(emitter, in_offset);
     Ok(())
@@ -426,8 +283,7 @@ fn compile_string_2arg(
 /// Compiles a string function call of the form `FN(IN, ARG1, ARG2)`.
 ///
 /// Resolves IN to a data_offset, compiles ARG1 and ARG2 as integer
-/// expressions onto the stack, accounts for the result temp buffer, then
-/// emits the opcode supplied by `emit`.
+/// expressions onto the stack, then emits the opcode supplied by `emit`.
 fn compile_string_3arg(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -440,13 +296,13 @@ fn compile_string_3arg(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0]], &span)?;
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
 
     let op_type = DEFAULT_OP_TYPE;
     compile_expr(emitter, ctx, args[1], op_type)?;
     compile_expr(emitter, ctx, args[2], op_type)?;
-
-    ctx.num_temp_bufs += 1;
 
     emit(emitter, in_offset);
     Ok(())
@@ -517,11 +373,10 @@ pub(crate) fn compile_concat(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
+    let span = func.name.span();
+    let char_width = resolve_operand_char_width(ctx, &[args[0], args[1]], &span)?;
+    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &span, char_width)?;
+    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &span, char_width)?;
 
     emitter.emit_concat_str(in1_offset, in2_offset);
     Ok(())

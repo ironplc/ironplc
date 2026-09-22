@@ -1,8 +1,8 @@
-# ADR-0025: Unsigned Representation for DATE, TIME_OF_DAY, DATE_AND_TIME
+# Unsigned Representation for DATE, TIME_OF_DAY, DATE_AND_TIME
 
-## Status
-
-Accepted
+status: accepted
+date: 2026-03-17
+amended: 2026-09-11 (converted to the front-matter format)
 
 ## Context
 

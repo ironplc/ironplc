@@ -20,11 +20,12 @@ variables, and bare integer literals.
 The general rule is: an implicit conversion is allowed when the source type's
 full value range is exactly representable in the target type.
 
-IronPLC supports three categories of implicit widening:
+IronPLC supports four categories of implicit widening:
 
 1. **Integer widening** — within signed, unsigned, and cross-sign integer types
 2. **Integer to real widening** — when the conversion is lossless
-3. **Bit-string widening** — within the ``ANY_BIT`` family (``BOOL`` excluded)
+3. **Real widening** — ``REAL`` to ``LREAL``, which is always lossless
+4. **Bit-string widening** — within the ``ANY_BIT`` family (``BOOL`` excluded)
 
 Integer widening
 ~~~~~~~~~~~~~~~~
@@ -282,12 +283,16 @@ Cross-family widening
 
 Widening from a bit-string type to an integer type crosses the ``ANY_BIT`` /
 ``ANY_INT`` boundary and is not part of the IEC 61131-3 standard. IronPLC
-supports this as an extension behind the ``--allow-cross-family-widening``
-flag (enabled by default in the ``Rusty`` dialect). See
-:doc:`/explanation/enabling-dialects-and-features` for how to enable this flag.
+supports this as an extension behind three flags, one per rule:
+``--allow-cross-family-widening`` for widening to a strictly wider integer,
+``--allow-cross-family-conversion`` for the one equal-width pair, and
+``--allow-int-literal-to-bit-string`` for bare integer literals. All three are
+enabled by default in the ``Rusty``, ``CODESYS`` and ``TwinCAT`` dialects. See
+:doc:`/explanation/enabling-dialects-and-features` for how to enable them.
 
 When the flag is enabled, a bit-string type can widen to an integer type of
-strictly greater bit width:
+strictly greater bit width. ``DWORD`` to ``UDINT`` is the one equal-width
+exception, described after the table:
 
 .. list-table:: Cross-family widening: bit-string to integer (requires ``--allow-cross-family-widening``)
    :header-rows: 1
@@ -327,7 +332,7 @@ strictly greater bit width:
      - Yes
      - No
      - No
-     - No
+     - Yes
      - Yes
    * - **LWORD**
      - No
@@ -339,11 +344,36 @@ strictly greater bit width:
      - No
      - No
 
-The reverse direction (integer to bit-string) is never implicit — use explicit
-conversion functions such as ``INT_TO_BYTE``.
+The reverse direction (integer to bit-string) is not implicit, apart from one
+pair. Use explicit conversion functions such as ``INT_TO_BYTE``.
+
+``UDINT`` and ``DWORD`` are the one pair that converts implicitly at equal
+width, and the one case where integer to bit-string is implicit. Both
+directions require the ``--allow-cross-family-conversion`` flag — this
+converts rather than widens, which is why it is not the widening flag. The two types
+share a 32-bit slot, so the conversion leaves the bit pattern unchanged:
+
+.. code-block::
+
+   VAR
+       udValue : UDINT := 3000000000;
+       dwValue : DWORD := 16#FFFFFFFF;
+       dwFromUdint : DWORD;
+       udFromDword : UDINT;
+   END_VAR
+       dwFromUdint := udValue;  (* 16#B2D05E00, the same 32 bits *)
+       udFromDword := dwValue;  (* 4294967295, the same 32 bits *)
+
+The exception covers exactly this pair. The other equal-width bit-string and
+unsigned-integer pairs — ``BYTE`` and ``USINT``, ``WORD`` and ``UINT``,
+``LWORD`` and ``ULINT`` — need an explicit conversion function in both
+directions, as do all signed integer types. Without the flag, IronPLC reports
+:doc:`P4035 </reference/compiler/problems/P4035>` for ``UDINT`` and ``DWORD``
+too.
 
 Bare integer literals (e.g. ``0``) can also be passed to bit-string parameters
-when the flag is enabled.
+when ``--allow-int-literal-to-bit-string`` is enabled. This is literal typing
+rather than widening, so it has its own flag.
 
 ----------------------------
 Integer and Real Types

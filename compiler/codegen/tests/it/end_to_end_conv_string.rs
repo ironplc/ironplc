@@ -1,19 +1,9 @@
 //! End-to-end tests for numeric ↔ STRING type conversions.
 
-use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::parse_and_run;
-
-/// Reads a STRING value from the data region at the given byte offset.
-fn read_string(data_region: &[u8], data_offset: usize) -> String {
-    let cur_len =
-        u16::from_le_bytes([data_region[data_offset + 2], data_region[data_offset + 3]]) as usize;
-    let data_start = data_offset + STRING_HEADER_BYTES;
-    let bytes = &data_region[data_start..data_start + cur_len];
-    bytes.iter().map(|&b| b as char).collect()
-}
+use crate::common::{parse_and_run, read_string};
 
 // =========================================================================
 // <TYPE>_TO_STRING
@@ -60,13 +50,15 @@ END_PROGRAM
 // =========================================================================
 // STRING_TO_<INTEGER>
 //
-// Parses a STRING literal into an integer slot. Invalid input yields 0.
+// The integer targets honor the string-to-number behavior policies; their
+// bounds, the invalid inputs and every policy combination are covered in
+// `end_to_end_string_to_int` and `end_to_end_string_to_udint`. This is the
+// round trip through the string form.
 // =========================================================================
 
 #[rstest]
 #[case::int_valid("INT", "123", 123)]
 #[case::int_negative("INT", "-456", -456)]
-#[case::int_invalid("INT", "abc", 0)]
 #[case::dint_large("DINT", "2147483647", 2147483647)]
 fn string_to_int(#[case] tgt: &str, #[case] input: &str, #[case] expected: i32) {
     let source = format!(
@@ -87,8 +79,9 @@ END_PROGRAM
 // =========================================================================
 // STRING_TO_REAL
 //
-// Kept as distinct assertions: the valid case needs a tolerance compare,
-// the invalid case an exact-zero compare.
+// The real targets honor the string-to-number behavior policies; their
+// grammar, the overflow and NaN rules, and every policy combination are
+// covered in `end_to_end_string_to_real`. This is the plain conversion.
 // =========================================================================
 
 e2e_f32_near!(
@@ -106,16 +99,24 @@ END_PROGRAM
     &[(1, 2.5)],
 );
 
-e2e_f32!(
-    string_to_real_when_invalid_then_zero,
-    "
+#[test]
+fn conversion_result_when_used_as_a_string_operand_then_narrow_encoding() {
+    // A conversion builds a Latin-1 string, and nothing in the call spells
+    // that out: it is neither a literal nor a declared variable, and neither
+    // of the two encodings a string function preserves. The return type the
+    // analyzer gave the call is what says so.
+    let source = "
 PROGRAM main
   VAR
-    s : STRING := 'xyz';
-    x : REAL;
+    i : INT := 42;
+    out : STRING[20];
   END_VAR
-  x := STRING_TO_REAL(s);
+  out := CONCAT(INT_TO_STRING(i), 'x');
 END_PROGRAM
-",
-    &[(1, 0.0)],
-);
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // `out` is the first string in the data region; CONCAT's temporaries
+    // follow it.
+    assert_eq!(read_string(&bufs.data_region, 0), "42x");
+}

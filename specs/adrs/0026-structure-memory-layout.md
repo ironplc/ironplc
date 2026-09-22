@@ -1,6 +1,6 @@
 # Structure Memory Layout in the Data Region
 
-status: proposed
+status: accepted
 date: 2026-03-18
 
 ## Context and Problem Statement
@@ -164,7 +164,7 @@ A single structure variable must not exceed **32,768 total slots** (matching the
 
 ### Element Type Byte
 
-When registering an array descriptor for a structure variable, the element type byte is `SLOT = 6` (a new value distinct from the primitive type bytes 0-5). This distinguishes structure descriptors from typed array descriptors in the bytecode verifier and debug tools, and prevents false descriptor deduplication with unrelated arrays.
+When registering an array descriptor for a structure variable, the element type byte is `SLOT = 10` (a new value distinct from the concrete type bytes 0-9). This distinguishes structure descriptors from typed array descriptors in the bytecode verifier and debug tools, and prevents false descriptor deduplication with unrelated arrays.
 
 ### Scope Limitations
 

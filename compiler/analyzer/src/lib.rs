@@ -30,9 +30,10 @@ mod rule_abstract_not_instantiated;
 mod rule_assignment_aggregate_type_compat;
 mod rule_bit_and_partial_access_range;
 mod rule_case_bit_string_label;
+mod rule_case_selector_type;
 mod rule_constant_range;
 mod rule_decl_struct_element_unique_names;
-mod rule_decl_subrange_limits;
+mod rule_enum_explicit_value_allowed;
 mod rule_enumeration_values_unique;
 mod rule_extends_field_duplicated;
 mod rule_function_block_call_unsupported;
@@ -45,14 +46,16 @@ mod rule_no_top_level_var_global;
 mod rule_operator_operand_type_check;
 mod rule_pou_hierarchy;
 mod rule_program_task_definition_exists;
+mod rule_program_var_hides_global;
+mod rule_range_limits;
 mod rule_ref_to;
 mod rule_stdlib_type_redefinition;
 mod rule_string_encoding_compat;
+mod rule_string_literal_char_range;
 mod rule_struct_initializer_expression_allowed;
 mod rule_support;
 mod rule_task_names_unique;
 mod rule_unsupported_extension;
-mod rule_unsupported_stdlib_type;
 mod rule_use_declared_enumerated_value;
 mod rule_use_declared_symbolic_var;
 mod rule_var_decl_const_initialized;
@@ -62,9 +65,9 @@ mod rule_var_decl_initializer_type_compat;
 mod scoped_table;
 mod semantic_context;
 pub mod stages;
-mod stdlib;
 mod string_similarity;
 pub mod symbol_environment;
+pub mod system_globals;
 mod type_attributes;
 mod type_category;
 mod type_compat;
@@ -76,6 +79,7 @@ mod xform_fold_constant_expressions;
 mod xform_fold_initializer_expressions;
 mod xform_insert_implicit_deref;
 mod xform_int_to_bool_initializer;
+mod xform_mark_unwritten_constants;
 mod xform_named_to_positional_args;
 mod xform_resolve_adr;
 mod xform_resolve_constant_expressions;
@@ -120,6 +124,8 @@ mod spec_requirements {
 mod spec_conformance;
 #[cfg(test)]
 mod spec_conformance_adr;
+#[cfg(test)]
+mod spec_conformance_constant_inference;
 #[cfg(test)]
 mod spec_conformance_keyword_function_forms;
 #[cfg(test)]

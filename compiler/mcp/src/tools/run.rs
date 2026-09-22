@@ -589,8 +589,9 @@ impl crate::cache::CachedContainer {
 mod tests {
     use super::*;
     use crate::cache::{CachedContainer, ContainerCache};
-    use crate::tools::common::SourceInput;
-    use crate::tools::test_support::ed2_options;
+    use crate::tools::test_support::{
+        ed2_options, source, COUNTER_PROGRAM, COUNTER_PROGRAM_WITH_TASK,
+    };
 
     fn make_cache() -> Mutex<ContainerCache> {
         Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024))
@@ -598,31 +599,12 @@ mod tests {
 
     /// Compile a program via the `compile` tool to populate the cache with
     /// a fresh container and symbol map; returns the container_id.
-    fn compile_into(cache: &Mutex<ContainerCache>, source: &str) -> String {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: source.into(),
-        }];
-        let resp = crate::tools::compile::build_response(&sources, &ed2_options(), false, cache);
+    fn compile_into(cache: &Mutex<ContainerCache>, src: &str) -> String {
+        let resp =
+            crate::tools::compile::build_response(&source(src), &ed2_options(), false, cache);
         assert!(resp.ok, "compile failed: {:?}", resp.diagnostics);
         resp.container_id.unwrap()
     }
-
-    const COUNTER_PROGRAM: &str = r#"
-PROGRAM Main
-VAR
-  Counter : INT;
-END_VAR
-  Counter := Counter + 1;
-END_PROGRAM
-
-CONFIGURATION config
-  RESOURCE resource1 ON PLC
-    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
-    PROGRAM program1 WITH plc_task : Main;
-  END_RESOURCE
-END_CONFIGURATION
-"#;
 
     fn base_input(container_id: String) -> RunInput {
         RunInput {
@@ -715,25 +697,13 @@ END_CONFIGURATION
             .contains("container_base64")));
     }
 
-    /// The reproduction from issue #1413: no CONFIGURATION, so codegen keeps
-    /// the synthesized freewheeling task and there is no declared interval to
-    /// advance simulated time by.
-    const FREEWHEELING_PROGRAM: &str = r#"
-PROGRAM Main
-VAR
-  Counter : INT;
-END_VAR
-  Counter := Counter + 1;
-END_PROGRAM
-"#;
-
     /// A freewheeling container with no cycle time cannot run under simulated
     /// time. The `run` tool rejects it before reaching the VM; the runner keeps
     /// the invariant rather than trusting its caller.
     #[test]
     fn execute_when_freewheeling_and_no_interval_then_errors() {
         let cache = make_cache();
-        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM);
         let snapshot = {
             let mut guard = cache.lock().unwrap();
             guard.get(&id).unwrap().clone_for_run()
@@ -747,7 +717,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_freewheeling_program_then_runs_for_full_duration() {
         let cache = make_cache();
-        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM);
         let mut input = base_input(id);
         input.freewheeling_interval_ms = Some(100.0);
 
@@ -763,7 +733,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_freewheeling_program_then_summary_reports_interval_used() {
         let cache = make_cache();
-        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM);
         let mut input = base_input(id);
         input.freewheeling_interval_ms = Some(100.0);
 
@@ -777,7 +747,7 @@ END_PROGRAM
         // The server does not pick a scan time on the caller's behalf: a trace
         // built on a rate the agent never chose reads as fact.
         let cache = make_cache();
-        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM);
         let input = base_input(id);
 
         let resp = build_response(&input, &cache);
@@ -793,7 +763,7 @@ END_PROGRAM
     fn build_response_when_cyclic_program_and_no_interval_then_ok_true() {
         // Nothing to supply: every task declares its own INTERVAL.
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let input = base_input(id);
 
         let resp = build_response(&input, &cache);
@@ -805,7 +775,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_freewheeling_interval_supplied_then_cycle_count_follows_it() {
         let cache = make_cache();
-        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM);
         let mut input = base_input(id);
         input.freewheeling_interval_ms = Some(50.0);
 
@@ -819,7 +789,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_freewheeling_interval_subms_then_honored_at_microsecond_granularity() {
         let cache = make_cache();
-        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM);
         let mut input = base_input(id);
         input.duration_ms = 1;
         input.freewheeling_interval_ms = Some(0.25);
@@ -833,7 +803,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_cyclic_program_then_declared_interval_wins_and_nothing_assumed() {
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let mut input = base_input(id);
         // Supplied but inapplicable: every task declares an INTERVAL.
         input.freewheeling_interval_ms = Some(1.0);
@@ -855,7 +825,7 @@ END_PROGRAM
     #[case(3_600_001.0)]
     fn build_response_when_freewheeling_interval_out_of_range_then_ok_false(#[case] ms: f64) {
         let cache = make_cache();
-        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM);
         let mut input = base_input(id);
         input.freewheeling_interval_ms = Some(ms);
 
@@ -871,7 +841,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_stimuli_supplied_then_phase11_guard_fires() {
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let mut input = base_input(id);
         input.stimuli = vec![serde_json::json!({"time_ms": 0, "set": {}})];
         let resp = build_response(&input, &cache);
@@ -885,7 +855,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_non_every_cycle_trace_mode_then_phase11_guard_fires() {
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let mut input = base_input(id);
         input.trace = Some(TraceOptions {
             mode: Some("on_change".into()),
@@ -899,7 +869,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_tasks_filter_supplied_then_phase11_guard_fires() {
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let mut input = base_input(id);
         input.tasks = Some(vec!["plc_task".into()]);
         let resp = build_response(&input, &cache);
@@ -909,7 +879,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_limits_loosen_duration_then_ok_false() {
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let mut input = base_input(id);
         input.limits = Some(LimitOverrides {
             max_duration_ms: Some(EffectiveLimits::DEFAULTS.max_duration_ms + 1),
@@ -926,7 +896,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_wildcard_in_variable_then_ok_false() {
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let mut input = base_input(id);
         input.variables = vec!["Main.*".into()];
         let resp = build_response(&input, &cache);
@@ -940,7 +910,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_unresolved_variable_then_diagnostic_names_var() {
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let mut input = base_input(id);
         input.variables = vec!["Main.NoSuchVar".into()];
         let resp = build_response(&input, &cache);
@@ -954,7 +924,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_too_many_variables_then_ok_false() {
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let mut input = base_input(id);
         input.limits = Some(LimitOverrides {
             max_variables_per_run: Some(0),
@@ -968,7 +938,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_valid_counter_program_then_trace_shows_increment() {
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let input = base_input(id);
         let resp = build_response(&input, &cache);
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
@@ -992,7 +962,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_duration_zero_then_completed_empty_trace() {
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let mut input = base_input(id);
         input.duration_ms = 0;
         input.limits = Some(LimitOverrides {
@@ -1009,7 +979,7 @@ END_PROGRAM
     #[test]
     fn build_response_when_duration_exceeds_server_limit_then_terminates_on_duration() {
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let mut input = base_input(id);
         input.duration_ms = 500;
         input.limits = Some(LimitOverrides {
@@ -1023,10 +993,10 @@ END_PROGRAM
 
     #[test]
     fn build_response_when_cyclic_task_then_cycle_count_follows_interval() {
-        // COUNTER_PROGRAM declares INTERVAL := T#100ms and the run asks for
-        // 500 ms, so the task releases at 0, 100, 200, 300 and 400 ms.
+        // COUNTER_PROGRAM_WITH_TASK declares INTERVAL := T#100ms and the run
+        // asks for 500 ms, so the task releases at 0, 100, 200, 300 and 400 ms.
         let cache = make_cache();
-        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let id = compile_into(&cache, COUNTER_PROGRAM_WITH_TASK);
         let resp = build_response(&base_input(id), &cache);
 
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);

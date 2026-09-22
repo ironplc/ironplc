@@ -37,7 +37,7 @@
 use core::fmt;
 use ironplc_dsl::{
     common::*,
-    core::{FileId, Id, SourceSpan},
+    core::{FileId, Id, Located, SourceSpan},
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
@@ -72,104 +72,52 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
         .reachable_from(&data_type_visitor.program_nodes);
 
     // Split based on the type so that we put all of the data type declarations
-    // at the beginning.
-    let mut types_by_name: HashMap<Id, DataTypeDeclarationKind> = HashMap::new();
-    let mut elems_by_name: HashMap<Id, LibraryElementKind> = HashMap::new();
+    // at the beginning. Every declaration is kept, a repeated name included:
+    // the environments built from the sorted library diagnose the repeat and
+    // keep the first declaration, so dropping one here would hide it.
+    let mut types_by_name: HashMap<Id, Vec<DataTypeDeclarationKind>> = HashMap::new();
+    let mut elems_by_name: HashMap<Id, Vec<LibraryElementKind>> = HashMap::new();
     let mut global_var_decls: Vec<Vec<VarDecl>> = Vec::new();
     for element in lib.elements {
         match element {
             LibraryElementKind::DataTypeDeclaration(decl) => {
-                match decl {
-                    DataTypeDeclarationKind::Enumeration(decl) => {
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::Enumeration(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::Subrange(decl) => {
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::Subrange(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::Simple(decl) => {
-                        // Can refer to other declarations, but does not have any declarations itself
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::Simple(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::Array(decl) => {
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::Array(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::Structure(decl) => {
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::Structure(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::StructureInitialization(decl) => {
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::StructureInitialization(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::String(decl) => {
-                        // Can refer to other declarations, but does not have any declarations itself
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::String(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::Reference(decl) => {
-                        types_by_name.insert(
-                            decl.type_name.name.clone(),
-                            DataTypeDeclarationKind::Reference(decl),
-                        );
-                    }
-                    DataTypeDeclarationKind::LateBound(decl) => {
-                        types_by_name.insert(
-                            decl.data_type_name.name.clone(),
-                            DataTypeDeclarationKind::LateBound(decl),
-                        );
-                    }
-                }
+                types_by_name
+                    .entry(data_type_name(&decl))
+                    .or_default()
+                    .push(decl);
             }
             LibraryElementKind::FunctionDeclaration(decl) => {
-                elems_by_name.insert(
-                    decl.name.clone(),
-                    LibraryElementKind::FunctionDeclaration(decl),
-                );
+                elems_by_name
+                    .entry(decl.name.clone())
+                    .or_default()
+                    .push(LibraryElementKind::FunctionDeclaration(decl));
             }
             LibraryElementKind::FunctionBlockDeclaration(decl) => {
-                elems_by_name.insert(
-                    decl.name.name.clone(),
-                    LibraryElementKind::FunctionBlockDeclaration(decl),
-                );
+                elems_by_name
+                    .entry(decl.name.name.clone())
+                    .or_default()
+                    .push(LibraryElementKind::FunctionBlockDeclaration(decl));
             }
             LibraryElementKind::ProgramDeclaration(decl) => {
-                elems_by_name.insert(
-                    decl.name.clone(),
-                    LibraryElementKind::ProgramDeclaration(decl),
-                );
+                elems_by_name
+                    .entry(decl.name.clone())
+                    .or_default()
+                    .push(LibraryElementKind::ProgramDeclaration(decl));
             }
             LibraryElementKind::ConfigurationDeclaration(decl) => {
-                elems_by_name.insert(
-                    decl.name.clone(),
-                    LibraryElementKind::ConfigurationDeclaration(decl),
-                );
+                elems_by_name
+                    .entry(decl.name.clone())
+                    .or_default()
+                    .push(LibraryElementKind::ConfigurationDeclaration(decl));
             }
             LibraryElementKind::GlobalVarDeclarations(decls) => {
                 global_var_decls.push(decls);
             }
             LibraryElementKind::InterfaceDeclaration(decl) => {
-                elems_by_name.insert(
-                    decl.name.clone(),
-                    LibraryElementKind::InterfaceDeclaration(decl),
-                );
+                elems_by_name
+                    .entry(decl.name.clone())
+                    .or_default()
+                    .push(LibraryElementKind::InterfaceDeclaration(decl));
             }
         }
     }
@@ -180,14 +128,36 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
     for decls in global_var_decls {
         elements.push(LibraryElementKind::GlobalVarDeclarations(decls));
     }
-    elements.extend(sorted_ids.iter().filter_map(|id| {
-        types_by_name
-            .remove(id)
-            .map(LibraryElementKind::DataTypeDeclaration)
-    }));
-    elements.extend(sorted_ids.iter().filter_map(|id| elems_by_name.remove(id)));
+    elements.extend(
+        sorted_ids
+            .iter()
+            .filter_map(|id| types_by_name.remove(id))
+            .flatten()
+            .map(LibraryElementKind::DataTypeDeclaration),
+    );
+    elements.extend(
+        sorted_ids
+            .iter()
+            .filter_map(|id| elems_by_name.remove(id))
+            .flatten(),
+    );
 
     Ok((Library { elements }, reachable))
+}
+
+/// The declared name of a data type declaration.
+fn data_type_name(decl: &DataTypeDeclarationKind) -> Id {
+    match decl {
+        DataTypeDeclarationKind::Enumeration(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::Subrange(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::Simple(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::Array(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::Structure(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::StructureInitialization(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::String(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::Reference(d) => d.type_name.name.clone(),
+        DataTypeDeclarationKind::LateBound(d) => d.data_type_name.name.clone(),
+    }
 }
 
 struct DeclarationsGraph {
@@ -307,6 +277,15 @@ impl RuleGraphReferenceableElements {
     }
 }
 
+/// The declared type a reference target depends on: the named type itself,
+/// or the element type of an inline array target.
+fn reference_target_type_name(target: &ReferenceTarget) -> Id {
+    match target {
+        ReferenceTarget::Named(type_name) => type_name.name.clone(),
+        ReferenceTarget::Array(subranges) => subranges.type_name.to_type_name().name,
+    }
+}
+
 impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
     type Value = ();
 
@@ -362,6 +341,23 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
             let depends_on = self.declarations.add_node(&parent.name);
             self.declarations.graph.add_edge(depends_on, this, ());
         };
+
+        node.recurse_visit(self)
+    }
+
+    fn visit_reference_declaration(
+        &mut self,
+        node: &ReferenceDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        // `REF_TO T` depends on `T`, and `REF_TO ARRAY [..] OF T` on the
+        // element type, exactly as `visit_array_declaration` does. Without
+        // this edge a `REF_TO` to a type declared in the same source may be
+        // resolved before its target exists and fail with a spurious P2011.
+        let this = self.declarations.add_node(&node.type_name.name);
+        let depends_on = self
+            .declarations
+            .add_node(&reference_target_type_name(&node.target));
+        self.declarations.graph.add_edge(depends_on, this, ());
 
         node.recurse_visit(self)
     }
@@ -516,7 +512,12 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                 let to = self.declarations.add_node(&node.name);
                 self.declarations.graph.add_edge(to, from, ());
             }
-            None => return Err(Diagnostic::todo()),
+            None => {
+                return Err(Diagnostic::not_implemented(Label::span(
+                    node.name.span(),
+                    "Function call outside a program organization unit",
+                )))
+            }
         }
 
         node.recurse_visit(self)
@@ -537,7 +538,12 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                 let to = self.declarations.add_node(&init.type_name.name);
                 self.declarations.graph.add_edge(to, from, ());
             }
-            None => return Err(Diagnostic::todo()),
+            None => {
+                return Err(Diagnostic::not_implemented(Label::span(
+                    init.type_name.span(),
+                    "Function block instance outside a program organization unit",
+                )))
+            }
         }
 
         Ok(())
@@ -554,7 +560,20 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                     InitialValueAssignmentKind::Simple(_) => {}
                     InitialValueAssignmentKind::String(_) => {}
                     InitialValueAssignmentKind::EnumeratedValues(_) => {}
-                    InitialValueAssignmentKind::EnumeratedType(_) => {}
+                    InitialValueAssignmentKind::EnumeratedType(enum_init) => {
+                        // An enum-typed field or variable depends on its
+                        // enumeration type, exactly as the LateResolvedType
+                        // arm below records for the uninitialized form
+                        // `c : Color;`. The parser produces this arm directly
+                        // for a qualified initializer (`c : Color := Color#GREEN`)
+                        // and for located declarations, so without this edge
+                        // the enumeration may be ordered after the declaration
+                        // that references it and is then missing from the type
+                        // environment, surfacing as a spurious P2021/P2004.
+                        let from = self.declarations.add_node(from);
+                        let to = self.declarations.add_node(&enum_init.type_name.name);
+                        self.declarations.graph.add_edge(to, from, ());
+                    }
                     InitialValueAssignmentKind::FunctionBlock(fb) => {
                         // Same ordering convention as the Structure/LateResolvedType
                         // arms below: the referenced type must come before the
@@ -599,7 +618,10 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::Reference(_) => {}
-                    InitialValueAssignmentKind::LateResolvedType(lrt) => {
+                    InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                        type_name: lrt,
+                        ..
+                    }) => {
                         // We only care about these because these may be references to a function block
                         let from = self.declarations.add_node(from);
                         let to = self.declarations.add_node(&lrt.name);
@@ -629,7 +651,31 @@ mod tests {
     use super::*;
 
     use crate::test_helpers::parse_only;
+    use ironplc_parser::{options::CompilerOptions, parse_program};
     use ironplc_test::cast;
+
+    /// A repeated name keeps both declarations: the environments built from
+    /// the sorted library diagnose the repeat, so the sort must not hide it.
+    #[test]
+    fn apply_when_function_name_repeated_then_both_declarations_kept() {
+        let program = "
+FUNCTION F : INT
+  F := 1;
+END_FUNCTION
+
+FUNCTION F : INT
+  F := 2;
+END_FUNCTION";
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (sorted, _) = apply(library).unwrap();
+        let functions = sorted
+            .elements
+            .iter()
+            .filter(|e| matches!(e, LibraryElementKind::FunctionDeclaration(f) if f.name == Id::from("F")))
+            .count();
+        assert_eq!(functions, 2);
+    }
 
     #[test]
     fn apply_when_function_block_recursive_call_in_self_then_return_error() {
@@ -1199,6 +1245,17 @@ END_TYPE";
         })
     }
 
+    /// Position of the enumeration declaration named `name` in the sorted
+    /// library, or `None` when the library does not declare that enumeration.
+    fn enumeration_position(library: &Library, name: &str) -> Option<usize> {
+        library.elements.iter().position(|element| match element {
+            LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(decl)) => {
+                decl.type_name == TypeName::from(name)
+            }
+            _ => false,
+        })
+    }
+
     #[test]
     fn apply_when_struct_array_field_element_declared_first_then_element_ordered_first() {
         // Declaration order already matches dependency order. The element type
@@ -1330,11 +1387,155 @@ END_VAR
 END_PROGRAM";
 
         let library = parse_only(program);
-        let result = crate::stages::resolve_types(&[&library], &CompilerOptions::default());
+        let (_library, context) =
+            crate::stages::resolve_types(&[&library], &CompilerOptions::default()).unwrap();
         assert!(
-            result.is_ok(),
+            !context.has_diagnostics(),
             "expected type resolution to succeed, got {:?}",
-            result.err()
+            context.diagnostics()
+        );
+    }
+
+    #[test]
+    fn apply_when_struct_enum_field_initialized_and_enum_declared_first_then_enum_ordered_first() {
+        // Declaration order already matches dependency order. The qualified
+        // initializer parses straight to the EnumeratedType arm, which must
+        // record the edge so the sort is not free to emit either order.
+        let program = "
+TYPE Color : (RED, GREEN, BLUE); END_TYPE
+
+TYPE Thing : STRUCT
+    c : Color := Color#GREEN;
+    n : INT;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        let color = enumeration_position(&library, "Color").unwrap();
+        let thing = structure_position(&library, "Thing").unwrap();
+        assert!(color < thing, "Color must be ordered before Thing");
+    }
+
+    #[test]
+    fn apply_when_struct_enum_field_initialized_and_enum_declared_last_then_enum_ordered_first() {
+        // Forward reference: the enumeration is declared textually *after*
+        // the struct whose initialized field references it.
+        let program = "
+TYPE Thing : STRUCT
+    c : Color := Color#GREEN;
+    n : INT;
+END_STRUCT;
+END_TYPE
+
+TYPE Color : (RED, GREEN, BLUE); END_TYPE";
+
+        let library = parse_only(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        let color = enumeration_position(&library, "Color").unwrap();
+        let thing = structure_position(&library, "Thing").unwrap();
+        assert!(color < thing, "Color must be ordered before Thing");
+    }
+
+    #[test]
+    fn resolve_types_when_struct_enum_field_initialized_and_enum_declared_first_then_return_ok() {
+        // Pipeline-level regression guard for the reported symptom: this
+        // layout previously failed with P2021 and P2004 because the
+        // enumeration was absent from the type environment when the
+        // initialized field was resolved. Removing the initializer, or
+        // swapping the two TYPE blocks, made it pass.
+        // See https://github.com/ironplc/ironplc/issues/1593.
+        use ironplc_parser::options::CompilerOptions;
+
+        let program = "
+TYPE Color : (RED, GREEN, BLUE); END_TYPE
+
+TYPE Thing : STRUCT
+    c : Color := Color#GREEN;
+    n : INT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM Main
+VAR
+    t : Thing;
+    r : INT;
+END_VAR
+    r := t.n;
+END_PROGRAM";
+
+        let library = parse_only(program);
+        let (_library, context) =
+            crate::stages::resolve_types(&[&library], &CompilerOptions::default()).unwrap();
+        assert!(
+            !context.has_diagnostics(),
+            "expected type resolution to succeed, got {:?}",
+            context.diagnostics()
+        );
+    }
+    #[test]
+    fn apply_when_reference_target_declared_last_then_target_ordered_first() {
+        // `TYPE ArrRef : REF_TO ARR4` depends on ARR4 exactly as an array
+        // alias depends on its base type.
+        // See https://github.com/ironplc/ironplc/issues/1580.
+        use ironplc_parser::options::{CompilerOptions, Dialect};
+
+        let program = "
+TYPE
+  ArrRef : REF_TO ARR4;
+  ARR4 : ARRAY[0..3] OF INT;
+END_TYPE";
+
+        let library = ironplc_parser::parse_program(
+            program,
+            &FileId::default(),
+            &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+        )
+        .unwrap();
+        let (library, _reachable) = apply(library).unwrap();
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Array);
+        assert_eq!(decl.type_name, TypeName::from("ARR4"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Reference);
+        assert_eq!(decl.type_name, TypeName::from("ArrRef"));
+    }
+
+    #[test]
+    fn resolve_types_when_reference_type_targets_named_array_type_then_return_ok() {
+        // Pipeline-level guard: before the reference declaration carried a
+        // dependency edge, this layout resolved `ArrRef` before `ARR4` in
+        // some runs and reported P2011 for a type that is declared.
+        // See https://github.com/ironplc/ironplc/issues/1580.
+        use ironplc_parser::options::{CompilerOptions, Dialect};
+
+        let program = "
+TYPE
+  ARR4 : ARRAY[0..3] OF INT;
+  ArrRef : REF_TO ARR4;
+END_TYPE
+
+PROGRAM Main
+VAR
+    arr : ARR4;
+    pt : ArrRef;
+END_VAR
+    pt := REF(arr);
+END_PROGRAM";
+
+        let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+        let library = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();
+        let (_library, context) = crate::stages::resolve_types(&[&library], &options).unwrap();
+        assert!(
+            !context.has_diagnostics(),
+            "expected type resolution to succeed, got {:?}",
+            context.diagnostics()
         );
     }
 }

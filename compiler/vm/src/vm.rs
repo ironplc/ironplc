@@ -14,6 +14,7 @@ use crate::frame_stack::{FbCallReturn, Frame, FrameStack};
 use crate::profile::InstructionProfile;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
 use crate::stack::OperandStack;
+use crate::str_to_num;
 use crate::string_ops;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
@@ -1510,17 +1511,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     }
                     opcode::builtin::CONV_STR_TO_I32 => {
                         let data_offset = stack.pop()?.as_i32() as usize;
-                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                        }
-                        // STRING_TO_* parses Latin-1 digits; reject WSTRING input.
-                        let width = string_ops::str_read_char_width(data_region, data_offset)?;
-                        string_ops::verify_encoding(CharWidth::Narrow, width)?;
-                        let cur_len =
-                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
-                        let start = data_offset + STRING_HEADER_BYTES;
-                        let end = (start + cur_len).min(data_region.len());
-                        let result = core::str::from_utf8(&data_region[start..end])
+                        let bytes = string_ops::narrow_str_bytes(data_region, data_offset)?;
+                        let result = core::str::from_utf8(bytes)
                             .ok()
                             .and_then(|s| s.trim().parse::<i32>().ok())
                             .unwrap_or(0);
@@ -1528,17 +1520,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     }
                     opcode::builtin::CONV_STR_TO_F32 => {
                         let data_offset = stack.pop()?.as_i32() as usize;
-                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                        }
-                        // STRING_TO_* parses Latin-1 digits; reject WSTRING input.
-                        let width = string_ops::str_read_char_width(data_region, data_offset)?;
-                        string_ops::verify_encoding(CharWidth::Narrow, width)?;
-                        let cur_len =
-                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
-                        let start = data_offset + STRING_HEADER_BYTES;
-                        let end = (start + cur_len).min(data_region.len());
-                        let result = core::str::from_utf8(&data_region[start..end])
+                        let bytes = string_ops::narrow_str_bytes(data_region, data_offset)?;
+                        let result = core::str::from_utf8(bytes)
                             .ok()
                             .and_then(|s| s.trim().parse::<f32>().ok())
                             .unwrap_or(0.0);
@@ -1577,6 +1560,19 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             core::cmp::Ordering::Greater => 1i32,
                         };
                         stack.push(Slot::from_i32(cmp_val))?;
+                    }
+                    // A `STRING_TO_<numeric>` conversion under behavior
+                    // policies (ADR-0049): the ID carries the target and
+                    // both policies, and `str_to_num` does the rest. An ID
+                    // in the block that names no conversion is unknown like
+                    // any other unassigned builtin.
+                    opcode::builtin::str_to_num::BASE..=opcode::builtin::str_to_num::END => {
+                        let Some(encoding) = opcode::builtin::str_to_num::decode(func_id) else {
+                            return Err(Trap::InvalidBuiltinFunction(FunctionId::new(func_id)));
+                        };
+                        let data_offset = stack.pop()?.as_i32() as usize;
+                        let bytes = string_ops::narrow_str_bytes(data_region, data_offset)?;
+                        stack.push(str_to_num::convert(encoding, bytes)?)?;
                     }
                     _ => builtin::dispatch(func_id, stack)?,
                 }
@@ -1775,6 +1771,10 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 // Update destination cur_length (code units).
                 string_ops::str_write_cur_len(data_region, data_offset, copy_units as u16);
+
+                // The value has been copied out, so the buffer holding it
+                // is dead: hand its slot back for the next allocation.
+                temp_alloc.release(buf_idx);
             }
 
             // STR_LOAD_VAR: Copy a string from the data region into a temp
@@ -2394,6 +2394,10 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 // Update destination cur_length (code units).
                 string_ops::str_write_cur_len(data_region, elem_offset, copy_units as u16);
+
+                // The value has been copied out, so the buffer holding it
+                // is dead: hand its slot back for the next allocation.
+                temp_alloc.release(buf_idx);
             }
 
             opcode::POP => {
