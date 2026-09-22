@@ -214,7 +214,7 @@ pub(crate) fn assign_variables(
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
                     crate::compile_reference::register_reference_variable(
-                        ctx, builder, id, index, ref_init,
+                        ctx, builder, types, id, index, ref_init,
                     )?;
                     (iec_type_tag::OTHER, "REF_TO".into())
                 }

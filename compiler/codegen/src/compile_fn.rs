@@ -175,6 +175,7 @@ pub(crate) fn compile_user_function(
                     crate::compile_reference::register_reference_variable(
                         ctx,
                         builder,
+                        types,
                         id,
                         current_index,
                         ref_init,
@@ -234,6 +235,7 @@ pub(crate) fn compile_user_function(
                     crate::compile_reference::register_reference_variable(
                         ctx,
                         builder,
+                        types,
                         id,
                         current_index,
                         ref_init,
@@ -498,7 +500,7 @@ pub(crate) fn compile_user_function_block(
     var_offset: u16,
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
-    _types: &TypeEnvironment,
+    types: &TypeEnvironment,
     num_globals: u16,
 ) -> Result<(CompiledFunction, SavedFbScope), Diagnostic> {
     let fb_name = fb_decl.name.name.to_string().to_uppercase();
@@ -586,6 +588,7 @@ pub(crate) fn compile_user_function_block(
                     crate::compile_reference::register_reference_variable(
                         ctx,
                         builder,
+                        types,
                         id,
                         current_index,
                         ref_init,

@@ -903,3 +903,26 @@ END_PROGRAM
     // vars: x=0, r=1, y=2. `r + 2` must use r's dereferenced value (40 + 2).
     assert_eq!(bufs.vars[2].as_i32(), 42);
 }
+
+/// REQ-RTO-codegen-421: A reference whose target is a named array type is
+/// subscripted through `^` exactly as a reference to the inline array.
+#[spec_test(REQ_RTO_codegen_421)]
+fn codegen_spec_req_rto_421_named_array_type_target_subscript() {
+    let source = "
+TYPE ARR4 : ARRAY[0..3] OF INT; END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARR4;
+    r : REFERENCE TO ARR4;
+    v : INT;
+  END_VAR
+  arr[1] := 77;
+  r REF= arr;
+  v := r^[1];
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    // vars: arr=0, r=1, v=2
+    assert_eq!(bufs.vars[2].as_i32(), 77);
+}

@@ -277,6 +277,15 @@ impl RuleGraphReferenceableElements {
     }
 }
 
+/// The declared type a reference target depends on: the named type itself,
+/// or the element type of an inline array target.
+fn reference_target_type_name(target: &ReferenceTarget) -> Id {
+    match target {
+        ReferenceTarget::Named(type_name) => type_name.name.clone(),
+        ReferenceTarget::Array(subranges) => subranges.type_name.to_type_name().name,
+    }
+}
+
 impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
     type Value = ();
 
@@ -332,6 +341,23 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
             let depends_on = self.declarations.add_node(&parent.name);
             self.declarations.graph.add_edge(depends_on, this, ());
         };
+
+        node.recurse_visit(self)
+    }
+
+    fn visit_reference_declaration(
+        &mut self,
+        node: &ReferenceDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        // `REF_TO T` depends on `T`, and `REF_TO ARRAY [..] OF T` on the
+        // element type, exactly as `visit_array_declaration` does. Without
+        // this edge a `REF_TO` to a type declared in the same source may be
+        // resolved before its target exists and fail with a spurious P2011.
+        let this = self.declarations.add_node(&node.type_name.name);
+        let depends_on = self
+            .declarations
+            .add_node(&reference_target_type_name(&node.target));
+        self.declarations.graph.add_edge(depends_on, this, ());
 
         node.recurse_visit(self)
     }
@@ -1443,6 +1469,69 @@ END_PROGRAM";
         let library = parse_only(program);
         let (_library, context) =
             crate::stages::resolve_types(&[&library], &CompilerOptions::default()).unwrap();
+        assert!(
+            !context.has_diagnostics(),
+            "expected type resolution to succeed, got {:?}",
+            context.diagnostics()
+        );
+    }
+    #[test]
+    fn apply_when_reference_target_declared_last_then_target_ordered_first() {
+        // `TYPE ArrRef : REF_TO ARR4` depends on ARR4 exactly as an array
+        // alias depends on its base type.
+        // See https://github.com/ironplc/ironplc/issues/1580.
+        use ironplc_parser::options::{CompilerOptions, Dialect};
+
+        let program = "
+TYPE
+  ArrRef : REF_TO ARR4;
+  ARR4 : ARRAY[0..3] OF INT;
+END_TYPE";
+
+        let library = ironplc_parser::parse_program(
+            program,
+            &FileId::default(),
+            &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+        )
+        .unwrap();
+        let (library, _reachable) = apply(library).unwrap();
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Array);
+        assert_eq!(decl.type_name, TypeName::from("ARR4"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(decl, DataTypeDeclarationKind::Reference);
+        assert_eq!(decl.type_name, TypeName::from("ArrRef"));
+    }
+
+    #[test]
+    fn resolve_types_when_reference_type_targets_named_array_type_then_return_ok() {
+        // Pipeline-level guard: before the reference declaration carried a
+        // dependency edge, this layout resolved `ArrRef` before `ARR4` in
+        // some runs and reported P2011 for a type that is declared.
+        // See https://github.com/ironplc/ironplc/issues/1580.
+        use ironplc_parser::options::{CompilerOptions, Dialect};
+
+        let program = "
+TYPE
+  ARR4 : ARRAY[0..3] OF INT;
+  ArrRef : REF_TO ARR4;
+END_TYPE
+
+PROGRAM Main
+VAR
+    arr : ARR4;
+    pt : ArrRef;
+END_VAR
+    pt := REF(arr);
+END_PROGRAM";
+
+        let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+        let library = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();
+        let (_library, context) = crate::stages::resolve_types(&[&library], &options).unwrap();
         assert!(
             !context.has_diagnostics(),
             "expected type resolution to succeed, got {:?}",
