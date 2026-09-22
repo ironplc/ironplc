@@ -50,11 +50,22 @@ A member can be given its own value instead of the one its position implies.
 Members that follow continue from the value before them, so ``Type_ANY`` below
 is 1 and ``Type_BOOL`` is 2:
 
-.. code-block::
+.. playground::
+   :allows: enum-explicit-values
 
    TYPE
        E_AssertionType : (Type_UNDEFINED := 0, Type_ANY, Type_BOOL);
    END_TYPE
+
+   PROGRAM main
+       VAR
+           kind : E_AssertionType := Type_ANY;
+       END_VAR
+
+       IF kind = Type_ANY THEN
+           kind := Type_BOOL;
+       END_IF;
+   END_PROGRAM
 
 This is IEC 61131-3:2013 (Edition 3) syntax, not Edition 2, so the default
 strict Edition 2 dialect rejects it with
@@ -70,11 +81,21 @@ Base Type
 
 A declaration can name the elementary type the members are stored in:
 
-.. code-block::
+.. playground::
 
    TYPE
        Color : (Red, Green, Blue) INT;
    END_TYPE
+
+   PROGRAM main
+       VAR
+           shade : Color := Blue;
+       END_VAR
+
+       IF shade = Blue THEN
+           shade := Red;
+       END_IF;
+   END_PROGRAM
 
 Without it, IronPLC picks the smallest type that holds every member's value.
 The suffix is a CODESYS/TwinCAT extension beyond IEC 61131-3 rather than
