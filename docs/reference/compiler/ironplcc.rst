@@ -286,23 +286,19 @@ Options
    Allow a member of an enumeration declaration to be given an explicit value
    (e.g. ``(Deutsch := 1, English := 2)``). The IEC 61131-3:2003 (Edition 2)
    grammar lets an enumeration list only bare member names, which take
-   consecutive values from zero; explicit values were added in Edition 3 and
-   are accepted by the vendor dialects. Produces
-   :doc:`P4055 </reference/compiler/problems/P4055>` when used without this
-   flag. Enabled by ``--dialect=iec61131-3-ed3``, ``--dialect=rusty``,
-   ``--dialect=codesys``, and ``--dialect=twincat``.
+   consecutive values from zero; explicit values were added in Edition 3.
+   Produces :doc:`P4055 </reference/compiler/problems/P4055>` when used
+   without this flag.
 
 ``--allow-enum-base-type``
    Allow the base-type suffix on an enumeration declaration (e.g.
    ``(A, B) WORD``), naming the elementary type the members are stored in.
    IEC 61131-3 has no such form — nothing may follow an enumerated
-   specification — so the suffix is a CODESYS/TwinCAT extension. Without it
-   the compiler picks the smallest type that holds every member's value.
-   Produces :doc:`P4056 </reference/compiler/problems/P4056>` when used
-   without this flag. Enabled by ``--dialect=rusty``, ``--dialect=codesys``,
-   and ``--dialect=twincat``; unlike
-   ``--allow-enum-explicit-values`` it is *not* Edition 3 syntax, so
-   ``--dialect=iec61131-3-ed3`` does not enable it.
+   specification — so the suffix is an extension, and not an Edition 3
+   addition as explicit member values are. Without it the compiler picks the
+   smallest type that holds every member's value. Produces
+   :doc:`P4056 </reference/compiler/problems/P4056>` when used without this
+   flag.
 
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
    Select what ``STRING_TO_<numeric>`` treats as convertible when the string

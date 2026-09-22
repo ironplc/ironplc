@@ -271,7 +271,7 @@ struct FileArgs {
 
     /// Allow explicit per-member values in an enumeration declaration (e.g.
     /// `(Deutsch := 1, English := 2)`). Standardized in IEC 61131-3:2013, so
-    /// enabled by `--dialect=iec61131-3-ed3` and by the vendor dialects.
+    /// not part of Edition 2.
     #[arg(long)]
     allow_enum_explicit_values: bool,
 

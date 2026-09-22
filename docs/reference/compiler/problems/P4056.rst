@@ -11,13 +11,12 @@ This error occurs when an enumeration declaration carries a base-type suffix
 The suffix names the elementary type the members are stored in. IEC 61131-3
 has no such form: its ``enumerated_specification`` (Annex B) is a
 parenthesized list of member names or the name of another enumerated type,
-and nothing may follow it. The suffix is a CODESYS and TwinCAT extension.
+and nothing may follow it, so the suffix is an extension.
 
 Unlike explicit member values, which
 :doc:`P4055 </reference/compiler/problems/P4055>` gates, this is *not* an
-Edition 3 addition — selecting ``--dialect=iec61131-3-ed3`` does not enable
-it. The two constructs often appear together in vendor code but answer
-different questions about the standard.
+Edition 3 addition. The two constructs often appear together but answer
+different questions about the standard, so each has its own flag.
 
 Example
 -------

@@ -454,8 +454,8 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    be given an explicit value (e.g. ``(Deutsch := 1, English := 2)``). The
    IEC 61131-3:2003 (Edition 2) grammar lets an enumeration list only bare
    member names, which take consecutive values starting at zero; explicit
-   values were added in Edition 3 and are accepted by CODESYS, TwinCAT and
-   RuSTy. Without this flag, an explicit value produces
+   values were added in Edition 3. Without this flag, an explicit value
+   produces
    :doc:`P4055 </reference/compiler/problems/P4055>`. A list of bare member
    names is standard syntax and is always allowed, as is a default value
    (``(RED, GREEN, BLUE) := GREEN``), which selects the initial member rather
@@ -467,12 +467,12 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    (e.g. ``(A, B) WORD``), naming the elementary type the members are stored
    in. IEC 61131-3 has no such form — an enumerated specification is a list
    of member names or another enumerated type's name, and nothing may follow
-   it — so the suffix is a CODESYS/TwinCAT extension. Without this flag it
-   produces :doc:`P4056 </reference/compiler/problems/P4056>`, and the
-   compiler sizes the type from the members instead. Note that this is not
-   Edition 3 syntax, so ``iec61131-3-ed3`` does not enable it, which is where
-   it differs from ``--allow-enum-explicit-values`` above — the two often
-   appear together in vendor code but are separate questions.
+   it — so the suffix is an extension. Unlike
+   ``--allow-enum-explicit-values`` above it is not an Edition 3 addition;
+   the two constructs often appear together but are separate questions.
+   Without this flag it produces
+   :doc:`P4056 </reference/compiler/problems/P4056>`, and the compiler sizes
+   the type from the members instead.
 
 Pass the flag when running :program:`ironplcc`:
 
