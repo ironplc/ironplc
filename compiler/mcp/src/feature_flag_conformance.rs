@@ -273,6 +273,15 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "TYPE\nE_ModeLanguage : (Deutsch := 1, English := 2);\nEND_TYPE\nPROGRAM main\nEND_PROGRAM",
     },
+    // The base-type suffix on an enum declaration. The parser accepts it
+    // unconditionally; a semantic rule rejects it (P4056) when the flag is
+    // off. A declaration without the suffix sizes automatically and is
+    // accepted either way.
+    FlagFixture {
+        key: "allow_enum_base_type",
+        prereqs: &[],
+        source: "TYPE\nE_Small : (A, B) WORD;\nEND_TYPE\nPROGRAM main\nEND_PROGRAM",
+    },
     // The Beckhoff TwinCAT/CODESYS PERSISTENT variable qualifier. With the
     // flag off, PERSISTENT demotes to a plain identifier, so it collides with
     // the following declaration name and fails to parse. With the flag on,

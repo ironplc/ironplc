@@ -13,8 +13,7 @@ The IEC 61131-3:2003 (Edition 2) grammar for an enumerated specification
 enumerated_value} ')' | enumerated_type_name``, where an ``enumerated_value``
 is a name and nothing else — the members take consecutive values starting at
 zero, and there is no way to say otherwise. Assigning a member its own value
-was added in IEC 61131-3:2013 (Edition 3), and CODESYS, TwinCAT and RuSTy
-accept it as well.
+was added in IEC 61131-3:2013 (Edition 3).
 
 A declaration whose members are all bare names is Edition 2 syntax and is
 always allowed, as is a default value (``:= GREEN``), which selects the
