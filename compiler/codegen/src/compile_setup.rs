@@ -424,7 +424,7 @@ pub(crate) fn emit_initial_values(
                         let fields: Vec<_> = struct_info
                             .fields
                             .iter()
-                            .map(|f| crate::compile_struct::FieldInitInfo {
+                            .map(|f| crate::compile_struct_init::FieldInitInfo {
                                 name: f.name.clone(),
                                 slot_offset: f.slot_offset,
                                 field_type: f.field_type.clone(),
@@ -437,7 +437,7 @@ pub(crate) fn emit_initial_values(
                         emitter.emit_load_const_i32(offset_const);
                         emitter.emit_store_var_i32(var_index);
 
-                        crate::compile_struct::initialize_struct_fields(
+                        crate::compile_struct_init::initialize_struct_fields(
                             emitter,
                             ctx,
                             var_index,
@@ -604,7 +604,7 @@ pub(crate) fn emit_initial_values(
                         let fields: Vec<_> = struct_info
                             .fields
                             .iter()
-                            .map(|f| crate::compile_struct::FieldInitInfo {
+                            .map(|f| crate::compile_struct_init::FieldInitInfo {
                                 name: f.name.clone(),
                                 slot_offset: f.slot_offset,
                                 field_type: f.field_type.clone(),
@@ -619,7 +619,7 @@ pub(crate) fn emit_initial_values(
                         emitter.emit_store_var_i32(var_index);
 
                         // Initialize each field
-                        crate::compile_struct::initialize_struct_fields(
+                        crate::compile_struct_init::initialize_struct_fields(
                             emitter,
                             ctx,
                             var_index,
@@ -823,7 +823,7 @@ pub(crate) fn emit_function_local_prologue(
         let fields: Vec<_> = struct_info
             .fields
             .iter()
-            .map(|f| crate::compile_struct::FieldInitInfo {
+            .map(|f| crate::compile_struct_init::FieldInitInfo {
                 name: f.name.clone(),
                 slot_offset: f.slot_offset,
                 field_type: f.field_type.clone(),
@@ -832,7 +832,7 @@ pub(crate) fn emit_function_local_prologue(
             })
             .collect();
 
-        crate::compile_struct::initialize_struct_fields(
+        crate::compile_struct_init::initialize_struct_fields(
             emitter,
             ctx,
             return_var_index,

@@ -45,6 +45,7 @@ mod compile_short_circuit;
 mod compile_stmt;
 mod compile_string;
 mod compile_struct;
+mod compile_struct_init;
 mod data_region;
 mod emit;
 mod optimize;
