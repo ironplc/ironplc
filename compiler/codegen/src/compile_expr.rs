@@ -283,19 +283,53 @@ fn compile_time_count(
     span: &SourceSpan,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let bits = match op_type.0 {
-        OpWidth::W32 => 32,
-        OpWidth::W64 => 64,
+    // Each arm states the range it stores, so a width added to `OpWidth`
+    // has to say what a count means at that width rather than inheriting an
+    // answer from a catch-all.
+    match op_type.0 {
+        OpWidth::W32 => {
+            let value = within_storage(count, 32, op_type.1, literal, problem, span)?;
+            let pool_index = ctx.add_i32_constant(value as i32);
+            emitter.emit_load_const_i32(pool_index);
+        }
+        OpWidth::W64 => {
+            let value = within_storage(count, 64, op_type.1, literal, problem, span)?;
+            let pool_index = ctx.add_i64_constant(value as i64);
+            emitter.emit_load_const_i64(pool_index);
+        }
+        // A count is not a measurement, so no floating-point type holds one,
+        // and the analyzer rejects the assignment that would ask for it
+        // (P4035). Reaching here means analysis was skipped, which is a
+        // broken invariant rather than a missing capability: the catch-all
+        // this replaced emitted an integer load, leaving the count's bit
+        // pattern in a float slot to be read back as a number unrelated to
+        // the literal.
         OpWidth::F32 | OpWidth::F64 => {
             return Err(Diagnostic::internal_error_at(Label::span(
                 span.clone(),
                 format!("{literal} compiled at a floating-point operation width"),
             )))
         }
-    };
+    }
+    Ok(())
+}
 
+/// Returns `count` when a `bits`-wide integer of `signedness` holds it, and
+/// reports `problem` against the literal when it does not.
+///
+/// The value is returned rather than narrowed here: a count that fits is
+/// bit-cast by the caller, so `u32::MAX` seconds is stored as -1 and read back
+/// unsigned, which is what the unsigned opcodes expect.
+fn within_storage(
+    count: i128,
+    bits: u32,
+    signedness: Signedness,
+    literal: &str,
+    problem: Problem,
+    span: &SourceSpan,
+) -> Result<i128, Diagnostic> {
     let (minimum, maximum) =
-        ironplc_analyzer::value_range::for_integer(bits, op_type.1 == Signedness::Signed);
+        ironplc_analyzer::value_range::for_integer(bits, signedness == Signedness::Signed);
     if count < minimum || count > maximum {
         return Err(Diagnostic::problem(
             problem,
@@ -306,22 +340,7 @@ fn compile_time_count(
         )
         .with_context("value", &count.to_string()));
     }
-
-    match op_type.0 {
-        OpWidth::W64 => {
-            let pool_index = ctx.add_i64_constant(count as i64);
-            emitter.emit_load_const_i64(pool_index);
-        }
-        // The float widths returned above, so this is the 32-bit case. A
-        // value that passed the unsigned check above is bit-cast rather than
-        // converted: `u32::MAX` seconds is stored as -1 and read back
-        // unsigned, which is what the unsigned opcodes expect.
-        _ => {
-            let pool_index = ctx.add_i32_constant(count as i32);
-            emitter.emit_load_const_i32(pool_index);
-        }
-    }
-    Ok(())
+    Ok(count)
 }
 
 /// Compiles a constant literal, pushing it onto the stack.

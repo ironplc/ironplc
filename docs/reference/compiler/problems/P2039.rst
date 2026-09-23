@@ -37,7 +37,7 @@ Example
 
 The following code will generate error P2039:
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR
@@ -49,7 +49,7 @@ A ``TIME`` holds about 24.8 days, so 30 days is not a value it can take.
 
 To fix this error, use a duration the type can hold:
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR
@@ -60,7 +60,8 @@ To fix this error, use a duration the type can hold:
 Or use ``LTIME``, whose 64-bit count reaches far beyond any interval a control
 program is likely to measure:
 
-.. code-block::
+.. playground::
+   :dialect: iec61131-3-ed3
 
    PROGRAM main
        VAR
@@ -79,7 +80,7 @@ better counted than timed. Where a program needs to measure days or months,
 count elapsed cycles or completed days in an integer variable rather than
 holding the whole span in one ``TIME``:
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR
