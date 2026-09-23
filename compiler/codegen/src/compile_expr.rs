@@ -21,6 +21,7 @@ use super::compile::{
     encode_string_literal, CompileContext, OpType, OpWidth, Signedness, VarTypeInfo,
     DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
+use super::compile_arith::compile_binary_arith;
 use super::compile_call::compile_function_call;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
 use super::compile_string::compile_string_compare;
@@ -154,12 +155,7 @@ pub(crate) fn compile_expr(
     match &expr.kind {
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
         ExprKind::Variable(variable) => compile_variable_read(emitter, ctx, variable, op_type),
-        ExprKind::BinaryOp(binary) => {
-            compile_expr(emitter, ctx, &binary.left, op_type)?;
-            compile_expr(emitter, ctx, &binary.right, op_type)?;
-            emit_arithmetic_op(emitter, &binary.op, op_type);
-            Ok(())
-        }
+        ExprKind::BinaryOp(binary) => compile_binary_arith(emitter, ctx, binary, op_type),
         ExprKind::UnaryOp(unary) => match unary.op {
             UnaryOp::Neg => {
                 compile_expr(emitter, ctx, &unary.term, op_type)?;
