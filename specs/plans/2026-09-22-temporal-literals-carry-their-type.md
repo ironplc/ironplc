@@ -88,13 +88,26 @@ widths.
 
 ## Prefactoring
 
-`compile_time_count` range-checks against `u32` unconditionally, which is right
-for one of the six storage shapes. It already receives `OpType` — a width *and*
-a signedness, which `type_info` fills in correctly (`DATE` unsigned, `TIME`
-signed) — so it can check the count against the range the operation type
-actually names. That alone turns the `T#30d` truncation into a diagnostic and
-makes the date guard width-correct, with no change to the type system. It lands
-first, on its own.
+**None for PR 1, and it was looked for.** The reshaping a range check would
+want is already done: `value_range::for_integer` is the single statement of
+what a width and signedness hold, and `compile_stmt.rs` already calls it from
+codegen across the crate boundary, so nothing has to move for the new guard to
+reach it. The one other candidate, `narrow_type_range`, answers the same
+question from a different input (`VarTypeInfo::storage_bits`) behind a filter
+that is its caller's own concern; folding the two together would be generality
+nobody has asked for.
+
+So PR 1 is the behaviour change on its own: `compile_time_count` range-checks
+against `u32` unconditionally, which is right for one of the six storage
+shapes. It already receives `OpType` — a width *and* a signedness, which
+`type_info` fills in correctly (`DATE` unsigned, `TIME` signed) — so each
+family checks its count against the range its operation type actually names.
+That turns the `T#30d` truncation into a diagnostic and makes the date guard
+width-correct, with no change to the type system.
+
+PR 2 is where prefactoring is likely to pay, since adding a width to four
+literal structs touches every construction site; that is assessed when PR 1 is
+in.
 
 ## Design doc reference
 
