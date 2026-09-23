@@ -210,23 +210,27 @@ impl RuleOperatorOperandTypeCheck<'_> {
 impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
     type Value = ();
 
-    fn visit_binary_expr(&mut self, node: &BinaryExpr) -> Result<Self::Value, Infallible> {
-        if let Some(form) = checked_form(&node.op) {
-            self.check_operands(form, &[&node.left, &node.right]);
-        }
-        node.recurse_visit(self)
-    }
-
-    fn visit_compare_expr(&mut self, node: &CompareExpr) -> Result<Self::Value, Infallible> {
-        if let Some(form) = checked_compare_form(&node.op) {
-            self.check_operands(form, &[&node.left, &node.right]);
-        }
-        node.recurse_visit(self)
-    }
-
-    fn visit_unary_expr(&mut self, node: &UnaryExpr) -> Result<Self::Value, Infallible> {
-        if let Some(form) = checked_unary_form(&node.op) {
-            self.check_operands(form, &[&node.term]);
+    /// Checks an operator expression at the `Expr` that holds it, rather than
+    /// at the operator node, so a check has the span of the whole expression
+    /// as well as each operand's.
+    fn visit_expr(&mut self, node: &Expr) -> Result<Self::Value, Infallible> {
+        match &node.kind {
+            ExprKind::BinaryOp(binary) => {
+                if let Some(form) = checked_form(&binary.op) {
+                    self.check_operands(form, &[&binary.left, &binary.right]);
+                }
+            }
+            ExprKind::Compare(compare) => {
+                if let Some(form) = checked_compare_form(&compare.op) {
+                    self.check_operands(form, &[&compare.left, &compare.right]);
+                }
+            }
+            ExprKind::UnaryOp(unary) => {
+                if let Some(form) = checked_unary_form(&unary.op) {
+                    self.check_operands(form, &[&unary.term]);
+                }
+            }
+            _ => {}
         }
         node.recurse_visit(self)
     }
