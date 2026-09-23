@@ -119,13 +119,14 @@ code lands, so every later PR builds against a design that is correct.
     rule for "a numeric binary expression" only. **Decision:** each fold step
     of `compile_operator_form`'s arithmetic arm goes through the same
     per-step routine as `BinaryOp`. The amendment says so under *Codegen*.
-    Codegen gets each step's result type from the resolver. It calls the
-    resolver with a fixed option set in which `allow_bit_string_arithmetic`
-    is on. Any program that reaches codegen has already been accepted, so
-    turning the extension on can only return the answer the analyzer
-    returned. A test pins that claim (see Core 2). The design's "the typed
-    step takes no options" still holds: the typed step is a separate, public,
-    option-free function.
+    Codegen gets each step's result type from the resolver, called with the
+    options the analyzer ran with: codegen already receives them through
+    `SemanticContext::compiler_options()`, so the two passes cannot disagree.
+    (An earlier version of this plan gave codegen a fixed option set and a
+    test pinning that it agreed with the analyzer; reading the context showed
+    neither is needed. PR 0, #1779, records this in the design.) The design's
+    "the typed step takes no options" still holds: the typed step is a
+    separate, public, option-free function.
 12. **The documentation list misses one page, and a steering pointer is
     stale.** `docs/reference/language/structured-text/arithmetic-operators.rst`
     says the arithmetic operators "apply to integer types ... and
@@ -362,16 +363,14 @@ Open it after P2 merges and before the Core 1 branch is created, titled
   `pub fn typed_overload(op, left, right) -> Option<Overload>` (option-free);
   `pub fn resolve_arithmetic_fold(op, inputs: &[Option<&TypeName>], options) -> Result<Overload, FoldFailure>`,
   where `FoldFailure` names the failing step's left and right types for the
-  diagnostic;
-  `pub const CODEGEN_OPTIONS: CompilerOptions` (default options plus the
-  bit-string flag, decision 11). Unit tests cover every rule branch; the
+  diagnostic. Unit tests cover every rule branch; the
   REQ-tagged tests live in the spec conformance module.
 - `src/intermediates/operator_function_form.rs` — C2: a `typed:
   &'static [&'static str]` column, a `form()` argument, a
   `pub fn typed_overloads(&self)` accessor, and the pinned-row test gaining a
   `typed` case column.
 - `src/lib.rs` — C2: re-export `resolve_arithmetic_overload`,
-  `typed_overload`, `Overload`, `CODEGEN_OPTIONS` beside the existing
+  `typed_overload`, `Overload` beside the existing
   `operator_function_form` re-export (line 107).
 - `src/rule_operator_operand_type_check.rs` — P1: `visit_expr`. C3: delete
   `checked_form`; check `+ - * / MOD` and calls to `ADD SUB MUL DIV` through
@@ -508,10 +507,15 @@ integration crate through the `spec_requirements` module in `tests/it/main.rs`.
 | 008 | C3 | VM: `l : LINT := d1 * d2` with `d1 = d2 = 100000` → the 32-bit wrapped product 1410065408, widened |
 | 009 | C2 | bytecode of `ADD(t1, t2, t3)` equals that of `t1 + t2 + t3`; VM value equal |
 
-Also in C2, not tied to a requirement: a test pinning decision 11. For each
-operator and each pair of elementary types, if the resolver answers under any
-of the five dialects' option sets, then it answers the same under
-`CODEGEN_OPTIONS`.
+PR 0 (#1779) added requirements while amending the design. Their tests:
+
+| Req | PR | Test shape |
+|---|---|---|
+| analyzer-015 | C2 | with the flag: `(BYTE, ANY_INT)` for `MOD` → `None`; C3 adds a pipeline case under `Dialect::Codesys` asserting P4049 for `b MOD 2` and P4026 for `MOD(b, 2)` |
+| analyzer-036 | C3 | `t * r` gives exactly one P4049 with `left`/`right`; `d1 AND d2` on `DINT` still gives two with `expected=ANY_BIT` |
+| codegen-010 | C3 | VM: `d : DINT := u1 / u2` with `4000000000` and `2` → 2000000000 |
+| codegen-011 | C3 | VM: `x : REAL := ADD(i, r)` → 4.5; bytecode of `ADD(i, r)` equals that of `i + r` |
+| codegen-012 | C3 | bytecode of `p + 1` on a subrange of `LINT` is byte-identical to a golden captured before C3 |
 
 ## Behaviour that changes: where each row is tested
 
@@ -597,46 +601,56 @@ listed in the C3 PR description with the reason its expected value changed.
 
 ### PR 0 — design amendment (`claude/ao-design-amendment`)
 
-- [ ] Amend `specs/design/arithmetic-operator-overloads.md` for decisions 1–12:
+Opened as #1779.
+
+- [x] Amend `specs/design/arithmetic-operator-overloads.md` for decisions 1–12:
       the long-form registration sentence (now "this change registers"),
       REQ-AO-codegen-005 wording (widening by signedness), REQ-AO-codegen-006
       wording (width and signedness), the P4049 bit-string-family paragraph,
       the added behaviour-change rows, the REQ-KF-analyzer-010 narrowing, the
       `MOD` exclusion, the P4026 sentence, missing types as `Unchecked`, the
       codegen conditions for the numeric path, the per-step function-form
-      rule with `CODEGEN_OPTIONS`, the `Operand` left-on-stack shape, and
+      rule with the analyzer's options, the `Operand` left-on-stack shape, and
       `arithmetic-operators.rst`. Keep the requirement IDs stable and add new
       ones only in the gaps.
-- [ ] Add the dated postscript to ADR-0053 (the `MOD` exclusion).
-- [ ] `cd specs && just`. `cd compiler && just`: no crate lists the design
+- [x] Add the dated postscript to ADR-0053 (the `MOD` exclusion).
+- [x] `cd specs && just`. `cd compiler && just`: no crate lists the design
       yet, so this is a sanity run.
 
 ### PR P1 — module-size prefactor (`claude/ao-prefactor-module-sizes`)
 
-- [ ] Move the `xform_resolve_expr_types` test module to
+Merged as #1775.
+
+- [x] Move the `xform_resolve_expr_types` test module to
       `xform_resolve_expr_types/tests.rs` and
       `xform_resolve_expr_types/tests/single_assignment.rs`, both under 1000
       lines.
-- [ ] Move `get_time_functions` and its tests to
+- [x] Move `get_time_functions` and its tests to
       `intermediates/stdlib_time_function.rs`.
-- [ ] Move the `options.rs` tests to `parser/src/options/tests.rs`.
-- [ ] Move the operator rule's arithmetic and compare checks to `visit_expr`,
+- [x] Move the `options.rs` tests to `parser/src/options/tests.rs`.
+- [x] Move the operator rule's arithmetic and compare checks to `visit_expr`,
       keeping the diagnostics byte-identical.
-- [ ] Each move is its own commit. The tests pass unchanged; only `use`
+- [x] Each move is its own commit. The tests pass unchanged; only `use`
       paths may change.
-- [ ] `cd compiler && just`, `cd specs && just`.
+- [x] `cd compiler && just`, `cd specs && just`.
 
 ### PR P2 — codegen prefactor (`claude/ao-prefactor-typed-routines`)
 
-- [ ] Create `compile_time_arith.rs` with `Operand` and the four routines
+Merged as #1776. One departure: the routines take `(in1, in2)` with no
+`width` and no `Operand` yet. Every caller would have passed W32 and the W64
+sequences do not exist, so C1 adds `width` with the W64 code, and C2 adds
+`Operand` with the fold that needs it. A name-to-routine table,
+`time_arith_for`, landed here instead of in C2.
+
+- [x] Create `compile_time_arith.rs` with `Operand` and the four routines
       taking `(left, right, width)`. Point `compile_function_call` at them
       with `Operand::Expr(in1)` and `W32`. Delete `compile_two_arg_operator`.
-- [ ] Create `compile_arith.rs` with `compile_binary_arith` (the `BinaryOp`
+- [x] Create `compile_arith.rs` with `compile_binary_arith` (the `BinaryOp`
       arm body) and `compile_arith_fold` (the arithmetic arm of
       `compile_operator_form`).
-- [ ] Verify that the bytecode is unchanged: every existing
+- [x] Verify that the bytecode is unchanged: every existing
       `assert_bytecode!` and `compile_*` test passes unmodified.
-- [ ] `cd compiler && just`, `cd specs && just`.
+- [x] `cd compiler && just`, `cd specs && just`.
 
 ### Tracking issue
 
@@ -662,8 +676,7 @@ listed in the C3 PR description with the reason its expected value changed.
 ### PR C2 — resolver and typed dispatch (`claude/ao-resolver-and-typed-dispatch`)
 
 - [ ] `arithmetic_overload.rs`: `Overload`, `resolve_arithmetic_overload`,
-      `typed_overload`, `resolve_arithmetic_fold`, `CODEGEN_OPTIONS`, and unit
-      tests.
+      `typed_overload`, `resolve_arithmetic_fold`, and unit tests.
 - [ ] Add the typed-names column to `operator_function_form.rs` and update
       the pinned-row test.
 - [ ] Re-export the resolver from `lib.rs`.
@@ -672,7 +685,8 @@ listed in the C3 PR description with the reason its expected value changed.
       accumulated type as `Operand::Stack`, and otherwise keep today's path.
 - [ ] Analyzer conformance module with plain tests for 001–014, and codegen
       conformance and VM tests for 001–005 and 009.
-- [ ] The decision-11 agreement test.
+- [ ] Codegen reads the analyzer's options from the `SemanticContext` it is
+      given, for the numeric step.
 - [ ] `cd compiler && just`, `cd specs && just`.
 
 ### PR C3 — analyzer adoption, flag, numeric width (`claude/ao-check-and-numeric-width`)
