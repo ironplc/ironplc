@@ -31,6 +31,7 @@
 mod call_graph;
 mod compile;
 mod compile_aggregate;
+mod compile_arith;
 mod compile_array;
 mod compile_array_struct;
 mod compile_call;

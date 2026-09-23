@@ -18,9 +18,10 @@ use super::compile::{
     CompileContext, OpType, OpWidth, Signedness, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
     NARROW_CHAR_WIDTH,
 };
+use super::compile_arith::compile_arith_fold;
 use super::compile_expr::{
-    compile_expr, emit_arithmetic_op, emit_compare_op, emit_mod, emit_mul, emit_not, emit_sub,
-    emit_truncation, op_type, storage_bits, unresolved_expr_type,
+    compile_expr, emit_compare_op, emit_mod, emit_mul, emit_not, emit_sub, emit_truncation,
+    op_type, storage_bits, unresolved_expr_type,
 };
 use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
@@ -380,11 +381,7 @@ fn compile_operator_form(
     operator: &FormOf,
 ) -> Result<(), Diagnostic> {
     match operator {
-        FormOf::Arithmetic(op) => {
-            compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {
-                emit_arithmetic_op(emitter, op, op_type)
-            })
-        }
+        FormOf::Arithmetic(op) => compile_arith_fold(emitter, ctx, func, op, op_type),
         FormOf::Compare(op) => {
             compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {
                 emit_compare_op(emitter, op, op_type)
@@ -403,7 +400,7 @@ fn compile_operator_form(
 
 /// Compiles a call's two or more positional arguments, emitting the operator
 /// after each argument but the first, so the arguments fold from the left.
-fn compile_left_fold(
+pub(crate) fn compile_left_fold(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
