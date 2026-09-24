@@ -127,20 +127,20 @@ pub(crate) fn fold_real_binary(
     left: f64,
     right: f64,
 ) -> Result<Option<f64>, FoldError> {
-    match op {
-        Operator::Add => Ok(Some(left + right)),
-        Operator::Sub => Ok(Some(left - right)),
-        Operator::Mul => Ok(Some(left * right)),
+    let value = match op {
+        Operator::Add => left + right,
+        Operator::Sub => left - right,
+        Operator::Mul => left * right,
         Operator::Div => {
             if right == 0.0 {
-                Err(FoldError::DivisionByZero)
-            } else {
-                Ok(Some(left / right))
+                return Err(FoldError::DivisionByZero);
             }
+            left / right
         }
-        Operator::Mod => Ok(None),
-        Operator::Pow => Ok(Some(left.powf(right))),
-    }
+        Operator::Mod => return Ok(None),
+        Operator::Pow => left.powf(right),
+    };
+    Ok(Some(value))
 }
 
 /// Extracts a constant as an f64, converting integers to float if needed.
