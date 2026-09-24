@@ -122,3 +122,4 @@ P4054,FunctionBlockInFunction,Function declares or invokes a function block inst
 P4055,EnumExplicitValueNotAllowed,Explicit enumeration member value requires choosing a dialect or --allow-enum-explicit-values flag
 P4056,EnumBaseTypeNotAllowed,Enumeration base-type suffix requires choosing a dialect or --allow-enum-base-type flag
 P2038,DateLiteralOutOfRange,Date literal is outside the range the date type can represent
+P2039,DurationLiteralOutOfRange,Duration literal is outside the range the duration type can represent
