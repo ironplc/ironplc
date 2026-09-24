@@ -115,3 +115,20 @@ This ADR is `proposed` until the change that implements the design lands; that
 change flips it to `accepted`. The design is
 [Arithmetic Operator Overloads](../design/arithmetic-operator-overloads.md);
 REQ-AO-analyzer-010 and REQ-AO-analyzer-011 are its requirements.
+
+### Postscript, 2026-09-23
+
+Planning the implementation settled two points this ADR left implicit. The
+decision holds.
+
+* The rule applies to `ADD`, `SUB`, `MUL` and `DIV`, the four this ADR names,
+  and not to `MOD`. The function form `MOD(b, 2)` is checked against its
+  `ANY_INT` signature, which the flag does not change, so admitting `b MOD 2`
+  would split the two spellings of one operator. `b MOD 2` is rejected in
+  every dialect today, so nothing regresses.
+* A bit string judged as the unsigned integer of its width widens only as
+  that unsigned integer. `w + i` with `w : WORD` and `i : INT` is therefore
+  rejected even with the flag on, because `UINT` and `INT` do not widen to
+  each other; `b + i` with `b : BYTE` is accepted because `USINT` widens to
+  `INT`. Admitting `w + i` would be a widening rule, which is the business of
+  the cross-family flags, not of this one.

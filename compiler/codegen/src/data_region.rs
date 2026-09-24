@@ -53,3 +53,53 @@ pub(crate) fn reserve(
 
     Ok(data_offset)
 }
+
+#[cfg(test)]
+mod tests {
+    use ironplc_dsl::core::SourceSpan;
+
+    use super::reserve;
+    use crate::compile::CompileContext;
+
+    #[test]
+    fn reserve_when_space_available_then_returns_start_and_advances_offset() {
+        let mut ctx = CompileContext::new();
+        ctx.data_region_offset = 16;
+
+        let offset = reserve(&mut ctx, 8, &SourceSpan::default()).unwrap();
+
+        assert_eq!(16, offset);
+        assert_eq!(24, ctx.data_region_offset);
+    }
+
+    #[test]
+    fn reserve_when_run_ends_at_i32_max_then_ok() {
+        let mut ctx = CompileContext::new();
+        ctx.data_region_offset = i32::MAX as u32 - 8;
+
+        let offset = reserve(&mut ctx, 8, &SourceSpan::default()).unwrap();
+
+        assert_eq!(i32::MAX as u32 - 8, offset);
+        assert_eq!(i32::MAX as u32, ctx.data_region_offset);
+    }
+
+    #[test]
+    fn reserve_when_run_ends_past_i32_max_then_not_supported() {
+        let mut ctx = CompileContext::new();
+        ctx.data_region_offset = i32::MAX as u32 - 8;
+
+        let err = reserve(&mut ctx, 9, &SourceSpan::default()).unwrap_err();
+
+        assert_eq!("P9997", err.code);
+    }
+
+    #[test]
+    fn reserve_when_u32_overflows_then_not_supported() {
+        let mut ctx = CompileContext::new();
+        ctx.data_region_offset = u32::MAX - 8;
+
+        let err = reserve(&mut ctx, 9, &SourceSpan::default()).unwrap_err();
+
+        assert_eq!("P9997", err.code);
+    }
+}

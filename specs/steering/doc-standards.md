@@ -114,8 +114,15 @@ Two Sphinx directives are available (defined in `docs/extensions/ironplc_playgro
 ```
 
 **When NOT to use playground directives:**
-- Problem code documentation (`docs/reference/compiler/problems/`) — these show invalid code that would fail compilation
 - Partial syntax fragments that are not runnable
+
+A problem page's failing example belongs in a playground directive too. Seeing
+the diagnostic the page describes, against the code that provokes it, is the
+whole point of the page; a reader who can then edit the value and watch the
+error clear has learned the rule rather than read it. Several problem pages
+already do this (`P4008`, `P4013`, `P4016`, `P4025`, `P9999`), and the
+remaining `.. code-block::` examples under
+`docs/reference/compiler/problems/` are the ones yet to be converted.
 
 **Source of truth for the playground:**
 - Frontend: `playground/` (HTML/JS/CSS single-page app)
