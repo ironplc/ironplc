@@ -104,6 +104,7 @@ mod end_to_end_global;
 mod end_to_end_if;
 mod end_to_end_insert;
 mod end_to_end_ldate;
+mod end_to_end_long_time_functions;
 mod end_to_end_left;
 mod end_to_end_len;
 mod end_to_end_limit;
