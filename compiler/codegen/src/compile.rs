@@ -1407,7 +1407,7 @@ pub(crate) enum CurrentFunctionReturn {
 }
 
 impl CompileContext {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         CompileContext {
             variables: HashMap::new(),
             var_types: HashMap::new(),
