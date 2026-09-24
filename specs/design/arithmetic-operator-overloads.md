@@ -53,6 +53,11 @@ against its single row.
 - **[ADR-0021](../adrs/0021-time-32bit-ltime-64bit.md)** — `TIME` is 32-bit
   and `LTIME` 64-bit, both in milliseconds, so the two widths of a temporal
   family convert without a unit change.
+- **[ADR-0025](../adrs/0025-datetime-unsigned-representation.md)** — `DATE` and
+  `DATE_AND_TIME` are stored as unsigned seconds and `TIME_OF_DAY` as unsigned
+  milliseconds, and each long form stores the same unit as its short form, so
+  the typed routines know the units and widen a short date operand by
+  zero-extension.
 - **[ADR-0028](../adrs/0028-literal-type-inference-across-numeric-families.md)** — a bare
   integer literal is inferred as `REAL` or `LREAL` where one is expected.
 - **[ADR-0029](../adrs/0029-implicit-integer-widening.md)** and
@@ -157,14 +162,19 @@ form("MOD", ..., &[]),
 ```
 
 The column names the short-width form of each overload. Each short form has a
-long form (`ADD_LTIME`, `SUB_LDATE_LDATE`, `MUL_LTIME`, and so on), registered
-alongside the short one in `get_time_functions` with the same shape over the
-long-width types. The resolver derives the long name from the short one, so
+long form (`ADD_LTIME`, `SUB_LDATE_LDATE`, `MUL_LTIME`, and so on) with the
+same shape over the long-width types. IronPLC registers none of the long forms
+today, and codegen has no routine for them; this change registers each one
+alongside its short form in `get_time_functions`, deriving its signature from
+the short one so the shape is stated once, and compiles it at 64-bit width
+(see *Codegen*). The resolver derives the long name from the short one, so
 the column lists each overload once. The long forms are registered whether or
 not `--allow-long-time-types` is on; without the flag no program can declare
 an operand of a long type, so the rows are unreachable rather than harmful.
 Without them the resolver would have no row for `lt1 + lt2`, which compiles
-correctly today.
+correctly today through the generic operator path. One consequence: a program
+that declares its own function named after a long form (`ADD_LTIME`) now
+collides with the standard library and is reported as P4016.
 
 ### Resolution
 
@@ -178,8 +188,9 @@ which is already past the module size limit.
 operator is not defined for the pair. It is a pure function of its arguments,
 so calling it from more than one pass needs no annotation on the tree.
 
-1. If either operand type is one the compatibility predicate cannot judge (a
-   subrange, an enumeration, a structure, a user type), return `Unchecked`
+1. If either operand has no resolved type, or a type the compatibility
+   predicate cannot judge (a subrange, an enumeration, a structure, a user
+   type), return `Unchecked`
    with the left operand's type. This is today's behaviour, and the operator
    rule already skips such operands. It is a separate answer from `Numeric`
    so that nothing downstream mistakes "not judged" for "judged numeric".
@@ -191,26 +202,28 @@ so calling it from more than one pass needs no annotation on the tree.
    `REAL`, `DINT + 1` is `DINT`, `REAL + 1` is `REAL`. `DINT + REAL` has no
    result, because `DINT` does not widen losslessly to `REAL`.
 3. Otherwise try the typed step, `typed_overload(op, left, right)`. It takes
-   no options, because no typed row depends on a flag, which is what lets
-   codegen call it. Each operand is judged where the corresponding parameter
-   is expected: a temporal parameter matches an operand of the same temporal
-   family at either width (`TIME` or `LTIME` where `TIME` is written), and
-   the `ANY_NUM` parameter of `MUL_TIME` and `DIV_TIME` matches by the
-   ordinary category. The families of a row are pairwise distinct from the
-   other rows of the same function, so at most one row matches. The row's
-   form is then the long one if either temporal operand is long-width, and
-   the short one otherwise; the result is that form's return type. So
-   `t1 + t2` is `ADD_TIME`, `lt1 + lt2` is `ADD_LTIME`, `t + lt` is
-   `ADD_LTIME` with result `LTIME`, and `lt + LTIME#1s` is `ADD_LTIME`
-   although the literal is typed `TIME`.
+   no options, because no typed row depends on a flag. Each operand is judged
+   where the corresponding parameter is expected: a temporal parameter
+   matches an operand of the same temporal family at either width (`TIME` or
+   `LTIME` where `TIME` is written), and the `ANY_NUM` parameter of
+   `MUL_TIME` and `DIV_TIME` matches by the ordinary category. The families
+   of a row are pairwise distinct from the other rows of the same function,
+   so at most one row matches. The row's form is then the long one if either
+   temporal operand is long-width, and the short one otherwise; the result is
+   that form's return type. So `t1 + t2` is `ADD_TIME`, `lt1 + lt2` is
+   `ADD_LTIME`, `t + lt` is `ADD_LTIME` with result `LTIME`, and
+   `lt + LTIME#1s` is `ADD_LTIME` although the literal is typed `TIME`.
 4. Otherwise return `None`.
 
 Step 3 matches by family rather than by exact type for the reason
 `are_types_compatible` does: every duration and date literal resolves to the
 short name of its family whatever prefix it was written with, so an exact
 match would reject `lt + LTIME#1s`, which compiles correctly today. The width
-rule is what ADR-0021 makes safe: both widths of a family share a unit, so
-promoting the short operand is a sign extension with no conversion.
+rule is what ADR-0021 and ADR-0025 make safe: both widths of a family share a
+unit, so promoting the short operand widens it with no unit conversion. It is
+widened by its own signedness: a `TIME` is sign-extended, and a `DATE`,
+`TIME_OF_DAY` or `DATE_AND_TIME`, which are stored unsigned, is
+zero-extended.
 
 With `--allow-bit-string-arithmetic` (ADR-0053), step 2 additionally judges a
 `BYTE`, `WORD`, `DWORD` or `LWORD` operand (not `BOOL`) as the unsigned
@@ -222,12 +235,30 @@ the bit string standing for its unsigned integer, so `b + 1` on `BYTE` is
 cannot express it, since `BYTE` is not in `ANY_NUM` under any flag, so it is
 a rule of the resolver and not of the predicate.
 
+A bit string judged this way is an unsigned integer, and it widens only as one.
+`w + i` with `w : WORD` and `i : INT` does not resolve even with the flag,
+because `UINT` and `INT` do not widen to each other, and neither do `USINT`
+and `SINT`.
+
+The rule applies to the `ADD`, `SUB`, `MUL` and `DIV` rows and not to `MOD`.
+The function form `MOD(a, b)` is checked by the function-call rule against
+its `ANY_INT` signature (below), which the flag does not change. Applying the
+rule to `a MOD b` would therefore accept an operator whose function form is
+rejected, breaking the invariant of Keyword Function Forms. `b MOD 2` on a
+`BYTE` is rejected in every dialect today, so leaving it rejected changes
+nothing.
+
 An extensible call with more than two inputs (`ADD(a, b, c)`) folds from the
 left: the resolver runs on the first two inputs, then on that result and the
 third, and so on. `ADD(t1, t2, t3)` is therefore two `ADD_TIME` steps, which
 is what `t1 + t2 + t3` is, so the function form accepts exactly what the
 operator accepts (the invariant of Keyword Function Forms). Codegen folds the
-same way, asking the typed step at each step with the accumulated result type.
+same way, asking the resolver at each step with the accumulated result type.
+
+For the numeric overload, codegen calls the resolver with the compiler
+options the analyzer ran with, which it reads from the semantic context it is
+given (`SemanticContext::compiler_options`). The two passes therefore ask the
+same question with the same options and cannot disagree about a result type.
 
 ### Type resolution
 
@@ -253,6 +284,19 @@ error[P4049]: Operator is not defined for the operand types
               (operator=*, left=TIME, right=REAL)
 ```
 
+An arithmetic expression is reported once, labelled at the whole expression,
+rather than once per operand as `MOD` is today: with overloads, no single
+operand is the wrong one. A call is reported at its name, with the operand
+types of the fold step that failed. An enclosing expression whose operand
+failed may be reported as well, since the failed operand keeps the left
+operand's type.
+
+P4049 is also the code for the bit-string operators `AND`, `OR`, `XOR` and
+`NOT`, which are checked against `ANY_BIT` and have no overloads. They keep
+their current diagnostic: one per operand outside `ANY_BIT`, with `expected`
+and `actual` contexts. `NOT` has a single operand and could not take `left`
+and `right` in any case. The new message reads correctly for both shapes.
+
 `rule_function_call_type_check` no longer checks the inputs of a call to one
 of the four overloaded names, since the operator rule has reported them. It
 still checks their arity (P4018) and every other function's inputs (P4026),
@@ -263,15 +307,19 @@ resolved: it is bound to its own registered signature as today.
 
 Codegen changes in two places.
 
-**Typed dispatch.** The `BinaryOp` arm of `compile_expr` and the operator-form
-fold in `compile_call.rs` ask the typed step. When it answers, they compile
-the two operands through the typed routine named by the answer, the routine
-that `ADD_TIME(a, b)` already reaches by name. The typed routines take their
-two operand expressions rather than a `Function`, so both spellings share
-them, and take their operation width from the typed name (32-bit for the
-short form, 64-bit for the long one) instead of hard-coding 32-bit, so the
-long forms compile. A short-width operand of a long form is loaded at 32
-bits and sign-extended, as ADR-0001 loads any narrower integer.
+**Typed dispatch.** Both spellings compile in `compile_arith.rs`: the
+operator expression and the function-form fold ask the typed step. When it
+answers, they compile the two operands through the typed routine named by the
+answer (`compile_time_arith.rs`), the routine that `ADD_TIME(a, b)` already
+reaches by name. The typed routines take their operands rather than a
+`Function`, so both spellings share them, and take their operation width from
+the typed name (32-bit for the short form, 64-bit for the long one) instead
+of hard-coding 32-bit, so the long forms compile. In a fold after the first
+step, the left operand is the accumulated result already on the stack rather
+than an expression, so a routine's left operand is either one. A short-width
+operand of a long form is loaded at 32 bits and widened by its signedness, as
+ADR-0001 loads any narrower integer: a `TIME` is sign-extended and a date
+type is zero-extended.
 
 **Numeric width.** A numeric binary expression compiles at the width of its
 resolved type, not at the width of the variable it is assigned to. An operand
@@ -284,9 +332,23 @@ to `REAL`, and adds as `REAL`; `UDINT + LINT` zero-extends the `UDINT` before
 the 64-bit add. It also changes an expression whose operands are narrower than
 its target: `l := d1 * d2` with `l : LINT` and `DINT` operands multiplies at
 32 bits and widens the product, which is what the standard's "the result has
-the input type" means, rather than multiplying at 64 bits as today. An
-expression whose operands and target share a width compiles to the same
-bytecode as before.
+the input type" means, rather than multiplying at 64 bits as today.
+
+The resolved type fixes the signedness as well as the width. Today an
+expression takes the signedness of its target, so `d := u1 / u2` with `UDINT`
+operands and a `DINT` target divides signed; it now divides unsigned, as its
+operands are. An expression whose operands and target share both width and
+signedness compiles to the same bytecode as before.
+
+Codegen applies this only when the expression's resolved type is a concrete
+elementary numeric or bit-string type. An expression typed otherwise (a
+generic literal type, a subrange, an enumeration, or no type) compiles at the
+enclosing operation type, as it does today, because codegen cannot place its
+width.
+
+The function form follows the same rule at each step of its fold, so
+`ADD(i, r)` and `i + r` compute the same value, and `ADD(a, b, c)` compiles
+as `(a + b) + c` does.
 
 ### Considered: lowering to typed calls
 
@@ -309,7 +371,10 @@ implements this design updates that paragraph and REQ-KF-analyzer-001 to say
 that `ADD`, `SUB`, `MUL` and `DIV` accept the numeric overload or one of the
 typed overloads listed here, and narrows REQ-KF-analyzer-005 to the forms
 without overloads, since the four arithmetic forms report P4049 through the
-operator rule. The module documentation of
+operator rule. For the same reason it narrows REQ-KF-analyzer-010, the check
+of an extensible call's third and later inputs, to `AND`, `OR` and `XOR`:
+`ADD(a, a, s)` and `MUL(a, a, s)` are reported as P4049 at the failing fold
+step. The module documentation of
 `rule_operator_operand_type_check.rs` cites #1621 in the same way and is
 updated with it.
 
@@ -324,6 +389,18 @@ Programs that analyze cleanly today and are reported after this design:
 | `x * x` on `BOOL` | clean, nonsense | P4049 | not defined |
 | `t1 * t2` on `TIME` | clean, nonsense | P4049 | no Table 30 row |
 | `r + d` on `REAL` and `DINT` | clean, wrong value | P4049 | `DINT` does not widen losslessly to `REAL` |
+| `d + u` on `DINT` and `UDINT` | clean | P4049 | neither type widens to the other; the same for any signed and unsigned pair of which neither widens |
+| `d * 1.5` on `DINT` | clean | P4049 | a real literal is not acceptable where `DINT` is expected, nor `DINT` where a real is |
+| `2 * t` on `TIME` | clean | P4049 | `MUL_TIME` takes the `TIME` first; no row has `ANY_NUM * TIME` |
+| `t1 / t2` on `TIME` | clean | P4049 | no Table 30 row |
+| `d1 + d2` on `DATE` | clean | P4049 | no Table 30 row |
+| `w + i` on `WORD` and `INT`, in any dialect | clean | P4049 | judged as `UINT`, the bit string neither widens to `INT` nor is widened to by it |
+| `r MOD r2` on `REAL` | P4049 per operand | P4049 once | an arithmetic expression is reported once |
+
+Because the result type is now the operand the other widens to, rather than
+the left operand, one more kind of program is reported: `i := i + d` with
+`i : INT` and `d : DINT` resolves to `DINT`, and the assignment is P4035, a
+narrowing assignment.
 
 Programs whose value changes:
 
@@ -332,6 +409,7 @@ Programs whose value changes:
 | `x : REAL := i + r`, `i : INT := 3`, `r : REAL := 1.5` | 1.5 | 4.5 |
 | `x : LINT := u + l`, `u : UDINT := 4000000000`, `l : LINT := 1` | -294967295 | 4000000001 |
 | `l : LINT := d1 * d2` on `DINT` operands | 64-bit product | 32-bit product, widened |
+| `d : DINT := u1 / u2`, `u1 : UDINT := 4000000000`, `u2 : UDINT := 2` | -147483648 | 2000000000 |
 
 Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 `tod - tod`, `ADD_TIME(t1, t2)`, and `b + 1` under any of the three dialects.
@@ -362,11 +440,13 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 
 **REQ-AO-analyzer-011** Without `--allow-bit-string-arithmetic`, a bit-string operand does not resolve.
 
-**REQ-AO-analyzer-012** An operand whose type the compatibility predicate cannot judge resolves as unchecked with the left operand's type, distinct from the numeric overload.
+**REQ-AO-analyzer-012** An operand with no resolved type, or a type the compatibility predicate cannot judge, resolves as unchecked with the left operand's type, distinct from the numeric overload.
 
 **REQ-AO-analyzer-013** An extensible call with more than two inputs resolves by folding from the left, so `ADD(t1, t2, t3)` resolves and `ADD(t1, t2, r)` does not.
 
 **REQ-AO-analyzer-014** Every typed name listed in the operator-form table, in both widths, is a registered function signature with two inputs.
+
+**REQ-AO-analyzer-015** With `--allow-bit-string-arithmetic`, `MOD` on a bit-string operand does not resolve, so `b MOD 2` is reported as `MOD(b, 2)` is.
 
 ### Type resolution
 
@@ -394,6 +474,8 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 
 **REQ-AO-analyzer-035** A call to a typed name is checked against its own signature as today, so `ADD_TIME(t1, t2)` is clean and `ADD_TIME(t1, r)` is P4026.
 
+**REQ-AO-analyzer-036** An arithmetic expression whose operands do not resolve is reported as one P4049, while an operand of `AND`, `OR`, `XOR` or `NOT` outside `ANY_BIT` is still reported as one P4049 per operand with `expected` and `actual` contexts.
+
 ### Codegen
 
 **REQ-AO-codegen-001** An operator expression on a Table 30 pair compiles to the same bytecode as the call to its typed name on the same operands.
@@ -404,15 +486,21 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 
 **REQ-AO-codegen-004** `d1 - d2` on `DATE` computes a `TIME` in milliseconds.
 
-**REQ-AO-codegen-005** The long forms of the typed functions compute at 64-bit width, and a short-width operand of a long form is sign-extended.
+**REQ-AO-codegen-005** The long forms of the typed functions compute at 64-bit width, and a short-width operand of a long form is widened by its signedness: a `TIME` is sign-extended and a `DATE`, `TIME_OF_DAY` or `DATE_AND_TIME` is zero-extended.
 
-**REQ-AO-codegen-006** A numeric operator expression whose operands and assignment target share an operation width compiles to the same bytecode as before this design.
+**REQ-AO-codegen-006** A numeric operator expression whose operands and assignment target share an operation width and signedness compiles to the same bytecode as before this design.
 
 **REQ-AO-codegen-007** A numeric operator expression with operands of different widths computes at the resolved type's width with the narrower operand converted first, so `INT + REAL` gives 4.5 for 3 and 1.5 and `UDINT + LINT` gives 4000000001 for 4000000000 and 1.
 
 **REQ-AO-codegen-008** A numeric operator expression assigned to a wider variable computes at its resolved width and converts the result, so `DINT * DINT` assigned to `LINT` wraps at 32 bits.
 
 **REQ-AO-codegen-009** An extensible call on a Table 30 pair compiles to the typed routine folded from the left, so `ADD(t1, t2, t3)` computes what `t1 + t2 + t3` computes.
+
+**REQ-AO-codegen-010** A numeric operator expression computes with the signedness of its resolved type, so `UDINT / UDINT` assigned to `DINT` divides unsigned and gives 2000000000 for 4000000000 and 2.
+
+**REQ-AO-codegen-011** A call to the function form of a numeric operator computes each fold step as the operator expression does, so `ADD(i, r)` gives 4.5 for `INT` 3 and `REAL` 1.5.
+
+**REQ-AO-codegen-012** An arithmetic expression whose resolved type is not a concrete elementary numeric or bit-string type, such as a subrange, compiles at the enclosing operation type as before this design.
 
 ## Out of scope
 
@@ -445,6 +533,10 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
   the VM and compare against the value of the typed function. The mixed-width
   numeric cases in *Behaviour that changes* are end-to-end tests with the
   values in that table.
+- Each program in *Behaviour that changes* that goes from clean to reported
+  is tested through the full analysis pipeline, not through the codegen test
+  helpers, which resolve types without running the semantic rules and so
+  never report P4049.
 - `plc2plc` does not run the analyzer, so its round-trip tests need no
   change. The LSP and MCP tools do not read the analyzed tree today, and
   REQ-AO-analyzer-023 keeps the tree as the parser produced it, so they need
@@ -453,15 +545,20 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 ## Documentation
 
 - `docs/reference/compiler/problems/P4049.rst` is rewritten to describe all
-  arithmetic operators, both spellings, and the two-operand message; the
-  message in `problem-codes.csv` changes with it.
-- `docs/reference/compiler/problems/P4026.rst` no longer lists the function
-  forms of the arithmetic operators as a case.
+  arithmetic operators, both spellings, and the two-operand message, and to
+  keep the bit-string operators' per-operand case; the message in
+  `problem-codes.csv` changes with it.
+- `docs/reference/compiler/problems/P4026.rst` gains a sentence sending an
+  operand mismatch in `ADD`, `SUB`, `MUL` or `DIV` to P4049. The page does not
+  list the arithmetic function forms today, so nothing is removed.
 - The `ADD`, `SUB`, `MUL` and `DIV` reference pages gain their Table 30
   overloads, each linking to the typed function's page.
 - The eleven long forms (`ADD_LTIME`, `SUB_LDATE_LDATE`, `MUL_LTIME`, and so
-  on) each get a reference page under `docs/reference/standard-library/functions/`,
-  as every short form has.
+  on), which this change adds, each get a reference page under
+  `docs/reference/standard-library/functions/`, as every short form has.
+- `docs/reference/language/structured-text/arithmetic-operators.rst`, which
+  says the operators apply to the integer and floating-point types, gains the
+  time and date overloads and the rule for the result type of mixed operands.
 - `--allow-bit-string-arithmetic` is added to `docs/reference/compiler/ironplcc.rst`,
   to the dialect table in `docs/explanation/enabling-dialects-and-features.rst`,
   and to `docs/explanation/type-conversions.rst` as the bit-string arithmetic
