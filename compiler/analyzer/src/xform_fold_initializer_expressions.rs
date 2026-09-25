@@ -690,6 +690,18 @@ mod tests {
             .all(|d| d.code == Problem::ConstantExpressionOverflow.code()));
     }
 
+    #[test]
+    fn apply_when_initializer_real_overflows_then_overflow_error_not_misleading_p4038() {
+        let lib = parse(
+            "PROGRAM main VAR x : LREAL := 1.0E300 * 1.0E300; END_VAR END_PROGRAM",
+            &opts(),
+        );
+        let diagnostics = apply_expect_diagnostics(lib, &opts());
+        assert!(diagnostics
+            .iter()
+            .all(|d| d.code == Problem::ConstantExpressionOverflow.code()));
+    }
+
     /// A method's `VAR CONSTANT` belongs to that method. Before the
     /// method scope existed every method's constants were registered in
     /// the enclosing function block's scope, so a sibling could fold

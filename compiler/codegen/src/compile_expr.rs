@@ -865,31 +865,12 @@ pub(crate) fn compile_variable_read(
                     emitter.emit_add_i64();
                     emitter.emit_load_array(var_index, desc_index);
                 }
-                crate::compile_array::ResolvedAccess::StructFieldStringArrayElement {
-                    var_index,
-                    scratch_var_index,
-                    string_desc_index,
-                    field_byte_offset,
-                    ref dimensions,
-                    subscripts,
-                } => {
-                    let span = variable_span(variable);
-                    // 1. Compute base: struct_data_offset + field_byte_offset → scratch.
-                    emitter.emit_load_var_i32(var_index);
-                    let offset_const = ctx.add_i32_constant(field_byte_offset as i32);
-                    emitter.emit_load_const_i32(offset_const);
-                    emitter.emit_add_i32();
-                    emitter.emit_store_var_i32(scratch_var_index);
-                    // 2. Compute flat index.
-                    crate::compile_array::emit_flat_index(
-                        emitter,
-                        ctx,
-                        &subscripts,
-                        dimensions,
-                        &span,
-                    )?;
-                    // 3. Load string element.
-                    emitter.emit_str_load_array_elem(scratch_var_index, string_desc_index);
+                crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(element) => {
+                    element.emit_base_and_index(emitter, ctx, &variable_span(variable))?;
+                    emitter.emit_str_load_array_elem(
+                        element.scratch_var_index,
+                        element.string_desc_index,
+                    );
                 }
             }
             Ok(())
