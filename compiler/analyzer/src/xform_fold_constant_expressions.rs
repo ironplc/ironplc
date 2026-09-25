@@ -83,6 +83,7 @@ mod tests {
     use crate::test_helpers::parse_and_resolve_types;
     use ironplc_dsl::visitor::Visitor;
     use ironplc_problems::Problem;
+    use rstest::rstest;
 
     fn apply_fold(program: &str) -> Library {
         let library = parse_and_resolve_types(program);
@@ -261,6 +262,34 @@ mod tests {
             .unwrap_err()
             .iter()
             .all(|d| d.code == Problem::ConstantExpressionOverflow.code()));
+    }
+
+    #[rstest]
+    #[case("1.0E300 * 1.0E300")]
+    #[case("1.0E300 ** 2.0")]
+    #[case("1.0E308 + 1.0E308")]
+    #[case("-1.0E308 - 1.0E308")]
+    #[case("1.0E300 / 1.0E-300")]
+    #[case("0.0 ** -1.0")]
+    #[case("(-8.0) ** 0.5")]
+    fn fold_expr_when_real_result_not_finite_then_overflow_error(#[case] expr: &str) {
+        let library = parse_and_resolve_types(&format!(
+            "PROGRAM main VAR x : LREAL; END_VAR x := {expr}; END_PROGRAM"
+        ));
+        let result = apply(library);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .iter()
+            .all(|d| d.code == Problem::ConstantExpressionOverflow.code()));
+    }
+
+    #[test]
+    fn fold_expr_when_real_result_large_but_finite_then_produces_constant() {
+        let lib = apply_fold("PROGRAM main VAR x : LREAL; END_VAR x := 1.0E300 * 2.0; END_PROGRAM");
+        let exprs = collect_exprs(&lib);
+        assert_has_real_const(&exprs, 2.0E300);
+        assert_no_binary_ops(&exprs);
     }
 
     #[test]

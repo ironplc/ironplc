@@ -23,6 +23,9 @@ use ironplc_problems::Problem;
 pub(crate) enum FoldError {
     DivisionByZero,
     Overflow,
+    /// A real operation whose result is NaN, such as a fractional power of
+    /// a negative base: there is no real number to fold to.
+    NotANumber,
 }
 
 /// Converts a `FoldError` into a user-facing diagnostic at the given span.
@@ -35,6 +38,10 @@ pub(crate) fn fold_error_to_diagnostic(err: FoldError, span: SourceSpan) -> Diag
         FoldError::Overflow => Diagnostic::problem(
             Problem::ConstantExpressionOverflow,
             Label::span(span, "Arithmetic overflow"),
+        ),
+        FoldError::NotANumber => Diagnostic::problem(
+            Problem::ConstantExpressionOverflow,
+            Label::span(span, "Arithmetic result is not a number"),
         ),
     }
 }
@@ -122,24 +129,35 @@ pub(crate) fn fold_integer_binary(
 /// defined over `ANY_INT` only (IEC 61131-3 Table 24), so a real `MOD` is
 /// left unfolded for `rule_operator_operand_type_check` to reject rather
 /// than folded into a remainder the language does not have.
+///
+/// A result that is not finite is an error rather than a folded `inf` or
+/// `NaN` literal: an infinite result is `FoldError::Overflow` (the same
+/// consequence as integer overflow) and a NaN result is
+/// `FoldError::NotANumber`.
 pub(crate) fn fold_real_binary(
     op: &Operator,
     left: f64,
     right: f64,
 ) -> Result<Option<f64>, FoldError> {
-    match op {
-        Operator::Add => Ok(Some(left + right)),
-        Operator::Sub => Ok(Some(left - right)),
-        Operator::Mul => Ok(Some(left * right)),
+    let value = match op {
+        Operator::Add => left + right,
+        Operator::Sub => left - right,
+        Operator::Mul => left * right,
         Operator::Div => {
             if right == 0.0 {
-                Err(FoldError::DivisionByZero)
-            } else {
-                Ok(Some(left / right))
+                return Err(FoldError::DivisionByZero);
             }
+            left / right
         }
-        Operator::Mod => Ok(None),
-        Operator::Pow => Ok(Some(left.powf(right))),
+        Operator::Mod => return Ok(None),
+        Operator::Pow => left.powf(right),
+    };
+    if value.is_nan() {
+        Err(FoldError::NotANumber)
+    } else if value.is_infinite() {
+        Err(FoldError::Overflow)
+    } else {
+        Ok(Some(value))
     }
 }
 
@@ -230,5 +248,34 @@ pub(crate) fn try_fold_unary(unary: &UnaryExpr) -> Option<ExprKind> {
             _ => None,
         },
         UnaryOp::Not => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fold_real_binary_when_result_infinite_then_overflow() {
+        assert_eq!(
+            fold_real_binary(&Operator::Mul, 1.0E300, 1.0E300),
+            Err(FoldError::Overflow)
+        );
+    }
+
+    #[test]
+    fn fold_real_binary_when_result_nan_then_not_a_number() {
+        assert_eq!(
+            fold_real_binary(&Operator::Pow, -8.0, 0.5),
+            Err(FoldError::NotANumber)
+        );
+    }
+
+    #[test]
+    fn fold_real_binary_when_result_finite_then_value() {
+        assert_eq!(
+            fold_real_binary(&Operator::Mul, 1.0E300, 2.0),
+            Ok(Some(2.0E300))
+        );
     }
 }
