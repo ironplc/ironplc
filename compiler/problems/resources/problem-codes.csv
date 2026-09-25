@@ -123,3 +123,4 @@ P4055,EnumExplicitValueNotAllowed,Explicit enumeration member value requires cho
 P4056,EnumBaseTypeNotAllowed,Enumeration base-type suffix requires choosing a dialect or --allow-enum-base-type flag
 P2038,DateLiteralOutOfRange,Date literal is outside the range the date type can represent
 P2039,DurationLiteralOutOfRange,Duration literal is outside the range the duration type can represent
+P2040,RealLiteralOutOfRange,Real literal is outside the range the real type can represent
