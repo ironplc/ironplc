@@ -269,6 +269,18 @@ struct FileArgs {
     #[arg(long)]
     allow_fb_inheritance: bool,
 
+    /// Allow explicit per-member values in an enumeration declaration (e.g.
+    /// `(Deutsch := 1, English := 2)`). Standardized in IEC 61131-3:2013, so
+    /// not part of Edition 2.
+    #[arg(long)]
+    allow_enum_explicit_values: bool,
+
+    /// Allow the base-type suffix on an enumeration declaration (e.g.
+    /// `(A, B) WORD`), naming the elementary type the members are stored in.
+    /// This is a dialect extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_enum_base_type: bool,
+
     /// What STRING_TO_<numeric> treats as convertible when the string has
     /// non-numeric characters. A behavior policy: the dialect selects an
     /// alternative and this flag replaces it.
@@ -325,6 +337,8 @@ impl FileArgs {
         options.allow_paren_string_length |= self.allow_paren_string_length;
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
         options.allow_fb_inheritance |= self.allow_fb_inheritance;
+        options.allow_enum_explicit_values |= self.allow_enum_explicit_values;
+        options.allow_enum_base_type |= self.allow_enum_base_type;
         options
     }
 }

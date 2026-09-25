@@ -16,7 +16,8 @@ use crate::{
     result::SemanticResult,
     rule_abstract_not_instantiated, rule_assignment_aggregate_type_compat,
     rule_bit_and_partial_access_range, rule_case_bit_string_label, rule_case_selector_type,
-    rule_constant_range, rule_decl_struct_element_unique_names, rule_enumeration_values_unique,
+    rule_constant_range, rule_date_literal_range, rule_decl_struct_element_unique_names,
+    rule_enum_base_type_allowed, rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
     rule_extends_field_duplicated, rule_function_block_call_unsupported,
     rule_function_block_invocation, rule_function_call_declared, rule_function_call_type_check,
     rule_method_call_declared, rule_mixed_located_var_declarations, rule_no_top_level_var_global,
@@ -173,7 +174,7 @@ pub fn resolve_types(
     if options.allow_system_uptime_global {
         for global in &SYSTEM_UPTIME_GLOBALS {
             symbol_environment
-                .insert(
+                .insert_compiler_provided(
                     &Id::from(global.name),
                     SymbolKind::Variable,
                     &ScopeKind::Global,
@@ -192,13 +193,15 @@ pub fn resolve_types(
 
     // Hard failure: declaration ordering is required for all subsequent transforms.
     // Also computes the set of declarations reachable from PROGRAM roots,
-    // which codegen uses to skip unused functions.
+    // which codegen uses to skip unused functions. A repeated declaration
+    // name survives the sort; the environments built below diagnose it.
     let (mut library, reachable) = xform_toposort_declarations::apply(library)?;
 
-    // A failure here reflects a fundamentally broken declaration (not an
-    // unrelated one), so reverting the whole library to its pre-transform
-    // state on error is correct.
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+    // Best effort: a repeated type or function block name is diagnosed by
+    // the type environment, which keeps the first declaration, so the rest
+    // of the library still resolves. `Err` is a declaration that cannot be
+    // resolved at all, which still reverts.
+    library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_resolve_type_decl_environment::apply(lib, &mut type_environment)
     });
 
@@ -254,7 +257,10 @@ pub fn resolve_types(
         xform_int_to_bool_initializer::apply(lib, &mut type_environment, options)
     });
 
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+    // Best effort: a repeated declaration name is diagnosed here, by the
+    // environments, and the first declaration is kept, so the rest of the
+    // library still resolves instead of reverting on the first repeat.
+    library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_resolve_symbol_and_function_environment::apply(
             lib,
             &mut symbol_environment,
@@ -327,8 +333,11 @@ pub(crate) fn semantic(
     let functions: Vec<fn(&Library, &SemanticContext, &CompilerOptions) -> SemanticResult> = vec![
         rule_abstract_not_instantiated::apply,
         rule_assignment_aggregate_type_compat::apply,
+        rule_date_literal_range::apply,
         rule_decl_struct_element_unique_names::apply,
         rule_range_limits::apply,
+        rule_enum_base_type_allowed::apply,
+        rule_enum_explicit_value_allowed::apply,
         rule_enumeration_values_unique::apply,
         rule_extends_field_duplicated::apply,
         rule_function_block_call_unsupported::apply,
@@ -723,6 +732,111 @@ END_FUNCTION_BLOCK";
             .iter()
             .map(|d| d.code.as_str())
             .collect();
+        assert!(codes.is_empty(), "expected no diagnostics, got: {codes:?}");
+    }
+
+    // ---------------------------------------------------------------------
+    // The call hierarchy's other direction: a program is not a type, so no
+    // POU can declare an instance of one or invoke one. Nothing enforces
+    // this in a rule; it falls out of a program not being in the type
+    // environment, which makes it the pipeline's behaviour to pin.
+    // ---------------------------------------------------------------------
+
+    /// The codes reported for a POU that names `Target`, a program, as the
+    /// type of a variable and then invokes that variable.
+    fn codes_for_pou_referencing_a_program(pou: &str) -> Vec<String> {
+        let program = format!(
+            "
+PROGRAM Target
+VAR
+    x : INT;
+END_VAR
+    x := 1;
+END_PROGRAM
+
+{pou}"
+        );
+        let lib = parse_program(&program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+        context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.clone())
+            .collect()
+    }
+
+    #[test]
+    fn analyze_when_function_block_declares_program_instance_then_undeclared_type() {
+        let codes = codes_for_pou_referencing_a_program(
+            "
+FUNCTION_BLOCK Caller
+VAR
+    p : Target;
+END_VAR
+    p();
+END_FUNCTION_BLOCK",
+        );
+        assert_eq!(vec!["P2008", "P4012"], codes);
+    }
+
+    #[test]
+    fn analyze_when_function_declares_program_instance_then_undeclared_type() {
+        let codes = codes_for_pou_referencing_a_program(
+            "
+FUNCTION Caller : BOOL
+VAR
+    p : Target;
+END_VAR
+    p();
+    Caller := TRUE;
+END_FUNCTION",
+        );
+        assert_eq!(vec!["P2008", "P4012"], codes);
+    }
+
+    // A program may not invoke a program either; only a resource instantiates
+    // one.
+    #[test]
+    fn analyze_when_program_declares_program_instance_then_undeclared_type() {
+        let codes = codes_for_pou_referencing_a_program(
+            "
+PROGRAM Caller
+VAR
+    p : Target;
+END_VAR
+    p();
+END_PROGRAM",
+        );
+        assert_eq!(vec!["P2008", "P4012"], codes);
+    }
+
+    #[test]
+    fn analyze_when_function_block_invokes_program_by_name_then_not_in_scope() {
+        let codes = codes_for_pou_referencing_a_program(
+            "
+FUNCTION_BLOCK Caller
+VAR
+    y : INT;
+END_VAR
+    Target();
+    y := 2;
+END_FUNCTION_BLOCK",
+        );
+        assert_eq!(vec!["P4012"], codes);
+    }
+
+    // The one legitimate way to instantiate a program stays legitimate.
+    #[test]
+    fn analyze_when_resource_instantiates_program_then_ok() {
+        let codes = codes_for_pou_referencing_a_program(
+            "
+CONFIGURATION Config
+RESOURCE Res ON PLC
+    TASK T(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM Inst WITH T : Target;
+END_RESOURCE
+END_CONFIGURATION",
+        );
         assert!(codes.is_empty(), "expected no diagnostics, got: {codes:?}");
     }
 }

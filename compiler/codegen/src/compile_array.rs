@@ -577,6 +577,12 @@ pub(crate) fn var_type_info_to_type_byte(vti: &VarTypeInfo) -> u8 {
 /// order (the last dimension is contiguous). Shared by plain arrays and
 /// `REF_TO ARRAY` variables so both report the same diagnostics for arrays
 /// that are too large.
+///
+/// An array over the element limit reports P9997 (`NotSupported`) rather than
+/// P9999 (`NotImplemented`): the cap exists so that flat-index arithmetic
+/// stays within i32, which is a fixed property of the bytecode format and not
+/// a feature awaiting work. A program that reaches it has to hold less data,
+/// so promising "not yet" would be a promise the compiler cannot keep.
 pub(crate) fn compute_dimensions(
     bounds: &[(i32, i32)],
     span: &SourceSpan,
@@ -592,13 +598,13 @@ pub(crate) fn compute_dimensions(
             stride: 0,
         });
         total_elements = total_elements.checked_mul(size).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Array too large"))
+            Diagnostic::not_supported(Label::span(span.clone(), "Array too large"))
         })?;
     }
 
     // 2. Validate element limit (i32 safety for flat-index arithmetic)
     if total_elements > super::compile::MAX_DATA_REGION_SLOTS {
-        return Err(Diagnostic::not_implemented(Label::span(
+        return Err(Diagnostic::not_supported(Label::span(
             span.clone(),
             "Array exceeds maximum 32768 elements",
         )));
@@ -655,32 +661,18 @@ pub(crate) fn register_array_variable(
     let (dimensions, total_elements) = compute_dimensions(&spec.dimensions, span)?;
 
     // 3. Allocate data region space
-    let data_offset = ctx.data_region_offset;
     let total_bytes = if is_string {
         // STRING/WSTRING elements: each element is [max_len:u16][cur_len:u16][data]
         let element_stride = super::compile::string_region_size(string_max_len, string_char_width);
         total_elements.checked_mul(element_stride).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
+            Diagnostic::not_supported(Label::span(span.clone(), "Data region overflow"))
         })?
     } else {
         total_elements * 8
     };
-    ctx.data_region_offset = ctx
-        .data_region_offset
-        .checked_add(total_bytes)
-        .ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
-        })?;
+    let data_offset = crate::data_region::reserve(ctx, total_bytes, span)?;
 
-    // 4. Assert data_offset fits in i32 (stored in slot via LOAD_CONST_I32)
-    if data_offset > i32::MAX as u32 {
-        return Err(Diagnostic::not_implemented(Label::span(
-            span.clone(),
-            "Data region exceeds 2 GiB limit",
-        )));
-    }
-
-    // 5. Register descriptor in the container and get its index
+    // 4. Register descriptor in the container and get its index
     let (element_type_byte, element_extra) = if is_string {
         let element_field_type = if string_char_width.is_wide() {
             ironplc_container::FieldType::WString
@@ -693,7 +685,7 @@ pub(crate) fn register_array_variable(
     };
     let desc_index = builder.add_array_descriptor(element_type_byte, total_elements, element_extra);
 
-    // 6. Track max string capacity for temp buffer sizing.
+    // 5. Track max string capacity for temp buffer sizing.
     if is_string && string_max_len > ctx.max_string_capacity {
         ctx.max_string_capacity = string_max_len;
     }
@@ -701,7 +693,7 @@ pub(crate) fn register_array_variable(
         ctx.has_wide_string = true;
     }
 
-    // 7. Store in context
+    // 6. Store in context
     ctx.array_vars.insert(
         id.clone(),
         ArrayVarInfo {

@@ -10,13 +10,11 @@ use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
 
-use super::compile::{
-    string_region_size, CompileContext, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
-};
+use super::compile::{string_region_size, CompileContext, DEFAULT_OP_TYPE};
 use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
-use crate::string_expr_type::{
-    compile_string_value, encoding_mismatch, resolve_operand_char_width,
+use crate::string_width::{
+    compile_string_value, encoding_mismatch, resolve_operand_char_width, string_operand_capacity,
 };
 
 /// Compiles the LEN standard function call.
@@ -90,16 +88,16 @@ pub(crate) fn compile_string_compare(
 /// Allocates a data region slot for an intermediate string value.
 ///
 /// Returns the slot's data_offset with its header already initialized at
-/// `char_width`. A wide slot also marks the program as holding a wide string
-/// so temp buffers are sized in wide bytes (ADR-0035) even when no WSTRING
-/// variable is declared.
+/// `max_length` and `char_width`. A wide slot also marks the program as
+/// holding a wide string so temp buffers are sized in wide bytes (ADR-0035)
+/// even when no WSTRING variable is declared.
 fn allocate_string_temp(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     char_width: CharWidth,
+    max_length: u16,
     func_span: &SourceSpan,
 ) -> Result<u32, Diagnostic> {
-    let max_length = DEFAULT_STRING_MAX_LENGTH;
     let data_offset = ctx.data_region_offset;
     let total_bytes = string_region_size(max_length, char_width);
     ctx.data_region_offset = ctx
@@ -124,8 +122,11 @@ fn allocate_string_temp(
 /// A simple named STRING/WSTRING variable resolves to the offset of its own
 /// slot. Everything else -- a literal, a nested string function call, a
 /// structure field or array element -- is materialized into a temporary slot
-/// allocated at the expression's encoding, and that slot's offset is
-/// returned.
+/// allocated at the expression's encoding and capacity, and that slot's offset
+/// is returned. The capacity comes from the operand rather than being fixed,
+/// because a slot narrower than the operand truncates it on the way in and
+/// every reader of the slot -- `LEN` first among them -- would then be
+/// measuring the copy instead of the operand.
 pub(crate) fn resolve_string_arg(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -148,7 +149,8 @@ pub(crate) fn resolve_string_arg(
         }
     }
 
-    let data_offset = allocate_string_temp(emitter, ctx, char_width, func_span)?;
+    let max_length = string_operand_capacity(ctx, arg);
+    let data_offset = allocate_string_temp(emitter, ctx, char_width, max_length, func_span)?;
     compile_string_value(emitter, ctx, arg, char_width)?;
     emitter.emit_str_store_var(data_offset);
 

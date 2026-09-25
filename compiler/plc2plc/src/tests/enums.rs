@@ -4,25 +4,38 @@ use super::common::*;
 
 #[test]
 fn write_to_string_when_enum_explicit_values_then_round_trips() {
+    // Explicit member values are gated by `allow_enum_explicit_values`. The
+    // grammar recognizes them either way (the rejection is a semantic rule,
+    // not a parse failure), but the source is dialect syntax, so the round
+    // trip states the dialect it belongs to.
     assert_round_trips(
         "
 TYPE
 E_ModeLanguage : (Deutsch := 1, English := 2);
 END_TYPE
 ",
-        &CompilerOptions::default(),
+        &CompilerOptions {
+            allow_enum_explicit_values: true,
+            ..CompilerOptions::default()
+        },
     );
 }
 
 #[test]
 fn write_to_string_when_enum_base_type_suffix_then_round_trips() {
+    // This snippet needs both enum flags: the suffix and the explicit values
+    // are separate extensions that happen to appear together in vendor code.
     assert_round_trips(
         "
 TYPE
 E_AssertionType : (Type_UNDEFINED := 0, Type_ANY, Type_BOOL) BYTE;
 END_TYPE
 ",
-        &CompilerOptions::default(),
+        &CompilerOptions {
+            allow_enum_explicit_values: true,
+            allow_enum_base_type: true,
+            ..CompilerOptions::default()
+        },
     );
 }
 

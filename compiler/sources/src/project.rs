@@ -68,8 +68,9 @@ impl SourceProject {
     /// Returns the parsed [`Library`] for each activated library that resolves,
     /// plus one diagnostic per library that could not be loaded (unshipped name
     /// or malformed manifest). The libraries are returned in activation order,
-    /// which callers inject ahead of user source so a user declaration shadows
-    /// a library declaration of the same name.
+    /// which callers inject ahead of user source; once merged they are ordinary
+    /// declarations, so a user declaration of the same name in the same scope
+    /// is a duplicate (`REQ-CL-analyzer-007`).
     pub fn load_activated_libraries(&self) -> (Vec<Library>, Vec<Diagnostic>) {
         let registry = LibraryRegistry::bundled();
         let mut libraries = Vec::new();

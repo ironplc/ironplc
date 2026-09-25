@@ -29,7 +29,7 @@ use super::compile_expr::{
 };
 use super::compile_fb_init::{compile_fb_field_store, resolve_fb_field_op_type};
 use crate::emit::Emitter;
-use crate::string_expr_type::compile_string_value;
+use crate::string_width::compile_string_value;
 use ironplc_container::opcode;
 
 /// Compiles a function block body.
