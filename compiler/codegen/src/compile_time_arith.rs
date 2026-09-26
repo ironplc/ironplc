@@ -34,8 +34,10 @@ pub(crate) enum TimeArith {
     /// Both operands are in seconds and the result is a `TIME`: the
     /// difference is converted to milliseconds.
     SecondsDifference,
-    /// A `TIME` multiplied (`true`) or divided (`false`) by an `ANY_NUM`.
-    Scale { is_mul: bool },
+    /// A `TIME` multiplied by an `ANY_NUM`.
+    Multiply,
+    /// A `TIME` divided by an `ANY_NUM`.
+    Divide,
 }
 
 /// Returns the instruction sequence for the typed time or date function
@@ -57,10 +59,10 @@ pub(crate) fn time_arith_for(name: &str) -> Option<(TimeArith, OpWidth)> {
         "sub_ldt_ltime" => (TimeArith::SecondsAndMillis(emit_sub), W64),
         "sub_dt_dt" | "sub_date_date" => (TimeArith::SecondsDifference, W32),
         "sub_ldt_ldt" | "sub_ldate_ldate" => (TimeArith::SecondsDifference, W64),
-        "mul_time" => (TimeArith::Scale { is_mul: true }, W32),
-        "mul_ltime" => (TimeArith::Scale { is_mul: true }, W64),
-        "div_time" => (TimeArith::Scale { is_mul: false }, W32),
-        "div_ltime" => (TimeArith::Scale { is_mul: false }, W64),
+        "mul_time" => (TimeArith::Multiply, W32),
+        "mul_ltime" => (TimeArith::Multiply, W64),
+        "div_time" => (TimeArith::Divide, W32),
+        "div_ltime" => (TimeArith::Divide, W64),
         _ => return None,
     };
     Some(found)
@@ -83,10 +85,24 @@ pub(crate) fn compile_time_arith(
             compile_dt_time_add_sub(emitter, ctx, op_type, in1, in2, emit_fn)
         }
         TimeArith::SecondsDifference => compile_sub_to_time(emitter, ctx, op_type, in1, in2),
-        TimeArith::Scale { is_mul } => match width {
-            OpWidth::W64 => compile_mul_div_ltime(emitter, ctx, in1, in2, is_mul),
-            _ => compile_mul_div_time(emitter, ctx, in1, in2, is_mul),
-        },
+        TimeArith::Multiply => compile_scale(emitter, ctx, width, in1, in2, emit_mul),
+        TimeArith::Divide => compile_scale(emitter, ctx, width, in1, in2, emit_div),
+    }
+}
+
+/// Compiles a duration scaled by a number, `emit_fn` being the multiply or
+/// divide emitter, at `width`.
+fn compile_scale(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    width: OpWidth,
+    in1: &Expr,
+    in2: &Expr,
+    emit_fn: fn(&mut Emitter, OpType),
+) -> Result<(), Diagnostic> {
+    match width {
+        OpWidth::W64 => compile_mul_div_ltime(emitter, ctx, in1, in2, emit_fn),
+        _ => compile_mul_div_time(emitter, ctx, in1, in2, emit_fn),
     }
 }
 
@@ -193,7 +209,7 @@ fn compile_mul_div_time(
     ctx: &mut CompileContext,
     in1: &Expr,
     in2: &Expr,
-    is_mul: bool,
+    emit_fn: fn(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
     let time_op = (OpWidth::W32, Signedness::Signed);
 
@@ -203,22 +219,14 @@ fn compile_mul_div_time(
         OpWidth::W32 => {
             compile_expr(emitter, ctx, in1, time_op)?;
             compile_expr(emitter, ctx, in2, time_op)?;
-            if is_mul {
-                emit_mul(emitter, time_op);
-            } else {
-                emit_div(emitter, time_op);
-            }
+            emit_fn(emitter, time_op);
         }
         OpWidth::F32 => {
             compile_expr(emitter, ctx, in1, time_op)?;
             emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F32);
             compile_expr(emitter, ctx, in2, (OpWidth::F32, Signedness::Signed))?;
             let f32_op = (OpWidth::F32, Signedness::Signed);
-            if is_mul {
-                emit_mul(emitter, f32_op);
-            } else {
-                emit_div(emitter, f32_op);
-            }
+            emit_fn(emitter, f32_op);
             emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I32);
         }
         OpWidth::F64 => {
@@ -226,11 +234,7 @@ fn compile_mul_div_time(
             emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64);
             compile_expr(emitter, ctx, in2, (OpWidth::F64, Signedness::Signed))?;
             let f64_op = (OpWidth::F64, Signedness::Signed);
-            if is_mul {
-                emit_mul(emitter, f64_op);
-            } else {
-                emit_div(emitter, f64_op);
-            }
+            emit_fn(emitter, f64_op);
             emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I32);
         }
         OpWidth::W64 => {
@@ -241,11 +245,7 @@ fn compile_mul_div_time(
             compile_expr(emitter, ctx, in2, (OpWidth::W64, in2_op.1))?;
             emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F64);
             let f64_op = (OpWidth::F64, Signedness::Signed);
-            if is_mul {
-                emit_mul(emitter, f64_op);
-            } else {
-                emit_div(emitter, f64_op);
-            }
+            emit_fn(emitter, f64_op);
             emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I32);
         }
     }
@@ -265,11 +265,10 @@ fn compile_mul_div_ltime(
     ctx: &mut CompileContext,
     in1: &Expr,
     in2: &Expr,
-    is_mul: bool,
+    emit_fn: fn(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
     let ltime_op = (OpWidth::W64, Signedness::Signed);
     let in2_op = op_type_from_expr(in2).unwrap_or(ltime_op);
-    let emit_fn = if is_mul { emit_mul } else { emit_div };
 
     compile_operand(emitter, ctx, ltime_op, in1)?;
     match in2_op.0 {
