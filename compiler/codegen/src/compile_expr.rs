@@ -154,7 +154,9 @@ pub(crate) fn compile_expr(
     match &expr.kind {
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
         ExprKind::Variable(variable) => compile_variable_read(emitter, ctx, variable, op_type),
-        ExprKind::BinaryOp(binary) => compile_binary_arith(emitter, ctx, binary, op_type),
+        ExprKind::BinaryOp(binary) => {
+            compile_binary_arith(emitter, ctx, binary, expr.resolved_type.as_ref(), op_type)
+        }
         ExprKind::UnaryOp(unary) => match unary.op {
             UnaryOp::Neg => {
                 compile_expr(emitter, ctx, &unary.term, op_type)?;

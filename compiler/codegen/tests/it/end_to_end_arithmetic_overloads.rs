@@ -9,7 +9,10 @@
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
-use crate::common::{assert_run_i32, assert_run_i64_with};
+use crate::common::{
+    assert_run_f32, assert_run_f64, assert_run_i32, assert_run_i32_with, assert_run_i64,
+    assert_run_i64_with,
+};
 
 /// REQ-AO-codegen-002: `dt + t` (here `stamp + t`) converts the duration from milliseconds to
 /// seconds, as `ADD_DT_TIME` does. 2000-01-01-00:00:00 is 946684800 seconds
@@ -137,4 +140,133 @@ PROGRAM main
 END_PROGRAM"
     );
     assert_run_i32(&source, &[(0, expected)]);
+}
+
+/// REQ-AO-codegen-007: operands of different widths compute at the result
+/// type, the narrower one converted first.
+#[test]
+fn end_to_end_req_ao_007_when_int_plus_real_then_adds_as_real() {
+    assert_run_f32(
+        "
+PROGRAM main
+  VAR
+    x : REAL;
+    i : INT := 3;
+    r : REAL := 1.5;
+  END_VAR
+  x := i + r;
+END_PROGRAM",
+        &[(0, 4.5)],
+    );
+}
+
+/// REQ-AO-codegen-007: a `UDINT` operand of a `LINT` operation is
+/// zero-extended before the 64-bit add.
+#[test]
+fn end_to_end_req_ao_007_when_udint_plus_lint_then_adds_at_64_bits() {
+    assert_run_i64(
+        "
+PROGRAM main
+  VAR
+    x : LINT;
+    u : UDINT := 4000000000;
+    l : LINT := 1;
+  END_VAR
+  x := u + l;
+END_PROGRAM",
+        &[(0, 4_000_000_001)],
+    );
+}
+
+/// REQ-AO-codegen-008: a `DINT * DINT` product assigned to a `LINT` is
+/// computed at 32 bits, as its operands' type, and widened: 100000 squared
+/// wraps to 1410065408.
+#[test]
+fn end_to_end_req_ao_008_when_dint_product_assigned_to_lint_then_wraps_at_32_bits() {
+    assert_run_i64(
+        "
+PROGRAM main
+  VAR
+    l : LINT;
+    d1 : DINT := 100000;
+    d2 : DINT := 100000;
+  END_VAR
+  l := d1 * d2;
+END_PROGRAM",
+        &[(0, 1_410_065_408)],
+    );
+}
+
+/// REQ-AO-codegen-010: `UDINT / UDINT` divides unsigned whatever the
+/// target's signedness.
+#[test]
+fn end_to_end_req_ao_010_when_udint_quotient_assigned_to_dint_then_divides_unsigned() {
+    assert_run_i32(
+        "
+PROGRAM main
+  VAR
+    d : DINT;
+    u1 : UDINT := 4000000000;
+    u2 : UDINT := 2;
+  END_VAR
+  d := u1 / u2;
+END_PROGRAM",
+        &[(0, 2_000_000_000)],
+    );
+}
+
+/// REQ-AO-codegen-011: the function form computes each fold step as the
+/// operator expression does.
+#[rstest]
+#[case::operator("i + r")]
+#[case::function_form("ADD(i, r)")]
+fn end_to_end_req_ao_011_when_add_call_on_int_and_real_then_adds_as_real(#[case] expr: &str) {
+    let source = format!(
+        "
+PROGRAM main
+  VAR
+    x : REAL;
+    i : INT := 3;
+    r : REAL := 1.5;
+  END_VAR
+  x := {expr};
+END_PROGRAM"
+    );
+    assert_run_f32(&source, &[(0, 4.5)]);
+}
+
+/// REQ-AO-codegen-011: an extensible call widens step by step: INT + REAL is
+/// REAL, and REAL + LREAL is LREAL.
+#[test]
+fn end_to_end_req_ao_011_when_add_call_widens_per_step_then_computes_at_widest() {
+    assert_run_f64(
+        "
+PROGRAM main
+  VAR
+    x : LREAL;
+    i : INT := 3;
+    r : REAL := 1.5;
+    lr : LREAL := 2.25;
+  END_VAR
+  x := ADD(i, r, lr);
+END_PROGRAM",
+        &[(0, 6.75)],
+    );
+}
+
+/// Bit-string arithmetic under a dialect that allows it computes at the bit
+/// string's width: `BYTE#255 + 1` wraps to 0.
+#[test]
+fn end_to_end_when_byte_plus_one_under_codesys_then_wraps() {
+    assert_run_i32_with(
+        "
+PROGRAM main
+  VAR
+    b : BYTE := 255;
+  END_VAR
+  b := b + 1;
+END_PROGRAM",
+        &CompilerOptions::from_dialect(Dialect::Codesys),
+        &[(0, 0)],
+    );
 }
