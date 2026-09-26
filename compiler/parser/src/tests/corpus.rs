@@ -192,10 +192,10 @@ fn parse_when_first_steps_configuration_then_builds_structure() {
                 tasks: vec![TaskConfiguration {
                     name: Id::from("plc_task"),
                     priority: 1,
-                    interval: Option::Some(DurationLiteral {
-                        span: SourceSpan::default(),
-                        interval: Duration::new(0, 100_000_000),
-                    }),
+                    interval: Option::Some(DurationLiteral::new(
+                        SourceSpan::default(),
+                        Duration::new(0, 100_000_000),
+                    )),
                     single: None,
                 }],
                 programs: vec![ProgramConfiguration {

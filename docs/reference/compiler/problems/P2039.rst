@@ -92,6 +92,28 @@ holding the whole span in one ``TIME``:
 This also keeps the value meaningful across a restart, which a running timer
 does not.
 
+The literal names its own type
+------------------------------
+
+A duration literal is held to the range of the type its *prefix* names, not the
+range of the variable it is stored into. ``T#30d`` is out of range even in an
+``LTIME`` variable, the same way ``INT#40000`` is not an ``INT`` whatever it is
+assigned to:
+
+.. playground::
+   :dialect: iec61131-3-ed3
+
+   PROGRAM main
+       VAR
+           timeout : LTIME := T#30d;  (* Error: T# names a TIME *)
+       END_VAR
+   END_PROGRAM
+
+Write the prefix of the type you mean, as in ``LTIME#30d`` above.
+
+Narrowing is reported too: an ``LTIME#`` literal does not fit a ``TIME``
+variable, which is reported as :doc:`P4022`.
+
 See Also
 --------
 

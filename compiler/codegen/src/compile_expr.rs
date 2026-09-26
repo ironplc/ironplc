@@ -274,7 +274,6 @@ fn compile_time_count(
     ctx: &mut CompileContext,
     count: i128,
     literal: &str,
-    problem: Problem,
     span: &SourceSpan,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
@@ -283,12 +282,12 @@ fn compile_time_count(
     // answer from a catch-all.
     match op_type.0 {
         OpWidth::W32 => {
-            let value = within_storage(count, 32, op_type.1, literal, problem, span)?;
+            let value = within_storage(count, 32, op_type.1, literal, span)?;
             let pool_index = ctx.add_i32_constant(value as i32);
             emitter.emit_load_const_i32(pool_index);
         }
         OpWidth::W64 => {
-            let value = within_storage(count, 64, op_type.1, literal, problem, span)?;
+            let value = within_storage(count, 64, op_type.1, literal, span)?;
             let pool_index = ctx.add_i64_constant(value as i64);
             emitter.emit_load_const_i64(pool_index);
         }
@@ -309,31 +308,36 @@ fn compile_time_count(
     Ok(())
 }
 
-/// Returns `count` when a `bits`-wide integer of `signedness` holds it, and
-/// reports `problem` against the literal when it does not.
+/// Returns `count`, or an internal error when a `bits`-wide integer of
+/// `signedness` cannot hold it.
 ///
-/// The value is returned rather than narrowed here: a count that fits is
-/// bit-cast by the caller, so `u32::MAX` seconds is stored as -1 and read back
-/// unsigned, which is what the unsigned opcodes expect.
+/// `rule_temporal_literal_range` holds every temporal literal to the range its
+/// own type gives it, and a literal only reaches storage at least that wide --
+/// narrowing one into the shorter type is rejected too. So by the time a count
+/// arrives here it fits, and a count that does not is a broken invariant
+/// rather than something to report against the program: the diagnostic names
+/// the compiler, not the source.
+///
+/// The check remains because being wrong here is silent. Truncating a count
+/// emits a different value than the program wrote -- `T#30d` became a
+/// *negative* 19.7 days -- which no test of the program's behaviour would
+/// attribute to codegen.
 fn within_storage(
     count: i128,
     bits: u32,
     signedness: Signedness,
     literal: &str,
-    problem: Problem,
     span: &SourceSpan,
 ) -> Result<i128, Diagnostic> {
-    let (minimum, maximum) =
-        ironplc_analyzer::value_range::for_integer(bits, signedness == Signedness::Signed);
-    if count < minimum || count > maximum {
-        return Err(Diagnostic::problem(
-            problem,
-            Label::span(
-                span.clone(),
-                format!("{literal} is outside the range {minimum} to {maximum} its type stores"),
+    let signed = signedness == Signedness::Signed;
+    if !ironplc_analyzer::value_range::fits(count, bits, signed) {
+        let (minimum, maximum) = ironplc_analyzer::value_range::for_integer(bits, signed);
+        return Err(Diagnostic::internal_error_at(Label::span(
+            span.clone(),
+            format!(
+                "{literal} holds {count}, outside the range {minimum} to {maximum} its type stores"
             ),
-        )
-        .with_context("value", &count.to_string()));
+        )));
     }
     Ok(count)
 }
@@ -492,7 +496,6 @@ pub(crate) fn compile_constant(
             ctx,
             lit.interval.whole_milliseconds(),
             "Duration literal",
-            Problem::DurationLiteralOutOfRange,
             &lit.span,
             op_type,
         ),
@@ -505,7 +508,6 @@ pub(crate) fn compile_constant(
             ctx,
             i128::from(lit.whole_milliseconds()),
             "Time-of-day literal",
-            Problem::DurationLiteralOutOfRange,
             &lit.span,
             op_type,
         ),
@@ -514,7 +516,6 @@ pub(crate) fn compile_constant(
             ctx,
             i128::from(lit.seconds_since_epoch()),
             "Date literal",
-            Problem::DateLiteralOutOfRange,
             &lit.span,
             op_type,
         ),
@@ -523,7 +524,6 @@ pub(crate) fn compile_constant(
             ctx,
             i128::from(lit.seconds_since_epoch()),
             "Date literal",
-            Problem::DateLiteralOutOfRange,
             &lit.span,
             op_type,
         ),

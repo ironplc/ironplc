@@ -3,6 +3,7 @@
 status: accepted
 date: 2026-03-17
 amended: 2026-09-11 (converted to the front-matter format)
+amended: 2026-09-26 (the literal ceiling this recorded has been lifted)
 
 ## Context
 
@@ -83,10 +84,20 @@ LDT support landed. The corrected representation is:
 nanosecond path in codegen. `end_to_end_ldate.rs` has pinned this behaviour
 since the feature landed (`LTOD#12:30:00` is 45,000,000).
 
-The range column describes the storage only. Literal lowering computes the
+The range column describes the storage only. Literal lowering computed the
 second count in `u32` (`DateLiteral::seconds_since_epoch`,
 `DateAndTimeLiteral::seconds_since_epoch`) before widening, so an LDATE or LDT
-*literal* is still bounded by the 2106 ceiling that u32 seconds imposes.
+*literal* was bounded by the 2106 ceiling that u32 seconds imposes.
+
+> **The literal ceiling described above no longer applies** (2026-09-26).
+> Issue #1560 recorded it as a defect: the parser matched a literal's prefix
+> and discarded it, so every temporal literal resolved to the 32-bit member of
+> its family and an LDATE reached no further than a DATE. A literal now carries
+> the type its prefix names, and `rule_temporal_literal_range` holds it to that
+> type's range, so an LDATE or LDT literal reaches as far as u64 seconds
+> allow — in practice the year 9999 the parser accepts. The storage rows below
+> are unchanged; it is only the claim about literals that was a consequence of
+> the defect rather than of the decision.
 
 The code is what the amendment follows, for the same reason ADR-0021 chose
 milliseconds for LTIME: nanosecond resolution buys nothing on scan cycles
