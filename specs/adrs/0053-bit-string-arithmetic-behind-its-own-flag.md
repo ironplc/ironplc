@@ -1,6 +1,6 @@
 # Bit-String Arithmetic Behind Its Own Flag
 
-status: proposed
+status: accepted
 date: 2026-09-19
 
 ## Context and Problem Statement
@@ -111,8 +111,8 @@ parameter is expected, which stays the business of the cross-family flags.
 
 ## More Information
 
-This ADR is `proposed` until the change that implements the design lands; that
-change flips it to `accepted`. The design is
+The change that implements the design landed the flag and flipped this ADR to
+`accepted`. The design is
 [Arithmetic Operator Overloads](../design/arithmetic-operator-overloads.md);
 REQ-AO-analyzer-010 and REQ-AO-analyzer-011 are its requirements.
 
