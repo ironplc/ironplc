@@ -1,0 +1,58 @@
+=====
+P2040
+=====
+
+.. problem-summary:: P2040
+
+This error occurs when a real literal names a value too large in magnitude for
+its type to represent.
+
+A literal with no type prefix, or with the ``LREAL#`` prefix, is held to the
+range of :doc:`/reference/language/data-types/elementary/lreal`. A literal
+with the ``REAL#`` prefix states its own type and is held to the range of
+:doc:`/reference/language/data-types/elementary/real`, wherever it is written.
+
+A value beyond the range has no finite number to be stored as, so the compiler
+reports it rather than storing infinity in place of the number the program
+wrote.
+
+Example
+-------
+
+The following code will generate error P2040:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           limit : LREAL;
+       END_VAR
+       limit := 1.0E400;
+   END_PROGRAM
+
+To fix this error, use a value the type can hold:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           limit : LREAL;
+       END_VAR
+       limit := 1.0E300;
+   END_PROGRAM
+
+The ``REAL#`` prefix
+--------------------
+
+``REAL`` holds a smaller range than ``LREAL``, so a value that is a valid
+``LREAL`` can still be out of range when written with the ``REAL#`` prefix:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           limit : LREAL := REAL#1.0E40;  (* Error: beyond REAL *)
+       END_VAR
+   END_PROGRAM
+
+Drop the prefix, or write ``LREAL#``, to keep the value.

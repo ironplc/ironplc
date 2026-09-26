@@ -18,6 +18,46 @@ pub struct DurationLiteral {
 }
 
 impl DurationLiteral {
+    /// Creates a literal spanning `span` and measuring `interval`.
+    ///
+    /// Every constructor funnels through here so that what a duration literal
+    /// is made of is stated once.
+    fn new(span: SourceSpan, interval: Duration) -> Self {
+        Self { span, interval }
+    }
+
+    /// Creates a literal of `value` units, where one unit is `seconds_per_unit`
+    /// seconds and `whole_units` builds the whole part.
+    ///
+    /// A fixed-point literal carries its whole part and a femtosecond
+    /// fraction separately, and days, hours and minutes each scale that
+    /// fraction by their own unit before it becomes a duration. Only the unit
+    /// differs between them, so only the unit is passed in.
+    fn from_whole_unit(
+        value: FixedPoint,
+        whole_units: fn(i64) -> Duration,
+        seconds_per_unit: u64,
+    ) -> Self {
+        let whole = whole_units(value.whole as i64);
+
+        // `femptos / FRACTIONAL_UNITS` is the fraction of one unit, so the
+        // fraction in microseconds is
+        //
+        //     femptos / 1e15 * seconds_per_unit * 1e6 == femptos * seconds_per_unit / 1e9
+        //
+        // computed in `u128` because the numerator does not fit a `u64`: half
+        // a day is 5e14 femtos times 86,400 seconds, which is 4.3e19 against a
+        // `u64::MAX` of 1.8e19. The quotient is at most 8.64e10 microseconds,
+        // one whole unit's worth, so it always fits the `i64` a `Duration`
+        // takes.
+        let fraction = Duration::microseconds(
+            (u128::from(value.femptos) * u128::from(seconds_per_unit)
+                / (FixedPoint::FRACTIONAL_UNITS as u128 / 1_000_000)) as i64,
+        );
+
+        Self::new(value.span, whole + fraction)
+    }
+
     /// Create a new `DurationLiteral` with the given number of days.
     ///
     /// ```rust
@@ -27,18 +67,7 @@ impl DurationLiteral {
     /// assert_eq!(DurationLiteral::days(FixedPoint::parse("1").unwrap()).interval, Duration::days(1));
     /// ```
     pub fn days(days: FixedPoint) -> Self {
-        // The whole part is entirely seconds
-        let whole_seconds = Duration::days(days.whole as i64);
-
-        // The fraction has both seconds and one part femptoseconds
-        let fraction_seconds = Duration::microseconds(
-            (days.femptos * SECOND_PER_DAY / FixedPoint::FRACTIONAL_UNITS) as i64,
-        );
-
-        Self {
-            span: days.span,
-            interval: whole_seconds + fraction_seconds,
-        }
+        Self::from_whole_unit(days, Duration::days, SECOND_PER_DAY)
     }
 
     /// Create a new `DurationLiteral` with the given number of hours.
@@ -47,22 +76,11 @@ impl DurationLiteral {
     /// use ironplc_dsl::common::FixedPoint;
     /// use ironplc_dsl::time::DurationLiteral;
     /// use time::Duration;
-    /// assert_eq!(DurationLiteral::seconds(FixedPoint::parse("1").unwrap()).interval, Duration::seconds(1));
-    /// assert_eq!(DurationLiteral::seconds(FixedPoint::parse("1.001").unwrap()).interval, Duration::seconds(1) + Duration::milliseconds(1));
+    /// assert_eq!(DurationLiteral::hours(FixedPoint::parse("1").unwrap()).interval, Duration::hours(1));
+    /// assert_eq!(DurationLiteral::hours(FixedPoint::parse("1.5").unwrap()).interval, Duration::minutes(90));
     /// ```
     pub fn hours(hours: FixedPoint) -> Self {
-        // The whole part is entirely seconds
-        let whole_seconds = Duration::hours(hours.whole as i64);
-
-        // The fraction has both seconds and one part femptoseconds
-        let fraction_seconds = Duration::microseconds(
-            (hours.femptos * SECOND_PER_HOUR / FixedPoint::FRACTIONAL_UNITS) as i64,
-        );
-
-        Self {
-            span: hours.span,
-            interval: whole_seconds + fraction_seconds,
-        }
+        Self::from_whole_unit(hours, Duration::hours, SECOND_PER_HOUR)
     }
 
     /// Create a new `DurationLiteral` with the given number of minutes.
@@ -71,21 +89,11 @@ impl DurationLiteral {
     /// use ironplc_dsl::common::FixedPoint;
     /// use ironplc_dsl::time::DurationLiteral;
     /// use time::Duration;
-    /// assert_eq!(DurationLiteral::seconds(FixedPoint::parse("1").unwrap()).interval, Duration::seconds(1));
-    /// assert_eq!(DurationLiteral::seconds(FixedPoint::parse("1.001").unwrap()).interval, Duration::seconds(1) + Duration::milliseconds(1));
+    /// assert_eq!(DurationLiteral::minutes(FixedPoint::parse("1").unwrap()).interval, Duration::minutes(1));
+    /// assert_eq!(DurationLiteral::minutes(FixedPoint::parse("1.5").unwrap()).interval, Duration::seconds(90));
     /// ```
     pub fn minutes(minutes: FixedPoint) -> Self {
-        // The whole part is entirely seconds
-        let whole_seconds = Duration::minutes(minutes.whole as i64);
-
-        // The fraction has both seconds and one part femptoseconds
-        let fraction_seconds = Duration::microseconds(
-            (minutes.femptos * SECOND_PER_MINUTE / FixedPoint::FRACTIONAL_UNITS) as i64,
-        );
-        Self {
-            span: minutes.span,
-            interval: whole_seconds + fraction_seconds,
-        }
+        Self::from_whole_unit(minutes, Duration::minutes, SECOND_PER_MINUTE)
     }
 
     /// Create a new `DurationLiteral` with the given number of seconds.
@@ -100,10 +108,7 @@ impl DurationLiteral {
     pub fn seconds(seconds: FixedPoint) -> Self {
         let whole_seconds = Duration::seconds(seconds.whole as i64);
         let fraction_seconds = Duration::nanoseconds((seconds.femptos / 1_000_000) as i64);
-        Self {
-            span: seconds.span,
-            interval: whole_seconds + fraction_seconds,
-        }
+        Self::new(seconds.span, whole_seconds + fraction_seconds)
     }
 
     /// Create a new `DurationLiteral` with the given number of milliseconds.
@@ -122,17 +127,17 @@ impl DurationLiteral {
         let whole_milliseconds = Duration::milliseconds((millis.whole % 1_000) as i64);
 
         let fraction_nanoseconds = Duration::nanoseconds((millis.femptos / 1_000_000_000) as i64);
-        Self {
-            span: millis.span,
-            interval: whole_seconds + whole_milliseconds + fraction_nanoseconds,
-        }
+        Self::new(
+            millis.span,
+            whole_seconds + whole_milliseconds + fraction_nanoseconds,
+        )
     }
 
     pub fn plus(&self, other: DurationLiteral) -> Self {
-        DurationLiteral {
-            span: SourceSpan::join(&self.span, &other.span),
-            interval: self.interval + other.interval,
-        }
+        Self::new(
+            SourceSpan::join(&self.span, &other.span),
+            self.interval + other.interval,
+        )
     }
 }
 
