@@ -56,3 +56,6 @@ The ``REAL#`` prefix
    END_PROGRAM
 
 Drop the prefix, or write ``LREAL#``, to keep the value.
+
+A literal that fits ``LREAL`` but not the ``REAL`` it is stored into, such as
+``limit : REAL := 1.0E300``, is reported as :doc:`P2026`.

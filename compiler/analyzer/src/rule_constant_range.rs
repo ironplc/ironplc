@@ -26,6 +26,12 @@
 //! an `INT`, and no `INT` is 65535. A pattern that is meant to wrap is
 //! spelled with a bit-string prefix (`WORD#16#FFFF`), which is not checked.
 //!
+//! A real constant is checked against a `REAL` it is stored into. Every real
+//! constant is an `LREAL` until then, so `1.0E300` -- or `1.0E30 * 1.0E30`
+//! once folded -- is a finite value that a `REAL` can only hold as infinity.
+//! Whether the literal fits its own type is `rule_real_literal_range`'s
+//! question, as `INT#40000` is `check_prefixed_literal`'s.
+//!
 //! See section 2.2.1.
 //!
 //! ## Passes
@@ -50,10 +56,12 @@
 //!       count : USINT := 300;   (* USINT holds 0..255 *)
 //!       total : SINT;
 //!       wide : DINT;
+//!       ratio : REAL;
 //!    END_VAR
 //!    total := 200;               (* SINT holds -128..127 *)
 //!    count := 255 + 1;           (* the operator does not widen the type *)
 //!    wide := INT#40000;          (* not an INT, whatever wide is *)
+//!    ratio := 1.0E30 * 1.0E30;   (* LREAL 1.0E60 is beyond REAL *)
 //! END_PROGRAM
 //! ```
 use ironplc_dsl::{
@@ -126,14 +134,44 @@ impl RuleConstantRange<'_> {
     /// Reports `constant` when the type it is stored into cannot hold it.
     fn check_constant(&mut self, constant: &ConstantKind, expected: &IntermediateType) {
         // Every integer literal arrives here as a value, whatever radix it
-        // was written in. A `ConstantKind` that is not one -- a duration, a
-        // string -- has no integer range to check.
-        let ConstantKind::IntegerLiteral(literal) = constant else {
+        // was written in. A `ConstantKind` that is neither an integer nor a
+        // real -- a duration, a string -- has no range to check.
+        match constant {
+            ConstantKind::IntegerLiteral(literal) => {
+                if let Some(range) = value_range::of(expected) {
+                    self.check_literal(literal, range);
+                }
+            }
+            ConstantKind::RealLiteral(literal) => self.check_real_literal(literal, expected),
+            _ => {}
+        }
+    }
+
+    /// Reports `literal` when it is stored into a `REAL` that cannot hold it.
+    ///
+    /// Every real constant is an `LREAL` until it is stored, so `1.0E300`, or
+    /// `1.0E30 * 1.0E30` once folded, is a finite value that becomes infinity
+    /// in a `REAL`. Only a `REAL` destination narrows the range: an `LREAL`
+    /// holds whatever the literal does, and an integer destination is not a
+    /// place a real is stored implicitly.
+    ///
+    /// A value that is not finite even as an `LREAL` is left to
+    /// `rule_real_literal_range`, which reports the literal itself.
+    fn check_real_literal(&mut self, literal: &RealLiteral, expected: &IntermediateType) {
+        let IntermediateType::Real {
+            size: ByteSized::B32,
+        } = expected
+        else {
             return;
         };
-        if let Some(range) = value_range::of(expected) {
-            self.check_literal(literal, range);
+        if !literal.value.is_finite() || (literal.value as f32).is_finite() {
+            return;
         }
+        self.report_out_of_range(
+            literal.span.clone(),
+            &format!("{:E}", literal.value),
+            (format!("{:E}", f32::MIN), format!("{:E}", f32::MAX)),
+        );
     }
 
     /// Reports `literal` when the type named by its prefix cannot hold it.
@@ -671,6 +709,63 @@ END_PROGRAM",
     #[test]
     fn apply_when_radix_literal_in_range_then_ok() {
         let codes = out_of_range_count(&program_with("x : UINT;\n", "x := 16#1FF;\n"));
+
+        assert_eq!(codes, 0);
+    }
+
+    // --- A real constant is checked against a REAL destination ---
+    //
+    // Every real constant is an `LREAL` until it is stored, so the checks
+    // below are about the narrowing into `REAL`.
+
+    #[rstest]
+    #[case::real_high("REAL", "3.4028235E38", true)]
+    #[case::real_low("REAL", "-3.4028235E38", true)]
+    #[case::real_above("REAL", "3.5E38", false)]
+    #[case::real_below("REAL", "-3.5E38", false)]
+    #[case::lreal_holds_it("LREAL", "1.0E300", true)]
+    fn apply_when_real_initializer_at_boundary_then_ok_or_err(
+        #[case] declared_type: &str,
+        #[case] value: &str,
+        #[case] expected_ok: bool,
+    ) {
+        let program = program_with(&format!("x : {declared_type} := {value};\n"), "");
+
+        assert_eq!(out_of_range_count(&program) == 0, expected_ok);
+    }
+
+    #[test]
+    fn apply_when_real_assignment_out_of_range_then_err() {
+        let codes = out_of_range_count(&program_with("x : REAL;\n", "x := 1.0E300;\n"));
+
+        assert_eq!(codes, 1);
+    }
+
+    /// Each factor is a valid `REAL`, but folding makes one `LREAL` constant
+    /// that is not.
+    #[test]
+    fn apply_when_folded_real_out_of_range_then_err() {
+        let codes = out_of_range_count(&program_with("x : REAL;\n", "x := 1.0E30 * 1.0E30;\n"));
+
+        assert_eq!(codes, 1);
+    }
+
+    /// The operator computes at `REAL`, so the operand is narrowed too.
+    #[test]
+    fn apply_when_real_operand_out_of_range_then_err() {
+        let codes = out_of_range_count(&program_with(
+            "x : REAL;\ny : REAL;\n",
+            "x := y + 1.0E300;\n",
+        ));
+
+        assert_eq!(codes, 1);
+    }
+
+    /// A value beyond `LREAL` is the literal's own problem, reported by
+    /// `rule_real_literal_range`, and has no value to report here.
+    #[test]
+    fn apply_when_real_beyond_lreal_then_not_reported_here() {
+        let codes = out_of_range_count(&program_with("x : REAL;\n", "x := 1.0E400;\n"));
 
         assert_eq!(codes, 0);
     }
