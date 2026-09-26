@@ -97,6 +97,9 @@ goes from 3 to 4:
   primitive stride.
 - `compiler/vm/tests/it/execute_string_ops.rs` tests initialize, load and
   store through a strided descriptor, and trap on an index past the end.
+- `compiler/codegen/tests/it/end_to_end_array_of_struct_string.rs` runs
+  STRING and WSTRING fields of array-of-struct elements end to end,
+  including an out-of-range subscript.
 
 ## Pros and Cons of the Options
 
