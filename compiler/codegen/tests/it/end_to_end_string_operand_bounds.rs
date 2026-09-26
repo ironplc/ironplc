@@ -169,3 +169,30 @@ END_PROGRAM
 
     assert_eq!(read_string(&bufs.data_region, 0), repeated(10));
 }
+
+// c128 is at slot 0, n at slot 1. The call's temporary takes the function's
+// declared return capacity, so the 256-unit result is not cut to the default.
+#[test]
+fn end_to_end_when_len_of_user_function_result_then_returns_declared_result_length() {
+    let source = format!(
+        "
+FUNCTION doubled : STRING[300]
+  VAR_INPUT
+    half : STRING[128];
+  END_VAR
+  doubled := CONCAT(half, half);
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    c128 : STRING[128] := '{half}';
+    n : INT;
+  END_VAR
+  n := LEN(doubled(c128));
+END_PROGRAM
+",
+        half = repeated(128),
+    );
+
+    assert_eq!(run_i32(&source, 1), 256);
+}

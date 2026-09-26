@@ -30,7 +30,7 @@
 
 use ironplc_analyzer::IntermediateType;
 use ironplc_container::CharWidth;
-use ironplc_dsl::common::{ConstantKind, ElementaryTypeName};
+use ironplc_dsl::common::ConstantKind;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, Function, SymbolicVariableKind, Variable};
@@ -41,6 +41,7 @@ use super::compile::{
     char_width_for_string_type, emit_string_literal_load, CompileContext, DEFAULT_OP_TYPE,
     DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
 };
+use super::compile_call::{parse_string_conversion, StringConversion};
 use super::compile_expr::{compile_expr, variable_span};
 use super::compile_string::collect_positional_args;
 use crate::emit::Emitter;
@@ -99,7 +100,7 @@ pub(crate) fn string_expr_shape(
         }),
         ExprKind::Expression(inner) => string_expr_shape(ctx, inner),
         ExprKind::Variable(variable) => variable_shape(ctx, variable),
-        ExprKind::Function(func) => function_shape(ctx, expr, func),
+        ExprKind::Function(func) => function_shape(ctx, func),
         _ => Err(unknown_string_encoding(
             expr.span(),
             "a string expression of an unexpected kind",
@@ -218,15 +219,16 @@ fn string_shape_of(field_type: &IntermediateType) -> Option<StringShape> {
 /// `REPLACE` can hand back every code unit of both string arguments, so
 /// their bound is the sum; `LEFT`, `RIGHT`, `MID` and `DELETE` only ever
 /// drop code units from their one string argument, so its bound is theirs.
-/// A user-defined function declares its return type. Every other call that
-/// yields a string -- the conversions, which build a Latin-1 string -- says
-/// so in the return type the analyzer gave it, which is what `resolved_type`
-/// on the enclosing expression carries, and which names no length.
-fn function_shape(
-    ctx: &CompileContext,
-    expr: &Expr,
-    func: &Function,
-) -> Result<StringShape, Diagnostic> {
+/// A user-defined function declares its return type. The only other call
+/// that yields a string is a `*_TO_STRING` conversion, which renders a
+/// number as Latin-1 and states no length of its own.
+///
+/// That is the whole set: `compile_function_call` routes every other name
+/// to a numeric conversion or a generic builtin, none of which leaves a
+/// string. A call outside the set in a string position is a compiler defect
+/// -- the analyzer typed it as a string and codegen does not know how -- so
+/// it is reported as one, naming the call, rather than sized at a guess.
+fn function_shape(ctx: &CompileContext, func: &Function) -> Result<StringShape, Diagnostic> {
     let name = func.name.lower_case();
     match name.as_str() {
         "concat" | "insert" | "replace" => {
@@ -254,20 +256,28 @@ fn function_shape(
                 "a string function call with no arguments",
             )),
         },
-        _ => match ctx
-            .user_functions
-            .get(name.as_str())
-            .and_then(|info| info.return_string_info.as_ref())
-        {
-            Some(info) => Ok(StringShape {
-                char_width: info.char_width,
-                max_length: Some(info.max_length),
-            }),
-            None => Ok(StringShape {
-                char_width: resolved_string_char_width(expr, func.name.span())?,
-                max_length: None,
-            }),
-        },
+        _ => {
+            if let Some(info) = ctx
+                .user_functions
+                .get(name.as_str())
+                .and_then(|info| info.return_string_info.as_ref())
+            {
+                return Ok(StringShape {
+                    char_width: info.char_width,
+                    max_length: Some(info.max_length),
+                });
+            }
+            match parse_string_conversion(name.as_str()) {
+                Some(StringConversion::NumToString { .. }) => Ok(StringShape {
+                    char_width: NARROW_CHAR_WIDTH,
+                    max_length: None,
+                }),
+                _ => Err(unknown_string_encoding(
+                    func.name.span(),
+                    &format!("a call of {name}, which yields no string"),
+                )),
+            }
+        }
     }
 }
 
@@ -285,41 +295,6 @@ fn bound_or_default(shape: StringShape) -> u16 {
 /// it is capped rather than wrapped so that it stays an over-approximation.
 fn saturate_length(length: usize) -> u16 {
     u16::try_from(length).unwrap_or(u16::MAX)
-}
-
-/// The encoding an expression's analyzer-assigned type names.
-///
-/// Every remaining call in a string position is one whose result the analyzer
-/// typed, so this answers for all of them. In practice they are all narrow:
-/// the calls that reach here are the ones that are neither a width-preserving
-/// standard function nor a user function with a declared string return, which
-/// leaves the `*_TO_STRING` conversions, and every one of those builds
-/// Latin-1. `WSTRING` is mapped because it is what the name means, not
-/// because a program can currently produce it -- `parse_string_conversion`
-/// has no `*_TO_WSTRING` form, and `SEL`/`MUX` reject a string argument. A
-/// wide result reaches its caller through the user-function branch above,
-/// which `end_to_end_wstring` covers. Failing to answer means the
-/// analyzer typed a string-position expression as something that is not a
-/// string, which is a defect in the compiler rather than in the program being
-/// compiled -- so it is reported as one, and the diagnostic names what was
-/// found instead. An internal error that does not say enough to debug it is
-/// only half a report.
-fn resolved_string_char_width(expr: &Expr, span: SourceSpan) -> Result<CharWidth, Diagnostic> {
-    let Some(type_name) = expr.resolved_type.as_ref() else {
-        return Err(unknown_string_encoding(
-            span,
-            "a function call the analyzer left untyped",
-        ));
-    };
-
-    match ElementaryTypeName::try_from(&type_name.name) {
-        Ok(ElementaryTypeName::STRING) => Ok(CharWidth::Narrow),
-        Ok(ElementaryTypeName::WSTRING) => Ok(CharWidth::Wide),
-        _ => Err(unknown_string_encoding(
-            span,
-            &format!("a function call the analyzer typed as {type_name}"),
-        )),
-    }
 }
 
 /// Reports that codegen could not determine a string expression's encoding.
@@ -465,22 +440,13 @@ fn type_name_for(char_width: CharWidth) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_dsl::common::{CharacterStringLiteral, TypeName};
+    use ironplc_dsl::common::CharacterStringLiteral;
     use ironplc_dsl::core::Id;
     use ironplc_dsl::textual::{ParamAssignmentKind, PositionalInput};
     use rstest::rstest;
 
     use super::*;
     use crate::compile::StringVarInfo;
-
-    /// An expression carrying `type_name` as the type the analyzer resolved.
-    /// `resolved_string_char_width` reads only that, so the kind is arbitrary.
-    fn typed_as(type_name: &str) -> Expr {
-        Expr::with_type(
-            ExprKind::Null(SourceSpan::default()),
-            TypeName::from(type_name),
-        )
-    }
 
     /// A narrow literal of `len` code units.
     fn literal(len: usize) -> Expr {
@@ -507,16 +473,9 @@ mod tests {
         }))
     }
 
-    /// A call typed by the analyzer as `type_name` and known to no function
-    /// table, which is how a `*_TO_STRING` conversion reaches the walk.
-    fn conversion_typed_as(type_name: &str) -> Expr {
-        Expr::with_type(
-            ExprKind::Function(Function {
-                name: Id::from("int_to_string"),
-                param_assignment: vec![],
-            }),
-            TypeName::from(type_name),
-        )
+    /// A `*_TO_STRING` conversion call, which no function table knows.
+    fn conversion() -> Expr {
+        call("int_to_string", vec![literal(0)])
     }
 
     /// A context that declares one narrow string variable `s` of capacity
@@ -653,7 +612,7 @@ mod tests {
     #[test]
     fn string_expr_shape_when_concat_operand_states_no_bound_then_default_is_added() {
         let ctx = CompileContext::new();
-        let expr = call("concat", vec![literal(10), conversion_typed_as("STRING")]);
+        let expr = call("concat", vec![literal(10), conversion()]);
 
         let shape = string_expr_shape(&ctx, &expr).unwrap();
 
@@ -685,10 +644,10 @@ mod tests {
     }
 
     #[test]
-    fn string_expr_shape_when_conversion_then_encoding_by_name_and_no_bound() {
+    fn string_expr_shape_when_conversion_then_narrow_with_no_bound() {
         let ctx = CompileContext::new();
 
-        let shape = string_expr_shape(&ctx, &conversion_typed_as("STRING")).unwrap();
+        let shape = string_expr_shape(&ctx, &conversion()).unwrap();
 
         assert_eq!(
             shape,
@@ -711,47 +670,31 @@ mod tests {
         let ctx = CompileContext::new();
 
         assert_eq!(
-            string_operand_capacity(&ctx, &conversion_typed_as("STRING")),
+            string_operand_capacity(&ctx, &conversion()),
             DEFAULT_STRING_MAX_LENGTH
         );
     }
 
-    #[test]
-    fn resolved_string_char_width_when_string_then_narrow() {
-        let width = resolved_string_char_width(&typed_as("STRING"), SourceSpan::default()).unwrap();
-        assert_eq!(width, CharWidth::Narrow);
-    }
-
-    #[test]
-    fn resolved_string_char_width_when_wstring_then_wide() {
-        let width =
-            resolved_string_char_width(&typed_as("WSTRING"), SourceSpan::default()).unwrap();
-        assert_eq!(width, CharWidth::Wide);
-    }
-
-    #[test]
-    fn resolved_string_char_width_when_typed_as_non_string_then_internal_error_names_the_type() {
+    #[rstest]
+    #[case::numeric_builtin("abs")]
+    #[case::string_to_num("string_to_int")]
+    #[case::unknown_user_function("my_func")]
+    fn string_expr_shape_when_call_yields_no_string_then_internal_error_names_the_call(
+        #[case] name: &str,
+    ) {
         // Unreachable by construction -- the analyzer has established that a
         // string argument is a string. Should it happen anyway, it stops the
-        // compile and says what it found, rather than passing a guessed width
-        // down to an encoding-mismatch trap at run time.
-        let diagnostic =
-            resolved_string_char_width(&typed_as("INT"), SourceSpan::default()).unwrap_err();
+        // compile and says which call it could not size, rather than passing
+        // a guessed capacity down to a silent truncation at run time.
+        let ctx = CompileContext::new();
+
+        let diagnostic = string_expr_shape(&ctx, &call(name, vec![literal(1)])).unwrap_err();
 
         assert_eq!(diagnostic.code, "P9998");
         assert!(
-            diagnostic.primary.message.contains("INT"),
-            "the message should name what was found, got: {}",
+            diagnostic.primary.message.contains(name),
+            "the message should name the call, got: {}",
             diagnostic.primary.message
         );
-    }
-
-    #[test]
-    fn resolved_string_char_width_when_untyped_then_internal_error() {
-        let untyped = Expr::new(ExprKind::Null(SourceSpan::default()));
-        let diagnostic = resolved_string_char_width(&untyped, SourceSpan::default()).unwrap_err();
-
-        assert_eq!(diagnostic.code, "P9998");
-        assert!(diagnostic.primary.message.contains("untyped"));
     }
 }
