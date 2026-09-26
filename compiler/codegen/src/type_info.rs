@@ -6,12 +6,40 @@
 //! opcodes, and the width the VM operates at. Keeping the projection here,
 //! rather than restating the table, is what stops the two from drifting.
 
+use std::collections::HashMap;
+
 use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
 use ironplc_dsl::core::Id;
 
 use ironplc_analyzer::intermediate_type::IntermediateType;
+use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{OpWidth, Signedness, VarTypeInfo};
+
+/// Maps each user-defined type an expression's resolved type can name to the
+/// `VarTypeInfo` its operands use.
+///
+/// The analyzer resolves an alias of an elementary type to the elementary
+/// name, but keeps the declared name of an enumeration or a subrange. Every
+/// enumeration operates as a `DINT` (REQ-EN-codegen-003); a subrange operates
+/// as its base type. No other user-defined type is an operand, so none is
+/// listed: an expression that names one reaches codegen only through a
+/// compiler defect.
+pub(crate) fn named_type_infos(types: &TypeEnvironment) -> HashMap<TypeName, VarTypeInfo> {
+    types
+        .iter_user_defined()
+        .filter_map(|(name, attrs)| {
+            let info = match &attrs.representation {
+                IntermediateType::Enumeration { .. } => crate::compile_enum::enum_var_type_info(),
+                subrange @ IntermediateType::Subrange { .. } => {
+                    crate::compile_struct::var_type_info_for_field(subrange)?
+                }
+                _ => return None,
+            };
+            Some((name.clone(), info))
+        })
+        .collect()
+}
 
 /// Maps an IEC 61131-3 type name to its `VarTypeInfo`.
 ///
@@ -173,5 +201,54 @@ mod tests {
 
         assert_eq!(info.op_width, op_width);
         assert_eq!(info.storage_bits, storage_bits);
+    }
+
+    /// The named type table built from `source`'s type environment.
+    fn named_type_infos_of(source: &str) -> HashMap<TypeName, VarTypeInfo> {
+        let options = ironplc_parser::options::CompilerOptions::default();
+        let library =
+            ironplc_parser::parse_program(source, &ironplc_dsl::core::FileId::default(), &options)
+                .unwrap();
+        let (_, context) = ironplc_analyzer::stages::resolve_types(&[&library], &options).unwrap();
+        named_type_infos(context.types())
+    }
+
+    const NAMED_TYPES: &str = "
+TYPE
+  COLOR : (RED, GREEN);
+  SHADE : COLOR;
+  BIG_RANGE : ULINT (0..10000000000);
+  POINT : STRUCT x : DINT; END_STRUCT;
+END_TYPE
+PROGRAM main
+END_PROGRAM
+";
+
+    #[rstest]
+    #[case::enumeration("COLOR")]
+    #[case::enumeration_alias("SHADE")]
+    fn named_type_infos_when_enumeration_then_operates_as_dint(#[case] type_name: &str) {
+        let infos = named_type_infos_of(NAMED_TYPES);
+
+        let info = infos.get(&TypeName::from(type_name)).unwrap();
+        assert_eq!(info.op_width, OpWidth::W32);
+        assert_eq!(info.signedness, Signedness::Signed);
+    }
+
+    #[test]
+    fn named_type_infos_when_subrange_then_operates_as_base_type() {
+        let infos = named_type_infos_of(NAMED_TYPES);
+
+        let info = infos.get(&TypeName::from("BIG_RANGE")).unwrap();
+        assert_eq!(info.op_width, OpWidth::W64);
+        assert_eq!(info.signedness, Signedness::Unsigned);
+        assert_eq!(info.storage_bits, 64);
+    }
+
+    #[test]
+    fn named_type_infos_when_structure_then_absent() {
+        let infos = named_type_infos_of(NAMED_TYPES);
+
+        assert!(!infos.contains_key(&TypeName::from("POINT")));
     }
 }

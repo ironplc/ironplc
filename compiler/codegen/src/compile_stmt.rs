@@ -648,7 +648,7 @@ fn compile_if(
     if let Some(classified) = try_classify_cmp(ctx, &if_stmt.expr) {
         emit_classified_cmp_br(emitter, classified, false, next_label);
     } else {
-        let cond_type = condition_op_type(&if_stmt.expr)?;
+        let cond_type = condition_op_type(ctx, &if_stmt.expr)?;
         compile_expr(emitter, ctx, &if_stmt.expr, cond_type)?;
         emitter.emit_jmp_if_not(next_label);
     }
@@ -669,7 +669,7 @@ fn compile_if(
         if let Some(classified) = try_classify_cmp(ctx, &elsif.expr) {
             emit_classified_cmp_br(emitter, classified, false, elsif_next);
         } else {
-            let elsif_op_type = condition_op_type(&elsif.expr)?;
+            let elsif_op_type = condition_op_type(ctx, &elsif.expr)?;
             compile_expr(emitter, ctx, &elsif.expr, elsif_op_type)?;
             emitter.emit_jmp_if_not(elsif_next);
         }
@@ -722,7 +722,7 @@ fn compile_case(
     // since all enums use DINT at codegen level (REQ-EN-codegen-003).
     let selector = CaseSelector {
         expr: &case_stmt.selector,
-        op_type: op_type(&case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE),
+        op_type: op_type(ctx, &case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE),
     };
 
     for group in &case_stmt.statement_groups {
@@ -988,7 +988,7 @@ fn compile_while(
     let end_label = emitter.create_label();
 
     emitter.bind_label(loop_label);
-    let cond_type = condition_op_type(&while_stmt.condition)?;
+    let cond_type = condition_op_type(ctx, &while_stmt.condition)?;
     compile_expr(emitter, ctx, &while_stmt.condition, cond_type)?;
     emitter.emit_jmp_if_not(end_label);
     ctx.loop_exit_labels.push(end_label);
@@ -1028,7 +1028,7 @@ fn compile_repeat(
     if let Some(classified) = classified_until {
         emit_classified_cmp_br(emitter, classified, false, loop_label);
     } else {
-        let cond_type = condition_op_type(&repeat_stmt.until)?;
+        let cond_type = condition_op_type(ctx, &repeat_stmt.until)?;
         compile_expr(emitter, ctx, &repeat_stmt.until, cond_type)?;
         emitter.emit_jmp_if_not(loop_label);
     }

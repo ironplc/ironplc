@@ -139,3 +139,46 @@ END_PROGRAM
 ",
     &[(0, 10)],
 );
+
+// A subrange of a 64-bit base compares at 64 bits: the literal fits ULINT,
+// and x (5_000_000_000) is above it.
+e2e_i64!(
+    end_to_end_when_ulint_subrange_compared_then_uses_base_width,
+    "
+TYPE
+  BIG_RANGE : ULINT (0..10000000000);
+END_TYPE
+
+PROGRAM main
+  VAR
+    x : BIG_RANGE := 5000000000;
+    d : LINT;
+  END_VAR
+  IF x > 4000000000 THEN d := 1; ELSE d := 2; END_IF;
+END_PROGRAM
+",
+    &[(1, 1)],
+);
+
+// A CASE selector of a 64-bit subrange matches a label above the i32 range.
+e2e_i64!(
+    end_to_end_when_ulint_subrange_case_selector_then_matches_wide_label,
+    "
+TYPE
+  BIG_RANGE : ULINT (0..10000000000);
+END_TYPE
+
+PROGRAM main
+  VAR
+    x : BIG_RANGE := 5000000000;
+    d : LINT;
+  END_VAR
+  CASE x OF
+    5000000000: d := 1;
+  ELSE
+    d := 2;
+  END_CASE;
+END_PROGRAM
+",
+    &[(1, 1)],
+);
