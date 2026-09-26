@@ -20,6 +20,12 @@ case came from.
 The Edition 2 bar is not negotiable. Everything else is judged on its quality
 at the time the Edition 2 core is trusted.
 
+IronPLC is not limited to Edition 2. It already supports Edition 3 features,
+including object-oriented programming and references, as well as language
+extensions and dialects for CODESYS, Beckhoff TwinCAT and RuSTy. These work
+today and you can use them. They are just not what decides when IronPLC
+reaches 1.0.
+
 ## Where things are now
 
 The current focus is fixing defects: making IronPLC's observed values match
@@ -35,14 +41,15 @@ the corpus, and making implementer-defined behavior into policies.
 
 ## Included in 1.0 if ready
 
-These are welcome in 1.0 if they are as trustworthy as the Edition 2 core
-when 1.0 is ready. They do not delay 1.0. Anything not ready stays behind its
-`--allow-*` flag or dialect, or waits for a later release.
+Most of these are already available today. They become part of the 1.0
+promise if they are as trustworthy as the Edition 2 core when 1.0 is ready.
+They do not delay 1.0. Anything not ready stays available behind its
+`--allow-*` flag or dialect, without the promise, until a later release.
 
-- Edition 3 features, including object-oriented programming
-- Language extensions and vendor dialects, such as references (`REF_TO`,
-  `REF`)
-- I/O binding
+- Edition 3 features, including object-oriented programming and references
+  (`REF_TO`, `REF`) (available)
+- Language extensions and the CODESYS, TwinCAT and RuSTy dialects (available)
+- I/O binding (not yet available)
 
 ## What 1.0 promises
 
@@ -51,7 +58,8 @@ when 1.0 is ready. They do not delay 1.0. Anything not ready stays behind its
 - **Results are stable.** The same source, compiled with the same dialect and
   policy selections, produces the same observed values on every 1.x release.
   The promise covers the default Edition 2 dialect and anything the release
-  notes declare ready.
+  notes declare ready. The one exception is a defect fix: if IronPLC produces
+  a wrong value, a 1.x release may correct it.
 - **Bytecode is safe but not stable.** A compiled `.iplc` file may not load
   in a different version of the runtime. Any change that alters how bytecode
   is read creates a new format revision, and the runtime rejects a file with
