@@ -7,7 +7,7 @@ use crate::ContainerError;
 pub const MAGIC: u32 = 0x49504C43;
 
 /// Current container format version.
-pub const FORMAT_VERSION: u16 = 3;
+pub const FORMAT_VERSION: u16 = 4;
 
 /// Flag bit: container expects __SYSTEM_UP_TIME at VarIndex(0) and
 /// __SYSTEM_UP_LTIME at VarIndex(1), written by the VM before each scan.

@@ -66,10 +66,10 @@ fn container_spec_req_cf_002_magic_is_iplc() {
     assert_eq!(bytes, [0x43, 0x4C, 0x50, 0x49]);
 }
 
-/// REQ-CF-container-003: Format version is 3.
+/// REQ-CF-container-003: Format version is 4.
 #[spec_test(REQ_CF_container_003)]
-fn container_spec_req_cf_003_format_version_is_3() {
-    assert_eq!(FORMAT_VERSION, 3);
+fn container_spec_req_cf_003_format_version_is_4() {
+    assert_eq!(FORMAT_VERSION, 4);
 }
 
 /// REQ-CF-container-004: All multi-byte values in the header are little-endian.
@@ -82,8 +82,8 @@ fn container_spec_req_cf_004_header_uses_little_endian() {
     // Magic at offset 0: 0x49504C43 in LE is [0x43, 0x4C, 0x50, 0x49]
     assert_eq!(&buf[0..4], &0x49504C43u32.to_le_bytes());
 
-    // Format version at offset 4: 3u16 in LE is [0x03, 0x00]
-    assert_eq!(&buf[4..6], &3u16.to_le_bytes());
+    // Format version at offset 4: 4u16 in LE is [0x04, 0x00]
+    assert_eq!(&buf[4..6], &4u16.to_le_bytes());
 }
 
 /// REQ-CF-container-005: Header field offsets match the spec table layout, totaling
@@ -317,11 +317,7 @@ fn container_spec_req_cf_018_type_section_sub_table_order() {
                 field_extra: 0,
             }],
         }],
-        array_descriptors: vec![ArrayDescriptor {
-            element_type: FieldType::F64 as u8,
-            total_elements: 3,
-            element_extra: 0,
-        }],
+        array_descriptors: vec![ArrayDescriptor::new(FieldType::F64 as u8, 3, 0)],
         user_fb_types: vec![UserFbDescriptor {
             type_id: FbTypeId::new(0x0B),
             function_id: FunctionId::new(2),
@@ -331,33 +327,34 @@ fn container_spec_req_cf_018_type_section_sub_table_order() {
     };
     let buf = write_type_section(&section);
     // fb count(2) + fb header(4) + one field(4) = 10, then array count(2) +
-    // descriptor(8) = 20, then user count(2) + descriptor(8) = 30.
-    assert_eq!(buf.len(), 30);
+    // descriptor(12) = 24, then user count(2) + descriptor(8) = 34.
+    assert_eq!(buf.len(), 34);
     assert_eq!(&buf[0..2], &1u16.to_le_bytes());
     assert_eq!(&buf[2..4], &0x0Au16.to_le_bytes());
     assert_eq!(&buf[10..12], &1u16.to_le_bytes());
     assert_eq!(buf[12], FieldType::F64 as u8);
-    assert_eq!(&buf[20..22], &1u16.to_le_bytes());
-    assert_eq!(&buf[22..24], &0x0Bu16.to_le_bytes());
+    assert_eq!(&buf[24..26], &1u16.to_le_bytes());
+    assert_eq!(&buf[26..28], &0x0Bu16.to_le_bytes());
 }
 
 /// REQ-CF-container-019: An ArrayDescriptor is element_type u8, reserved u8,
-/// total_elements u32, element_extra u16 — 8 bytes.
+/// total_elements u32, element_extra u16, element_stride u32 — 12 bytes.
 #[spec_test(REQ_CF_container_019)]
-fn container_spec_req_cf_019_array_descriptor_is_8_bytes() {
+fn container_spec_req_cf_019_array_descriptor_is_12_bytes() {
     let section = TypeSection {
         array_descriptors: vec![ArrayDescriptor {
             element_type: FieldType::String as u8,
             total_elements: 0x0102_0304,
             element_extra: 0x0506,
+            element_stride: 0x0708_090A,
         }],
         ..Default::default()
     };
     let buf = write_type_section(&section);
-    // fb count(2) + array count(2) + descriptor(8) + user count(2)
-    assert_eq!(buf.len(), 14);
+    // fb count(2) + array count(2) + descriptor(12) + user count(2)
+    assert_eq!(buf.len(), 18);
     assert_eq!(
-        &buf[4..12],
+        &buf[4..16],
         &[
             FieldType::String as u8,
             0,
@@ -366,7 +363,11 @@ fn container_spec_req_cf_019_array_descriptor_is_8_bytes() {
             0x02,
             0x01,
             0x06,
-            0x05
+            0x05,
+            0x0A,
+            0x09,
+            0x08,
+            0x07
         ]
     );
 }
