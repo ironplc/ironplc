@@ -14,15 +14,21 @@ LDATE_AND_TIME
    * - **Default**
      - ``LDT#1970-01-01-00:00:00``
    * - **Range**
-     - ``LDT#1970-01-01-00:00:00`` to ``LDT#2106-02-07-06:28:15``
+     - ``LDT#1970-01-01-00:00:00`` to ``LDT#9999-12-31-23:59:59``
    * - **IEC 61131-3**
      - Section 2.3.1 (Edition 3)
    * - **Support**
      - Supported (:doc:`Edition 3 </reference/language/edition-support>`)
 
-A date is stored as a count of seconds since 1970-01-01, so a literal
-outside ``LDT#1970-01-01-00:00:00`` to ``LDT#2106-02-07-06:28:15`` is reported as
+A date and time is stored as a count of seconds since 1970-01-01. ``LDT``
+counts them in 64 bits, so it reaches far past the 2106 ceiling a 32-bit
+:doc:`date-and-time` has; a literal outside ``LDT#1970-01-01-00:00:00`` to
+``LDT#9999-12-31-23:59:59`` is reported as
 :doc:`P2038 </reference/compiler/problems/P2038>`.
+
+An ``LDT`` accepts a ``DT#`` literal, which widens, but a ``DT`` does not accept
+an ``LDT#`` one — that narrows, and is reported as
+:doc:`P4022 </reference/compiler/problems/P4022>`.
 
 Literals
 --------
