@@ -135,19 +135,22 @@ impl Visitor<Infallible> for RuleFunctionCallInOutArgument<'_> {
                 }
 
                 // A REF_TO parameter's type is its target's; leave it to the
-                // reference rules. Non-elementary types are not compared.
+                // reference rules. A parameter of another non-elementary type
+                // is not compared.
                 if param.is_reference {
                     continue;
                 }
                 let Some(arg_type) = &arg.resolved_type else {
                     continue;
                 };
-                let (Some(expected), Some(actual)) = (
-                    self.elementary(&param.param_type),
-                    self.elementary(arg_type),
-                ) else {
+                let Some(expected) = self.elementary(&param.param_type) else {
                     continue;
                 };
+                // An argument of any other type, elementary or not (an
+                // enumeration, a reference, a structure), is a mismatch.
+                let actual = self
+                    .elementary(arg_type)
+                    .unwrap_or_else(|| arg_type.clone());
                 if expected != actual {
                     self.diagnostics.push(
                         Diagnostic::problem(
@@ -174,7 +177,10 @@ mod tests {
     use rstest::rstest;
 
     const INC: &str = "
-TYPE MyDint : DINT := 0; END_TYPE
+TYPE
+    MyDint : DINT := 0;
+    Pair : STRUCT a : DINT; b : DINT; END_STRUCT;
+END_TYPE
 
 FUNCTION INC : DINT
 VAR_INPUT
@@ -236,6 +242,7 @@ END_PROGRAM"
     #[rstest]
     #[case::narrower_integer("x : INT;", "int")]
     #[case::other_category("x : REAL;", "real")]
+    #[case::structure("x : Pair;", "Pair")]
     fn apply_when_in_out_argument_type_differs_then_p4058(
         #[case] vars: &str,
         #[case] actual: &str,
