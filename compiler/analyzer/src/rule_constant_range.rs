@@ -15,6 +15,12 @@
 //! patterns rather than magnitudes, and wrapping one is a legitimate thing
 //! for a program to want.
 //!
+//! A constant is checked wherever it is stored: an assignment, a variable's
+//! initial value, the elements of an array, structure or function block
+//! instance initializer, the default of a structure field or type
+//! declaration, and an argument passed to a function or function block
+//! input, against the type of the parameter it binds to.
+//!
 //! How a literal was spelled makes no difference: `16#1FF` is 511 whichever
 //! radix it was written in, and 511 is not a `USINT`. The radix does not
 //! survive parsing in any case.
@@ -77,7 +83,8 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::{ByteSized, IntermediateType},
+    function_environment::FunctionEnvironment,
+    intermediate_type::{ByteSized, FunctionBlockVarType, IntermediateType},
     result::SemanticResult,
     rule_real_literal_range,
     rule_support::{run_rule, DiagnosticVisitor},
@@ -95,6 +102,7 @@ pub fn apply(
     run_rule(
         RuleConstantRange {
             type_environment: context.types(),
+            function_environment: context.functions(),
             // `Declarations::new` opens the base scope, where declarations
             // made outside any POU land. Opening another here would leave the
             // stack unbalanced when the table drops.
@@ -107,6 +115,8 @@ pub fn apply(
 
 struct RuleConstantRange<'a> {
     type_environment: &'a TypeEnvironment,
+    /// The signature of every function, which states its parameters' types.
+    function_environment: &'a FunctionEnvironment,
     /// The declared type of every variable in scope.
     declarations: Declarations<'a>,
     diagnostics: Vec<Diagnostic>,
@@ -242,8 +252,8 @@ impl RuleConstantRange<'_> {
     ///
     /// The walk follows the operators the backend compiles at one operation
     /// type, and stops at anything that introduces a type of its own: a
-    /// function's arguments are its parameters' business, and a variable
-    /// carries its own declaration.
+    /// function's arguments are checked against its parameters when the
+    /// call is visited, and a variable carries its own declaration.
     ///
     /// A negated literal needs no handling here. Constant folding turns
     /// `-200` into one signed literal before any rule runs, so a `Neg` that
@@ -288,13 +298,194 @@ impl RuleConstantRange<'_> {
 
     /// Checks the constants a declaration's initializer stores against the
     /// declared type.
+    ///
+    /// Every kind of initializer that can hold a constant is checked: a
+    /// simple initial value, the elements of an array initializer, and the
+    /// element values of a function block instance initializer, each against
+    /// the type of the place it initializes.
     fn check_initializer(&mut self, initializer: &InitialValueAssignmentKind) {
-        if let InitialValueAssignmentKind::Simple(simple) = initializer {
-            if let Some(constant) = &simple.initial_value {
-                if let Some(attributes) = self.type_environment.get(&simple.type_name) {
-                    let declared = attributes.representation.clone();
-                    self.check_constant(constant, &declared);
+        match initializer {
+            InitialValueAssignmentKind::Simple(simple) => {
+                if let Some(constant) = &simple.initial_value {
+                    if let Some(declared) = self.representation_of(&simple.type_name) {
+                        self.check_constant(constant, &declared);
+                    }
                 }
+            }
+            InitialValueAssignmentKind::Array(array) => {
+                if let Some(declared) =
+                    variable_type::resolve_initializer(initializer, self.type_environment)
+                {
+                    self.check_array_elements(&array.initial_values, &declared);
+                }
+            }
+            InitialValueAssignmentKind::FunctionBlock(function_block) => {
+                self.check_named_elements(&function_block.type_name, &function_block.init);
+            }
+            // A structure initializer is a `StructureInitializationDeclaration`,
+            // which the visitor reaches on its own, in a `VAR` block and a
+            // `TYPE` block alike. The remaining kinds hold no numeric constant
+            // (a string, an enumerated value, a reference), take their range
+            // from a subrange that `rule_range_limits` checks, or pass
+            // arguments to a constructor rather than store values.
+            _ => {}
+        }
+    }
+
+    /// The representation of the type `type_name` names.
+    fn representation_of(&self, type_name: &TypeName) -> Option<IntermediateType> {
+        self.type_environment
+            .get(type_name)
+            .map(|attributes| attributes.representation.clone())
+    }
+
+    /// Checks structure element initializers against the fields of the type
+    /// `type_name` names.
+    fn check_named_elements(&mut self, type_name: &TypeName, elements: &[StructureElementInit]) {
+        if let Some(declared) = self.representation_of(type_name) {
+            self.check_element_inits(elements, &declared);
+        }
+    }
+
+    /// Checks structure element initializers against the fields of
+    /// `declared`, a structure or function block type.
+    fn check_element_inits(
+        &mut self,
+        elements: &[StructureElementInit],
+        declared: &IntermediateType,
+    ) {
+        for element in elements {
+            if let Some(field) = variable_type::struct_field_type(declared, &element.name) {
+                self.check_struct_value(&element.init, &field);
+            }
+        }
+    }
+
+    /// Checks the value a structure element initializer stores into a field
+    /// of type `expected`.
+    fn check_struct_value(
+        &mut self,
+        value: &StructInitialValueAssignmentKind,
+        expected: &IntermediateType,
+    ) {
+        match value {
+            StructInitialValueAssignmentKind::Constant(constant) => {
+                self.check_constant(constant, expected)
+            }
+            StructInitialValueAssignmentKind::Array(elements) => {
+                self.check_array_elements(elements, expected)
+            }
+            StructInitialValueAssignmentKind::Structure(elements) => {
+                self.check_element_inits(elements, expected)
+            }
+            StructInitialValueAssignmentKind::Expression(expr) => self.check_expr(expr, expected),
+            StructInitialValueAssignmentKind::EnumeratedValue(_)
+            | StructInitialValueAssignmentKind::LateBound(_) => {}
+        }
+    }
+
+    /// Checks the elements of an array initializer against the element type
+    /// of `declared`.
+    ///
+    /// An array initializer lists the elements flat whatever the array's
+    /// shape, so an array whose elements are themselves arrays is checked
+    /// against the innermost element type.
+    fn check_array_elements(
+        &mut self,
+        elements: &[ArrayInitialElementKind],
+        declared: &IntermediateType,
+    ) {
+        // Anything but an array has no element type to check against.
+        let IntermediateType::Array { element_type, .. } = declared else {
+            return;
+        };
+        let mut element_type = element_type.as_ref();
+        while let IntermediateType::Array {
+            element_type: inner,
+            ..
+        } = element_type
+        {
+            element_type = inner;
+        }
+        for element in elements {
+            self.check_array_element(element, element_type);
+        }
+    }
+
+    /// Checks one array initializer element, including every repetition of
+    /// a repeated one (`2(300)`), against `expected`.
+    fn check_array_element(
+        &mut self,
+        element: &ArrayInitialElementKind,
+        expected: &IntermediateType,
+    ) {
+        match element {
+            ArrayInitialElementKind::Constant(constant) => self.check_constant(constant, expected),
+            ArrayInitialElementKind::Repeated(repeated) => {
+                if let Some(inner) = repeated.init.as_ref() {
+                    self.check_array_element(inner, expected);
+                }
+            }
+            ArrayInitialElementKind::EnumValue(_) => {}
+        }
+    }
+
+    /// Checks each input argument of a function call against the type of the
+    /// parameter it binds to.
+    ///
+    /// A generic parameter (`ANY_NUM`) is not a type in the environment and
+    /// states no range, so its argument is not checked.
+    fn check_function_arguments(&mut self, node: &Function) {
+        let Some(signature) = self.function_environment.get(&node.name) else {
+            return;
+        };
+        for (param, arg) in signature.bind_inputs(&node.param_assignment) {
+            if param.is_reference {
+                continue;
+            }
+            if let Some(expected) = self.representation_of(&param.param_type) {
+                self.check_expr(arg, &expected);
+            }
+        }
+    }
+
+    /// Checks each input argument of a function block call against the type
+    /// of the input it binds to: a named argument by name among the
+    /// `VAR_INPUT` and `VAR_IN_OUT` variables, a positional one by position
+    /// among the `VAR_INPUT` variables.
+    fn check_fb_call_arguments(&mut self, node: &FbCall) {
+        let Some(declared) = self.declarations.find(&node.var_name) else {
+            return;
+        };
+        let InitialValueAssignmentKind::FunctionBlock(instance) = &declared.0 else {
+            return;
+        };
+        let Some(IntermediateType::FunctionBlock { fields, .. }) =
+            self.representation_of(&instance.type_name)
+        else {
+            return;
+        };
+
+        let mut positional = fields
+            .iter()
+            .filter(|field| field.var_type == Some(FunctionBlockVarType::Input));
+        for param in &node.params {
+            let (field, arg) = match param {
+                ParamAssignmentKind::PositionalInput(input) => (positional.next(), &input.expr),
+                ParamAssignmentKind::NamedInput(input) => (
+                    fields.iter().find(|field| {
+                        field.name == input.name
+                            && matches!(
+                                field.var_type,
+                                Some(FunctionBlockVarType::Input | FunctionBlockVarType::InOut)
+                            )
+                    }),
+                    &input.expr,
+                ),
+                ParamAssignmentKind::Output(_) => continue,
+            };
+            if let Some(field) = field {
+                self.check_expr(arg, &field.field_type);
             }
         }
     }
@@ -404,6 +595,47 @@ impl Visitor<Infallible> for RuleConstantRange<'_> {
                 self.check_expr(&node.value, &target);
             }
         }
+        node.recurse_visit(self)
+    }
+
+    /// A type alias's default (`R : REAL := 1.0E300`) is checked against the
+    /// type it aliases.
+    fn visit_simple_declaration(&mut self, node: &SimpleDeclaration) -> Result<(), Infallible> {
+        self.check_initializer(&node.spec_and_init);
+        node.recurse_visit(self)
+    }
+
+    /// A structure field's default is checked against the field's type.
+    fn visit_structure_element_declaration(
+        &mut self,
+        node: &StructureElementDeclaration,
+    ) -> Result<(), Infallible> {
+        self.check_initializer(&node.init);
+        node.recurse_visit(self)
+    }
+
+    fn visit_array_declaration(&mut self, node: &ArrayDeclaration) -> Result<(), Infallible> {
+        if let Some(declared) = self.representation_of(&node.type_name) {
+            self.check_array_elements(&node.init, &declared);
+        }
+        node.recurse_visit(self)
+    }
+
+    fn visit_structure_initialization_declaration(
+        &mut self,
+        node: &StructureInitializationDeclaration,
+    ) -> Result<(), Infallible> {
+        self.check_named_elements(&node.type_name, &node.elements_init);
+        node.recurse_visit(self)
+    }
+
+    fn visit_function(&mut self, node: &Function) -> Result<(), Infallible> {
+        self.check_function_arguments(node);
+        node.recurse_visit(self)
+    }
+
+    fn visit_fb_call(&mut self, node: &FbCall) -> Result<(), Infallible> {
+        self.check_fb_call_arguments(node);
         node.recurse_visit(self)
     }
 

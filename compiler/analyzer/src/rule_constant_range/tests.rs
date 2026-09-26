@@ -238,17 +238,23 @@ fn apply_when_prefixed_literal_in_comparison_then_err() {
     assert_eq!(codes, 1);
 }
 
-/// The destination check stops at a function call, whose arguments are
-/// the parameters' business. The literal's own type travels with it.
+/// The literal's own type travels with it into a function argument. The
+/// parameter is a `LINT`, which holds 40000, so only the prefix decides.
 #[test]
 fn apply_when_prefixed_literal_is_function_argument_then_err() {
-    let codes = out_of_range_count(&program_with(
-        "x : DINT;\n",
-        "x := INT_TO_DINT(INT#40000);\n",
+    let codes = out_of_range_count(&format!(
+        "{WIDE_FUNCTION}{}",
+        program_with("x : LINT;\n", "x := WIDE(INT#40000);\n")
     ));
 
     assert_eq!(codes, 1);
 }
+
+const WIDE_FUNCTION: &str = "FUNCTION WIDE : LINT
+VAR_INPUT p : LINT; END_VAR
+WIDE := p;
+END_FUNCTION
+";
 
 /// A literal that is a valid `INT` but not a valid `SINT` is the
 /// destination's problem alone.
@@ -334,8 +340,7 @@ fn apply_when_real_assignment_out_of_range_then_err() {
 /// Each factor is a valid `REAL`, but their product is not.
 #[test]
 fn apply_when_folded_real_out_of_range_then_err() {
-    let codes =
-        real_out_of_range_count(&program_with("x : REAL;\n", "x := 1.0E30 * 1.0E30;\n"));
+    let codes = real_out_of_range_count(&program_with("x : REAL;\n", "x := 1.0E30 * 1.0E30;\n"));
 
     assert_eq!(codes, 1);
 }
@@ -369,4 +374,123 @@ fn apply_when_not_integer_storage_then_ok(#[case] declared_type: &str, #[case] v
     let program = program_with(&format!("x : {declared_type} := {value};\n"), "");
 
     assert_eq!(out_of_range_count(&program), 0);
+}
+
+// --- Initializers, type defaults and call arguments ---
+//
+// Each context is checked for an integer (P2026) and an untyped real
+// stored into a `REAL` (P2040), with a value that fits alongside to show
+// the check is about the value.
+
+const SMALL_TYPES: &str = "TYPE
+Small : STRUCT
+    i : USINT;
+    r : REAL;
+    a : ARRAY[1..2] OF USINT;
+END_STRUCT;
+Outer : STRUCT
+    inner : Small;
+END_STRUCT;
+END_TYPE
+
+FUNCTION TAKE : REAL
+VAR_INPUT i : USINT; r : REAL; END_VAR
+TAKE := r;
+END_FUNCTION
+
+FUNCTION_BLOCK HOLD
+VAR_INPUT i : USINT; r : REAL; END_VAR
+VAR_IN_OUT io : USINT; END_VAR
+END_FUNCTION_BLOCK
+";
+
+/// Analyzes `SMALL_TYPES` and a program with `declarations` and `body`,
+/// returning (integer, real) out-of-range counts.
+fn counts_with_types(declarations: &str, body: &str) -> (usize, usize) {
+    let program = format!("{SMALL_TYPES}{}", program_with(declarations, body));
+    (
+        out_of_range_count(&program),
+        real_out_of_range_count(&program),
+    )
+}
+
+#[rstest]
+#[case::array_integer("a : ARRAY[1..3] OF USINT := [1, 300, 255];\n", (1, 0))]
+#[case::array_real("a : ARRAY[1..2] OF REAL := [1.0E300, 1.0];\n", (0, 1))]
+#[case::array_in_range("a : ARRAY[1..2] OF USINT := [0, 255];\n", (0, 0))]
+#[case::array_repeated("a : ARRAY[1..4] OF USINT := [2(300), 2(1)];\n", (1, 0))]
+#[case::array_multi_dimension("a : ARRAY[1..2, 1..2] OF USINT := [1, 2, 3, 300];\n", (1, 0))]
+#[case::struct_integer("s : Small := (i := 300);\n", (1, 0))]
+#[case::struct_real("s : Small := (r := 1.0E300);\n", (0, 1))]
+#[case::struct_in_range("s : Small := (i := 255, r := 1.0);\n", (0, 0))]
+#[case::struct_array_field("s : Small := (a := [1, 300]);\n", (1, 0))]
+#[case::struct_nested("o : Outer := (inner := (i := 300));\n", (1, 0))]
+#[case::function_block_instance("h : HOLD := (i := 300, r := 1.0E300);\n", (1, 1))]
+fn apply_when_initializer_out_of_range_then_err(
+    #[case] declarations: &str,
+    #[case] expected: (usize, usize),
+) {
+    assert_eq!(counts_with_types(declarations, ""), expected);
+}
+
+#[rstest]
+#[case::named_integer("x := TAKE(i := 300, r := 1.0);\n", (1, 0))]
+#[case::named_real("x := TAKE(i := 1, r := 1.0E300);\n", (0, 1))]
+#[case::positional("x := TAKE(300, 1.0E300);\n", (1, 1))]
+#[case::in_range("x := TAKE(255, 1.0);\n", (0, 0))]
+#[case::folded("x := TAKE(255 + 1, 1.0);\n", (1, 0))]
+#[case::fb_named("h(i := 300, r := 1.0E300);\n", (1, 1))]
+#[case::fb_positional("h(300, 1.0E300);\n", (1, 1))]
+#[case::fb_in_range("h(i := 255, r := 1.0);\n", (0, 0))]
+#[case::fb_named_in_out("h(io := y);\n", (0, 0))]
+fn apply_when_call_argument_out_of_range_then_err(
+    #[case] body: &str,
+    #[case] expected: (usize, usize),
+) {
+    assert_eq!(
+        counts_with_types("x : REAL;\nh : HOLD;\ny : USINT;\n", body),
+        expected
+    );
+}
+
+/// A generic parameter states no range, so a standard function's `ANY_NUM`
+/// argument is not checked; a concrete parameter of a conversion function is.
+#[rstest]
+#[case::generic("x : DINT;\n", "x := ADD(300, 1);\n", 0)]
+#[case::conversion("x : INT;\n", "x := USINT_TO_INT(300);\n", 1)]
+fn apply_when_standard_function_argument_then_checked_by_parameter_type(
+    #[case] declarations: &str,
+    #[case] body: &str,
+    #[case] expected: usize,
+) {
+    assert_eq!(
+        out_of_range_count(&program_with(declarations, body)),
+        expected
+    );
+}
+
+#[rstest]
+#[case::struct_field_integer("S : STRUCT f : USINT := 300; END_STRUCT;", (1, 0))]
+#[case::struct_field_real("S : STRUCT f : REAL := 1.0E300; END_STRUCT;", (0, 1))]
+#[case::struct_field_array("S : STRUCT f : ARRAY[1..2] OF USINT := [1, 300]; END_STRUCT;", (1, 0))]
+#[case::alias_integer("Small : USINT := 300;", (1, 0))]
+#[case::alias_real("R : REAL := 1.0E300;", (0, 1))]
+#[case::alias_in_range("Small : USINT := 255;", (0, 0))]
+#[case::array_type("A : ARRAY[1..2] OF USINT := [2(300)];", (1, 0))]
+fn apply_when_type_default_out_of_range_then_err(
+    #[case] declarations: &str,
+    #[case] expected: (usize, usize),
+) {
+    let program = format!(
+        "TYPE\n{declarations}\nEND_TYPE\n{}",
+        program_with("x : DINT;\n", "")
+    );
+
+    assert_eq!(
+        (
+            out_of_range_count(&program),
+            real_out_of_range_count(&program)
+        ),
+        expected
+    );
 }
