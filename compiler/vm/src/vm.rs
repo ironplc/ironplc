@@ -2227,9 +2227,10 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
             // Operands: var_index (u16), desc_index (u16)
             // Stack effect: none
             //
-            // Reads element_extra from the array descriptor as max_string_length.
-            // Element stride = STRING_HEADER_BYTES + max_string_length.
-            // Loops through all elements writing [max_len][cur_len=0] headers.
+            // Reads element_extra from the array descriptor as max_string_length
+            // and steps between elements by the descriptor's element stride
+            // (ADR-0054). Loops through all elements writing
+            // [max_len][cur_len=0] headers.
             opcode::STR_INIT_ARRAY => {
                 let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
                 let desc_index = read_u16_le(bytecode, &mut pc)?;
@@ -2242,10 +2243,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
                 // Element width comes from the descriptor's element_type
-                // (FieldType::String vs WString). The stride spans the header
-                // plus max_str_len code units, each char_width bytes (ADR-0035).
+                // (FieldType::String vs WString) (ADR-0035).
                 let char_width = desc.element_char_width();
-                let stride = STRING_HEADER_BYTES + max_str_len as usize * char_width.as_usize();
+                let stride = desc.element_stride() as usize;
 
                 scope.check_access(var_index)?;
                 let base_offset = variables.load(var_index)?.as_i32() as u32 as usize;
@@ -2285,8 +2285,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .ok_or(Trap::InvalidVariableIndex(var_index))?;
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
-                let stride = STRING_HEADER_BYTES
-                    + max_str_len as usize * desc.element_char_width().as_usize();
+                let stride = desc.element_stride() as usize;
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
@@ -2354,8 +2353,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .ok_or(Trap::InvalidVariableIndex(var_index))?;
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
-                let stride = STRING_HEADER_BYTES
-                    + max_str_len as usize * desc.element_char_width().as_usize();
+                let stride = desc.element_stride() as usize;
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {

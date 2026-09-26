@@ -70,12 +70,12 @@ pub struct FbTypeDescriptor {
 
 /// An array descriptor in the type section.
 ///
-/// Describes the element type and total number of elements for a single
-/// array shape. Descriptors are deduplicated: multiple variables with
-/// the same element type and size share one descriptor.
+/// Describes the element type, total number of elements and element stride
+/// for a single array shape. Descriptors are deduplicated: multiple variables
+/// with the same shape share one descriptor.
 ///
-/// On disk this is 8 bytes:
-/// `[element_type: u8] [reserved: u8] [total_elements: u32 LE] [element_extra: u16 LE]`
+/// On disk this is 12 bytes:
+/// `[element_type: u8] [reserved: u8] [total_elements: u32 LE] [element_extra: u16 LE] [element_stride: u32 LE]`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArrayDescriptor {
     /// Element type tag using the same encoding as [`FieldType`]
@@ -84,17 +84,52 @@ pub struct ArrayDescriptor {
     /// Total number of elements across all dimensions.
     pub total_elements: u32,
     /// Extra type-specific data. For STRING arrays, this holds the
-    /// max string length (element stride = STRING_HEADER_BYTES + element_extra).
-    /// Zero for primitive element types.
+    /// max string length in code units. Zero for primitive element types.
     pub element_extra: u16,
+    /// Byte distance between the starts of consecutive elements.
+    ///
+    /// Usually the element's own size ([`ArrayDescriptor::natural_stride`]).
+    /// It is larger when the elements are fields of consecutive structures,
+    /// such as the STRING field of each element of an array of structures,
+    /// where it is the size of one structure (ADR-0054).
+    pub element_stride: u32,
 }
 
 impl ArrayDescriptor {
+    /// Creates a descriptor whose elements are packed back to back, at the
+    /// element type's natural stride.
+    pub fn new(element_type: u8, total_elements: u32, element_extra: u16) -> Self {
+        Self {
+            element_type,
+            total_elements,
+            element_extra,
+            element_stride: Self::natural_stride(element_type, element_extra),
+        }
+    }
+
+    /// Returns the size in bytes of one element of the given type.
+    ///
+    /// STRING/WSTRING elements are variable-length regions laid out as
+    /// `[max_length: u16][cur_length: u16][encoding: u16][data]` (ADR-0015,
+    /// ADR-0035), so their size depends on `element_extra` (the max length in
+    /// code units) and the per-code-unit width. Every other element type
+    /// occupies exactly one 8-byte slot.
+    pub fn natural_stride(element_type: u8, element_extra: u16) -> u32 {
+        if element_type == FieldType::String as u8 {
+            crate::STRING_HEADER_BYTES as u32 + element_extra as u32
+        } else if element_type == FieldType::WString as u8 {
+            crate::STRING_HEADER_BYTES as u32
+                + element_extra as u32 * crate::CharWidth::Wide.byte_width() as u32
+        } else {
+            SLOT_BYTES
+        }
+    }
+
     /// Returns the per-code-unit [`CharWidth`] for a STRING/WSTRING element
     /// array, derived from `element_type`. Wide for [`FieldType::WString`],
-    /// narrow otherwise. The VM uses this to size the element stride and to
-    /// write element headers (ADR-0035). Non-string arrays return
-    /// [`CharWidth::Narrow`]; callers only consult this for string elements.
+    /// narrow otherwise. The VM uses this to write element headers
+    /// (ADR-0035). Non-string arrays return [`CharWidth::Narrow`]; callers
+    /// only consult this for string elements.
     pub fn element_char_width(&self) -> crate::CharWidth {
         if self.element_type == FieldType::WString as u8 {
             crate::CharWidth::Wide
@@ -103,21 +138,33 @@ impl ArrayDescriptor {
         }
     }
 
-    /// Returns the byte stride of one element in the data region.
-    ///
-    /// STRING/WSTRING elements are variable-length regions laid out as
-    /// `[max_length: u16][cur_length: u16][encoding: u16][data]` (ADR-0015,
-    /// ADR-0035), so their stride depends on `element_extra` (the max length in
-    /// code units) and the per-code-unit width. Every other element type
-    /// occupies exactly one 8-byte slot.
+    /// Returns the byte distance between the starts of consecutive elements.
     pub fn element_stride(&self) -> u32 {
-        if self.element_type == FieldType::String as u8
-            || self.element_type == FieldType::WString as u8
-        {
-            crate::STRING_HEADER_BYTES as u32
-                + (self.element_extra as u32) * (self.element_char_width().byte_width() as u32)
+        self.element_stride
+    }
+
+    /// Checks that the stride is one the VM can honour.
+    ///
+    /// A STRING/WSTRING stride may exceed the element's size but not fall
+    /// below it, which would make elements overlap. Every other element type
+    /// must use exactly one slot, because `LOAD_ARRAY` and `STORE_ARRAY`
+    /// step by one slot regardless of the descriptor.
+    pub fn validate(&self) -> Result<(), ContainerError> {
+        let natural = Self::natural_stride(self.element_type, self.element_extra);
+        let is_string = self.element_type == FieldType::String as u8
+            || self.element_type == FieldType::WString as u8;
+        let valid = if is_string {
+            self.element_stride >= natural
         } else {
-            SLOT_BYTES
+            self.element_stride == natural
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(ContainerError::InvalidArrayStride {
+                element_type: self.element_type,
+                element_stride: self.element_stride,
+            })
         }
     }
 
@@ -128,6 +175,11 @@ impl ArrayDescriptor {
     /// codegen (when allocating the region) and the VM (when bounds-checking a
     /// [`crate::opcode::COPY_REGION`]). Structure variables are described as a
     /// flat array of [`FieldType::Slot`] elements, so they are covered too.
+    ///
+    /// Only meaningful for a descriptor at its natural stride: a strided
+    /// descriptor addresses one field of each of a run of structures, which
+    /// is not a contiguous span of its own. Codegen never passes one to
+    /// `COPY_REGION`.
     pub fn byte_size(&self) -> Option<u32> {
         self.total_elements.checked_mul(self.element_stride())
     }
@@ -137,7 +189,7 @@ impl ArrayDescriptor {
 pub const SLOT_BYTES: u32 = 8;
 
 /// Size of a single array descriptor on disk in bytes.
-const ARRAY_DESCRIPTOR_SIZE: usize = 8;
+const ARRAY_DESCRIPTOR_SIZE: usize = 12;
 
 /// A user-defined function block descriptor in the type section.
 ///
@@ -177,7 +229,7 @@ impl TypeSection {
         for desc in &self.fb_types {
             size += 4 + desc.fields.len() as u32 * FIELD_ENTRY_SIZE as u32;
         }
-        // Array descriptors: count(2) + descriptors * 8
+        // Array descriptors: count(2) + descriptors * 12
         size += 2 + self.array_descriptors.len() as u32 * ARRAY_DESCRIPTOR_SIZE as u32;
         // User FB descriptors: count(2) + descriptors * 8
         size += 2 + self.user_fb_types.len() as u32 * USER_FB_DESCRIPTOR_SIZE as u32;
@@ -208,6 +260,7 @@ impl TypeSection {
             w.write_all(&[0u8])?; // reserved
             w.write_all(&desc.total_elements.to_le_bytes())?;
             w.write_all(&desc.element_extra.to_le_bytes())?;
+            w.write_all(&desc.element_stride.to_le_bytes())?;
         }
 
         // User FB descriptors
@@ -266,11 +319,16 @@ impl TypeSection {
             let total_elements =
                 u32::from_le_bytes([desc_buf[2], desc_buf[3], desc_buf[4], desc_buf[5]]);
             let element_extra = u16::from_le_bytes([desc_buf[6], desc_buf[7]]);
-            array_descriptors.push(ArrayDescriptor {
+            let element_stride =
+                u32::from_le_bytes([desc_buf[8], desc_buf[9], desc_buf[10], desc_buf[11]]);
+            let desc = ArrayDescriptor {
                 element_type,
                 total_elements,
                 element_extra,
-            });
+                element_stride,
+            };
+            desc.validate()?;
+            array_descriptors.push(desc);
         }
 
         // User FB descriptors
@@ -386,16 +444,8 @@ mod tests {
         let section = TypeSection {
             fb_types: vec![],
             array_descriptors: vec![
-                ArrayDescriptor {
-                    element_type: FieldType::I32 as u8,
-                    total_elements: 10,
-                    element_extra: 0,
-                },
-                ArrayDescriptor {
-                    element_type: FieldType::F64 as u8,
-                    total_elements: 32768,
-                    element_extra: 0,
-                },
+                ArrayDescriptor::new(FieldType::I32 as u8, 10, 0),
+                ArrayDescriptor::new(FieldType::F64 as u8, 32768, 0),
             ],
             user_fb_types: vec![],
         };
@@ -430,11 +480,7 @@ mod tests {
                     field_extra: 0,
                 }],
             }],
-            array_descriptors: vec![ArrayDescriptor {
-                element_type: FieldType::U32 as u8,
-                total_elements: 100,
-                element_extra: 0,
-            }],
+            array_descriptors: vec![ArrayDescriptor::new(FieldType::U32 as u8, 100, 0)],
             user_fb_types: vec![],
         };
 
@@ -466,21 +512,89 @@ mod tests {
         let section = TypeSection {
             fb_types: vec![],
             array_descriptors: vec![
-                ArrayDescriptor {
-                    element_type: 0,
-                    total_elements: 10,
-                    element_extra: 0,
-                },
-                ArrayDescriptor {
-                    element_type: 4,
-                    total_elements: 20,
-                    element_extra: 0,
-                },
+                ArrayDescriptor::new(0, 10, 0),
+                ArrayDescriptor::new(4, 20, 0),
             ],
             user_fb_types: vec![],
         };
-        // 2 (FB count) + 2 (array count) + 2 * 8 (descriptors) + 2 (user FB count) = 22
-        assert_eq!(section.section_size(), 22);
+        // 2 (FB count) + 2 (array count) + 2 * 12 (descriptors) + 2 (user FB count) = 30
+        assert_eq!(section.section_size(), 30);
+    }
+
+    fn read_single_descriptor(desc: ArrayDescriptor) -> Result<TypeSection, ContainerError> {
+        let section = TypeSection {
+            array_descriptors: vec![desc],
+            ..Default::default()
+        };
+        let mut buf = Vec::new();
+        section.write_to(&mut buf).unwrap();
+        TypeSection::read_from(&mut Cursor::new(&buf))
+    }
+
+    #[test]
+    fn array_descriptor_new_when_string_then_stride_spans_header_and_code_units() {
+        let narrow = ArrayDescriptor::new(FieldType::String as u8, 3, 10);
+        assert_eq!(
+            narrow.element_stride(),
+            crate::STRING_HEADER_BYTES as u32 + 10
+        );
+        let wide = ArrayDescriptor::new(FieldType::WString as u8, 3, 10);
+        assert_eq!(
+            wide.element_stride(),
+            crate::STRING_HEADER_BYTES as u32 + 20
+        );
+    }
+
+    #[test]
+    fn array_descriptor_new_when_primitive_then_stride_is_one_slot() {
+        let desc = ArrayDescriptor::new(FieldType::I32 as u8, 3, 0);
+        assert_eq!(desc.element_stride(), SLOT_BYTES);
+    }
+
+    #[test]
+    fn type_section_write_read_when_strided_string_descriptor_then_roundtrips() {
+        let desc = ArrayDescriptor {
+            element_type: FieldType::String as u8,
+            total_elements: 6,
+            element_extra: 50,
+            element_stride: 80,
+        };
+        let decoded = read_single_descriptor(desc.clone()).unwrap();
+        assert_eq!(decoded.array_descriptors, vec![desc]);
+    }
+
+    #[test]
+    fn type_section_read_when_string_stride_below_element_size_then_error() {
+        let desc = ArrayDescriptor {
+            element_type: FieldType::String as u8,
+            total_elements: 6,
+            element_extra: 50,
+            element_stride: crate::STRING_HEADER_BYTES as u32 + 49,
+        };
+        assert!(matches!(
+            read_single_descriptor(desc),
+            Err(ContainerError::InvalidArrayStride {
+                element_type: 6,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn type_section_read_when_primitive_stride_not_one_slot_then_error() {
+        let desc = ArrayDescriptor {
+            element_type: FieldType::I32 as u8,
+            total_elements: 6,
+            element_extra: 0,
+            element_stride: 16,
+        };
+        assert!(matches!(
+            read_single_descriptor(desc),
+            Err(ContainerError::InvalidArrayStride {
+                element_type: 0,
+                element_stride: 16,
+            })
+        ));
     }
 
     #[test]

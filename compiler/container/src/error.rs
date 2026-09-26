@@ -29,6 +29,13 @@ pub enum ContainerError {
     /// operand) is not a recognized [`crate::CharWidth`] discriminant
     /// (1 = `Narrow`, 2 = `Wide`).
     InvalidCharWidth(u8),
+    /// An array descriptor's element stride is one the VM cannot honour:
+    /// smaller than a STRING/WSTRING element, or other than one slot for any
+    /// other element type.
+    InvalidArrayStride {
+        element_type: u8,
+        element_stride: u32,
+    },
 }
 
 impl fmt::Display for ContainerError {
@@ -55,6 +62,15 @@ impl fmt::Display for ContainerError {
             }
             ContainerError::InvalidCharWidth(t) => {
                 write!(f, "invalid char_width: {t}")
+            }
+            ContainerError::InvalidArrayStride {
+                element_type,
+                element_stride,
+            } => {
+                write!(
+                    f,
+                    "invalid array element stride {element_stride} for element type {element_type}"
+                )
             }
         }
     }
@@ -130,6 +146,17 @@ mod tests {
         let msg = ContainerError::InvalidCharWidth(99).to_string();
         assert!(msg.contains("99"), "got: {msg}");
         assert!(msg.contains("char_width"), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_display_when_invalid_array_stride_then_contains_stride_and_type() {
+        let msg = ContainerError::InvalidArrayStride {
+            element_type: 6,
+            element_stride: 3,
+        }
+        .to_string();
+        assert!(msg.contains("stride 3"), "got: {msg}");
+        assert!(msg.contains("type 6"), "got: {msg}");
     }
 
     #[test]

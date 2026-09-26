@@ -42,8 +42,9 @@ fn all_spec_requirements_have_tests() {
 /// Adding a new entry to this generator is fine; if you ever need to
 /// refresh the steel-thread golden, do it from a throwaway script with
 /// full awareness of what the format change is. It was last refreshed for
-/// the format_version 2 -> 3 string-header/constant-pool encoding bump
-/// (ADR-0035); the reader only accepts the current `FORMAT_VERSION`.
+/// the format_version 3 -> 4 array-descriptor stride bump (ADR-0054), which
+/// changed only the version field because the file has no type section;
+/// the reader only accepts the current `FORMAT_VERSION`.
 #[test]
 #[ignore]
 fn generate_golden_files() {
