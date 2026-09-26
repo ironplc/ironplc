@@ -1,0 +1,54 @@
+=====
+P4057
+=====
+
+.. problem-summary:: P4057
+
+This error occurs when a function call passes something other than a variable
+to a ``VAR_IN_OUT`` parameter. A ``VAR_IN_OUT`` parameter is passed by
+reference: the function reads and writes the caller's variable, so the
+argument must be a variable. A literal or an expression has no storage the
+function could write to.
+
+Example
+-------
+
+The following code will generate error P4057:
+
+.. code-block::
+
+   FUNCTION Increment : DINT
+       VAR_IN_OUT
+           counter : DINT;
+       END_VAR
+       counter := counter + 1;
+       Increment := counter;
+   END_FUNCTION
+
+   PROGRAM main
+       VAR
+           total : DINT;
+           result : DINT;
+       END_VAR
+       result := Increment(total + 1);   (* Error: not a variable *)
+   END_PROGRAM
+
+To fix this error, pass a variable:
+
+.. code-block::
+
+   result := Increment(total);
+
+If the function should not change the caller's value, declare the parameter
+in ``VAR_INPUT`` instead, which accepts any expression.
+
+See Also
+--------
+
+- :doc:`/reference/language/pous/function` — ``FUNCTION`` declaration syntax
+- :doc:`P4058` — a ``VAR_IN_OUT`` argument of the wrong type
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.1 (Edition 2), §6.6.1.2 (Edition 3)

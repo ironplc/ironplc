@@ -121,6 +121,8 @@ P4053,CaseSelectorTypeInvalid,CASE selector is not an integer or enumeration typ
 P4054,FunctionBlockInFunction,Function declares or invokes a function block instance
 P4055,EnumExplicitValueNotAllowed,Explicit enumeration member value requires choosing a dialect or --allow-enum-explicit-values flag
 P4056,EnumBaseTypeNotAllowed,Enumeration base-type suffix requires choosing a dialect or --allow-enum-base-type flag
+P4057,FunctionCallInOutArgNotVariable,Function call passes an expression that is not a variable to a VAR_IN_OUT parameter
+P4058,FunctionCallInOutArgTypeMismatch,Function call VAR_IN_OUT argument type is not the parameter type
 P2038,DateLiteralOutOfRange,Date literal is outside the range the date type can represent
 P2039,DurationLiteralOutOfRange,Duration literal is outside the range the duration type can represent
 P2040,RealLiteralOutOfRange,Real literal is outside the range the real type can represent

@@ -1,0 +1,58 @@
+=====
+P4058
+=====
+
+.. problem-summary:: P4058
+
+This error occurs when a function call passes a variable to a ``VAR_IN_OUT``
+parameter and the variable's type is not the parameter's type.
+
+A ``VAR_IN_OUT`` parameter is passed by reference, so the function writes
+values of the parameter's type directly into the caller's variable. Unlike a
+``VAR_INPUT``, no implicit conversion applies: an ``INT`` variable cannot be
+passed to a ``DINT`` parameter, because the function could store a value the
+``INT`` cannot hold. An alias of the parameter's type is the same type and is
+accepted.
+
+Example
+-------
+
+The following code will generate error P4058:
+
+.. code-block::
+
+   FUNCTION Increment : DINT
+       VAR_IN_OUT
+           counter : DINT;
+       END_VAR
+       counter := counter + 1;
+       Increment := counter;
+   END_FUNCTION
+
+   PROGRAM main
+       VAR
+           total : INT;
+           result : DINT;
+       END_VAR
+       result := Increment(total);   (* Error: INT is not DINT *)
+   END_PROGRAM
+
+To fix this error, declare the variable with the parameter's type:
+
+.. code-block::
+
+   VAR
+       total : DINT;
+   END_VAR
+
+See Also
+--------
+
+- :doc:`/reference/language/pous/function` — ``FUNCTION`` declaration syntax
+- :doc:`P4057` — a ``VAR_IN_OUT`` argument that is not a variable
+- :doc:`P4026` — argument type mismatch for a ``VAR_INPUT`` parameter
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.1 (Edition 2), §6.6.1.2 (Edition 3)

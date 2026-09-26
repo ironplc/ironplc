@@ -41,6 +41,7 @@ mod rule_extends_field_duplicated;
 mod rule_function_block_call_unsupported;
 mod rule_function_block_invocation;
 mod rule_function_call_declared;
+mod rule_function_call_in_out_argument;
 mod rule_function_call_type_check;
 mod rule_method_call_declared;
 mod rule_mixed_located_var_declarations;

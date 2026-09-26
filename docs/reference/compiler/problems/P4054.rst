@@ -54,9 +54,9 @@ Instances passed by reference
 IEC 61131-3 Edition 3 allows a function to receive a function block instance
 through ``VAR_IN_OUT``. The instance belongs to the caller, so the function
 stays stateless, and such a declaration is not reported. Note that IronPLC
-does not yet accept ``VAR_IN_OUT`` parameters on functions in calls, so this
-exemption matters only once that support lands. A ``VAR_INPUT`` instance is
-reported: passing an instance by value copies its state into the function.
+does not yet compile a function block instance as a function's
+``VAR_IN_OUT`` parameter. A ``VAR_INPUT`` instance is reported: passing an
+instance by value copies its state into the function.
 
 See Also
 --------

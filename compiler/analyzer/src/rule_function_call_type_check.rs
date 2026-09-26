@@ -269,8 +269,13 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
             // generic ANY_* categories (or concrete types for the conversion
             // functions), all handled by `are_types_compatible`. The parameter
             // list continues past the declared ones for an extensible
-            // function, so every input of `ADD(a, b, c)` is checked.
+            // function, so every input of `ADD(a, b, c)` is checked. A
+            // VAR_IN_OUT argument must match exactly, not just be compatible;
+            // `rule_function_call_in_out_argument` checks it.
             for (param, arg_expr) in signature.bind_inputs(&node.param_assignment) {
+                if param.is_inout {
+                    continue;
+                }
                 if let Some(ref arg_type) = arg_expr.resolved_type {
                     if !are_types_compatible(&param.param_type, arg_type, self.options) {
                         self.diagnostics.push(
