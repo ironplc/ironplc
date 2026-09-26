@@ -30,18 +30,17 @@ use crate::emit::Emitter;
 
 /// Returns the operation type from an expression's resolved type annotation.
 ///
-/// The analyzer must have populated `expr.resolved_type`. A missing or
-/// unrecognized resolved type is a compiler bug.
-pub(crate) fn op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
+/// The analyzer must have populated `expr.resolved_type` with an elementary
+/// type or a user-defined type in `ctx.named_types`. Anything else -- an
+/// array or a structure, say -- is a compiler bug.
+pub(crate) fn op_type(ctx: &CompileContext, expr: &Expr) -> Result<OpType, Diagnostic> {
     let resolved = expr
         .resolved_type
         .as_ref()
         .ok_or_else(|| unresolved_expr_type(expr))?;
-    // Enum types resolve to user-defined names (e.g. "COLOR") which
-    // resolve_type_name doesn't handle. Fall back to DINT since all
-    // enums use W32/Signed at codegen level (REQ-EN-codegen-003).
-    let info =
-        resolve_type_name(&resolved.name).unwrap_or(crate::compile_enum::enum_var_type_info());
+    let info = resolve_type_name(&resolved.name)
+        .or_else(|| ctx.named_types.get(resolved).copied())
+        .ok_or_else(|| unresolved_expr_type(expr))?;
     Ok((info.op_width, info.signedness))
 }
 
@@ -120,26 +119,26 @@ pub(crate) fn unresolved_expr_type(expr: &Expr) -> Diagnostic {
 /// OR, XOR), recurses into the first operand. For other expressions (bare
 /// boolean variables, parenthesized expressions), returns the expression's
 /// own resolved type.
-pub(crate) fn condition_op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
+pub(crate) fn condition_op_type(ctx: &CompileContext, expr: &Expr) -> Result<OpType, Diagnostic> {
     match &expr.kind {
         ExprKind::Compare(compare) => match compare.op {
             CompareOp::And
             | CompareOp::Or
             | CompareOp::Xor
             | CompareOp::AndThen
-            | CompareOp::OrElse => condition_op_type(&compare.left),
+            | CompareOp::OrElse => condition_op_type(ctx, &compare.left),
             _ => {
                 // String comparisons take a dedicated path in compile_expr
                 // that emits an i32 boolean; the operand op_type is unused.
                 if expr_is_string(&compare.left) {
                     return Ok(DEFAULT_OP_TYPE);
                 }
-                op_type(&compare.left)
+                op_type(ctx, &compare.left)
             }
         },
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Not => condition_op_type(&unary.term),
-        ExprKind::Expression(inner) => condition_op_type(inner),
-        _ => op_type(expr),
+        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Not => condition_op_type(ctx, &unary.term),
+        ExprKind::Expression(inner) => condition_op_type(ctx, inner),
+        _ => op_type(ctx, expr),
     }
 }
 /// Compiles an expression, leaving the result on the stack.

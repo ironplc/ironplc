@@ -532,7 +532,7 @@ fn compile_trunc(
     }
 
     // Determine the argument's float type from its resolved type.
-    let arg_op_type = op_type(args[0])?;
+    let arg_op_type = op_type(ctx, args[0])?;
     compile_expr(emitter, ctx, args[0], arg_op_type)?;
 
     // Build VarTypeInfo for source (float) and target (integer) to reuse
@@ -623,7 +623,7 @@ fn compile_bcd_to_int(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let arg_op_type = op_type(args[0])?;
+    let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(args[0])?;
     compile_expr(emitter, ctx, args[0], arg_op_type)?;
 
@@ -654,7 +654,7 @@ fn compile_int_to_bcd(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let arg_op_type = op_type(args[0])?;
+    let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(args[0])?;
     compile_expr(emitter, ctx, args[0], arg_op_type)?;
 
