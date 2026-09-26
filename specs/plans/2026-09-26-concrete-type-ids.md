@@ -41,6 +41,7 @@ Verified with `ironplcc check`:
 | `ABS(e)` | `(X, Y)` | accepted |
 | `ABS(ne)`, `ABS(r)` | named enum / named struct | P4026 (correct) |
 | `n := a` / `na` / `e` / `ne` / `r` | any of the above | accepted |
+| `x := a.70` (bit access on a whole array) | `ARRAY[1..2] OF DINT` | accepted |
 
 ## Architecture
 
@@ -120,10 +121,20 @@ Three reshapes, each behaviour-preserving, before any new behaviour:
    - `rule_assignment_aggregate_type_compat::declared_type`
    - `rule_function_call_type_check`'s own `var_types` table
 
-   Make `variable_type` the single source (keeping inline dimensions), and have
-   the other three use it. `xform_resolve_expr_types` derives its `TypeName`
-   from the resolved `IntermediateType` through one function, returning `None`
-   in exactly the cases it does today.
+   All three passes store declarations in `variable_type::Declarations` and
+   derive what they need at lookup. `Declared` gains a `Typed` form for result
+   variables and system globals, and the named/inline classification moves onto
+   the initializer.
+
+   Two things stay for PR 4, because doing them here changes behaviour:
+   - Building inline arrays with their real dimensions. Today
+     `variable_type::resolve_initializer` builds them with no dimensions. Adding
+     them would start range-checking `a.70` on a whole array while `a.3` stays
+     accepted. Bit access on a whole array is part of the #1761 defect.
+   - Aligning the two type-name projections. The resolver and
+     `rule_function_call_type_check` disagree on inline subranges and
+     references. Aligning them would add diagnostics, for example `r := NULL`
+     for `r : REF_TO INT` would become a P4035. `TypeId` replaces both.
 2. **Explicit enumeration fallback in codegen.** `op_type` treats any
    unrecognised name as an enumeration. Make it ask the type environment
    whether the type *is* an enumeration and report P9999 otherwise.
@@ -145,7 +156,7 @@ Three reshapes, each behaviour-preserving, before any new behaviour:
 | 1 | Prefactor | Prefactor 1 (one declaration → type routine) |
 | 2 | Prefactor | Prefactor 2 (explicit enumeration fallback) |
 | 3 | Prefactor | Prefactor 3 (`TypeId` table, debug tag from ID) + ADR |
-| 4 | Core | `Expr` carries `ExprType`; anonymous types and named aliases get IDs; late-bound resolution keeps alias names; argument and assignment checks compare IDs and reject aggregates/enumerations where a scalar is expected. Fixes #1761 and enum → integer assignment |
+| 4 | Core | `Expr` carries `ExprType`; anonymous types and named aliases get IDs; inline arrays keep their dimensions; late-bound resolution keeps alias names; argument, assignment and bit-access checks compare IDs and reject aggregates/enumerations where a scalar is expected. Fixes #1761, enum → integer assignment, and bit access on a whole array |
 | 5 | Core | Codegen selects opcodes from `TypeId` via the table; remove `resolved_type: Option<TypeName>`, `resolve_type_name` and the string-matching helpers |
 
 A tracking issue records PRs 1–5 before the first core PR.
@@ -172,7 +183,7 @@ A tracking issue records PRs 1–5 before the first core PR.
 ## Tasks
 
 - [ ] Open tracking issue for PRs 1–5 and a follow-up issue for the debug-section type table
-- [ ] PR 1: consolidate declaration → type onto `variable_type` (tests unchanged)
+- [x] PR 1: one `Declarations` table for the resolver and the argument/assignment rule (tests unchanged): ironplc/ironplc#1802
 - [ ] PR 2: explicit enumeration fallback in codegen `op_type`
 - [ ] PR 3: `TypeId` table in `TypeEnvironment`; elementary IDs = `iec_type_tag`; debug tag from ID; ADR
 - [ ] PR 4: `ExprType` on `Expr`; IDs for anonymous types and aliases; checks reject aggregates/enums where a scalar is expected; tests for every row of the table above
