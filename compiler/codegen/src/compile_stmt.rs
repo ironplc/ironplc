@@ -5,7 +5,7 @@
 //! keep module sizes within the 1000-line guideline.
 
 use ironplc_dsl::common::{
-    BitStringLiteral, ConstantKind, FunctionBlockBodyKind, IntegerRef, SignedInteger,
+    BitStringLiteral, ConstantKind, FunctionBlockBodyKind, Integer, IntegerRef, SignedInteger,
     SignedIntegerRef, StringInitializer, StringSpecification,
 };
 use ironplc_dsl::core::{Located, SourceSpan};
@@ -895,7 +895,7 @@ pub(crate) fn resolve_string_max_length(
 ) -> Result<u16, Diagnostic> {
     match &string_init.length {
         None => Ok(DEFAULT_STRING_MAX_LENGTH),
-        Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
+        Some(IntegerRef::Literal(i)) => string_length_u16(i),
         Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
     }
 }
@@ -908,9 +908,27 @@ pub(crate) fn resolve_string_spec_max_length(
 ) -> Result<u16, Diagnostic> {
     match &spec.length {
         None => Ok(DEFAULT_STRING_MAX_LENGTH),
-        Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
+        Some(IntegerRef::Literal(i)) => string_length_u16(i),
         Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
     }
+}
+
+/// Converts a declared string length to the `u16` the string header holds.
+///
+/// The analyzer rejects a length above `u16::MAX` (P2041) before codegen
+/// runs, so a failure here is a compiler defect -- the rule missed a
+/// declaration site -- and is reported as one rather than wrapped to a
+/// capacity the program never wrote.
+fn string_length_u16(length: &Integer) -> Result<u16, Diagnostic> {
+    u16::try_from(length.value).map_err(|_| {
+        Diagnostic::internal_error_at(Label::span(
+            length.span.clone(),
+            format!(
+                "String length {} was not rejected by the analyzer",
+                length.value
+            ),
+        ))
+    })
 }
 
 /// Extracts a concrete `SignedInteger` from a `SignedIntegerRef`, returning a

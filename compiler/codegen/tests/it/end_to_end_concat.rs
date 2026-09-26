@@ -7,12 +7,13 @@ use proptest::prelude::*;
 
 /// Generates printable ASCII strings safe for IEC 61131-3 string literals.
 /// Excludes single quote (0x27) and dollar sign (0x24, the escape character).
-/// Length is bounded to 0..=127 so the concatenated result stays <= 254 and
-/// never triggers the STRING[254] truncation branch.
+/// Length runs to the full 254 a bare STRING holds, so the concatenation
+/// reaches 508: wider than any operand and than the default capacity, which
+/// is what pins the result to a temporary sized from the operands.
 fn safe_string_strategy() -> impl Strategy<Value = String> {
     proptest::collection::vec(
         (0x20u8..=0x7Eu8).prop_filter("exclude quote and dollar", |&b| b != b'\'' && b != b'$'),
-        0..=127,
+        0..=254,
     )
     .prop_map(|bytes| bytes.into_iter().map(|b| b as char).collect())
 }
@@ -55,7 +56,7 @@ END_PROGRAM
 }
 
 // --- Property test: CONCAT(s1, s2) == s1 followed by s2 ---
-// Inputs are bounded so the concatenation stays <= 254 (no truncation). Oracle
+// The result is declared STRING[508] so no destination truncates it. Oracle
 // is pure Rust. The literal-argument lowering path is pinned by the anchor above.
 proptest! {
     #[test]
@@ -70,7 +71,7 @@ PROGRAM main
   VAR
     s1 : STRING := '{s1}';
     s2 : STRING := '{s2}';
-    result : STRING;
+    result : STRING[508];
   END_VAR
   result := CONCAT(s1, s2);
 END_PROGRAM

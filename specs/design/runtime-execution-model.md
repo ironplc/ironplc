@@ -269,7 +269,7 @@ Each call frame on the call stack records:
 | `return_pc` | u32 | Bytecode offset to resume after return |
 | `return_function_id` | u16 | Function ID of the caller (for looking up bytecode region) |
 | `stack_base` | u16 | Operand stack depth at call site (for stack cleanup on trap) |
-| `temp_str_base` | u16 | Temp string buffer pool watermark at call site (for cleanup on return) |
+| `temp_alloc_mark` | u16 | Temporary string buffer allocator position at the call site, restored on return |
 
 `LOAD_FIELD` and `STORE_FIELD` always consume an `fb_ref` from the operand stack, as defined in the instruction set spec. Within an FB body, the compiler emits `FB_LOAD_INSTANCE` to push the instance's own `fb_ref` before each field access sequence. This keeps field access uniform — the same instruction semantics apply whether accessing fields of the current instance or a nested instance.
 
@@ -304,77 +304,62 @@ All FB instance fields are initialized during the Initialization Sequence:
 
 ## String Buffer Management
 
-The VM manages two categories of string buffers: variable buffers and temporary buffers.
+A string value is held in one of two places. Every declared string -- a variable, an array element, a structure field, a function parameter or return -- and every compiler-allocated scratch slot has a fixed byte offset in the unified data region (ADR-0017). The result of a string instruction goes to the temporary buffer pool, where it stays only until the instruction that consumes it copies the value into the data region. Both are allocated once at load time from header fields (`data_region_bytes`, `num_temp_bufs`, `max_temp_buf_bytes`) and never grow.
 
-### Variable Buffers
+### String Layout
 
-Each STRING or WSTRING variable has a dedicated buffer in the string buffer table. The buffer is allocated during initialization and persists for the lifetime of the program.
+Wherever a string is held, it has the same layout (ADR-0035): a 6-byte header followed by the character data.
 
-| Buffer type | Allocation size | Description |
-|-------------|----------------|-------------|
-| STRING variable | `declared_length + 1` bytes | 1 byte current length + `declared_length` bytes character data |
-| WSTRING variable | `declared_length * 2 + 2` bytes | 2 bytes current length (in UCS-2 code units) + `declared_length * 2` bytes character data |
+| Offset | Size | Field | Meaning |
+|--------|------|-------|---------|
+| 0 | 2 | `max_length` | Capacity in code units, written once by `STR_INIT` and never changed |
+| 2 | 2 | `cur_length` | Current length in code units |
+| 4 | 2 | `char_width` | Bytes per code unit: 1 for `STRING` (Latin-1), 2 for `WSTRING` (UTF-16LE), per ADR-0016 |
+| 6 | `max_length × char_width` | data | Character content, no terminator |
 
-No null terminator is stored. The length prefix is the sole indicator of string extent. The VM never passes string buffers to external C code; all string operations use the length prefix to determine valid data. This avoids the maintenance burden of keeping a null terminator in sync on every mutation.
+The header is the sole indicator of a string's extent and encoding. No null terminator is stored, and the VM never hands string data to code that expects one. Because the encoding travels in the header, one `STR_*` opcode family serves both `STRING` and `WSTRING` (ADR-0034): an instruction reads `char_width` from the slots it touches, and a store whose source and destination disagree traps with `EncodingMismatch` (V9014).
 
-Each variable buffer is sized to its own declared length (from `VarEntry.extra`). The compiler pre-computes the total bytes for all STRING and WSTRING variable buffers and stores the sums in the container header as `total_str_var_bytes` and `total_wstr_var_bytes`. This avoids wasting memory when variables have different declared lengths (e.g., a `STRING(10)` gets 11 bytes, not the program-wide maximum).
+### Data-Region Slots
+
+Each declared string occupies a slot sized to its own declared length: a `STRING[10]` takes 16 bytes, not the program-wide maximum. The compiler assigns the offset, and the program's init function writes the header with `STR_INIT` (or `STR_INIT_ARRAY` for an array of strings) before any initial value is applied.
+
+The string instructions take their string inputs as data-region offsets encoded in the instruction, never as `buf_idx` values from the operand stack. An operand that is not a plain named variable -- a literal, a nested call, an array element, a structure field -- is therefore first copied into a compiler-allocated scratch slot in the data region, and the instruction reads that slot. The scratch slot is sized to the operand's own bound: a literal's length, a declaration's capacity, or for `CONCAT`, `INSERT` and `REPLACE` the sum of both string arguments. A slot narrower than its operand would cut the value on the way in and every reader would measure the copy rather than the operand.
 
 ### Temporary Buffers
 
-The temporary buffer pool provides scratch space for intermediate string results. The pool contains `num_temp_bufs` buffers of `max_temp_buf_bytes` each (ADR-0035 header included). Unlike variable buffers (which are sized per-variable), every temp buffer is sized to the worst case, because any string expression could produce a result up to the program-wide maximum. That maximum covers more than the declarations: an operand that is not a plain named variable -- a literal, a nested call, an array element, a structure field -- is first copied into a data-region temporary sized to the operand's own bound (a literal's length, a declaration's capacity, or the sum of a `CONCAT`'s arguments), and that bound raises the pool slot too, so a value wider than every declared string still fits both the temporary and the slot it passes through.
+The pool has `num_temp_bufs` slots of `max_temp_buf_bytes` each, the same 6-byte header included, so a slot holds `(max_temp_buf_bytes − 6) / char_width` code units. Every slot is sized to the worst case, because any string instruction may write its result there. That worst case covers more than the declarations: the scratch slot for an operand raises it too, so a value wider than every declared string still fits both the scratch slot and the pool slot it passes through on the way in.
 
-### Buffer Index Space
+A pool slot is identified by a `buf_idx` pushed onto the operand stack. The instructions that produce a string value allocate a slot and write the value into it, header included: `LOAD_CONST_STR`, `STR_LOAD_VAR`, `STR_LOAD_ARRAY_ELEM`, the string functions `CONCAT_STR`, `LEFT_STR`, `RIGHT_STR`, `MID_STR`, `INSERT_STR`, `DELETE_STR` and `REPLACE_STR`, and the numeric-to-string conversion builtins. `LEN_STR` and `FIND_STR` read their inputs from the data region and push an integer, so they allocate nothing. The canonical lists live beside the opcode definitions in the container crate, and the verifier's temp-effect table mirrors them.
 
-Variable buffers and temporary buffers share a single `buf_idx` index space:
+### Lifecycle
 
-```
-buf_idx layout:
-  0 .. num_str_vars-1                                STRING variable buffers (each sized per declaration)
-  num_str_vars .. num_str_vars+num_temp-1             STRING temporary buffers (each sized to max)
-  (WSTRING indices follow the same pattern in a separate table)
-```
+**Acquire.** The allocator is a bump pointer over the pool: each producing instruction takes the next slot and pushes its `buf_idx`.
 
-The verifier and runtime distinguish STRING and WSTRING indices through the opcode used (STR_* vs WSTR_*), not through the index value. STRING and WSTRING buffers are in separate tables with separate index spaces.
+**Consume and release.** `STR_STORE_VAR` and `STR_STORE_ARRAY_ELEM` pop a `buf_idx`, copy the slot's contents into a data-region slot (cut to the destination's `max_length`, per ADR-0035's assignment semantics), and release the buffer. Because the operand stack is LIFO, the buffer being consumed is the one most recently acquired, and the release is a bump-pointer decrement; a `buf_idx` that is not the top allocation is left alone. This is the release that bounds a loop: a string operation in a loop body acquires and releases one buffer per iteration. See [ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md).
 
-### Lifecycle Protocol
+**Frame return.** `CALL`, `FB_CALL` and `METHOD_CALL` record the allocator position in the frame's `temp_alloc_mark`, and every return path -- `RET`, `RET_VOID`, or the implicit return at the end of a body -- rewinds to it. This releases any buffer a body left live on some control-flow path, and the buffer a `STRING`-returning function leaves for its caller.
 
-Temporary buffers follow an acquire-use-release lifecycle within each function call:
+**Scan start.** Each scan cycle begins with the allocator at zero. Well-formed bytecode has released every buffer by the end of the previous cycle through the two paths above; the reset is a backstop.
 
-**Acquire.** A temporary buffer is acquired when an instruction produces a string result that does not go directly into a variable buffer:
-- `LOAD_CONST_STR` / `LOAD_CONST_WSTR` — copies a string literal from the constant pool into a temp buffer
-- BUILTIN string functions that produce a string result (STR_CONCAT, STR_LEFT, STR_RIGHT, STR_MID, STR_INSERT, STR_DELETE, STR_REPLACE, and WSTRING equivalents) — write their result into a temp buffer
-
-Acquisition uses a stack-like allocator (bump pointer): each acquire increments the temp pool watermark by 1. The `buf_idx` pushed onto the operand stack is the index of the acquired temp buffer.
-
-**Use.** The temp buffer is read by subsequent instructions that consume a `buf_idx` input:
-- BUILTIN string functions that take string inputs (STR_LEN, STR_FIND, STR_CONCAT, etc.)
-- STR_STORE_VAR / WSTR_STORE_VAR (copies temp buffer contents into a variable buffer)
-
-**Release.** Temp buffers are released in three ways:
-1. **When the buffer is consumed.** `STR_STORE_VAR` and `STR_STORE_ARRAY_ELEM` pop a `buf_idx` and copy the buffer's contents into the data region. Once copied, the buffer is dead and the watermark drops back past it, so the slot is reused by the next acquire. Because the operand stack is LIFO, the buffer being consumed is the one most recently acquired; a `buf_idx` that is not the top allocation is left alone. This is the release that bounds a loop — a string operation in a loop body acquires and releases one buffer per iteration. See [ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md).
-2. **At function return.** When `RET` or `RET_VOID` executes, the temp pool watermark is reset to the value recorded in the call frame's `temp_str_base`. This releases any temp buffers the body left live on some control-flow path (including early returns), and releases the buffer a `STRING`-returning function leaves for its caller.
-3. **At scan cycle end.** After EXECUTE completes, all temp buffers are released (watermark reset to 0). This is a safety net; well-compiled bytecode releases all temps via the two paths above.
-
-**Pool exhaustion.** If an acquire would exceed the pool size (`num_temp_str_bufs` or `num_temp_wstr_bufs`), the VM traps with a pool-exhaustion fault. The compiler must size the temp pools to cover the deepest string expression nesting in the program. The formula is: for each function, count the maximum number of temp buffers simultaneously live at any point in the function body; then take the heaviest path through the call graph, since a callee's buffers sit on top of its caller's. The count is of buffers live *at once*, not of string operations: a loop body contributes its own depth however many times it runs.
+**Pool exhaustion.** An acquire that would run past the pool, a pool whose `max_temp_buf_bytes` is zero, or a store whose `buf_idx` is out of range traps with `TempBufferExhausted` (V9009). The compiler sizes the pool by live depth, not by counting sites: for each function, the most buffers live at once anywhere in its body; then the heaviest path through the call graph, since a callee's buffers sit on top of its caller's; then at least the init function's own depth. A loop body contributes its depth once, however many times it runs. Verifier rule R0204 ([bytecode-verifier-rules.md](bytecode-verifier-rules.md)) walks the control-flow graph of the shipped bytecode and proves `num_temp_bufs` covers that depth, so a codegen defect in the accounting is caught at compile time rather than as V9009 at run time.
 
 ### Compiler Invariant
 
-The compiler must ensure that no `buf_idx` for a temporary buffer is used after a subsequent string operation that could reuse the same buffer slot. In practice, this means the compiler emits `STR_STORE_VAR` / `WSTR_STORE_VAR` immediately after a string expression completes, before starting the next string expression. This invariant is not verified by the bytecode verifier — it is a compiler correctness requirement. Violation results in silently reading stale data, not a memory safety issue (the buffer memory is always valid, just potentially overwritten).
+The compiler must ensure that no `buf_idx` is read after a later producing instruction could have reused its slot. In practice a string expression is consumed by a store as soon as it completes, and a nested operand is spilled to a data-region scratch slot before the enclosing instruction runs, so at most the current instruction's own result is live. This reuse invariant is not verified by the bytecode verifier; R0204 proves the pool is deep enough, not that no stale slot is read. A violation reads stale data, not out-of-bounds memory: the buffer is always valid, only possibly overwritten.
 
-### Example: String Expression Lifecycle
+### Example: String Assignment
 
 ```
 (* Source *)
 result := CONCAT(greeting, name);
 
 (* Bytecode *)
-STR_LOAD_VAR    0x0000    -- push buf_idx for greeting (variable buffer, no acquire)
-STR_LOAD_VAR    0x0001    -- push buf_idx for name (variable buffer, no acquire)
-BUILTIN         0x0101    -- STR_CONCAT: pops 2 buf_idx, acquires temp, pushes temp buf_idx
-STR_STORE_VAR   0x0002    -- copies temp buffer contents into result's variable buffer
+CONCAT_STR     <greeting_off>, <name_off>   -- reads both slots from the data region,
+                                             -- acquires temp[0], pushes its buf_idx
+STR_STORE_VAR  <result_off>                  -- copies temp[0] into result's slot and releases it
 ```
 
-The temp buffer is live from BUILTIN (acquire) until `STR_STORE_VAR` copies it out (release). In simple cases like this, only one temp buffer is ever live at a time — and that stays true if the statement sits inside a loop, because each iteration releases the buffer the previous one acquired.
+One buffer is live, from the `CONCAT_STR` to the `STR_STORE_VAR`. That stays true inside a loop, because each iteration releases the buffer the previous one acquired.
 
 ### Example: Nested String Expression
 
@@ -383,15 +368,14 @@ The temp buffer is live from BUILTIN (acquire) until `STR_STORE_VAR` copies it o
 result := CONCAT(CONCAT(a, b), c);
 
 (* Bytecode *)
-STR_LOAD_VAR    0x0000    -- push a (variable buffer)
-STR_LOAD_VAR    0x0001    -- push b (variable buffer)
-BUILTIN         0x0101    -- STR_CONCAT(a, b): acquires temp[0], pushes temp[0] buf_idx
-STR_LOAD_VAR    0x0002    -- push c (variable buffer)
-BUILTIN         0x0101    -- STR_CONCAT(temp[0], c): acquires temp[1], pushes temp[1] buf_idx
-STR_STORE_VAR   0x0003    -- copies temp[1] into result and releases it
+STR_INIT       <scratch_off>, 508, 1        -- a scratch slot sized to bound(a) + bound(b)
+CONCAT_STR     <a_off>, <b_off>             -- acquires temp[0], pushes its buf_idx
+STR_STORE_VAR  <scratch_off>                -- spills the inner result and releases temp[0]
+CONCAT_STR     <scratch_off>, <c_off>       -- acquires temp[0] again
+STR_STORE_VAR  <result_off>                 -- copies into result and releases it
 ```
 
-At peak, 2 temp buffers are live simultaneously. The compiler must set `num_temp_str_bufs >= 2` for this function.
+At peak one buffer is live, so `num_temp_bufs >= 1` covers this function. Nesting does not deepen the pool; it widens the data region by one scratch slot per nested operand. A worked example with the exact operand encoding is in [bytecode-instruction-set.md](bytecode-instruction-set.md) under String Operations.
 
 ## Trap Handling
 
@@ -406,7 +390,7 @@ A trap is an unrecoverable error detected during the EXECUTE phase. The VM canno
 | | ARRAY_OUT_OF_BOUNDS | LOAD_ARRAY, STORE_ARRAY | Array index outside declared bounds |
 | | STACK_OVERFLOW | any instruction | Operand stack depth exceeds `max_stack_depth` |
 | **REQ-RT-vm-001** | CALL_DEPTH_EXCEEDED | CALL, FB_CALL | A CALL or FB_CALL that would push a call frame beyond the container's per-program `max_call_depth` traps with `CALL_DEPTH_EXCEEDED`. The limit is the container's declared depth, not a VM-wide constant. |
-| | STRING_POOL_EXHAUSTED | BUILTIN (string), LOAD_CONST_STR, LOAD_CONST_WSTR | Temporary string buffer pool has no free slots |
+| | TEMP_BUFFER_EXHAUSTED | LOAD_CONST_STR, STR_LOAD_VAR, STR_LOAD_ARRAY_ELEM, the string function opcodes, the numeric-to-string BUILTINs; STR_STORE_VAR and STR_STORE_ARRAY_ELEM with an out-of-range `buf_idx` | Temporary string buffer pool has no free slot (V9009) |
 | | WATCHDOG_EXPIRED | (external) | EXECUTE phase exceeded `max_scan_time` |
 | | INVALID_INSTRUCTION | any | Undefined opcode encountered at runtime (should never happen if verifier ran, but defense-in-depth) |
 
@@ -504,22 +488,20 @@ When the VM transitions from LOADING to READY, it allocates and initializes all 
   6    Allocate FB instance table (total size computed from FB type descriptors)
   7    Zero-fill FB instance table
   8    Apply initial values to FB instance fields from FB type descriptors
-  9    Allocate STRING variable buffers (total_str_var_bytes, per-variable sizing)
- 10    Allocate WSTRING variable buffers (total_wstr_var_bytes, per-variable sizing)
- 11    Zero-fill all string variable buffers (current_length = 0, empty string)
- 12    Apply STRING/WSTRING initial values from constant pool
- 13    Allocate STRING temp buffer pool (num_temp_str_bufs × buffer_size)
- 14    Allocate WSTRING temp buffer pool (num_temp_wstr_bufs × buffer_size)
- 15    Allocate input process image (input_image_bytes)
- 16    Allocate output staging buffer (output_image_bytes)
- 17    Allocate memory region (memory_image_bytes)
- 18    Zero-fill all process image regions (input, output staging, memory)
- 19    Initialize scan_count to 0
- 20    Initialize temp buffer watermarks to 0
- 21    Initialize runtime clock
+  9    Allocate the data region (data_region_bytes) and zero-fill it
+ 10    Allocate the temporary string buffer pool (num_temp_bufs × max_temp_buf_bytes)
+ 11    Run each program's init function, which writes every string slot's header
+       (STR_INIT, STR_INIT_ARRAY) and applies STRING/WSTRING initial values
+ 12    Allocate input process image (input_image_bytes)
+ 13    Allocate output staging buffer (output_image_bytes)
+ 14    Allocate memory region (memory_image_bytes)
+ 15    Zero-fill all process image regions (input, output staging, memory)
+ 16    Initialize scan_count to 0
+ 17    Reset the temporary buffer allocator to 0
+ 18    Initialize runtime clock
 ```
 
-After step 21, the VM is in the READY state and all resources are allocated and initialized. No further allocation occurs during scan cycles.
+After step 18, the VM is in the READY state and all resources are allocated and initialized. No further allocation occurs during scan cycles.
 
 ### Memory Budget
 
@@ -531,10 +513,8 @@ total_ram =
   + (max_call_depth × call_frame_size)                       // call stack
   + (num_variables × 8)                                      // variable table
   + (fb_instance_total_size)                                 // FB instances
-  + total_str_var_bytes                                      // STRING var buffers (compiler-summed)
-  + total_wstr_var_bytes                                     // WSTRING var buffers (compiler-summed)
-  + (num_temp_str_bufs × (max_str_length + 1))               // STRING temp buffers
-  + (num_temp_wstr_bufs × (max_wstr_length × 2 + 2))        // WSTRING temp buffers
+  + data_region_bytes                                        // strings, arrays, scratch slots (ADR-0017)
+  + (num_temp_bufs × max_temp_buf_bytes)                     // temporary string buffers
   + input_image_bytes                                        // input snapshot
   + output_image_bytes                                       // output staging buffer
   + memory_image_bytes                                       // memory region
@@ -542,7 +522,7 @@ total_ram =
 
 The container header provides all the values needed to compute this total before allocation. If the total exceeds available RAM, the VM rejects the program at load time (container loading sequence step 6).
 
-Note: This formula supersedes the `ram_required` formula in the container format spec, which omits process image allocations. The container format spec should be updated to match. The output image appears once (not doubled) because the VM owns only the staging buffer; the I/O driver owns its own physical output buffer outside the VM's memory budget.
+This is the same budget the container format spec states as `ram_required` ([bytecode-container-format.md](bytecode-container-format.md)); the two are kept in step. The output image appears once (not doubled) because the VM owns only the staging buffer; the I/O driver owns its own physical output buffer outside the VM's memory budget.
 
 ## VM Configuration Parameters
 
