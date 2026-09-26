@@ -78,6 +78,40 @@ fn analyzer_spec_req_kf_001_arithmetic_forms_accept_any_num(
     assert_clean(operand_type, operand_type, &call(function));
 }
 
+/// REQ-KF-analyzer-001: the arithmetic forms also accept the typed overloads
+/// on the time and date types (Arithmetic Operator Overloads), returning the
+/// typed function's result type.
+#[spec_test(REQ_KF_analyzer_001)]
+#[rstest]
+#[case("ADD", "TIME", "TIME", "TIME")]
+#[case("ADD", "TIME_OF_DAY", "TIME", "TIME_OF_DAY")]
+#[case("SUB", "DATE", "DATE", "TIME")]
+#[case("SUB", "DATE_AND_TIME", "DATE_AND_TIME", "TIME")]
+#[case("MUL", "TIME", "REAL", "TIME")]
+#[case("DIV", "TIME", "DINT", "TIME")]
+fn analyzer_spec_req_kf_001_arithmetic_forms_accept_typed_overloads(
+    #[case] function: &str,
+    #[case] left: &str,
+    #[case] right: &str,
+    #[case] result: &str,
+) {
+    let program = format!(
+        "PROGRAM main
+VAR
+    a : {left};
+    b : {right};
+    result : {result};
+END_VAR
+    result := {function}(a, b);
+END_PROGRAM"
+    );
+    let codes = analyze_codes(&program);
+    assert!(
+        codes.is_empty(),
+        "{function}({left}, {right}): expected clean analysis, got {codes:?}"
+    );
+}
+
 /// REQ-KF-analyzer-006: MOD accepts every ANY_INT type and returns the
 /// operand type. (A real operand is P4026 by REQ-KF-analyzer-005.)
 #[spec_test(REQ_KF_analyzer_006)]
@@ -205,9 +239,12 @@ fn analyzer_spec_req_kf_004_not_form_accepts_any_bit(
     assert_clean(operand_type, operand_type, &call("NOT"));
 }
 
-/// REQ-KF-analyzer-005: an argument outside the operand category is P4026.
+/// REQ-KF-analyzer-005: an argument outside the operand category is P4026,
+/// for the forms without typed overloads. `ADD`, `SUB`, `MUL` and `DIV` have
+/// overloads on the time and date types, so their operands are checked by
+/// the operator rule and reported as P4049 (Arithmetic Operator Overloads).
 ///
-/// Every function form against every elementary type. Which side of the line
+/// Every such form against every elementary type. Which side of the line
 /// a type falls on comes from the form's own row and the DSL's definition of
 /// the category, not from a list written here, so the matrix is complete by
 /// construction: a type the category admits must analyze clean, and every
@@ -215,11 +252,7 @@ fn analyzer_spec_req_kf_004_not_form_accepts_any_bit(
 #[spec_test(REQ_KF_analyzer_005)]
 #[rstest]
 fn analyzer_spec_req_kf_005_argument_outside_category_is_p4026(
-    #[values(
-        "ADD", "SUB", "MUL", "DIV", "MOD", "GT", "GE", "EQ", "LE", "LT", "NE", "AND", "OR", "XOR",
-        "NOT"
-    )]
-    function: &str,
+    #[values("MOD", "GT", "GE", "EQ", "LE", "LT", "NE", "AND", "OR", "XOR", "NOT")] function: &str,
     #[values(
         "BOOL",
         "SINT",
@@ -343,11 +376,13 @@ fn analyzer_spec_req_kf_009_other_forms_reject_a_third_input(
 }
 
 /// REQ-KF-analyzer-010: an input beyond the second is checked against the
-/// operand category like the first two.
+/// operand category like the first two, for the extensible forms without
+/// typed overloads. `ADD(a, a, s)` and `MUL(a, a, s)` are reported as P4049
+/// at the failing fold step (Arithmetic Operator Overloads).
 #[spec_test(REQ_KF_analyzer_010)]
 #[rstest]
 fn analyzer_spec_req_kf_010_third_input_outside_category_is_p4026(
-    #[values("ADD", "MUL", "AND", "OR", "XOR")] function: &str,
+    #[values("AND", "OR", "XOR")] function: &str,
 ) {
     let operand_type = extensible_operand_type(function);
     let program = format!(
