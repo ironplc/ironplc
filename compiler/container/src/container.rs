@@ -5,6 +5,7 @@ use crate::code_section::CodeSection;
 use crate::constant_pool::ConstantPool;
 use crate::debug_section::DebugSection;
 use crate::header::{FileHeader, FLAG_HAS_DEBUG_SECTION, FLAG_HAS_TYPE_SECTION, HEADER_SIZE};
+use crate::integrity;
 use crate::task_table::TaskTable;
 use crate::type_section::TypeSection;
 use crate::ContainerError;
@@ -25,67 +26,91 @@ pub struct Container {
 impl Container {
     /// Writes the container to the given writer.
     ///
-    /// Computes section offsets and fills the header before writing
-    /// sections in file-layout order.
+    /// Each section is serialized to a buffer first, so the header is
+    /// derived from the bytes that actually reach the file — the section
+    /// directory from their lengths, `content_hash` and `debug_hash` from
+    /// their contents — before anything is written. Whatever `self.header`
+    /// carries in those fields is replaced.
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
-        let task_section_offset = HEADER_SIZE as u32;
-        let task_section_size = self.task_table.section_size();
-
-        let mut next_offset = task_section_offset + task_section_size;
+        let task_bytes = serialize(|buf| self.task_table.write_to(buf))?;
+        let type_bytes = match &self.type_section {
+            Some(type_section) => serialize(|buf| type_section.write_to(buf))?,
+            None => Vec::new(),
+        };
+        let const_bytes = serialize(|buf| self.constant_pool.write_to(buf))?;
+        let code_bytes = serialize(|buf| self.code.write_to(buf))?;
+        let debug_bytes = match &self.debug_section {
+            Some(debug) => serialize(|buf| debug.write_to(buf))?,
+            None => Vec::new(),
+        };
 
         let mut header = self.header.clone();
-        header.task_section_offset = task_section_offset;
-        header.task_section_size = task_section_size;
+        let mut next_offset = HEADER_SIZE as u32;
+
+        header.task_section_offset = next_offset;
+        header.task_section_size = task_bytes.len() as u32;
+        next_offset += header.task_section_size;
 
         // Type section (optional, between task table and constant pool)
-        if let Some(type_section) = &self.type_section {
-            let type_section_size = type_section.section_size();
+        if self.type_section.is_some() {
             header.type_section_offset = next_offset;
-            header.type_section_size = type_section_size;
+            header.type_section_size = type_bytes.len() as u32;
             header.flags |= FLAG_HAS_TYPE_SECTION;
-            next_offset += type_section_size;
+            next_offset += header.type_section_size;
         }
 
-        let const_section_offset = next_offset;
-        let const_section_size = self.constant_pool.section_size();
-        header.const_section_offset = const_section_offset;
-        header.const_section_size = const_section_size;
-        next_offset = const_section_offset + const_section_size;
+        header.const_section_offset = next_offset;
+        header.const_section_size = const_bytes.len() as u32;
+        next_offset += header.const_section_size;
 
-        let code_section_offset = next_offset;
-        let code_section_size = self.code.section_size();
-        header.code_section_offset = code_section_offset;
-        header.code_section_size = code_section_size;
+        header.code_section_offset = next_offset;
+        header.code_section_size = code_bytes.len() as u32;
         header.num_functions = self.code.functions.len() as u16;
-        next_offset = code_section_offset + code_section_size;
+        next_offset += header.code_section_size;
 
-        if let Some(debug) = &self.debug_section {
-            let debug_section_size = debug.section_size();
+        if self.debug_section.is_some() {
             header.debug_section_offset = next_offset;
-            header.debug_section_size = debug_section_size;
+            header.debug_section_size = debug_bytes.len() as u32;
             header.flags |= FLAG_HAS_DEBUG_SECTION;
         }
 
+        header.debug_hash = if self.debug_section.is_some() {
+            integrity::debug_hash(&debug_bytes)
+        } else {
+            integrity::NO_HASH
+        };
+        // The header is part of the hashed content (masked), so it is
+        // serialized once to hash and again to write with the hash in it.
+        header.content_hash = integrity::content_hash(&integrity::Content {
+            header: &header_image(&header)?,
+            task_table: &task_bytes,
+            type_section: &type_bytes,
+            const_section: &const_bytes,
+            code_section: &code_bytes,
+        });
+
         header.write_to(w)?;
-        self.task_table.write_to(w)?;
-
-        if let Some(type_section) = &self.type_section {
-            type_section.write_to(w)?;
-        }
-
-        self.constant_pool.write_to(w)?;
-        self.code.write_to(w)?;
-
-        if let Some(debug) = &self.debug_section {
-            debug.write_to(w)?;
-        }
+        w.write_all(&task_bytes)?;
+        w.write_all(&type_bytes)?;
+        w.write_all(&const_bytes)?;
+        w.write_all(&code_bytes)?;
+        w.write_all(&debug_bytes)?;
 
         Ok(())
     }
 
     /// Reads a container from the given reader.
+    ///
+    /// Rejects the container with [`ContainerError::ContentHashMismatch`]
+    /// when the header carries a content hash that the header, task table,
+    /// type, constant and code sections do not reproduce. A debug section whose bytes do not
+    /// reproduce a carried `debug_hash` is discarded, not fatal, so a
+    /// modified or stale debug section cannot stop a program from running
+    /// — that is the separation ADR-0007 asks for.
     pub fn read_from(r: &mut impl Read) -> Result<Self, ContainerError> {
-        let header = FileHeader::read_from(r)?;
+        let mut header_bytes = [0u8; HEADER_SIZE];
+        r.read_exact(&mut header_bytes)?;
+        let header = FileHeader::from_bytes(&header_bytes)?;
 
         // Read remaining bytes after the header so we can seek to
         // section offsets within them.
@@ -93,6 +118,28 @@ impl Container {
         r.read_to_end(&mut rest)?;
 
         let base = HEADER_SIZE as u32;
+
+        // Integrity first, so a modified file reports the modification
+        // rather than whatever parse error the modification happens to
+        // cause. An unhashed container skips this and is parsed as
+        // leniently as before.
+        if header.content_hash != integrity::NO_HASH {
+            let h = &header;
+            integrity::check_content_hash(
+                &h.content_hash,
+                &integrity::Content {
+                    header: &header_bytes,
+                    task_table: section_bytes(&rest, h.task_section_offset, h.task_section_size)?,
+                    type_section: section_bytes(&rest, h.type_section_offset, h.type_section_size)?,
+                    const_section: section_bytes(
+                        &rest,
+                        h.const_section_offset,
+                        h.const_section_size,
+                    )?,
+                    code_section: section_bytes(&rest, h.code_section_offset, h.code_section_size)?,
+                },
+            )?;
+        }
 
         let task_start = (header.task_section_offset - base) as usize;
         let task_end = task_start + header.task_section_size as usize;
@@ -127,11 +174,14 @@ impl Container {
             header.code_section_size,
         )?;
 
-        // Parse debug section if present (non-fatal on error).
+        // Parse debug section if present (non-fatal on error or on a
+        // debug hash mismatch).
         let debug_section = if header.debug_section_size > 0 {
             let debug_start = (header.debug_section_offset - base) as usize;
             let debug_end = debug_start + header.debug_section_size as usize;
-            if debug_end <= rest.len() {
+            if debug_end <= rest.len()
+                && integrity::debug_hash_matches(&header.debug_hash, &rest[debug_start..debug_end])
+            {
                 DebugSection::read_from(&mut Cursor::new(&rest[debug_start..debug_end])).ok()
             } else {
                 None
@@ -151,6 +201,37 @@ impl Container {
     }
 }
 
+/// The bytes of one section, located by its directory entry, within the
+/// bytes that follow the header. An absent section (size 0) is empty; an
+/// entry that points outside `rest` is a [`ContainerError::SectionSizeMismatch`].
+fn section_bytes(rest: &[u8], offset: u32, size: u32) -> Result<&[u8], ContainerError> {
+    if size == 0 {
+        return Ok(&[]);
+    }
+    let start = (offset as usize)
+        .checked_sub(HEADER_SIZE)
+        .ok_or(ContainerError::SectionSizeMismatch)?;
+    rest.get(start..start + size as usize)
+        .ok_or(ContainerError::SectionSizeMismatch)
+}
+
+/// Serializes a header to its 256 on-disk bytes.
+fn header_image(header: &FileHeader) -> Result<[u8; HEADER_SIZE], ContainerError> {
+    let bytes = serialize(|buf| header.write_to(buf))?;
+    bytes
+        .try_into()
+        .map_err(|_| ContainerError::SectionSizeMismatch)
+}
+
+/// Runs a section writer against a fresh buffer and returns the bytes.
+fn serialize(
+    write: impl FnOnce(&mut Vec<u8>) -> Result<(), ContainerError>,
+) -> Result<Vec<u8>, ContainerError> {
+    let mut buf = Vec::new();
+    write(&mut buf)?;
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,7 +243,8 @@ mod tests {
     };
     use crate::id_types::{ConstantIndex, FunctionId, InstanceId, TaskId, VarIndex};
     use crate::test_support::{
-        round_trip, steel_thread_bytecode, steel_thread_single_function_container,
+        container_bytes, round_trip, steel_thread_bytecode, steel_thread_single_function_container,
+        with_tampered_header,
     };
     use crate::ContainerBuilder;
 
@@ -324,13 +406,13 @@ mod tests {
         container.write_to(&mut buf).unwrap();
 
         // Inflate the declared type_section_size so ts_end exceeds available
-        // bytes, forcing the bounds check at container.rs:109 to return None.
-        let mut header = FileHeader::read_from(&mut Cursor::new(&buf[..HEADER_SIZE])).unwrap();
-        header.type_section_size = buf.len() as u32 * 2;
-
-        let mut tampered = Vec::with_capacity(buf.len());
-        header.write_to(&mut tampered).unwrap();
-        tampered.extend_from_slice(&buf[HEADER_SIZE..]);
+        // bytes, forcing the bounds check in read_from to return None. The
+        // lenient path is for unhashed containers, so drop the hash too.
+        let n = buf.len() as u32;
+        let tampered = with_tampered_header(&buf, |h| {
+            h.type_section_size = n * 2;
+            h.content_hash = integrity::NO_HASH;
+        });
 
         let decoded = Container::read_from(&mut Cursor::new(&tampered)).unwrap();
         assert!(decoded.type_section.is_none());
@@ -359,16 +441,33 @@ mod tests {
         container.write_to(&mut buf).unwrap();
 
         // Inflate the declared debug_section_size past the end of the buffer,
-        // triggering the bounds check that returns None at container.rs:135.
-        let mut header = FileHeader::read_from(&mut Cursor::new(&buf[..HEADER_SIZE])).unwrap();
-        header.debug_section_size = buf.len() as u32 * 2;
-
-        let mut tampered = Vec::with_capacity(buf.len());
-        header.write_to(&mut tampered).unwrap();
-        tampered.extend_from_slice(&buf[HEADER_SIZE..]);
+        // triggering the bounds check in read_from that returns None.
+        let n = buf.len() as u32;
+        let tampered = with_tampered_header(&buf, |h| h.debug_section_size = n * 2);
 
         let decoded = Container::read_from(&mut Cursor::new(&tampered)).unwrap();
         assert!(decoded.debug_section.is_none());
+    }
+
+    #[test]
+    fn container_read_from_when_truncated_inside_code_section_then_section_size_mismatch() {
+        let buf = container_bytes(&steel_thread_single_function_container());
+        let truncated = &buf[..buf.len() - 1];
+        assert!(matches!(
+            Container::read_from(&mut Cursor::new(truncated)),
+            Err(ContainerError::SectionSizeMismatch)
+        ));
+    }
+
+    #[test]
+    fn container_read_from_when_hashed_and_section_offset_inside_header_then_section_size_mismatch()
+    {
+        let buf = container_bytes(&steel_thread_single_function_container());
+        let tampered = with_tampered_header(&buf, |h| h.code_section_offset = 0);
+        assert!(matches!(
+            Container::read_from(&mut Cursor::new(&tampered)),
+            Err(ContainerError::SectionSizeMismatch)
+        ));
     }
 
     #[test]

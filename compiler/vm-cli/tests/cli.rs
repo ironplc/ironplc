@@ -205,6 +205,32 @@ fn run_when_invalid_file_then_exit_2_and_v6002() -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
+/// A container modified after compilation fails its content hash check and
+/// is reported under the container-read code, before anything executes.
+#[test]
+fn run_when_code_byte_modified_then_exit_2_and_v6002() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("modified.iplc");
+    let mut bytes = container_bytes(&steel_thread_debug_builder().build());
+    let container = Container::read_from(&mut std::io::Cursor::new(&bytes))?;
+    let last_code_byte =
+        (container.header.code_section_offset + container.header.code_section_size - 1) as usize;
+    bytes[last_code_byte] ^= 0xFF;
+    std::fs::write(&container_path, &bytes)?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run").arg(&container_path).arg("--scans").arg("1");
+    cmd.assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("V6002"))
+        .stderr(predicate::str::contains("content hash mismatch"));
+
+    Ok(())
+}
+
+/// The frozen golden predates hashing, so its header carries no hash and
+/// the reader accepts it unchecked.
 #[test]
 fn run_when_golden_container_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let golden_path = path_to_golden_resource("steel_thread.iplc");
