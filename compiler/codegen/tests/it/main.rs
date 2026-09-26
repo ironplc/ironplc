@@ -153,6 +153,7 @@ mod end_to_end_sqrt;
 mod end_to_end_string;
 mod end_to_end_string_compare;
 mod end_to_end_string_loop;
+mod end_to_end_string_operand_bounds;
 mod end_to_end_string_to_int;
 mod end_to_end_string_to_real;
 mod end_to_end_string_to_udint;

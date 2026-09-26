@@ -321,7 +321,7 @@ Each variable buffer is sized to its own declared length (from `VarEntry.extra`)
 
 ### Temporary Buffers
 
-The temporary buffer pool provides scratch space for intermediate string results. The pool contains `num_temp_str_bufs` STRING buffers and `num_temp_wstr_bufs` WSTRING buffers. Unlike variable buffers (which are sized per-variable), all temp buffers must be sized to the worst case: `max_str_length + 1` for STRING temps and `max_wstr_length × 2 + 2` for WSTRING temps. This is because any string expression could produce a result up to the program-wide maximum length.
+The temporary buffer pool provides scratch space for intermediate string results. The pool contains `num_temp_bufs` buffers of `max_temp_buf_bytes` each (ADR-0035 header included). Unlike variable buffers (which are sized per-variable), every temp buffer is sized to the worst case, because any string expression could produce a result up to the program-wide maximum. That maximum covers more than the declarations: an operand that is not a plain named variable -- a literal, a nested call, an array element, a structure field -- is first copied into a data-region temporary sized to the operand's own bound (a literal's length, a declaration's capacity, or the sum of a `CONCAT`'s arguments), and that bound raises the pool slot too, so a value wider than every declared string still fits both the temporary and the slot it passes through.
 
 ### Buffer Index Space
 
