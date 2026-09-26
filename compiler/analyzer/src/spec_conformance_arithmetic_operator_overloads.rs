@@ -594,16 +594,12 @@ fn analyzer_spec_req_ao_022_unresolved_expression_keeps_left_type(
     #[case] expr: &str,
 ) {
     let values = assigned_values(&program(vars, result_type, expr), &edition_3());
-    let ExprKind::BinaryOp(binary) = &values[0].kind else {
-        panic_free_fail(expr);
-        return;
+    let left = match &values[0].kind {
+        ExprKind::BinaryOp(binary) => binary.left.resolved_type.clone(),
+        _ => None,
     };
-    assert_eq!(values[0].resolved_type, binary.left.resolved_type, "{expr}");
-}
-
-/// Fails the enclosing test for an expression of the wrong shape.
-fn panic_free_fail(expr: &str) {
-    assert!(false, "{expr} is not a binary expression");
+    assert!(left.is_some(), "{expr} has no typed left operand");
+    assert_eq!(values[0].resolved_type, left, "{expr}");
 }
 
 /// REQ-AO-analyzer-023: resolution does not rewrite the tree: an operator
