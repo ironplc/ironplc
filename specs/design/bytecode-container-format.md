@@ -73,7 +73,7 @@ Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 
 | Requirement | Offset | Field | Type | Description |
 |-------------|--------|-------|------|-------------|
 | **REQ-CF-container-002** | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
-| **REQ-CF-container-003** | 4 | format_version | u16 | Container format version (currently 3; bumped to 2 from 1 by ADR-0033 opcode-encoding migration, then to 3 by ADR-0035 WSTRING string-header/constant-pool encoding tags) |
+| **REQ-CF-container-003** | 4 | format_version | u16 | Container format version (currently 4; bumped to 2 from 1 by ADR-0033 opcode-encoding migration, then to 3 by ADR-0035 WSTRING string-header/constant-pool encoding tags, then to 4 by ADR-0054 explicit array element stride) |
 | | 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
 | **REQ-CF-container-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section (`FLAG_HAS_DEBUG_SECTION`); Bit 2: has type section (`FLAG_HAS_TYPE_SECTION`); bits 3–7 reserved. No bit indicates a signature section (see below) |
 | | 8 | content_hash | [u8; 32] | BLAKE3 over `type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope). **Planned** — currently written as all zeros |
@@ -171,7 +171,7 @@ The type section describes the aggregate types a program uses. The interpreter r
 | 0 | num_fb_types | u16 | Number of FB type descriptors |
 | 2 | fb_types | [FbTypeDescriptor; num_fb_types] | Variable size each (see below) |
 | varies | num_arrays | u16 | Number of array descriptors |
-| varies | arrays | [ArrayDescriptor; num_arrays] | 8 bytes each |
+| varies | arrays | [ArrayDescriptor; num_arrays] | 12 bytes each |
 | varies | num_user_fb_types | u16 | Number of user FB descriptors |
 | varies | user_fb_types | [UserFbDescriptor; num_user_fb_types] | 8 bytes each |
 
@@ -202,9 +202,9 @@ Type IDs and field indices are compiler-assigned. The compiler must produce dete
 
 ### Array Descriptors
 
-Each array descriptor defines the element type and total element count for one array variable. The compiler normalizes all array indices to 0-based before emitting `LOAD_ARRAY`/`STORE_ARRAY`, so the descriptor stores a flat element count rather than per-dimension bounds. Original IEC 61131-3 bounds are preserved in the debug section.
+Each array descriptor defines the element type, total element count and element stride for one array shape. The compiler normalizes all array indices to 0-based before emitting `LOAD_ARRAY`/`STORE_ARRAY`, so the descriptor stores a flat element count rather than per-dimension bounds. Original IEC 61131-3 bounds are preserved in the debug section.
 
-**REQ-CF-container-019** Each ArrayDescriptor is 8 bytes (fixed size):
+**REQ-CF-container-019** Each ArrayDescriptor is 12 bytes (fixed size):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
@@ -212,6 +212,9 @@ Each array descriptor defines the element type and total element count for one a
 | 1 | reserved | u8 | Reserved; must be zero |
 | 2 | total_elements | u32 | Total number of elements across all dimensions |
 | 6 | element_extra | u16 | For STRING/WSTRING elements: max length. For FB elements: fb_type_id. |
+| 8 | element_stride | u32 | Byte distance between the starts of consecutive elements (ADR-0054) |
+
+`element_stride` is the element's own size, except for a STRING/WSTRING field of each element of an array of structures, where it is the size of one structure. The reader rejects a STRING/WSTRING stride smaller than one element (elements would overlap) and, for every other element type, any stride other than one 8-byte slot, because `LOAD_ARRAY`/`STORE_ARRAY` always step by one slot.
 
 The VM reads these descriptors at runtime to size array elements and bound array accesses. The verifier (planned) checks that every LOAD_ARRAY/STORE_ARRAY descriptor index references a valid array descriptor and that the descriptor's `element_type` is valid.
 
@@ -659,7 +662,7 @@ layout_hash = BLAKE3(
     num_arrays (u16, LE) ||
     for each array descriptor in index order:
         element_type (u8) || total_elements (u32, LE) ||
-        element_extra (u16, LE)
+        element_extra (u16, LE) || element_stride (u32, LE)
 )
 ```
 
