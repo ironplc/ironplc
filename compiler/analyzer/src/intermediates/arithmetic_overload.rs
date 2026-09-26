@@ -142,17 +142,24 @@ pub fn resolve_arithmetic_fold(
 /// parameter of `MUL_TIME` and `DIV_TIME` matches by category. The form that
 /// applies is the long one when either operand is of a long temporal type,
 /// and the short one otherwise.
+///
+/// Every temporal type is elementary, so an operand that is not (a user
+/// type, an enumeration, a structure) matches no temporal parameter, and
+/// the answer is `None`. The one non-elementary operand that can match is
+/// an untyped literal's category (`ANY_INT`, `ANY_REAL`) in the `ANY_NUM`
+/// slot, as in `t * 2`. The type resolver has already reduced an alias to
+/// its elementary type.
 pub fn typed_overload(op: &Operator, left: &TypeName, right: &TypeName) -> Option<Overload> {
     let form = arithmetic_form(op)?;
-    let left_elem = ElementaryTypeName::try_from(&left.name).ok();
-    let right_elem = ElementaryTypeName::try_from(&right.name).ok();
+    let left = OperandType::of(left);
+    let right = OperandType::of(right);
     let row = form.typed_overloads().iter().find_map(|name| {
         let row = short_overload(name)?;
-        (parameter_accepts(row.in1, left) && parameter_accepts(row.in2, right)).then_some(row)
+        (parameter_accepts(row.in1, &left) && parameter_accepts(row.in2, &right)).then_some(row)
     })?;
-    let long = [left_elem, right_elem]
+    let long = [&left, &right]
         .iter()
-        .flatten()
+        .filter_map(|operand| operand.elementary.as_ref())
         .any(is_long_temporal);
     let row = if long { row.long()? } else { *row };
     Some(Overload::Typed {
@@ -201,20 +208,38 @@ fn numeric_overload(
     })
 }
 
-/// Returns true if an operand of type `actual` is acceptable where a typed
-/// overload declares a parameter of type `param` (a short temporal type or
-/// `ANY_NUM`).
-fn parameter_accepts(param: &str, actual: &TypeName) -> bool {
+/// An operand of a typed overload: its type, and that type as an
+/// elementary type when it is one.
+struct OperandType<'a> {
+    type_name: &'a TypeName,
+    elementary: Option<ElementaryTypeName>,
+}
+
+impl<'a> OperandType<'a> {
+    fn of(type_name: &'a TypeName) -> Self {
+        OperandType {
+            type_name,
+            elementary: ElementaryTypeName::try_from(&type_name.name).ok(),
+        }
+    }
+}
+
+/// Returns true if `operand` is acceptable where a typed overload declares a
+/// parameter of type `param`: a short temporal type, or `ANY_NUM`.
+fn parameter_accepts(param: &str, operand: &OperandType<'_>) -> bool {
     let param = TypeName::from(param);
     match (
         ElementaryTypeName::try_from(&param.name),
-        ElementaryTypeName::try_from(&actual.name),
+        &operand.elementary,
     ) {
-        (Ok(param), Ok(actual)) => same_temporal_family(&param, &actual),
-        // The only non-temporal parameter is `ANY_NUM`, which no flag
-        // widens, so the default options answer the same as any others.
-        (Err(_), _) => are_types_compatible(&param, actual, &CompilerOptions::default()),
-        (Ok(_), Err(_)) => false,
+        // A temporal parameter accepts its family at either width.
+        (Ok(param), Some(actual)) => same_temporal_family(&param, actual),
+        // A temporal parameter accepts nothing that is not elementary.
+        (Ok(_), None) => false,
+        // The only non-temporal parameter is `ANY_NUM`. It accepts the
+        // numeric types and a literal's category; no flag widens it, so the
+        // default options answer the same as any others.
+        (Err(_), _) => are_types_compatible(&param, operand.type_name, &CompilerOptions::default()),
     }
 }
 
@@ -289,6 +314,39 @@ mod tests {
         assert_eq!(
             resolve_arithmetic_fold(&Operator::Add, &[None, Some(&dint), Some(&dint)], &options),
             Ok(Overload::Unchecked { result: None })
+        );
+    }
+
+    /// An operand that is not elementary matches no temporal parameter, so a
+    /// user type on either side has no typed overload, while an untyped
+    /// literal's category still fills the `ANY_NUM` slot.
+    #[test]
+    fn typed_overload_when_operand_not_elementary_then_only_literal_in_any_num_slot() {
+        let time = TypeName::from("TIME");
+        let user = TypeName::from("MY_STRUCT");
+        let int_literal = TypeName::from("ANY_INT");
+        let real_literal = TypeName::from("ANY_REAL");
+
+        assert_eq!(typed_overload(&Operator::Add, &user, &time), None);
+        assert_eq!(typed_overload(&Operator::Add, &time, &user), None);
+        assert_eq!(typed_overload(&Operator::Mul, &time, &user), None);
+        // A literal cannot stand for a duration: `2 * t` and `t + 1` have none.
+        assert_eq!(typed_overload(&Operator::Mul, &int_literal, &time), None);
+        assert_eq!(typed_overload(&Operator::Add, &time, &int_literal), None);
+        // A literal fills the ANY_NUM factor: `t * 2`, `t / 1.5`.
+        assert_eq!(
+            typed_overload(&Operator::Mul, &time, &int_literal),
+            Some(Overload::Typed {
+                name: "MUL_TIME",
+                result: time.clone()
+            })
+        );
+        assert_eq!(
+            typed_overload(&Operator::Div, &time, &real_literal),
+            Some(Overload::Typed {
+                name: "DIV_TIME",
+                result: time.clone()
+            })
         );
     }
 
