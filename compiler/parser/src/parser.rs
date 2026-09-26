@@ -490,7 +490,7 @@ parser! {
     // See specs/design/time-literals.md — REQ-TL-011.
     rule dt_sep(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case(val)]
 
-    pub rule duration() -> DurationLiteral = start:position!() (tok(TokenType::Time) / tok(TokenType::Ltime) / dt_sep("T")) tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() end:position!() {
+    pub rule duration() -> DurationLiteral = start:position!() width:duration_prefix() tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() end:position!() {
       let span = span_of_tokens(tokens, start, end);
       let interval = match s {
         Some(sign) => i.interval * -1,
@@ -499,8 +499,13 @@ parser! {
       DurationLiteral {
         span,
         interval,
+        width,
       }
     }
+    // The prefix names the type: `LTIME#` is an LTIME, `TIME#` and `T#` a
+    // TIME. `dt_sep("T")` matches a bare identifier, so it comes last and
+    // cannot shadow the keyword forms.
+    rule duration_prefix() -> TemporalWidth = tok(TokenType::Time) { TemporalWidth::Short } / tok(TokenType::Ltime) { TemporalWidth::Long } / dt_sep("T") { TemporalWidth::Short }
     // milliseconds must come first because the "m" in "ms" would match the minutes rule
     rule interval() -> DurationLiteral = ms:milliseconds() { ms }
       / d:days() { d }
@@ -521,14 +526,16 @@ parser! {
     rule milliseconds() -> DurationLiteral = ms:fixed_point() dt_sep("ms") { DurationLiteral::milliseconds(ms) }
 
     // 1.2.3.2 Time of day and date
-    rule time_of_day() -> TimeOfDayLiteral = (tok(TokenType::TimeOfDay) / tok(TokenType::Ltod)) tok(TokenType::Hash) d:daytime() { TimeOfDayLiteral::new(d) }
+    rule time_of_day() -> TimeOfDayLiteral = width:time_of_day_prefix() tok(TokenType::Hash) d:daytime() { TimeOfDayLiteral::new(d).with_width(width) }
+    rule time_of_day_prefix() -> TemporalWidth = tok(TokenType::TimeOfDay) { TemporalWidth::Short } / tok(TokenType::Ltod) { TemporalWidth::Long }
     rule daytime() -> Time = h:day_hour() tok(TokenType::Colon) m:day_minute() tok(TokenType::Colon) s:day_second() {?
       Time::from_hms(h.try_into().map_err(|e| "hour")?, m.try_into().map_err(|e| "min")?, s.whole as u8).map_err(|e| "time")
     }
     rule day_hour() -> Integer = integer()
     rule day_minute() -> Integer = integer()
     rule day_second() -> FixedPoint = fixed_point()
-    rule date() -> DateLiteral = (tok(TokenType::Date) / tok(TokenType::Ldate) / dt_sep("D")) tok(TokenType::Hash) d:date_literal() { DateLiteral::new(d) }
+    rule date() -> DateLiteral = width:date_prefix() tok(TokenType::Hash) d:date_literal() { DateLiteral::new(d).with_width(width) }
+    rule date_prefix() -> TemporalWidth = tok(TokenType::Date) { TemporalWidth::Short } / tok(TokenType::Ldate) { TemporalWidth::Long } / dt_sep("D") { TemporalWidth::Short }
     rule date_literal() -> Date = y:year() tok(TokenType::Minus) m:month() tok(TokenType::Minus) d:day() {?
       let y = y.value;
       let m = Month::try_from(<dsl::common::Integer as TryInto<u8>>::try_into(m).map_err(|e| "month")?).map_err(|e| "month")?;
@@ -538,7 +545,8 @@ parser! {
     rule year() -> Integer = i:integer() { i }
     rule month() -> Integer = i:integer() { i }
     rule day() -> Integer = i:integer() { i }
-    rule date_and_time() -> DateAndTimeLiteral = (tok(TokenType::DateAndTime) / tok(TokenType::Ldt)) tok(TokenType::Hash) d:date_literal() tok(TokenType::Minus) t:daytime() { DateAndTimeLiteral::new(PrimitiveDateTime::new(d, t)) }
+    rule date_and_time() -> DateAndTimeLiteral = width:date_and_time_prefix() tok(TokenType::Hash) d:date_literal() tok(TokenType::Minus) t:daytime() { DateAndTimeLiteral::new(PrimitiveDateTime::new(d, t)).with_width(width) }
+    rule date_and_time_prefix() -> TemporalWidth = tok(TokenType::DateAndTime) { TemporalWidth::Short } / tok(TokenType::Ldt) { TemporalWidth::Long }
 
     // B.1.3 Data types
     // This should match generic_type_name, but that's unnecessary because

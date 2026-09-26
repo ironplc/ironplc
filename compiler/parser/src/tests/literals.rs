@@ -160,10 +160,10 @@ END_FUNCTION";
                 qualifier: DeclarationQualifier::Unspecified,
                 initializer: InitialValueAssignmentKind::Simple(SimpleInitializer {
                     type_name: TypeName::from("TIME"),
-                    initial_value: Some(ConstantKind::Duration(DurationLiteral {
-                        interval: Duration::milliseconds(1200),
-                        span: SourceSpan::default(),
-                    })),
+                    initial_value: Some(ConstantKind::Duration(DurationLiteral::new(
+                        SourceSpan::default(),
+                        Duration::milliseconds(1200),
+                    ))),
                 }),
                 block: next_block_id(),
             }],
@@ -421,4 +421,94 @@ END_TYPE";
     assert_eq!(lit.value, vec!['a', 'b', 'c']);
     assert_eq!(lit.width, StringType::String);
     assert_eq!(&program[lit.span.start..lit.span.end], "'abc'");
+}
+
+/// A temporal literal's prefix names the type, so the width the source spelled
+/// has to survive parsing. Without it every temporal literal is the 32-bit
+/// member of its family and a 64-bit literal is held to a 32-bit range
+/// (issue #1560).
+#[rstest::rstest]
+// The 32-bit member, in both its keyword and abbreviated spellings.
+#[case::time("t : TIME := TIME#1h;", TemporalWidth::Short)]
+#[case::time_abbreviated("t : TIME := T#1h;", TemporalWidth::Short)]
+#[case::ltime("t : LTIME := LTIME#1h;", TemporalWidth::Long)]
+fn parse_program_when_duration_literal_then_width_is_the_prefix(
+    #[case] declaration: &str,
+    #[case] expected: TemporalWidth,
+) {
+    let program = format!("PROGRAM main\nVAR\n{declaration}\nEND_VAR\nEND_PROGRAM");
+    let lib = parse_text_edition3(&program);
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let init = cast!(
+        &prog.variables[0].initializer,
+        InitialValueAssignmentKind::Simple
+    );
+    let literal = cast!(init.initial_value.as_ref().unwrap(), ConstantKind::Duration);
+    assert_eq!(literal.width, expected);
+}
+
+#[rstest::rstest]
+#[case::date("d : DATE := DATE#2024-01-01;", TemporalWidth::Short)]
+#[case::date_abbreviated("d : DATE := D#2024-01-01;", TemporalWidth::Short)]
+#[case::ldate("d : LDATE := LDATE#2024-01-01;", TemporalWidth::Long)]
+fn parse_program_when_date_literal_then_width_is_the_prefix(
+    #[case] declaration: &str,
+    #[case] expected: TemporalWidth,
+) {
+    let program = format!("PROGRAM main\nVAR\n{declaration}\nEND_VAR\nEND_PROGRAM");
+    let lib = parse_text_edition3(&program);
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let init = cast!(
+        &prog.variables[0].initializer,
+        InitialValueAssignmentKind::Simple
+    );
+    let literal = cast!(init.initial_value.as_ref().unwrap(), ConstantKind::Date);
+    assert_eq!(literal.width, expected);
+}
+
+#[rstest::rstest]
+#[case::time_of_day("t : TIME_OF_DAY := TIME_OF_DAY#12:30:00;", TemporalWidth::Short)]
+#[case::tod("t : TIME_OF_DAY := TOD#12:30:00;", TemporalWidth::Short)]
+#[case::ltod("t : LTIME_OF_DAY := LTOD#12:30:00;", TemporalWidth::Long)]
+fn parse_program_when_time_of_day_literal_then_width_is_the_prefix(
+    #[case] declaration: &str,
+    #[case] expected: TemporalWidth,
+) {
+    let program = format!("PROGRAM main\nVAR\n{declaration}\nEND_VAR\nEND_PROGRAM");
+    let lib = parse_text_edition3(&program);
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let init = cast!(
+        &prog.variables[0].initializer,
+        InitialValueAssignmentKind::Simple
+    );
+    let literal = cast!(
+        init.initial_value.as_ref().unwrap(),
+        ConstantKind::TimeOfDay
+    );
+    assert_eq!(literal.width, expected);
+}
+
+#[rstest::rstest]
+#[case::dt("d : DT := DT#2024-01-01-12:30:00;", TemporalWidth::Short)]
+#[case::date_and_time(
+    "d : DATE_AND_TIME := DATE_AND_TIME#2024-01-01-12:30:00;",
+    TemporalWidth::Short
+)]
+#[case::ldt("d : LDT := LDT#2024-01-01-12:30:00;", TemporalWidth::Long)]
+fn parse_program_when_date_and_time_literal_then_width_is_the_prefix(
+    #[case] declaration: &str,
+    #[case] expected: TemporalWidth,
+) {
+    let program = format!("PROGRAM main\nVAR\n{declaration}\nEND_VAR\nEND_PROGRAM");
+    let lib = parse_text_edition3(&program);
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let init = cast!(
+        &prog.variables[0].initializer,
+        InitialValueAssignmentKind::Simple
+    );
+    let literal = cast!(
+        init.initial_value.as_ref().unwrap(),
+        ConstantKind::DateAndTime
+    );
+    assert_eq!(literal.width, expected);
 }

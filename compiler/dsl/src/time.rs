@@ -4,26 +4,83 @@ use time::{
     Date, Duration, PrimitiveDateTime, Time,
 };
 
-use crate::{common::FixedPoint, core::SourceSpan};
+use crate::{
+    common::{ElementaryTypeName, FixedPoint},
+    core::SourceSpan,
+};
 
 const SECOND_PER_DAY: u64 = Second::per(Day) as u64;
 const SECOND_PER_HOUR: u64 = Second::per(Hour) as u64;
 const SECOND_PER_MINUTE: u64 = Second::per(Minute) as u64;
+
+/// Which member of a temporal family a literal names: the 32-bit type or the
+/// 64-bit one.
+///
+/// IEC 61131-3 pairs each temporal type with a wider one -- `TIME` with
+/// `LTIME`, `DATE` with `LDATE`, `TIME_OF_DAY` with `LTIME_OF_DAY`,
+/// `DATE_AND_TIME` with `LDATE_AND_TIME` -- and a literal's prefix says which
+/// one it is: `T#1h` is a `TIME` and `LTIME#1h` an `LTIME`.
+///
+/// The width belongs on the literal and not only on the declaration it
+/// initializes, for the reason [`CharacterStringLiteral::width`] gives: a
+/// literal also appears in statement bodies, where there is no declaration to
+/// borrow it from. Without it every temporal literal resolved to the 32-bit
+/// type, which held a 64-bit literal to a 32-bit range (issue #1560).
+///
+/// [`CharacterStringLiteral::width`]: crate::common::CharacterStringLiteral::width
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum TemporalWidth {
+    /// The 32-bit member: `TIME`, `DATE`, `TIME_OF_DAY`, `DATE_AND_TIME`.
+    Short,
+    /// The 64-bit member: `LTIME`, `LDATE`, `LTIME_OF_DAY`, `LDATE_AND_TIME`.
+    Long,
+}
 
 // See section 2.2.2
 #[derive(Debug, PartialEq, Clone)]
 pub struct DurationLiteral {
     pub span: SourceSpan,
     pub interval: Duration,
+    /// The width the source spelled, which is what selects the prefix:
+    /// `TIME#`/`T#` for the 32-bit type, `LTIME#` for the 64-bit one.
+    pub width: TemporalWidth,
 }
 
 impl DurationLiteral {
     /// Creates a literal spanning `span` and measuring `interval`.
     ///
     /// Every constructor funnels through here so that what a duration literal
-    /// is made of is stated once.
-    fn new(span: SourceSpan, interval: Duration) -> Self {
-        Self { span, interval }
+    /// is made of is stated once. The width defaults to the 32-bit member of
+    /// the family, as [`CharacterStringLiteral::new`] defaults to `STRING`;
+    /// a caller that knows better says so with
+    /// [`with_width`](Self::with_width).
+    ///
+    /// [`CharacterStringLiteral::new`]: crate::common::CharacterStringLiteral::new
+    pub fn new(span: SourceSpan, interval: Duration) -> Self {
+        Self {
+            span,
+            interval,
+            width: TemporalWidth::Short,
+        }
+    }
+
+    /// Returns the literal with `width` recorded as the member of the family
+    /// its prefix named.
+    pub fn with_width(mut self, width: TemporalWidth) -> Self {
+        self.width = width;
+        self
+    }
+
+    /// The IEC 61131-3 type this literal is: the duration type its prefix named.
+    ///
+    /// A literal states its own type, so it is checked against that type's
+    /// range wherever it is written, the way a prefixed integer literal is
+    /// (`INT#40000` is not an `INT` whatever it is stored into).
+    pub fn type_name(&self) -> ElementaryTypeName {
+        match self.width {
+            TemporalWidth::Short => ElementaryTypeName::TIME,
+            TemporalWidth::Long => ElementaryTypeName::LTIME,
+        }
     }
 
     /// Creates a literal of `value` units, where one unit is `seconds_per_unit`
@@ -153,6 +210,9 @@ pub struct TimeOfDayLiteral {
     value: Time,
     /// The literal's position in the source text.
     pub span: SourceSpan,
+    /// The width the source spelled: `TIME_OF_DAY#`/`TOD#` for the 32-bit
+    /// type, `LTIME_OF_DAY#`/`LTOD#` for the 64-bit one.
+    pub width: TemporalWidth,
 }
 
 impl TimeOfDayLiteral {
@@ -160,6 +220,26 @@ impl TimeOfDayLiteral {
         Self {
             value,
             span: SourceSpan::default(),
+            width: TemporalWidth::Short,
+        }
+    }
+
+    /// Returns the literal with `width` recorded as the member of the family
+    /// its prefix named.
+    pub fn with_width(mut self, width: TemporalWidth) -> Self {
+        self.width = width;
+        self
+    }
+
+    /// The IEC 61131-3 type this literal is: the time of day type its prefix named.
+    ///
+    /// A literal states its own type, so it is checked against that type's
+    /// range wherever it is written, the way a prefixed integer literal is
+    /// (`INT#40000` is not an `INT` whatever it is stored into).
+    pub fn type_name(&self) -> ElementaryTypeName {
+        match self.width {
+            TemporalWidth::Short => ElementaryTypeName::TimeOfDay,
+            TemporalWidth::Long => ElementaryTypeName::LTimeOfDay,
         }
     }
 
@@ -202,6 +282,9 @@ pub struct DateLiteral {
     pub value: Date,
     /// The literal's position in the source text.
     pub span: SourceSpan,
+    /// The width the source spelled: `DATE#`/`D#` for the 32-bit type,
+    /// `LDATE#` for the 64-bit one.
+    pub width: TemporalWidth,
 }
 
 impl DateLiteral {
@@ -209,6 +292,26 @@ impl DateLiteral {
         Self {
             value,
             span: SourceSpan::default(),
+            width: TemporalWidth::Short,
+        }
+    }
+
+    /// Returns the literal with `width` recorded as the member of the family
+    /// its prefix named.
+    pub fn with_width(mut self, width: TemporalWidth) -> Self {
+        self.width = width;
+        self
+    }
+
+    /// The IEC 61131-3 type this literal is: the date type its prefix named.
+    ///
+    /// A literal states its own type, so it is checked against that type's
+    /// range wherever it is written, the way a prefixed integer literal is
+    /// (`INT#40000` is not an `INT` whatever it is stored into).
+    pub fn type_name(&self) -> ElementaryTypeName {
+        match self.width {
+            TemporalWidth::Short => ElementaryTypeName::DATE,
+            TemporalWidth::Long => ElementaryTypeName::LDATE,
         }
     }
 
@@ -250,6 +353,9 @@ pub struct DateAndTimeLiteral {
     value: PrimitiveDateTime,
     /// The literal's position in the source text.
     pub span: SourceSpan,
+    /// The width the source spelled: `DATE_AND_TIME#`/`DT#` for the 32-bit
+    /// type, `LDATE_AND_TIME#`/`LDT#` for the 64-bit one.
+    pub width: TemporalWidth,
 }
 
 impl DateAndTimeLiteral {
@@ -257,6 +363,26 @@ impl DateAndTimeLiteral {
         Self {
             value,
             span: SourceSpan::default(),
+            width: TemporalWidth::Short,
+        }
+    }
+
+    /// Returns the literal with `width` recorded as the member of the family
+    /// its prefix named.
+    pub fn with_width(mut self, width: TemporalWidth) -> Self {
+        self.width = width;
+        self
+    }
+
+    /// The IEC 61131-3 type this literal is: the date and time type its prefix named.
+    ///
+    /// A literal states its own type, so it is checked against that type's
+    /// range wherever it is written, the way a prefixed integer literal is
+    /// (`INT#40000` is not an `INT` whatever it is stored into).
+    pub fn type_name(&self) -> ElementaryTypeName {
+        match self.width {
+            TemporalWidth::Short => ElementaryTypeName::DateAndTime,
+            TemporalWidth::Long => ElementaryTypeName::LDateAndTime,
         }
     }
 
