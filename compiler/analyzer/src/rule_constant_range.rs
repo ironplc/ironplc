@@ -569,10 +569,8 @@ impl Visitor<Infallible> for RuleConstantRange<'_> {
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-        self.declarations.add_if(
-            node.identifier.symbolic_id(),
-            Declared(node.initializer.clone()),
-        );
+        self.declarations
+            .add_if(node.identifier.symbolic_id(), Declared::of(node));
 
         self.check_initializer(&node.initializer);
 

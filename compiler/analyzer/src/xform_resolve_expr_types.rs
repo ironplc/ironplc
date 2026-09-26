@@ -19,12 +19,10 @@ use std::collections::HashMap;
 use crate::function_environment::FunctionEnvironment;
 use crate::intermediate_type::IntermediateType;
 use crate::intermediates::inherited_fields::collect_inherited_fields;
-use crate::scoped_table::{ScopedTable, Value};
 use crate::system_globals::SYSTEM_UPTIME_GLOBALS;
 use crate::type_environment::TypeEnvironment;
+use crate::variable_type::{Declarations, Declared};
 use ironplc_parser::options::CompilerOptions;
-
-impl Value for TypeName {}
 
 pub fn apply(
     lib: Library,
@@ -34,8 +32,7 @@ pub fn apply(
 ) -> Result<Library, Vec<Diagnostic>> {
     let inherited_fields = collect_inherited_fields(&lib);
     let mut resolver = ExprTypeResolver {
-        var_types: ScopedTable::new(),
-        array_element_types: ScopedTable::new(),
+        declarations: Declarations::new(),
         inherited_fields,
         type_environment,
         function_environment,
@@ -45,9 +42,10 @@ pub fn apply(
     // body sees them and a POU-local of the same name shadows them.
     if options.allow_system_uptime_global {
         for global in &SYSTEM_UPTIME_GLOBALS {
-            resolver
-                .var_types
-                .add(&Id::from(global.name), TypeName::from(global.type_name));
+            resolver.declarations.add(
+                &Id::from(global.name),
+                Declared::Typed(TypeName::from(global.type_name)),
+            );
         }
     }
 
@@ -105,21 +103,14 @@ fn find_base_variable_name(var: &SymbolicVariableKind) -> Option<&Id> {
 }
 
 struct ExprTypeResolver<'a> {
-    /// Maps variable names to their declared TypeName, scoped.
+    /// Declared type of every variable in scope.
     ///
     /// The outermost scope holds `VAR_GLOBAL` and the implicit system
     /// globals; each POU the traversal enters pushes a scope of its own.
     /// A method's scope nests inside its function block's, so a method
     /// body sees the instance's fields and a method local shadows a
     /// field of the same name.
-    var_types: ScopedTable<'static, Id, TypeName>,
-    /// For variables declared as arrays or REF_TO arrays, stores the element type.
-    ///
-    /// For `arr : ARRAY[0..10] OF INT`, stores `"int"` keyed by `"arr"`.
-    /// For `pt : REF_TO ARRAY[1..255] OF BYTE`, stores `"byte"` keyed by `"pt"`.
-    /// This enables `resolve_variable_type` to return the correct element type
-    /// when resolving `arr[i]` or `pt^[i]` expressions.
-    array_element_types: ScopedTable<'static, Id, TypeName>,
+    declarations: Declarations<'static>,
     /// Fields inherited via `EXTENDS`, per function block -- see
     /// `intermediates::inherited_fields`. Seeded into `var_types` before a
     /// function block's own fields so unqualified references to a base
@@ -134,73 +125,65 @@ impl ExprTypeResolver<'_> {
     /// `Foo := ...` inside `FUNCTION Foo` (or a `METHOD Foo : T`)
     /// resolves to the declared return type.
     fn insert_result_variable(&mut self, name: &Id, return_type: &FunctionReturnType) {
-        let return_type_name = return_type.to_type_name();
-        let resolved = self
-            .type_environment
-            .resolve_elementary_type_name(&return_type_name)
-            .unwrap_or(return_type_name);
-        self.var_types.add(name, resolved);
+        self.declarations
+            .add(name, Declared::Typed(return_type.to_type_name()));
     }
 
-    /// Extracts the TypeName from a variable declaration and inserts it into the
-    /// variable type map. Also populates `array_element_types` for array and
-    /// REF_TO array variables so that subscript expressions can resolve their
-    /// element type.
+    /// Records a variable declaration in the current scope.
     fn insert(&mut self, node: &VarDecl) {
-        self.insert_array_element_type(node);
+        self.declarations
+            .add_if(node.identifier.symbolic_id(), Declared::of(node));
+    }
 
-        let type_name = match &node.initializer {
-            InitialValueAssignmentKind::None(_) => return,
-            InitialValueAssignmentKind::Simple(si) => si.type_name.clone(),
-            InitialValueAssignmentKind::String(si) => si.type_name(),
-            InitialValueAssignmentKind::EnumeratedValues(_) => return,
-            InitialValueAssignmentKind::EnumeratedType(e) => e.type_name.clone(),
-            InitialValueAssignmentKind::FunctionBlock(fb) => fb.type_name.clone(),
-            InitialValueAssignmentKind::FunctionBlockCall(fbc) => fbc.type_name.clone(),
+    /// Returns the type name a variable in scope was declared with.
+    ///
+    /// `None` for a variable that is not in scope and for one whose type
+    /// has no name to give: an inline enumeration, an inline array, or a
+    /// declaration without a type.
+    fn declared_type_name(&self, id: &Id) -> Option<TypeName> {
+        let init = match self.declarations.find(id)? {
+            Declared::Variable(init) => init,
+            Declared::Typed(type_name) => return Some(type_name.clone()),
+        };
+        match init.as_ref() {
+            InitialValueAssignmentKind::None(_) => None,
+            InitialValueAssignmentKind::Simple(si) => Some(si.type_name.clone()),
+            InitialValueAssignmentKind::String(si) => Some(si.type_name()),
+            InitialValueAssignmentKind::EnumeratedValues(_) => None,
+            InitialValueAssignmentKind::EnumeratedType(e) => Some(e.type_name.clone()),
+            InitialValueAssignmentKind::FunctionBlock(fb) => Some(fb.type_name.clone()),
+            InitialValueAssignmentKind::FunctionBlockCall(fbc) => Some(fbc.type_name.clone()),
             InitialValueAssignmentKind::Subrange(spec) => match spec {
-                SpecificationKind::Named(tn) => tn.clone(),
-                SpecificationKind::Inline(sr) => TypeName::from(&sr.type_name.to_string()),
+                SpecificationKind::Named(tn) => Some(tn.clone()),
+                SpecificationKind::Inline(sr) => Some(TypeName::from(&sr.type_name.to_string())),
             },
-            InitialValueAssignmentKind::Structure(s) => s.type_name.clone(),
+            InitialValueAssignmentKind::Structure(s) => Some(s.type_name.clone()),
             InitialValueAssignmentKind::Array(a) => match &a.spec {
-                SpecificationKind::Named(tn) => tn.clone(),
-                SpecificationKind::Inline(_) => return,
+                SpecificationKind::Named(tn) => Some(tn.clone()),
+                SpecificationKind::Inline(_) => None,
             },
-            InitialValueAssignmentKind::Reference(ref_init) => match ref_init.target.type_name() {
-                Some(tn) => tn.clone(),
-                None => return, // Inline array targets don't have a single type name
-            },
+            // An inline array target has no single type name.
+            InitialValueAssignmentKind::Reference(ref_init) => ref_init.target.type_name().cloned(),
             InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
                 type_name: tn,
                 ..
-            }) => tn.clone(),
-            InitialValueAssignmentKind::SimpleExpr(se) => se.type_name.clone(),
-        };
-
-        match &node.identifier {
-            VariableIdentifier::Symbol(id) => {
-                self.var_types.add(id, type_name);
-            }
-            VariableIdentifier::Direct(direct) => {
-                if let Some(name) = &direct.name {
-                    self.var_types.add(name, type_name);
-                }
-            }
+            }) => Some(tn.clone()),
+            InitialValueAssignmentKind::SimpleExpr(se) => Some(se.type_name.clone()),
         }
     }
 
-    /// Extracts and stores the array element type for array and REF_TO array
-    /// variable declarations.
-    fn insert_array_element_type(&mut self, node: &VarDecl) {
-        let id = match &node.identifier {
-            VariableIdentifier::Symbol(id) => id.clone(),
-            VariableIdentifier::Direct(direct) => match &direct.name {
-                Some(name) => name.clone(),
-                None => return,
-            },
+    /// Returns the element type name of a variable in scope declared as an
+    /// array or a reference to one, so that `arr[i]` and `pt^[i]` resolve
+    /// to the element type.
+    ///
+    /// For `arr : ARRAY[0..10] OF INT` this is `"int"`; for
+    /// `pt : REF_TO ARRAY[1..255] OF BYTE` it is `"byte"`.
+    fn declared_element_type_name(&self, id: &Id) -> Option<TypeName> {
+        let Declared::Variable(init) = self.declarations.find(id)? else {
+            // A result variable or system global is never subscripted.
+            return None;
         };
-
-        let elem_type_name = match &node.initializer {
+        match init.as_ref() {
             // ARRAY[...] OF T (inline spec)
             InitialValueAssignmentKind::Array(a) => match &a.spec {
                 SpecificationKind::Inline(inline) => {
@@ -226,10 +209,6 @@ impl ExprTypeResolver<'_> {
                 ..
             }) => self.element_type_from_named_array(tn),
             _ => None,
-        };
-
-        if let Some(elem_tn) = elem_type_name {
-            self.array_element_types.add(&id, elem_tn);
         }
     }
 
@@ -411,8 +390,8 @@ impl ExprTypeResolver<'_> {
     ) -> Option<&'b IntermediateType> {
         match kind {
             SymbolicVariableKind::Named(nv) => {
-                let var_type = self.var_types.find(&nv.name)?;
-                self.type_environment.resolve_member_access_type(var_type)
+                let var_type = self.declared_type_name(&nv.name)?;
+                self.type_environment.resolve_member_access_type(&var_type)
             }
             SymbolicVariableKind::Structured(sv) => {
                 let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
@@ -451,13 +430,13 @@ impl ExprTypeResolver<'_> {
     fn resolve_variable_type(&self, var: &Variable) -> Option<TypeName> {
         match var {
             Variable::Symbolic(SymbolicVariableKind::Named(nv)) => {
-                let declared = self.var_types.find(&nv.name)?;
+                let declared = self.declared_type_name(&nv.name)?;
                 // Try to resolve to an elementary type. If the type is complex
                 // (enum, struct, etc.), keep the declared name.
                 Some(
                     self.type_environment
-                        .resolve_elementary_type_name(declared)
-                        .unwrap_or_else(|| declared.clone()),
+                        .resolve_elementary_type_name(&declared)
+                        .unwrap_or(declared),
                 )
             }
             Variable::Symbolic(SymbolicVariableKind::Array(arr_var)) => {
@@ -471,11 +450,11 @@ impl ExprTypeResolver<'_> {
 
                 // Array subscript: walk to base variable, return element type.
                 let base_name = find_base_variable_name(&arr_var.subscripted_variable)?;
-                let elem_type = self.array_element_types.find(base_name)?;
+                let elem_type = self.declared_element_type_name(base_name)?;
                 Some(
                     self.type_environment
-                        .resolve_elementary_type_name(elem_type)
-                        .unwrap_or_else(|| elem_type.clone()),
+                        .resolve_elementary_type_name(&elem_type)
+                        .unwrap_or(elem_type),
                 )
             }
             Variable::Symbolic(SymbolicVariableKind::Structured(sv)) => {
@@ -494,8 +473,8 @@ impl ExprTypeResolver<'_> {
             Variable::Symbolic(SymbolicVariableKind::Deref(deref_var)) => {
                 // Dereference: resolve the target type of the reference.
                 let base_name = find_base_variable_name(&deref_var.variable)?;
-                let declared = self.var_types.find(base_name)?;
-                let attrs = self.type_environment.get(declared)?;
+                let declared = self.declared_type_name(base_name)?;
+                let attrs = self.type_environment.get(&declared)?;
                 if let Some(target) = attrs.representation.referenced_type() {
                     self.type_environment.elementary_type_name_for(target)
                 } else {
@@ -542,8 +521,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
     /// it contributes rather than silently contributing nothing -- which
     /// in this pass means silently skipping type checks, not failing.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
-        self.var_types.enter();
-        self.array_element_types.enter();
+        self.declarations.enter();
 
         match node {
             ScopeNode::Function(node) => {
@@ -581,8 +559,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
     }
 
     fn exit_scope(&mut self) {
-        self.var_types.exit();
-        self.array_element_types.exit();
+        self.declarations.exit();
     }
 
     fn fold_self_ref_variable(

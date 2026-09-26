@@ -656,3 +656,34 @@ END_PROGRAM
     assert_eq!(read_cur_length(&bufs.data_region, 0), 32);
     assert_eq!(read_wstring(&bufs.data_region, 0), "x".repeat(32));
 }
+
+// Storing into a WSTRING element of an array field of a structure produces
+// the value at the element's wide encoding. It used to be produced narrow,
+// which trapped V9014 (encoding mismatch) on the store.
+//
+// r 0, same 1.
+e2e_i32!(
+    wstring_when_struct_wstring_array_field_written_then_reads_back,
+    "
+TYPE Holder : STRUCT
+  names : ARRAY[1..2] OF WSTRING[10];
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    r : DINT;
+    same : DINT;
+    h : Holder;
+    w : WSTRING[10];
+  END_VAR
+  h.names[2] := \"wide\";
+  r := LEN(h.names[2]);
+  w := h.names[2];
+  IF w = \"wide\" THEN
+    same := 1;
+  END_IF;
+END_PROGRAM
+",
+    &[(0, 4), (1, 1)],
+);

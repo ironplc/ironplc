@@ -407,33 +407,11 @@ pub(crate) fn emit_initial_values(
                     // named types, including structs.  If the variable was
                     // registered as a struct during assign_variables,
                     // initialize it like a Structure initializer.
-                    if let Some(struct_info) = ctx.struct_vars.get(id) {
-                        let data_offset = struct_info.data_offset;
-                        let var_index = struct_info.var_index;
-                        let desc_index = struct_info.desc_index;
-                        let fields: Vec<_> = struct_info
-                            .fields
-                            .iter()
-                            .map(|f| crate::compile_struct_init::FieldInitInfo {
-                                name: f.name.clone(),
-                                slot_offset: f.slot_offset,
-                                field_type: f.field_type.clone(),
-                                op_type: f.op_type,
-                                string_max_length: f.string_max_length,
-                            })
-                            .collect();
-
-                        let offset_const = ctx.add_i32_constant(data_offset as i32);
-                        emitter.emit_load_const_i32(offset_const);
-                        emitter.emit_store_var_i32(var_index);
-
-                        crate::compile_struct_init::initialize_struct_fields(
+                    if let Some(struct_info) = ctx.struct_vars.get(id).cloned() {
+                        crate::compile_struct_init::initialize_struct_variable(
                             emitter,
                             ctx,
-                            var_index,
-                            desc_index,
-                            data_offset,
-                            &fields,
+                            &struct_info,
                             &[],
                             &decl.identifier.span(),
                         )?;
@@ -586,36 +564,11 @@ pub(crate) fn emit_initial_values(
                     emitter.emit_store_var_i64(var_index);
                 }
                 InitialValueAssignmentKind::Structure(struct_init) => {
-                    if let Some(struct_info) = ctx.struct_vars.get(id) {
-                        // Extract needed values before mutable borrow of ctx.
-                        let data_offset = struct_info.data_offset;
-                        let var_index = struct_info.var_index;
-                        let desc_index = struct_info.desc_index;
-                        let fields: Vec<_> = struct_info
-                            .fields
-                            .iter()
-                            .map(|f| crate::compile_struct_init::FieldInitInfo {
-                                name: f.name.clone(),
-                                slot_offset: f.slot_offset,
-                                field_type: f.field_type.clone(),
-                                op_type: f.op_type,
-                                string_max_length: f.string_max_length,
-                            })
-                            .collect();
-
-                        // Store data_offset into the variable slot
-                        let offset_const = ctx.add_i32_constant(data_offset as i32);
-                        emitter.emit_load_const_i32(offset_const);
-                        emitter.emit_store_var_i32(var_index);
-
-                        // Initialize each field
-                        crate::compile_struct_init::initialize_struct_fields(
+                    if let Some(struct_info) = ctx.struct_vars.get(id).cloned() {
+                        crate::compile_struct_init::initialize_struct_variable(
                             emitter,
                             ctx,
-                            var_index,
-                            desc_index,
-                            data_offset,
-                            &fields,
+                            &struct_info,
                             &struct_init.elements_init,
                             &decl.identifier.span(),
                         )?;
@@ -805,30 +758,12 @@ pub(crate) fn emit_function_local_prologue(
     if let Some(struct_info) = ctx.struct_vars.get(return_id).cloned() {
         // Struct return: store data_offset into the return var slot and
         // zero all struct fields. Functions are stateless, so the struct
-        // must be re-initialized on every call.
-        let offset_const = ctx.add_i32_constant(struct_info.data_offset as i32);
-        emitter.emit_load_const_i32(offset_const);
-        emitter.emit_store_var_i32(return_var_index);
-
-        let fields: Vec<_> = struct_info
-            .fields
-            .iter()
-            .map(|f| crate::compile_struct_init::FieldInitInfo {
-                name: f.name.clone(),
-                slot_offset: f.slot_offset,
-                field_type: f.field_type.clone(),
-                op_type: f.op_type,
-                string_max_length: f.string_max_length,
-            })
-            .collect();
-
-        crate::compile_struct_init::initialize_struct_fields(
+        // must be re-initialized on every call. The struct was registered
+        // under `return_var_index`, so `struct_info.var_index` is that slot.
+        crate::compile_struct_init::initialize_struct_variable(
             emitter,
             ctx,
-            return_var_index,
-            struct_info.desc_index,
-            struct_info.data_offset,
-            &fields,
+            &struct_info,
             &[],
             &return_id.span(),
         )?;
