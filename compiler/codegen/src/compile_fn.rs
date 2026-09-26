@@ -11,7 +11,7 @@ use ironplc_dsl::common::{
     VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::diagnostic::Diagnostic;
 
 use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
@@ -146,17 +146,9 @@ pub(crate) fn compile_user_function(
                     let max_length = resolve_string_max_length(string_init)?;
                     let char_width = char_width_for_string_type(&string_init.width);
 
-                    let data_offset = ctx.data_region_offset;
                     let total_bytes = string_region_size(max_length, char_width);
-                    ctx.data_region_offset = ctx
-                        .data_region_offset
-                        .checked_add(total_bytes)
-                        .ok_or_else(|| {
-                            Diagnostic::not_implemented(Label::span(
-                                string_init.span(),
-                                "Data region overflow",
-                            ))
-                        })?;
+                    let data_offset =
+                        crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
 
                     if max_length > ctx.max_string_capacity {
                         ctx.max_string_capacity = max_length;
@@ -175,6 +167,7 @@ pub(crate) fn compile_user_function(
                     crate::compile_reference::register_reference_variable(
                         ctx,
                         builder,
+                        types,
                         id,
                         current_index,
                         ref_init,
@@ -205,17 +198,9 @@ pub(crate) fn compile_user_function(
                     let max_length = resolve_string_max_length(string_init)?;
                     let char_width = char_width_for_string_type(&string_init.width);
 
-                    let data_offset = ctx.data_region_offset;
                     let total_bytes = string_region_size(max_length, char_width);
-                    ctx.data_region_offset = ctx
-                        .data_region_offset
-                        .checked_add(total_bytes)
-                        .ok_or_else(|| {
-                            Diagnostic::not_implemented(Label::span(
-                                string_init.span(),
-                                "Data region overflow",
-                            ))
-                        })?;
+                    let data_offset =
+                        crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
 
                     if max_length > ctx.max_string_capacity {
                         ctx.max_string_capacity = max_length;
@@ -234,6 +219,7 @@ pub(crate) fn compile_user_function(
                     crate::compile_reference::register_reference_variable(
                         ctx,
                         builder,
+                        types,
                         id,
                         current_index,
                         ref_init,
@@ -273,17 +259,8 @@ pub(crate) fn compile_user_function(
                 _ => NARROW_CHAR_WIDTH,
             };
 
-            let data_offset = ctx.data_region_offset;
             let total_bytes = string_region_size(max_length, char_width);
-            ctx.data_region_offset =
-                ctx.data_region_offset
-                    .checked_add(total_bytes)
-                    .ok_or_else(|| {
-                        Diagnostic::not_implemented(Label::span(
-                            spec.keyword_span.clone(),
-                            "Data region overflow",
-                        ))
-                    })?;
+            let data_offset = crate::data_region::reserve(ctx, total_bytes, &spec.keyword_span)?;
 
             if max_length > ctx.max_string_capacity {
                 ctx.max_string_capacity = max_length;
@@ -498,7 +475,7 @@ pub(crate) fn compile_user_function_block(
     var_offset: u16,
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
-    _types: &TypeEnvironment,
+    types: &TypeEnvironment,
     num_globals: u16,
 ) -> Result<(CompiledFunction, SavedFbScope), Diagnostic> {
     let fb_name = fb_decl.name.name.to_string().to_uppercase();
@@ -586,6 +563,7 @@ pub(crate) fn compile_user_function_block(
                     crate::compile_reference::register_reference_variable(
                         ctx,
                         builder,
+                        types,
                         id,
                         current_index,
                         ref_init,
@@ -595,17 +573,9 @@ pub(crate) fn compile_user_function_block(
                     let max_length = resolve_string_max_length(string_init)?;
                     let char_width = char_width_for_string_type(&string_init.width);
 
-                    let data_offset = ctx.data_region_offset;
                     let total_bytes = string_region_size(max_length, char_width);
-                    ctx.data_region_offset = ctx
-                        .data_region_offset
-                        .checked_add(total_bytes)
-                        .ok_or_else(|| {
-                            Diagnostic::not_implemented(Label::span(
-                                string_init.span(),
-                                "Data region overflow",
-                            ))
-                        })?;
+                    let data_offset =
+                        crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
 
                     if max_length > ctx.max_string_capacity {
                         ctx.max_string_capacity = max_length;

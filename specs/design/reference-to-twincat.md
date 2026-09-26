@@ -171,6 +171,10 @@ variable stores to the referenced variable.
 **REQ-RTO-codegen-420** An `ARRAY [..] OF REFERENCE TO T` element can be bound
 (`REF=`) and accessed (`^`).
 
+**REQ-RTO-codegen-421** A reference whose target is a named array type
+(`REFERENCE TO ARR4` with `TYPE ARR4 : ARRAY [..] OF T`) is subscripted
+through `^` exactly as a reference to the inline `ARRAY [..] OF T`.
+
 ### Round-trip rendering (plc2plc)
 
 **REQ-RTO-plc2plc-600** A `ReferenceTo`-tagged declaration renders as
@@ -240,6 +244,7 @@ bare operand with its dereference.
 | **REQ-RTO-codegen-401** | Write through `^` stores value | `codegen_spec_req_rto_401_*` | codegen |
 | **REQ-RTO-codegen-402** | Unbound deref traps NullDereference | `codegen_spec_req_rto_402_*` | codegen |
 | **REQ-RTO-codegen-420** | `ARRAY OF REFERENCE TO` element access | `codegen_spec_req_rto_420_*` | codegen |
+| **REQ-RTO-codegen-421** | Named array type target subscript | `codegen_spec_req_rto_421_*` | codegen |
 | **REQ-RTO-plc2plc-600** | `REFERENCE TO` declaration renders | `plc2plc_spec_req_rto_600_*` | plc2plc |
 | **REQ-RTO-plc2plc-601** | `REF=` binding renders | `plc2plc_spec_req_rto_601_*` | plc2plc |
 | **REQ-RTO-plc2plc-602** | `REF_TO` still renders (regression) | `plc2plc_spec_req_rto_602_*` | plc2plc |

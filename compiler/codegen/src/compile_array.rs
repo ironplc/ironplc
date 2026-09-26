@@ -106,23 +106,50 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
         /// Element intermediate type for truncation on store.
         element_type: IntermediateType,
     },
-    /// STRING array element within a struct field — uses a scratch variable
-    /// to hold `struct_data_offset + field_byte_offset` and a STRING-specific
-    /// array descriptor for STR_LOAD/STORE_ARRAY_ELEM.
-    StructFieldStringArrayElement {
-        /// Struct variable table index (holds struct data_offset).
-        var_index: VarIndex,
-        /// Scratch variable for the adjusted base offset.
-        scratch_var_index: VarIndex,
-        /// STRING array descriptor index (element_extra = max_str_len).
-        string_desc_index: u16,
-        /// Byte offset of the array field within the struct (slot_offset * 8).
-        field_byte_offset: u32,
-        /// Dimension info for computing the flat index from subscripts.
-        dimensions: Vec<DimensionInfo>,
-        /// Subscript expressions.
-        subscripts: Vec<&'ast Expr>,
-    },
+    /// STRING array element within a struct field — see [`StructStringElement`].
+    StructFieldStringArrayElement(StructStringElement<'ast>),
+}
+
+/// A STRING element of an array that lives inside a structure's data region.
+///
+/// `STR_LOAD_ARRAY_ELEM` and `STR_STORE_ARRAY_ELEM` address an element as
+/// `base + flat_index * stride`, reading `base` from a variable. The
+/// structure's variable holds the start of the whole structure rather than of
+/// the array, so the array's start is first computed into a scratch variable.
+pub(crate) struct StructStringElement<'ast> {
+    /// Struct variable table index (holds struct data_offset).
+    pub var_index: VarIndex,
+    /// Scratch variable for the adjusted base offset.
+    pub scratch_var_index: VarIndex,
+    /// STRING array descriptor index (element_extra = max_str_len).
+    pub string_desc_index: u16,
+    /// Byte offset of the array field within the struct (slot_offset * 8).
+    pub field_byte_offset: u32,
+    /// Dimension info for computing the flat index from subscripts.
+    pub dimensions: Vec<DimensionInfo>,
+    /// Subscript expressions.
+    pub subscripts: Vec<&'ast Expr>,
+}
+
+impl StructStringElement<'_> {
+    /// Emits what `STR_LOAD_ARRAY_ELEM` and `STR_STORE_ARRAY_ELEM` need
+    /// before they run: stores `struct_data_offset + field_byte_offset` into
+    /// the scratch variable, then pushes the flat element index. The caller
+    /// follows with either opcode, passing `scratch_var_index` and
+    /// `string_desc_index`.
+    pub(crate) fn emit_base_and_index(
+        &self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        span: &SourceSpan,
+    ) -> Result<(), Diagnostic> {
+        emitter.emit_load_var_i32(self.var_index);
+        let offset_const = ctx.add_i32_constant(self.field_byte_offset as i32);
+        emitter.emit_load_const_i32(offset_const);
+        emitter.emit_add_i32();
+        emitter.emit_store_var_i32(self.scratch_var_index);
+        emit_flat_index(emitter, ctx, &self.subscripts, &self.dimensions, span)
+    }
 }
 
 /// Resolves a variable reference into its access kind.
@@ -304,14 +331,16 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         })?;
         let dimensions = dimensions_from_intermediate(array_dims);
         let field_byte_offset = slot_offset.raw() * 8;
-        return Ok(ResolvedAccess::StructFieldStringArrayElement {
-            var_index: struct_info.var_index,
-            scratch_var_index: scratch,
-            string_desc_index: str_desc_index,
-            field_byte_offset,
-            dimensions,
-            subscripts,
-        });
+        return Ok(ResolvedAccess::StructFieldStringArrayElement(
+            StructStringElement {
+                var_index: struct_info.var_index,
+                scratch_var_index: scratch,
+                string_desc_index: str_desc_index,
+                field_byte_offset,
+                dimensions,
+                subscripts,
+            },
+        ));
     }
 
     let element_op_type =
@@ -577,6 +606,12 @@ pub(crate) fn var_type_info_to_type_byte(vti: &VarTypeInfo) -> u8 {
 /// order (the last dimension is contiguous). Shared by plain arrays and
 /// `REF_TO ARRAY` variables so both report the same diagnostics for arrays
 /// that are too large.
+///
+/// An array over the element limit reports P9997 (`NotSupported`) rather than
+/// P9999 (`NotImplemented`): the cap exists so that flat-index arithmetic
+/// stays within i32, which is a fixed property of the bytecode format and not
+/// a feature awaiting work. A program that reaches it has to hold less data,
+/// so promising "not yet" would be a promise the compiler cannot keep.
 pub(crate) fn compute_dimensions(
     bounds: &[(i32, i32)],
     span: &SourceSpan,
@@ -592,13 +627,13 @@ pub(crate) fn compute_dimensions(
             stride: 0,
         });
         total_elements = total_elements.checked_mul(size).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Array too large"))
+            Diagnostic::not_supported(Label::span(span.clone(), "Array too large"))
         })?;
     }
 
     // 2. Validate element limit (i32 safety for flat-index arithmetic)
     if total_elements > super::compile::MAX_DATA_REGION_SLOTS {
-        return Err(Diagnostic::not_implemented(Label::span(
+        return Err(Diagnostic::not_supported(Label::span(
             span.clone(),
             "Array exceeds maximum 32768 elements",
         )));
@@ -655,32 +690,18 @@ pub(crate) fn register_array_variable(
     let (dimensions, total_elements) = compute_dimensions(&spec.dimensions, span)?;
 
     // 3. Allocate data region space
-    let data_offset = ctx.data_region_offset;
     let total_bytes = if is_string {
         // STRING/WSTRING elements: each element is [max_len:u16][cur_len:u16][data]
         let element_stride = super::compile::string_region_size(string_max_len, string_char_width);
         total_elements.checked_mul(element_stride).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
+            Diagnostic::not_supported(Label::span(span.clone(), "Data region overflow"))
         })?
     } else {
         total_elements * 8
     };
-    ctx.data_region_offset = ctx
-        .data_region_offset
-        .checked_add(total_bytes)
-        .ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
-        })?;
+    let data_offset = crate::data_region::reserve(ctx, total_bytes, span)?;
 
-    // 4. Assert data_offset fits in i32 (stored in slot via LOAD_CONST_I32)
-    if data_offset > i32::MAX as u32 {
-        return Err(Diagnostic::not_implemented(Label::span(
-            span.clone(),
-            "Data region exceeds 2 GiB limit",
-        )));
-    }
-
-    // 5. Register descriptor in the container and get its index
+    // 4. Register descriptor in the container and get its index
     let (element_type_byte, element_extra) = if is_string {
         let element_field_type = if string_char_width.is_wide() {
             ironplc_container::FieldType::WString
@@ -693,7 +714,7 @@ pub(crate) fn register_array_variable(
     };
     let desc_index = builder.add_array_descriptor(element_type_byte, total_elements, element_extra);
 
-    // 6. Track max string capacity for temp buffer sizing.
+    // 5. Track max string capacity for temp buffer sizing.
     if is_string && string_max_len > ctx.max_string_capacity {
         ctx.max_string_capacity = string_max_len;
     }
@@ -701,7 +722,7 @@ pub(crate) fn register_array_variable(
         ctx.has_wide_string = true;
     }
 
-    // 7. Store in context
+    // 6. Store in context
     ctx.array_vars.insert(
         id.clone(),
         ArrayVarInfo {

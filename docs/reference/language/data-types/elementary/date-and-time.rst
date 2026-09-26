@@ -8,13 +8,19 @@ Combined date and time of day value.
    :widths: 30 70
 
    * - **Size**
-     - 64 bits (millisecond resolution)
+     - 32 bits (second resolution)
    * - **Default**
-     - ``DT#0001-01-01-00:00:00``
+     - ``DT#1970-01-01-00:00:00``
+   * - **Range**
+     - ``DT#1970-01-01-00:00:00`` to ``DT#2106-02-07-06:28:15``
    * - **IEC 61131-3**
      - Section 2.3.1
    * - **Support**
      - Supported
+
+A date is stored as a count of seconds since 1970-01-01, so a literal
+outside ``DT#1970-01-01-00:00:00`` to ``DT#2106-02-07-06:28:15`` is reported as
+:doc:`P2038 </reference/compiler/problems/P2038>`.
 
 Example
 -------

@@ -1,0 +1,71 @@
+=====
+P4054
+=====
+
+.. problem-summary:: P4054
+
+This error occurs when a function declares a function block instance, invokes
+one, or calls a method on one. IEC 61131-3 defines a call hierarchy: a program
+may invoke functions and function blocks, a function block may invoke functions
+and function blocks, and a function may invoke only functions. A function has
+no state between calls, and a function block instance is state.
+
+Both the declaration and every invocation of the instance are reported, so the
+cause and each call site are marked.
+
+Example
+-------
+
+The following code will generate error P4054:
+
+.. code-block::
+
+   FUNCTION Delayed : BOOL
+       VAR
+           timer : TON;   (* Error: a function block instance in a function *)
+       END_VAR
+       timer(IN := TRUE, PT := T#1s);   (* Error: invoked in a function *)
+       Delayed := timer.Q;
+   END_FUNCTION
+
+``Delayed`` would have to keep ``timer`` running between calls, which a
+function cannot do.
+
+To fix this error, make the unit that needs the state a function block:
+
+.. code-block::
+
+   FUNCTION_BLOCK Delayed
+       VAR_OUTPUT
+           Q : BOOL;
+       END_VAR
+       VAR
+           timer : TON;
+       END_VAR
+       timer(IN := TRUE, PT := T#1s);
+       Q := timer.Q;
+   END_FUNCTION_BLOCK
+
+or keep the function stateless by computing from its inputs alone.
+
+Instances passed by reference
+-----------------------------
+
+IEC 61131-3 Edition 3 allows a function to receive a function block instance
+through ``VAR_IN_OUT``. The instance belongs to the caller, so the function
+stays stateless, and such a declaration is not reported. Note that IronPLC
+does not yet accept ``VAR_IN_OUT`` parameters on functions in calls, so this
+exemption matters only once that support lands. A ``VAR_INPUT`` instance is
+reported: passing an instance by value copies its state into the function.
+
+See Also
+--------
+
+- :doc:`/reference/language/pous/function` — ``FUNCTION`` declaration syntax
+- :doc:`/reference/language/pous/function-block` — the stateful unit to use instead
+- :doc:`P4012` — invocation of a variable that is not a function block instance
+
+References
+----------
+
+* IEC 61131-3 §2.5.1 (Edition 2), §6.6.1 (Edition 3)

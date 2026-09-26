@@ -8,7 +8,7 @@ use ironplc_container::{opcode, VarIndex};
 use ironplc_dsl::common::{
     Boolean, ConstantKind, ElementaryTypeName, GenericTypeName, SignedInteger,
 };
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     ArrayVariable, BitAccessVariable, CompareExpr, CompareOp, Expr, ExprKind, Operator,
@@ -21,6 +21,7 @@ use super::compile::{
     encode_string_literal, CompileContext, OpType, OpWidth, Signedness, VarTypeInfo,
     DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
+use super::compile_arith::compile_binary_arith;
 use super::compile_call::compile_function_call;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
 use super::compile_string::compile_string_compare;
@@ -154,12 +155,7 @@ pub(crate) fn compile_expr(
     match &expr.kind {
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
         ExprKind::Variable(variable) => compile_variable_read(emitter, ctx, variable, op_type),
-        ExprKind::BinaryOp(binary) => {
-            compile_expr(emitter, ctx, &binary.left, op_type)?;
-            compile_expr(emitter, ctx, &binary.right, op_type)?;
-            emit_arithmetic_op(emitter, &binary.op, op_type);
-            Ok(())
-        }
+        ExprKind::BinaryOp(binary) => compile_binary_arith(emitter, ctx, binary, op_type),
         ExprKind::UnaryOp(unary) => match unary.op {
             UnaryOp::Neg => {
                 compile_expr(emitter, ctx, &unary.term, op_type)?;
@@ -249,6 +245,98 @@ fn compile_compare(
     compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
     emit_compare_op(emitter, &compare.op, operand_op_type);
     Ok(())
+}
+
+/// Compiles the integer count a time-like literal stores, pushing it onto the
+/// stack: milliseconds for a duration or a time of day, seconds since
+/// 1970-01-01 for a date or a date-and-time.
+///
+/// The count is held to the range the operation type names, which is the
+/// storage it is about to go into: signed for a duration (ADR-0021 -- a
+/// duration can be negative), unsigned for the calendar types (ADR-0025), at
+/// whichever of the two widths the type uses. A count outside it is reported
+/// as `problem` rather than truncated, because truncating leaves a value that
+/// is not the one the program wrote -- `T#30d` kept its low 32 bits and became
+/// -1,702,967,296 ms, a *negative* 19.7 days, with nothing said about it.
+///
+/// `count` is an `i128` so that the check happens before any narrowing: every
+/// storage this can target, up to `u64::MAX`, and every value a literal can
+/// carry, up to a duration's own `i128` millisecond count, fit it.
+///
+/// Every one of these is a count rather than a measurement, so no
+/// floating-point type holds one and the analyzer rejects the assignment that
+/// would ask for it (P4035). Reaching a float width here is a broken
+/// invariant rather than a missing capability, and saying so beats what the
+/// catch-all these arms shared used to do: emit an integer load, leaving the
+/// count's bit pattern in a float slot to be read back as a number unrelated
+/// to the literal.
+fn compile_time_count(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    count: i128,
+    literal: &str,
+    problem: Problem,
+    span: &SourceSpan,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    // Each arm states the range it stores, so a width added to `OpWidth`
+    // has to say what a count means at that width rather than inheriting an
+    // answer from a catch-all.
+    match op_type.0 {
+        OpWidth::W32 => {
+            let value = within_storage(count, 32, op_type.1, literal, problem, span)?;
+            let pool_index = ctx.add_i32_constant(value as i32);
+            emitter.emit_load_const_i32(pool_index);
+        }
+        OpWidth::W64 => {
+            let value = within_storage(count, 64, op_type.1, literal, problem, span)?;
+            let pool_index = ctx.add_i64_constant(value as i64);
+            emitter.emit_load_const_i64(pool_index);
+        }
+        // A count is not a measurement, so no floating-point type holds one,
+        // and the analyzer rejects the assignment that would ask for it
+        // (P4035). Reaching here means analysis was skipped, which is a
+        // broken invariant rather than a missing capability: the catch-all
+        // this replaced emitted an integer load, leaving the count's bit
+        // pattern in a float slot to be read back as a number unrelated to
+        // the literal.
+        OpWidth::F32 | OpWidth::F64 => {
+            return Err(Diagnostic::internal_error_at(Label::span(
+                span.clone(),
+                format!("{literal} compiled at a floating-point operation width"),
+            )))
+        }
+    }
+    Ok(())
+}
+
+/// Returns `count` when a `bits`-wide integer of `signedness` holds it, and
+/// reports `problem` against the literal when it does not.
+///
+/// The value is returned rather than narrowed here: a count that fits is
+/// bit-cast by the caller, so `u32::MAX` seconds is stored as -1 and read back
+/// unsigned, which is what the unsigned opcodes expect.
+fn within_storage(
+    count: i128,
+    bits: u32,
+    signedness: Signedness,
+    literal: &str,
+    problem: Problem,
+    span: &SourceSpan,
+) -> Result<i128, Diagnostic> {
+    let (minimum, maximum) =
+        ironplc_analyzer::value_range::for_integer(bits, signedness == Signedness::Signed);
+    if count < minimum || count > maximum {
+        return Err(Diagnostic::problem(
+            problem,
+            Label::span(
+                span.clone(),
+                format!("{literal} is outside the range {minimum} to {maximum} its type stores"),
+            ),
+        )
+        .with_context("value", &count.to_string()));
+    }
+    Ok(count)
 }
 
 /// Compiles a constant literal, pushing it onto the stack.
@@ -400,63 +488,46 @@ pub(crate) fn compile_constant(
             emitter.emit_load_const_str(pool_index);
             Ok(())
         }
-        ConstantKind::Duration(lit) => {
-            match op_type.0 {
-                OpWidth::W64 => {
-                    let milliseconds = lit.interval.whole_milliseconds() as i64;
-                    let pool_index = ctx.add_i64_constant(milliseconds);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                _ => {
-                    let milliseconds = lit.interval.whole_milliseconds() as i32;
-                    let pool_index = ctx.add_i32_constant(milliseconds);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-            }
-            Ok(())
-        }
-        ConstantKind::TimeOfDay(lit) => {
-            let ms = lit.whole_milliseconds();
-            match op_type.0 {
-                OpWidth::W64 => {
-                    let pool_index = ctx.add_i64_constant(ms as i64);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                _ => {
-                    let pool_index = ctx.add_i32_constant(ms as i32);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-            }
-            Ok(())
-        }
-        ConstantKind::Date(lit) => {
-            let secs = lit.seconds_since_epoch();
-            match op_type.0 {
-                OpWidth::W64 => {
-                    let pool_index = ctx.add_i64_constant(secs as i64);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                _ => {
-                    let pool_index = ctx.add_i32_constant(secs as i32);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-            }
-            Ok(())
-        }
-        ConstantKind::DateAndTime(lit) => {
-            let secs = lit.seconds_since_epoch();
-            match op_type.0 {
-                OpWidth::W64 => {
-                    let pool_index = ctx.add_i64_constant(secs as i64);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                _ => {
-                    let pool_index = ctx.add_i32_constant(secs as i32);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-            }
-            Ok(())
-        }
+        ConstantKind::Duration(lit) => compile_time_count(
+            emitter,
+            ctx,
+            lit.interval.whole_milliseconds(),
+            "Duration literal",
+            Problem::DurationLiteralOutOfRange,
+            &lit.span,
+            op_type,
+        ),
+        // A time of day cannot leave its range: `whole_milliseconds` is
+        // bounded by 86,399,999 by construction, which every width holds. The
+        // check below is therefore vacuous, and the code names the problem it
+        // would be if the bound ever stopped holding.
+        ConstantKind::TimeOfDay(lit) => compile_time_count(
+            emitter,
+            ctx,
+            i128::from(lit.whole_milliseconds()),
+            "Time-of-day literal",
+            Problem::DurationLiteralOutOfRange,
+            &lit.span,
+            op_type,
+        ),
+        ConstantKind::Date(lit) => compile_time_count(
+            emitter,
+            ctx,
+            i128::from(lit.seconds_since_epoch()),
+            "Date literal",
+            Problem::DateLiteralOutOfRange,
+            &lit.span,
+            op_type,
+        ),
+        ConstantKind::DateAndTime(lit) => compile_time_count(
+            emitter,
+            ctx,
+            i128::from(lit.seconds_since_epoch()),
+            "Date literal",
+            Problem::DateLiteralOutOfRange,
+            &lit.span,
+            op_type,
+        ),
         ConstantKind::BitStringLiteral(lit) => {
             let span = lit.value.span();
             match op_type {
@@ -794,31 +865,12 @@ pub(crate) fn compile_variable_read(
                     emitter.emit_add_i64();
                     emitter.emit_load_array(var_index, desc_index);
                 }
-                crate::compile_array::ResolvedAccess::StructFieldStringArrayElement {
-                    var_index,
-                    scratch_var_index,
-                    string_desc_index,
-                    field_byte_offset,
-                    ref dimensions,
-                    subscripts,
-                } => {
-                    let span = variable_span(variable);
-                    // 1. Compute base: struct_data_offset + field_byte_offset → scratch.
-                    emitter.emit_load_var_i32(var_index);
-                    let offset_const = ctx.add_i32_constant(field_byte_offset as i32);
-                    emitter.emit_load_const_i32(offset_const);
-                    emitter.emit_add_i32();
-                    emitter.emit_store_var_i32(scratch_var_index);
-                    // 2. Compute flat index.
-                    crate::compile_array::emit_flat_index(
-                        emitter,
-                        ctx,
-                        &subscripts,
-                        dimensions,
-                        &span,
-                    )?;
-                    // 3. Load string element.
-                    emitter.emit_str_load_array_elem(scratch_var_index, string_desc_index);
+                crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(element) => {
+                    element.emit_base_and_index(emitter, ctx, &variable_span(variable))?;
+                    emitter.emit_str_load_array_elem(
+                        element.scratch_var_index,
+                        element.string_desc_index,
+                    );
                 }
             }
             Ok(())

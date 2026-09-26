@@ -84,7 +84,7 @@ P4036,MixedLocatedVarDeclarationNotAllowed,AT-located variable in a plain VAR bl
 P4037,ConstantInitializerExpressionNotAllowed,Constant expression in VAR initializer requires choosing a dialect or --allow-constant-initializer-expressions flag
 P4038,InitializerNotConstantExpression,Variable initializer expression does not reduce to a constant value
 P4039,ConstantExpressionDivisionByZero,Constant expression divides or takes the modulo of a value by zero
-P4040,ConstantExpressionOverflow,Constant integer expression overflows its evaluation range
+P4040,ConstantExpressionOverflow,Constant expression result cannot be represented
 P4041,BitStringCaseLabelNotAllowed,Hex/binary/octal bit-string literal as a CASE label requires choosing a dialect or --allow-bit-string-case-labels flag
 P4042,ParenStringLengthNotAllowed,STRING(n)/WSTRING(n) parenthesis length delimiter requires choosing a dialect or --allow-paren-string-length flag
 P4043,StructInitializerExpressionNotAllowed,General expression as a struct/FB-instance initializer value requires choosing a dialect or --allow-struct-initializer-expressions flag
@@ -118,3 +118,9 @@ P4050,ProgramVariableHidesGlobal,Program variable has the same name as a global 
 P4051,CaseLabelRangeInvalid,CASE label range minimum value is greater than the maximum
 P4052,StringLiteralCharOutOfRange,Character string literal contains a character that the string type cannot represent
 P4053,CaseSelectorTypeInvalid,CASE selector is not an integer or enumeration type
+P4054,FunctionBlockInFunction,Function declares or invokes a function block instance
+P4055,EnumExplicitValueNotAllowed,Explicit enumeration member value requires choosing a dialect or --allow-enum-explicit-values flag
+P4056,EnumBaseTypeNotAllowed,Enumeration base-type suffix requires choosing a dialect or --allow-enum-base-type flag
+P2038,DateLiteralOutOfRange,Date literal is outside the range the date type can represent
+P2039,DurationLiteralOutOfRange,Duration literal is outside the range the duration type can represent
+P2040,RealLiteralOutOfRange,Real literal is outside the range the real type can represent

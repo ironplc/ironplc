@@ -31,6 +31,7 @@
 mod call_graph;
 mod compile;
 mod compile_aggregate;
+mod compile_arith;
 mod compile_array;
 mod compile_array_struct;
 mod compile_call;
@@ -45,6 +46,9 @@ mod compile_short_circuit;
 mod compile_stmt;
 mod compile_string;
 mod compile_struct;
+mod compile_struct_init;
+mod compile_time_arith;
+mod data_region;
 mod emit;
 mod optimize;
 mod source_lookup;

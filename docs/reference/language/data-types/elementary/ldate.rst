@@ -12,11 +12,17 @@ LDATE
    * - **Size**
      - 64 bits (day resolution)
    * - **Default**
-     - ``LDATE#0001-01-01``
+     - ``LDATE#1970-01-01``
+   * - **Range**
+     - ``LDATE#1970-01-01`` to ``LDATE#2106-02-07``
    * - **IEC 61131-3**
      - Section 2.3.1 (Edition 3)
    * - **Support**
      - Supported (:doc:`Edition 3 </reference/language/edition-support>`)
+
+A date is stored as a count of seconds since 1970-01-01, so a literal
+outside ``LDATE#1970-01-01`` to ``LDATE#2106-02-07`` is reported as
+:doc:`P2038 </reference/compiler/problems/P2038>`.
 
 Literals
 --------

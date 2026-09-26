@@ -5,9 +5,11 @@ P4026
 .. problem-summary:: P4026
 
 This error occurs when a function call passes an argument whose type does not match the
-declared parameter type. IronPLC allows implicit widening between integer types (for example,
-``INT`` to ``DINT``), but rejects other type mismatches such as integer to real or narrowing
-conversions.
+declared parameter type. IronPLC converts the argument implicitly where the conversion is
+lossless — between integer types, from a narrow integer to a real, from ``REAL`` to
+``LREAL``, and within the bit-string types — and reports this error for every other
+mismatch, such as a narrowing conversion, a real argument for an integer parameter, or a
+signed argument for an unsigned parameter.
 
 For the full set of allowed implicit conversions, see
 :doc:`/explanation/type-conversions`.
@@ -29,15 +31,21 @@ The following code will generate error P4026:
    PROGRAM main
    VAR
        result : REAL;
-       x : INT;
+       x : DINT;
    END_VAR
-       result := DOUBLE_REAL(x);  (* Error: INT argument for REAL parameter *)
+       result := DOUBLE_REAL(x);  (* Error: DINT argument for REAL parameter *)
    END_PROGRAM
 
-The variable ``x`` is ``INT``, but parameter ``A`` expects ``REAL``.
+The variable ``x`` is ``DINT``, but parameter ``A`` expects ``REAL``. A 32-bit integer
+does not fit exactly in ``REAL``'s 23-bit mantissa, so the conversion is not implicit.
+An ``INT`` argument in the same position *is* accepted, because every 16-bit integer is
+exactly representable in ``REAL``.
 
 To fix this error, use an explicit type conversion:
 
 .. code-block::
 
-   result := DOUBLE_REAL(INT_TO_REAL(x));
+   result := DOUBLE_REAL(DINT_TO_REAL(x));
+
+Widening to ``LREAL`` is the other way out: every integer type converts implicitly to
+``LREAL``, so a parameter declared ``LREAL`` accepts ``x`` as written.

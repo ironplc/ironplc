@@ -422,9 +422,8 @@ fn compile_inner(source: &str, dialect: &str, allows: &str, libraries: &str) -> 
     let options = compiler_options_from(dialect, allows);
 
     // Activated compatibility libraries, loaded from their served plain-text
-    // files. They are injected ahead of user source (base stdlib -> library ->
-    // user), so a user declaration shadows a library declaration of the same
-    // name (`REQ-CL-playground-001`).
+    // files (`REQ-CL-playground-001`). They are injected ahead of user source
+    // (base stdlib -> library -> user) and merge as ordinary declarations.
     let compat_libraries = match parse_activated_libraries(libraries, &options) {
         Ok(libs) => libs,
         Err(result) => return result,

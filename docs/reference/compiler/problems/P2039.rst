@@ -1,0 +1,99 @@
+=====
+P2039
+=====
+
+.. problem-summary:: P2039
+
+This error occurs when a duration literal names a length of time the type
+cannot hold.
+
+A duration is stored as a signed count of milliseconds, so the durations a
+program can write are the ones that count reaches:
+
+.. list-table:: Duration type ranges
+   :header-rows: 1
+   :stub-columns: 1
+
+   * - Type
+     - Storage
+     - Range
+   * - **TIME**
+     - 32-bit milliseconds
+     - ``T#-24d20h31m23s648ms`` to ``T#24d20h31m23s647ms``
+   * - **LTIME**
+     - 64-bit milliseconds
+     - about ±292 million years
+
+The count is signed because a duration can be negative — subtracting one time
+from a later one gives a negative result.
+
+A duration outside the range has no millisecond count to be stored as, so the
+compiler reports it rather than keeping the low bits, which would give a
+different duration than the one the program wrote — and often one with the
+opposite sign.
+
+Example
+-------
+
+The following code will generate error P2039:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           timeout : TIME := T#30d;
+       END_VAR
+   END_PROGRAM
+
+A ``TIME`` holds about 24.8 days, so 30 days is not a value it can take.
+
+To fix this error, use a duration the type can hold:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           timeout : TIME := T#20d;
+       END_VAR
+   END_PROGRAM
+
+Or use ``LTIME``, whose 64-bit count reaches far beyond any interval a control
+program is likely to measure:
+
+.. playground::
+   :dialect: iec61131-3-ed3
+
+   PROGRAM main
+       VAR
+           timeout : LTIME := LTIME#30d;
+       END_VAR
+   END_PROGRAM
+
+``LTIME`` requires IEC 61131-3 Edition 3. See
+:doc:`/reference/language/edition-support`.
+
+Long intervals in a control program
+-----------------------------------
+
+A scan cycle is measured in milliseconds, so an interval of weeks is usually
+better counted than timed. Where a program needs to measure days or months,
+count elapsed cycles or completed days in an integer variable rather than
+holding the whole span in one ``TIME``:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           day_elapsed : TIME := T#24h;
+           days_run : UDINT;
+       END_VAR
+   END_PROGRAM
+
+This also keeps the value meaningful across a restart, which a running timer
+does not.
+
+See Also
+--------
+
+- :doc:`/reference/language/data-types/elementary/time` — duration
+- :doc:`P2038` — the same check for a date literal

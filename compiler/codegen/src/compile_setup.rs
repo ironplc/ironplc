@@ -84,17 +84,9 @@ pub(crate) fn assign_variables(
                     let char_width = char_width_for_string_type(&string_init.width);
 
                     // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
-                    let data_offset = ctx.data_region_offset;
                     let total_bytes = string_region_size(max_length, char_width);
-                    ctx.data_region_offset = ctx
-                        .data_region_offset
-                        .checked_add(total_bytes)
-                        .ok_or_else(|| {
-                            Diagnostic::not_implemented(Label::span(
-                                string_init.span(),
-                                "Data region overflow",
-                            ))
-                        })?;
+                    let data_offset =
+                        crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
 
                     if max_length > ctx.max_string_capacity {
                         ctx.max_string_capacity = max_length;
@@ -129,16 +121,11 @@ pub(crate) fn assign_variables(
                     if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
                         // Standard library function block.
                         let instance_size = num_fields as u32 * 8;
-                        let data_offset = ctx.data_region_offset;
-                        ctx.data_region_offset = ctx
-                            .data_region_offset
-                            .checked_add(instance_size)
-                            .ok_or_else(|| {
-                                Diagnostic::not_implemented(Label::span(
-                                    decl.identifier.span(),
-                                    "Data region overflow",
-                                ))
-                            })?;
+                        let data_offset = crate::data_region::reserve(
+                            ctx,
+                            instance_size,
+                            &decl.identifier.span(),
+                        )?;
 
                         ctx.fb_instances.insert(
                             id.clone(),
@@ -149,27 +136,30 @@ pub(crate) fn assign_variables(
                                 field_indices: field_map,
                             },
                         );
-                    } else if let Some(user_fb) = ctx.user_fb_types.get(&fb_name) {
+                    } else if let Some((num_fields, type_id, field_indices)) =
+                        ctx.user_fb_types.get(&fb_name).map(|user_fb| {
+                            (
+                                user_fb.num_fields,
+                                user_fb.type_id,
+                                user_fb.field_indices.clone(),
+                            )
+                        })
+                    {
                         // User-defined function block.
-                        let instance_size = user_fb.num_fields as u32 * 8;
-                        let data_offset = ctx.data_region_offset;
-                        ctx.data_region_offset = ctx
-                            .data_region_offset
-                            .checked_add(instance_size)
-                            .ok_or_else(|| {
-                                Diagnostic::not_implemented(Label::span(
-                                    decl.identifier.span(),
-                                    "Data region overflow",
-                                ))
-                            })?;
+                        let instance_size = num_fields as u32 * 8;
+                        let data_offset = crate::data_region::reserve(
+                            ctx,
+                            instance_size,
+                            &decl.identifier.span(),
+                        )?;
 
                         ctx.fb_instances.insert(
                             id.clone(),
                             FbInstanceInfo {
                                 var_index: index,
-                                type_id: user_fb.type_id,
+                                type_id,
                                 data_offset,
-                                field_indices: user_fb.field_indices.clone(),
+                                field_indices,
                             },
                         );
                     }
@@ -214,7 +204,7 @@ pub(crate) fn assign_variables(
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
                     crate::compile_reference::register_reference_variable(
-                        ctx, builder, id, index, ref_init,
+                        ctx, builder, types, id, index, ref_init,
                     )?;
                     (iec_type_tag::OTHER, "REF_TO".into())
                 }
@@ -424,7 +414,7 @@ pub(crate) fn emit_initial_values(
                         let fields: Vec<_> = struct_info
                             .fields
                             .iter()
-                            .map(|f| crate::compile_struct::FieldInitInfo {
+                            .map(|f| crate::compile_struct_init::FieldInitInfo {
                                 name: f.name.clone(),
                                 slot_offset: f.slot_offset,
                                 field_type: f.field_type.clone(),
@@ -437,7 +427,7 @@ pub(crate) fn emit_initial_values(
                         emitter.emit_load_const_i32(offset_const);
                         emitter.emit_store_var_i32(var_index);
 
-                        crate::compile_struct::initialize_struct_fields(
+                        crate::compile_struct_init::initialize_struct_fields(
                             emitter,
                             ctx,
                             var_index,
@@ -604,7 +594,7 @@ pub(crate) fn emit_initial_values(
                         let fields: Vec<_> = struct_info
                             .fields
                             .iter()
-                            .map(|f| crate::compile_struct::FieldInitInfo {
+                            .map(|f| crate::compile_struct_init::FieldInitInfo {
                                 name: f.name.clone(),
                                 slot_offset: f.slot_offset,
                                 field_type: f.field_type.clone(),
@@ -619,7 +609,7 @@ pub(crate) fn emit_initial_values(
                         emitter.emit_store_var_i32(var_index);
 
                         // Initialize each field
-                        crate::compile_struct::initialize_struct_fields(
+                        crate::compile_struct_init::initialize_struct_fields(
                             emitter,
                             ctx,
                             var_index,
@@ -823,7 +813,7 @@ pub(crate) fn emit_function_local_prologue(
         let fields: Vec<_> = struct_info
             .fields
             .iter()
-            .map(|f| crate::compile_struct::FieldInitInfo {
+            .map(|f| crate::compile_struct_init::FieldInitInfo {
                 name: f.name.clone(),
                 slot_offset: f.slot_offset,
                 field_type: f.field_type.clone(),
@@ -832,7 +822,7 @@ pub(crate) fn emit_function_local_prologue(
             })
             .collect();
 
-        crate::compile_struct::initialize_struct_fields(
+        crate::compile_struct_init::initialize_struct_fields(
             emitter,
             ctx,
             return_var_index,

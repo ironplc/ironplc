@@ -1,6 +1,7 @@
 //! Bytecode-level integration tests for temp string buffer pool sizing —
-//! the `num_temp_bufs` header field only. Runtime behaviour is covered by
-//! `end_to_end_string_loop.rs`.
+//! the `num_temp_bufs` and `max_temp_buf_bytes` header fields only. Runtime
+//! behaviour is covered by `end_to_end_string_loop.rs` and
+//! `end_to_end_string_operand_bounds.rs`.
 //!
 //! The VM releases a temp buffer when the instruction that consumes it
 //! runs, so the pool has to hold the most buffers live at one time, not one
@@ -15,6 +16,12 @@ fn num_temp_bufs(source: &str) -> u16 {
     parse_and_compile(source, &CompilerOptions::default())
         .header
         .num_temp_bufs
+}
+
+fn max_temp_buf_bytes(source: &str) -> u32 {
+    parse_and_compile(source, &CompilerOptions::default())
+        .header
+        .max_temp_buf_bytes
 }
 
 #[test]
@@ -150,4 +157,40 @@ PROGRAM main
 END_PROGRAM
 ";
     assert_eq!(num_temp_bufs(source), 1);
+}
+
+/// Every string operation writes its result to a pool slot, so the slot has
+/// to hold the widest operand temporary codegen materializes, not only the
+/// widest declared string: a nested CONCAT of two STRING[128] is 256 units.
+#[test]
+fn compile_when_operand_bound_exceeds_declared_strings_then_pool_slot_holds_it() {
+    let source = "
+PROGRAM main
+  VAR a : STRING[128]; n : INT; END_VAR
+  n := LEN(CONCAT(a, a));
+END_PROGRAM
+";
+    assert_eq!(
+        max_temp_buf_bytes(source),
+        ironplc_container::STRING_HEADER_BYTES as u32 + 256
+    );
+}
+
+/// A literal is loaded into a pool slot before it reaches its temporary, so
+/// its own length has to size the slot when nothing declared is as long.
+#[test]
+fn compile_when_literal_longer_than_declared_strings_then_pool_slot_holds_it() {
+    let literal = "a".repeat(300);
+    let source = format!(
+        "
+PROGRAM main
+  VAR s : STRING[10]; n : INT; END_VAR
+  n := LEN('{literal}');
+END_PROGRAM
+"
+    );
+    assert_eq!(
+        max_temp_buf_bytes(&source),
+        ironplc_container::STRING_HEADER_BYTES as u32 + 300
+    );
 }

@@ -14,7 +14,7 @@ use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
-use ironplc_sources::libraries::{remove_shadowed_functions, LibraryName, LibraryRegistry};
+use ironplc_sources::libraries::{LibraryName, LibraryRegistry};
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::VmBuffers;
 
@@ -28,9 +28,7 @@ fn run_with_tc2_utilities(source: &str) -> VmBuffers {
         .expect("bundled Tc2_Utilities must load")
         .library;
     let user = parse_program(source, &FileId::default(), &options).unwrap();
-    // The same user-shadowing filter the project pipeline applies.
-    let compat = remove_shadowed_functions(vec![compat], &[&user]);
-    let analyze_input: Vec<&Library> = compat.iter().chain(std::iter::once(&user)).collect();
+    let analyze_input: Vec<&Library> = vec![&compat, &user];
     let (analyzed, context) = analyze(&analyze_input, &options).unwrap();
     assert!(
         !context.has_diagnostics(),
@@ -199,9 +197,12 @@ fn end_to_end_when_at_or_beyond_two_pow_63_then_empty() {
 
 #[test]
 fn end_to_end_when_infinite_then_empty() {
-    // Constructed arithmetically: 1.0E308 * 10.0 overflows to +infinity.
-    assert_eq!(fmt("1.0E308 * 10.0", 2, true), "");
-    assert_eq!(fmt("-1.0E308 * 10.0", 2, true), "");
+    // Constructed arithmetically at runtime: x * 10.0 with x = 1.0E308
+    // overflows to +infinity. The multiply goes through the variable
+    // because a constant `1.0E308 * 10.0` is rejected at compile time
+    // (P4040).
+    assert_eq!(fmt("1.0E308;\n    x := x * 10.0", 2, true), "");
+    assert_eq!(fmt("-1.0E308;\n    x := x * 10.0", 2, true), "");
 }
 
 #[test]
@@ -229,33 +230,4 @@ END_PROGRAM
 ";
     let bufs = run_with_tc2_utilities(source);
     assert_eq!(read_string(&bufs.data_region, 0), "123.46");
-}
-
-// ---------------------------------------------------------------------------
-// Shadowing — a user-defined LREAL_TO_FMTSTR takes precedence.
-// ---------------------------------------------------------------------------
-
-#[test]
-fn end_to_end_when_user_function_shadows_lreal_to_fmtstr_then_user_body_runs() {
-    let bufs = run_with_tc2_utilities(
-        "FUNCTION LREAL_TO_FMTSTR : STRING
-VAR_INPUT
-    in : LREAL;
-    iPrecision : INT;
-    bRound : BOOL;
-END_VAR
-    LREAL_TO_FMTSTR := 'shadowed';
-END_FUNCTION
-PROGRAM main
-VAR
-    s : STRING;
-    x : LREAL;
-END_VAR
-    x := 123.456;
-    s := LREAL_TO_FMTSTR(x, 2, TRUE);
-END_PROGRAM
-",
-    );
-    // The user's body (the constant), not the library's formatter.
-    assert_eq!(read_string(&bufs.data_region, 0), "shadowed");
 }

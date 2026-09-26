@@ -10,11 +10,17 @@ Calendar date value.
    * - **Size**
      - 32 bits (day resolution)
    * - **Default**
-     - ``D#0001-01-01``
+     - ``D#1970-01-01``
+   * - **Range**
+     - ``D#1970-01-01`` to ``D#2106-02-07``
    * - **IEC 61131-3**
      - Section 2.3.1
    * - **Support**
      - Supported
+
+A date is stored as a count of seconds since 1970-01-01, so a literal
+outside ``D#1970-01-01`` to ``D#2106-02-07`` is reported as
+:doc:`P2038 </reference/compiler/problems/P2038>`.
 
 Literals
 --------
