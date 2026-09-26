@@ -105,8 +105,11 @@ impl RuleAggregateAssignment<'_> {
     /// specification (`a : ARRAY[1..2] OF DINT`) built from the declaration.
     fn declared_type(&mut self, id: &Id) -> Option<IntermediateType> {
         let type_environment = self.type_environment;
-        let declared = self.declarations.find(id)?;
-        match &declared.0 {
+        let Declared::Variable(declared) = self.declarations.find(id)? else {
+            // This rule binds only declared variables.
+            return None;
+        };
+        match declared.as_ref() {
             InitialValueAssignmentKind::Array(array) => {
                 // An inline array specification. The name passed here only
                 // feeds diagnostics inside the helper, which are discarded:
@@ -204,10 +207,8 @@ impl Visitor<Infallible> for RuleAggregateAssignment<'_> {
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        self.declarations.add_if(
-            node.identifier.symbolic_id(),
-            Declared(node.initializer.clone()),
-        );
+        self.declarations
+            .add_if(node.identifier.symbolic_id(), Declared::of(node));
         node.recurse_visit(self)
     }
 
