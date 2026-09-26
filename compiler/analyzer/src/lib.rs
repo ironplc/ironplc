@@ -75,6 +75,7 @@ mod type_attributes;
 mod type_category;
 mod type_compat;
 mod type_environment;
+pub mod type_id;
 mod type_table;
 pub mod value_range;
 mod variable_type;

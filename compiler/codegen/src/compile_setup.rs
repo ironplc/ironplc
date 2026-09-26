@@ -9,8 +9,8 @@ use ironplc_container::debug_section::{
 };
 use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
-    ConstantKind, ElementaryTypeName, FunctionReturnType, InitialValueAssignmentKind,
-    ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
+    ConstantKind, FunctionReturnType, InitialValueAssignmentKind, ReferenceInitialValue,
+    SpecificationKind, TypeName, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -74,7 +74,7 @@ pub(crate) fn assign_variables(
                         if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
                             ctx.var_types.insert(id.clone(), type_info);
                         }
-                        let tag = resolve_iec_type_tag(&simple.type_name.name);
+                        let tag = resolve_iec_type_tag(types, &simple.type_name);
                         let name = simple.type_name.name.to_string().to_uppercase();
                         (tag, name)
                     }
@@ -297,38 +297,13 @@ pub(crate) fn map_var_section(vt: &VariableType) -> u8 {
     }
 }
 
-/// Maps an IEC 61131-3 type name to its debug type tag.
-fn resolve_iec_type_tag(name: &Id) -> u8 {
-    match ElementaryTypeName::try_from(name) {
-        Ok(elem) => match elem {
-            ElementaryTypeName::BOOL => iec_type_tag::BOOL,
-            ElementaryTypeName::SINT => iec_type_tag::SINT,
-            ElementaryTypeName::INT => iec_type_tag::INT,
-            ElementaryTypeName::DINT => iec_type_tag::DINT,
-            ElementaryTypeName::LINT => iec_type_tag::LINT,
-            ElementaryTypeName::USINT => iec_type_tag::USINT,
-            ElementaryTypeName::UINT => iec_type_tag::UINT,
-            ElementaryTypeName::UDINT => iec_type_tag::UDINT,
-            ElementaryTypeName::ULINT => iec_type_tag::ULINT,
-            ElementaryTypeName::REAL => iec_type_tag::REAL,
-            ElementaryTypeName::LREAL => iec_type_tag::LREAL,
-            ElementaryTypeName::BYTE => iec_type_tag::BYTE,
-            ElementaryTypeName::WORD => iec_type_tag::WORD,
-            ElementaryTypeName::DWORD => iec_type_tag::DWORD,
-            ElementaryTypeName::LWORD => iec_type_tag::LWORD,
-            ElementaryTypeName::STRING => iec_type_tag::STRING,
-            ElementaryTypeName::WSTRING => iec_type_tag::WSTRING,
-            ElementaryTypeName::TIME => iec_type_tag::TIME,
-            ElementaryTypeName::LTIME => iec_type_tag::LTIME,
-            ElementaryTypeName::DATE => iec_type_tag::DATE,
-            ElementaryTypeName::LDATE => iec_type_tag::LDATE,
-            ElementaryTypeName::TimeOfDay => iec_type_tag::TIME_OF_DAY,
-            ElementaryTypeName::LTimeOfDay => iec_type_tag::LTOD,
-            ElementaryTypeName::DateAndTime => iec_type_tag::DATE_AND_TIME,
-            ElementaryTypeName::LDateAndTime => iec_type_tag::LDT,
-        },
-        Err(()) => iec_type_tag::OTHER,
-    }
+/// The debug type tag of the type `type_name` names: the type's id when it
+/// is elementary, else `OTHER`.
+fn resolve_iec_type_tag(types: &TypeEnvironment, type_name: &TypeName) -> u8 {
+    types
+        .id_of(type_name)
+        .and_then(ironplc_analyzer::type_id::elementary_debug_tag)
+        .unwrap_or(iec_type_tag::OTHER)
 }
 
 /// Computes the debug `(iec_type_tag, type_name)` pair for a function- or
@@ -338,10 +313,10 @@ fn resolve_iec_type_tag(name: &Id) -> u8 {
 /// the per-function slot-assignment loops in `compile_fn`. Composite or
 /// unsupported initializers fall back to [`iec_type_tag::OTHER`] with a
 /// best-effort type name, matching the global behavior.
-pub(crate) fn debug_type_for_decl(decl: &VarDecl) -> (u8, String) {
+pub(crate) fn debug_type_for_decl(decl: &VarDecl, types: &TypeEnvironment) -> (u8, String) {
     match &decl.initializer {
         InitialValueAssignmentKind::Simple(simple) => (
-            resolve_iec_type_tag(&simple.type_name.name),
+            resolve_iec_type_tag(types, &simple.type_name),
             simple.type_name.name.to_string().to_uppercase(),
         ),
         InitialValueAssignmentKind::String(string_init) => {
@@ -372,14 +347,17 @@ pub(crate) fn debug_type_for_decl(decl: &VarDecl) -> (u8, String) {
 
 /// Computes the debug `(iec_type_tag, type_name)` pair for a user
 /// function's return variable, derived from its declared return type.
-pub(crate) fn debug_type_for_return(return_type: &FunctionReturnType) -> (u8, String) {
+pub(crate) fn debug_type_for_return(
+    return_type: &FunctionReturnType,
+    types: &TypeEnvironment,
+) -> (u8, String) {
     match return_type {
         FunctionReturnType::String(_) => (iec_type_tag::STRING, "STRING".into()),
         FunctionReturnType::WString(_) => (iec_type_tag::WSTRING, "WSTRING".into()),
         FunctionReturnType::Named(_) => {
             let type_name = return_type.to_type_name();
             (
-                resolve_iec_type_tag(&type_name.name),
+                resolve_iec_type_tag(types, &type_name),
                 type_name.name.to_string().to_uppercase(),
             )
         }
