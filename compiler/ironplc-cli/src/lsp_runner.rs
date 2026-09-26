@@ -169,7 +169,20 @@ fn run_step_scans(
     scans: u32,
     cycle_time_us: u64,
 ) -> RunResult {
-    let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
+    let mut running = match Vm::new().load(container, bufs).resume(base_scan_count) {
+        Ok(running) => running,
+        Err(ctx) => {
+            return RunResult {
+                ok: false,
+                variables: vec![],
+                total_scans: base_scan_count,
+                error: Some(format!(
+                    "VM trap: {} (task {}, instance {})",
+                    ctx.trap, ctx.task_id, ctx.instance_id
+                )),
+            };
+        }
+    };
 
     for _ in 0..scans {
         let uptime_us = running.scan_count() * cycle_time_us;

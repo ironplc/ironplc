@@ -882,7 +882,20 @@ fn run_vm_scans(
     scans: u32,
     cycle_time_us: u64,
 ) -> (Vec<VariableInfo>, u64, Option<RunError>) {
-    let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
+    let mut running = match Vm::new().load(container, bufs).resume(base_scan_count) {
+        Ok(running) => running,
+        Err(ctx) => {
+            let error = RunError {
+                message: format!(
+                    "VM trap: {} (task {}, instance {})",
+                    ctx.trap, ctx.task_id, ctx.instance_id
+                ),
+                code: Some(ctx.trap.v_code().to_string()),
+                ..Default::default()
+            };
+            return (vec![], base_scan_count, Some(error));
+        }
+    };
 
     for _ in 0..scans {
         let uptime_us = running.scan_count() * cycle_time_us;

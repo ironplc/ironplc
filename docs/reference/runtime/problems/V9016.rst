@@ -6,8 +6,9 @@ V9016
 
 The container's declared worst-case call depth
 (``FileHeader.max_call_depth``) is larger than the call-frame buffer
-the embedder provided to the VM. ``VmReady::start`` rejects the
-container before any init code runs, so no PLC instructions execute.
+the embedder provided to the VM. The VM rejects the container
+when it starts or resumes, before any code runs, so no PLC instructions
+execute.
 
 Codegen computes ``max_call_depth`` from the program's static call
 graph (longest path through ``CALL`` and user-``FB_CALL`` edges,

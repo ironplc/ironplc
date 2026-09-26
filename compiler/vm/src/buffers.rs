@@ -56,8 +56,9 @@ impl VmBuffers {
             // worst-case depth. Codegen writes that depth from the
             // static call graph and always declares at least one frame.
             // A declared depth of 0 yields an empty buffer; such a
-            // container is rejected by `VmReady::start` with
-            // `Trap::ZeroCallDepth` before any code runs.
+            // container is rejected by `VmReady::start` and
+            // `VmReady::resume` with `Trap::ZeroCallDepth` before any
+            // code runs.
             frames: vec![zero_frame; h.max_call_depth as usize],
         }
     }

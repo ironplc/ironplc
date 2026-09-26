@@ -214,9 +214,15 @@ impl<'a> VmReady<'a> {
     /// (e.g., from a previous session). The `initial_scan_count` sets the
     /// starting scan counter so cycle tracking continues from where it
     /// left off.
-    pub fn resume(self, initial_scan_count: u64) -> VmRunning<'a> {
+    ///
+    /// Returns `Err(FaultContext)` if the container's declared call depth
+    /// is invalid or exceeds the frame buffer, the same check
+    /// [`start`](VmReady::start) performs.
+    pub fn resume(self, initial_scan_count: u64) -> Result<VmRunning<'a>, FaultContext> {
+        self.validate_call_depth()?;
+
         let shared_globals_size = self.container.task_table.shared_globals_size;
-        VmRunning {
+        Ok(VmRunning {
             container: self.container,
             stack: self.stack,
             variables: self.variables,
@@ -236,7 +242,7 @@ impl<'a> VmReady<'a> {
             debug_temp_alloc_next: 0,
             #[cfg(feature = "profiling")]
             profile: self.profile,
-        }
+        })
     }
 
     /// Validates the container's declared call depth against the

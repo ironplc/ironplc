@@ -1,5 +1,5 @@
 //! Integration tests for the `header.max_call_depth` validation
-//! performed by `VmReady::start`.
+//! performed by `VmReady::start` and `VmReady::resume`.
 //!
 //! The validation lets a container declare its worst-case PLC call
 //! depth so the VM can reject a program that would not fit in the
@@ -60,7 +60,7 @@ fn from_container_when_max_call_depth_set_then_buffer_sized_to_declared_depth() 
 fn from_container_when_max_call_depth_zero_then_buffer_is_empty() {
     // A declared depth of 0 is invalid (codegen always declares >= 1),
     // so the buffer allocates no frames. Such a container is rejected by
-    // `VmReady::start` before any code runs.
+    // both `VmReady::start` and `VmReady::resume` before any code runs.
     let c = empty_init_container_with_depth(0);
     let b = VmBuffers::from_container(&c);
     assert_eq!(b.frames.len(), 0);
@@ -97,4 +97,48 @@ fn start_when_container_declares_call_depth_equal_to_buffer_then_succeeds() {
     let mut b = VmBuffers::from_container(&c);
     let ok = Vm::new().load(&c, &mut b).start().is_ok();
     assert!(ok, "start should succeed at exact-fit boundary");
+}
+
+#[test]
+fn resume_when_container_declares_zero_call_depth_then_rejected() {
+    let c = empty_init_container_with_depth(0);
+    let mut b = VmBuffers::from_container(&c);
+    let fault = match Vm::new().load(&c, &mut b).resume(0) {
+        Ok(_) => panic!("resume should reject a zero-call-depth container"),
+        Err(f) => f,
+    };
+    assert_eq!(fault.trap, Trap::ZeroCallDepth);
+}
+
+#[test]
+fn resume_when_container_declares_call_depth_exceeding_buffer_then_returns_program_exceeds_call_depth(
+) {
+    let small = empty_init_container_with_depth(8);
+    let mut b = VmBuffers::from_container(&small);
+
+    let deep = empty_init_container_with_depth(64);
+    let fault = match Vm::new().load(&deep, &mut b).resume(0) {
+        Ok(_) => panic!("resume should reject over-deep container"),
+        Err(f) => f,
+    };
+    assert_eq!(
+        fault.trap,
+        Trap::ProgramExceedsCallDepth {
+            required: 64,
+            capacity: 8,
+        }
+    );
+}
+
+#[test]
+fn resume_when_container_declares_call_depth_within_buffer_then_continues_scan_count() {
+    let c = empty_init_container_with_depth(16);
+    let mut b = VmBuffers::from_container(&c);
+    let mut running = match Vm::new().load(&c, &mut b).resume(41) {
+        Ok(r) => r,
+        Err(f) => panic!("resume should succeed when max_call_depth fits: {:?}", f),
+    };
+    assert_eq!(running.scan_count(), 41);
+    running.run_round(0).unwrap();
+    assert_eq!(running.scan_count(), 42);
 }
