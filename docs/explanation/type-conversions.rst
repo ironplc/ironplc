@@ -251,6 +251,39 @@ Example
        r := TAKES_DINT(in := i);
    END_PROGRAM
 
+Arithmetic on mixed types
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The same widening decides an arithmetic expression whose operands have
+different types. The narrower operand widens to the wider one, the operation
+is carried out at the wider type, and the result has that type: ``INT + DINT``
+is a ``DINT``, and ``INT + REAL`` is a ``REAL`` computed in floating point. A
+bare integer literal takes the other operand's type, so ``d + 1`` is a
+``DINT`` and ``r * 2`` a ``REAL``.
+
+When neither operand widens to the other, the expression is an error
+(:doc:`P4049 </reference/compiler/problems/P4049>`). ``DINT + REAL`` is one
+such pair, because a 32-bit integer does not fit exactly in ``REAL``; so is
+``DINT + UDINT``, because neither type holds every value of the other.
+Convert one operand explicitly, or widen to a type that holds both, such as
+``LREAL`` or ``LINT``.
+
+The result is then assigned like any other value, so assigning a ``DINT``
+result to an ``INT`` needs an explicit conversion:
+
+.. code-block::
+
+   VAR
+       i : INT := 3;
+       d : DINT := 100000;
+       r : REAL := 1.5;
+       x : REAL;
+       y : DINT;
+   END_VAR
+       x := i + r;              (* 4.5: i widens to REAL *)
+       y := i + d;              (* a DINT result *)
+       i := DINT_TO_INT(i + d); (* narrowing needs a conversion *)
+
 ----------------------------
 Narrowing Conversions
 ----------------------------
@@ -374,6 +407,30 @@ too.
 Bare integer literals (e.g. ``0``) can also be passed to bit-string parameters
 when ``--allow-int-literal-to-bit-string`` is enabled. This is literal typing
 rather than widening, so it has its own flag.
+
+Bit-string arithmetic
+~~~~~~~~~~~~~~~~~~~~~
+
+IEC 61131-3 defines no arithmetic on bit strings, so ``counter + 1`` where
+``counter`` is a ``BYTE`` is an error
+(:doc:`P4049 </reference/compiler/problems/P4049>`) unless
+``--allow-bit-string-arithmetic`` is enabled. The ``Rusty``, ``CODESYS`` and
+``TwinCAT`` dialects enable it.
+
+With the flag, a ``BYTE``, ``WORD``, ``DWORD`` or ``LWORD`` operand of ``+``,
+``-``, ``*`` or ``/`` is treated as the unsigned integer of its width
+(``USINT``, ``UINT``, ``UDINT``, ``ULINT``), and the ordinary widening rules
+apply to it:
+
+- Two bit strings give the wider bit string: ``BYTE + WORD`` is a ``WORD``.
+- A bit string and a literal keep the bit-string type: ``BYTE#255 + 1`` is
+  ``BYTE#0``, wrapping at the width.
+- A bit string and a number give what the widening picks: ``BYTE + INT`` is an
+  ``INT``, because ``USINT`` widens to ``INT``, but ``WORD + INT`` is an
+  error, because ``UINT`` and ``INT`` do not widen to each other.
+
+``BOOL`` is never treated as a number, and ``MOD`` is not included: ``b MOD 2``
+is an error with or without the flag, as ``MOD(b, 2)`` is.
 
 ----------------------------
 Integer and Real Types
