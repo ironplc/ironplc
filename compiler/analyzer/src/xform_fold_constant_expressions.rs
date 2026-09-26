@@ -36,7 +36,7 @@ struct ConstantFolder;
 
 /// Gives a folded integer literal the span of the expression it replaces.
 ///
-/// Only an integer literal has a span to give: a real literal carries none.
+/// A folded real literal is built with its span, so it needs nothing here.
 fn with_span(kind: ExprKind, span: SourceSpan) -> ExprKind {
     match kind {
         ExprKind::Const(ConstantKind::IntegerLiteral(mut literal)) => {

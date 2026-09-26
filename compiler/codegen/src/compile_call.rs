@@ -183,9 +183,9 @@ pub(crate) fn compile_function_call(
     }
     // A typed time or date function (ADD_TIME, SUB_DATE_DATE, ...) compiles
     // as the instruction sequence for the units of its operands.
-    if let Some(arith) = time_arith_for(name.as_str()) {
+    if let Some((arith, width)) = time_arith_for(name.as_str()) {
         let (in1, in2) = extract_two_positional_args(func)?;
-        return compile_time_arith(emitter, ctx, arith, in1, in2);
+        return compile_time_arith(emitter, ctx, arith, width, in1, in2);
     }
     match name.as_str() {
         "shl" | "shr" | "rol" | "ror" => {

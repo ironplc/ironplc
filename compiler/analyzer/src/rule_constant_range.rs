@@ -26,6 +26,12 @@
 //! an `INT`, and no `INT` is 65535. A pattern that is meant to wrap is
 //! spelled with a bit-string prefix (`WORD#16#FFFF`), which is not checked.
 //!
+//! An untyped real literal takes its type from where it is used, so one
+//! stored into a `REAL` must be a value a `REAL` can represent. That is
+//! reported as the real literal problem `rule_real_literal_range` reports for
+//! a `REAL#` literal, rather than as an overflow: it is the literal's type,
+//! not the variable's, that the value falls outside.
+//!
 //! See section 2.2.1.
 //!
 //! ## Passes
@@ -50,10 +56,12 @@
 //!       count : USINT := 300;   (* USINT holds 0..255 *)
 //!       total : SINT;
 //!       wide : DINT;
+//!       ratio : REAL;
 //!    END_VAR
 //!    total := 200;               (* SINT holds -128..127 *)
 //!    count := 255 + 1;           (* the operator does not widen the type *)
 //!    wide := INT#40000;          (* not an INT, whatever wide is *)
+//!    ratio := 1.0E30 * 1.0E30;   (* 1.0E60 is not a REAL *)
 //! END_PROGRAM
 //! ```
 use ironplc_dsl::{
@@ -71,6 +79,7 @@ use std::convert::Infallible;
 use crate::{
     intermediate_type::{ByteSized, IntermediateType},
     result::SemanticResult,
+    rule_real_literal_range,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
     type_environment::TypeEnvironment,
@@ -126,14 +135,47 @@ impl RuleConstantRange<'_> {
     /// Reports `constant` when the type it is stored into cannot hold it.
     fn check_constant(&mut self, constant: &ConstantKind, expected: &IntermediateType) {
         // Every integer literal arrives here as a value, whatever radix it
-        // was written in. A `ConstantKind` that is not one -- a duration, a
-        // string -- has no integer range to check.
-        let ConstantKind::IntegerLiteral(literal) = constant else {
+        // was written in. A `ConstantKind` that is neither an integer nor a
+        // real -- a duration, a string -- has no range to check.
+        match constant {
+            ConstantKind::IntegerLiteral(literal) => {
+                if let Some(range) = value_range::of(expected) {
+                    self.check_literal(literal, range);
+                }
+            }
+            ConstantKind::RealLiteral(literal) => self.check_real_literal(literal, expected),
+            _ => {}
+        }
+    }
+
+    /// Reports an untyped real `literal` stored into a `REAL` that cannot
+    /// hold it.
+    ///
+    /// An untyped literal takes its type from where it is used, so `1.0E300`
+    /// -- or `1.0E30 * 1.0E30` once folded -- stored into a `REAL` is a `REAL`
+    /// literal, and not one a `REAL` can represent. That is the same problem
+    /// `rule_real_literal_range` reports for `REAL#1.0E300`, and it is
+    /// reported the same way.
+    ///
+    /// A prefixed literal states its own type, which that rule checks, and a
+    /// value beyond every real type is reported there too.
+    fn check_real_literal(&mut self, literal: &RealLiteral, expected: &IntermediateType) {
+        let IntermediateType::Real {
+            size: ByteSized::B32,
+        } = expected
+        else {
             return;
         };
-        if let Some(range) = value_range::of(expected) {
-            self.check_literal(literal, range);
+        if literal.data_type.is_some()
+            || !literal.value.is_finite()
+            || (literal.value as f32).is_finite()
+        {
+            return;
         }
+        self.diagnostics.push(rule_real_literal_range::out_of_range(
+            literal,
+            RealTypeName::REAL,
+        ));
     }
 
     /// Reports `literal` when the type named by its prefix cannot hold it.
@@ -382,13 +424,23 @@ mod tests {
     /// reported. Naming the problem keeps a diagnostic from another rule
     /// from passing for one of ours.
     fn out_of_range_count(program: &str) -> usize {
+        problem_count(program, Problem::ConstantOverflow)
+    }
+
+    /// Analyzes `program`, returning how many real literals it reported as
+    /// outside their type's range.
+    fn real_out_of_range_count(program: &str) -> usize {
+        problem_count(program, Problem::RealLiteralOutOfRange)
+    }
+
+    fn problem_count(program: &str, problem: Problem) -> usize {
         let options = CompilerOptions::default();
         let library = parse_program(program, &FileId::default(), &options).unwrap();
         let (_library, context) = analyze(&[&library], &options).unwrap();
         context
             .diagnostics()
             .iter()
-            .filter(|d| d.code == Problem::ConstantOverflow.code())
+            .filter(|d| d.code == problem.code())
             .count()
     }
 
@@ -668,6 +720,62 @@ END_PROGRAM",
         let codes = out_of_range_count(&program_with("x : UINT;\n", "x := 16#1FF;\n"));
 
         assert_eq!(codes, 0);
+    }
+
+    // --- An untyped real literal takes the type it is stored into ---
+
+    #[rstest]
+    #[case::real_high("REAL", "3.4028235E38", true)]
+    #[case::real_low("REAL", "-3.4028235E38", true)]
+    #[case::real_above("REAL", "3.5E38", false)]
+    #[case::real_below("REAL", "-3.5E38", false)]
+    #[case::lreal_holds_it("LREAL", "1.0E300", true)]
+    fn apply_when_real_initializer_at_boundary_then_ok_or_err(
+        #[case] declared_type: &str,
+        #[case] value: &str,
+        #[case] expected_ok: bool,
+    ) {
+        let program = program_with(&format!("x : {declared_type} := {value};\n"), "");
+
+        assert_eq!(real_out_of_range_count(&program) == 0, expected_ok);
+    }
+
+    #[test]
+    fn apply_when_real_assignment_out_of_range_then_err() {
+        let codes = real_out_of_range_count(&program_with("x : REAL;\n", "x := 1.0E300;\n"));
+
+        assert_eq!(codes, 1);
+    }
+
+    /// Each factor is a valid `REAL`, but their product is not.
+    #[test]
+    fn apply_when_folded_real_out_of_range_then_err() {
+        let codes =
+            real_out_of_range_count(&program_with("x : REAL;\n", "x := 1.0E30 * 1.0E30;\n"));
+
+        assert_eq!(codes, 1);
+    }
+
+    /// The operator computes at `REAL`, so the operand is a `REAL` too.
+    #[test]
+    fn apply_when_real_operand_out_of_range_then_err() {
+        let codes = real_out_of_range_count(&program_with(
+            "x : REAL;\ny : REAL;\n",
+            "x := y + 1.0E300;\n",
+        ));
+
+        assert_eq!(codes, 1);
+    }
+
+    /// A literal beyond every real type, or one that names its own type, is
+    /// checked once, by `rule_real_literal_range`, not again here.
+    #[rstest]
+    #[case::beyond_lreal("1.0E400")]
+    #[case::prefixed("REAL#1.0E40")]
+    fn apply_when_real_literal_reported_by_own_rule_then_reported_once(#[case] value: &str) {
+        let program = program_with("x : REAL;\n", &format!("x := {value};\n"));
+
+        assert_eq!(real_out_of_range_count(&program), 1);
     }
 
     #[rstest]
