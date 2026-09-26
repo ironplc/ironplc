@@ -52,6 +52,7 @@ mod end_to_end_arith_identity;
 mod end_to_end_arithmetic_overloads;
 mod end_to_end_array;
 mod end_to_end_array_of_struct;
+mod end_to_end_array_of_struct_string;
 mod end_to_end_array_ref_to;
 mod end_to_end_array_string;
 mod end_to_end_array_string_paren_length;
