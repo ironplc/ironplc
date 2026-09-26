@@ -183,16 +183,15 @@ list through `call_assignment_check::bind_inputs`, which also has to include
 
 A `VAR_IN_OUT` argument of a function, function block or method call is
 checked by `rule_function_call_in_out_argument` and its function block/method
-counterparts in `call_assignment_check`. The codes are listed below. P4057 and
-P4058 are assigned; the rest take the next free numbers when implemented.
+counterparts in `call_assignment_check`, with these codes:
 
 | Code | Condition |
 |---|---|
 | P4057 `FunctionCallInOutArgNotVariable` | The argument is not a variable, element or field: a literal, an arithmetic expression, a function call. |
 | P4058 `FunctionCallInOutArgTypeMismatch` | The argument's type is not the parameter's type. Both are resolved through aliases and subranges. Otherwise types match only by identity: the same string kind and capacity, the same array bounds and element type, the same structure or function block type. |
-| *InOutArgNotWritable* | The argument cannot be proved writable (see [Writable arguments](#writable-arguments)). |
-| *InOutNotBound* | A function block invocation does not bind one of the instance's `VAR_IN_OUT` parameters. |
-| *InOutAccessedOutside* | `fb.IO` names an instance's `VAR_IN_OUT` from outside the instance. |
+| P4059 `InOutArgNotWritable` | The argument cannot be proved writable (see [Writable arguments](#writable-arguments)). |
+| P4060 `InOutNotBound` | A function block invocation does not bind one of the instance's `VAR_IN_OUT` parameters. |
+| P4061 `InOutAccessedOutside` | `fb.IO` names an instance's `VAR_IN_OUT` from outside the instance. |
 
 P4026 (`FunctionCallArgTypeMismatch`), which allows implicit widening, skips
 `VAR_IN_OUT` parameters so a mismatch is reported once.
@@ -411,10 +410,10 @@ scratch slot and, for data-region types, a base slot filled by the body's
 prologue. Two rules keep the stored reference from outliving the call that
 bound it:
 
-- **Every invocation binds every `VAR_IN_OUT`** (*InOutNotBound*). An instance
+- **Every invocation binds every `VAR_IN_OUT`** (P4060). An instance
   never runs with a reference left over from an earlier call, and a body never
   sees the null initial value.
-- **The field is not accessible from outside** (*InOutAccessedOutside*).
+- **The field is not accessible from outside** (P4061).
   `fb.IO` would read or write through a reference whose target the reader
   cannot see.
 
