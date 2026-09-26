@@ -65,6 +65,15 @@ pub struct OperatorFunctionForm {
     operands: &'static str,
     /// How the result type follows from the operands.
     result: FormResult,
+    /// The typed overloads of the operator on the time and date types
+    /// (IEC 61131-3 Table 30), by the name of their short form. Empty for an
+    /// operator without overloads.
+    ///
+    /// These are only names: each typed function's signature is registered
+    /// once, in `stdlib_time_function`, and the long form is derived from the
+    /// short one. A test pins that every name here is a registered
+    /// two-input function.
+    typed: &'static [&'static str],
 }
 
 /// Builds one row of [`OPERATOR_FUNCTION_FORMS`].
@@ -74,6 +83,7 @@ const fn form(
     arity: Arity,
     operands: &'static str,
     result: FormResult,
+    typed: &'static [&'static str],
 ) -> OperatorFunctionForm {
     OperatorFunctionForm {
         name,
@@ -81,6 +91,7 @@ const fn form(
         arity,
         operands,
         result,
+        typed,
     }
 }
 
@@ -99,6 +110,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Extensible,
         "ANY_NUM",
         FormResult::Operand,
+        &["ADD_TIME", "ADD_TOD_TIME", "ADD_DT_TIME"],
     ),
     form(
         "SUB",
@@ -106,6 +118,14 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Binary,
         "ANY_NUM",
         FormResult::Operand,
+        &[
+            "SUB_TIME",
+            "SUB_DATE_DATE",
+            "SUB_TOD_TIME",
+            "SUB_TOD_TOD",
+            "SUB_DT_TIME",
+            "SUB_DT_DT",
+        ],
     ),
     form(
         "MUL",
@@ -113,6 +133,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Extensible,
         "ANY_NUM",
         FormResult::Operand,
+        &["MUL_TIME"],
     ),
     form(
         "DIV",
@@ -120,6 +141,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Binary,
         "ANY_NUM",
         FormResult::Operand,
+        &["DIV_TIME"],
     ),
     // MOD alone is defined over ANY_INT (IEC 61131-3 Table 24): there is no
     // floating-point remainder operator, and codegen has no opcode for one.
@@ -129,6 +151,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Binary,
         "ANY_INT",
         FormResult::Operand,
+        &[],
     ),
     // Comparison (IEC 61131-3 Section 2.5.1.5.3, Table 33): defined for
     // ANY_ELEMENTARY, which includes ANY_NUM, ANY_BIT and the string and
@@ -139,6 +162,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
+        &[],
     ),
     form(
         "GE",
@@ -146,6 +170,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
+        &[],
     ),
     form(
         "EQ",
@@ -153,6 +178,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
+        &[],
     ),
     form(
         "LE",
@@ -160,6 +186,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
+        &[],
     ),
     form(
         "LT",
@@ -167,6 +194,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
+        &[],
     ),
     form(
         "NE",
@@ -174,6 +202,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Binary,
         "ANY_ELEMENTARY",
         FormResult::Bool,
+        &[],
     ),
     // Bitwise boolean (IEC 61131-3 Section 2.5.1.5.3): defined for ANY_BIT,
     // so they are the boolean operators on BOOL and the bitwise operators on
@@ -184,6 +213,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Extensible,
         "ANY_BIT",
         FormResult::Operand,
+        &[],
     ),
     form(
         "OR",
@@ -191,6 +221,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Extensible,
         "ANY_BIT",
         FormResult::Operand,
+        &[],
     ),
     form(
         "XOR",
@@ -198,6 +229,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Extensible,
         "ANY_BIT",
         FormResult::Operand,
+        &[],
     ),
     form(
         "NOT",
@@ -205,6 +237,7 @@ const OPERATOR_FUNCTION_FORMS: &[OperatorFunctionForm] = &[
         Arity::Unary,
         "ANY_BIT",
         FormResult::Operand,
+        &[],
     ),
 ];
 
@@ -217,6 +250,12 @@ impl OperatorFunctionForm {
     /// against the same type.
     pub(crate) fn operand_type(&self) -> TypeName {
         TypeName::from(self.operands)
+    }
+
+    /// The short-form names of the operator's typed overloads on the time
+    /// and date types, in table order; empty for an operator without them.
+    pub fn typed_overloads(&self) -> &'static [&'static str] {
+        self.typed
     }
 
     /// Derives the function's signature from the row.
@@ -284,29 +323,32 @@ mod tests {
     /// operator accepts, or to how many operands, shows up as a change to
     /// the row's cell and to its case here, and nowhere else.
     #[rstest]
-    #[case::add("ADD", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", true)]
-    #[case::sub("SUB", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", false)]
-    #[case::mul("MUL", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", true)]
-    #[case::div("DIV", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", false)]
-    #[case::modulo("MOD", &["IN1", "IN2"], "ANY_INT", "ANY_INT", false)]
-    #[case::gt("GT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
-    #[case::ge("GE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
-    #[case::eq("EQ", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
-    #[case::le("LE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
-    #[case::lt("LT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
-    #[case::ne("NE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false)]
-    #[case::and("AND", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT", true)]
-    #[case::or("OR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT", true)]
-    #[case::xor("XOR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT", true)]
-    #[case::not("NOT", &["IN"], "ANY_BIT", "ANY_BIT", false)]
+    #[case::add("ADD", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", true, &["ADD_TIME", "ADD_TOD_TIME", "ADD_DT_TIME"])]
+    #[case::sub("SUB", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", false, &["SUB_TIME", "SUB_DATE_DATE", "SUB_TOD_TIME", "SUB_TOD_TOD", "SUB_DT_TIME", "SUB_DT_DT"])]
+    #[case::mul("MUL", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", true, &["MUL_TIME"])]
+    #[case::div("DIV", &["IN1", "IN2"], "ANY_NUM", "ANY_NUM", false, &["DIV_TIME"])]
+    #[case::modulo("MOD", &["IN1", "IN2"], "ANY_INT", "ANY_INT", false, &[])]
+    #[case::gt("GT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false, &[])]
+    #[case::ge("GE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false, &[])]
+    #[case::eq("EQ", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false, &[])]
+    #[case::le("LE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false, &[])]
+    #[case::lt("LT", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false, &[])]
+    #[case::ne("NE", &["IN1", "IN2"], "ANY_ELEMENTARY", "BOOL", false, &[])]
+    #[case::and("AND", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT", true, &[])]
+    #[case::or("OR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT", true, &[])]
+    #[case::xor("XOR", &["IN1", "IN2"], "ANY_BIT", "ANY_BIT", true, &[])]
+    #[case::not("NOT", &["IN"], "ANY_BIT", "ANY_BIT", false, &[])]
     fn operator_function_form_when_row_then_signature_is_derived_from_it(
         #[case] name: &str,
         #[case] param_names: &[&str],
         #[case] operands: &str,
         #[case] return_type: &str,
         #[case] extensible: bool,
+        #[case] typed: &[&str],
     ) {
-        let signature = operator_function_form(name).unwrap().signature();
+        let form = operator_function_form(name).unwrap();
+        assert_eq!(form.typed_overloads(), typed);
+        let signature = form.signature();
         assert_eq!(signature.name, Id::from(name));
         assert_eq!(signature.is_extensible, extensible);
         assert!(signature.max_inputs.is_none());

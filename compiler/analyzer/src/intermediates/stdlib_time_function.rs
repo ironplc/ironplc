@@ -22,18 +22,22 @@ use crate::function_environment::FunctionSignature;
 /// date/time differences, and date+time concatenation.
 pub(super) fn get_time_functions() -> Vec<FunctionSignature> {
     let short = OVERLOADS.iter().map(TimeOverload::signature);
-    let long = OVERLOADS.iter().map(|o| o.long().signature());
+    let long = OVERLOADS
+        .iter()
+        .filter_map(|o| o.long())
+        .map(|o| o.signature());
     short.chain(long).chain(other_time_functions()).collect()
 }
 
 /// One typed overload of an arithmetic function on the time and date types
 /// (IEC 61131-3 Table 30): a fixed signature with its own name, such as
 /// `ADD_TIME` for `ADD` on two `TIME` operands.
-struct TimeOverload {
-    name: &'static str,
-    in1: &'static str,
-    in2: &'static str,
-    result: &'static str,
+#[derive(Clone, Copy)]
+pub(crate) struct TimeOverload {
+    pub(crate) name: &'static str,
+    pub(crate) in1: &'static str,
+    pub(crate) in2: &'static str,
+    pub(crate) result: &'static str,
 }
 
 impl TimeOverload {
@@ -47,15 +51,24 @@ impl TimeOverload {
     }
 
     /// The long form of this overload: the same shape with each temporal
-    /// type replaced by its long-width type, under the long name.
-    fn long(&self) -> TimeOverload {
-        TimeOverload {
-            name: long_form(self.name).expect("every overload has a long form"),
+    /// type replaced by its long-width type, under the long name. `None`
+    /// only for a row [`long_form`] does not name, which the tests rule out
+    /// for every row of [`OVERLOADS`].
+    pub(crate) fn long(&self) -> Option<TimeOverload> {
+        Some(TimeOverload {
+            name: long_form(self.name)?,
             in1: long_type(self.in1),
             in2: long_type(self.in2),
             result: long_type(self.result),
-        }
+        })
     }
+}
+
+/// Returns the short-form overload named `name`, or `None` when `name` is
+/// not one. The name is matched exactly, as the operator-form table and
+/// [`OVERLOADS`] spell it.
+pub(crate) fn short_overload(name: &str) -> Option<&'static TimeOverload> {
+    OVERLOADS.iter().find(|o| o.name == name)
 }
 
 /// Returns the name of the long form of the typed overload `short`, or
@@ -169,12 +182,11 @@ mod tests {
     use ironplc_dsl::core::Id;
     use rstest::rstest;
 
-    /// Returns the registered time function named `name`.
-    fn registered(name: &str) -> FunctionSignature {
+    /// Returns the registered time function named `name`, if there is one.
+    fn registered(name: &str) -> Option<FunctionSignature> {
         get_time_functions()
             .into_iter()
             .find(|sig| sig.name == Id::from(name))
-            .unwrap_or_else(|| panic!("{name} is not registered"))
     }
 
     /// Every typed overload, short and long, pinned: the long form is the
@@ -209,6 +221,8 @@ mod tests {
         #[case] result: &str,
     ) {
         let sig = registered(name);
+        assert!(sig.is_some(), "{name} is not registered");
+        let sig = sig.unwrap();
         let params: Vec<(Id, TypeName)> = sig
             .parameters
             .iter()

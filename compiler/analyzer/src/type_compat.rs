@@ -107,7 +107,7 @@ pub(crate) fn are_types_compatible(
 
 /// Returns true if both types belong to the same temporal family (the short and
 /// long widths of TIME, DATE, TIME_OF_DAY, or DATE_AND_TIME).
-fn same_temporal_family(a: &ElementaryTypeName, b: &ElementaryTypeName) -> bool {
+pub(crate) fn same_temporal_family(a: &ElementaryTypeName, b: &ElementaryTypeName) -> bool {
     use ElementaryTypeName::*;
     fn family(t: &ElementaryTypeName) -> Option<u8> {
         match t {
