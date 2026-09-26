@@ -84,3 +84,45 @@ fn codegen_spec_req_kf_001_function_form_compiles_as_the_operator(
         "{call} and {operator} on {operand_type} compiled differently"
     );
 }
+
+/// A program that assigns `expr`, over operands `a`, `b` and `c` of
+/// `operand_type`, to `result` of `operand_type`.
+fn program3(operand_type: &str, expr: &str) -> String {
+    format!(
+        "PROGRAM main
+VAR
+    a : {operand_type};
+    b : {operand_type};
+    c : {operand_type};
+    result : {operand_type};
+END_VAR
+    result := {expr};
+END_PROGRAM"
+    )
+}
+
+/// REQ-KF-codegen-002: an n-input call to an extensible form compiles to the
+/// operator folded from the left.
+#[spec_test(REQ_KF_codegen_002)]
+#[rstest]
+#[case::add_dint("DINT", "ADD(a, b, c)", "(a + b) + c")]
+#[case::add_lreal("LREAL", "ADD(a, b, c)", "(a + b) + c")]
+#[case::mul_lint("LINT", "MUL(a, b, c)", "(a * b) * c")]
+#[case::mul_real("REAL", "MUL(a, b, c)", "(a * b) * c")]
+#[case::and_bool("BOOL", "AND(a, b, c)", "(a AND b) AND c")]
+#[case::and_word("WORD", "AND(a, b, c)", "(a AND b) AND c")]
+#[case::or_bool("BOOL", "OR(a, b, c)", "(a OR b) OR c")]
+#[case::or_lword("LWORD", "OR(a, b, c)", "(a OR b) OR c")]
+#[case::xor_bool("BOOL", "XOR(a, b, c)", "(a XOR b) XOR c")]
+#[case::xor_dword("DWORD", "XOR(a, b, c)", "(a XOR b) XOR c")]
+fn codegen_spec_req_kf_002_extensible_form_compiles_as_the_left_fold(
+    #[case] operand_type: &str,
+    #[case] call: &str,
+    #[case] operator: &str,
+) {
+    assert_eq!(
+        program_bytecode(&program3(operand_type, call)),
+        program_bytecode(&program3(operand_type, operator)),
+        "{call} and {operator} on {operand_type} compiled differently"
+    );
+}

@@ -11,7 +11,7 @@
 //! fn exit_scope(&mut self) { self.declarations.exit() }
 //! fn visit_var_decl(&mut self, node: &VarDecl) {
 //!     self.declarations
-//!         .add_if(node.identifier.symbolic_id(), Declared(node.initializer.clone()));
+//!         .add_if(node.identifier.symbolic_id(), Declared::of(node));
 //! }
 //!
 //! let element = variable_type::of(&kind, &self.declarations, type_environment);
@@ -25,10 +25,33 @@ use crate::{
     type_environment::TypeEnvironment,
 };
 
-/// A variable's declared type, as spelled at its declaration site.
+/// A variable's declared type, as spelled where the name is bound.
 #[derive(Debug)]
-pub(crate) struct Declared(pub(crate) InitialValueAssignmentKind);
+pub(crate) enum Declared {
+    /// A variable declaration, with its initializer as written.
+    Variable(Box<InitialValueAssignmentKind>),
+    /// A name bound to a type without a declaration of its own: a
+    /// function's or method's result variable, or an implicit system
+    /// global.
+    Typed(TypeName),
+}
 impl Value for Declared {}
+
+impl Declared {
+    /// The declaration of `node`.
+    pub(crate) fn of(node: &VarDecl) -> Self {
+        Declared::Variable(Box::new(node.initializer.clone()))
+    }
+
+    /// The type named where the name is bound, or
+    /// [`TypeReference::Inline`] for a type spelled out in place.
+    pub(crate) fn type_reference(&self) -> TypeReference {
+        match self {
+            Declared::Variable(init) => init.type_reference(),
+            Declared::Typed(type_name) => TypeReference::Named(type_name.clone()),
+        }
+    }
+}
 
 /// The declared type of every variable in scope.
 ///
@@ -48,9 +71,10 @@ pub(crate) fn resolve_initializer(
         InitialValueAssignmentKind::Simple(si) => {
             Some(type_env.get(&si.type_name)?.representation.clone())
         }
-        InitialValueAssignmentKind::LateResolvedType(tn) => {
-            Some(type_env.get(tn)?.representation.clone())
-        }
+        InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+            type_name: tn,
+            ..
+        }) => Some(type_env.get(tn)?.representation.clone()),
         InitialValueAssignmentKind::Structure(si) => {
             Some(type_env.get(&si.type_name)?.representation.clone())
         }
@@ -87,9 +111,10 @@ pub(crate) fn of(
     type_env: &TypeEnvironment,
 ) -> Option<IntermediateType> {
     match kind {
-        SymbolicVariableKind::Named(named) => {
-            resolve_initializer(&declarations.find(&named.name)?.0, type_env)
-        }
+        SymbolicVariableKind::Named(named) => match declarations.find(&named.name)? {
+            Declared::Variable(init) => resolve_initializer(init, type_env),
+            Declared::Typed(type_name) => Some(type_env.get(type_name)?.representation.clone()),
+        },
         SymbolicVariableKind::Structured(structured) => {
             let record_type = of(&structured.record, declarations, type_env)?;
             struct_field_type(&record_type, &structured.field)

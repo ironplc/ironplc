@@ -111,9 +111,15 @@ suite('renderHeader', () => {
 
   test('renderHeader_when_flags_set_then_shows_flag_names', () => {
     const header = createTestHeader({
-      flags: { hasContentSignature: true, hasDebugSection: true, hasTypeSection: false },
+      flags: {
+        hasSystemUptime: true,
+        hasContentSignature: true,
+        hasDebugSection: true,
+        hasTypeSection: false,
+      },
     });
     const html = renderHeader(header);
+    assert.ok(html.includes('System Uptime'));
     assert.ok(html.includes('Content Signature'));
     assert.ok(html.includes('Debug Section'));
   });

@@ -115,7 +115,11 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = Vm::new().load(&container, &mut bufs).start().unwrap();
+    let mut vm = Vm::new()
+        .load(&container, &mut bufs)
+        .unwrap()
+        .start()
+        .unwrap();
 
     for _ in 0..5 {
         vm.run_round(0).unwrap();

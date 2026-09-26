@@ -14,6 +14,7 @@ use ironplc_dsl::core::Id;
 use crate::function_environment::FunctionSignature;
 use crate::intermediate_type::IntermediateFunctionParameter;
 use crate::intermediates::operator_function_form;
+use crate::intermediates::stdlib_time_function;
 
 /// Helper to create an input parameter.
 pub(super) fn input_param(name: &str, param_type_name: &str) -> IntermediateFunctionParameter {
@@ -325,8 +326,12 @@ const SIGNED_INT_TO_STRING_TYPES: &[&str] = &["SINT", "INT", "DINT"];
 /// Numeric types that convert to STRING (W32 unsigned / bit-string).
 const UNSIGNED_INT_TO_STRING_TYPES: &[&str] = &["USINT", "UINT", "UDINT", "BYTE", "WORD", "DWORD"];
 
-/// Integer types that can be parsed from STRING.
-const STRING_TO_INT_TYPES: &[&str] = &["SINT", "INT", "DINT", "USINT", "UINT", "UDINT"];
+/// Integer and bit-string types that can be parsed from STRING. A bit-string
+/// target converts as the unsigned integer of its width.
+const STRING_TO_INT_TYPES: &[&str] = &[
+    "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "BYTE", "WORD", "DWORD",
+    "LWORD",
+];
 
 /// Returns string ↔ numeric conversion function definitions.
 ///
@@ -350,13 +355,15 @@ fn get_string_conversion_functions() -> Vec<FunctionSignature> {
     // REAL → STRING
     functions.push(build_conversion_function("REAL", "STRING"));
 
-    // STRING → integer types
+    // STRING → integer and bit-string types
     for target in STRING_TO_INT_TYPES {
         functions.push(build_conversion_function("STRING", target));
     }
 
-    // STRING → REAL
-    functions.push(build_conversion_function("STRING", "REAL"));
+    // STRING → real types
+    for target in REAL_TYPES {
+        functions.push(build_conversion_function("STRING", target));
+    }
 
     functions
 }
@@ -704,125 +711,6 @@ fn get_string_functions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
-// Time Function Definitions (IEC 61131-3 Section 2.5.1.5.8, Table 35)
-// =============================================================================
-
-/// Returns standard time and date function definitions.
-///
-/// These functions provide arithmetic on time durations, date/time offsets,
-/// date/time differences, and date+time concatenation.
-fn get_time_functions() -> Vec<FunctionSignature> {
-    vec![
-        // Time duration arithmetic
-        FunctionSignature::stdlib(
-            "ADD_TIME",
-            TypeName::from("TIME"),
-            vec![input_param("IN1", "TIME"), input_param("IN2", "TIME")],
-        ),
-        FunctionSignature::stdlib(
-            "SUB_TIME",
-            TypeName::from("TIME"),
-            vec![input_param("IN1", "TIME"), input_param("IN2", "TIME")],
-        ),
-        FunctionSignature::stdlib(
-            "MUL_TIME",
-            TypeName::from("TIME"),
-            vec![input_param("IN1", "TIME"), input_param("IN2", "ANY_NUM")],
-        ),
-        FunctionSignature::stdlib(
-            "DIV_TIME",
-            TypeName::from("TIME"),
-            vec![input_param("IN1", "TIME"), input_param("IN2", "ANY_NUM")],
-        ),
-        // Date/time + duration
-        FunctionSignature::stdlib(
-            "ADD_DT_TIME",
-            TypeName::from("DATE_AND_TIME"),
-            vec![
-                input_param("IN1", "DATE_AND_TIME"),
-                input_param("IN2", "TIME"),
-            ],
-        ),
-        FunctionSignature::stdlib(
-            "ADD_TOD_TIME",
-            TypeName::from("TIME_OF_DAY"),
-            vec![
-                input_param("IN1", "TIME_OF_DAY"),
-                input_param("IN2", "TIME"),
-            ],
-        ),
-        FunctionSignature::stdlib(
-            "SUB_DT_TIME",
-            TypeName::from("DATE_AND_TIME"),
-            vec![
-                input_param("IN1", "DATE_AND_TIME"),
-                input_param("IN2", "TIME"),
-            ],
-        ),
-        FunctionSignature::stdlib(
-            "SUB_TOD_TIME",
-            TypeName::from("TIME_OF_DAY"),
-            vec![
-                input_param("IN1", "TIME_OF_DAY"),
-                input_param("IN2", "TIME"),
-            ],
-        ),
-        // Date/time differences
-        FunctionSignature::stdlib(
-            "SUB_DT_DT",
-            TypeName::from("TIME"),
-            vec![
-                input_param("IN1", "DATE_AND_TIME"),
-                input_param("IN2", "DATE_AND_TIME"),
-            ],
-        ),
-        FunctionSignature::stdlib(
-            "SUB_DATE_DATE",
-            TypeName::from("TIME"),
-            vec![input_param("IN1", "DATE"), input_param("IN2", "DATE")],
-        ),
-        FunctionSignature::stdlib(
-            "SUB_TOD_TOD",
-            TypeName::from("TIME"),
-            vec![
-                input_param("IN1", "TIME_OF_DAY"),
-                input_param("IN2", "TIME_OF_DAY"),
-            ],
-        ),
-        // Concatenation
-        FunctionSignature::stdlib(
-            "CONCAT_DATE_TOD",
-            TypeName::from("DATE_AND_TIME"),
-            vec![
-                input_param("IN1", "DATE"),
-                input_param("IN2", "TIME_OF_DAY"),
-            ],
-        ),
-        // Decomposition: extract DATE or TIME_OF_DAY from DATE_AND_TIME
-        FunctionSignature::stdlib(
-            "DT_TO_DATE",
-            TypeName::from("DATE"),
-            vec![input_param("IN", "DATE_AND_TIME")],
-        ),
-        FunctionSignature::stdlib(
-            "DATE_AND_TIME_TO_DATE",
-            TypeName::from("DATE"),
-            vec![input_param("IN", "DATE_AND_TIME")],
-        ),
-        FunctionSignature::stdlib(
-            "DT_TO_TOD",
-            TypeName::from("TIME_OF_DAY"),
-            vec![input_param("IN", "DATE_AND_TIME")],
-        ),
-        FunctionSignature::stdlib(
-            "DATE_AND_TIME_TO_TIME_OF_DAY",
-            TypeName::from("TIME_OF_DAY"),
-            vec![input_param("IN", "DATE_AND_TIME")],
-        ),
-    ]
-}
-
-// =============================================================================
 // Public API
 // =============================================================================
 
@@ -879,7 +767,7 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     functions.extend(get_string_functions());
 
     // Time functions (IEC 61131-3 Section 2.5.1.5.8, Table 35)
-    functions.extend(get_time_functions());
+    functions.extend(stdlib_time_function::get_time_functions());
 
     // Compiler intrinsics (reserved `__` namespace)
     functions.extend(get_compiler_intrinsic_functions());
@@ -960,6 +848,39 @@ pub fn get_sizeof_function() -> FunctionSignature {
 mod tests {
     use super::*;
     use ironplc_dsl::common::FunctionReturnType;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::sint("STRING_TO_SINT", "SINT")]
+    #[case::int("STRING_TO_INT", "INT")]
+    #[case::dint("STRING_TO_DINT", "DINT")]
+    #[case::usint("STRING_TO_USINT", "USINT")]
+    #[case::uint("STRING_TO_UINT", "UINT")]
+    #[case::udint("STRING_TO_UDINT", "UDINT")]
+    #[case::byte("STRING_TO_BYTE", "BYTE")]
+    #[case::word("STRING_TO_WORD", "WORD")]
+    #[case::dword("STRING_TO_DWORD", "DWORD")]
+    #[case::lint("STRING_TO_LINT", "LINT")]
+    #[case::ulint("STRING_TO_ULINT", "ULINT")]
+    #[case::lword("STRING_TO_LWORD", "LWORD")]
+    #[case::real("STRING_TO_REAL", "REAL")]
+    #[case::lreal("STRING_TO_LREAL", "LREAL")]
+    fn get_string_conversion_functions_when_string_to_integer_then_registered_with_target_return(
+        #[case] name: &str,
+        #[case] target: &str,
+    ) {
+        let functions = get_string_conversion_functions();
+        let sig = functions
+            .iter()
+            .find(|f| f.name.original() == name)
+            .unwrap();
+        assert_eq!(sig.parameters.len(), 1);
+        assert_eq!(sig.parameters[0].param_type, TypeName::from("STRING"));
+        assert_eq!(
+            sig.return_type,
+            Some(FunctionReturnType::Named(TypeName::from(target)))
+        );
+    }
 
     #[test]
     fn build_conversion_function_when_called_then_has_correct_signature() {

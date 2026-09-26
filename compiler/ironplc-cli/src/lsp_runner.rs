@@ -74,18 +74,21 @@ impl VmRunner {
 
         // Run init to apply initial values
         let mut bufs = VmBuffers::from_container(&container);
-        match Vm::new().load(&container, &mut bufs).start() {
-            Ok(running) => {
-                running.stop();
-            }
-            Err(ctx) => {
-                return Err(RunResult {
-                    ok: false,
-                    variables: vec![],
-                    total_scans: 0,
-                    error: Some(format!("VM init trap: {}", ctx.trap)),
-                });
-            }
+        let trap = match Vm::new().load(&container, &mut bufs) {
+            Ok(ready) => ready
+                .start()
+                .map(|running| running.stop())
+                .err()
+                .map(|ctx| ctx.trap),
+            Err(trap) => Some(trap),
+        };
+        if let Some(trap) = trap {
+            return Err(RunResult {
+                ok: false,
+                variables: vec![],
+                total_scans: 0,
+                error: Some(format!("VM init trap: {trap}")),
+            });
         }
 
         let runner = VmRunner {
@@ -169,7 +172,17 @@ fn run_step_scans(
     scans: u32,
     cycle_time_us: u64,
 ) -> RunResult {
-    let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
+    let mut running = match Vm::new().load(container, bufs) {
+        Ok(ready) => ready.resume(base_scan_count),
+        Err(trap) => {
+            return RunResult {
+                ok: false,
+                variables: vec![],
+                total_scans: base_scan_count,
+                error: Some(format!("VM trap: {trap}")),
+            };
+        }
+    };
 
     for _ in 0..scans {
         let uptime_us = running.scan_count() * cycle_time_us;
@@ -245,9 +258,7 @@ fn compile_to_bytes(source: &str, options: &CompilerOptions) -> Result<Vec<u8>, 
         });
     }
 
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        system_uptime_global: options.allow_system_uptime_global,
-    };
+    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
     let container = codegen_compile(
         &library,
         &context,

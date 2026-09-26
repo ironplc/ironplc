@@ -37,7 +37,7 @@
 use ironplc_parser::options::CompilerOptions;
 
 use crate::tools;
-use crate::tools::common::SourceInput;
+use crate::tools::test_support::source;
 
 /// A source snippet that isolates a single feature flag's effect.
 struct FlagFixture {
@@ -173,10 +173,26 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "PROGRAM main\nVAR\nt : TIME;\nEND_VAR\nt := __SYSTEM_UP_TIME;\nEND_PROGRAM",
     },
-    // Implicit widening across bit-string/integer families: literal 0 -> BYTE
-    // arg (P4026) is only allowed when the flag is on.
+    // Cross-family widening: a BYTE arg to a strictly wider INT parameter
+    // (P4026) is only allowed when the flag is on.
     FlagFixture {
         key: "allow_cross_family_widening",
+        prereqs: &[],
+        source: "FUNCTION TAKES_INT : INT\nVAR_INPUT\nx : INT;\nEND_VAR\nTAKES_INT := x;\nEND_FUNCTION\nPROGRAM main\nVAR\nresult : INT;\nb : BYTE;\nEND_VAR\nresult := TAKES_INT(b);\nEND_PROGRAM",
+    },
+    // Cross-family conversion at equal width: a UDINT arg to a DWORD
+    // parameter (P4026) is only allowed when the flag is on. This widens
+    // nothing, which is why it is not the widening flag.
+    FlagFixture {
+        key: "allow_cross_family_conversion",
+        prereqs: &[],
+        source: "FUNCTION TAKES_DWORD : DWORD\nVAR_INPUT\nx : DWORD;\nEND_VAR\nTAKES_DWORD := x;\nEND_FUNCTION\nPROGRAM main\nVAR\nresult : DWORD;\nu : UDINT;\nEND_VAR\nresult := TAKES_DWORD(u);\nEND_PROGRAM",
+    },
+    // A bare integer literal where a bit-string is expected: literal 0 ->
+    // BYTE arg (P4026) is only allowed when the flag is on. Literal typing,
+    // not widening.
+    FlagFixture {
+        key: "allow_int_literal_to_bit_string",
         prereqs: &[],
         source: "FUNCTION TAKES_BYTE : BYTE\nVAR_INPUT\nx : BYTE;\nEND_VAR\nTAKES_BYTE := x;\nEND_FUNCTION\nPROGRAM main\nVAR\nresult : BYTE;\nEND_VAR\nresult := TAKES_BYTE(0);\nEND_PROGRAM",
     },
@@ -248,15 +264,34 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Base\nVAR\nx : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nFUNCTION_BLOCK FB_Derived EXTENDS FB_Base\nEND_FUNCTION_BLOCK",
     },
+    // An explicit per-member value in an enum declaration. The parser accepts
+    // it unconditionally; a semantic rule rejects it (P4055) when the flag is
+    // off. A declaration whose members are all bare names is Edition 2 syntax
+    // and is accepted either way.
+    FlagFixture {
+        key: "allow_enum_explicit_values",
+        prereqs: &[],
+        source: "TYPE\nE_ModeLanguage : (Deutsch := 1, English := 2);\nEND_TYPE\nPROGRAM main\nEND_PROGRAM",
+    },
+    // The base-type suffix on an enum declaration. The parser accepts it
+    // unconditionally; a semantic rule rejects it (P4056) when the flag is
+    // off. A declaration without the suffix sizes automatically and is
+    // accepted either way.
+    FlagFixture {
+        key: "allow_enum_base_type",
+        prereqs: &[],
+        source: "TYPE\nE_Small : (A, B) WORD;\nEND_TYPE\nPROGRAM main\nEND_PROGRAM",
+    },
+    // The Beckhoff TwinCAT/CODESYS PERSISTENT variable qualifier. With the
+    // flag off, PERSISTENT demotes to a plain identifier, so it collides with
+    // the following declaration name and fails to parse. With the flag on,
+    // it parses as the qualifier.
+    FlagFixture {
+        key: "allow_persistent_var",
+        prereqs: &["allow_top_level_var_global"],
+        source: "VAR_GLOBAL PERSISTENT\nnCounter : DINT;\nEND_VAR",
+    },
 ];
-
-/// Wraps snippet text as the single-source input the tools expect.
-fn sources(content: &str) -> Vec<SourceInput> {
-    vec![SourceInput {
-        name: "main.st".into(),
-        content: content.into(),
-    }]
-}
 
 /// Builds an ed2 options object with the given flags enabled.
 fn ed2_with(flags: &[&str]) -> serde_json::Value {
@@ -323,7 +358,7 @@ fn each_feature_flag_gates_its_example_source_off_then_on() {
         let mut on_flags = fx.prereqs.to_vec();
         on_flags.push(fx.key);
 
-        let off = tools::check::build_response(&sources(fx.source), &ed2_with(fx.prereqs));
+        let off = tools::check::build_response(&source(fx.source), &ed2_with(fx.prereqs));
         assert!(
             !off.ok,
             "flag `{}`: source expected to be REJECTED with the flag off (prereqs {:?}) but it \
@@ -331,7 +366,7 @@ fn each_feature_flag_gates_its_example_source_off_then_on() {
             fx.key, fx.prereqs, fx.source
         );
 
-        let on = tools::check::build_response(&sources(fx.source), &ed2_with(&on_flags));
+        let on = tools::check::build_response(&source(fx.source), &ed2_with(&on_flags));
         assert!(
             on.ok,
             "flag `{}`: source expected to be ACCEPTED with the flag on but got diagnostics: \

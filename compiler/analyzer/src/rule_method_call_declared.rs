@@ -39,7 +39,6 @@
 //!    inst.Start();
 //! END_PROGRAM
 //! ```
-use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 
 use ironplc_dsl::{
@@ -52,6 +51,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
+    callee_resolution::{FunctionBlocks, InstanceTypes},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
@@ -63,71 +63,27 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut function_blocks = HashMap::new();
-    for x in lib.elements.iter() {
-        if let LibraryElementKind::FunctionBlockDeclaration(fb) = x {
-            function_blocks.insert(fb.name.clone(), fb);
-        }
-    }
+    let function_blocks = FunctionBlocks::from_library(lib);
 
     run_rule(RuleMethodCallDeclared::new(&function_blocks), lib)
 }
 
 struct RuleMethodCallDeclared<'a> {
-    // Map of the name of a function block declaration to the
-    // declaration itself.
-    function_blocks: &'a HashMap<TypeName, &'a FunctionBlockDeclaration>,
+    function_blocks: &'a FunctionBlocks<'a>,
 
-    // Map of variable name to the function block name that is the
-    // declared type of that variable.
-    var_to_fb: HashMap<Id, TypeName>,
+    /// The instances declared in the unit being walked.
+    instances: InstanceTypes,
 
     diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> RuleMethodCallDeclared<'a> {
-    fn new(decls: &'a HashMap<TypeName, &'a FunctionBlockDeclaration>) -> Self {
+    fn new(function_blocks: &'a FunctionBlocks<'a>) -> Self {
         Self {
-            function_blocks: decls,
-            var_to_fb: HashMap::new(),
+            function_blocks,
+            instances: InstanceTypes::default(),
             diagnostics: Vec::new(),
         }
-    }
-
-    /// Resolves `method_name` against `fb_name`'s own methods, then its
-    /// `EXTENDS` base, then that base's base, and so on (ADR-0041 Phase 1
-    /// static dispatch). Returns the function block that actually declares
-    /// the method (which may be a base, not `fb_name` itself) together
-    /// with the method declaration.
-    fn resolve_method(
-        &self,
-        fb_name: &TypeName,
-        method_name: &Id,
-    ) -> Option<(&'a FunctionBlockDeclaration, &'a MethodDeclaration)> {
-        let mut current = self.function_blocks.get(fb_name).copied();
-        let mut visited: HashSet<TypeName> = HashSet::new();
-
-        while let Some(fb) = current {
-            // Guards against an EXTENDS cycle causing an infinite loop.
-            // Cycles are also independently invalid (and expected to be
-            // rejected elsewhere); this is just a safety net for this
-            // rule specifically.
-            if !visited.insert(fb.name.clone()) {
-                return None;
-            }
-
-            if let Some(method) = fb.methods.iter().find(|m| &m.name == method_name) {
-                return Some((fb, method));
-            }
-
-            current = fb
-                .oop
-                .as_ref()
-                .and_then(|oop| oop.base.as_ref())
-                .and_then(|base| self.function_blocks.get(base).copied());
-        }
-
-        None
     }
 
     fn check_assignments(
@@ -175,7 +131,7 @@ impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
-        self.var_to_fb.clear();
+        self.instances.clear();
         res
     }
 
@@ -184,7 +140,7 @@ impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
         node: &FunctionDeclaration,
     ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
-        self.var_to_fb.clear();
+        self.instances.clear();
         res
     }
 
@@ -193,16 +149,12 @@ impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
         node: &ProgramDeclaration,
     ) -> Result<Self::Value, Infallible> {
         let res = node.recurse_visit(self);
-        self.var_to_fb.clear();
+        self.instances.clear();
         res
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        if let InitialValueAssignmentKind::FunctionBlock(fbi) = &node.initializer {
-            if let Some(id) = node.identifier.symbolic_id() {
-                self.var_to_fb.insert(id.clone(), fbi.type_name.clone());
-            }
-        }
+        self.instances.declare(node);
         Ok(())
     }
 
@@ -227,20 +179,20 @@ impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
             }
         };
 
-        // Cloned so that the borrow of `var_to_fb` ends here: the arms below
+        // Cloned so that the borrow of `instances` ends here: the arms below
         // push onto `self.diagnostics`, which borrows `self` mutably.
-        let fb_type = self.var_to_fb.get(instance).cloned();
+        let fb_type = self.instances.type_of(instance).cloned();
         let Some(fb_type) = fb_type else {
             self.diagnostics.push(Self::not_in_scope(call, instance));
             return Ok(());
         };
 
-        if !self.function_blocks.contains_key(&fb_type) {
+        if !self.function_blocks.contains(&fb_type) {
             self.diagnostics.push(Self::not_in_scope(call, instance));
             return Ok(());
         }
 
-        match self.resolve_method(&fb_type, &call.method) {
+        match self.function_blocks.resolve_method(&fb_type, &call.method) {
             None => self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::MethodNotFound,

@@ -2,6 +2,7 @@ use crate::const_type::ConstType;
 use crate::error::ContainerError;
 use crate::header::{FileHeader, HEADER_SIZE};
 use crate::id_types::{ConstantIndex, FunctionId, InstanceId, TaskId, VarIndex};
+use crate::integrity;
 use crate::task_type::TaskType;
 
 /// Size of a single function directory entry in bytes.
@@ -177,6 +178,32 @@ impl<'a> ContainerRef<'a> {
             return Err(ContainerError::SectionSizeMismatch);
         }
 
+        // 6. Check the content hash. The type section is not otherwise used
+        // here, so it is sliced only for this, and only when there is a hash
+        // to check.
+        if header.content_hash != integrity::NO_HASH {
+            let type_start = header.type_section_offset as usize;
+            let type_end = type_start + header.type_section_size as usize;
+            if type_end > data.len() {
+                return Err(ContainerError::SectionSizeMismatch);
+            }
+            let type_section = if header.type_section_size == 0 {
+                &data[0..0]
+            } else {
+                &data[type_start..type_end]
+            };
+            integrity::check_content_hash(
+                &header.content_hash,
+                &integrity::Content {
+                    header: header_bytes,
+                    task_table: task_table_bytes,
+                    type_section,
+                    const_section,
+                    code_section,
+                },
+            )?;
+        }
+
         Ok(ContainerRef {
             header,
             const_pool_bytes,
@@ -330,27 +357,14 @@ mod tests {
     use std::vec;
     use std::vec::Vec;
 
+    use crate::test_support::{
+        container_bytes, steel_thread_single_function_container, with_tampered_header,
+    };
+    use crate::ContainerBuilder;
+    use crate::{integrity, opcode};
+
     fn steel_thread_bytes() -> Vec<u8> {
-        use crate::ContainerBuilder;
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]
-            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]
-            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
-            0x20,                   // ADD_I32
-            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]
-            0x8C,                   // RET_VOID
-        ];
-        let container = ContainerBuilder::new()
-            .num_variables(2)
-            .add_i32_constant(10)
-            .add_i32_constant(32)
-            .add_function(FunctionId::INIT, &bytecode, 2, 2, 0)
-            .build();
-        let mut buf = Vec::new();
-        container.write_to(&mut buf).unwrap();
-        buf
+        container_bytes(&steel_thread_single_function_container())
     }
 
     #[test]
@@ -407,6 +421,14 @@ mod tests {
     )]
     #[case::task_section_smaller_than_header(
         (|data: Vec<u8>| with_tampered_header(&data, |h| h.task_section_size = 3)) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::SectionSizeMismatch)) as fn(&ContainerError) -> bool
+    )]
+    #[case::code_byte_modified(
+        (|mut data: Vec<u8>| { let n = data.len(); data[n - 1] ^= 0xFF; data }) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::ContentHashMismatch)) as fn(&ContainerError) -> bool
+    )]
+    #[case::type_section_offset_past_end(
+        (|data: Vec<u8>| { let n = data.len() as u32; with_tampered_header(&data, |h| { h.type_section_offset = n; h.type_section_size = 1 }) }) as fn(Vec<u8>) -> Vec<u8>,
         (|e: &ContainerError| matches!(e, ContainerError::SectionSizeMismatch)) as fn(&ContainerError) -> bool
     )]
     #[case::const_entry_value_size_bytes_corrupted(
@@ -499,31 +521,23 @@ mod tests {
         assert_eq!(prog.var_table_count, 2);
     }
 
+    /// A do-nothing program (`RET_VOID`) with whatever constant pool the
+    /// caller's builder carries.
+    fn ret_void_bytes(builder: ContainerBuilder) -> Vec<u8> {
+        container_bytes(
+            &builder
+                .num_variables(0)
+                .add_function(FunctionId::INIT, &[opcode::RET_VOID], 0, 0, 0)
+                .build(),
+        )
+    }
+
     fn f32_constant_bytes() -> Vec<u8> {
-        use crate::ContainerBuilder;
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![0x8C];
-        let container = ContainerBuilder::new()
-            .num_variables(0)
-            .add_f32_constant(1.5)
-            .add_function(FunctionId::INIT, &bytecode, 0, 0, 0)
-            .build();
-        let mut buf = Vec::new();
-        container.write_to(&mut buf).unwrap();
-        buf
+        ret_void_bytes(ContainerBuilder::new().add_f32_constant(1.5))
     }
 
     fn empty_pool_bytes() -> Vec<u8> {
-        use crate::ContainerBuilder;
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![0x8C];
-        let container = ContainerBuilder::new()
-            .num_variables(0)
-            .add_function(FunctionId::INIT, &bytecode, 0, 0, 0)
-            .build();
-        let mut buf = Vec::new();
-        container.write_to(&mut buf).unwrap();
-        buf
+        ret_void_bytes(ContainerBuilder::new())
     }
 
     #[test]
@@ -591,7 +605,9 @@ mod tests {
             FileHeader::read_from(&mut std::io::Cursor::new(&base[..HEADER_SIZE])).unwrap();
         let code_start = header.code_section_offset as usize;
 
-        let mut data = base.clone();
+        // Rewriting the directory changes the hashed bytes; this test is
+        // about the per-entry bounds check, so make it an unhashed container.
+        let mut data = with_tampered_header(&base, |h| h.content_hash = integrity::NO_HASH);
         // Function directory entry layout (16 bytes):
         //   function_id(2) + code_offset(4, at bytes 2..6)
         //   + code_length(4, at bytes 6..10) + ...
@@ -638,17 +654,6 @@ mod tests {
         ));
     }
 
-    /// Rewrites the header of `data` with `tamper` applied.
-    fn with_tampered_header(data: &[u8], tamper: impl FnOnce(&mut FileHeader)) -> Vec<u8> {
-        let mut header =
-            FileHeader::read_from(&mut std::io::Cursor::new(&data[..HEADER_SIZE])).unwrap();
-        tamper(&mut header);
-        let mut tampered = Vec::with_capacity(data.len());
-        header.write_to(&mut tampered).unwrap();
-        tampered.extend_from_slice(&data[HEADER_SIZE..]);
-        tampered
-    }
-
     #[test]
     fn container_ref_const_count_when_const_section_size_is_zero_then_returns_zero() {
         // Tamper the header to set const_section_size = 0 so the early-exit
@@ -661,8 +666,11 @@ mod tests {
 
     #[test]
     fn container_ref_from_slice_when_const_section_size_is_zero_then_succeeds_with_empty_pool() {
+        // Shrinking the pool changes the hashed bytes, so this is only
+        // loadable as an unhashed container.
         let data = with_tampered_header(&steel_thread_bytes(), |h| {
             h.const_section_size = 0;
+            h.content_hash = integrity::NO_HASH;
         });
         let mut offsets = vec![0u32; 0];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
@@ -686,8 +694,11 @@ mod tests {
         // When task_section_size is 0, from_slice accepts the container and
         // the runtime accessors fall back to zero rather than indexing an
         // empty slice.
+        // Dropping the task table changes the hashed bytes, so this is only
+        // loadable as an unhashed container.
         let data = with_tampered_header(&steel_thread_bytes(), |h| {
             h.task_section_size = 0;
+            h.content_hash = integrity::NO_HASH;
         });
         let mut offsets = vec![0u32; 4];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();

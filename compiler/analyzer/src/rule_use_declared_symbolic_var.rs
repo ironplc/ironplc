@@ -57,6 +57,7 @@ use crate::{
     scoped_table::{self, Key, ScopedTable, Value},
     semantic_context::SemanticContext,
     string_similarity::find_closest_match,
+    system_globals::SYSTEM_UPTIME_GLOBALS,
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -73,12 +74,9 @@ pub fn apply(
 
     // Seed implicit system globals so direct references don't trigger P4007.
     if options.allow_system_uptime_global {
-        checker
-            .table
-            .add(&Id::from("__SYSTEM_UP_TIME"), DummyNode {});
-        checker
-            .table
-            .add(&Id::from("__SYSTEM_UP_LTIME"), DummyNode {});
+        for global in &SYSTEM_UPTIME_GLOBALS {
+            checker.table.add(&Id::from(global.name), DummyNode {});
+        }
     }
 
     run_rule(checker, lib)

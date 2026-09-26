@@ -138,4 +138,128 @@ VAR
 END_VAR
 END_PROGRAM"
     );
+
+    // A bare identifier naming a variable in scope is a runtime value, and
+    // the gate must see it. The parser cannot tell it from an enumeration
+    // value -- `xform_resolve_late_bound_expr_kind` is what decides, once
+    // declarations are known.
+    const BARE_VARIABLE_SOURCE: &str = "
+TYPE MyStruct :
+STRUCT
+    x : INT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+VAR
+    g : INT;
+    s : MyStruct := (x := g);
+END_VAR
+END_PROGRAM";
+
+    rule_err1!(
+        apply_when_struct_init_is_bare_variable_and_flag_disabled_then_error,
+        BARE_VARIABLE_SOURCE,
+        Problem::StructInitializerExpressionNotAllowed
+    );
+
+    // The label underlines the expression as written. A unary expression
+    // used to report its operand's span alone, so the caret started one or
+    // more columns too far right -- three plus a space, for `NOT`.
+    // See https://github.com/ironplc/ironplc/issues/1662.
+    const UNARY_SOURCE: &str = "
+TYPE MyStruct :
+STRUCT
+    x : INT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+VAR
+    g : INT;
+    s : MyStruct := (x := -g);
+END_VAR
+END_PROGRAM";
+
+    #[test]
+    fn apply_when_struct_init_is_unary_expression_then_label_covers_the_operator() {
+        let opts = CompilerOptions::default();
+        let (library, context) = crate::test_helpers::resolve_fresh_with(UNARY_SOURCE, &opts);
+
+        let errors = apply(&library, &context, &opts).unwrap_err();
+
+        assert_eq!(errors.len(), 1, "expected one diagnostic, got {errors:?}");
+        let location = &errors[0].primary.location;
+        assert_eq!("-g", &UNARY_SOURCE[location.start..location.end]);
+    }
+
+    rule_ok_with!(
+        apply_when_struct_init_is_bare_variable_and_flag_enabled_then_ok,
+        CompilerOptions {
+            allow_struct_initializer_expressions: true,
+            ..CompilerOptions::default()
+        },
+        BARE_VARIABLE_SOURCE
+    );
+
+    // A bare identifier naming an enumeration value is standard syntax and
+    // must never be flagged -- the reclassification keys on whether the name
+    // resolves to a variable, not on its shape.
+    rule_ok!(
+        apply_when_struct_init_is_enumerated_value_then_never_flagged,
+        "
+TYPE Color : (RED, GREEN); END_TYPE
+
+TYPE MyStruct :
+STRUCT
+    c : Color;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+VAR
+    s : MyStruct := (c := RED);
+END_VAR
+END_PROGRAM"
+    );
+
+    // A function block instance's member initializer goes through the same
+    // gate: the declaration is rewritten to an FB instance before this rule
+    // runs, and the rule must still reach the member values.
+    rule_err1!(
+        apply_when_fb_instance_member_init_is_expression_then_error,
+        "
+FUNCTION_BLOCK FB_Example
+VAR
+    delta : TIME;
+    tonDelta : TON := (PT := delta);
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::StructInitializerExpressionNotAllowed
+    );
+
+    /// ADR-0040 requires a dialect violation to point at the construct's real
+    /// span. A compound expression used to report byte offset 0, because
+    /// every literal kind but two carried a default span and
+    /// `Located for ExprKind` joins its operands' spans.
+    #[test]
+    fn apply_when_value_is_compound_expression_then_label_spans_the_expression() {
+        const PROGRAM: &str = "TYPE MyStruct : STRUCT x : INT; END_STRUCT; END_TYPE
+PROGRAM main
+VAR
+    s : MyStruct := (x := 1 + 1);
+END_VAR
+END_PROGRAM";
+        let opts = CompilerOptions::default();
+        let (library, context) = crate::test_helpers::resolve_fresh_with(PROGRAM, &opts);
+        let diagnostics = super::apply(&library, &context, &opts).unwrap_err();
+
+        assert_eq!(1, diagnostics.len());
+        let location = &diagnostics[0].primary.location;
+        assert_eq!(
+            "1 + 1",
+            &PROGRAM[location.start..location.end],
+            "label should span the expression, not start at byte 0"
+        );
+    }
 }

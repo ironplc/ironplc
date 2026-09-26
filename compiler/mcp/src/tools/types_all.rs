@@ -291,7 +291,9 @@ fn render_type(ty: &IntermediateType) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::test_support::ed2_options;
+    use crate::tools::test_support::{
+        ed2_options, source, unnamed_source, with_program, SEMANTIC_ERROR_PROGRAM, VALID_PROGRAM,
+    };
 
     fn build(src: &str) -> TypesAllResponse {
         let sources = vec![SourceInput {
@@ -303,8 +305,9 @@ mod tests {
 
     #[test]
     fn build_response_when_enum_type_then_kind_enum_with_values() {
-        let resp =
-            build("TYPE MyEnum : (Stopped, Running, Fault); END_TYPE\nPROGRAM p\nEND_PROGRAM");
+        let resp = build(&with_program(
+            "TYPE MyEnum : (Stopped, Running, Fault); END_TYPE",
+        ));
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         let entry = resp.types.iter().find(|t| t.name == "MyEnum").unwrap();
         assert_eq!(entry.kind, "enum");
@@ -322,9 +325,9 @@ mod tests {
 
     #[test]
     fn build_response_when_struct_type_then_kind_struct_with_fields() {
-        let resp = build(
-            "TYPE PidParams : STRUCT Kp : REAL; Ki : REAL; END_STRUCT; END_TYPE\nPROGRAM p\nEND_PROGRAM",
-        );
+        let resp = build(&with_program(
+            "TYPE PidParams : STRUCT Kp : REAL; Ki : REAL; END_STRUCT; END_TYPE",
+        ));
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         let entry = resp.types.iter().find(|t| t.name == "PidParams").unwrap();
         assert_eq!(entry.kind, "struct");
@@ -336,7 +339,7 @@ mod tests {
 
     #[test]
     fn build_response_when_array_type_then_kind_array_with_bounds() {
-        let resp = build("TYPE Buf : ARRAY[1..10] OF INT; END_TYPE\nPROGRAM p\nEND_PROGRAM");
+        let resp = build(&with_program("TYPE Buf : ARRAY[1..10] OF INT; END_TYPE"));
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         let entry = resp.types.iter().find(|t| t.name == "Buf").unwrap();
         assert_eq!(entry.kind, "array");
@@ -349,7 +352,7 @@ mod tests {
 
     #[test]
     fn build_response_when_subrange_type_then_kind_subrange_with_low_high() {
-        let resp = build("TYPE Percent : INT (0..100); END_TYPE\nPROGRAM p\nEND_PROGRAM");
+        let resp = build(&with_program("TYPE Percent : INT (0..100); END_TYPE"));
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         let entry = resp.types.iter().find(|t| t.name == "Percent").unwrap();
         assert_eq!(entry.kind, "subrange");
@@ -361,9 +364,9 @@ mod tests {
     #[test]
     fn build_response_when_struct_has_string_and_wstring_fields_then_each_field_type_distinguishes_encoding(
     ) {
-        let resp = build(
-            "TYPE MyRec : STRUCT s : STRING; w : WSTRING; END_STRUCT; END_TYPE\nPROGRAM p\nEND_PROGRAM",
-        );
+        let resp = build(&with_program(
+            "TYPE MyRec : STRUCT s : STRING; w : WSTRING; END_STRUCT; END_TYPE",
+        ));
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         let entry = resp.types.iter().find(|t| t.name == "MyRec").unwrap();
         let fields = entry.fields.clone().unwrap();
@@ -375,38 +378,30 @@ mod tests {
 
     #[test]
     fn build_response_when_semantic_error_then_ok_false() {
-        let resp = build("PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM");
+        let resp = build(SEMANTIC_ERROR_PROGRAM);
         assert!(!resp.ok);
         assert!(!resp.diagnostics.is_empty());
     }
 
     #[test]
     fn build_response_when_empty_source_name_then_p8001() {
-        let sources = vec![SourceInput {
-            name: String::new(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&unnamed_source(), &ed2_options());
         assert!(!resp.ok);
         assert!(resp.diagnostics.iter().any(|d| d["code"] == "P8001"));
     }
 
     #[test]
     fn build_response_when_missing_dialect_then_p8001() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &serde_json::json!({}));
+        let resp = build_response(&source(VALID_PROGRAM), &serde_json::json!({}));
         assert!(!resp.ok);
         assert!(resp.diagnostics.iter().any(|d| d["code"] == "P8001"));
     }
 
     #[test]
     fn build_response_when_multiple_types_then_sorted_by_name() {
-        let resp = build(
-            "TYPE Zeta : (A, B); END_TYPE\nTYPE Alpha : (A, B); END_TYPE\nPROGRAM p\nEND_PROGRAM",
-        );
+        let resp = build(&with_program(
+            "TYPE Zeta : (A, B); END_TYPE\nTYPE Alpha : (A, B); END_TYPE",
+        ));
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         let names: Vec<String> = resp.types.iter().map(|t| t.name.clone()).collect();
         let mut sorted = names.clone();

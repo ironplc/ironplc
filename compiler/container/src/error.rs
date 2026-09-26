@@ -18,6 +18,10 @@ pub enum ContainerError {
     InvalidConstantIndex(ConstantIndex),
     /// A section's actual size does not match the declared size.
     SectionSizeMismatch,
+    /// The header's `content_hash` is set and does not match the type,
+    /// constant and code sections: the container was modified, corrupted
+    /// or truncated after it was written.
+    ContentHashMismatch,
     /// A task entry has an unrecognized task type tag.
     InvalidTaskType(u8),
     /// The debug section contains invalid data.
@@ -29,6 +33,13 @@ pub enum ContainerError {
     /// operand) is not a recognized [`crate::CharWidth`] discriminant
     /// (1 = `Narrow`, 2 = `Wide`).
     InvalidCharWidth(u8),
+    /// An array descriptor's element stride is one the VM cannot honour:
+    /// smaller than a STRING/WSTRING element, or other than one slot for any
+    /// other element type.
+    InvalidArrayStride {
+        element_type: u8,
+        element_stride: u32,
+    },
 }
 
 impl fmt::Display for ContainerError {
@@ -45,6 +56,10 @@ impl fmt::Display for ContainerError {
                 write!(f, "constant pool index out of bounds: {}", idx.raw())
             }
             ContainerError::SectionSizeMismatch => write!(f, "section size mismatch"),
+            ContainerError::ContentHashMismatch => write!(
+                f,
+                "content hash mismatch: the container was modified after it was compiled"
+            ),
             ContainerError::InvalidTaskType(t) => {
                 write!(f, "invalid task type tag: {t}")
             }
@@ -55,6 +70,15 @@ impl fmt::Display for ContainerError {
             }
             ContainerError::InvalidCharWidth(t) => {
                 write!(f, "invalid char_width: {t}")
+            }
+            ContainerError::InvalidArrayStride {
+                element_type,
+                element_stride,
+            } => {
+                write!(
+                    f,
+                    "invalid array element stride {element_stride} for element type {element_type}"
+                )
             }
         }
     }
@@ -114,6 +138,12 @@ mod tests {
     }
 
     #[test]
+    fn container_error_display_when_content_hash_mismatch_then_mentions_hash() {
+        let msg = ContainerError::ContentHashMismatch.to_string();
+        assert!(msg.contains("content hash"), "got: {msg}");
+    }
+
+    #[test]
     fn container_error_display_when_invalid_task_type_then_contains_tag() {
         let msg = ContainerError::InvalidTaskType(7).to_string();
         assert!(msg.contains('7'), "got: {msg}");
@@ -130,6 +160,17 @@ mod tests {
         let msg = ContainerError::InvalidCharWidth(99).to_string();
         assert!(msg.contains("99"), "got: {msg}");
         assert!(msg.contains("char_width"), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_display_when_invalid_array_stride_then_contains_stride_and_type() {
+        let msg = ContainerError::InvalidArrayStride {
+            element_type: 6,
+            element_stride: 3,
+        }
+        .to_string();
+        assert!(msg.contains("stride 3"), "got: {msg}");
+        assert!(msg.contains("type 6"), "got: {msg}");
     }
 
     #[test]

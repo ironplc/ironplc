@@ -15,7 +15,6 @@ reference/compiler/problems/P0002
 reference/compiler/problems/P0003
 reference/compiler/problems/P0010
 reference/compiler/problems/P2001
-reference/compiler/problems/P2002
 reference/compiler/problems/P2003
 reference/compiler/problems/P2007
 reference/compiler/problems/P2008
@@ -41,7 +40,6 @@ reference/compiler/problems/P2033
 reference/compiler/problems/P2034
 reference/compiler/problems/P2036
 reference/compiler/problems/P4005
-reference/compiler/problems/P4014
 reference/compiler/problems/P4020
 reference/compiler/problems/P4021
 reference/compiler/problems/P4022
@@ -52,7 +50,6 @@ reference/compiler/problems/P9998
 reference/runtime/problems/V4001
 reference/runtime/problems/V4002
 reference/runtime/problems/V6001
-reference/runtime/problems/V6002
 reference/runtime/problems/V6003
 reference/runtime/problems/V6004
 reference/runtime/problems/V6005
@@ -68,7 +65,6 @@ reference/runtime/problems/V9005
 reference/runtime/problems/V9006
 reference/runtime/problems/V9007
 reference/runtime/problems/V9008
-reference/runtime/problems/V9009
 reference/runtime/problems/V9010
 reference/runtime/problems/V9011
 reference/runtime/problems/V9012

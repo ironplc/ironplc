@@ -10,6 +10,7 @@ FUNCTION_BLOCK sfc
   END_VAR
 
   INITIAL_STEP Start:
+    RESET(N);
   END_STEP
 
   TRANSITION FROM Start TO MidStep

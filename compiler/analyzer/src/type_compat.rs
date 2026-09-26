@@ -56,8 +56,9 @@ pub(crate) fn are_types_compatible(
                 return true;
             }
             // Bare integer literals (ANY_INT) to ANY_BIT types (BYTE, WORD, etc.)
-            // requires --allow-cross-family-widening. See ADR-0031.
-            if options.allow_cross_family_widening
+            // requires --allow-int-literal-to-bit-string. This is literal
+            // typing, not widening. See ADR-0031.
+            if options.allow_int_literal_to_bit_string
                 && generic == GenericTypeName::AnyInt
                 && matches!(
                     elementary,
@@ -72,15 +73,23 @@ pub(crate) fn are_types_compatible(
         }
     }
     // Implicit widening: integer-to-integer, integer-to-real (lossless),
-    // bit-string-to-bit-string. See ADR-0029 and ADR-0031.
+    // real-to-real (REAL → LREAL), bit-string-to-bit-string. See ADR-0029 and
+    // ADR-0031.
     if let Ok(actual_elem) = ElementaryTypeName::try_from(&actual.name) {
         if let Ok(expected_elem) = ElementaryTypeName::try_from(&expected.name) {
             if actual_elem.can_widen_to(&expected_elem) {
                 return true;
             }
-            // Cross-family widening (bit-string → integer) requires flag.
+            // Cross-family widening (bit-string → strictly wider integer).
             if options.allow_cross_family_widening
                 && actual_elem.can_widen_cross_family_to(&expected_elem)
+            {
+                return true;
+            }
+            // Cross-family conversion at equal width (UDINT ↔ DWORD, both
+            // directions). Widens nothing, so it is a separate flag.
+            if options.allow_cross_family_conversion
+                && actual_elem.can_convert_cross_family_to(&expected_elem)
             {
                 return true;
             }
@@ -98,7 +107,7 @@ pub(crate) fn are_types_compatible(
 
 /// Returns true if both types belong to the same temporal family (the short and
 /// long widths of TIME, DATE, TIME_OF_DAY, or DATE_AND_TIME).
-fn same_temporal_family(a: &ElementaryTypeName, b: &ElementaryTypeName) -> bool {
+pub(crate) fn same_temporal_family(a: &ElementaryTypeName, b: &ElementaryTypeName) -> bool {
     use ElementaryTypeName::*;
     fn family(t: &ElementaryTypeName) -> Option<u8> {
         match t {
@@ -159,9 +168,10 @@ fn generic_actual_satisfies(
         // Integer literals infer as real (ADR-0028).
         AnyReal => matches!(actual, AnyReal | AnyInt),
         AnyInt => matches!(actual, AnyInt),
-        // Integer literals to bit-string require the widening flag (ADR-0031).
+        // Integer literals to bit-string require their own flag (ADR-0031).
         AnyBit => {
-            matches!(actual, AnyBit) || (options.allow_cross_family_widening && *actual == AnyInt)
+            matches!(actual, AnyBit)
+                || (options.allow_int_literal_to_bit_string && *actual == AnyInt)
         }
         AnyString => matches!(actual, AnyString),
         AnyDate => matches!(actual, AnyDate),

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <Itf Name="I_Drivable" Id="{3e8a5c17-9b40-4d62-a0f8-6c1e5a3d9b72}">
+    <Declaration><![CDATA[INTERFACE I_Drivable
+]]></Declaration>
+  </Itf>
+</TcPlcObject>

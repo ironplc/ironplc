@@ -1,0 +1,57 @@
+set windows-shell := ["powershell.exe", "-c"]
+
+# Deploy the PostHog dashboards, GitHub labels, and ingest proxy.
+#
+# State and plan/apply execution live in HCP Terraform, so everything except
+# `lint` and `format` needs credentials: run `just login` once, export
+# TF_CLOUD_ORGANIZATION, and set the workspace variables. See README.md.
+#
+# `lint` and `format` are pure text operations and run offline — no `just init`,
+# no API keys. `validate` does need providers, so it needs `init` first.
+#
+# IMPORTANT: query_json is opaque to Terraform. A wrong value inside it is not
+# rejected by the PostHog API — the tile silently reads 0. `just apply`
+# succeeding proves only that PostHog matches this directory, never that the
+# tiles count the right events. Always check the tiles afterward.
+
+# Show pending changes (never applies).
+default: plan
+
+# Authenticate to HCP Terraform; one-time per machine, opens a browser.
+login:
+  terraform login
+
+# Initialize the workspace and download providers.
+init:
+  terraform init
+
+# Show what would change.
+plan:
+  terraform plan
+
+# Apply pending changes, then remind you to verify the tiles.
+apply:
+  terraform apply
+  @echo ""
+  @echo "Applied. Now open the dashboards and check the tile numbers against"
+  @echo "raw event data — terraform cannot verify them for you. See README.md."
+
+# Print the reverse-proxy CNAME target and its provisioning status.
+outputs:
+  terraform output posthog_proxy_target_cname
+  terraform output posthog_proxy_status
+
+# Check formatting (offline, no credentials).
+lint:
+  terraform fmt -check -diff -recursive
+
+# Auto-fix formatting.
+format:
+  terraform fmt -recursive
+
+# Validate the configuration (requires `just init`).
+validate:
+  terraform validate
+
+# Everything that runs without credentials. Not wired into any workflow yet.
+ci: lint

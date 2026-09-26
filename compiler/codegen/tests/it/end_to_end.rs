@@ -116,7 +116,11 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = Vm::new().load(&container, &mut bufs).start().unwrap();
+    let mut vm = Vm::new()
+        .load(&container, &mut bufs)
+        .unwrap()
+        .start()
+        .unwrap();
 
     // Run multiple scans - result should be the same each time
     vm.run_round(0).unwrap();
@@ -141,7 +145,11 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = Vm::new().load(&container, &mut bufs).start().unwrap();
+    let mut vm = Vm::new()
+        .load(&container, &mut bufs)
+        .unwrap()
+        .start()
+        .unwrap();
 
     // After scan 1: x = 10 + 1 = 11
     vm.run_round(0).unwrap();

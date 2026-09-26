@@ -18,6 +18,46 @@ pub struct DurationLiteral {
 }
 
 impl DurationLiteral {
+    /// Creates a literal spanning `span` and measuring `interval`.
+    ///
+    /// Every constructor funnels through here so that what a duration literal
+    /// is made of is stated once.
+    fn new(span: SourceSpan, interval: Duration) -> Self {
+        Self { span, interval }
+    }
+
+    /// Creates a literal of `value` units, where one unit is `seconds_per_unit`
+    /// seconds and `whole_units` builds the whole part.
+    ///
+    /// A fixed-point literal carries its whole part and a femtosecond
+    /// fraction separately, and days, hours and minutes each scale that
+    /// fraction by their own unit before it becomes a duration. Only the unit
+    /// differs between them, so only the unit is passed in.
+    fn from_whole_unit(
+        value: FixedPoint,
+        whole_units: fn(i64) -> Duration,
+        seconds_per_unit: u64,
+    ) -> Self {
+        let whole = whole_units(value.whole as i64);
+
+        // `femptos / FRACTIONAL_UNITS` is the fraction of one unit, so the
+        // fraction in microseconds is
+        //
+        //     femptos / 1e15 * seconds_per_unit * 1e6 == femptos * seconds_per_unit / 1e9
+        //
+        // computed in `u128` because the numerator does not fit a `u64`: half
+        // a day is 5e14 femtos times 86,400 seconds, which is 4.3e19 against a
+        // `u64::MAX` of 1.8e19. The quotient is at most 8.64e10 microseconds,
+        // one whole unit's worth, so it always fits the `i64` a `Duration`
+        // takes.
+        let fraction = Duration::microseconds(
+            (u128::from(value.femptos) * u128::from(seconds_per_unit)
+                / (FixedPoint::FRACTIONAL_UNITS as u128 / 1_000_000)) as i64,
+        );
+
+        Self::new(value.span, whole + fraction)
+    }
+
     /// Create a new `DurationLiteral` with the given number of days.
     ///
     /// ```rust
@@ -27,18 +67,7 @@ impl DurationLiteral {
     /// assert_eq!(DurationLiteral::days(FixedPoint::parse("1").unwrap()).interval, Duration::days(1));
     /// ```
     pub fn days(days: FixedPoint) -> Self {
-        // The whole part is entirely seconds
-        let whole_seconds = Duration::days(days.whole as i64);
-
-        // The fraction has both seconds and one part femptoseconds
-        let fraction_seconds = Duration::microseconds(
-            (days.femptos * SECOND_PER_DAY / FixedPoint::FRACTIONAL_UNITS) as i64,
-        );
-
-        Self {
-            span: days.span,
-            interval: whole_seconds + fraction_seconds,
-        }
+        Self::from_whole_unit(days, Duration::days, SECOND_PER_DAY)
     }
 
     /// Create a new `DurationLiteral` with the given number of hours.
@@ -47,22 +76,11 @@ impl DurationLiteral {
     /// use ironplc_dsl::common::FixedPoint;
     /// use ironplc_dsl::time::DurationLiteral;
     /// use time::Duration;
-    /// assert_eq!(DurationLiteral::seconds(FixedPoint::parse("1").unwrap()).interval, Duration::seconds(1));
-    /// assert_eq!(DurationLiteral::seconds(FixedPoint::parse("1.001").unwrap()).interval, Duration::seconds(1) + Duration::milliseconds(1));
+    /// assert_eq!(DurationLiteral::hours(FixedPoint::parse("1").unwrap()).interval, Duration::hours(1));
+    /// assert_eq!(DurationLiteral::hours(FixedPoint::parse("1.5").unwrap()).interval, Duration::minutes(90));
     /// ```
     pub fn hours(hours: FixedPoint) -> Self {
-        // The whole part is entirely seconds
-        let whole_seconds = Duration::hours(hours.whole as i64);
-
-        // The fraction has both seconds and one part femptoseconds
-        let fraction_seconds = Duration::microseconds(
-            (hours.femptos * SECOND_PER_HOUR / FixedPoint::FRACTIONAL_UNITS) as i64,
-        );
-
-        Self {
-            span: hours.span,
-            interval: whole_seconds + fraction_seconds,
-        }
+        Self::from_whole_unit(hours, Duration::hours, SECOND_PER_HOUR)
     }
 
     /// Create a new `DurationLiteral` with the given number of minutes.
@@ -71,21 +89,11 @@ impl DurationLiteral {
     /// use ironplc_dsl::common::FixedPoint;
     /// use ironplc_dsl::time::DurationLiteral;
     /// use time::Duration;
-    /// assert_eq!(DurationLiteral::seconds(FixedPoint::parse("1").unwrap()).interval, Duration::seconds(1));
-    /// assert_eq!(DurationLiteral::seconds(FixedPoint::parse("1.001").unwrap()).interval, Duration::seconds(1) + Duration::milliseconds(1));
+    /// assert_eq!(DurationLiteral::minutes(FixedPoint::parse("1").unwrap()).interval, Duration::minutes(1));
+    /// assert_eq!(DurationLiteral::minutes(FixedPoint::parse("1.5").unwrap()).interval, Duration::seconds(90));
     /// ```
     pub fn minutes(minutes: FixedPoint) -> Self {
-        // The whole part is entirely seconds
-        let whole_seconds = Duration::minutes(minutes.whole as i64);
-
-        // The fraction has both seconds and one part femptoseconds
-        let fraction_seconds = Duration::microseconds(
-            (minutes.femptos * SECOND_PER_MINUTE / FixedPoint::FRACTIONAL_UNITS) as i64,
-        );
-        Self {
-            span: minutes.span,
-            interval: whole_seconds + fraction_seconds,
-        }
+        Self::from_whole_unit(minutes, Duration::minutes, SECOND_PER_MINUTE)
     }
 
     /// Create a new `DurationLiteral` with the given number of seconds.
@@ -100,10 +108,7 @@ impl DurationLiteral {
     pub fn seconds(seconds: FixedPoint) -> Self {
         let whole_seconds = Duration::seconds(seconds.whole as i64);
         let fraction_seconds = Duration::nanoseconds((seconds.femptos / 1_000_000) as i64);
-        Self {
-            span: seconds.span,
-            interval: whole_seconds + fraction_seconds,
-        }
+        Self::new(seconds.span, whole_seconds + fraction_seconds)
     }
 
     /// Create a new `DurationLiteral` with the given number of milliseconds.
@@ -122,17 +127,17 @@ impl DurationLiteral {
         let whole_milliseconds = Duration::milliseconds((millis.whole % 1_000) as i64);
 
         let fraction_nanoseconds = Duration::nanoseconds((millis.femptos / 1_000_000_000) as i64);
-        Self {
-            span: millis.span,
-            interval: whole_seconds + whole_milliseconds + fraction_nanoseconds,
-        }
+        Self::new(
+            millis.span,
+            whole_seconds + whole_milliseconds + fraction_nanoseconds,
+        )
     }
 
     pub fn plus(&self, other: DurationLiteral) -> Self {
-        DurationLiteral {
-            span: SourceSpan::join(&self.span, &other.span),
-            interval: self.interval + other.interval,
-        }
+        Self::new(
+            SourceSpan::join(&self.span, &other.span),
+            self.interval + other.interval,
+        )
     }
 }
 
@@ -146,11 +151,16 @@ impl fmt::Display for DurationLiteral {
 #[derive(Debug, PartialEq, Clone)]
 pub struct TimeOfDayLiteral {
     value: Time,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl TimeOfDayLiteral {
     pub fn new(value: Time) -> Self {
-        Self { value }
+        Self {
+            value,
+            span: SourceSpan::default(),
+        }
     }
 
     /// Returns the hour, minute, second and microsecond from the literal.
@@ -175,15 +185,31 @@ impl fmt::Display for TimeOfDayLiteral {
     }
 }
 
+/// The number of seconds from the Unix epoch to midnight on `date`, negative
+/// for a date before the epoch.
+///
+/// Shared by the two date literal types so that a date and a date-and-time
+/// agree on where the epoch is and what a day is worth.
+fn seconds_to_midnight(date: &Date) -> i64 {
+    const UNIX_EPOCH_JULIAN_DAY: i32 = 2_440_588; // 1970-01-01
+    let days = i64::from(date.to_julian_day() - UNIX_EPOCH_JULIAN_DAY);
+    days * i64::from(Second::per(Day))
+}
+
 // See section 2.2.3
 #[derive(Debug, PartialEq, Clone)]
 pub struct DateLiteral {
     pub value: Date,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl DateLiteral {
     pub fn new(value: Date) -> Self {
-        Self { value }
+        Self {
+            value,
+            span: SourceSpan::default(),
+        }
     }
 
     /// Returns the year, month, day from the literal.
@@ -194,17 +220,20 @@ impl DateLiteral {
         (year, month.into(), day)
     }
 
-    /// Returns seconds since the Unix epoch (1970-01-01) as a u32.
+    /// Returns seconds since the Unix epoch (1970-01-01).
     ///
     /// The IEC 61131-3 DATE type is stored as a u32 count of seconds since
     /// 1970-01-01, matching the CODESYS/Beckhoff industry standard. The
     /// resolution is logically 1 day but the storage unit is seconds for
     /// compatibility with DATE_AND_TIME.
-    pub fn seconds_since_epoch(&self) -> u32 {
-        const UNIX_EPOCH_JULIAN_DAY: i32 = 2_440_588; // 1970-01-01
-        let julian_day = self.value.to_julian_day();
-        let days = (julian_day - UNIX_EPOCH_JULIAN_DAY) as u32;
-        days * 86_400
+    ///
+    /// The count returned is the literal's own, which is not always a value
+    /// the storage can hold: it is negative for a date before the epoch and
+    /// beyond `u32::MAX` for one after 2106-02-07. It is computed wider than
+    /// the storage so that those dates arrive at the caller to be judged
+    /// rather than trapping here.
+    pub fn seconds_since_epoch(&self) -> i64 {
+        seconds_to_midnight(&self.value)
     }
 }
 
@@ -219,11 +248,16 @@ impl fmt::Display for DateLiteral {
 #[derive(Debug, PartialEq, Clone)]
 pub struct DateAndTimeLiteral {
     value: PrimitiveDateTime,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl DateAndTimeLiteral {
     pub fn new(value: PrimitiveDateTime) -> Self {
-        Self { value }
+        Self {
+            value,
+            span: SourceSpan::default(),
+        }
     }
 
     /// Returns the year, month, day from the literal.
@@ -239,17 +273,20 @@ impl DateAndTimeLiteral {
         self.value.as_hms_micro()
     }
 
-    /// Returns seconds since the Unix epoch (1970-01-01 00:00:00) as a u32.
+    /// Returns seconds since the Unix epoch (1970-01-01 00:00:00).
     ///
     /// The IEC 61131-3 DATE_AND_TIME type is stored as a u32 count of seconds
     /// since 1970-01-01, matching the CODESYS/Beckhoff industry standard.
     /// Resolution is 1 second.
-    pub fn seconds_since_epoch(&self) -> u32 {
-        const UNIX_EPOCH_JULIAN_DAY: i32 = 2_440_588; // 1970-01-01
-        let days = (self.value.date().to_julian_day() - UNIX_EPOCH_JULIAN_DAY) as u32;
+    ///
+    /// As with [`DateLiteral::seconds_since_epoch`], the count is the
+    /// literal's own and may lie outside what the storage holds.
+    pub fn seconds_since_epoch(&self) -> i64 {
         let (h, m, s, _micro) = self.hmsm();
-        let tod_secs = (h as u32) * 3_600 + (m as u32) * 60 + (s as u32);
-        days * 86_400 + tod_secs
+        let tod_secs = i64::from(h) * i64::from(Second::per(Hour))
+            + i64::from(m) * i64::from(Second::per(Minute))
+            + i64::from(s);
+        seconds_to_midnight(&self.value.date()) + tod_secs
     }
 }
 

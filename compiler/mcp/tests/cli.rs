@@ -5,6 +5,11 @@
 //! to the standard MCP handshake, and returns correct results for tool calls.
 
 use assert_cmd::Command;
+use ironplc_test::fixtures::{
+    COUNTER_PROGRAM, COUNTER_PROGRAM_WITH_TASK, ENUM_TYPE_PROGRAM, PROGRAM_USING_FB,
+    PROGRAM_USING_STDLIB_FB, PROGRAM_WITH_INPUT, PROGRAM_WITH_INPUT_AND_LOCAL, PROGRAM_WITH_VAR,
+    SEMANTIC_ERROR_PROGRAM, SYNTAX_ERROR_PROGRAM, USER_TYPES_PROGRAM, VALID_PROGRAM,
+};
 use predicates::prelude::*;
 use rstest::rstest;
 
@@ -72,63 +77,46 @@ fn initialize_when_valid_handshake_then_returns_protocol_version(
 }
 
 // ---------------------------------------------------------------------------
-// Tool-call argument fixtures
+// Tool-call argument builders
 //
 // Most tool-call tests below differ only in (tool name, JSON args, expected
-// substring), so the JSON payloads are factored out as named constants and
-// reused across the parametrized table. Add a new constant only when the
-// payload is genuinely new — prefer reusing an existing one.
+// substring). The source text comes from `ironplc_test::fixtures`, shared
+// with the unit tests in `src/`, and these builders wrap it in the tool-call
+// argument object so the JSON escaping lives in one place.
 // ---------------------------------------------------------------------------
 
-/// Single valid 2-line program; no semantic checks fail.
-const ARGS_VALID_PROGRAM: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+/// Options selecting the IEC 61131-3 second-edition dialect.
+fn ed2_options() -> serde_json::Value {
+    serde_json::json!({"dialect": "iec61131-3-ed2"})
+}
 
-/// Truncated program that fails parsing.
-const ARGS_SYNTAX_ERROR: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+/// Tool-call arguments: one source named `name` holding `content`, plus
+/// `options`.
+fn tool_args(name: &str, content: &str, options: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({"sources": [{"name": name, "content": content}], "options": options})
+}
 
-/// Program that parses but references an undeclared variable `y`.
-const ARGS_SEMANTIC_ERROR: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+/// The common case: a source `main.st` under the ed2 dialect.
+fn ed2_args(content: &str) -> String {
+    tool_args("main.st", content, ed2_options()).to_string()
+}
+
+/// [`ed2_args`] plus the `pou` the context tools query.
+fn ed2_args_for_pou(content: &str, pou: &str) -> String {
+    let mut args = tool_args("main.st", content, ed2_options());
+    args["pou"] = serde_json::json!(pou);
+    args.to_string()
+}
 
 /// Source whose `name` is empty — triggers input validation (P8001).
-const ARGS_EMPTY_SOURCE_NAME: &str = r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+fn empty_source_name_args() -> String {
+    tool_args("", VALID_PROGRAM, ed2_options()).to_string()
+}
 
 /// Valid sources but `options` is missing the `dialect` field — triggers P8001.
-const ARGS_MISSING_DIALECT: &str =
-    r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{}}"#;
-
-/// Compilable program with an explicit DINT initialization.
-const ARGS_COMPILE_VALID: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
-
-/// Compile input that also declares a CONFIGURATION + RESOURCE + TASK.
-const ARGS_COMPILE_WITH_CONFIG: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM\n\nCONFIGURATION config\n  RESOURCE resource1 ON PLC\n    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);\n    PROGRAM program1 WITH plc_task : Main;\n  END_RESOURCE\nEND_CONFIGURATION"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
-
-/// Program with a single declared variable — used by the `symbols` happy path.
-const ARGS_SYMBOLS_VALID: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
-
-/// Program that defines an enumerated TYPE — used by `project_manifest`.
-const ARGS_ENUM_TYPE: &str = r#"{"sources":[{"name":"main.st","content":"TYPE MyEnum : (A, B, C); END_TYPE\nPROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
-
-/// Program declaring one `VAR_INPUT` — used by the `project_io` happy path.
-const ARGS_PROJECT_IO_INPUT: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR_INPUT start : BOOL; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
-
-/// Program with variables of mixed direction — used by the `pou_scope`
-/// happy path. Carries `pou` in the tool-call arguments.
-const ARGS_POU_SCOPE_VALID: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR_INPUT start : BOOL := FALSE; END_VAR\nVAR count : DINT; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"p"}"#;
-
-/// Same valid sources but an unknown POU name.
-const ARGS_POU_SCOPE_MISSING: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"nonexistent"}"#;
-
-/// Program + FB where Main depends on Counter — used by `pou_lineage`.
-const ARGS_POU_LINEAGE_VALID: &str = r#"{"sources":[{"name":"main.st","content":"FUNCTION_BLOCK Counter\nVAR_INPUT Inc : BOOL; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Main\nVAR c : Counter; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"Main"}"#;
-
-/// Program whose only dependency is a standard library function block.
-const ARGS_POU_LINEAGE_STDLIB: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM MotorStartStop\nVAR Star_Timer : TON; Run : BOOL; END_VAR\nStar_Timer(IN := Run, PT := T#5s);\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"MotorStartStop"}"#;
-
-/// Same valid sources but an unknown POU name.
-const ARGS_POU_LINEAGE_MISSING: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"nonexistent"}"#;
-
-/// Sources declaring an enum, struct, array, and subrange — used by `types_all`.
-const ARGS_TYPES_ALL_VALID: &str = r#"{"sources":[{"name":"main.st","content":"TYPE MotorState : (Stopped, Running, Fault); END_TYPE\nTYPE PidParams : STRUCT Kp : REAL; END_STRUCT; END_TYPE\nPROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+fn missing_dialect_args() -> String {
+    tool_args("main.st", VALID_PROGRAM, serde_json::json!({})).to_string()
+}
 
 // ---------------------------------------------------------------------------
 // Per-tool wire dispatch + shared error-path representatives
@@ -149,73 +137,97 @@ const ARGS_TYPES_ALL_VALID: &str = r#"{"sources":[{"name":"main.st","content":"T
 // parse
 #[case::parse_valid_program_structure_program(
     "parse",
-    ARGS_VALID_PROGRAM,
+    ed2_args(VALID_PROGRAM),
     r#"\"kind\":\"program\""#
 )]
-#[case::parse_syntax_error_diagnostics_code("parse", ARGS_SYNTAX_ERROR, r#"\"code\":"#)]
+#[case::parse_syntax_error_diagnostics_code(
+    "parse",
+    ed2_args(SYNTAX_ERROR_PROGRAM),
+    r#"\"code\":"#
+)]
 // check (also the shared error-class representatives)
-#[case::check_valid_program_ok_true("check", ARGS_VALID_PROGRAM, r#"\"ok\":true"#)]
-#[case::check_semantic_error_diagnostics("check", ARGS_SEMANTIC_ERROR, r#"\"code\":"#)]
-#[case::check_empty_source_name_validation_error("check", ARGS_EMPTY_SOURCE_NAME, "P8001")]
-#[case::check_missing_dialect_validation_error("check", ARGS_MISSING_DIALECT, "P8001")]
+#[case::check_valid_program_ok_true("check", ed2_args(VALID_PROGRAM), r#"\"ok\":true"#)]
+#[case::check_semantic_error_diagnostics("check", ed2_args(SEMANTIC_ERROR_PROGRAM), r#"\"code\":"#)]
+#[case::check_empty_source_name_validation_error("check", empty_source_name_args(), "P8001")]
+#[case::check_missing_dialect_validation_error("check", missing_dialect_args(), "P8001")]
 // compile
 #[case::compile_valid_program_container_id_present(
     "compile",
-    ARGS_COMPILE_VALID,
+    ed2_args(COUNTER_PROGRAM),
     r#"\"container_id\":\"c_"#
 )]
 #[case::compile_with_config_tasks_populated(
     "compile",
-    ARGS_COMPILE_WITH_CONFIG,
+    ed2_args(COUNTER_PROGRAM_WITH_TASK),
     r#"\"name\":\"plc_task\""#
 )]
 #[case::compile_with_config_programs_populated(
     "compile",
-    ARGS_COMPILE_WITH_CONFIG,
+    ed2_args(COUNTER_PROGRAM_WITH_TASK),
     r#"\"name\":\"program1\""#
 )]
 // symbols
 #[case::symbols_valid_program_programs_populated(
     "symbols",
-    ARGS_SYMBOLS_VALID,
+    ed2_args(PROGRAM_WITH_VAR),
     r#"\"name\":\"p\""#
 )]
 // project_manifest
 #[case::project_manifest_enum_type_in_enumerations(
     "project_manifest",
-    ARGS_ENUM_TYPE,
+    ed2_args(ENUM_TYPE_PROGRAM),
     r#"\"enumerations\":[\"MyEnum\"]"#
 )]
 // project_io
 #[case::project_io_valid_program_input_listed(
     "project_io",
-    ARGS_PROJECT_IO_INPUT,
+    ed2_args(PROGRAM_WITH_INPUT),
     r#"\"name\":\"p.start\""#
 )]
 // pou_scope
-#[case::pou_scope_valid_variable_listed("pou_scope", ARGS_POU_SCOPE_VALID, r#"\"name\":\"start\""#)]
-#[case::pou_scope_missing_found_false("pou_scope", ARGS_POU_SCOPE_MISSING, r#"\"found\":false"#)]
+#[case::pou_scope_valid_variable_listed(
+    "pou_scope",
+    ed2_args_for_pou(PROGRAM_WITH_INPUT_AND_LOCAL, "p"),
+    r#"\"name\":\"start\""#
+)]
+#[case::pou_scope_missing_found_false(
+    "pou_scope",
+    ed2_args_for_pou(VALID_PROGRAM, "nonexistent"),
+    r#"\"found\":false"#
+)]
 // pou_lineage
-#[case::pou_lineage_valid_upstream_has_counter("pou_lineage", ARGS_POU_LINEAGE_VALID, "Counter")]
+#[case::pou_lineage_valid_upstream_has_counter(
+    "pou_lineage",
+    ed2_args_for_pou(PROGRAM_USING_FB, "Main"),
+    "Counter"
+)]
 #[case::pou_lineage_stdlib_upstream_tagged(
     "pou_lineage",
-    ARGS_POU_LINEAGE_STDLIB,
+    ed2_args_for_pou(PROGRAM_USING_STDLIB_FB, "MotorStartStop"),
     r#"\"name\":\"TON\",\"source\":\"stdlib\""#
 )]
 #[case::pou_lineage_missing_found_false(
     "pou_lineage",
-    ARGS_POU_LINEAGE_MISSING,
+    ed2_args_for_pou(VALID_PROGRAM, "nonexistent"),
     r#"\"found\":false"#
 )]
 // types_all
-#[case::types_all_valid_enum_kind("types_all", ARGS_TYPES_ALL_VALID, r#"\"kind\":\"enum\""#)]
-#[case::types_all_valid_struct_kind("types_all", ARGS_TYPES_ALL_VALID, r#"\"kind\":\"struct\""#)]
+#[case::types_all_valid_enum_kind(
+    "types_all",
+    ed2_args(USER_TYPES_PROGRAM),
+    r#"\"kind\":\"enum\""#
+)]
+#[case::types_all_valid_struct_kind(
+    "types_all",
+    ed2_args(USER_TYPES_PROGRAM),
+    r#"\"kind\":\"struct\""#
+)]
 fn tool_call_then_stdout_contains(
     #[case] tool: &str,
-    #[case] arguments_json: &str,
+    #[case] arguments_json: String,
     #[case] expected: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(tool, arguments_json);
+    let stdin = mcp_tool_call(tool, &arguments_json);
     Command::cargo_bin("ironplcmcp")?
         .write_stdin(stdin)
         .assert()
@@ -230,7 +242,7 @@ fn tool_call_then_stdout_contains(
 #[test]
 fn project_manifest_when_valid_program_then_files_and_programs_populated(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call("project_manifest", ARGS_VALID_PROGRAM);
+    let stdin = mcp_tool_call("project_manifest", &ed2_args(VALID_PROGRAM));
     Command::cargo_bin("ironplcmcp")?
         .write_stdin(stdin)
         .assert()
@@ -381,12 +393,7 @@ fn tools_list_includes_run_tool() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn run_when_compile_then_run_counter_then_trace_shows_increment(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Embed a compilable counter program with an explicit 100ms cyclic
-    // task, pre-escaped for embedding inside the MCP JSON-RPC envelope.
-    let source = r#"PROGRAM Main\nVAR Counter : INT; END_VAR\nCounter := Counter + 1;\nEND_PROGRAM\n\nCONFIGURATION config\nRESOURCE resource1 ON PLC\nTASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);\nPROGRAM program1 WITH plc_task : Main;\nEND_RESOURCE\nEND_CONFIGURATION"#;
-    let compile_args = format!(
-        r#"{{"sources":[{{"name":"main.st","content":"{source}"}}],"options":{{"dialect":"iec61131-3-ed2"}}}}"#
-    );
+    let compile_args = ed2_args(COUNTER_PROGRAM_WITH_TASK);
     let compile_call = format!(
         r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"compile","arguments":{compile_args}}}}}"#
     );

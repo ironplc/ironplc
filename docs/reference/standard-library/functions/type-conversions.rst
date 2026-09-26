@@ -401,42 +401,279 @@ String to Numeric
 ^^^^^^^^^^^^^^^^^
 
 Conversions from string representation to numeric types. The string
-must contain a valid numeric literal for the target type.
+must contain a valid numeric literal for the target type. What happens
+when it does not is implementer-specific in IEC 61131-3, so IronPLC
+selects it at compile time with two behavior policies; see
+`String to Numeric Policies`_.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Function
+     - Description
+   * - ``STRING_TO_SINT``
+     - String to 8-bit signed
+   * - ``STRING_TO_INT``
+     - String to 16-bit signed
+   * - ``STRING_TO_DINT``
+     - String to 32-bit signed
+   * - ``STRING_TO_LINT``
+     - String to 64-bit signed
+   * - ``STRING_TO_USINT``
+     - String to 8-bit unsigned
+   * - ``STRING_TO_UINT``
+     - String to 16-bit unsigned
+   * - ``STRING_TO_UDINT``
+     - String to 32-bit unsigned
+   * - ``STRING_TO_ULINT``
+     - String to 64-bit unsigned
+   * - ``STRING_TO_BYTE``
+     - String to byte
+   * - ``STRING_TO_WORD``
+     - String to word
+   * - ``STRING_TO_DWORD``
+     - String to double word
+   * - ``STRING_TO_LWORD``
+     - String to long word
+   * - ``STRING_TO_REAL``
+     - String to single-precision
+   * - ``STRING_TO_LREAL``
+     - String to double-precision
+
+String to Numeric Policies
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Real PLC platforms disagree about what ``STRING_TO_INT('12abc')`` returns,
+and IronPLC does not guess. Two behavior policies select the result at
+compile time. A dialect selects the alternatives its platform documents,
+and the ``--policy-*`` flags replace the dialect's selection. The
+alternatives are encoded in the compiled program, so the same
+:file:`.iplc` behaves the same on every runtime.
+
+``--policy-string-to-num-non-numeric``
+   What counts as convertible when the string has characters that are not
+   part of a numeric literal.
+
+   ``reject`` *(default)*
+      The whole string, less surrounding whitespace, must be one literal.
+      ``'12abc'`` is a failure. The strict choice, also what RuSTy does.
+
+   ``ignore-trailing``
+      The literal at the start of the string is converted and the rest is
+      ignored. ``'12abc'`` converts to 12; ``'abc12'`` is a failure.
+      CODESYS and TwinCAT stop at the first invalid character.
+
+   ``ignore-surrounding``
+      Characters that cannot start a literal are skipped, then the literal
+      is converted and the rest is ignored. ``'abc12'`` and ``'x=12;'`` both
+      convert to 12. Rockwell Logix ``STOD`` skips leading non-numeric
+      characters this way.
+
+``--policy-string-to-num-failure``
+   What happens when the string is not convertible: not a literal under the
+   selected non-numeric policy, or a literal whose value does not fit the
+   target type. A value out of range is a failure under every non-numeric
+   alternative; nothing wraps.
+
+   ``trap`` *(default)*
+      The program halts with runtime error
+      :doc:`V4006 </reference/runtime/problems/V4006>`, which names the
+      offending string.
+
+   ``zero``
+      The conversion produces zero and the program continues. CODESYS,
+      TwinCAT and RuSTy return 0.
+
+Under every alternative the accepted literal is the IEC 61131-3 literal of
+the target type. For an integer target that is decimal digits with optional
+``_`` separators (``'1_000'``), or a based literal (``'16#FF'``, ``'8#17'``,
+``'2#1010'``), optionally signed. For a real target it is a floating-point
+number, also in exponential notation: digits with an optional decimal point
+and fraction (``'9.876'``, ``'5'``, ``'.5'``) and an optional exponent
+(``'1.2E-34'``), optionally signed. A typed prefix (``'UDINT#5'``) is not
+accepted, and neither are the words ``inf`` and ``nan``. A decimal point is
+not part of an integer literal: ``STRING_TO_INT('12.5')`` is a failure under
+``reject`` and 12 under ``ignore-trailing``, which is what CODESYS documents.
+
+.. list-table:: Results of ``STRING_TO_UDINT`` by policy
+   :header-rows: 1
+   :widths: 24 19 19 19 19
+
+   * - Input
+     - ``reject`` + ``trap``
+     - ``reject`` + ``zero``
+     - ``ignore-trailing`` + ``zero``
+     - ``ignore-surrounding`` + ``zero``
+   * - ``'4294967295'``
+     - 4294967295
+     - 4294967295
+     - 4294967295
+     - 4294967295
+   * - ``'16#FF'``
+     - 255
+     - 255
+     - 255
+     - 255
+   * - ``'12abc'``
+     - V4006
+     - 0
+     - 12
+     - 12
+   * - ``'abc12'``
+     - V4006
+     - 0
+     - 0
+     - 12
+   * - ``'4294967296'``
+     - V4006
+     - 0
+     - 0
+     - 0
+
+The dialects select the following alternatives:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 30 30
+
+   * - Dialect
+     - Non-numeric
+     - Failure
+   * - ``iec61131-3-ed2``, ``iec61131-3-ed3``
+     - ``reject``
+     - ``trap``
+   * - ``rusty``
+     - ``reject``
+     - ``zero``
+   * - ``codesys``, ``twincat``
+     - ``ignore-trailing``
+     - ``zero``
+
+For a literal that does not fit the target type, the CODESYS documentation
+says the result depends on the processor. IronPLC does not emulate an
+undefined result: under the ``codesys`` and ``twincat`` dialects the failure
+policy applies and the result is zero. That is IronPLC's choice, not a
+CODESYS behavior.
+
+A literal outside the target's range is a failure under every non-numeric
+alternative, never a wrap: ``STRING_TO_SINT('300')`` halts with V4006 or
+produces zero, and is never 44. The ranges are those of the types:
 
 .. list-table::
    :header-rows: 1
    :widths: 40 30 30
 
    * - Function
-     - Description
-     - Support
+     - Smallest
+     - Largest
    * - ``STRING_TO_SINT``
-     - String to 8-bit signed
-     - Supported
+     - -128
+     - 127
    * - ``STRING_TO_INT``
-     - String to 16-bit signed
-     - Supported
+     - -32768
+     - 32767
    * - ``STRING_TO_DINT``
-     - String to 32-bit signed
-     - Supported
+     - -2147483648
+     - 2147483647
    * - ``STRING_TO_LINT``
-     - String to 64-bit signed
-     - Not yet supported
-   * - ``STRING_TO_USINT``
-     - String to 8-bit unsigned
-     - Supported
-   * - ``STRING_TO_UINT``
-     - String to 16-bit unsigned
-     - Supported
-   * - ``STRING_TO_UDINT``
-     - String to 32-bit unsigned
-     - Supported
-   * - ``STRING_TO_REAL``
-     - String to single-precision
-     - Supported
-   * - ``STRING_TO_LREAL``
-     - String to double-precision
-     - Not yet supported
+     - -9223372036854775808
+     - 9223372036854775807
+   * - ``STRING_TO_USINT``, ``STRING_TO_BYTE``
+     - 0
+     - 255
+   * - ``STRING_TO_UINT``, ``STRING_TO_WORD``
+     - 0
+     - 65535
+   * - ``STRING_TO_UDINT``, ``STRING_TO_DWORD``
+     - 0
+     - 4294967295
+   * - ``STRING_TO_ULINT``, ``STRING_TO_LWORD``
+     - 0
+     - 18446744073709551615
+
+.. list-table:: Results of ``STRING_TO_SINT`` by policy
+   :header-rows: 1
+   :widths: 24 19 19 19 19
+
+   * - Input
+     - ``reject`` + ``trap``
+     - ``reject`` + ``zero``
+     - ``ignore-trailing`` + ``zero``
+     - ``ignore-surrounding`` + ``zero``
+   * - ``'-128'``
+     - -128
+     - -128
+     - -128
+     - -128
+   * - ``'300'``
+     - V4006
+     - 0
+     - 0
+     - 0
+   * - ``'-5abc'``
+     - V4006
+     - 0
+     - -5
+     - -5
+
+``STRING_TO_BYTE``, ``STRING_TO_WORD``, ``STRING_TO_DWORD`` and
+``STRING_TO_LWORD`` convert exactly as ``STRING_TO_USINT``, ``STRING_TO_UINT``,
+``STRING_TO_UDINT`` and ``STRING_TO_ULINT`` do, and compile to the same
+instruction, so a V4006 from one of them names the unsigned integer type of
+the same width.
+
+For a real target, a literal whose magnitude rounds to infinity at the
+target's precision (``'1e39'`` for ``REAL``, ``'1e309'`` for ``LREAL``) does
+not fit the target and is a failure, exactly as ``'300'`` does not fit
+``SINT``. A literal too small for the precision rounds to zero or to a
+subnormal and is not a failure. No conversion produces a NaN or an
+infinity: under ``zero`` a failure produces positive 0.0.
+
+.. list-table:: Results of ``STRING_TO_REAL`` by policy
+   :header-rows: 1
+   :widths: 24 19 19 19 19
+
+   * - Input
+     - ``reject`` + ``trap``
+     - ``reject`` + ``zero``
+     - ``ignore-trailing`` + ``zero``
+     - ``ignore-surrounding`` + ``zero``
+   * - ``'1.2E-34'``
+     - 1.2E-34
+     - 1.2E-34
+     - 1.2E-34
+     - 1.2E-34
+   * - ``'1.5abc'``
+     - V4006
+     - 0.0
+     - 1.5
+     - 1.5
+   * - ``'x=.5;'``
+     - V4006
+     - 0.0
+     - 0.0
+     - 0.5
+   * - ``'1e39'``
+     - V4006
+     - 0.0
+     - 0.0
+     - 0.0
+   * - ``'NaN'``
+     - V4006
+     - 0.0
+     - 0.0
+     - 0.0
+
+.. playground::
+
+   PROGRAM main
+   VAR
+       text : STRING := '4294967295';
+       value : UDINT;
+   END_VAR
+   value := STRING_TO_UDINT(text);  (* value = 4294967295 *)
+   END_PROGRAM
 
 Description
 -----------

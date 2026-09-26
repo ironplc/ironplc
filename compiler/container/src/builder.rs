@@ -16,6 +16,10 @@ use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
 use crate::task_type::TaskType;
 use crate::type_section::{ArrayDescriptor, FbTypeDescriptor, TypeSection, UserFbDescriptor};
 
+/// Deduplication key for array descriptors: every field of an
+/// [`ArrayDescriptor`].
+type ArrayDescriptorKey = (u8, u32, u16, u32);
+
 /// Fluent builder for constructing a [`Container`].
 pub struct ContainerBuilder {
     num_variables: u16,
@@ -34,7 +38,7 @@ pub struct ContainerBuilder {
     entry_function_id: FunctionId,
     fb_types: Vec<FbTypeDescriptor>,
     array_descriptors: Vec<ArrayDescriptor>,
-    array_descriptor_cache: HashMap<(u8, u32, u16), u16>,
+    array_descriptor_cache: HashMap<ArrayDescriptorKey, u16>,
     user_fb_types: Vec<UserFbDescriptor>,
     debug_var_names: Vec<VarNameEntry>,
     debug_func_names: Vec<FuncNameEntry>,
@@ -280,26 +284,59 @@ impl ContainerBuilder {
     }
 
     /// Adds an array descriptor to the type section, deduplicating
-    /// identical `(element_type, total_elements, element_extra)` triples.
+    /// identical descriptors.
     ///
     /// Returns the descriptor index (for use in `LOAD_ARRAY`/`STORE_ARRAY` opcodes).
-    /// For STRING arrays, `element_extra` holds the max string length.
+    /// For STRING arrays, `element_extra` holds the max string length. The
+    /// elements are packed back to back, at the element type's natural stride.
     pub fn add_array_descriptor(
         &mut self,
         element_type: u8,
         total_elements: u32,
         element_extra: u16,
     ) -> u16 {
-        let key = (element_type, total_elements, element_extra);
+        self.add_descriptor(ArrayDescriptor::new(
+            element_type,
+            total_elements,
+            element_extra,
+        ))
+    }
+
+    /// Adds a STRING/WSTRING array descriptor whose elements are
+    /// `element_stride` bytes apart, deduplicating identical descriptors.
+    ///
+    /// Used for a STRING field of each element of an array of structures,
+    /// where `element_stride` is the size of one structure (ADR-0054). It
+    /// must be at least the size of one string element.
+    pub fn add_strided_array_descriptor(
+        &mut self,
+        element_type: u8,
+        total_elements: u32,
+        element_extra: u16,
+        element_stride: u32,
+    ) -> u16 {
+        let desc = ArrayDescriptor {
+            element_type,
+            total_elements,
+            element_extra,
+            element_stride,
+        };
+        debug_assert!(desc.validate().is_ok(), "invalid stride: {desc:?}");
+        self.add_descriptor(desc)
+    }
+
+    fn add_descriptor(&mut self, desc: ArrayDescriptor) -> u16 {
+        let key = (
+            desc.element_type,
+            desc.total_elements,
+            desc.element_extra,
+            desc.element_stride,
+        );
         if let Some(&index) = self.array_descriptor_cache.get(&key) {
             return index;
         }
         let index = self.array_descriptors.len() as u16;
-        self.array_descriptors.push(ArrayDescriptor {
-            element_type,
-            total_elements,
-            element_extra,
-        });
+        self.array_descriptors.push(desc);
         self.array_descriptor_cache.insert(key, index);
         index
     }
@@ -420,28 +457,15 @@ mod tests {
     use super::*;
     use crate::id_types::ConstantIndex;
     use crate::id_types::{SourceColumn, SourceFileId, SourceLine};
+    use crate::test_support::{steel_thread_bytecode, steel_thread_single_function_container};
+    use crate::FieldType;
     use std::vec;
     use std::vec::Vec;
 
     #[test]
     fn builder_when_steel_thread_program_then_builds_valid_container() {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]
-            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]
-            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]
-            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]
-            0x20,                   // ADD_I32
-            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]
-            0x8C,                   // RET_VOID
-        ];
-
-        let container = ContainerBuilder::new()
-            .num_variables(2)
-            .add_i32_constant(10)
-            .add_i32_constant(32)
-            .add_function(FunctionId::INIT, &bytecode, 2, 2, 0)
-            .build();
+        let bytecode = steel_thread_bytecode();
+        let container = steel_thread_single_function_container();
 
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.header.max_stack_depth, 2);
@@ -550,6 +574,22 @@ mod tests {
         let container = builder.num_variables(0).build();
         let ts = container.type_section.unwrap();
         assert_eq!(ts.array_descriptors.len(), 2);
+    }
+
+    #[test]
+    fn builder_add_strided_array_descriptor_when_stride_differs_then_separate_index() {
+        let string = FieldType::String as u8;
+        let mut builder = ContainerBuilder::new();
+        let natural = builder.add_array_descriptor(string, 6, 10);
+        let strided = builder.add_strided_array_descriptor(string, 6, 10, 64);
+        let strided_again = builder.add_strided_array_descriptor(string, 6, 10, 64);
+        assert_eq!(natural, 0);
+        assert_eq!(strided, 1);
+        assert_eq!(strided_again, 1); // deduplicated
+
+        let container = builder.num_variables(0).build();
+        let ts = container.type_section.unwrap();
+        assert_eq!(ts.array_descriptors[1].element_stride(), 64);
     }
 
     #[test]

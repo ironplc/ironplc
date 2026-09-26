@@ -16,8 +16,16 @@ setup:
   cargo install cargo-llvm-cov
   cargo install cargo-dupes
 
+# The second build is the `no_std` gate. `ironplc-container` is `#![no_std]`
+# with a default-on `std` feature (ADR-0010), and it is the crate the VM shares
+# with the compiler -- so a `std` import that reaches one of its
+# always-available modules is what would keep the VM off an Arduino. The
+# default build cannot see that, because `std` is on. This is a host build, so
+# it catches a `std` *import*; the bare-metal cross-compile ADR-0010's
+# Confirmation asks for is tracked by issue #1573.
 compile:
   cargo build
+  cargo build -p ironplc-container --no-default-features
 
 # Run the test suite. Excludes benchmarks (which `--all-targets` would run as
 # tests, since st_benchmark uses `harness = false`); benches are compile-checked

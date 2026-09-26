@@ -166,6 +166,22 @@ END_FUNCTION_BLOCK"
     )
 }
 
+/// A step in an SFC program body. The action is declared so the chart is
+/// complete; the wrapper is only the POU, the step itself is the row.
+fn in_sfc(step: &str) -> String {
+    format!(
+        "PROGRAM main
+VAR
+    x : INT;
+END_VAR
+{step}
+ACTION DoIt:
+    x := x + 1;
+END_ACTION
+END_PROGRAM"
+    )
+}
+
 /// A `VAR_CONFIG` entry. The block is only legal in a `CONFIGURATION`, and
 /// only after at least one `RESOURCE`, so the wrapper supplies both.
 fn in_var_config(entry: &str) -> String {
@@ -276,6 +292,20 @@ END_CONFIGURATION"
 #[case::var_config_fb_init(
     "Some·.·Block·.·Item·.·Path : FB_TYPE := (ELEM := VAL);",
     in_var_config,
+    CompilerOptions::default
+)]
+// ---------------------------------------------------------------------
+// Gaps issue #1659 reported as rejected: `INITIAL_STEP` had no `_` before
+// `END_STEP`. `STEP` always had it; its row keeps the two rules in step.
+// ---------------------------------------------------------------------
+#[case::initial_step_association(
+    "INITIAL_STEP Start·:·DoIt(N)·;·END_STEP",
+    in_sfc,
+    CompilerOptions::default
+)]
+#[case::step_association(
+    "INITIAL_STEP Start: END_STEP STEP Idle·:·DoIt(N)·;·END_STEP",
+    in_sfc,
     CompilerOptions::default
 )]
 fn parse_when_gap_filled_then_same_ast(

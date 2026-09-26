@@ -2,7 +2,7 @@
 AND
 ===
 
-Returns the bitwise AND of two inputs.
+Returns the bitwise AND of two or more inputs.
 
 Signature
 ---------
@@ -11,8 +11,8 @@ Signature
 
             ┌─────────┐
        IN1 ─┤         │
-            │   AND   ├─ OUT
-       IN2 ─┤         │
+       IN2 ─┤   AND   ├─ OUT
+       IN3 ─┤         │
             └─────────┘
 
 .. code-block:: text
@@ -21,11 +21,12 @@ Signature
      VAR_INPUT
        IN1 : ANY_BIT;
        IN2 : ANY_BIT;
+       (* ... additional inputs ... *)
      END_VAR
    END_FUNCTION
 
 The return type matches the input type. ``AND`` accepts ``BOOL``,
-``BYTE``, ``WORD``, ``DWORD``, ``LWORD``. Both inputs must share the same
+``BYTE``, ``WORD``, ``DWORD``, ``LWORD``. All inputs must share the same
 type.
 
 .. rubric:: Inputs
@@ -57,16 +58,16 @@ type.
      - Description
    * - Return value
      - ``ANY_BIT``
-     - Each bit set in both IN1 and IN2. Same type as the inputs.
+     - Each bit set in every input. Same type as the inputs.
 
 Description
 -----------
 
-On ``BOOL`` inputs, returns ``TRUE`` only when both inputs are ``TRUE``.
+On ``BOOL`` inputs, returns ``TRUE`` only when every input is ``TRUE``.
 On ``BYTE``, ``WORD``, ``DWORD`` and ``LWORD`` inputs, each bit of the
-result is set only when the same bit is set in both inputs. ``AND(a, b)``
+result is set only when the same bit is set in every input. ``AND(a, b)``
 is the functional form of the ``AND`` operator: ``a AND b``. Both forms are
-equivalent.
+equivalent, and ``AND(a, b, c)`` is ``a AND b AND c``.
 
 Example
 -------
@@ -76,6 +77,7 @@ Example
 
    result := AND(WORD#16#F0F0, WORD#16#FF00);   (* result = 16#F000 *)
    result := WORD#16#F0F0 AND WORD#16#FF00;     (* operator form *)
+   result := AND(WORD#16#F0F0, WORD#16#FF00, WORD#16#0FF0);   (* result = 16#0000 *)
 
 See Also
 --------

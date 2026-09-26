@@ -105,8 +105,11 @@ impl RuleAggregateAssignment<'_> {
     /// specification (`a : ARRAY[1..2] OF DINT`) built from the declaration.
     fn declared_type(&mut self, id: &Id) -> Option<IntermediateType> {
         let type_environment = self.type_environment;
-        let declared = self.declarations.find(id)?;
-        match &declared.0 {
+        let Declared::Variable(declared) = self.declarations.find(id)? else {
+            // This rule binds only declared variables.
+            return None;
+        };
+        match declared.as_ref() {
             InitialValueAssignmentKind::Array(array) => {
                 // An inline array specification. The name passed here only
                 // feeds diagnostics inside the helper, which are discarded:
@@ -129,7 +132,10 @@ impl RuleAggregateAssignment<'_> {
             InitialValueAssignmentKind::Structure(structure) => type_environment
                 .get(&structure.type_name)
                 .map(|attrs| attrs.representation.clone()),
-            InitialValueAssignmentKind::LateResolvedType(type_name) => type_environment
+            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name,
+                ..
+            }) => type_environment
                 .get(type_name)
                 .map(|attrs| attrs.representation.clone()),
             _ => None,
@@ -201,10 +207,8 @@ impl Visitor<Infallible> for RuleAggregateAssignment<'_> {
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        self.declarations.add_if(
-            node.identifier.symbolic_id(),
-            Declared(node.initializer.clone()),
-        );
+        self.declarations
+            .add_if(node.identifier.symbolic_id(), Declared::of(node));
         node.recurse_visit(self)
     }
 
@@ -430,10 +434,11 @@ END_PROGRAM
         assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
     }
 
-    /// A POU's own declaration shadows an outer one of the same name, so the
-    /// inner type is what gets compared.
+    /// A function block's own declaration hides an outer one of the same
+    /// name, so the inner type is what gets compared. (A program may not
+    /// reuse a global's name at all; that is `rule_program_var_hides_global`.)
     #[test]
-    fn apply_when_local_shadows_global_then_local_type_is_compared() {
+    fn apply_when_local_hides_global_then_local_type_is_compared() {
         let codes = problem_codes(
             "
 CONFIGURATION config
@@ -446,12 +451,19 @@ CONFIGURATION config
   END_RESOURCE
 END_CONFIGURATION
 
-PROGRAM main
+FUNCTION_BLOCK FB_Copy
 VAR
   g : ARRAY[1..2] OF DINT;
   a : ARRAY[1..2] OF DINT;
 END_VAR
   a := g;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+  fb : FB_Copy;
+END_VAR
+  fb();
 END_PROGRAM
 ",
         );

@@ -658,14 +658,13 @@ END_PROGRAM
     &[(1, 300)],
 );
 
-// A function body sees the global through the re-inserted global metadata;
-// without it the array resolves as a plain scalar and the field access fails.
-// Functions reach globals by name (VAR_EXTERNAL is a POU-level construct the
-// parser accepts only on programs and function blocks).
+// A function block body sees the global through the re-inserted global
+// metadata; without it the array resolves as a plain scalar and the field
+// access fails. The function block reaches the global through VAR_EXTERNAL.
 //
-// devices 0 (global), result 1.
+// devices 0 (global), reader 1, result 2.
 e2e_i32!(
-    end_to_end_when_function_reads_global_array_of_struct_then_correct_value,
+    end_to_end_when_function_block_reads_global_array_of_struct_then_correct_value,
     "
 TYPE Item : STRUCT
   a : DINT;
@@ -683,22 +682,30 @@ CONFIGURATION config
   END_RESOURCE
 END_CONFIGURATION
 
-FUNCTION second_a : DINT
-  second_a := devices[2].a;
-END_FUNCTION
+FUNCTION_BLOCK second_a_reader
+  VAR_EXTERNAL
+    devices : ARRAY[1..3] OF Item;
+  END_VAR
+  VAR_OUTPUT
+    value : DINT;
+  END_VAR
+  value := devices[2].a;
+END_FUNCTION_BLOCK
 
 PROGRAM main
   VAR_EXTERNAL
     devices : ARRAY[1..3] OF Item;
   END_VAR
   VAR
+    reader : second_a_reader;
     result : DINT;
   END_VAR
   devices[2].a := 17;
-  result := second_a();
+  reader();
+  result := reader.value;
 END_PROGRAM
 ",
-    &[(1, 17)],
+    &[(2, 17)],
 );
 
 // --- Rejected shapes ---

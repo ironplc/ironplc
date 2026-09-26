@@ -1,6 +1,6 @@
 # CI Gating for Untrusted PRs and Secret Scoping via Environments
 
-status: proposed
+status: accepted
 date: 2026-04-27
 
 ## Context and Problem Statement
@@ -63,6 +63,8 @@ Jobs that declare `environment: production`:
 The single job that declares `environment: pr-ci`:
 
 * `integration.yaml::approve` — zero-step gate; every other job in the workflow declares `needs: approve`.
+
+On `merge_group` events (the merge queue's candidate commit) the `approve` job runs without the `pr-ci` environment. Only users with write access can enqueue a pull request, and it must already have passed this gate and branch protection, so a second per-commit approval would only stall the queue. The job still runs so its status check is reported.
 
 The two layers compose: `pr-ci` answers "is this code allowed to run at all?", `production` answers "is this code allowed to publish?" — and the two sets of jobs never overlap.
 

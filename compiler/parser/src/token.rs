@@ -73,7 +73,10 @@ pub enum TokenType {
     #[regex(r"\(\*(?:[^*]|\*[^\)])*\*\)", priority = 0)]
     // The following are common but not valid IEC 61131-3. We want to recognize the
     // tokens so that we can generate meaningful errors.
-    #[regex(r"//[^\r\n]*(\r\n|\n)?", priority = 0, allow_greedy = true)]
+    // A line comment stops before its line terminator, which lexes as the
+    // usual `Newline` token, so the comment's text and span cover only the
+    // comment (the LSP token length and the P0004 span are taken from them).
+    #[regex(r"//[^\r\n]*", priority = 0, allow_greedy = true)]
     #[regex(r"/\*(?:[^*]|\*[^/])*\*/", priority = 0)]
     Comment,
 
@@ -275,6 +278,8 @@ pub enum TokenType {
     Retain,
     #[token("NON_RETAIN", ignore(case))]
     NonRetain,
+    #[token("PERSISTENT", ignore(case))]
+    Persistent,
 
     #[token("RETURN", ignore(case))]
     Return,
@@ -590,6 +595,7 @@ impl TokenType {
             TokenType::EndResource => "'END_RESOURCE'",
             TokenType::Retain => "'RETAIN'",
             TokenType::NonRetain => "'NON_RETAIN'",
+            TokenType::Persistent => "'PERSISTENT'",
             TokenType::Return => "'RETURN'",
             TokenType::Step => "'STEP'",
             TokenType::Struct => "'STRUCT'",
@@ -817,6 +823,7 @@ mod tests {
             (EndResource, "END_RESOURCE"),
             (Retain, "RETAIN"),
             (NonRetain, "NON_RETAIN"),
+            (Persistent, "PERSISTENT"),
             (Return, "RETURN"),
             (Step, "STEP"),
             (Struct, "STRUCT"),

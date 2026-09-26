@@ -59,9 +59,9 @@ use std::convert::Infallible;
 use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
-    scoped_table::ScopedTable,
     semantic_context::SemanticContext,
     type_compat::{are_types_compatible, is_checkable_type},
+    variable_type::{Declarations, Declared},
 };
 use ironplc_parser::options::CompilerOptions;
 pub fn apply(
@@ -74,7 +74,7 @@ pub fn apply(
             context,
             options,
             diagnostics: vec![],
-            var_types: ScopedTable::new(),
+            declarations: Declarations::new(),
         },
         lib,
     )
@@ -84,12 +84,12 @@ struct RuleFunctionCallTypeCheck<'a> {
     context: &'a SemanticContext,
     options: &'a CompilerOptions,
     diagnostics: Vec<Diagnostic>,
-    /// Maps variable name to declared type, scoped.
+    /// Declared type of every variable in scope.
     ///
     /// Each declaration the traversal enters pushes a frame, so a
     /// method's locals do not outlive the method and a local shadows a
     /// field of the same name only within its own body.
-    var_types: ScopedTable<'static, Id, TypeName>,
+    declarations: Declarations<'static>,
 }
 
 impl DiagnosticVisitor for RuleFunctionCallTypeCheck<'_> {
@@ -99,38 +99,49 @@ impl DiagnosticVisitor for RuleFunctionCallTypeCheck<'_> {
 }
 
 impl RuleFunctionCallTypeCheck<'_> {
+    /// The type name a variable in scope was declared with, or `None` for
+    /// one declared with an inline type or not declared at all.
+    fn declared_type_name(&self, id: &Id) -> Option<TypeName> {
+        match self.declarations.find(id)?.type_reference() {
+            TypeReference::Named(type_name) => Some(type_name),
+            TypeReference::Inline | TypeReference::Unspecified => None,
+        }
+    }
+
     /// Checks whether a function call expression assigned to a variable has a
     /// matching return type. Emits P4027 if there is a mismatch.
+    ///
+    /// Standard-library calls are checked like any other. Their declared
+    /// return type may be a generic category, but `xform_resolve_expr_types`
+    /// has already narrowed it to the concrete type of the argument the
+    /// category binds to; where it could not, `resolved_type` is `None` and
+    /// the call is skipped below. A call naming a function the environment
+    /// does not hold resolves to `None` the same way, so the signature
+    /// itself is never needed here.
     fn check_return_type(&mut self, target: &Variable, value: &Expr) {
-        if let ExprKind::Function(ref func_call) = value.kind {
-            if let Some(signature) = self.context.functions.get(&func_call.name) {
-                if signature.is_stdlib() {
-                    return;
-                }
-                if let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target {
-                    if let Some(target_type) = self.var_types.find(&nv.name) {
-                        if let Some(ref return_type) = value.resolved_type {
-                            if !are_types_compatible(target_type, return_type, self.options) {
-                                self.diagnostics.push(
-                                    Diagnostic::problem(
-                                        Problem::FunctionCallReturnTypeMismatch,
-                                        Label::span(
-                                            func_call.name.span(),
-                                            "Function call return type",
-                                        ),
-                                    )
-                                    .with_context(
-                                        "function",
-                                        &func_call.name.original().to_string(),
-                                    )
-                                    .with_context("return_type", &return_type.to_string())
-                                    .with_context("target_type", &target_type.to_string()),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
+        let ExprKind::Function(ref func_call) = value.kind else {
+            return;
+        };
+        let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target else {
+            return;
+        };
+        let Some(target_type) = self.declared_type_name(&nv.name) else {
+            return;
+        };
+        let Some(ref return_type) = value.resolved_type else {
+            return;
+        };
+
+        if !are_types_compatible(&target_type, return_type, self.options) {
+            self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::FunctionCallReturnTypeMismatch,
+                    Label::span(func_call.name.span(), "Function call return type"),
+                )
+                .with_context("function", &func_call.name.original().to_string())
+                .with_context("return_type", &return_type.to_string())
+                .with_context("target_type", &target_type.to_string()),
+            );
         }
     }
 
@@ -153,7 +164,7 @@ impl RuleFunctionCallTypeCheck<'_> {
         let Variable::Symbolic(SymbolicVariableKind::Named(nv)) = target else {
             return;
         };
-        let Some(declared) = self.var_types.find(&nv.name) else {
+        let Some(declared) = self.declared_type_name(&nv.name) else {
             return;
         };
         // Resolve aliases/subranges to the underlying elementary type so the
@@ -161,8 +172,8 @@ impl RuleFunctionCallTypeCheck<'_> {
         let target_type = self
             .context
             .types()
-            .resolve_elementary_type_name(declared)
-            .unwrap_or_else(|| declared.clone());
+            .resolve_elementary_type_name(&declared)
+            .unwrap_or(declared);
         if !is_checkable_type(&target_type) {
             return;
         }
@@ -198,7 +209,7 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
     /// the enclosing function block's fields, and not clearing left a
     /// method's locals shadowing those fields for every later method.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.var_types.enter();
+        self.declarations.enter();
 
         // A declaration's own name is its result variable, so assigning
         // it is an assignment with a target type like any other. Without
@@ -207,15 +218,16 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
         // much as for a METHOD.
         match node {
             ScopeNode::Function(node) => {
-                self.var_types
-                    .add(&node.name, node.return_type.to_type_name());
+                self.declarations
+                    .add(&node.name, Declared::Typed(node.return_type.to_type_name()));
             }
             // Only a method that declares a return type has a result to
             // assign; `rule_use_declared_symbolic_var` rejects the
             // assignment outright for one that does not.
             ScopeNode::Method(node) => {
                 if let Some(return_type) = &node.return_type {
-                    self.var_types.add(&node.name, return_type.to_type_name());
+                    self.declarations
+                        .add(&node.name, Declared::Typed(return_type.to_type_name()));
                 }
             }
             // Neither has a result variable.
@@ -226,14 +238,12 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
     }
 
     fn exit_scope(&mut self) {
-        self.var_types.exit();
+        self.declarations.exit();
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let VariableIdentifier::Symbol(ref id) = node.identifier {
-            if let TypeReference::Named(ref type_name) = node.type_name() {
-                self.var_types.add(id, type_name.clone());
-            }
+            self.declarations.add(id, Declared::of(node));
         }
         node.recurse_visit(self)
     }
@@ -248,12 +258,6 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
         let func_sig = self.context.functions.get(&node.name);
 
         if let Some(signature) = func_sig {
-            // Check each positional argument type against the parameter type.
-            // Standard-library functions are checked too: their parameters use
-            // generic ANY_* categories (or concrete types for the conversion
-            // functions), all handled by `are_types_compatible`.
-            let input_params: Vec<_> = signature.parameters.iter().filter(|p| p.is_input).collect();
-
             // Emit NotImplemented for output arguments on user-defined functions.
             // Standard-library functions do not take output arguments.
             if !signature.is_stdlib() {
@@ -268,23 +272,13 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                 }
             }
 
-            let positional_args: Vec<_> = node
-                .param_assignment
-                .iter()
-                .filter_map(|p| match p {
-                    ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-                    // NamedInput is already converted to PositionalInput by
-                    // xform_named_to_positional_args; Output is handled above.
-                    _ => None,
-                })
-                .collect();
-
-            for (i, arg_expr) in positional_args.iter().enumerate() {
-                if i >= input_params.len() {
-                    break;
-                }
-                let param = &input_params[i];
-
+            // Check each positional argument type against the parameter type.
+            // Standard-library functions are checked too: their parameters use
+            // generic ANY_* categories (or concrete types for the conversion
+            // functions), all handled by `are_types_compatible`. The parameter
+            // list continues past the declared ones for an extensible
+            // function, so every input of `ADD(a, b, c)` is checked.
+            for (param, arg_expr) in signature.bind_inputs(&node.param_assignment) {
                 if let Some(ref arg_type) = arg_expr.resolved_type {
                     if !are_types_compatible(&param.param_type, arg_type, self.options) {
                         self.diagnostics.push(
@@ -373,7 +367,7 @@ END_PROGRAM",
     );
 
     rule_ctx_ok!(
-        apply_when_stdlib_function_then_skipped,
+        apply_when_stdlib_arg_matches_param_then_ok,
         "
 PROGRAM main
 VAR
@@ -381,6 +375,52 @@ VAR
     x : INT;
 END_VAR
     result := INT_TO_REAL(x);
+END_PROGRAM"
+    );
+
+    // A standard-library return type is checked against the assignment
+    // target like a user-defined one: INT_TO_REAL yields REAL, which does
+    // not fit an INT.
+    rule_ctx_err1!(
+        apply_when_stdlib_return_type_mismatches_target_then_error,
+        "
+PROGRAM main
+VAR
+    result : INT;
+    x : INT;
+END_VAR
+    result := INT_TO_REAL(x);
+END_PROGRAM",
+        Problem::FunctionCallReturnTypeMismatch
+    );
+
+    // Integer widening still applies to a standard-library return
+    // (ADR-0029, ADR-0031): INT_TO_DINT yields DINT, which fits a LINT.
+    rule_ctx_ok!(
+        apply_when_stdlib_return_widens_to_target_then_ok,
+        "
+PROGRAM main
+VAR
+    result : LINT;
+    x : INT;
+END_VAR
+    result := INT_TO_DINT(x);
+END_PROGRAM"
+    );
+
+    // A generic return type is narrowed by `xform_resolve_expr_types` before
+    // this rule runs, so ADD over INT arguments is an INT return and not a
+    // false P4027 against the ANY_NUM the signature declares.
+    rule_ctx_ok!(
+        apply_when_stdlib_generic_return_resolves_to_target_then_ok,
+        "
+PROGRAM main
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+END_VAR
+    result := ADD(a, b);
 END_PROGRAM"
     );
 
@@ -426,6 +466,51 @@ END_VAR
     result := AND(a, b);
 END_PROGRAM",
         2,
+        Problem::FunctionCallArgTypeMismatch
+    );
+
+    // An extensible call is checked past its declared parameters, so the
+    // third input of ADD is checked like the first two (#1618).
+    rule_ctx_ok!(
+        apply_when_extensible_call_third_arg_matches_then_ok,
+        "
+PROGRAM main
+VAR
+    a : DINT;
+    b : DINT;
+    c : DINT;
+    result : DINT;
+END_VAR
+    result := ADD(a, b, c);
+END_PROGRAM"
+    );
+
+    rule_ctx_err1!(
+        apply_when_extensible_call_third_arg_mismatch_then_error,
+        "
+PROGRAM main
+VAR
+    a : DINT;
+    b : DINT;
+    c : STRING;
+    result : DINT;
+END_VAR
+    result := ADD(a, b, c);
+END_PROGRAM",
+        Problem::FunctionCallArgTypeMismatch
+    );
+
+    rule_ctx_err1!(
+        apply_when_mux_fourth_input_mismatch_then_error,
+        "
+PROGRAM main
+VAR
+    a : DINT;
+    s : STRING;
+    result : DINT;
+END_VAR
+    result := MUX(0, a, a, a, s);
+END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
@@ -1071,7 +1156,27 @@ END_VAR
 END_PROGRAM",
         true
     )]
-    // Integer → bit-string is never allowed, even with flag.
+    // Integer → bit-string is allowed only for the UDINT ↔ DWORD pair, which
+    // ElementaryTypeName::can_widen_cross_family_to carves out at equal width.
+    #[case::udint_arg_to_dword_param_ok(
+        "
+FUNCTION TAKES_DWORD : DWORD
+VAR_INPUT
+    x : DWORD;
+END_VAR
+    TAKES_DWORD := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DWORD;
+    y : UDINT;
+END_VAR
+    result := TAKES_DWORD(y);
+END_PROGRAM",
+        true
+    )]
+    // INT → BYTE is not that pair, so it stays an error even with the flag.
     #[case::int_arg_to_byte_param_error(
         "
 FUNCTION TAKES_BYTE : BYTE
@@ -1090,17 +1195,104 @@ END_VAR
 END_PROGRAM",
         false
     )]
-    fn apply_when_cross_family_widening_flag_on_call_then_matches_expectation(
+    fn apply_when_cross_family_flags_on_call_then_matches_expectation(
         #[case] program: &str,
         #[case] expect_ok: bool,
     ) {
         let (library, context) = parse_and_resolve_types_with_context(program);
         let opts = CompilerOptions {
             allow_cross_family_widening: true,
+            allow_cross_family_conversion: true,
+            allow_int_literal_to_bit_string: true,
             ..CompilerOptions::default()
         };
         let result = apply(&library, &context, &opts);
         assert_eq!(result.is_ok(), expect_ok);
+    }
+
+    /// One program per cross-family rule. Each is accepted under exactly one
+    /// of the three flags, which is what makes them three flags rather than
+    /// one: enabling any other flag leaves the program rejected.
+    const WIDENING_PROGRAM: &str = "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    b : BYTE;
+END_VAR
+    result := TAKES_INT(b);
+END_PROGRAM";
+
+    const CONVERSION_PROGRAM: &str = "
+FUNCTION TAKES_DWORD : DWORD
+VAR_INPUT
+    x : DWORD;
+END_VAR
+    TAKES_DWORD := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DWORD;
+    u : UDINT;
+END_VAR
+    result := TAKES_DWORD(u);
+END_PROGRAM";
+
+    const LITERAL_PROGRAM: &str = "
+FUNCTION TAKES_BYTE : BYTE
+VAR_INPUT
+    x : BYTE;
+END_VAR
+    TAKES_BYTE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : BYTE;
+END_VAR
+    result := TAKES_BYTE(0);
+END_PROGRAM";
+
+    fn only(flag: &str) -> CompilerOptions {
+        let mut opts = CompilerOptions::default();
+        match flag {
+            "widening" => opts.allow_cross_family_widening = true,
+            "conversion" => opts.allow_cross_family_conversion = true,
+            "literal" => opts.allow_int_literal_to_bit_string = true,
+            "none" => {}
+            other => panic!("unknown cross-family flag {other}"),
+        }
+        opts
+    }
+
+    #[rstest]
+    #[case::widening_under_widening(WIDENING_PROGRAM, "widening", true)]
+    #[case::widening_under_conversion(WIDENING_PROGRAM, "conversion", false)]
+    #[case::widening_under_literal(WIDENING_PROGRAM, "literal", false)]
+    #[case::conversion_under_widening(CONVERSION_PROGRAM, "widening", false)]
+    #[case::conversion_under_conversion(CONVERSION_PROGRAM, "conversion", true)]
+    #[case::conversion_under_literal(CONVERSION_PROGRAM, "literal", false)]
+    #[case::literal_under_widening(LITERAL_PROGRAM, "widening", false)]
+    #[case::literal_under_conversion(LITERAL_PROGRAM, "conversion", false)]
+    #[case::literal_under_literal(LITERAL_PROGRAM, "literal", true)]
+    #[case::widening_under_none(WIDENING_PROGRAM, "none", false)]
+    #[case::conversion_under_none(CONVERSION_PROGRAM, "none", false)]
+    #[case::literal_under_none(LITERAL_PROGRAM, "none", false)]
+    fn apply_when_one_cross_family_flag_on_then_only_its_rule_is_accepted(
+        #[case] program: &str,
+        #[case] flag: &str,
+        #[case] expect_ok: bool,
+    ) {
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &only(flag));
+        assert_eq!(result.is_ok(), expect_ok, "program under flag {flag:?}");
     }
 
     rule_ctx_err!(
@@ -1205,7 +1397,94 @@ END_VAR
 END_PROGRAM"
     );
 
+    // Call arguments go through the same resolved type, so a wide literal
+    // reaches a WSTRING parameter and a narrow one does not.
+    rule_ctx_ok!(
+        apply_when_wstring_parameter_given_wide_literal_then_ok,
+        "
+FUNCTION wide_len : INT
+VAR_INPUT
+    w : WSTRING[10];
+END_VAR
+    wide_len := LEN(w);
+END_FUNCTION
+
+PROGRAM main
+VAR
+    n : INT;
+END_VAR
+    n := wide_len(\"abc\");
+END_PROGRAM"
+    );
+
+    rule_ctx_err1!(
+        apply_when_wstring_parameter_given_narrow_literal_then_error,
+        "
+FUNCTION wide_len : INT
+VAR_INPUT
+    w : WSTRING[10];
+END_VAR
+    wide_len := LEN(w);
+END_FUNCTION
+
+PROGRAM main
+VAR
+    n : INT;
+END_VAR
+    n := wide_len('abc');
+END_PROGRAM",
+        Problem::FunctionCallArgTypeMismatch
+    );
+
     // --- Assignment statement type checks (P4035) ---
+
+    // A character-string literal is typed by its delimiter (IEC 61131-3
+    // Table 5), so each spelling belongs to exactly one of the two targets.
+    rule_ctx_ok!(
+        apply_when_wstring_target_assigned_wide_literal_then_ok,
+        "
+PROGRAM main
+VAR
+    w : WSTRING[10];
+END_VAR
+    w := \"abc\";
+END_PROGRAM"
+    );
+
+    rule_ctx_err1!(
+        apply_when_wstring_target_assigned_narrow_literal_then_error,
+        "
+PROGRAM main
+VAR
+    w : WSTRING[10];
+END_VAR
+    w := 'abc';
+END_PROGRAM",
+        Problem::AssignmentTypeMismatch
+    );
+
+    rule_ctx_ok!(
+        apply_when_string_target_assigned_narrow_literal_then_ok,
+        "
+PROGRAM main
+VAR
+    s : STRING[10];
+END_VAR
+    s := 'abc';
+END_PROGRAM"
+    );
+
+    rule_ctx_err1!(
+        apply_when_string_target_assigned_wide_literal_then_error,
+        "
+PROGRAM main
+VAR
+    s : STRING[10];
+END_VAR
+    s := \"abc\";
+END_PROGRAM",
+        Problem::AssignmentTypeMismatch
+    );
 
     rule_ctx_err1!(
         apply_when_bool_target_assigned_real_expr_then_error,
@@ -1303,13 +1582,15 @@ END_VAR
 END_PROGRAM",
         false
     )]
-    fn apply_when_cross_family_widening_flag_on_assignment_then_matches_expectation(
+    fn apply_when_cross_family_flags_on_assignment_then_matches_expectation(
         #[case] program: &str,
         #[case] expect_ok: bool,
     ) {
         let (library, context) = parse_and_resolve_types_with_context(program);
         let opts = CompilerOptions {
             allow_cross_family_widening: true,
+            allow_cross_family_conversion: true,
+            allow_int_literal_to_bit_string: true,
             ..CompilerOptions::default()
         };
         let result = apply(&library, &context, &opts);

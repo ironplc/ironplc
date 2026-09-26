@@ -21,6 +21,7 @@ use std::num::NonZeroU64;
 use std::path::Path;
 
 use ironplc_container::Container;
+use ironplc_vm::error::Trap;
 use ironplc_vm::{Vm, VmBuffers, VmRunning};
 
 use super::problem_codes;
@@ -47,7 +48,8 @@ pub enum LaunchError {
     /// The `launch` arguments carried a `scanLimit` below one scan cycle.
     /// Carries the value the client sent.
     ScanLimitNotPositive(i64),
-    /// The VM could not be started (an init function trapped). Carries the
+    /// The VM could not be started (the container was rejected at load or
+    /// an init function trapped). Carries the
     /// trap's own V-code and its description.
     VmStartFailed {
         v_code: &'static str,
@@ -184,18 +186,20 @@ pub fn check_scan_limit(scan_limit: Option<i64>) -> Result<Option<NonZeroU64>, L
 /// The caller sizes `bufs` with [`VmBuffers::from_container`] and owns both
 /// `container` and `bufs` so the returned [`VmRunning`] can borrow them. This
 /// mirrors the `ironplcvm` `Run` embedding in `cli.rs`; the only added policy
-/// is mapping a start-time trap to [`LaunchError::VmStartFailed`].
+/// is mapping a load- or start-time trap to [`LaunchError::VmStartFailed`].
 pub fn start_vm<'a>(
     container: &'a Container,
     bufs: &'a mut VmBuffers,
 ) -> Result<VmRunning<'a>, LaunchError> {
+    let start_failed = |trap: Trap| LaunchError::VmStartFailed {
+        v_code: trap.v_code(),
+        detail: trap.to_string(),
+    };
     Vm::new()
         .load(container, bufs)
+        .map_err(start_failed)?
         .start()
-        .map_err(|ctx| LaunchError::VmStartFailed {
-            v_code: ctx.trap.v_code(),
-            detail: ctx.trap.to_string(),
-        })
+        .map_err(|ctx| start_failed(ctx.trap))
 }
 
 #[cfg(test)]

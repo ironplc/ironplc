@@ -70,9 +70,16 @@ END_FUNCTION_BLOCK";
         &library.elements[1],
         LibraryElementKind::FunctionBlockDeclaration
     );
+    // The parser does not decide: `MotorState` is a user type name, so the
+    // declaration is recorded with its value for the type resolver to
+    // settle (ADR-0050). What must not happen is a constant-expression
+    // initializer, which would read `STOPPED` as a variable.
     assert!(matches!(
         &fb.variables[0].initializer,
-        InitialValueAssignmentKind::EnumeratedType(_)
+        InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+            initial_value: Some(LateResolvedInitialValue::Value(value)),
+            ..
+        }) if *value == Id::from("STOPPED")
     ));
 }
 

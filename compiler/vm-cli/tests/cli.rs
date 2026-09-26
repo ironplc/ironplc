@@ -3,9 +3,12 @@ use std::path::{Path, PathBuf};
 use assert_cmd::cargo;
 use assert_cmd::prelude::*;
 use ironplc_container::debug_section::{iec_type_tag, VarNameEntry};
+use ironplc_container::test_support::{
+    container_bytes, single_function_container, steel_thread_debug_builder,
+};
 use ironplc_container::{
-    ContainerBuilder, FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId, TaskType,
-    VarIndex,
+    Container, ContainerBuilder, FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId,
+    TaskType, VarIndex,
 };
 use predicates::prelude::*;
 use spec_test_macro::spec_test;
@@ -39,8 +42,9 @@ fn all_spec_requirements_have_tests() {
 /// Adding a new entry to this generator is fine; if you ever need to
 /// refresh the steel-thread golden, do it from a throwaway script with
 /// full awareness of what the format change is. It was last refreshed for
-/// the format_version 2 -> 3 string-header/constant-pool encoding bump
-/// (ADR-0035); the reader only accepts the current `FORMAT_VERSION`.
+/// the format_version 3 -> 4 array-descriptor stride bump (ADR-0054), which
+/// changed only the version field because the file has no type section;
+/// the reader only accepts the current `FORMAT_VERSION`.
 #[test]
 #[ignore]
 fn generate_golden_files() {
@@ -57,50 +61,15 @@ fn path_to_golden_resource(name: &str) -> PathBuf {
     path
 }
 
+/// Serializes a container to the given path.
+fn write_container(container: &Container, path: &Path) {
+    std::fs::write(path, container_bytes(container)).unwrap();
+}
+
 /// Builds the steel thread container (x := 10; y := x + 32) and writes it to
 /// the given path.
 fn write_steel_thread_container(path: &Path) {
-    #[rustfmt::skip]
-    let bytecode: Vec<u8> = vec![
-        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-        0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
-        0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
-        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
-        0x20,                   // ADD_I32                  (10 + 32)
-        0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
-        0x8C,                   // RET_VOID
-    ];
-
-    use ironplc_container::debug_section::{iec_type_tag, var_section, VarNameEntry};
-    use ironplc_container::id_types::{FunctionId, VarIndex};
-
-    let container = ContainerBuilder::new()
-        .num_variables(2)
-        .add_i32_constant(10)
-        .add_i32_constant(32)
-        .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 2, 0)
-        .add_var_name(VarNameEntry {
-            var_index: VarIndex::new(0),
-            function_id: FunctionId::GLOBAL_SCOPE,
-            var_section: var_section::VAR,
-            iec_type_tag: iec_type_tag::DINT,
-            name: "x".to_string(),
-            type_name: "DINT".to_string(),
-        })
-        .add_var_name(VarNameEntry {
-            var_index: VarIndex::new(1),
-            function_id: FunctionId::GLOBAL_SCOPE,
-            var_section: var_section::VAR,
-            iec_type_tag: iec_type_tag::DINT,
-            name: "y".to_string(),
-            type_name: "DINT".to_string(),
-        })
-        .max_call_depth(1)
-        .build();
-
-    let mut buf = Vec::new();
-    container.write_to(&mut buf).unwrap();
-    std::fs::write(path, &buf).unwrap();
+    write_container(&steel_thread_debug_builder().build(), path);
 }
 
 /// Builds a container exercising the debug section features described in
@@ -121,49 +90,17 @@ fn write_steel_thread_container(path: &Path) {
 /// of the original `steel_thread.iplc` is verified by the other vm-cli
 /// tests.
 fn write_debug_source_file_table_container(path: &Path) {
-    #[rustfmt::skip]
-    let bytecode: Vec<u8> = vec![
-        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-        0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
-        0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
-        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
-        0x20,                   // ADD_I32
-        0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
-        0x8C,                   // RET_VOID
-    ];
-
-    use ironplc_container::debug_section::{
-        iec_type_tag, var_section, LineMapEntry, SourceFileEntry, VarNameEntry,
-    };
-    use ironplc_container::id_types::{
-        FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex,
-    };
+    use ironplc_container::debug_section::{LineMapEntry, SourceFileEntry};
+    use ironplc_container::id_types::{FunctionId, SourceColumn, SourceFileId, SourceLine};
 
     let main_source =
         b"PROGRAM main\nVAR x, y : DINT; END_VAR\nx := 10;\ny := lib_add(x, 32);\nEND_PROGRAM\n";
     let lib_source = b"FUNCTION lib_add : DINT\nVAR_INPUT a, b : DINT; END_VAR\nlib_add := a + b;\nEND_FUNCTION\n";
 
-    let container = ContainerBuilder::new()
-        .num_variables(2)
-        .add_i32_constant(10)
-        .add_i32_constant(32)
-        .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 2, 0)
-        .add_var_name(VarNameEntry {
-            var_index: VarIndex::new(0),
-            function_id: FunctionId::GLOBAL_SCOPE,
-            var_section: var_section::VAR,
-            iec_type_tag: iec_type_tag::DINT,
-            name: "x".to_string(),
-            type_name: "DINT".to_string(),
-        })
-        .add_var_name(VarNameEntry {
-            var_index: VarIndex::new(1),
-            function_id: FunctionId::GLOBAL_SCOPE,
-            var_section: var_section::VAR,
-            iec_type_tag: iec_type_tag::DINT,
-            name: "y".to_string(),
-            type_name: "DINT".to_string(),
-        })
+    // Same base as `write_steel_thread_container` — the bytecode, constants
+    // and `x`/`y` debug names — plus the source-file table and line map this
+    // fixture exists to exercise.
+    let container = steel_thread_debug_builder()
         // file_id = 0 is the program file, file_id = 1 the library.
         .add_source_file(SourceFileEntry {
             path: "src/main.st".into(),
@@ -197,12 +134,9 @@ fn write_debug_source_file_table_container(path: &Path) {
             source_line: SourceLine::new(4),
             source_column: SourceColumn::new(1),
         })
-        .max_call_depth(1)
         .build();
 
-    let mut buf = Vec::new();
-    container.write_to(&mut buf).unwrap();
-    std::fs::write(path, &buf).unwrap();
+    write_container(&container, path);
 }
 
 /// REQ-VC-vm-cli-003: `run --scans N` runs exactly N rounds then exits 0.
@@ -271,6 +205,32 @@ fn run_when_invalid_file_then_exit_2_and_v6002() -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
+/// A container modified after compilation fails its content hash check and
+/// is reported under the container-read code, before anything executes.
+#[test]
+fn run_when_code_byte_modified_then_exit_2_and_v6002() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("modified.iplc");
+    let mut bytes = container_bytes(&steel_thread_debug_builder().build());
+    let container = Container::read_from(&mut std::io::Cursor::new(&bytes))?;
+    let last_code_byte =
+        (container.header.code_section_offset + container.header.code_section_size - 1) as usize;
+    bytes[last_code_byte] ^= 0xFF;
+    std::fs::write(&container_path, &bytes)?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run").arg(&container_path).arg("--scans").arg("1");
+    cmd.assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("V6002"))
+        .stderr(predicate::str::contains("content hash mismatch"));
+
+    Ok(())
+}
+
+/// The frozen golden predates hashing, so its header carries no hash and
+/// the reader accepts it unchecked.
 #[test]
 fn run_when_golden_container_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let golden_path = path_to_golden_resource("steel_thread.iplc");
@@ -385,17 +345,18 @@ fn write_divide_by_zero_container(path: &Path) {
         0x8C,                   // RET_VOID
     ];
 
+    // Deliberately a single function: init *is* the entry point, so the trap
+    // happens inside `start()`. `write_scan_divide_by_zero_container` below is
+    // the init/scan-split counterpart that traps inside `run_round`.
     let container = ContainerBuilder::new()
         .num_variables(0)
         .add_i32_constant(10)
         .add_i32_constant(0)
-        .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 0, 0)
+        .add_function(FunctionId::new(0), &bytecode, 2, 0, 0)
         .max_call_depth(1)
         .build();
 
-    let mut buf = Vec::new();
-    container.write_to(&mut buf).unwrap();
-    std::fs::write(path, &buf).unwrap();
+    write_container(&container, path);
 }
 
 /// REQ-VC-vm-cli-004: a runtime trap exits 1 with the trap's V-code on stderr.
@@ -459,9 +420,7 @@ fn write_doorbell_container(path: &Path) {
         .max_call_depth(1)
         .build();
 
-    let mut buf = Vec::new();
-    container.write_to(&mut buf).unwrap();
-    std::fs::write(path, &buf).unwrap();
+    write_container(&container, path);
 }
 
 /// REQ-VC-vm-cli-008: with debug info, the dump uses named variables.
@@ -516,10 +475,6 @@ fn run_when_dump_vars_without_path_then_prints_to_stdout() -> Result<(), Box<dyn
 /// variable state is observable via `--dump-vars`.
 fn write_fault_with_vars_container(path: &Path) {
     #[rustfmt::skip]
-    let init_bytecode: Vec<u8> = vec![
-        0x8C,                   // RET_VOID — init is a no-op.
-    ];
-    #[rustfmt::skip]
     let scan_bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
         0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
@@ -530,20 +485,10 @@ fn write_fault_with_vars_container(path: &Path) {
         0x8C,                   // RET_VOID
     ];
 
-    let container = ContainerBuilder::new()
-        .num_variables(2)
-        .add_i32_constant(10)
-        .add_i32_constant(0)
-        .add_function(FunctionId::new(0), &init_bytecode, 0, 0, 0)
-        .add_function(FunctionId::new(1), &scan_bytecode, 2, 2, 0)
-        .init_function_id(FunctionId::new(0))
-        .entry_function_id(FunctionId::new(1))
-        .max_call_depth(1)
-        .build();
-
-    let mut buf = Vec::new();
-    container.write_to(&mut buf).unwrap();
-    std::fs::write(path, &buf).unwrap();
+    write_container(
+        &single_function_container(&scan_bytecode, 2, &[10, 0]),
+        path,
+    );
 }
 
 /// REQ-VC-vm-cli-007: a runtime trap with `--dump-vars` writes the current variable
@@ -620,8 +565,6 @@ fn benchmark_when_invalid_file_then_exit_2_and_v6002() -> Result<(), Box<dyn std
 /// which is the path used by `benchmark`'s warmup and measured loops.
 fn write_scan_divide_by_zero_container(path: &Path) {
     #[rustfmt::skip]
-    let init_bytecode: Vec<u8> = vec![0x8C]; // RET_VOID
-    #[rustfmt::skip]
     let scan_bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
@@ -629,20 +572,10 @@ fn write_scan_divide_by_zero_container(path: &Path) {
         0x8C,                   // RET_VOID
     ];
 
-    let container = ContainerBuilder::new()
-        .num_variables(0)
-        .add_i32_constant(10)
-        .add_i32_constant(0)
-        .add_function(FunctionId::new(0), &init_bytecode, 0, 0, 0)
-        .add_function(FunctionId::new(1), &scan_bytecode, 2, 0, 0)
-        .init_function_id(FunctionId::new(0))
-        .entry_function_id(FunctionId::new(1))
-        .max_call_depth(1)
-        .build();
-
-    let mut buf = Vec::new();
-    container.write_to(&mut buf).unwrap();
-    std::fs::write(path, &buf).unwrap();
+    write_container(
+        &single_function_container(&scan_bytecode, 0, &[10, 0]),
+        path,
+    );
 }
 
 /// REQ-VC-vm-cli-017: a trap during the benchmark warmup phase exits 1 with the trap's V-code.
@@ -753,9 +686,7 @@ fn write_cyclic_task_container(path: &Path, interval_us: u64) {
         .max_call_depth(1)
         .build();
 
-    let mut buf = Vec::new();
-    container.write_to(&mut buf).unwrap();
-    std::fs::write(path, &buf).unwrap();
+    write_container(&container, path);
 }
 
 /// REQ-VC-vm-cli-015: `benchmark` emits per-cyclic-task `budget_pct` when the task's
@@ -884,6 +815,39 @@ fn write_compiled_container(path: &Path, source: &str) {
     let mut buf = Vec::new();
     container.write_to(&mut buf).unwrap();
     std::fs::write(path, &buf).unwrap();
+}
+
+/// A `STRING_TO_UDINT` compiled under the strict default (reject, trap)
+/// halts the program with V4006 at the first non-convertible input, and the
+/// message names the offending string (ADR-0049).
+#[test]
+fn run_when_string_not_convertible_then_exit_1_and_v4006() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("s2u.iplc");
+    write_compiled_container(
+        &container_path,
+        "
+PROGRAM main
+  VAR
+    s : STRING := '12abc';
+    x : UDINT;
+  END_VAR
+  x := STRING_TO_UDINT(s);
+END_PROGRAM
+",
+    );
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run").arg(&container_path).arg("--scans").arg("1");
+    cmd.assert()
+        .code(1)
+        .stderr(predicate::str::contains("V4006"))
+        .stderr(predicate::str::contains(
+            "string '12abc' is not convertible to UDINT",
+        ));
+
+    Ok(())
 }
 
 /// REQ-VC-vm-cli-009: every declared type renders as its own IEC form. A

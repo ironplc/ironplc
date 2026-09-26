@@ -19,11 +19,10 @@ use std::collections::HashMap;
 use crate::function_environment::FunctionEnvironment;
 use crate::intermediate_type::IntermediateType;
 use crate::intermediates::inherited_fields::collect_inherited_fields;
-use crate::scoped_table::{ScopedTable, Value};
+use crate::system_globals::SYSTEM_UPTIME_GLOBALS;
 use crate::type_environment::TypeEnvironment;
+use crate::variable_type::{Declarations, Declared};
 use ironplc_parser::options::CompilerOptions;
-
-impl Value for TypeName {}
 
 pub fn apply(
     lib: Library,
@@ -33,8 +32,7 @@ pub fn apply(
 ) -> Result<Library, Vec<Diagnostic>> {
     let inherited_fields = collect_inherited_fields(&lib);
     let mut resolver = ExprTypeResolver {
-        var_types: ScopedTable::new(),
-        array_element_types: ScopedTable::new(),
+        declarations: Declarations::new(),
         inherited_fields,
         type_environment,
         function_environment,
@@ -43,12 +41,12 @@ pub fn apply(
     // Implicit system globals live in the outermost scope, so every POU
     // body sees them and a POU-local of the same name shadows them.
     if options.allow_system_uptime_global {
-        resolver
-            .var_types
-            .add(&Id::from("__SYSTEM_UP_TIME"), TypeName::from("TIME"));
-        resolver
-            .var_types
-            .add(&Id::from("__SYSTEM_UP_LTIME"), TypeName::from("LTIME"));
+        for global in &SYSTEM_UPTIME_GLOBALS {
+            resolver.declarations.add(
+                &Id::from(global.name),
+                Declared::Typed(TypeName::from(global.type_name)),
+            );
+        }
     }
 
     resolver.fold_library(lib).map_err(|e| vec![e])
@@ -105,21 +103,14 @@ fn find_base_variable_name(var: &SymbolicVariableKind) -> Option<&Id> {
 }
 
 struct ExprTypeResolver<'a> {
-    /// Maps variable names to their declared TypeName, scoped.
+    /// Declared type of every variable in scope.
     ///
     /// The outermost scope holds `VAR_GLOBAL` and the implicit system
     /// globals; each POU the traversal enters pushes a scope of its own.
     /// A method's scope nests inside its function block's, so a method
     /// body sees the instance's fields and a method local shadows a
     /// field of the same name.
-    var_types: ScopedTable<'static, Id, TypeName>,
-    /// For variables declared as arrays or REF_TO arrays, stores the element type.
-    ///
-    /// For `arr : ARRAY[0..10] OF INT`, stores `"int"` keyed by `"arr"`.
-    /// For `pt : REF_TO ARRAY[1..255] OF BYTE`, stores `"byte"` keyed by `"pt"`.
-    /// This enables `resolve_variable_type` to return the correct element type
-    /// when resolving `arr[i]` or `pt^[i]` expressions.
-    array_element_types: ScopedTable<'static, Id, TypeName>,
+    declarations: Declarations<'static>,
     /// Fields inherited via `EXTENDS`, per function block -- see
     /// `intermediates::inherited_fields`. Seeded into `var_types` before a
     /// function block's own fields so unqualified references to a base
@@ -134,70 +125,65 @@ impl ExprTypeResolver<'_> {
     /// `Foo := ...` inside `FUNCTION Foo` (or a `METHOD Foo : T`)
     /// resolves to the declared return type.
     fn insert_result_variable(&mut self, name: &Id, return_type: &FunctionReturnType) {
-        let return_type_name = return_type.to_type_name();
-        let resolved = self
-            .type_environment
-            .resolve_elementary_type_name(&return_type_name)
-            .unwrap_or(return_type_name);
-        self.var_types.add(name, resolved);
+        self.declarations
+            .add(name, Declared::Typed(return_type.to_type_name()));
     }
 
-    /// Extracts the TypeName from a variable declaration and inserts it into the
-    /// variable type map. Also populates `array_element_types` for array and
-    /// REF_TO array variables so that subscript expressions can resolve their
-    /// element type.
+    /// Records a variable declaration in the current scope.
     fn insert(&mut self, node: &VarDecl) {
-        self.insert_array_element_type(node);
+        self.declarations
+            .add_if(node.identifier.symbolic_id(), Declared::of(node));
+    }
 
-        let type_name = match &node.initializer {
-            InitialValueAssignmentKind::None(_) => return,
-            InitialValueAssignmentKind::Simple(si) => si.type_name.clone(),
-            InitialValueAssignmentKind::String(si) => si.type_name(),
-            InitialValueAssignmentKind::EnumeratedValues(_) => return,
-            InitialValueAssignmentKind::EnumeratedType(e) => e.type_name.clone(),
-            InitialValueAssignmentKind::FunctionBlock(fb) => fb.type_name.clone(),
-            InitialValueAssignmentKind::FunctionBlockCall(fbc) => fbc.type_name.clone(),
-            InitialValueAssignmentKind::Subrange(spec) => match spec {
-                SpecificationKind::Named(tn) => tn.clone(),
-                SpecificationKind::Inline(sr) => TypeName::from(&sr.type_name.to_string()),
-            },
-            InitialValueAssignmentKind::Structure(s) => s.type_name.clone(),
-            InitialValueAssignmentKind::Array(a) => match &a.spec {
-                SpecificationKind::Named(tn) => tn.clone(),
-                SpecificationKind::Inline(_) => return,
-            },
-            InitialValueAssignmentKind::Reference(ref_init) => match ref_init.target.type_name() {
-                Some(tn) => tn.clone(),
-                None => return, // Inline array targets don't have a single type name
-            },
-            InitialValueAssignmentKind::LateResolvedType(tn) => tn.clone(),
-            InitialValueAssignmentKind::SimpleExpr(se) => se.type_name.clone(),
+    /// Returns the type name a variable in scope was declared with.
+    ///
+    /// `None` for a variable that is not in scope and for one whose type
+    /// has no name to give: an inline enumeration, an inline array, or a
+    /// declaration without a type.
+    fn declared_type_name(&self, id: &Id) -> Option<TypeName> {
+        let init = match self.declarations.find(id)? {
+            Declared::Variable(init) => init,
+            Declared::Typed(type_name) => return Some(type_name.clone()),
         };
-
-        match &node.identifier {
-            VariableIdentifier::Symbol(id) => {
-                self.var_types.add(id, type_name);
-            }
-            VariableIdentifier::Direct(direct) => {
-                if let Some(name) = &direct.name {
-                    self.var_types.add(name, type_name);
-                }
-            }
+        match init.as_ref() {
+            InitialValueAssignmentKind::None(_) => None,
+            InitialValueAssignmentKind::Simple(si) => Some(si.type_name.clone()),
+            InitialValueAssignmentKind::String(si) => Some(si.type_name()),
+            InitialValueAssignmentKind::EnumeratedValues(_) => None,
+            InitialValueAssignmentKind::EnumeratedType(e) => Some(e.type_name.clone()),
+            InitialValueAssignmentKind::FunctionBlock(fb) => Some(fb.type_name.clone()),
+            InitialValueAssignmentKind::FunctionBlockCall(fbc) => Some(fbc.type_name.clone()),
+            InitialValueAssignmentKind::Subrange(spec) => match spec {
+                SpecificationKind::Named(tn) => Some(tn.clone()),
+                SpecificationKind::Inline(sr) => Some(TypeName::from(&sr.type_name.to_string())),
+            },
+            InitialValueAssignmentKind::Structure(s) => Some(s.type_name.clone()),
+            InitialValueAssignmentKind::Array(a) => match &a.spec {
+                SpecificationKind::Named(tn) => Some(tn.clone()),
+                SpecificationKind::Inline(_) => None,
+            },
+            // An inline array target has no single type name.
+            InitialValueAssignmentKind::Reference(ref_init) => ref_init.target.type_name().cloned(),
+            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name: tn,
+                ..
+            }) => Some(tn.clone()),
+            InitialValueAssignmentKind::SimpleExpr(se) => Some(se.type_name.clone()),
         }
     }
 
-    /// Extracts and stores the array element type for array and REF_TO array
-    /// variable declarations.
-    fn insert_array_element_type(&mut self, node: &VarDecl) {
-        let id = match &node.identifier {
-            VariableIdentifier::Symbol(id) => id.clone(),
-            VariableIdentifier::Direct(direct) => match &direct.name {
-                Some(name) => name.clone(),
-                None => return,
-            },
+    /// Returns the element type name of a variable in scope declared as an
+    /// array or a reference to one, so that `arr[i]` and `pt^[i]` resolve
+    /// to the element type.
+    ///
+    /// For `arr : ARRAY[0..10] OF INT` this is `"int"`; for
+    /// `pt : REF_TO ARRAY[1..255] OF BYTE` it is `"byte"`.
+    fn declared_element_type_name(&self, id: &Id) -> Option<TypeName> {
+        let Declared::Variable(init) = self.declarations.find(id)? else {
+            // A result variable or system global is never subscripted.
+            return None;
         };
-
-        let elem_type_name = match &node.initializer {
+        match init.as_ref() {
             // ARRAY[...] OF T (inline spec)
             InitialValueAssignmentKind::Array(a) => match &a.spec {
                 SpecificationKind::Inline(inline) => {
@@ -218,14 +204,11 @@ impl ExprTypeResolver<'_> {
                 self.element_type_from_named_array(&si.type_name)
             }
             // Late-resolved type that may be an array alias
-            InitialValueAssignmentKind::LateResolvedType(tn) => {
-                self.element_type_from_named_array(tn)
-            }
+            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name: tn,
+                ..
+            }) => self.element_type_from_named_array(tn),
             _ => None,
-        };
-
-        if let Some(elem_tn) = elem_type_name {
-            self.array_element_types.add(&id, elem_tn);
         }
     }
 
@@ -368,7 +351,11 @@ impl ExprTypeResolver<'_> {
                 elem.into()
             }),
             ConstantKind::Boolean(_) => Some(TypeName::from("BOOL")),
-            ConstantKind::CharacterString(_) => Some(TypeName::from("STRING")),
+            // The delimiter is the type: `'abc'` is a STRING and `"abc"` a
+            // WSTRING (IEC 61131-3 Table 5). Typing every literal STRING made
+            // `w := "abc"` a P4035 and `f("abc")` a P4026 -- the analyzer
+            // never learned what the quotes already said.
+            ConstantKind::CharacterString(lit) => Some(TypeName::from(lit.width.keyword())),
             ConstantKind::Duration(_) => Some(TypeName::from("TIME")),
             ConstantKind::TimeOfDay(_) => Some(TypeName::from("TIME_OF_DAY")),
             ConstantKind::Date(_) => Some(TypeName::from("DATE")),
@@ -403,8 +390,8 @@ impl ExprTypeResolver<'_> {
     ) -> Option<&'b IntermediateType> {
         match kind {
             SymbolicVariableKind::Named(nv) => {
-                let var_type = self.var_types.find(&nv.name)?;
-                self.type_environment.resolve_member_access_type(var_type)
+                let var_type = self.declared_type_name(&nv.name)?;
+                self.type_environment.resolve_member_access_type(&var_type)
             }
             SymbolicVariableKind::Structured(sv) => {
                 let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
@@ -443,13 +430,13 @@ impl ExprTypeResolver<'_> {
     fn resolve_variable_type(&self, var: &Variable) -> Option<TypeName> {
         match var {
             Variable::Symbolic(SymbolicVariableKind::Named(nv)) => {
-                let declared = self.var_types.find(&nv.name)?;
+                let declared = self.declared_type_name(&nv.name)?;
                 // Try to resolve to an elementary type. If the type is complex
                 // (enum, struct, etc.), keep the declared name.
                 Some(
                     self.type_environment
-                        .resolve_elementary_type_name(declared)
-                        .unwrap_or_else(|| declared.clone()),
+                        .resolve_elementary_type_name(&declared)
+                        .unwrap_or(declared),
                 )
             }
             Variable::Symbolic(SymbolicVariableKind::Array(arr_var)) => {
@@ -463,11 +450,11 @@ impl ExprTypeResolver<'_> {
 
                 // Array subscript: walk to base variable, return element type.
                 let base_name = find_base_variable_name(&arr_var.subscripted_variable)?;
-                let elem_type = self.array_element_types.find(base_name)?;
+                let elem_type = self.declared_element_type_name(base_name)?;
                 Some(
                     self.type_environment
-                        .resolve_elementary_type_name(elem_type)
-                        .unwrap_or_else(|| elem_type.clone()),
+                        .resolve_elementary_type_name(&elem_type)
+                        .unwrap_or(elem_type),
                 )
             }
             Variable::Symbolic(SymbolicVariableKind::Structured(sv)) => {
@@ -486,8 +473,8 @@ impl ExprTypeResolver<'_> {
             Variable::Symbolic(SymbolicVariableKind::Deref(deref_var)) => {
                 // Dereference: resolve the target type of the reference.
                 let base_name = find_base_variable_name(&deref_var.variable)?;
-                let declared = self.var_types.find(base_name)?;
-                let attrs = self.type_environment.get(declared)?;
+                let declared = self.declared_type_name(base_name)?;
+                let attrs = self.type_environment.get(&declared)?;
                 if let Some(target) = attrs.representation.referenced_type() {
                     self.type_environment.elementary_type_name_for(target)
                 } else {
@@ -534,8 +521,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
     /// it contributes rather than silently contributing nothing -- which
     /// in this pass means silently skipping type checks, not failing.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
-        self.var_types.enter();
-        self.array_element_types.enter();
+        self.declarations.enter();
 
         match node {
             ScopeNode::Function(node) => {
@@ -544,8 +530,12 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
             }
             ScopeNode::FunctionBlock(node) => {
                 // Inherited fields first so the function block's own
-                // fields, inserted next into the same scope, shadow a
-                // same-named ancestor field.
+                // fields, inserted next into the same scope, win for a
+                // name declared in both. A program that reaches code
+                // generation never has such a name --
+                // `rule_extends_field_duplicated` (`P4044`) rejects it --
+                // but that rule runs after this transform, so this pass
+                // still needs a defined answer.
                 if let Some(fields) = self.inherited_fields.get(&node.name).cloned() {
                     fields.iter().for_each(|v| self.insert(v));
                 }
@@ -569,8 +559,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
     }
 
     fn exit_scope(&mut self) {
-        self.var_types.exit();
-        self.array_element_types.exit();
+        self.declarations.exit();
     }
 
     fn fold_self_ref_variable(
@@ -619,1017 +608,4 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::apply;
-    use crate::type_environment::TypeEnvironmentBuilder;
-    use crate::xform_resolve_late_bound_expr_kind;
-    use crate::xform_resolve_symbol_and_function_environment;
-    use crate::xform_resolve_type_decl_environment;
-    use crate::{
-        function_environment::FunctionEnvironmentBuilder, symbol_environment::SymbolEnvironment,
-    };
-    use ironplc_dsl::common::Library;
-    use ironplc_dsl::core::FileId;
-    use ironplc_dsl::fold::Fold;
-    use ironplc_dsl::textual::*;
-    use ironplc_parser::options::{CompilerOptions, Dialect};
-    use rstest::rstest;
-
-    /// Runs the prerequisite passes and then the expression type resolution pass.
-    fn run_pass(program: &str) -> Library {
-        run_pass_with_options(program, &CompilerOptions::default())
-    }
-
-    /// Like [`run_pass`] but with explicit compiler options (needed for REF_TO tests).
-    fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Library {
-        let library = ironplc_parser::parse_program(program, &FileId::default(), options).unwrap();
-        let mut type_environment = TypeEnvironmentBuilder::new()
-            .with_elementary_types()
-            .with_stdlib_function_blocks()
-            .build()
-            .unwrap();
-        let library =
-            xform_resolve_type_decl_environment::apply(library, &mut type_environment).unwrap();
-        let library = xform_resolve_late_bound_expr_kind::apply(library, &mut type_environment)
-            .unwrap()
-            .0;
-        let mut function_environment = FunctionEnvironmentBuilder::new()
-            .with_stdlib_functions()
-            .build();
-        let mut symbol_environment = SymbolEnvironment::new();
-        let library = xform_resolve_symbol_and_function_environment::apply(
-            library,
-            &mut symbol_environment,
-            &mut function_environment,
-        )
-        .unwrap();
-        apply(
-            library,
-            &mut type_environment,
-            &function_environment,
-            options,
-        )
-        .unwrap()
-    }
-
-    /// Helper visitor to collect resolved types from assignment RHS expressions.
-    struct ResolvedTypeCollector {
-        types: Vec<Option<ironplc_dsl::common::TypeName>>,
-    }
-
-    impl ResolvedTypeCollector {
-        fn new() -> Self {
-            Self { types: vec![] }
-        }
-    }
-
-    impl Fold<()> for ResolvedTypeCollector {
-        fn fold_assignment(&mut self, node: Assignment) -> Result<Assignment, ()> {
-            self.types.push(node.value.resolved_type.clone());
-            node.recurse_fold(self)
-        }
-    }
-
-    /// Collects the resolved_type from the top-level assignment expressions.
-    fn collect_assignment_types(library: &Library) -> Vec<Option<ironplc_dsl::common::TypeName>> {
-        let mut collector = ResolvedTypeCollector::new();
-        let _ = collector.fold_library(library.clone());
-        collector.types
-    }
-
-    /// Collects resolved_type from every Expr node in the tree.
-    struct AllExprTypeCollector {
-        types: Vec<Option<ironplc_dsl::common::TypeName>>,
-    }
-
-    impl AllExprTypeCollector {
-        fn new() -> Self {
-            Self { types: vec![] }
-        }
-    }
-
-    impl Fold<()> for AllExprTypeCollector {
-        fn fold_expr(&mut self, node: Expr) -> Result<Expr, ()> {
-            self.types.push(node.resolved_type.clone());
-            node.recurse_fold(self)
-        }
-    }
-
-    fn collect_all_expr_types(library: &Library) -> Vec<Option<ironplc_dsl::common::TypeName>> {
-        let mut collector = AllExprTypeCollector::new();
-        let _ = collector.fold_library(library.clone());
-        collector.types
-    }
-
-    /// Returns the resolved type name as an uppercase &str for comparison.
-    /// TypeEnvironment stores elementary types in lowercase, but IEC 61131-3
-    /// type names are case-insensitive, so we normalize to uppercase for assertions.
-    fn type_name_upper(tn: &Option<ironplc_dsl::common::TypeName>) -> Option<String> {
-        tn.as_ref().map(|t| t.name.original().to_uppercase())
-    }
-
-    fn assert_type_eq(tn: &Option<ironplc_dsl::common::TypeName>, expected: &str) {
-        assert_eq!(
-            type_name_upper(tn),
-            Some(expected.to_string()),
-            "Expected type {expected}"
-        );
-    }
-
-    #[test]
-    fn apply_when_nested_arithmetic_then_all_subexprs_resolve() {
-        // (x + y) * z — the inner (x + y) and outer multiply should all resolve to INT
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : INT;
-    z : INT;
-    result : INT;
-END_VAR
-    result := (x + y) * z;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_all_expr_types(&result);
-        // Every expression node in (x + y) * z should resolve to INT:
-        // nodes: result:=(expr), (x+y)*z, (x+y), x, y, z — all INT
-        for (i, t) in types.iter().enumerate() {
-            assert!(
-                t.is_some(),
-                "Expression node {i} should have a resolved type, got None"
-            );
-            assert_eq!(
-                type_name_upper(t),
-                Some("INT".to_string()),
-                "Expression node {i} should be INT"
-            );
-        }
-    }
-
-    #[test]
-    fn apply_when_nested_comparison_with_arithmetic_then_resolves_correctly() {
-        // (x + y) > z — inner (x + y) is INT, the comparison is BOOL
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : INT;
-    z : INT;
-    flag : BOOL;
-END_VAR
-    flag := (x + y) > z;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let top_types = collect_assignment_types(&result);
-        assert_eq!(top_types.len(), 1);
-        assert_type_eq(&top_types[0], "BOOL");
-
-        // Also verify inner nodes
-        let all_types = collect_all_expr_types(&result);
-        // The top-level expr is BOOL (comparison), but inner operands should be INT
-        let has_bool = all_types
-            .iter()
-            .any(|t| type_name_upper(t) == Some("BOOL".to_string()));
-        let has_int = all_types
-            .iter()
-            .any(|t| type_name_upper(t) == Some("INT".to_string()));
-        assert!(has_bool, "Should have BOOL from comparison");
-        assert!(has_int, "Should have INT from arithmetic operands");
-    }
-
-    #[test]
-    fn apply_when_negated_nested_expr_then_resolves_type() {
-        // -(x + y) — unary negation of a parenthesized binary op
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : INT;
-    result : INT;
-END_VAR
-    result := -(x + y);
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let top_types = collect_assignment_types(&result);
-        assert_eq!(top_types.len(), 1);
-        assert_type_eq(&top_types[0], "INT");
-
-        let all_types = collect_all_expr_types(&result);
-        // All nodes (unary, parenthesized, binary, x, y) should be INT
-        for (i, t) in all_types.iter().enumerate() {
-            assert!(
-                t.is_some(),
-                "Expression node {i} should have a resolved type"
-            );
-            assert_eq!(
-                type_name_upper(t),
-                Some("INT".to_string()),
-                "Expression node {i} should be INT"
-            );
-        }
-    }
-
-    #[test]
-    fn apply_when_deeply_nested_parens_then_resolves_type() {
-        // ((x)) — multiple levels of parenthesization
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : INT;
-END_VAR
-    y := ((x));
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let top_types = collect_assignment_types(&result);
-        assert_eq!(top_types.len(), 1);
-        assert_type_eq(&top_types[0], "INT");
-
-        let all_types = collect_all_expr_types(&result);
-        for (i, t) in all_types.iter().enumerate() {
-            assert_eq!(
-                type_name_upper(t),
-                Some("INT".to_string()),
-                "Expression node {i} should be INT"
-            );
-        }
-    }
-
-    #[test]
-    fn apply_when_multiple_assignments_then_each_resolves_independently() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : BOOL;
-    a : INT;
-    b : BOOL;
-END_VAR
-    a := x;
-    b := y;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 2);
-        assert_type_eq(&types[0], "INT");
-        assert_type_eq(&types[1], "BOOL");
-    }
-
-    #[test]
-    fn apply_when_function_return_var_used_in_builtin_then_resolves_type() {
-        let program = "
-FUNCTION FOO : INT
-  VAR_INPUT
-    A : INT;
-  END_VAR
-  FOO := 8;
-  FOO := SHR(FOO, 1);
-END_FUNCTION
-
-PROGRAM main
-  VAR
-    result : INT;
-  END_VAR
-  result := FOO(A := 5);
-END_PROGRAM";
-
-        let result = run_pass(program);
-        let all_types = collect_all_expr_types(&result);
-        // Every expression node should have a resolved type (no None values)
-        for (i, t) in all_types.iter().enumerate() {
-            assert!(
-                t.is_some(),
-                "Expression node {i} should have a resolved type, got None"
-            );
-        }
-    }
-
-    #[test]
-    fn apply_when_ref_to_inline_array_deref_subscript_then_resolves_element_type() {
-        let options = CompilerOptions::from_dialect(Dialect::Rusty);
-        let program = "
-FUNCTION GET_CHAR_BYTE : BYTE
-VAR_INPUT
-    pt : REF_TO ARRAY[1..255] OF BYTE;
-    pos : INT;
-END_VAR
-    GET_CHAR_BYTE := pt^[pos];
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : BYTE;
-END_VAR
-    result := GET_CHAR_BYTE(pt := NULL, pos := 1);
-END_PROGRAM";
-
-        let result = run_pass_with_options(program, &options);
-        let types = collect_assignment_types(&result);
-        // First assignment: GET_CHAR_BYTE := pt^[pos] — should resolve to BYTE
-        assert_type_eq(&types[0], "BYTE");
-    }
-
-    // -----------------------------------------------------------------
-    // AND_THEN / OR_ELSE short-circuit boolean operators.
-    // See specs/design/beckhoff-twincat-dialect.md §3.4.
-    // -----------------------------------------------------------------
-
-    #[test]
-    fn apply_when_or_else_used_then_resolves_like_or() {
-        let options = CompilerOptions {
-            allow_short_circuit_operators: true,
-            ..CompilerOptions::default()
-        };
-        let program = "
-FUNCTION_BLOCK FB_Example
-VAR
-    a : BOOL;
-    b : BOOL;
-    result : BOOL;
-END_VAR
-    result := a OR_ELSE b;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass_with_options(program, &options);
-        let types = collect_assignment_types(&result);
-        assert_type_eq(&types[0], "BOOL");
-    }
-
-    #[test]
-    fn apply_when_and_then_used_then_resolves_like_and() {
-        let options = CompilerOptions {
-            allow_short_circuit_operators: true,
-            ..CompilerOptions::default()
-        };
-        let program = "
-FUNCTION_BLOCK FB_Example
-VAR
-    a : BOOL;
-    b : BOOL;
-    result : BOOL;
-END_VAR
-    result := a AND_THEN b;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass_with_options(program, &options);
-        let types = collect_assignment_types(&result);
-        assert_type_eq(&types[0], "BOOL");
-    }
-
-    // -----------------------------------------------------------------
-    // EXTENDS field inheritance.
-    // -----------------------------------------------------------------
-
-    #[test]
-    fn apply_when_expression_uses_inherited_field_then_resolves_type() {
-        let options = CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        };
-        let program = "
-FUNCTION_BLOCK FB_Base
-VAR
-    bEnabled : BOOL;
-END_VAR
-END_FUNCTION_BLOCK
-
-FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
-VAR
-    bRunning : BOOL;
-END_VAR
-    bRunning := bEnabled AND bRunning;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass_with_options(program, &options);
-        let types = collect_assignment_types(&result);
-        assert_type_eq(&types[0], "BOOL");
-    }
-
-    /// Parameterized tests for the "single assignment, resolves to type T" shape.
-    ///
-    /// Each case is a complete IEC 61131-3 program containing exactly one
-    /// top-level assignment; the test runs the expression-type-resolution
-    /// pipeline and asserts the RHS resolves to the expected type name.
-    /// This replaces 27 near-identical hand-written tests.
-    #[rstest]
-    #[case::simple_int_var(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : INT;
-END_VAR
-    y := x;
-END_FUNCTION_BLOCK",
-        "INT"
-    )]
-    #[case::type_alias_to_elementary(
-        "
-TYPE
-    MyByte : BYTE := 0;
-END_TYPE
-
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : MyByte;
-    y : BYTE;
-END_VAR
-    y := x;
-END_FUNCTION_BLOCK",
-        "BYTE"
-    )]
-    #[case::bool_literal(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    y : BOOL;
-END_VAR
-    y := TRUE;
-END_FUNCTION_BLOCK",
-        "BOOL"
-    )]
-    #[case::typed_integer_literal(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    y : INT;
-END_VAR
-    y := INT#42;
-END_FUNCTION_BLOCK",
-        "INT"
-    )]
-    #[case::comparison_resolves_bool(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : BOOL;
-END_VAR
-    y := x > 0;
-END_FUNCTION_BLOCK",
-        "BOOL"
-    )]
-    #[case::binary_op_inherits_operand_type(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : INT;
-END_VAR
-    y := x + x;
-END_FUNCTION_BLOCK",
-        "INT"
-    )]
-    #[case::unary_op_inherits_operand_type(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : INT;
-END_VAR
-    y := -x;
-END_FUNCTION_BLOCK",
-        "INT"
-    )]
-    // AND has generic return type ANY_BIT; the function form resolves to the
-    // operand type like the operator form does (#1567).
-    #[case::and_function_on_word_resolves_operand_type(
-        "
-PROGRAM test
-  VAR
-    a : WORD;
-    b : WORD;
-    result : WORD;
-  END_VAR
-    result := AND(a, b);
-END_PROGRAM",
-        "WORD"
-    )]
-    // ABS has generic return type ANY_NUM; should resolve to concrete input type.
-    #[case::function_call_resolves_return_type(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : INT;
-END_VAR
-    y := ABS(x);
-END_FUNCTION_BLOCK",
-        "INT"
-    )]
-    // SHR has generic return type ANY_BIT; ABS(a) resolves to DINT,
-    // so the outer SHR should also resolve to DINT.
-    #[case::nested_function_call_resolves_concrete_type(
-        "
-PROGRAM test
-  VAR
-    a : DINT;
-    result : DINT;
-  END_VAR
-    result := SHR(ABS(a), 1);
-END_PROGRAM",
-        "DINT"
-    )]
-    // The RHS expression type reflects the expression itself, not the target.
-    // Here TRUE is BOOL even though the target y is INT.
-    #[case::bool_assigned_to_int_var_rhs_resolves_bool(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    y : INT;
-END_VAR
-    y := TRUE;
-END_FUNCTION_BLOCK",
-        "BOOL"
-    )]
-    // The expression type is determined by the expression, not the target.
-    #[case::int_assigned_to_bool_var_rhs_resolves_int(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : BOOL;
-END_VAR
-    y := x;
-END_FUNCTION_BLOCK",
-        "INT"
-    )]
-    // In x + y where x is DINT and y is INT, the result inherits the left operand type.
-    #[case::mixed_type_binary_op_inherits_left_operand_type(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : DINT;
-    y : INT;
-    result : DINT;
-END_VAR
-    result := x + y;
-END_FUNCTION_BLOCK",
-        "DINT"
-    )]
-    // In 5 + x where x is INT, the result should be INT (concrete wins over ANY_INT).
-    #[case::binary_op_literal_plus_concrete(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    result : INT;
-END_VAR
-    result := 5 + x;
-END_FUNCTION_BLOCK",
-        "INT"
-    )]
-    // In x + 5 where x is INT, the result should be INT (left is concrete).
-    #[case::binary_op_concrete_plus_literal(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    result : INT;
-END_VAR
-    result := x + 5;
-END_FUNCTION_BLOCK",
-        "INT"
-    )]
-    // In 5 + 10, both are ANY_INT, so the result is ANY_INT.
-    #[case::binary_op_two_literals_resolves_any_int(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    result : DINT;
-END_VAR
-    result := 5 + 10;
-END_FUNCTION_BLOCK",
-        "ANY_INT"
-    )]
-    #[case::real_literal_without_type_resolves_any_real(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    y : REAL;
-END_VAR
-    y := 3.14;
-END_FUNCTION_BLOCK",
-        "ANY_REAL"
-    )]
-    // A subrange variable like INT(-100..100) should resolve to INT.
-    #[case::subrange_var_resolves_base_type(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR_IN_OUT
-    x : INT(-100..100);
-END_VAR
-VAR
-    y : INT;
-END_VAR
-    y := x;
-END_FUNCTION_BLOCK",
-        "INT"
-    )]
-    #[case::string_literal(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    s : STRING;
-END_VAR
-    s := 'hello';
-END_FUNCTION_BLOCK",
-        "STRING"
-    )]
-    #[case::untyped_integer_literal_resolves_any_int(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    y : DINT;
-END_VAR
-    y := 42;
-END_FUNCTION_BLOCK",
-        "ANY_INT"
-    )]
-    #[case::time_literal(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    t : TIME;
-END_VAR
-    t := T#5s;
-END_FUNCTION_BLOCK",
-        "TIME"
-    )]
-    #[case::sel_resolves_value_type_not_selector(
-        "
-PROGRAM test
-  VAR
-    g : BOOL;
-    a : INT;
-    b : INT;
-    result : INT;
-  END_VAR
-    result := SEL(g, a, b);
-END_PROGRAM",
-        "INT"
-    )]
-    #[case::mux_resolves_value_type_not_selector(
-        "
-PROGRAM test
-  VAR
-    k : INT;
-    a : DINT;
-    b : DINT;
-    result : DINT;
-  END_VAR
-    result := MUX(k, a, b);
-END_PROGRAM",
-        "DINT"
-    )]
-    #[case::sel_nested_in_function(
-        "
-PROGRAM test
-  VAR
-    g : BOOL;
-    a : INT;
-    b : INT;
-    result : INT;
-  END_VAR
-    result := ABS(SEL(g, a, b));
-END_PROGRAM",
-        "INT"
-    )]
-    #[case::named_array_subscript(
-        "
-TYPE MyArr : ARRAY[0..10] OF INT; END_TYPE
-
-FUNCTION_BLOCK FB_TEST
-VAR
-    arr : MyArr;
-    result : INT;
-END_VAR
-    result := arr[0];
-END_FUNCTION_BLOCK",
-        "INT"
-    )]
-    #[case::inline_array_subscript(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    arr : ARRAY[0..10] OF DINT;
-    result : DINT;
-END_VAR
-    result := arr[0];
-END_FUNCTION_BLOCK",
-        "DINT"
-    )]
-    // Regression for the `compile_expr.rs#L32` TODO that fired when
-    // `struct.field[i, j]` was used in a STRING comparison: the analyzer
-    // previously left `resolved_type` unset for array subscripts whose
-    // base was a struct field.
-    #[case::struct_field_2d_string_array_subscript(
-        "
-TYPE MY_DATA : STRUCT
-    DIRS : ARRAY[0..2, 0..15] OF STRING[3];
-END_STRUCT;
-END_TYPE
-
-FUNCTION_BLOCK FB_TEST
-VAR
-    data : MY_DATA;
-    i : INT;
-    j : INT;
-    result : STRING[3];
-END_VAR
-    result := data.DIRS[i, j];
-END_FUNCTION_BLOCK",
-        "STRING"
-    )]
-    // Same fix must also cover numeric array fields, not just strings.
-    #[case::struct_field_int_array_subscript(
-        "
-TYPE MY_DATA : STRUCT
-    values : ARRAY[0..9] OF DINT;
-END_STRUCT;
-END_TYPE
-
-FUNCTION_BLOCK FB_TEST
-VAR
-    data : MY_DATA;
-    i : INT;
-    result : DINT;
-END_VAR
-    result := data.values[i];
-END_FUNCTION_BLOCK",
-        "DINT"
-    )]
-    // A function block instance exposes its variables as named members, the
-    // same as a struct field. Leaving these unresolved made codegen fail with
-    // P9999 wherever the expression's own type was needed (issue #1375).
-    #[case::function_block_bool_output(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    timer : TON;
-    result : BOOL;
-END_VAR
-    result := timer.Q;
-END_FUNCTION_BLOCK",
-        "BOOL"
-    )]
-    #[case::function_block_time_output(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    timer : TON;
-    result : TIME;
-END_VAR
-    result := timer.ET;
-END_FUNCTION_BLOCK",
-        "TIME"
-    )]
-    #[case::function_block_input(
-        "
-FUNCTION_BLOCK FB_TEST
-VAR
-    timer : TON;
-    result : BOOL;
-END_VAR
-    result := timer.IN;
-END_FUNCTION_BLOCK",
-        "BOOL"
-    )]
-    fn apply_when_single_assignment_then_resolves_expected_type(
-        #[case] program: &str,
-        #[case] expected: &str,
-    ) {
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], expected);
-    }
-
-    #[test]
-    fn apply_when_function_block_output_in_condition_then_resolves_type() {
-        // An IF condition has no assignment target to borrow a type from, so
-        // codegen reads the condition's own resolved_type. Leaving it unset
-        // for `timer.Q` produced P9999 (issue #1375).
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    timer : TON;
-    done : BOOL;
-END_VAR
-    IF timer.Q THEN
-        done := TRUE;
-    END_IF;
-END_FUNCTION_BLOCK";
-        let result = run_pass(program);
-        let types = collect_all_expr_types(&result);
-        assert!(
-            types
-                .iter()
-                .any(|t| type_name_upper(t).as_deref() == Some("BOOL")),
-            "condition `timer.Q` should resolve to BOOL, got {types:?}"
-        );
-        assert!(
-            types.iter().all(|t| t.is_some()),
-            "every expression should resolve, got {types:?}"
-        );
-    }
-
-    #[test]
-    fn apply_when_unknown_function_block_field_then_type_is_unresolved() {
-        // A misspelled member has no field to resolve against; the pass must
-        // leave it unset rather than inventing a type.
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    timer : TON;
-    result : BOOL;
-END_VAR
-    result := timer.NOT_A_FIELD;
-END_FUNCTION_BLOCK";
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_eq!(types[0], None);
-    }
-
-    // ---------------------------------------------------------------------
-    // METHOD scoping.
-    // See https://github.com/ironplc/ironplc/issues/1439.
-    // ---------------------------------------------------------------------
-
-    fn opts_with_fb_inheritance() -> CompilerOptions {
-        CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        }
-    }
-
-    /// Before a method opened a scope this pass never saw a method's
-    /// variables at all, so every reference in a method body resolved to
-    /// `None` and every type rule downstream skipped it silently.
-    #[test]
-    fn apply_when_method_local_then_resolves_type() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-METHOD m
-VAR
-    x : INT;
-    y : INT;
-END_VAR
-    x := y;
-END_METHOD
-END_FUNCTION_BLOCK";
-
-        let result = run_pass_with_options(program, &opts_with_fb_inheritance());
-        let types = collect_assignment_types(&result);
-
-        assert_eq!(types.len(), 1);
-        assert_eq!(types[0].as_ref().map(|t| t.to_string()), Some("int".into()));
-    }
-
-    /// The method scope nests inside the function block's, so a method
-    /// local shadows a field of the same name for that method only.
-    #[test]
-    fn apply_when_method_local_shadows_field_then_resolves_local_type() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    v : INT;
-    target : REAL;
-END_VAR
-METHOD m
-VAR
-    v : REAL;
-END_VAR
-    target := v;
-END_METHOD
-END_FUNCTION_BLOCK";
-
-        let result = run_pass_with_options(program, &opts_with_fb_inheritance());
-        let types = collect_assignment_types(&result);
-
-        assert_eq!(types.len(), 1);
-        assert_eq!(
-            types[0].as_ref().map(|t| t.to_string()),
-            Some("real".into()),
-            "the method's own `v` should shadow the function block's"
-        );
-    }
-
-    /// Each method is its own scope, so the same name in two methods is
-    /// two variables and each resolves to its own declared type.
-    #[test]
-    fn apply_when_two_methods_declare_same_name_then_each_resolves_own_type() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    i : INT;
-    r : REAL;
-END_VAR
-METHOD a
-VAR
-    q : INT;
-END_VAR
-    i := q;
-END_METHOD
-METHOD b
-VAR
-    q : REAL;
-END_VAR
-    r := q;
-END_METHOD
-END_FUNCTION_BLOCK";
-
-        let result = run_pass_with_options(program, &opts_with_fb_inheritance());
-        let types = collect_assignment_types(&result);
-
-        assert_eq!(types.len(), 2);
-        assert_eq!(types[0].as_ref().map(|t| t.to_string()), Some("int".into()));
-        assert_eq!(
-            types[1].as_ref().map(|t| t.to_string()),
-            Some("real".into())
-        );
-    }
-
-    /// A method that declares a return type has a result variable of that
-    /// type, the same way a function does, so reading the method's own
-    /// name inside its body resolves.
-    #[test]
-    fn apply_when_method_reads_own_name_then_resolves_return_type() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    nLast : DINT;
-END_VAR
-METHOD GetSpeed : DINT
-    GetSpeed := 1;
-    nLast := GetSpeed;
-END_METHOD
-END_FUNCTION_BLOCK";
-
-        let result = run_pass_with_options(program, &opts_with_fb_inheritance());
-        let types = collect_assignment_types(&result);
-
-        assert_eq!(types.len(), 2);
-        assert_eq!(
-            types[1].as_ref().map(|t| t.to_string()),
-            Some("dint".into()),
-            "the method's own name should resolve to its return type"
-        );
-    }
-
-    /// A method with no return type has no result variable, so its name
-    /// is not a variable and resolves to nothing. The analyzer rejects
-    /// the reference outright; this pins the same rule in this pass.
-    #[test]
-    fn apply_when_method_has_no_return_type_then_own_name_unresolved() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    nLast : DINT;
-END_VAR
-METHOD DoThing
-    nLast := DoThing;
-END_METHOD
-END_FUNCTION_BLOCK";
-
-        let result = run_pass_with_options(program, &opts_with_fb_inheritance());
-        let types = collect_assignment_types(&result);
-
-        assert_eq!(types.len(), 1);
-        assert_eq!(types[0], None);
-    }
-
-    /// A method's locals leave with the method: the enclosing function
-    /// block's body must not resolve them.
-    #[test]
-    fn apply_when_function_block_body_references_method_local_then_unresolved() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    target : INT;
-END_VAR
-    target := q;
-METHOD m
-VAR
-    q : INT;
-END_VAR
-    q := 1;
-END_METHOD
-END_FUNCTION_BLOCK";
-
-        let result = run_pass_with_options(program, &opts_with_fb_inheritance());
-        let types = collect_assignment_types(&result);
-
-        assert_eq!(types.len(), 2);
-        assert_eq!(
-            types[0], None,
-            "the function block body must not see the method's local"
-        );
-    }
-}
+mod tests;

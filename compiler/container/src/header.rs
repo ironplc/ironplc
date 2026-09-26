@@ -7,14 +7,35 @@ use crate::ContainerError;
 pub const MAGIC: u32 = 0x49504C43;
 
 /// Current container format version.
-pub const FORMAT_VERSION: u16 = 3;
+pub const FORMAT_VERSION: u16 = 4;
 
 /// Flag bit: container expects __SYSTEM_UP_TIME at VarIndex(0) and
 /// __SYSTEM_UP_LTIME at VarIndex(1), written by the VM before each scan.
 pub const FLAG_HAS_SYSTEM_UPTIME: u8 = 0x01;
 
+/// Flag bit: the container carries a debug section
+/// (`debug_section_offset` / `debug_section_size` are set).
+pub const FLAG_HAS_DEBUG_SECTION: u8 = 0x02;
+
+/// Flag bit: the container carries a type section
+/// (`type_section_offset` / `type_section_size` are set).
+pub const FLAG_HAS_TYPE_SECTION: u8 = 0x04;
+
 /// Fixed size of the file header in bytes.
 pub const HEADER_SIZE: usize = 256;
+
+/// Byte offset of `flags` within the header.
+pub const FLAGS_OFFSET: usize = 7;
+
+/// Byte range of `content_hash` within the header.
+pub const CONTENT_HASH_RANGE: core::ops::Range<usize> = 8..40;
+
+/// Byte range of `debug_hash` within the header.
+pub const DEBUG_HASH_RANGE: core::ops::Range<usize> = 72..104;
+
+/// Byte range of the section directory (Region 3) within the header: the
+/// offset/size pair of every section, signature sections included.
+pub const SECTION_DIRECTORY_RANGE: core::ops::Range<usize> = 136..192;
 
 /// File header for a bytecode container (256 bytes, fixed layout).
 ///
@@ -173,11 +194,11 @@ impl FileHeader {
         }
 
         let profile = buf[6];
-        let flags = buf[7];
+        let flags = buf[FLAGS_OFFSET];
 
         // Region 2: Hashes (bytes 8-135)
         let mut content_hash = [0u8; 32];
-        content_hash.copy_from_slice(&buf[8..40]);
+        content_hash.copy_from_slice(&buf[CONTENT_HASH_RANGE]);
 
         // Bytes 40-71: reserved (formerly source_hash). Captured but
         // not interpreted; per the spec these must be zero.
@@ -185,7 +206,7 @@ impl FileHeader {
         reserved_hash_slot.copy_from_slice(&buf[40..72]);
 
         let mut debug_hash = [0u8; 32];
-        debug_hash.copy_from_slice(&buf[72..104]);
+        debug_hash.copy_from_slice(&buf[DEBUG_HASH_RANGE]);
 
         let mut layout_hash = [0u8; 32];
         layout_hash.copy_from_slice(&buf[104..136]);

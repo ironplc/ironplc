@@ -15,9 +15,28 @@
 //! patterns rather than magnitudes, and wrapping one is a legitimate thing
 //! for a program to want.
 //!
+//! A constant is checked wherever it is stored: an assignment, a variable's
+//! initial value, the elements of an array, structure or function block
+//! instance initializer, the default of a structure field or type
+//! declaration, and an argument passed to a function or function block
+//! input, against the type of the parameter it binds to.
+//!
 //! How a literal was spelled makes no difference: `16#1FF` is 511 whichever
 //! radix it was written in, and 511 is not a `USINT`. The radix does not
 //! survive parsing in any case.
+//!
+//! A prefixed literal states its own type, and is checked against that type
+//! as well: `INT#40000` is not an `INT` whatever it is stored into, so
+//! `d : DINT := INT#40000` is reported even though 40000 fits a `DINT`. The
+//! same by-value reasoning covers the radix form: `INT#16#FFFF` is 65535 and
+//! an `INT`, and no `INT` is 65535. A pattern that is meant to wrap is
+//! spelled with a bit-string prefix (`WORD#16#FFFF`), which is not checked.
+//!
+//! An untyped real literal takes its type from where it is used, so one
+//! stored into a `REAL` must be a value a `REAL` can represent. That is
+//! reported as the real literal problem `rule_real_literal_range` reports for
+//! a `REAL#` literal, rather than as an overflow: it is the literal's type,
+//! not the variable's, that the value falls outside.
 //!
 //! See section 2.2.1.
 //!
@@ -42,14 +61,18 @@
 //!    VAR
 //!       count : USINT := 300;   (* USINT holds 0..255 *)
 //!       total : SINT;
+//!       wide : DINT;
+//!       ratio : REAL;
 //!    END_VAR
 //!    total := 200;               (* SINT holds -128..127 *)
 //!    count := 255 + 1;           (* the operator does not widen the type *)
+//!    wide := INT#40000;          (* not an INT, whatever wide is *)
+//!    ratio := 1.0E30 * 1.0E30;   (* 1.0E60 is not a REAL *)
 //! END_PROGRAM
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::Located,
+    core::{Located, SourceSpan},
     diagnostic::{Diagnostic, Label},
     scope::ScopeNode,
     textual::*,
@@ -60,8 +83,10 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::{ByteSized, IntermediateType},
+    function_environment::FunctionEnvironment,
+    intermediate_type::{ByteSized, FunctionBlockVarType, IntermediateType},
     result::SemanticResult,
+    rule_real_literal_range,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
     type_environment::TypeEnvironment,
@@ -77,6 +102,7 @@ pub fn apply(
     run_rule(
         RuleConstantRange {
             type_environment: context.types(),
+            function_environment: context.functions(),
             // `Declarations::new` opens the base scope, where declarations
             // made outside any POU land. Opening another here would leave the
             // stack unbalanced when the table drops.
@@ -89,6 +115,8 @@ pub fn apply(
 
 struct RuleConstantRange<'a> {
     type_environment: &'a TypeEnvironment,
+    /// The signature of every function, which states its parameters' types.
+    function_environment: &'a FunctionEnvironment,
     /// The declared type of every variable in scope.
     declarations: Declarations<'a>,
     diagnostics: Vec<Diagnostic>,
@@ -117,15 +145,74 @@ impl RuleConstantRange<'_> {
     /// Reports `constant` when the type it is stored into cannot hold it.
     fn check_constant(&mut self, constant: &ConstantKind, expected: &IntermediateType) {
         // Every integer literal arrives here as a value, whatever radix it
-        // was written in. A `ConstantKind` that is not one -- a duration, a
-        // string -- has no integer range to check.
-        let ConstantKind::IntegerLiteral(literal) = constant else {
-            return;
-        };
-        let Some((minimum, maximum)) = value_range::of(expected) else {
-            return;
-        };
+        // was written in. A `ConstantKind` that is neither an integer nor a
+        // real -- a duration, a string -- has no range to check.
+        match constant {
+            ConstantKind::IntegerLiteral(literal) => {
+                if let Some(range) = value_range::of(expected) {
+                    self.check_literal(literal, range);
+                }
+            }
+            ConstantKind::RealLiteral(literal) => self.check_real_literal(literal, expected),
+            _ => {}
+        }
+    }
 
+    /// Reports an untyped real `literal` stored into a `REAL` that cannot
+    /// hold it.
+    ///
+    /// An untyped literal takes its type from where it is used, so `1.0E300`
+    /// -- or `1.0E30 * 1.0E30` once folded -- stored into a `REAL` is a `REAL`
+    /// literal, and not one a `REAL` can represent. That is the same problem
+    /// `rule_real_literal_range` reports for `REAL#1.0E300`, and it is
+    /// reported the same way.
+    ///
+    /// A prefixed literal states its own type, which that rule checks, and a
+    /// value beyond every real type is reported there too.
+    fn check_real_literal(&mut self, literal: &RealLiteral, expected: &IntermediateType) {
+        let IntermediateType::Real {
+            size: ByteSized::B32,
+        } = expected
+        else {
+            return;
+        };
+        if literal.data_type.is_some()
+            || !literal.value.is_finite()
+            || (literal.value as f32).is_finite()
+        {
+            return;
+        }
+        self.diagnostics.push(rule_real_literal_range::out_of_range(
+            literal,
+            RealTypeName::REAL,
+        ));
+    }
+
+    /// Reports `literal` when the type named by its prefix cannot hold it.
+    ///
+    /// `INT#40000` says the value is an `INT`, and no `INT` is 40000, so the
+    /// literal contradicts itself whatever it is stored into. That is a
+    /// different question from `check_constant`'s, which takes its range from
+    /// the destination: the two are asked independently, so a literal that
+    /// fits neither is reported once for each.
+    fn check_prefixed_literal(&mut self, literal: &IntegerLiteral) {
+        let Some(prefix) = &literal.data_type else {
+            return;
+        };
+        let Some(attributes) = self
+            .type_environment
+            .get(&TypeName::from_id(&prefix.as_id()))
+        else {
+            return;
+        };
+        if let Some(range) = value_range::of(&attributes.representation) {
+            self.check_literal(literal, range);
+        }
+    }
+
+    /// Reports `literal` when its value is outside `range`.
+    fn check_literal(&mut self, literal: &IntegerLiteral, range: (i128, i128)) {
+        let (minimum, maximum) = range;
         let value = literal_value(literal);
         if value.is_some_and(|value| value >= minimum && value <= maximum) {
             return;
@@ -137,15 +224,25 @@ impl RuleConstantRange<'_> {
             || format!("-{}", literal.value.value.value),
             |value| value.to_string(),
         );
+        self.report_out_of_range(literal.value.value.span(), &reported, range);
+    }
+
+    /// Reports the value spelled `reported` as outside `range`.
+    ///
+    /// Every out-of-range constant is reported the same way, whatever
+    /// context it was found in, so that the range that decides the outcome
+    /// is the only thing that varies between reports.
+    fn report_out_of_range(&mut self, span: SourceSpan, reported: &String, range: (i128, i128)) {
+        let (minimum, maximum) = range;
         self.diagnostics.push(
             Diagnostic::problem(
                 Problem::ConstantOverflow,
                 Label::span(
-                    constant.span(),
+                    span,
                     format!("Value must be in the range {minimum} to {maximum}"),
                 ),
             )
-            .with_context("value", &reported)
+            .with_context("value", reported)
             .with_context("minimum", &minimum.to_string())
             .with_context("maximum", &maximum.to_string()),
         );
@@ -155,8 +252,8 @@ impl RuleConstantRange<'_> {
     ///
     /// The walk follows the operators the backend compiles at one operation
     /// type, and stops at anything that introduces a type of its own: a
-    /// function's arguments are its parameters' business, and a variable
-    /// carries its own declaration.
+    /// function's arguments are checked against its parameters when the
+    /// call is visited, and a variable carries its own declaration.
     ///
     /// A negated literal needs no handling here. Constant folding turns
     /// `-200` into one signed literal before any rule runs, so a `Neg` that
@@ -172,16 +269,6 @@ impl RuleConstantRange<'_> {
             ExprKind::Expression(inner) => self.check_expr(inner, expected),
             _ => {}
         }
-    }
-
-    /// The type an expression resolves to, when the analyzer gave it one.
-    ///
-    /// A bare literal resolves to a generic type (`ANY_INT`), which is not in
-    /// the type environment, so it answers `None` rather than a range of its
-    /// own.
-    fn expr_type(&self, expr: &Expr) -> Option<IntermediateType> {
-        let resolved = expr.resolved_type.as_ref()?;
-        Some(self.type_environment.get(resolved)?.representation.clone())
     }
 
     /// The type an assignment writes through `target`.
@@ -209,16 +296,210 @@ impl RuleConstantRange<'_> {
         }
     }
 
+    /// Checks the constants a declaration's initializer stores against the
+    /// declared type.
+    ///
+    /// Every kind of initializer that can hold a constant is checked: a
+    /// simple initial value, the elements of an array initializer, and the
+    /// element values of a function block instance initializer, each against
+    /// the type of the place it initializes.
+    fn check_initializer(&mut self, initializer: &InitialValueAssignmentKind) {
+        match initializer {
+            InitialValueAssignmentKind::Simple(simple) => {
+                if let Some(constant) = &simple.initial_value {
+                    if let Some(declared) = self.representation_of(&simple.type_name) {
+                        self.check_constant(constant, &declared);
+                    }
+                }
+            }
+            InitialValueAssignmentKind::Array(array) => {
+                if let Some(declared) =
+                    variable_type::resolve_initializer(initializer, self.type_environment)
+                {
+                    self.check_array_elements(&array.initial_values, &declared);
+                }
+            }
+            InitialValueAssignmentKind::FunctionBlock(function_block) => {
+                self.check_named_elements(&function_block.type_name, &function_block.init);
+            }
+            // A structure initializer is a `StructureInitializationDeclaration`,
+            // which the visitor reaches on its own, in a `VAR` block and a
+            // `TYPE` block alike. The remaining kinds hold no numeric constant
+            // (a string, an enumerated value, a reference), take their range
+            // from a subrange that `rule_range_limits` checks, or pass
+            // arguments to a constructor rather than store values.
+            _ => {}
+        }
+    }
+
+    /// The representation of the type `type_name` names.
+    fn representation_of(&self, type_name: &TypeName) -> Option<IntermediateType> {
+        self.type_environment
+            .get(type_name)
+            .map(|attributes| attributes.representation.clone())
+    }
+
+    /// Checks structure element initializers against the fields of the type
+    /// `type_name` names.
+    fn check_named_elements(&mut self, type_name: &TypeName, elements: &[StructureElementInit]) {
+        if let Some(declared) = self.representation_of(type_name) {
+            self.check_element_inits(elements, &declared);
+        }
+    }
+
+    /// Checks structure element initializers against the fields of
+    /// `declared`, a structure or function block type.
+    fn check_element_inits(
+        &mut self,
+        elements: &[StructureElementInit],
+        declared: &IntermediateType,
+    ) {
+        for element in elements {
+            if let Some(field) = variable_type::struct_field_type(declared, &element.name) {
+                self.check_struct_value(&element.init, &field);
+            }
+        }
+    }
+
+    /// Checks the value a structure element initializer stores into a field
+    /// of type `expected`.
+    fn check_struct_value(
+        &mut self,
+        value: &StructInitialValueAssignmentKind,
+        expected: &IntermediateType,
+    ) {
+        match value {
+            StructInitialValueAssignmentKind::Constant(constant) => {
+                self.check_constant(constant, expected)
+            }
+            StructInitialValueAssignmentKind::Array(elements) => {
+                self.check_array_elements(elements, expected)
+            }
+            StructInitialValueAssignmentKind::Structure(elements) => {
+                self.check_element_inits(elements, expected)
+            }
+            StructInitialValueAssignmentKind::Expression(expr) => self.check_expr(expr, expected),
+            StructInitialValueAssignmentKind::EnumeratedValue(_)
+            | StructInitialValueAssignmentKind::LateBound(_) => {}
+        }
+    }
+
+    /// Checks the elements of an array initializer against the element type
+    /// of `declared`.
+    ///
+    /// An array initializer lists the elements flat whatever the array's
+    /// shape, so an array whose elements are themselves arrays is checked
+    /// against the innermost element type.
+    fn check_array_elements(
+        &mut self,
+        elements: &[ArrayInitialElementKind],
+        declared: &IntermediateType,
+    ) {
+        // Anything but an array has no element type to check against.
+        let IntermediateType::Array { element_type, .. } = declared else {
+            return;
+        };
+        let mut element_type = element_type.as_ref();
+        while let IntermediateType::Array {
+            element_type: inner,
+            ..
+        } = element_type
+        {
+            element_type = inner;
+        }
+        for element in elements {
+            self.check_array_element(element, element_type);
+        }
+    }
+
+    /// Checks one array initializer element, including every repetition of
+    /// a repeated one (`2(300)`), against `expected`.
+    fn check_array_element(
+        &mut self,
+        element: &ArrayInitialElementKind,
+        expected: &IntermediateType,
+    ) {
+        match element {
+            ArrayInitialElementKind::Constant(constant) => self.check_constant(constant, expected),
+            ArrayInitialElementKind::Repeated(repeated) => {
+                if let Some(inner) = repeated.init.as_ref() {
+                    self.check_array_element(inner, expected);
+                }
+            }
+            ArrayInitialElementKind::EnumValue(_) => {}
+        }
+    }
+
+    /// Checks each input argument of a function call against the type of the
+    /// parameter it binds to.
+    ///
+    /// A generic parameter (`ANY_NUM`) is not a type in the environment and
+    /// states no range, so its argument is not checked.
+    fn check_function_arguments(&mut self, node: &Function) {
+        let Some(signature) = self.function_environment.get(&node.name) else {
+            return;
+        };
+        for (param, arg) in signature.bind_inputs(&node.param_assignment) {
+            if param.is_reference {
+                continue;
+            }
+            if let Some(expected) = self.representation_of(&param.param_type) {
+                self.check_expr(arg, &expected);
+            }
+        }
+    }
+
+    /// Checks each input argument of a function block call against the type
+    /// of the input it binds to: a named argument by name among the
+    /// `VAR_INPUT` and `VAR_IN_OUT` variables, a positional one by position
+    /// among the `VAR_INPUT` variables.
+    fn check_fb_call_arguments(&mut self, node: &FbCall) {
+        let Some(declared) = self.declarations.find(&node.var_name) else {
+            return;
+        };
+        let TypeReference::Named(type_name) = declared.type_reference() else {
+            return;
+        };
+        let Some(IntermediateType::FunctionBlock { fields, .. }) =
+            self.representation_of(&type_name)
+        else {
+            return;
+        };
+
+        let mut positional = fields
+            .iter()
+            .filter(|field| field.var_type == Some(FunctionBlockVarType::Input));
+        for param in &node.params {
+            let (field, arg) = match param {
+                ParamAssignmentKind::PositionalInput(input) => (positional.next(), &input.expr),
+                ParamAssignmentKind::NamedInput(input) => (
+                    fields.iter().find(|field| {
+                        field.name == input.name
+                            && matches!(
+                                field.var_type,
+                                Some(FunctionBlockVarType::Input | FunctionBlockVarType::InOut)
+                            )
+                    }),
+                    &input.expr,
+                ),
+                ParamAssignmentKind::Output(_) => continue,
+            };
+            if let Some(field) = field {
+                self.check_expr(arg, &field.field_type);
+            }
+        }
+    }
+
     /// Checks a comparison's literals against the type of the other side.
     ///
     /// `IF c = 200` compares at `c`'s type, so a literal that `c` can never
     /// hold makes the comparison unsatisfiable rather than false.
     fn check_compare(&mut self, compare: &CompareExpr) {
-        if let Some(left) = self.expr_type(&compare.left) {
-            self.check_expr(&compare.right, &left);
+        if let Some(left) = self.type_environment.representation_of_expr(&compare.left) {
+            self.check_expr(&compare.right, left);
         }
-        if let Some(right) = self.expr_type(&compare.right) {
-            self.check_expr(&compare.left, &right);
+        if let Some(right) = self.type_environment.representation_of_expr(&compare.right) {
+            self.check_expr(&compare.left, right);
         }
     }
 
@@ -227,10 +508,10 @@ impl RuleConstantRange<'_> {
     /// A label the selector can never equal selects a group that can never
     /// run.
     fn check_case(&mut self, node: &Case) {
-        let Some(selector) = self.expr_type(&node.selector) else {
+        let Some(selector) = self.type_environment.representation_of_expr(&node.selector) else {
             return;
         };
-        let Some((minimum, maximum)) = value_range::of(&selector) else {
+        let Some((minimum, maximum)) = value_range::of(selector) else {
             return;
         };
 
@@ -240,9 +521,9 @@ impl RuleConstantRange<'_> {
             .flat_map(|group| group.selectors.iter())
             .filter_map(|selection| match selection {
                 CaseSelectionKind::SignedInteger(value) => Some(value),
-                // A subrange label's bounds are checked against the base type
-                // by `rule_decl_subrange_limits`, and a bit-string label is a
-                // pattern.
+                // A subrange label's bounds are not checked against the
+                // selector type here; `rule_range_limits` checks their order.
+                // A bit-string label is a pattern.
                 _ => None,
             })
             .collect();
@@ -254,17 +535,10 @@ impl RuleConstantRange<'_> {
                 Err(_) => continue,
             };
             if value < minimum || value > maximum {
-                self.diagnostics.push(
-                    Diagnostic::problem(
-                        Problem::ConstantOverflow,
-                        Label::span(
-                            label.value.span(),
-                            format!("Value must be in the range {minimum} to {maximum}"),
-                        ),
-                    )
-                    .with_context("value", &value.to_string())
-                    .with_context("minimum", &minimum.to_string())
-                    .with_context("maximum", &maximum.to_string()),
+                self.report_out_of_range(
+                    label.value.span(),
+                    &value.to_string(),
+                    (minimum, maximum),
                 );
             }
         }
@@ -295,20 +569,19 @@ impl Visitor<Infallible> for RuleConstantRange<'_> {
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-        self.declarations.add_if(
-            node.identifier.symbolic_id(),
-            Declared(node.initializer.clone()),
-        );
+        self.declarations
+            .add_if(node.identifier.symbolic_id(), Declared::of(node));
 
-        if let InitialValueAssignmentKind::Simple(simple) = &node.initializer {
-            if let Some(constant) = &simple.initial_value {
-                if let Some(attributes) = self.type_environment.get(&simple.type_name) {
-                    let declared = attributes.representation.clone();
-                    self.check_constant(constant, &declared);
-                }
-            }
-        }
+        self.check_initializer(&node.initializer);
 
+        node.recurse_visit(self)
+    }
+
+    /// Every integer literal passes through here, wherever it appears, so a
+    /// prefixed one is checked against its own type in an initializer, an
+    /// operand, a comparison or a function argument alike.
+    fn visit_integer_literal(&mut self, node: &IntegerLiteral) -> Result<(), Infallible> {
+        self.check_prefixed_literal(node);
         node.recurse_visit(self)
     }
 
@@ -320,6 +593,47 @@ impl Visitor<Infallible> for RuleConstantRange<'_> {
                 self.check_expr(&node.value, &target);
             }
         }
+        node.recurse_visit(self)
+    }
+
+    /// A type alias's default (`R : REAL := 1.0E300`) is checked against the
+    /// type it aliases.
+    fn visit_simple_declaration(&mut self, node: &SimpleDeclaration) -> Result<(), Infallible> {
+        self.check_initializer(&node.spec_and_init);
+        node.recurse_visit(self)
+    }
+
+    /// A structure field's default is checked against the field's type.
+    fn visit_structure_element_declaration(
+        &mut self,
+        node: &StructureElementDeclaration,
+    ) -> Result<(), Infallible> {
+        self.check_initializer(&node.init);
+        node.recurse_visit(self)
+    }
+
+    fn visit_array_declaration(&mut self, node: &ArrayDeclaration) -> Result<(), Infallible> {
+        if let Some(declared) = self.representation_of(&node.type_name) {
+            self.check_array_elements(&node.init, &declared);
+        }
+        node.recurse_visit(self)
+    }
+
+    fn visit_structure_initialization_declaration(
+        &mut self,
+        node: &StructureInitializationDeclaration,
+    ) -> Result<(), Infallible> {
+        self.check_named_elements(&node.type_name, &node.elements_init);
+        node.recurse_visit(self)
+    }
+
+    fn visit_function(&mut self, node: &Function) -> Result<(), Infallible> {
+        self.check_function_arguments(node);
+        node.recurse_visit(self)
+    }
+
+    fn visit_fb_call(&mut self, node: &FbCall) -> Result<(), Infallible> {
+        self.check_fb_call_arguments(node);
         node.recurse_visit(self)
     }
 
@@ -335,237 +649,4 @@ impl Visitor<Infallible> for RuleConstantRange<'_> {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::stages::analyze;
-    use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::CompilerOptions, parse_program};
-    use ironplc_problems::Problem;
-    use rstest::rstest;
-
-    /// Analyzes `program`, returning how many out-of-range constants it
-    /// reported. Naming the problem keeps a diagnostic from another rule
-    /// from passing for one of ours.
-    fn out_of_range_count(program: &str) -> usize {
-        let options = CompilerOptions::default();
-        let library = parse_program(program, &FileId::default(), &options).unwrap();
-        let (_library, context) = analyze(&[&library], &options).unwrap();
-        context
-            .diagnostics()
-            .iter()
-            .filter(|d| d.code == Problem::ConstantOverflow.code())
-            .count()
-    }
-
-    fn program_with(declarations: &str, body: &str) -> String {
-        format!("PROGRAM main\nVAR\n{declarations}END_VAR\n{body}END_PROGRAM\n")
-    }
-
-    // --- Every integer type's boundaries ---
-    //
-    // For each type: the extremes it can hold are accepted, and one step
-    // beyond either is reported.
-
-    #[rstest]
-    #[case::sint_low("SINT", "-128", true)]
-    #[case::sint_high("SINT", "127", true)]
-    #[case::sint_below("SINT", "-129", false)]
-    #[case::sint_above("SINT", "128", false)]
-    #[case::int_high("INT", "32767", true)]
-    #[case::int_above("INT", "32768", false)]
-    #[case::dint_high("DINT", "2147483647", true)]
-    #[case::dint_above("DINT", "2147483648", false)]
-    #[case::lint_high("LINT", "9223372036854775807", true)]
-    #[case::lint_above("LINT", "9223372036854775808", false)]
-    #[case::usint_low("USINT", "0", true)]
-    #[case::usint_high("USINT", "255", true)]
-    #[case::usint_below("USINT", "-1", false)]
-    #[case::usint_above("USINT", "256", false)]
-    #[case::uint_above("UINT", "65536", false)]
-    #[case::udint_above("UDINT", "4294967296", false)]
-    #[case::ulint_high("ULINT", "18446744073709551615", true)]
-    #[case::ulint_above("ULINT", "18446744073709551616", false)]
-    fn apply_when_initializer_at_boundary_then_ok_or_err(
-        #[case] declared_type: &str,
-        #[case] value: &str,
-        #[case] expected_ok: bool,
-    ) {
-        let program = program_with(&format!("x : {declared_type} := {value};\n"), "");
-
-        assert_eq!(out_of_range_count(&program) == 0, expected_ok);
-    }
-
-    // --- The contexts a constant is checked in ---
-
-    #[test]
-    fn apply_when_assignment_out_of_range_then_err() {
-        let codes = out_of_range_count(&program_with("x : USINT;\n", "x := 300;\n"));
-
-        assert_eq!(codes, 1);
-    }
-
-    /// The operator does not widen the type, so a folded constant is checked
-    /// exactly as a written one is.
-    #[test]
-    fn apply_when_folded_operand_out_of_range_then_err() {
-        let codes = out_of_range_count(&program_with("x : USINT;\n", "x := 255 + 1;\n"));
-
-        assert_eq!(codes, 1);
-    }
-
-    /// A comparison happens at the variable's type, so a literal it can never
-    /// equal is a mistake rather than a false condition.
-    #[test]
-    fn apply_when_comparison_constant_out_of_range_then_err() {
-        let codes = out_of_range_count(&program_with(
-            "x : SINT;\ny : DINT;\n",
-            "IF x = 200 THEN y := 0; END_IF;\n",
-        ));
-
-        assert_eq!(codes, 1);
-    }
-
-    /// A `CASE` label the selector can never equal selects a group that can
-    /// never run.
-    #[test]
-    fn apply_when_case_label_out_of_range_then_err() {
-        let codes = out_of_range_count(&program_with(
-            "x : SINT;\ny : DINT;\n",
-            "CASE x OF\n200: y := 1;\nEND_CASE;\n",
-        ));
-
-        assert_eq!(codes, 1);
-    }
-
-    #[test]
-    fn apply_when_struct_field_out_of_range_then_err() {
-        let codes = out_of_range_count(
-            "TYPE
-Counts : STRUCT
-    small : USINT;
-END_STRUCT;
-END_TYPE
-
-PROGRAM main
-VAR
-    counts : Counts;
-END_VAR
-    counts.small := 300;
-END_PROGRAM",
-        );
-
-        assert_eq!(codes, 1);
-    }
-
-    #[test]
-    fn apply_when_array_element_out_of_range_then_err() {
-        let codes = out_of_range_count(&program_with(
-            "readings : ARRAY[1..2] OF USINT;\ni : DINT;\n",
-            "readings[i] := 300;\n",
-        ));
-
-        assert_eq!(codes, 1);
-    }
-
-    #[test]
-    fn apply_when_global_out_of_range_then_err() {
-        let codes = out_of_range_count(
-            "PROGRAM main
-    g := 300;
-END_PROGRAM
-
-CONFIGURATION config
-VAR_GLOBAL
-    g : USINT;
-END_VAR
-RESOURCE res ON PLC
-    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
-    PROGRAM inst WITH plc_task : main;
-END_RESOURCE
-END_CONFIGURATION",
-        );
-
-        assert_eq!(codes, 1);
-    }
-
-    // --- A subrange states its own range ---
-
-    #[test]
-    fn apply_when_subrange_initializer_out_of_range_then_err() {
-        let codes = out_of_range_count(
-            "TYPE
-Ratio : INT(0..10);
-END_TYPE
-
-PROGRAM main
-VAR
-    r : Ratio := 20;
-END_VAR
-END_PROGRAM",
-        );
-
-        assert_eq!(codes, 1);
-    }
-
-    #[test]
-    fn apply_when_subrange_initializer_in_range_then_ok() {
-        let codes = out_of_range_count(
-            "TYPE
-Ratio : INT(0..10);
-END_TYPE
-
-PROGRAM main
-VAR
-    r : Ratio := 10;
-END_VAR
-END_PROGRAM",
-        );
-
-        assert_eq!(codes, 0);
-    }
-
-    // --- What is deliberately not checked ---
-    //
-    // A bit string is a pattern rather than a magnitude, so wrapping one is
-    // a legitimate thing to want. The type decides that, not how the literal
-    // was spelled.
-
-    #[rstest]
-    #[case::byte("BYTE", "300")]
-    #[case::word("WORD", "70000")]
-    #[case::dword("DWORD", "5000000000")]
-    fn apply_when_bit_string_overflows_then_ok(#[case] declared_type: &str, #[case] value: &str) {
-        let program = program_with(
-            &format!("x : {declared_type};\n"),
-            &format!("x := {value};\n"),
-        );
-
-        assert_eq!(out_of_range_count(&program), 0);
-    }
-
-    /// A radix does not change a value: `16#1FF` is 511, which no `USINT`
-    /// can hold.
-    #[test]
-    fn apply_when_radix_literal_out_of_range_then_err() {
-        let codes = out_of_range_count(&program_with("x : USINT;\n", "x := 16#1FF;\n"));
-
-        assert_eq!(codes, 1);
-    }
-
-    /// The same literal against a type that can hold it stays silent, so the
-    /// check is about the value rather than the spelling.
-    #[test]
-    fn apply_when_radix_literal_in_range_then_ok() {
-        let codes = out_of_range_count(&program_with("x : UINT;\n", "x := 16#1FF;\n"));
-
-        assert_eq!(codes, 0);
-    }
-
-    #[rstest]
-    #[case::real("REAL", "3.4")]
-    #[case::time("TIME", "T#1s")]
-    fn apply_when_not_integer_storage_then_ok(#[case] declared_type: &str, #[case] value: &str) {
-        let program = program_with(&format!("x : {declared_type} := {value};\n"), "");
-
-        assert_eq!(out_of_range_count(&program), 0);
-    }
-}
+mod tests;

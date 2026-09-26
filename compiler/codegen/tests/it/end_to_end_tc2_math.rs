@@ -13,7 +13,7 @@ use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
-use ironplc_sources::libraries::{remove_shadowed_functions, LibraryName, LibraryRegistry};
+use ironplc_sources::libraries::{LibraryName, LibraryRegistry};
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::VmBuffers;
 
@@ -27,9 +27,7 @@ fn run_with_tc2_math(source: &str) -> VmBuffers {
         .expect("bundled Tc2_Math must load")
         .library;
     let user = parse_program(source, &FileId::default(), &options).unwrap();
-    // The same user-shadowing filter the project pipeline applies.
-    let compat = remove_shadowed_functions(vec![compat], &[&user]);
-    let analyze_input: Vec<&Library> = compat.iter().chain(std::iter::once(&user)).collect();
+    let analyze_input: Vec<&Library> = vec![&compat, &user];
     let (analyzed, context) = analyze(&analyze_input, &options).unwrap();
     assert!(
         !context.has_diagnostics(),
@@ -37,9 +35,7 @@ fn run_with_tc2_math(source: &str) -> VmBuffers {
         context.diagnostics()
     );
 
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        system_uptime_global: false,
-    };
+    let codegen_options = ironplc_codegen::CodegenOptions::from(&options);
     let container = compile(
         &analyzed,
         &context,
@@ -207,37 +203,4 @@ fn end_to_end_when_frac_negative_then_sign_of_input() {
 #[test]
 fn end_to_end_when_frac_integral_then_exact_zero() {
     assert_eq!(eval(5.0, 0.0, "FRAC(a)"), 0.0);
-}
-
-// ---------------------------------------------------------------------------
-// Shadowing — a user-defined LTRUNC takes precedence over the library's.
-// ---------------------------------------------------------------------------
-
-#[test]
-fn end_to_end_when_user_function_shadows_ltrunc_then_user_body_runs() {
-    let bufs = run_with_tc2_math(
-        "FUNCTION LTRUNC : LREAL
-VAR_INPUT
-    IN : LREAL;
-END_VAR
-    LTRUNC := 123.0;
-END_FUNCTION
-PROGRAM main
-VAR
-    shadowed : LREAL;
-    library_result : LREAL;
-    a : LREAL;
-    b : LREAL;
-END_VAR
-    a := -400.56;
-    b := 360.0;
-    shadowed := LTRUNC(2.8);
-    library_result := MODABS(a, b);
-END_PROGRAM
-",
-    );
-    // The user's body (constant 123.0), not the library's truncation (2.0).
-    assert_eq!(bufs.vars[0].as_f64(), 123.0);
-    // The rest of the library remains active alongside the user override.
-    assert!((bufs.vars[1].as_f64() - 319.44).abs() < 1.0e-9);
 }

@@ -42,6 +42,57 @@ impl ConstantKind {
             data_type: None,
         }))
     }
+
+    /// Returns the constant with `span` recorded as its position in the
+    /// source text.
+    ///
+    /// Every literal kind carries its own span rather than the enumeration
+    /// carrying one, because a literal is also reachable outside a
+    /// `ConstantKind` (a subrange bound, a case label). Setting them all in
+    /// one place is what keeps `Located for ConstantKind` -- and so
+    /// `Located for ExprKind`, which joins the spans of an expression's
+    /// operands -- from reporting position 0 for an expression built from
+    /// literals.
+    pub fn with_span(self, span: SourceSpan) -> Self {
+        match self {
+            ConstantKind::IntegerLiteral(mut lit) => {
+                lit.value.value.span = span;
+                ConstantKind::IntegerLiteral(lit)
+            }
+            ConstantKind::BitStringLiteral(mut lit) => {
+                lit.value.span = span;
+                ConstantKind::BitStringLiteral(lit)
+            }
+            ConstantKind::RealLiteral(mut lit) => {
+                lit.span = span;
+                ConstantKind::RealLiteral(lit)
+            }
+            ConstantKind::Boolean(mut lit) => {
+                lit.span = span;
+                ConstantKind::Boolean(lit)
+            }
+            ConstantKind::CharacterString(mut lit) => {
+                lit.span = span;
+                ConstantKind::CharacterString(lit)
+            }
+            ConstantKind::Duration(mut lit) => {
+                lit.span = span;
+                ConstantKind::Duration(lit)
+            }
+            ConstantKind::TimeOfDay(mut lit) => {
+                lit.span = span;
+                ConstantKind::TimeOfDay(lit)
+            }
+            ConstantKind::Date(mut lit) => {
+                lit.span = span;
+                ConstantKind::Date(lit)
+            }
+            ConstantKind::DateAndTime(mut lit) => {
+                lit.span = span;
+                ConstantKind::DateAndTime(lit)
+            }
+        }
+    }
 }
 
 impl Located for ConstantKind {
@@ -49,13 +100,13 @@ impl Located for ConstantKind {
         match self {
             ConstantKind::IntegerLiteral(lit) => lit.value.value.span(),
             ConstantKind::BitStringLiteral(lit) => lit.value.span(),
-            ConstantKind::RealLiteral(_)
-            | ConstantKind::Boolean(_)
-            | ConstantKind::CharacterString(_)
-            | ConstantKind::Duration(_)
-            | ConstantKind::TimeOfDay(_)
-            | ConstantKind::Date(_)
-            | ConstantKind::DateAndTime(_) => SourceSpan::default(),
+            ConstantKind::RealLiteral(lit) => lit.span.clone(),
+            ConstantKind::Boolean(lit) => lit.span.clone(),
+            ConstantKind::CharacterString(lit) => lit.span.clone(),
+            ConstantKind::Duration(lit) => lit.span.clone(),
+            ConstantKind::TimeOfDay(lit) => lit.span.clone(),
+            ConstantKind::Date(lit) => lit.span.clone(),
+            ConstantKind::DateAndTime(lit) => lit.span.clone(),
         }
     }
 }
@@ -513,6 +564,8 @@ impl From<Integer> for FixedPoint {
 pub struct RealLiteral {
     pub value: f64,
     pub data_type: Option<RealTypeName>,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl RealLiteral {
@@ -528,6 +581,7 @@ impl RealLiteral {
             .map(|value| RealLiteral {
                 value,
                 data_type: tn,
+                span: SourceSpan::default(),
             })
             .map_err(|_e| "real")
     }
@@ -545,11 +599,16 @@ impl fmt::Display for RealLiteral {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BooleanLiteral {
     pub value: Boolean,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl BooleanLiteral {
     pub fn new(value: Boolean) -> Self {
-        Self { value }
+        Self {
+            value,
+            span: SourceSpan::default(),
+        }
     }
 }
 
@@ -570,6 +629,8 @@ pub struct CharacterStringLiteral {
     /// initializes because a literal also appears in statement bodies, where
     /// there is no declaration to borrow it from.
     pub width: StringType,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl CharacterStringLiteral {
@@ -578,6 +639,7 @@ impl CharacterStringLiteral {
         Self {
             value,
             width: StringType::String,
+            span: SourceSpan::default(),
         }
     }
 
@@ -586,6 +648,7 @@ impl CharacterStringLiteral {
         Self {
             value,
             width: StringType::WString,
+            span: SourceSpan::default(),
         }
     }
 }
@@ -919,24 +982,15 @@ impl ElementaryTypeName {
         }
     }
 
-    /// Returns true if `self` can be implicitly widened to `target` under
+    /// Returns true if `self` can be implicitly *widened* to `target` under
     /// cross-family rules (requires `--allow-cross-family-widening`).
     ///
-    /// Allowed: bit-string → integer where target is strictly wider.
-    /// Not allowed (in general): integer → bit-string, or equal-width
-    /// bit-string ↔ integer -- both always require an explicit conversion.
-    ///
-    /// One verified exception: `UDINT` ↔ `DWORD` (32-bit), both
-    /// directions, despite being equal width. Beckhoff's own
-    /// documentation states no implicit conversion exists between
-    /// bit-string and integer types even at equal width, but this was
-    /// confirmed permissive against a real TcXaeShell build. Scoped to
-    /// exactly this pair -- other same-width
-    /// bit-string/unsigned-integer pairs (`BYTE`↔`USINT`, `WORD`↔`UINT`,
-    /// `LWORD`↔`ULINT`) and signed integers are not verified and must not
-    /// be assumed to behave the same.
+    /// Widening moves a value into a type that can hold strictly more: only
+    /// bit-string → integer, and only where the target is strictly wider.
+    /// Integer → bit-string never widens, and equal-width pairs widen
+    /// nothing, so neither is answered here. For the one equal-width pair
+    /// that converts implicitly, see [`Self::can_convert_cross_family_to`].
     pub fn can_widen_cross_family_to(&self, target: &ElementaryTypeName) -> bool {
-        use ElementaryTypeName::{DWORD, UDINT};
         use TypeFamily::*;
         let Some((src_family, src_bits)) = self.type_properties() else {
             return false;
@@ -945,12 +999,42 @@ impl ElementaryTypeName {
             return false;
         };
         match (&src_family, &tgt_family) {
-            (BitString, UnsignedInteger) | (UnsignedInteger, BitString)
-                if matches!(self, DWORD | UDINT) && matches!(target, DWORD | UDINT) =>
-            {
-                true
-            }
             (BitString, SignedInteger | UnsignedInteger) => tgt_bits > src_bits,
+            _ => false,
+        }
+    }
+
+    /// Returns true if `self` can be implicitly *converted* to `target` at
+    /// equal width under cross-family rules (requires
+    /// `--allow-cross-family-conversion`).
+    ///
+    /// This is not widening: the two types occupy the same slot, so the
+    /// conversion is a bit-pattern no-op and runs in both directions. It is
+    /// also the one case where integer → bit-string is implicit.
+    ///
+    /// Exactly one pair qualifies: `UDINT` ↔ `DWORD` (32-bit). Beckhoff's own
+    /// documentation states no implicit conversion exists between bit-string
+    /// and integer types even at equal width, but this was confirmed
+    /// permissive against a real TcXaeShell build. Other same-width
+    /// bit-string/unsigned-integer pairs (`BYTE`↔`USINT`, `WORD`↔`UINT`,
+    /// `LWORD`↔`ULINT`) and signed integers are not verified and must not be
+    /// assumed to behave the same.
+    pub fn can_convert_cross_family_to(&self, target: &ElementaryTypeName) -> bool {
+        use ElementaryTypeName::{DWORD, UDINT};
+        use TypeFamily::*;
+        let Some((src_family, src_bits)) = self.type_properties() else {
+            return false;
+        };
+        let Some((tgt_family, tgt_bits)) = target.type_properties() else {
+            return false;
+        };
+        if src_bits != tgt_bits {
+            return false;
+        }
+        match (&src_family, &tgt_family) {
+            (BitString, UnsignedInteger) | (UnsignedInteger, BitString) => {
+                matches!(self, DWORD | UDINT) && matches!(target, DWORD | UDINT)
+            }
             _ => false,
         }
     }
@@ -1745,8 +1829,11 @@ pub struct StringDeclaration {
     /// The size of a single 'character'
     #[recurse(ignore)]
     pub width: StringType,
-    #[recurse(ignore)]
-    pub init: Option<String>,
+    /// Default value of the type. The literal's width is the declared width
+    /// (the grammar accepts either delimiter here and the declaration
+    /// decides), and it keeps its own span so a check on the literal can
+    /// point at it.
+    pub init: Option<CharacterStringLiteral>,
 }
 
 /// Location prefix for directly represented variables.
@@ -2019,6 +2106,23 @@ impl VarDecl {
         }
     }
 
+    /// Creates a variable declaration against a user type name with a bare
+    /// identifier as its initial value, `name : type_name := initial_value`,
+    /// as the parser leaves it before the type is known (ADR-0050).
+    /// The declaration has type `VAR` and no qualifier.
+    pub fn late_bound_value(name: &str, type_name: &str, initial_value: &str) -> Self {
+        VarDecl {
+            identifier: VariableIdentifier::new_symbol(name),
+            var_type: VariableType::Var,
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
+                type_name: TypeName::from(type_name),
+                initial_value: Some(LateResolvedInitialValue::Value(Id::from(initial_value))),
+            }),
+            block: next_block_id(),
+        }
+    }
+
     /// Creates a variable declaration for enumeration having an initial value.
     /// The declaration has type `VAR` and no qualifier.
     pub fn enumerated(name: &str, type_name: &str, initial_value: &str) -> Self {
@@ -2083,7 +2187,9 @@ impl VarDecl {
             identifier: VariableIdentifier::new_symbol(name),
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
-            initializer: InitialValueAssignmentKind::LateResolvedType(TypeName::from(type_name)),
+            initializer: InitialValueAssignmentKind::LateResolvedType(
+                LateResolvedInitializer::bare(TypeName::from(type_name)),
+            ),
             block: next_block_id(),
         }
     }
@@ -2101,49 +2207,7 @@ impl VarDecl {
     }
 
     pub fn type_name(&self) -> TypeReference {
-        match &self.initializer {
-            InitialValueAssignmentKind::None(_source_span) => TypeReference::Unspecified,
-            InitialValueAssignmentKind::Simple(simple_initializer) => {
-                TypeReference::Named(simple_initializer.type_name.clone())
-            }
-            InitialValueAssignmentKind::String(string_initializer) => {
-                TypeReference::Named(string_initializer.type_name())
-            }
-            InitialValueAssignmentKind::EnumeratedValues(_enumerated_values_initializer) => {
-                TypeReference::Inline
-            }
-            InitialValueAssignmentKind::EnumeratedType(enumerated_initial_value_assignment) => {
-                TypeReference::Named(enumerated_initial_value_assignment.type_name.clone())
-            }
-            InitialValueAssignmentKind::FunctionBlock(function_block_initial_value_assignment) => {
-                TypeReference::Named(function_block_initial_value_assignment.type_name.clone())
-            }
-            InitialValueAssignmentKind::FunctionBlockCall(function_block_call_initializer) => {
-                TypeReference::Named(function_block_call_initializer.type_name.clone())
-            }
-            InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
-                match subrange_specification_kind {
-                    SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
-                    SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
-                }
-            }
-            InitialValueAssignmentKind::Structure(structure_initialization_declaration) => {
-                TypeReference::Named(structure_initialization_declaration.type_name.clone())
-            }
-            InitialValueAssignmentKind::Array(array_initial_value_assignment) => {
-                match &array_initial_value_assignment.spec {
-                    SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
-                    SpecificationKind::Inline(_) => TypeReference::Inline,
-                }
-            }
-            InitialValueAssignmentKind::Reference(_) => TypeReference::Inline,
-            InitialValueAssignmentKind::LateResolvedType(type_name) => {
-                TypeReference::Named(type_name.clone())
-            }
-            InitialValueAssignmentKind::SimpleExpr(simple_expr_initializer) => {
-                TypeReference::Named(simple_expr_initializer.type_name.clone())
-            }
-        }
+        self.initializer.type_reference()
     }
 }
 
@@ -2366,6 +2430,9 @@ pub enum DeclarationQualifier {
     Retain,
     /// Stored so that the value is NOT retained through power loss.
     NonRetain,
+    /// Stored so that the value survives a download, reset, or power loss
+    /// (Beckhoff TwinCAT/CODESYS extension, not part of the IEC standard).
+    Persistent,
 }
 
 /// Location assignment for a variable.
@@ -2486,9 +2553,10 @@ pub enum InitialValueAssignmentKind {
     Array(ArrayInitialValueAssignment),
     /// Reference type initializer (REF_TO).
     Reference(ReferenceInitializer),
-    /// Type that is ambiguous until have discovered type
-    /// definitions. Value is the name of the type.
-    LateResolvedType(TypeName),
+    /// A declaration whose type is a user-defined name the parser cannot
+    /// classify, with the initializer exactly as written. The type
+    /// resolver replaces it with the kind the type implies (ADR-0050).
+    LateResolvedType(LateResolvedInitializer),
     /// A constant-expression initializer not yet folded to a literal
     /// (extension — see `allow_constant_initializer_expressions`).
     /// Always normalized to `Simple` by
@@ -2497,7 +2565,111 @@ pub enum InitialValueAssignmentKind {
     SimpleExpr(SimpleExprInitializer),
 }
 
+/// A declaration against a user-defined type name, before the type is known.
+///
+/// `T` in `x : T`, `x : T := (a := 1)` or `x : T := Red` may be a structure,
+/// a function block, an enumeration or an alias of an elementary type, and
+/// only the type resolver can tell. The parser records the initializer as
+/// written and decides nothing; see ADR-0050.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct LateResolvedInitializer {
+    pub type_name: TypeName,
+    pub initial_value: Option<LateResolvedInitialValue>,
+}
+
+impl LateResolvedInitializer {
+    /// A bare declaration, `x : T`.
+    pub fn bare(type_name: TypeName) -> Self {
+        LateResolvedInitializer {
+            type_name,
+            initial_value: None,
+        }
+    }
+}
+
+/// The initializer written against a type the parser could not classify.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub enum LateResolvedInitialValue {
+    /// `(a := 1, b := 2)`: a structure's fields, or a function block's
+    /// members.
+    Members(Vec<StructureElementInit>),
+    /// `Red`: an enumeration's value, or a named constant for any other
+    /// type.
+    Value(Id),
+}
+
 impl InitialValueAssignmentKind {
+    /// Returns the type this initializer declares: the name it states, or
+    /// [`TypeReference::Inline`] for a type spelled out in place.
+    pub fn type_reference(&self) -> TypeReference {
+        match self {
+            InitialValueAssignmentKind::None(_source_span) => TypeReference::Unspecified,
+            InitialValueAssignmentKind::Simple(simple_initializer) => {
+                TypeReference::Named(simple_initializer.type_name.clone())
+            }
+            InitialValueAssignmentKind::String(string_initializer) => {
+                TypeReference::Named(string_initializer.type_name())
+            }
+            InitialValueAssignmentKind::EnumeratedValues(_enumerated_values_initializer) => {
+                TypeReference::Inline
+            }
+            InitialValueAssignmentKind::EnumeratedType(enumerated_initial_value_assignment) => {
+                TypeReference::Named(enumerated_initial_value_assignment.type_name.clone())
+            }
+            InitialValueAssignmentKind::FunctionBlock(function_block_initial_value_assignment) => {
+                TypeReference::Named(function_block_initial_value_assignment.type_name.clone())
+            }
+            InitialValueAssignmentKind::FunctionBlockCall(function_block_call_initializer) => {
+                TypeReference::Named(function_block_call_initializer.type_name.clone())
+            }
+            InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
+                match subrange_specification_kind {
+                    SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
+                    SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
+                }
+            }
+            InitialValueAssignmentKind::Structure(structure_initialization_declaration) => {
+                TypeReference::Named(structure_initialization_declaration.type_name.clone())
+            }
+            InitialValueAssignmentKind::Array(array_initial_value_assignment) => {
+                match &array_initial_value_assignment.spec {
+                    SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
+                    SpecificationKind::Inline(_) => TypeReference::Inline,
+                }
+            }
+            InitialValueAssignmentKind::Reference(_) => TypeReference::Inline,
+            InitialValueAssignmentKind::LateResolvedType(late) => {
+                TypeReference::Named(late.type_name.clone())
+            }
+            InitialValueAssignmentKind::SimpleExpr(simple_expr_initializer) => {
+                TypeReference::Named(simple_expr_initializer.type_name.clone())
+            }
+        }
+    }
+
+    /// Returns whether the declaration states an initial value: a literal,
+    /// enumerated or string value, at least one array element, at least one
+    /// structure member, or a reference target. A function-block instance
+    /// has state rather than a value, and an initializer whose kind is not
+    /// yet resolved states nothing.
+    pub fn has_initial_value(&self) -> bool {
+        match self {
+            InitialValueAssignmentKind::Simple(si) => si.initial_value.is_some(),
+            InitialValueAssignmentKind::String(si) => si.initial_value.is_some(),
+            InitialValueAssignmentKind::EnumeratedValues(ev) => ev.initial_value.is_some(),
+            InitialValueAssignmentKind::EnumeratedType(et) => et.initial_value.is_some(),
+            InitialValueAssignmentKind::Array(arr) => !arr.initial_values.is_empty(),
+            InitialValueAssignmentKind::Structure(st) => !st.elements_init.is_empty(),
+            InitialValueAssignmentKind::Reference(re) => re.initial_value.is_some(),
+            InitialValueAssignmentKind::None(_)
+            | InitialValueAssignmentKind::FunctionBlock(_)
+            | InitialValueAssignmentKind::FunctionBlockCall(_)
+            | InitialValueAssignmentKind::Subrange(_)
+            | InitialValueAssignmentKind::LateResolvedType(_)
+            | InitialValueAssignmentKind::SimpleExpr(_) => false,
+        }
+    }
+
     /// Creates an initial value with
     pub fn simple_uninitialized(type_name: TypeName) -> Self {
         InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -2545,6 +2717,16 @@ pub enum StructInitialValueAssignmentKind {
     /// call-style FB-instance/struct initializers where the value is
     /// computed at instantiation time, not a compile-time constant.
     Expression(Expr),
+    /// A bare identifier, before anything knows what it names.
+    ///
+    /// `(x := g)` is one token in a position that accepts both an
+    /// enumerated value and a variable reference, and the parser has no
+    /// declarations in scope to tell them apart. Recording the ambiguity is
+    /// what keeps a diagnostic from naming the wrong construct;
+    /// `xform_resolve_late_bound_expr_kind` replaces this with
+    /// [`Self::EnumeratedValue`] or [`Self::Expression`] once declarations
+    /// are known, and no later stage sees it.
+    LateBound(LateBound),
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]
@@ -2607,9 +2789,10 @@ pub struct StringInitializer {
     #[recurse(ignore)]
     pub width: StringType,
     /// Default value of the string. If not specified, then
-    /// the default value is the empty string.
-    #[recurse(ignore)]
-    pub initial_value: Option<Vec<char>>,
+    /// the default value is the empty string. The literal keeps the width
+    /// its delimiter spelled and its own span, so a check on the literal
+    /// can point at it.
+    pub initial_value: Option<CharacterStringLiteral>,
 
     #[located(position)]
     pub keyword_span: SourceSpan,
@@ -2821,8 +3004,11 @@ pub struct FunctionBlockDeclaration {
     /// `None` for an ordinary function block — the common case — so OOP is
     /// unrepresentable on a plain FB rather than "present but empty."
     /// `Some` only when the source actually uses `EXTENDS`, `IMPLEMENTS`,
-    /// or `ABSTRACT`. See `LanguageExtension` impl on `FunctionBlockOop` and
-    /// `specs/design/beckhoff-twincat-dialect.md` §1.4.
+    /// or `ABSTRACT`. See `FunctionBlockOop` for why the facet is its own
+    /// struct and why `base` is an `Option` where
+    /// `InterfaceDeclaration::extends` is a `Vec`, and the
+    /// `LanguageExtension` impl on it for why only the facet, and not the
+    /// whole declaration, is an extension.
     pub oop: Option<FunctionBlockOop>,
     /// `METHOD ... END_METHOD` blocks declared on this function block
     /// (OOP extension). Empty for an ordinary function block — same
@@ -3207,12 +3393,14 @@ mod tests {
         let rl1 = RealLiteral {
             value: 1.23,
             data_type: None,
+            span: SourceSpan::default(),
         };
         let rl2 = rl1.clone();
         assert_eq!(rl1, rl2);
         let rl3 = RealLiteral {
             value: 2.34,
             data_type: None,
+            span: SourceSpan::default(),
         };
         assert_ne!(rl1, rl3);
     }
@@ -3239,11 +3427,13 @@ mod tests {
     fn test_boolean_literal_partial_eq_and_clone() {
         let bl1 = BooleanLiteral {
             value: Boolean::True,
+            span: SourceSpan::default(),
         };
         let bl2 = bl1.clone();
         assert_eq!(bl1, bl2);
         let bl3 = BooleanLiteral {
             value: Boolean::False,
+            span: SourceSpan::default(),
         };
         assert_ne!(bl1, bl3);
     }
@@ -3564,6 +3754,7 @@ mod tests {
         let rl = RealLiteral {
             value: 3.25,
             data_type: Some(RealTypeName::REAL),
+            span: SourceSpan::default(),
         };
         assert_eq!(format!("{rl}"), "REAL#3.25");
     }
@@ -3573,6 +3764,7 @@ mod tests {
         let rl = RealLiteral {
             value: 2.5,
             data_type: None,
+            span: SourceSpan::default(),
         };
         assert_eq!(format!("{rl}"), "2.5");
     }
@@ -3581,6 +3773,7 @@ mod tests {
     fn display_when_boolean_literal_then_value() {
         let bl = BooleanLiteral {
             value: Boolean::True,
+            span: SourceSpan::default(),
         };
         assert_eq!(format!("{bl}"), "TRUE");
     }
@@ -3673,6 +3866,7 @@ mod tests {
         let ck = ConstantKind::RealLiteral(RealLiteral {
             value: 1.5,
             data_type: None,
+            span: SourceSpan::default(),
         });
         assert_eq!(format!("{ck}"), "1.5");
     }
@@ -3681,6 +3875,7 @@ mod tests {
     fn display_when_constant_kind_boolean_then_formatted() {
         let ck = ConstantKind::Boolean(BooleanLiteral {
             value: Boolean::True,
+            span: SourceSpan::default(),
         });
         assert_eq!(format!("{ck}"), "TRUE");
     }
@@ -3805,8 +4000,8 @@ mod tests {
     #[case::byte_to_sint(ElementaryTypeName::BYTE, ElementaryTypeName::SINT, false)]
     #[case::word_to_int(ElementaryTypeName::WORD, ElementaryTypeName::INT, false)]
     #[case::int_to_byte(ElementaryTypeName::INT, ElementaryTypeName::BYTE, false)]
-    #[case::udint_to_dword(ElementaryTypeName::UDINT, ElementaryTypeName::DWORD, true)]
-    #[case::dword_to_udint(ElementaryTypeName::DWORD, ElementaryTypeName::UDINT, true)]
+    #[case::udint_to_dword(ElementaryTypeName::UDINT, ElementaryTypeName::DWORD, false)]
+    #[case::dword_to_udint(ElementaryTypeName::DWORD, ElementaryTypeName::UDINT, false)]
     #[case::dint_to_dword(ElementaryTypeName::DINT, ElementaryTypeName::DWORD, false)]
     #[case::dword_to_dint(ElementaryTypeName::DWORD, ElementaryTypeName::DINT, false)]
     #[case::word_to_uint(ElementaryTypeName::WORD, ElementaryTypeName::UINT, false)]
@@ -3817,5 +4012,30 @@ mod tests {
         #[case] expected: bool,
     ) {
         assert_eq!(from.can_widen_cross_family_to(&to), expected);
+    }
+
+    /// Equal-width cross-family conversion is a separate rule from widening:
+    /// it converts nothing wider, runs in both directions, and is scoped to
+    /// the one verified pair.
+    #[rstest]
+    #[case::udint_to_dword(ElementaryTypeName::UDINT, ElementaryTypeName::DWORD, true)]
+    #[case::dword_to_udint(ElementaryTypeName::DWORD, ElementaryTypeName::UDINT, true)]
+    // Other equal-width bit-string/unsigned pairs are unverified, so rejected.
+    #[case::word_to_uint(ElementaryTypeName::WORD, ElementaryTypeName::UINT, false)]
+    #[case::uint_to_word(ElementaryTypeName::UINT, ElementaryTypeName::WORD, false)]
+    #[case::byte_to_usint(ElementaryTypeName::BYTE, ElementaryTypeName::USINT, false)]
+    #[case::lword_to_ulint(ElementaryTypeName::LWORD, ElementaryTypeName::ULINT, false)]
+    // Signed integers are excluded even at equal width.
+    #[case::dword_to_dint(ElementaryTypeName::DWORD, ElementaryTypeName::DINT, false)]
+    #[case::dint_to_dword(ElementaryTypeName::DINT, ElementaryTypeName::DWORD, false)]
+    // Widening is the other rule's job, not this one's.
+    #[case::byte_to_int(ElementaryTypeName::BYTE, ElementaryTypeName::INT, false)]
+    #[case::udint_to_lword(ElementaryTypeName::UDINT, ElementaryTypeName::LWORD, false)]
+    fn can_convert_cross_family_to_when_source_and_target_then_matches_expected(
+        #[case] from: ElementaryTypeName,
+        #[case] to: ElementaryTypeName,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(from.can_convert_cross_family_to(&to), expected);
     }
 }

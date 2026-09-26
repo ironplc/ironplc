@@ -3,6 +3,7 @@
 status: proposed
 date: 2026-02-25
 amended: 2026-08-31 (Implementation Status added; status unchanged)
+amended: 2026-09-05 (host `no_std` gate recorded; status unchanged)
 
 ## Context and Problem Statement
 
@@ -123,6 +124,13 @@ What did not:
 * Confirmation items 1 and 2 — the bare-metal cross-compile and the Arduino Due
   example — do not exist, and the `justfile` has no bare-metal target, so nothing
   prevents a `std` dependency from re-entering the VM.
+
+  Partly closed since: `just compile` now builds `ironplc-container` with
+  `--no-default-features`, so a `std` import that reaches one of its
+  always-available modules fails CI. That is a host build and catches an
+  import, not a linker symbol, and it covers only the container — the VM has no
+  `#![no_std]` to gate. Confirmation item 1 still wants both crates built for
+  `thumbv7em-none-eabihf`.
 
 The decision stands; the work is unfinished. The pull request that lands the
 cross-compile gate is the one that flips this ADR to `accepted`.

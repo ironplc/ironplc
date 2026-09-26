@@ -1,7 +1,7 @@
 [package]
 name = "ironplc-container"
 description = "Binary container format for IronPLC bytecode files"
-version = "0.241.0"
+version = "0.246.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -9,10 +9,18 @@ repository.workspace = true
 
 [features]
 default = ["std"]
-std = ["dep:blake3"]
+std = []
+# Exposes `test_support`, the container fixtures shared by the test suites of
+# `vm`, `vm-cli` and `project`. Implies `std` because the fixtures are built
+# from `ContainerBuilder`, which is itself `std`-only. Enable it from
+# `[dev-dependencies]` only, so it never reaches a normal build.
+test-support = ["std"]
 
 [dependencies]
-blake3 = { version = "1", optional = true }
+# Without `std` so the `no_std` reader (`ContainerRef`) can check the content
+# hash. Other crates in the workspace enable blake3's `std` feature; feature
+# unification is harmless here because the hash output does not depend on it.
+blake3 = { version = "1", default-features = false }
 container_derive = { path = "../container_derive" }
 
 [build-dependencies]
@@ -20,7 +28,7 @@ ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
 
 [dev-dependencies]
 spec_test_macro = { path = "../spec_test_macro" }
-rstest = "0.26"
+rstest = "0.27"
 
 [lints]
 workspace = true

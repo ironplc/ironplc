@@ -23,6 +23,14 @@ The following code will generate error P4034:
 
 The assignment ``narrow := wide`` copies a ``WSTRING`` into a ``STRING``, which would reinterpret UTF-16LE bytes as Latin-1 characters.
 
+The same applies to the operands of one operation. ``CONCAT(narrow, wide)``,
+``FIND(narrow, wide)`` and ``narrow = wide`` each need a single encoding to
+work in, and there is none both operands share.
+
+A string literal is typed by its quotes: ``'abc'`` is a ``STRING`` and
+``"abc"`` a ``WSTRING``. So ``wide = 'abc'`` mixes the two types the same way
+``wide = narrow`` does, and is the same error; write ``wide = "abc"``.
+
 To fix this error, use variables of the same string type on both sides:
 
 .. code-block::

@@ -477,6 +477,35 @@ fn check_when_twincat_solution_declares_pou_methods_then_ok(
     Ok(())
 }
 
+/// End-to-end coverage for a real TwinCAT `.TcIO` interface file: a
+/// realistic solution whose `I_Drivable.TcIO` declares a bare
+/// `INTERFACE`, and whose `FB_Axis.TcPOU` `IMPLEMENTS` it. Interface
+/// dispatch is not yet implemented (a later ADR-0041 phase), so
+/// `INTERFACE`/`IMPLEMENTS` are flagged as P9999 by
+/// `rule_unsupported_extension` regardless of dialect -- this asserts
+/// that expected failure, proving the `.TcIO` file itself is
+/// discovered, parsed, and position-mapped correctly through the real
+/// CLI pipeline. Before `<Itf>` elements were read, `.TcIO` files were
+/// only ever exercised via inline XML string literals, never a real
+/// file discovered and parsed through the CLI.
+#[test]
+fn check_when_twincat_solution_declares_interface_then_p9999(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("check")
+        .arg("--dialect")
+        .arg("twincat")
+        .arg(path_to_test_resource("twincat_interface_solution"));
+    cmd.assert().failure().stderr(
+        predicate::str::contains("I_Drivable.TcIO")
+            .and(predicate::str::contains("FB_Axis.TcPOU"))
+            .and(predicate::str::contains("Check failed with 2 problem(s)")),
+    );
+
+    Ok(())
+}
+
 /// `Tc2_Utilities` activation from the project file alone: a realistic
 /// TwinCAT solution whose `.plcproj` declares a `<PlaceholderReference>` to
 /// `Tc2_Utilities`, whose `MAIN` calls `LREAL_TO_FMTSTR`. The check passes

@@ -5,10 +5,10 @@
 //! keep module sizes within the 1000-line guideline.
 
 use ironplc_dsl::common::{
-    ConstantKind, FunctionBlockBodyKind, IntegerRef, SignedInteger, SignedIntegerRef,
-    StringInitializer, StringSpecification,
+    BitStringLiteral, ConstantKind, FunctionBlockBodyKind, IntegerRef, SignedInteger,
+    SignedIntegerRef, StringInitializer, StringSpecification,
 };
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     CaseSelectionKind, Expr, ExprKind, FbCall, ParamAssignmentKind, Statements, StmtKind,
@@ -17,31 +17,41 @@ use ironplc_dsl::textual::{
 use ironplc_problems::Problem;
 
 use super::compile::{
-    emit_string_literal_load, CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness,
-    VarTypeInfo, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
+    CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness, VarTypeInfo,
+    DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_expr::{
     compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
-    condition_op_type, emit_add, emit_classified_cmp_br, emit_ge, emit_le, emit_load_var,
+    condition_op_type, emit_add, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, emit_load_var,
     emit_store_var, emit_truncation, extract_bit_access_target, extract_partial_access_target,
     op_type, resolve_variable, resolve_variable_name, signed_integer_to_i64, try_classify_cmp,
     variable_span, ClassifiedCmp,
 };
+use super::compile_fb_init::{compile_fb_field_store, resolve_fb_field_op_type};
 use crate::emit::Emitter;
+use crate::string_width::compile_string_value;
 use ironplc_container::opcode;
 
 /// Compiles a function block body.
+///
+/// `pou_span` locates the program organization unit that owns the body. An
+/// SFC body carries no span of its own, so a diagnostic about the body kind
+/// points at the POU instead.
 pub(crate) fn compile_body(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     body: &FunctionBlockBodyKind,
+    pou_span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     match body {
         FunctionBlockBodyKind::Statements(statements) => {
             compile_statements(emitter, ctx, statements)
         }
         FunctionBlockBodyKind::Empty => Ok(()),
-        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::todo()),
+        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::not_implemented(Label::span(
+            pou_span.clone(),
+            "Sequential function chart body",
+        ))),
     }
 }
 
@@ -104,13 +114,29 @@ fn compile_statement(
     record_statement_position(emitter, ctx, stmt);
     match stmt {
         StmtKind::Assignment(assignment) => {
+            // TwinCAT/CODESYS `S=`/`R=` set/reset binding: parsed and
+            // analyzed like any other BOOL assignment, but codegen has no
+            // lowering for "write only when true, otherwise leave
+            // unchanged" yet (unlike `ref_bind`, which reuses the ordinary
+            // `ExprKind::Ref` value and needs no special case here at all).
+            // Refuse explicitly rather than emit the unconditional store a
+            // naive fallthrough would produce. See issue #1680.
+            if assignment.set_bind || assignment.reset_bind {
+                return Err(Diagnostic::todo_with_span(assignment.span()));
+            }
+
             // Dereference assignment: myRef^ := expr
             // Compile the RHS, load the reference variable, emit STORE_INDIRECT.
             if assignment.deref {
                 let target_name = resolve_variable_name(&assignment.target);
                 let target_index = target_name
                     .and_then(|name| ctx.variables.get(name).copied())
-                    .ok_or_else(|| Diagnostic::todo())?;
+                    .ok_or_else(|| {
+                        Diagnostic::not_implemented(Label::span(
+                            assignment.target.span(),
+                            "Dereferenced assignment target is not a plain variable",
+                        ))
+                    })?;
 
                 // Compile the value expression (use DEFAULT_OP_TYPE; the referenced
                 // type determines the actual width at runtime).
@@ -157,28 +183,13 @@ fn compile_statement(
                 // `ctx.struct_vars`, and their fields are stored in the data
                 // region addressed via FB_STORE_PARAM.
                 if let SymbolicVariableKind::Named(named) = structured.record.as_ref() {
-                    if let Some(fb_info) = ctx.fb_instances.get(&named.name) {
-                        let field_name = structured.field.to_string().to_lowercase();
-                        let field_idx = fb_info
-                            .field_indices
-                            .get(&field_name)
-                            .copied()
-                            .ok_or_else(|| {
-                                Diagnostic::not_implemented(Label::span(
-                                    structured.field.span(),
-                                    format!(
-                                        "Unknown field '{}' on function block '{}'",
-                                        structured.field, named.name
-                                    ),
-                                ))
-                            })?;
-                        let var_index = fb_info.var_index;
-                        let type_id = fb_info.type_id;
-                        let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
-                        emitter.emit_fb_load_instance(var_index);
-                        compile_expr(emitter, ctx, &assignment.value, op_type)?;
-                        emitter.emit_fb_store_param(field_idx);
-                        emitter.emit_pop();
+                    if compile_fb_field_store(
+                        emitter,
+                        ctx,
+                        &named.name,
+                        &structured.field,
+                        &assignment.value,
+                    )? {
                         return Ok(());
                     }
                 }
@@ -193,10 +204,12 @@ fn compile_statement(
                         &structured.field,
                         0,
                     )?;
-                if matches!(
-                    &field_type,
-                    ironplc_analyzer::intermediate_type::IntermediateType::String { .. }
-                ) {
+                if let ironplc_analyzer::intermediate_type::IntermediateType::String {
+                    char_width,
+                    ..
+                } = &field_type
+                {
+                    let char_width = *char_width;
                     let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
                         Diagnostic::not_implemented(Label::span(
                             structured.span(),
@@ -204,7 +217,9 @@ fn compile_statement(
                         ))
                     })?;
                     let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
-                    compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+                    // Produce the RHS at the field's declared encoding, the
+                    // same as any other string destination (ADR-0034).
+                    compile_string_value(emitter, ctx, &assignment.value, char_width)?;
                     emitter.emit_str_store_var(byte_offset);
                     return Ok(());
                 }
@@ -235,16 +250,9 @@ fn compile_statement(
                 .map(|info| (info.data_offset, info.char_width));
 
             if let Some((data_offset, char_width)) = string_info {
-                // String target: produce the RHS as a temp buffer, then
-                // STR_STORE_VAR. A string literal is encoded at the target's
-                // width so the store's encoding check passes; variables and
-                // function results already carry their own width (ADR-0034).
-                if let ExprKind::Const(ConstantKind::CharacterString(lit)) = &assignment.value.kind
-                {
-                    emit_string_literal_load(emitter, ctx, &lit.value, char_width);
-                } else {
-                    compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
-                }
+                // String target: produce the RHS as a temp buffer at the
+                // target's encoding, then STR_STORE_VAR (ADR-0034).
+                compile_string_value(emitter, ctx, &assignment.value, char_width)?;
                 emitter.emit_str_store_var(data_offset);
             } else {
                 match crate::compile_array::resolve_access(ctx, &assignment.target)? {
@@ -279,22 +287,15 @@ fn compile_statement(
                         let target_span = variable_span(&assignment.target);
 
                         if is_string_elem {
-                            // String array: produce the RHS as a temp buffer, then
-                            // flat index, then STR_STORE_ARRAY_ELEM. A string
-                            // literal is encoded at the element width so the
-                            // store's encoding check passes.
-                            if let ExprKind::Const(ConstantKind::CharacterString(lit)) =
-                                &assignment.value.kind
-                            {
-                                emit_string_literal_load(
-                                    emitter,
-                                    ctx,
-                                    &lit.value,
-                                    element_char_width,
-                                );
-                            } else {
-                                compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
-                            }
+                            // String array: produce the RHS as a temp buffer at
+                            // the element's encoding, then the flat index, then
+                            // STR_STORE_ARRAY_ELEM (ADR-0034).
+                            compile_string_value(
+                                emitter,
+                                ctx,
+                                &assignment.value,
+                                element_char_width,
+                            )?;
                             crate::compile_array::emit_flat_index(
                                 emitter,
                                 ctx,
@@ -375,33 +376,21 @@ fn compile_statement(
                         emitter.emit_add_i64();
                         emitter.emit_store_array(var_index, desc_index);
                     }
-                    crate::compile_array::ResolvedAccess::StructFieldStringArrayElement {
-                        var_index,
-                        scratch_var_index,
-                        string_desc_index,
-                        field_byte_offset,
-                        ref dimensions,
-                        subscripts,
-                    } => {
-                        let target_span = variable_span(&assignment.target);
-                        // 1. Compile RHS (produces buf_idx on stack).
-                        compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
-                        // 2. Compute base: struct_data_offset + field_byte_offset → scratch.
-                        emitter.emit_load_var_i32(var_index);
-                        let offset_const = ctx.add_i32_constant(field_byte_offset as i32);
-                        emitter.emit_load_const_i32(offset_const);
-                        emitter.emit_add_i32();
-                        emitter.emit_store_var_i32(scratch_var_index);
-                        // 3. Compute flat index.
-                        crate::compile_array::emit_flat_index(
+                    crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(
+                        element,
+                    ) => {
+                        // The RHS produces, at the element's encoding, the
+                        // temp buffer index the store consumes (ADR-0034).
+                        compile_string_value(emitter, ctx, &assignment.value, element.char_width)?;
+                        element.emit_base_and_index(
                             emitter,
                             ctx,
-                            &subscripts,
-                            dimensions,
-                            &target_span,
+                            &variable_span(&assignment.target),
                         )?;
-                        // 4. Store string element.
-                        emitter.emit_str_store_array_elem(scratch_var_index, string_desc_index);
+                        emitter.emit_str_store_array_elem(
+                            element.scratch_var_index,
+                            element.string_desc_index,
+                        );
                     }
                 }
             }
@@ -425,7 +414,6 @@ fn compile_statement(
                     emitter.emit_ret();
                 }
                 Some(CurrentFunctionReturn::String { data_offset }) => {
-                    ctx.num_temp_bufs += 1;
                     emitter.emit_str_load_var(data_offset);
                     emitter.emit_ret();
                 }
@@ -449,21 +437,6 @@ fn compile_statement(
             Ok(())
         }
     }
-}
-
-/// Returns the op_type for an FB field, checking user-defined FBs first,
-/// then falling back to the stdlib hardcoded mapping.
-fn resolve_fb_field_op_type(ctx: &CompileContext, type_id: u16, field_name: &str) -> OpType {
-    // Check user-defined FBs by type_id.
-    for user_fb in ctx.user_fb_types.values() {
-        if user_fb.type_id == type_id {
-            if let Some(op_type) = user_fb.field_op_types.get(field_name) {
-                return *op_type;
-            }
-        }
-    }
-    // Fall back to stdlib field names.
-    fb_field_op_type(field_name)
 }
 
 /// Compiles a function block invocation: stores inputs, calls FB, reads outputs.
@@ -640,15 +613,6 @@ fn compile_method_call(
     Ok(())
 }
 
-/// Returns the op_type for a standard FB field by name.
-fn fb_field_op_type(field_name: &str) -> OpType {
-    match field_name {
-        "in" | "q" => (OpWidth::W32, Signedness::Signed),
-        "pt" | "et" => (OpWidth::W32, Signedness::Signed),
-        _ => DEFAULT_OP_TYPE,
-    }
-}
-
 /// Compiles a slice of statements.
 fn compile_stmts(
     emitter: &mut Emitter,
@@ -684,7 +648,7 @@ fn compile_if(
     if let Some(classified) = try_classify_cmp(ctx, &if_stmt.expr) {
         emit_classified_cmp_br(emitter, classified, false, next_label);
     } else {
-        let cond_type = condition_op_type(&if_stmt.expr)?;
+        let cond_type = condition_op_type(ctx, &if_stmt.expr)?;
         compile_expr(emitter, ctx, &if_stmt.expr, cond_type)?;
         emitter.emit_jmp_if_not(next_label);
     }
@@ -705,7 +669,7 @@ fn compile_if(
         if let Some(classified) = try_classify_cmp(ctx, &elsif.expr) {
             emit_classified_cmp_br(emitter, classified, false, elsif_next);
         } else {
-            let elsif_op_type = condition_op_type(&elsif.expr)?;
+            let elsif_op_type = condition_op_type(ctx, &elsif.expr)?;
             compile_expr(emitter, ctx, &elsif.expr, elsif_op_type)?;
             emitter.emit_jmp_if_not(elsif_next);
         }
@@ -756,14 +720,17 @@ fn compile_case(
     // Enum selectors have a resolved type that is the enum name (e.g. "COLOR"),
     // which resolve_type_name doesn't handle. Fall back to W32/Signed (DINT)
     // since all enums use DINT at codegen level (REQ-EN-codegen-003).
-    let op_type = op_type(&case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE);
+    let selector = CaseSelector {
+        expr: &case_stmt.selector,
+        op_type: op_type(ctx, &case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE),
+    };
 
     for group in &case_stmt.statement_groups {
         let next_label = emitter.create_label();
 
         // Compile selector comparisons with OR logic.
         for (i, selection) in group.selectors.iter().enumerate() {
-            compile_case_selector(emitter, ctx, &case_stmt.selector, selection, op_type)?;
+            compile_case_selector(emitter, ctx, &selector, selection)?;
             if i > 0 {
                 emitter.emit_bool_or();
             }
@@ -787,6 +754,87 @@ fn compile_case(
     Ok(())
 }
 
+/// The selector of a `CASE` statement: the expression every label is
+/// compared against, and the width the comparison is made at.
+struct CaseSelector<'a> {
+    expr: &'a Expr,
+    op_type: OpType,
+}
+
+impl CaseSelector<'_> {
+    /// Emits `selector <cmp> label` at the selector's width, leaving a
+    /// boolean result on the stack.
+    ///
+    /// The width is decided here, once, for every label kind. A `CASE`
+    /// compares its selector against integer labels, so only an integer
+    /// width is meaningful; a float-width selector is rejected against the
+    /// selector expression.
+    fn cmp_label(
+        &self,
+        emitter: &mut Emitter,
+        ctx: &mut CompileContext,
+        label: CaseLabelValue<'_>,
+        cmp: fn(&mut Emitter, OpType),
+    ) -> Result<(), Diagnostic> {
+        compile_expr(emitter, ctx, self.expr, self.op_type)?;
+        match self.op_type.0 {
+            OpWidth::W32 => {
+                let pool_index = ctx.add_i32_constant(label.to_i32()?);
+                emitter.emit_load_const_i32(pool_index);
+            }
+            OpWidth::W64 => {
+                let pool_index = ctx.add_i64_constant(label.to_i64()?);
+                emitter.emit_load_const_i64(pool_index);
+            }
+            // CASE with float types is not meaningful in IEC 61131-3.
+            OpWidth::F32 | OpWidth::F64 => {
+                return Err(non_integer_case_selector(self.expr));
+            }
+        }
+        cmp(emitter, self.op_type);
+        Ok(())
+    }
+}
+
+/// How a `CASE` label's value narrows to the selector's width.
+enum CaseLabelValue<'a> {
+    /// A decimal literal (`5:`, or a bound of `-3..7:`): a magnitude that
+    /// must fit the signed range of the width.
+    Signed(&'a SignedInteger),
+    /// A radix-prefixed literal (`16#D012:`, `2#1010:`): a bit pattern that
+    /// must fit the unsigned range of the width, the same narrowing as
+    /// `ConstantKind::BitStringLiteral` in compile_expr.rs.
+    Pattern(&'a BitStringLiteral),
+}
+
+impl CaseLabelValue<'_> {
+    fn to_i32(&self) -> Result<i32, Diagnostic> {
+        match self {
+            CaseLabelValue::Signed(si) => signed_integer_to_i32(si),
+            CaseLabelValue::Pattern(lit) => u32::try_from(lit.value.value)
+                .map(|value| value as i32)
+                .map_err(|_| bit_string_overflow(lit)),
+        }
+    }
+
+    fn to_i64(&self) -> Result<i64, Diagnostic> {
+        match self {
+            CaseLabelValue::Signed(si) => signed_integer_to_i64(si),
+            CaseLabelValue::Pattern(lit) => u64::try_from(lit.value.value)
+                .map(|value| value as i64)
+                .map_err(|_| bit_string_overflow(lit)),
+        }
+    }
+}
+
+fn bit_string_overflow(lit: &BitStringLiteral) -> Diagnostic {
+    Diagnostic::problem(
+        Problem::ConstantOverflow,
+        Label::span(lit.value.span(), "Bit string literal"),
+    )
+    .with_context("value", &lit.value.value.to_string())
+}
+
 /// Compiles a single case selector, leaving a boolean result on the stack.
 ///
 /// - `SignedInteger`: `selector == value`
@@ -796,73 +844,24 @@ fn compile_case(
 fn compile_case_selector(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    selector_expr: &Expr,
+    selector: &CaseSelector,
     selection: &CaseSelectionKind,
-    op_type: OpType,
 ) -> Result<(), Diagnostic> {
     match selection {
         CaseSelectionKind::SignedInteger(si) => {
-            compile_expr(emitter, ctx, selector_expr, op_type)?;
-            match op_type.0 {
-                OpWidth::W32 => {
-                    let value = signed_integer_to_i32(si)?;
-                    let pool_index = ctx.add_i32_constant(value);
-                    emitter.emit_load_const_i32(pool_index);
-                    emitter.emit_eq_i32();
-                }
-                OpWidth::W64 => {
-                    let value = signed_integer_to_i64(si)?;
-                    let pool_index = ctx.add_i64_constant(value);
-                    emitter.emit_load_const_i64(pool_index);
-                    emitter.emit_eq_i64();
-                }
-                // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo()),
-            }
-            Ok(())
+            selector.cmp_label(emitter, ctx, CaseLabelValue::Signed(si), emit_eq)
         }
         CaseSelectionKind::Subrange(sr) => {
-            // (selector >= start) AND (selector <= end)
-            compile_expr(emitter, ctx, selector_expr, op_type)?;
-            match op_type.0 {
-                OpWidth::W32 => {
-                    let start_si = resolve_signed_integer_ref(&sr.start)?;
-                    let start = signed_integer_to_i32(start_si)?;
-                    let start_index = ctx.add_i32_constant(start);
-                    emitter.emit_load_const_i32(start_index);
-                    emit_ge(emitter, op_type);
-
-                    compile_expr(emitter, ctx, selector_expr, op_type)?;
-                    let end_si = resolve_signed_integer_ref(&sr.end)?;
-                    let end = signed_integer_to_i32(end_si)?;
-                    let end_index = ctx.add_i32_constant(end);
-                    emitter.emit_load_const_i32(end_index);
-                    emit_le(emitter, op_type);
-                }
-                OpWidth::W64 => {
-                    let start_si = resolve_signed_integer_ref(&sr.start)?;
-                    let start = signed_integer_to_i64(start_si)?;
-                    let start_index = ctx.add_i64_constant(start);
-                    emitter.emit_load_const_i64(start_index);
-                    emit_ge(emitter, op_type);
-
-                    compile_expr(emitter, ctx, selector_expr, op_type)?;
-                    let end_si = resolve_signed_integer_ref(&sr.end)?;
-                    let end = signed_integer_to_i64(end_si)?;
-                    let end_index = ctx.add_i64_constant(end);
-                    emitter.emit_load_const_i64(end_index);
-                    emit_le(emitter, op_type);
-                }
-                // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo()),
-            }
-
+            let start = resolve_signed_integer_ref(&sr.start)?;
+            selector.cmp_label(emitter, ctx, CaseLabelValue::Signed(start), emit_ge)?;
+            let end = resolve_signed_integer_ref(&sr.end)?;
+            selector.cmp_label(emitter, ctx, CaseLabelValue::Signed(end), emit_le)?;
             emitter.emit_bool_and();
             Ok(())
         }
         CaseSelectionKind::EnumeratedValue(ev) => {
             // REQ-EN-codegen-040: Load selector, load ordinal constant, compare with EQ_I32.
-            compile_expr(emitter, ctx, selector_expr, op_type)?;
+            compile_expr(emitter, ctx, selector.expr, selector.op_type)?;
             let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?;
             let pool_index = ctx.add_i32_constant(ordinal);
             emitter.emit_load_const_i32(pool_index);
@@ -870,43 +869,22 @@ fn compile_case_selector(
             Ok(())
         }
         CaseSelectionKind::BitStringLiteral(lit) => {
-            // A radix-prefixed literal (16#D012:, 2#1010:) used as a CASE
-            // label -- selector == value, same shape as SignedInteger,
-            // reusing the same u32/u64 narrowing already used for
-            // ConstantKind::BitStringLiteral in compile_expr.rs.
-            compile_expr(emitter, ctx, selector_expr, op_type)?;
-            let span = lit.value.span();
-            match op_type.0 {
-                OpWidth::W32 => {
-                    let value = u32::try_from(lit.value.value).map_err(|_| {
-                        Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(span.clone(), "Bit string literal"),
-                        )
-                        .with_context("value", &lit.value.value.to_string())
-                    })? as i32;
-                    let pool_index = ctx.add_i32_constant(value);
-                    emitter.emit_load_const_i32(pool_index);
-                    emitter.emit_eq_i32();
-                }
-                OpWidth::W64 => {
-                    let value = u64::try_from(lit.value.value).map_err(|_| {
-                        Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(span.clone(), "Bit string literal"),
-                        )
-                        .with_context("value", &lit.value.value.to_string())
-                    })? as i64;
-                    let pool_index = ctx.add_i64_constant(value);
-                    emitter.emit_load_const_i64(pool_index);
-                    emitter.emit_eq_i64();
-                }
-                // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo()),
-            }
-            Ok(())
+            selector.cmp_label(emitter, ctx, CaseLabelValue::Pattern(lit), emit_eq)
         }
     }
+}
+
+/// Builds the internal error for a `CASE` whose selector is not an integer
+/// type, pointing at the selector expression.
+///
+/// Analysis rejects such a selector (P4053) before codegen runs, so reaching
+/// this is a broken invariant rather than a missing capability.
+#[track_caller]
+fn non_integer_case_selector(selector_expr: &Expr) -> Diagnostic {
+    Diagnostic::internal_error_at(Label::span(
+        selector_expr.span(),
+        "CASE selector is not an integer type",
+    ))
 }
 
 /// Converts a `SignedInteger` AST node to an `i32` value.
@@ -1010,7 +988,7 @@ fn compile_while(
     let end_label = emitter.create_label();
 
     emitter.bind_label(loop_label);
-    let cond_type = condition_op_type(&while_stmt.condition)?;
+    let cond_type = condition_op_type(ctx, &while_stmt.condition)?;
     compile_expr(emitter, ctx, &while_stmt.condition, cond_type)?;
     emitter.emit_jmp_if_not(end_label);
     ctx.loop_exit_labels.push(end_label);
@@ -1050,7 +1028,7 @@ fn compile_repeat(
     if let Some(classified) = classified_until {
         emit_classified_cmp_br(emitter, classified, false, loop_label);
     } else {
-        let cond_type = condition_op_type(&repeat_stmt.until)?;
+        let cond_type = condition_op_type(ctx, &repeat_stmt.until)?;
         compile_expr(emitter, ctx, &repeat_stmt.until, cond_type)?;
         emitter.emit_jmp_if_not(loop_label);
     }

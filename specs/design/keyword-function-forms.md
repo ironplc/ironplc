@@ -74,6 +74,33 @@ holding them to their rows is a separate decision
 
 **REQ-KF-codegen-001** A call to the function form of an operator, assigned to a variable of its result type, compiles to the same bytecode as the operator expression with the same operands.
 
+## Extensible forms
+
+IEC 61131-3 marks `ADD`, `MUL`, `AND`, `OR` and `XOR` *extensible* (Tables 24
+and 26): a call takes any number of inputs `IN1`, `IN2`, ..., `INn`. The row
+says so in its arity column, and the analyzer registers the row through the
+same extensible-signature mechanism `MUX` uses, with `IN1` and `IN2` declared
+and no upper bound. A `FunctionSignature` continues its input parameters past
+the declared ones for an extensible function by counting on from the last
+declared name, so the argument-type check and named-argument binding treat the
+third input exactly as the second. Codegen folds the arguments from the left:
+`ADD(a, b, c)` is `(a + b) + c`, which for the two inputs of a binary form is
+the same code as before. The remaining forms stay binary. The standard also
+marks the ordered comparisons extensible, meaning a monotonic sequence
+(`GT(a, b, c)` is `a > b AND b > c`); that is not a fold and is not
+implemented ([#1618](https://github.com/ironplc/ironplc/issues/1618) asked
+only for the five above).
+
+**REQ-KF-analyzer-008** `ADD`, `MUL`, `AND`, `OR` and `XOR` accept any number of inputs of their operand category, two or more.
+
+**REQ-KF-analyzer-009** Every other function form of an operator accepts exactly the inputs it declares; a call with more is reported as P4018.
+
+**REQ-KF-analyzer-010** Every input of an extensible call is checked against the operand category, so an input beyond the second outside it is reported as P4026.
+
+**REQ-KF-analyzer-011** The named inputs of an extensible call bind by number, `IN3` after `IN2`, so a call may name inputs beyond the declared ones and in any order.
+
+**REQ-KF-codegen-002** A call to an extensible function form with `n` inputs compiles to the same bytecode as the operator expression folded from the left over the same inputs.
+
 ## Testing
 
 - Add parser tests for each keyword-as-function-call (`MOD(a, b)`, `AND(a, b)`, `OR(a, b)`, `XOR(a, b)`).

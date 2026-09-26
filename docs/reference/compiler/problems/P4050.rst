@@ -1,0 +1,70 @@
+=====
+P4050
+=====
+
+.. problem-summary:: P4050
+
+This error occurs when a program declares a variable with the same name as
+a global variable. A program names a global variable through a
+``VAR_EXTERNAL`` declaration; declaring the name again in ``VAR``,
+``VAR_INPUT``, ``VAR_OUTPUT`` or any other section of the program is
+rejected rather than hiding the global.
+
+The comparison is case-insensitive, like all IEC 61131-3 identifiers, and
+applies to global variables declared in a ``CONFIGURATION``, in a
+``RESOURCE``, at the top level of a file, or in an activated library.
+
+Example
+-------
+
+The following code will generate error P4050:
+
+.. code-block::
+
+   CONFIGURATION config
+     VAR_GLOBAL
+       MaxSpeed : INT := 100;
+     END_VAR
+     RESOURCE res ON PLC
+       TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+       PROGRAM plc_task_instance WITH plc_task : main;
+     END_RESOURCE
+   END_CONFIGURATION
+
+   PROGRAM main
+     VAR
+       MaxSpeed : INT;
+     END_VAR
+   END_PROGRAM
+
+``MaxSpeed`` is declared as a global variable and again as a variable of
+``main``.
+
+To fix this error, either name the global through ``VAR_EXTERNAL`` when the
+program means to use it:
+
+.. code-block::
+
+   PROGRAM main
+     VAR_EXTERNAL
+       MaxSpeed : INT;
+     END_VAR
+     VAR
+       currentSpeed : INT;
+     END_VAR
+     currentSpeed := MaxSpeed;
+   END_PROGRAM
+
+or rename the program's own variable when it is unrelated to the global:
+
+.. code-block::
+
+   PROGRAM main
+     VAR
+       targetSpeed : INT;
+     END_VAR
+   END_PROGRAM
+
+This rule applies to programs only. A function, function block or method
+may declare a variable with the same name as a global; within that unit the
+local declaration hides the global.

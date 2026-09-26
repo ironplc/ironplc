@@ -14,6 +14,7 @@ use crate::frame_stack::{FbCallReturn, Frame, FrameStack};
 use crate::profile::InstructionProfile;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
 use crate::stack::OperandStack;
+use crate::str_to_num;
 use crate::string_ops;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
@@ -46,7 +47,20 @@ impl Vm {
     ///
     /// Populates task states and program instances from `container.task_table`.
     /// Consumes the empty VM and returns a ready VM.
-    pub fn load<'a>(self, container: &'a Container, bufs: &'a mut VmBuffers) -> VmReady<'a> {
+    ///
+    /// Returns `Err(Trap)` if the container's declared call depth is invalid
+    /// or exceeds the frame buffer. The check runs here, before either entry
+    /// path ([`start`](VmReady::start) or [`resume`](VmReady::resume)), and
+    /// before any buffer is written. The error is a bare [`Trap`] rather than
+    /// a [`FaultContext`] because it belongs to the container, not to any
+    /// task or program instance.
+    pub fn load<'a>(
+        self,
+        container: &'a Container,
+        bufs: &'a mut VmBuffers,
+    ) -> Result<VmReady<'a>, Trap> {
+        validate_call_depth(container, bufs.frames.len())?;
+
         // Populate task_states from the container's task table.
         for (i, t) in container.task_table.tasks.iter().enumerate() {
             if i < bufs.tasks.len() {
@@ -84,7 +98,7 @@ impl Vm {
         let variables = VariableTable::new(&mut bufs.vars);
         let max_temp_buf_bytes = container.header.max_temp_buf_bytes as usize;
 
-        VmReady {
+        Ok(VmReady {
             container,
             stack,
             variables,
@@ -97,8 +111,29 @@ impl Vm {
             frames: &mut bufs.frames,
             #[cfg(feature = "profiling")]
             profile: InstructionProfile::new(),
-        }
+        })
     }
+}
+
+/// Validates a container's declared call depth against the embedder's
+/// frame-buffer capacity.
+///
+/// Codegen populates `max_call_depth` from the static call graph and always
+/// declares at least one frame (the entry function), so a value of 0 is
+/// invalid: it means the field was never computed (a legacy or hand-built
+/// container).
+fn validate_call_depth(container: &Container, capacity: usize) -> Result<(), Trap> {
+    let declared = container.header.max_call_depth;
+    if declared == 0 {
+        return Err(Trap::ZeroCallDepth);
+    }
+    if declared as usize > capacity {
+        return Err(Trap::ProgramExceedsCallDepth {
+            required: declared,
+            capacity: capacity.min(u16::MAX as usize) as u16,
+        });
+    }
+    Ok(())
 }
 
 impl Default for Vm {
@@ -146,32 +181,6 @@ impl<'a> VmReady<'a> {
     /// already contain initialized values.
     pub fn start(mut self) -> Result<VmRunning<'a>, FaultContext> {
         let shared_globals_size = self.container.task_table.shared_globals_size;
-
-        // Validate the container's declared call depth against the
-        // embedder's frame buffer. Codegen populates `max_call_depth`
-        // from the static call graph and always declares at least one
-        // frame (the entry function), so a value of 0 is invalid: it
-        // means the field was never computed (a legacy or hand-built
-        // container). Reject it before any init code runs.
-        let declared = self.container.header.max_call_depth;
-        let capacity = self.frames.len();
-        if declared == 0 {
-            return Err(FaultContext {
-                trap: Trap::ZeroCallDepth,
-                task_id: TaskId::DEFAULT,
-                instance_id: InstanceId::DEFAULT,
-            });
-        }
-        if declared as usize > capacity {
-            return Err(FaultContext {
-                trap: Trap::ProgramExceedsCallDepth {
-                    required: declared,
-                    capacity: capacity.min(u16::MAX as usize) as u16,
-                },
-                task_id: TaskId::DEFAULT,
-                instance_id: InstanceId::DEFAULT,
-            });
-        }
 
         // Execute init functions once before entering scan mode.
         for pi in 0..self.program_instances.len() {
@@ -1510,17 +1519,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     }
                     opcode::builtin::CONV_STR_TO_I32 => {
                         let data_offset = stack.pop()?.as_i32() as usize;
-                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                        }
-                        // STRING_TO_* parses Latin-1 digits; reject WSTRING input.
-                        let width = string_ops::str_read_char_width(data_region, data_offset)?;
-                        string_ops::verify_encoding(CharWidth::Narrow, width)?;
-                        let cur_len =
-                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
-                        let start = data_offset + STRING_HEADER_BYTES;
-                        let end = (start + cur_len).min(data_region.len());
-                        let result = core::str::from_utf8(&data_region[start..end])
+                        let bytes = string_ops::narrow_str_bytes(data_region, data_offset)?;
+                        let result = core::str::from_utf8(bytes)
                             .ok()
                             .and_then(|s| s.trim().parse::<i32>().ok())
                             .unwrap_or(0);
@@ -1528,17 +1528,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     }
                     opcode::builtin::CONV_STR_TO_F32 => {
                         let data_offset = stack.pop()?.as_i32() as usize;
-                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                        }
-                        // STRING_TO_* parses Latin-1 digits; reject WSTRING input.
-                        let width = string_ops::str_read_char_width(data_region, data_offset)?;
-                        string_ops::verify_encoding(CharWidth::Narrow, width)?;
-                        let cur_len =
-                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
-                        let start = data_offset + STRING_HEADER_BYTES;
-                        let end = (start + cur_len).min(data_region.len());
-                        let result = core::str::from_utf8(&data_region[start..end])
+                        let bytes = string_ops::narrow_str_bytes(data_region, data_offset)?;
+                        let result = core::str::from_utf8(bytes)
                             .ok()
                             .and_then(|s| s.trim().parse::<f32>().ok())
                             .unwrap_or(0.0);
@@ -1577,6 +1568,19 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             core::cmp::Ordering::Greater => 1i32,
                         };
                         stack.push(Slot::from_i32(cmp_val))?;
+                    }
+                    // A `STRING_TO_<numeric>` conversion under behavior
+                    // policies (ADR-0049): the ID carries the target and
+                    // both policies, and `str_to_num` does the rest. An ID
+                    // in the block that names no conversion is unknown like
+                    // any other unassigned builtin.
+                    opcode::builtin::str_to_num::BASE..=opcode::builtin::str_to_num::END => {
+                        let Some(encoding) = opcode::builtin::str_to_num::decode(func_id) else {
+                            return Err(Trap::InvalidBuiltinFunction(FunctionId::new(func_id)));
+                        };
+                        let data_offset = stack.pop()?.as_i32() as usize;
+                        let bytes = string_ops::narrow_str_bytes(data_region, data_offset)?;
+                        stack.push(str_to_num::convert(encoding, bytes)?)?;
                     }
                     _ => builtin::dispatch(func_id, stack)?,
                 }
@@ -1775,6 +1779,10 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 // Update destination cur_length (code units).
                 string_ops::str_write_cur_len(data_region, data_offset, copy_units as u16);
+
+                // The value has been copied out, so the buffer holding it
+                // is dead: hand its slot back for the next allocation.
+                temp_alloc.release(buf_idx);
             }
 
             // STR_LOAD_VAR: Copy a string from the data region into a temp
@@ -2219,9 +2227,10 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
             // Operands: var_index (u16), desc_index (u16)
             // Stack effect: none
             //
-            // Reads element_extra from the array descriptor as max_string_length.
-            // Element stride = STRING_HEADER_BYTES + max_string_length.
-            // Loops through all elements writing [max_len][cur_len=0] headers.
+            // Reads element_extra from the array descriptor as max_string_length
+            // and steps between elements by the descriptor's element stride
+            // (ADR-0054). Loops through all elements writing
+            // [max_len][cur_len=0] headers.
             opcode::STR_INIT_ARRAY => {
                 let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
                 let desc_index = read_u16_le(bytecode, &mut pc)?;
@@ -2234,10 +2243,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
                 // Element width comes from the descriptor's element_type
-                // (FieldType::String vs WString). The stride spans the header
-                // plus max_str_len code units, each char_width bytes (ADR-0035).
+                // (FieldType::String vs WString) (ADR-0035).
                 let char_width = desc.element_char_width();
-                let stride = STRING_HEADER_BYTES + max_str_len as usize * char_width.as_usize();
+                let stride = desc.element_stride() as usize;
 
                 scope.check_access(var_index)?;
                 let base_offset = variables.load(var_index)?.as_i32() as u32 as usize;
@@ -2277,8 +2285,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .ok_or(Trap::InvalidVariableIndex(var_index))?;
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
-                let stride = STRING_HEADER_BYTES
-                    + max_str_len as usize * desc.element_char_width().as_usize();
+                let stride = desc.element_stride() as usize;
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
@@ -2346,8 +2353,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .ok_or(Trap::InvalidVariableIndex(var_index))?;
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
-                let stride = STRING_HEADER_BYTES
-                    + max_str_len as usize * desc.element_char_width().as_usize();
+                let stride = desc.element_stride() as usize;
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
@@ -2394,6 +2400,10 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 // Update destination cur_length (code units).
                 string_ops::str_write_cur_len(data_region, elem_offset, copy_units as u16);
+
+                // The value has been copied out, so the buffer holding it
+                // is dead: hand its slot back for the next allocation.
+                temp_alloc.release(buf_idx);
             }
 
             opcode::POP => {
@@ -3037,65 +3047,15 @@ impl core::fmt::Write for StackFmtBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{assert_trap, single_function_container, steel_thread_container};
     use crate::VmBuffers;
     use ironplc_container::ContainerBuilder;
-
-    /// Builds a container with one function from the given bytecode,
-    /// with `num_vars` variables and the given constants.
-    /// Uses a generous max_stack_depth (16) suitable for most tests.
-    fn single_function_container(bytecode: &[u8], num_vars: u16, constants: &[i32]) -> Container {
-        let mut builder = ContainerBuilder::new().num_variables(num_vars);
-        for &c in constants {
-            builder = builder.add_i32_constant(c);
-        }
-        builder
-            .add_function(FunctionId::INIT, &[0x8C], 0, num_vars, 0) // init: RET_VOID
-            .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0) // scan: test bytecode
-            .init_function_id(FunctionId::INIT)
-            .entry_function_id(FunctionId::SCAN)
-            .max_call_depth(1)
-            .build()
-    }
-
-    /// Asserts that a run_round produces a specific trap.
-    fn assert_trap(vm: &mut VmRunning, expected: Trap) {
-        let result = vm.run_round(0);
-        assert!(
-            result.is_err(),
-            "expected trap {expected} but run_round succeeded"
-        );
-        assert_eq!(result.unwrap_err().trap, expected);
-    }
-
-    fn steel_thread_container() -> Container {
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
-            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
-            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
-            0x20,                   // ADD_I32
-            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
-            0x8C,                   // RET_VOID
-        ];
-
-        ContainerBuilder::new()
-            .num_variables(2)
-            .add_i32_constant(10)
-            .add_i32_constant(32)
-            .add_function(FunctionId::INIT, &[0x8C], 0, 2, 0) // init: RET_VOID
-            .add_function(FunctionId::SCAN, &bytecode, 2, 2, 0) // scan: program body
-            .init_function_id(FunctionId::INIT)
-            .entry_function_id(FunctionId::SCAN)
-            .max_call_depth(1)
-            .build()
-    }
 
     #[test]
     fn vm_load_when_valid_container_then_returns_ready() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let ready = Vm::new().load(&c, &mut b);
+        let ready = Vm::new().load(&c, &mut b).unwrap();
 
         // If this compiles, the VM is in the Ready state.
         // Verify we can read the initial variable values.
@@ -3106,7 +3066,7 @@ mod tests {
     fn vm_run_round_when_steel_thread_then_x_is_10_y_is_42() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         vm.run_round(0).unwrap();
 
@@ -3118,7 +3078,7 @@ mod tests {
     fn vm_run_round_when_invalid_opcode_then_trap() {
         let c = single_function_container(&[0xFF], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         assert_trap(&mut vm, Trap::InvalidInstruction(0xFF));
     }
@@ -3127,7 +3087,7 @@ mod tests {
     fn vm_request_stop_when_called_then_stop_requested() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         assert!(!vm.stop_requested());
         vm.request_stop();
@@ -3138,7 +3098,7 @@ mod tests {
     fn vm_stop_when_called_then_returns_stopped() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
         let stopped = vm.stop();
         assert_eq!(stopped.read_variable(VarIndex::new(0)).unwrap(), 0); // not yet executed
     }
@@ -3147,7 +3107,7 @@ mod tests {
     fn vm_fault_when_called_then_returns_faulted_with_context() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
         let ctx = FaultContext {
             trap: Trap::WatchdogTimeout(ironplc_container::TaskId::new(3)),
             task_id: ironplc_container::TaskId::new(3),
@@ -3164,7 +3124,7 @@ mod tests {
 
     // Phase 1, Step 1.1: Execute error path tests
     // These verify that each Trap variant that can fire inside execute()
-    // is triggered through the full Vm::new().load(c).start().run_round() path.
+    // is triggered through the full Vm::new().load(c).unwrap().start().run_round() path.
 
     #[test]
     fn execute_when_stack_overflow_then_trap() {
@@ -3187,7 +3147,7 @@ mod tests {
             .build();
 
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
         assert_trap(&mut vm, Trap::StackOverflow);
     }
 
@@ -3196,7 +3156,7 @@ mod tests {
         // ADD_I32 tries to pop 2 values from an empty stack
         let c = single_function_container(&[0x20], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         assert_trap(&mut vm, Trap::StackUnderflow);
     }
@@ -3210,7 +3170,7 @@ mod tests {
         ];
         let c = single_function_container(&bytecode, 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         assert_trap(&mut vm, Trap::InvalidConstantIndex(ConstantIndex::new(0)));
     }
@@ -3225,7 +3185,7 @@ mod tests {
         ];
         let c = single_function_container(&bytecode, 1, &[42]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         assert_trap(&mut vm, Trap::InvalidVariableIndex(VarIndex::new(5)));
     }
@@ -3239,7 +3199,7 @@ mod tests {
         ];
         let c = single_function_container(&bytecode, 1, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         assert_trap(&mut vm, Trap::InvalidVariableIndex(VarIndex::new(5)));
     }
@@ -3283,7 +3243,7 @@ mod tests {
             .max_call_depth(2) // SCAN -> add (2 frames)
             .build();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
         vm.run_round(0).unwrap();
 
         // result should be 3 + 7 = 10
@@ -3294,7 +3254,7 @@ mod tests {
     fn execute_when_empty_bytecode_then_ok() {
         let c = single_function_container(&[], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         assert!(vm.run_round(0).is_ok());
     }
@@ -3304,7 +3264,7 @@ mod tests {
     fn vm_default_when_called_then_loads_container() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let ready = Vm::default().load(&c, &mut b);
+        let ready = Vm::default().load(&c, &mut b).unwrap();
 
         assert_eq!(ready.read_variable(VarIndex::new(0)).unwrap(), 0);
     }
@@ -3313,7 +3273,7 @@ mod tests {
     fn vm_ready_read_variable_raw_when_before_init_then_returns_zero_slot() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let ready = Vm::new().load(&c, &mut b);
+        let ready = Vm::new().load(&c, &mut b).unwrap();
 
         assert_eq!(ready.read_variable_raw(VarIndex::new(0)).unwrap(), 0u64);
         assert_eq!(ready.read_variable_raw(VarIndex::new(1)).unwrap(), 0u64);
@@ -3323,7 +3283,7 @@ mod tests {
     fn write_variable_raw_when_lword_pattern_then_round_trips_without_truncation() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         // A bit pattern that is non-zero in both halves of the slot.
         let value = 0xDEAD_BEEF_0BAD_F00D_u64;
@@ -3336,7 +3296,7 @@ mod tests {
     fn write_variable_raw_when_lreal_pattern_then_reads_back_same_float() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         let value = std::f64::consts::PI;
         vm.write_variable_raw(VarIndex::new(1), value.to_bits())
@@ -3350,7 +3310,7 @@ mod tests {
     fn write_variable_raw_when_lint_value_then_read_variable_i64_agrees() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         let value = -9_007_199_254_740_993_i64;
         vm.write_variable_raw(VarIndex::new(0), value as u64)
@@ -3363,7 +3323,7 @@ mod tests {
     fn write_variable_when_64_bit_value_then_truncates_unlike_write_variable_raw() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         let value = 0x0000_0001_0000_002A_u64;
         vm.write_variable(VarIndex::new(0), value as i32).unwrap();
@@ -3377,7 +3337,7 @@ mod tests {
     fn write_variable_raw_when_index_out_of_range_then_invalid_variable_index_trap() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         let index = VarIndex::new(99);
         assert_eq!(
@@ -3421,7 +3381,7 @@ mod tests {
             .max_call_depth(1)
             .build();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         assert!(vm.run_round(0).is_ok());
     }
@@ -3430,7 +3390,7 @@ mod tests {
     fn uptime_when_no_round_run_then_zero() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         assert_eq!(vm.uptime(), Duration::ZERO);
     }
@@ -3441,7 +3401,7 @@ mod tests {
         // to the uptime globals -- the VM still knows the clock it ran with.
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         vm.run_round(2_500_000).unwrap();
 
@@ -3452,7 +3412,7 @@ mod tests {
     fn uptime_when_round_advances_then_follows_the_clock() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
 
         vm.run_round(1_000).unwrap();
         assert_eq!(vm.uptime(), Duration::from_millis(1));

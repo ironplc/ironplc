@@ -193,6 +193,7 @@ impl<'a> Visitor<Infallible> for RuleConstantVarsInitialized<'a> {
             DeclarationQualifier::Unspecified => {}
             DeclarationQualifier::Retain => {}
             DeclarationQualifier::NonRetain => {}
+            DeclarationQualifier::Persistent => {}
         }
 
         node.recurse_visit(self)

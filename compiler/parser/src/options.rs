@@ -1,12 +1,23 @@
 //! Options affecting compilation (parsing, analysis, and code generation).
 //!
 //! Use [`Dialect`] to select a preset configuration, then optionally
-//! override individual flags.  Use the [`define_compiler_options`] macro
-//! to declare dialect-extension fields so that [`CompilerOptions::from_dialect`]
-//! is the single place that maps dialects to flags.
+//! override individual flags and behavior policies.  Use the
+//! [`define_compiler_options`] macro to declare dialect-extension fields and
+//! policy fields so that [`CompilerOptions::from_dialect`] is the single place
+//! that maps dialects to flags and policies.
+//!
+//! A flag enables one syntax extension; a behavior policy (ADR-0049) selects
+//! one of several documented alternatives for an operation's runtime
+//! behavior. Flags only ever enable, and a preset is a bundle of them; a
+//! policy always has exactly one alternative selected, and a preset names the
+//! one a real target uses.
 
 use std::fmt;
 use std::str::FromStr;
+
+pub use ironplc_container::policy::{
+    BehaviorPolicy, StringToNumFailure, StringToNumNonNumeric, UnknownAlternative,
+};
 
 /// A named configuration preset that sets the IEC edition and
 /// dialect-extension flags in one shot.
@@ -142,11 +153,46 @@ pub struct FeatureDescriptor {
     pub dialects: &'static [Dialect],
 }
 
-/// Declares [`CompilerOptions`] with a set of dialect-extension boolean flags.
+/// Metadata for a single behavior policy (ADR-0049).
 ///
-/// Each field carries a description string and a list of [`Dialect`] variants
-/// that enable it.  The macro auto-generates the struct, its `Default` impl,
-/// [`CompilerOptions::from_dialect`], and [`CompilerOptions::FEATURE_DESCRIPTORS`].
+/// A policy is not a flag: it selects one of several enumerated alternatives
+/// rather than enabling a feature, so it has its own descriptor and its own
+/// accessors ([`CompilerOptions::set_policy_by_key`],
+/// [`CompilerOptions::get_policy_by_key`]).
+pub struct PolicyDescriptor {
+    /// The CLI flag name (e.g. `"--policy-string-to-num-failure"`).
+    pub cli_flag: &'static str,
+    /// The option key used in the MCP `options` object and, in lowerCamelCase,
+    /// in the LSP `initializationOptions`. Matches the corresponding
+    /// [`CompilerOptions`] field name.
+    pub option_key: &'static str,
+    /// A short human-readable description of what the policy governs.
+    pub description: &'static str,
+    /// The CLI name of every alternative, in encoding order.
+    pub alternatives: &'static [&'static str],
+    /// The CLI name of the alternative every strict dialect selects.
+    pub default: &'static str,
+}
+
+/// The outcome of [`CompilerOptions::set_policy_by_key`] when nothing was set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetPolicyError {
+    /// The key names no behavior policy.
+    UnknownKey,
+    /// The key names a policy, but the value is not one of its alternatives.
+    UnknownAlternative,
+}
+
+/// Declares [`CompilerOptions`] with a set of dialect-extension boolean flags
+/// and a set of behavior policies.
+///
+/// Each flag carries a description string and a list of [`Dialect`] variants
+/// that enable it. Each policy carries a description, its enum type, and the
+/// alternative each non-default dialect selects (a dialect not listed keeps
+/// the policy's default). The macro auto-generates the struct, its `Default`
+/// impl, [`CompilerOptions::from_dialect`], [`CompilerOptions::FEATURE_DESCRIPTORS`],
+/// and [`CompilerOptions::POLICY_DESCRIPTORS`], so this invocation is the single
+/// place that maps dialects to flags and policies.
 macro_rules! define_compiler_options {
     (
         $(
@@ -155,23 +201,41 @@ macro_rules! define_compiler_options {
             [$($dialect:ident),* $(,)?],
             $flag_field:ident
         ),* $(,)?
+        policies {
+            $(
+                $policy_desc:literal,
+                $policy_cli_flag:literal,
+                $policy_type:ident,
+                [$($policy_dialect:ident => $policy_alt:ident),* $(,)?],
+                $policy_field:ident
+            ),* $(,)?
+        }
     ) => {
         #[derive(Debug, Default, Clone, Copy)]
         pub struct CompilerOptions {
             $(pub $flag_field: bool,)*
+            $(pub $policy_field: $policy_type,)*
         }
 
         impl CompilerOptions {
             /// Build a [`CompilerOptions`] from a [`Dialect`] preset.
             ///
             /// Individual flags can be set to `true` afterwards to layer
-            /// additional extensions on top of the dialect.
+            /// additional extensions on top of the dialect, and individual
+            /// policies can be reassigned.
             pub fn from_dialect(dialect: Dialect) -> Self {
                 let mut opts = Self::default();
                 $(
                     if [$(Dialect::$dialect),*].contains(&dialect) {
                         opts.$flag_field = true;
                     }
+                )*
+                $(
+                    $(
+                        if dialect == Dialect::$policy_dialect {
+                            opts.$policy_field = $policy_type::$policy_alt;
+                        }
+                    )*
                 )*
                 opts
             }
@@ -187,6 +251,50 @@ macro_rules! define_compiler_options {
                     },
                 )*
             ];
+
+            /// Metadata for every behavior policy.
+            pub const POLICY_DESCRIPTORS: &[PolicyDescriptor] = &[
+                $(
+                    PolicyDescriptor {
+                        cli_flag: $policy_cli_flag,
+                        option_key: stringify!($policy_field),
+                        description: $policy_desc,
+                        alternatives: <$policy_type as BehaviorPolicy>::NAMES,
+                        // The first alternative is the default by the
+                        // `BehaviorPolicy` contract.
+                        default: <$policy_type as BehaviorPolicy>::NAMES[0],
+                    },
+                )*
+            ];
+
+            /// Select a behavior policy alternative by the policy's
+            /// `option_key` (the field name from [`PolicyDescriptor`]) and
+            /// the alternative's CLI name.
+            pub fn set_policy_by_key(&mut self, key: &str, value: &str) -> Result<(), SetPolicyError> {
+                match key {
+                    $(
+                        stringify!($policy_field) => {
+                            let alt = <$policy_type as BehaviorPolicy>::from_cli_name(value)
+                                .ok_or(SetPolicyError::UnknownAlternative)?;
+                            self.$policy_field = alt;
+                            Ok(())
+                        }
+                    )*
+                    _ => Err(SetPolicyError::UnknownKey),
+                }
+            }
+
+            /// The CLI name of the alternative currently selected for the
+            /// policy with the given `option_key`, or `None` if the key names
+            /// no policy.
+            pub fn get_policy_by_key(&self, key: &str) -> Option<&'static str> {
+                match key {
+                    $(
+                        stringify!($policy_field) => Some(self.$policy_field.cli_name()),
+                    )*
+                    _ => None,
+                }
+            }
 
             /// Set a dialect-extension feature flag by its `option_key` (the
             /// field name from [`FeatureDescriptor`]).
@@ -276,6 +384,11 @@ define_compiler_options! {
     [Codesys, TwinCat],
     allow_adr,
 
+    "Allow the PERSISTENT variable qualifier (Beckhoff TwinCAT/CODESYS extension)",
+    "--allow-persistent-var",
+    [Codesys, TwinCat],
+    allow_persistent_var,
+
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
     "--allow-ref-arithmetic",
     [Rusty, Codesys],
@@ -306,10 +419,20 @@ define_compiler_options! {
     [Rusty],
     allow_system_uptime_global,
 
-    "Allow implicit widening between bit-string and integer type families (BYTE->INT, literal->BYTE)",
+    "Allow implicit widening from a bit-string type to a strictly wider integer type (BYTE->INT)",
     "--allow-cross-family-widening",
     [Rusty, Codesys, TwinCat],
     allow_cross_family_widening,
+
+    "Allow implicit conversion between UDINT and DWORD, in both directions, at equal width",
+    "--allow-cross-family-conversion",
+    [Rusty, Codesys, TwinCat],
+    allow_cross_family_conversion,
+
+    "Allow a bare integer literal where a bit-string type is expected (0 -> BYTE)",
+    "--allow-int-literal-to-bit-string",
+    [Rusty, Codesys, TwinCat],
+    allow_int_literal_to_bit_string,
 
     "Allow IEC 61131-3:2013 partial-access bit syntax (.%Xn) as an alias for .n",
     "--allow-partial-access-syntax",
@@ -355,6 +478,30 @@ define_compiler_options! {
     "--allow-fb-inheritance",
     [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
     allow_fb_inheritance,
+
+    "Allow explicit per-member values in an enumeration declaration, e.g. (Deutsch := 1, English := 2) (standardized in IEC 61131-3:2013)",
+    "--allow-enum-explicit-values",
+    [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
+    allow_enum_explicit_values,
+
+    "Allow the base-type suffix on an enumeration declaration, e.g. (A, B) WORD, naming the elementary type the members are stored in",
+    "--allow-enum-base-type",
+    [Rusty, Codesys, TwinCat],
+    allow_enum_base_type,
+
+    policies {
+        "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",
+        "--policy-string-to-num-non-numeric",
+        StringToNumNonNumeric,
+        [Codesys => IgnoreTrailing, TwinCat => IgnoreTrailing],
+        policy_string_to_num_non_numeric,
+
+        "What STRING_TO_<numeric> does when the string is not convertible",
+        "--policy-string-to-num-failure",
+        StringToNumFailure,
+        [Rusty => Zero, Codesys => Zero, TwinCat => Zero],
+        policy_string_to_num_failure,
+    }
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -379,313 +526,23 @@ pub fn describe_dialects() -> String {
             }
         }
     }
+
+    for dialect in Dialect::ALL {
+        let options = CompilerOptions::from_dialect(*dialect);
+        out.push_str(&format!(
+            "\nBehavior policies selected by \"{}\":\n",
+            dialect
+        ));
+        for p in CompilerOptions::POLICY_DESCRIPTORS {
+            let selected = options.get_policy_by_key(p.option_key).unwrap_or("?");
+            out.push_str(&format!(
+                "  {:<34} {:<20} {}\n",
+                p.cli_flag, selected, p.description
+            ));
+        }
+    }
     out
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use rstest::rstest;
-    use spec_test_macro::spec_test;
-
-    /// Collect the dialect-flag `option_key`s that `from_dialect(dialect)`
-    /// turns on, sorted for order-independent comparison.
-    fn enabled_flags(dialect: Dialect) -> Vec<&'static str> {
-        let options = CompilerOptions::from_dialect(dialect);
-        let mut enabled: Vec<&'static str> = CompilerOptions::FEATURE_DESCRIPTORS
-            .iter()
-            .filter(|f| options.get_flag_by_key(f.option_key) == Some(true))
-            .map(|f| f.option_key)
-            .collect();
-        enabled.sort_unstable();
-        enabled
-    }
-
-    /// Assert that a dialect enables *exactly* the given set of dialect flags --
-    /// no more, no less. This is the guard against a newly added option
-    /// silently leaking into a dialect it should not belong to: adding an
-    /// option to a dialect's macro tags forces a matching update here, and an
-    /// accidental extra tag makes that dialect's expected set mismatch.
-    fn assert_enabled_flags(dialect: Dialect, expected: &[&str]) {
-        let mut expected_sorted = expected.to_vec();
-        expected_sorted.sort_unstable();
-        assert_eq!(
-            enabled_flags(dialect),
-            expected_sorted,
-            "dialect {dialect} does not enable exactly the expected dialect flags"
-        );
-    }
-
-    /// IEC 61131-3 Ed. 2 (the default) enables no extensions at all.
-    #[test]
-    fn ed2_dialect_enables_no_flags() {
-        assert_enabled_flags(Dialect::Iec61131_3Ed2, &[]);
-    }
-
-    /// IEC 61131-3 Ed. 3 is a preset assembled from the descriptors tagged with
-    /// `Iec61131_3Ed3`: the long-time-type keywords, the `REF_TO`/`REF`/`NULL`
-    /// reference keywords, partial-access syntax, and the object-oriented
-    /// syntax (`allow_fb_inheritance`) that is the headline addition of the
-    /// 2013 edition.
-    #[test]
-    fn ed3_dialect_enables_edition3_descriptors() {
-        assert_enabled_flags(
-            Dialect::Iec61131_3Ed3,
-            &[
-                "allow_long_time_types",
-                "allow_ref_to",
-                "allow_partial_access_syntax",
-                "allow_fb_inheritance",
-            ],
-        );
-    }
-
-    /// The RuSTy dialect stays on the Edition-2 keyword base and enables every
-    /// extension. Listed explicitly (not derived) so a new option that
-    /// is meant to be Rusty-only, or accidentally left off Rusty, is caught.
-    #[test]
-    fn rusty_dialect_enables_exactly_these_flags() {
-        assert_enabled_flags(
-            Dialect::Rusty,
-            &[
-                "allow_c_style_comments",
-                "allow_missing_semicolon",
-                "allow_top_level_var_global",
-                "allow_constant_type_params",
-                "allow_empty_var_blocks",
-                "allow_time_as_function_name",
-                "allow_ref_to",
-                "allow_ref_arithmetic",
-                "allow_ref_stack_variables",
-                "allow_ref_type_punning",
-                "allow_int_to_bool_initializer",
-                "allow_sizeof",
-                "allow_system_uptime_global",
-                "allow_cross_family_widening",
-                "allow_partial_access_syntax",
-                "allow_pragmas",
-                "allow_short_circuit_operators",
-                "allow_mixed_located_var_declarations",
-                "allow_constant_initializer_expressions",
-                "allow_bit_string_case_labels",
-                "allow_paren_string_length",
-                "allow_struct_initializer_expressions",
-                "allow_fb_inheritance",
-            ],
-        );
-    }
-
-    /// The CODESYS dialect is close to RuSTy, with two differences: it does
-    /// *not* bind the `__SYSTEM_UP_TIME` globals (`allow_system_uptime_global`),
-    /// which are an IronPLC/RuSTy runtime convention rather than a CODESYS
-    /// feature, and it *does* enable `allow_long_time_types` (CODESYS supports
-    /// the LTIME/LDATE/LTOD/LDT keywords, whereas RuSTy keeps them as
-    /// identifiers for OSCAT). Listed explicitly so each divergence is asserted
-    /// rather than assumed.
-    #[test]
-    fn codesys_dialect_enables_exactly_these_flags() {
-        assert_enabled_flags(
-            Dialect::Codesys,
-            &[
-                "allow_c_style_comments",
-                "allow_missing_semicolon",
-                "allow_top_level_var_global",
-                "allow_constant_type_params",
-                "allow_empty_var_blocks",
-                "allow_time_as_function_name",
-                "allow_long_time_types",
-                "allow_ref_to",
-                "allow_reference_to",
-                "allow_pointer_to",
-                "allow_adr",
-                "allow_ref_arithmetic",
-                "allow_ref_stack_variables",
-                "allow_ref_type_punning",
-                "allow_int_to_bool_initializer",
-                "allow_sizeof",
-                "allow_cross_family_widening",
-                "allow_partial_access_syntax",
-                "allow_pragmas",
-                "allow_short_circuit_operators",
-                "allow_mixed_located_var_declarations",
-                "allow_constant_initializer_expressions",
-                "allow_bit_string_case_labels",
-                "allow_paren_string_length",
-                "allow_struct_initializer_expressions",
-                "allow_fb_inheritance",
-            ],
-        );
-    }
-
-    /// The TwinCAT dialect is close to CODESYS (TwinCAT 3 runs on the CODESYS
-    /// V3 runtime) but does *not* enable the `REF_TO` reference extensions.
-    /// TwinCAT spells references `REFERENCE TO` (not the CODESYS `REF_TO` /
-    /// `REF()` / `NULL`), so it enables `allow_reference_to` and
-    /// `allow_pointer_to` instead, and none of `allow_ref_to`,
-    /// `allow_ref_arithmetic`, `allow_ref_stack_variables`, or
-    /// `allow_ref_type_punning` are enabled -- enabling those would accept
-    /// `REF_TO` code that TwinCAT itself rejects. It does enable
-    /// `allow_long_time_types`, since TwinCAT supports the
-    /// LTIME/LDATE/LTOD/LDT keywords. Listed explicitly so an accidental
-    /// divergence from the intended set is caught.
-    #[test]
-    fn twincat_dialect_enables_exactly_these_flags() {
-        assert_enabled_flags(
-            Dialect::TwinCat,
-            &[
-                "allow_c_style_comments",
-                "allow_missing_semicolon",
-                "allow_top_level_var_global",
-                "allow_constant_type_params",
-                "allow_empty_var_blocks",
-                "allow_time_as_function_name",
-                "allow_long_time_types",
-                "allow_reference_to",
-                "allow_pointer_to",
-                "allow_adr",
-                "allow_int_to_bool_initializer",
-                "allow_sizeof",
-                "allow_cross_family_widening",
-                "allow_partial_access_syntax",
-                "allow_pragmas",
-                "allow_short_circuit_operators",
-                "allow_mixed_located_var_declarations",
-                "allow_constant_initializer_expressions",
-                "allow_bit_string_case_labels",
-                "allow_paren_string_length",
-                "allow_struct_initializer_expressions",
-                "allow_fb_inheritance",
-            ],
-        );
-    }
-
-    /// REQ-PAB-parser-051: The `rusty` dialect preset enables partial-access syntax.
-    #[spec_test(REQ_PAB_parser_051)]
-    fn options_spec_req_pab_051_rusty_dialect_enables_partial_access_syntax() {
-        let options = CompilerOptions::from_dialect(Dialect::Rusty);
-        assert!(options.allow_partial_access_syntax);
-    }
-
-    /// REQ-PAB-parser-052: The `iec61131-3-ed3` dialect preset enables partial-access syntax.
-    #[spec_test(REQ_PAB_parser_052)]
-    fn options_spec_req_pab_052_ed3_dialect_enables_partial_access_syntax() {
-        let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
-        assert!(options.allow_partial_access_syntax);
-    }
-
-    /// REQ-PAB-parser-141: The `codesys` and `twincat` dialect presets enable
-    /// partial-access syntax.
-    #[spec_test(REQ_PAB_parser_141)]
-    #[rstest]
-    #[case::codesys(Dialect::Codesys)]
-    #[case::twincat(Dialect::TwinCat)]
-    fn options_spec_req_pab_141_vendor_dialects_enable_partial_access_syntax(
-        #[case] dialect: Dialect,
-    ) {
-        let options = CompilerOptions::from_dialect(dialect);
-        assert!(options.allow_partial_access_syntax);
-    }
-
-    #[test]
-    fn from_dialect_when_default_then_ed2() {
-        let options = CompilerOptions::from_dialect(Dialect::default());
-
-        assert!(!options.allow_long_time_types);
-        assert!(!options.allow_ref_to);
-    }
-
-    #[test]
-    fn feature_descriptors_when_called_then_non_empty_and_stably_ordered() {
-        assert!(!CompilerOptions::FEATURE_DESCRIPTORS.is_empty());
-        assert_eq!(
-            CompilerOptions::FEATURE_DESCRIPTORS[0].cli_flag,
-            "--allow-c-style-comments"
-        );
-    }
-
-    #[test]
-    fn describe_dialects_when_called_then_contains_all_dialects() {
-        let output = describe_dialects();
-        assert!(output.contains("iec61131-3-ed2"));
-        assert!(output.contains("iec61131-3-ed3"));
-        assert!(output.contains("rusty"));
-        assert!(output.contains("codesys"));
-        assert!(output.contains("twincat"));
-    }
-
-    #[test]
-    fn describe_dialects_when_called_then_contains_feature_flags() {
-        let output = describe_dialects();
-        assert!(output.contains("--allow-c-style-comments"));
-        assert!(output.contains("--allow-ref-to"));
-    }
-
-    #[test]
-    fn dialect_display_when_ed2_then_cli_name() {
-        assert_eq!(format!("{}", Dialect::Iec61131_3Ed2), "iec61131-3-ed2");
-    }
-
-    #[test]
-    fn dialect_display_when_rusty_then_cli_name() {
-        assert_eq!(format!("{}", Dialect::Rusty), "rusty");
-    }
-
-    #[test]
-    fn dialect_display_when_codesys_then_cli_name() {
-        assert_eq!(format!("{}", Dialect::Codesys), "codesys");
-    }
-
-    #[test]
-    fn dialect_display_when_twincat_then_cli_name() {
-        assert_eq!(format!("{}", Dialect::TwinCat), "twincat");
-    }
-
-    #[test]
-    fn dialect_from_str_when_known_name_then_returns_variant() {
-        assert_eq!("iec61131-3-ed2".parse(), Ok(Dialect::Iec61131_3Ed2));
-        assert_eq!("iec61131-3-ed3".parse(), Ok(Dialect::Iec61131_3Ed3));
-        assert_eq!("rusty".parse(), Ok(Dialect::Rusty));
-        assert_eq!("codesys".parse(), Ok(Dialect::Codesys));
-        assert_eq!("twincat".parse(), Ok(Dialect::TwinCat));
-    }
-
-    #[test]
-    fn dialect_from_str_when_unknown_name_then_returns_err() {
-        let result: Result<Dialect, _> = "nonsense".parse();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn dialect_from_str_when_round_trip_then_equal() {
-        for dialect in Dialect::ALL {
-            assert_eq!(dialect.to_string().parse::<Dialect>(), Ok(*dialect));
-        }
-    }
-
-    #[test]
-    fn feature_descriptors_when_called_then_option_key_matches_field_name() {
-        let fd = &CompilerOptions::FEATURE_DESCRIPTORS[0];
-        assert_eq!(fd.option_key, "allow_c_style_comments");
-    }
-
-    #[test]
-    fn feature_descriptors_when_called_then_all_option_keys_start_with_allow() {
-        for fd in CompilerOptions::FEATURE_DESCRIPTORS {
-            assert!(
-                fd.option_key.starts_with("allow_"),
-                "option_key {} does not start with allow_",
-                fd.option_key
-            );
-        }
-    }
-
-    #[test]
-    fn dialect_display_name_when_ed2_then_human_readable() {
-        assert_eq!(Dialect::Iec61131_3Ed2.display_name(), "IEC 61131-3 Ed. 2");
-    }
-
-    #[test]
-    fn dialect_description_when_ed2_then_contains_edition_2() {
-        assert!(Dialect::Iec61131_3Ed2.description().contains("Edition 2"));
-    }
-}
+mod tests;

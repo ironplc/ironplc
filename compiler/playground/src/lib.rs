@@ -14,13 +14,14 @@ use std::io::Cursor;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use ironplc_container::debug_format::VariableRenderer;
-use ironplc_container::Container;
+use ironplc_container::{Container, InstanceId, TaskId};
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
-use ironplc_dsl::diagnostic::{Diagnostic, LineColumn};
+use ironplc_dsl::diagnostic::{Diagnostic, LineColumn, DOCS_SECTIONS};
 use ironplc_parser::options::{CompilerOptions, Dialect, FeatureDescriptor};
 use ironplc_project::MemoryBackedProject;
 use ironplc_sources::{parse_source, FileType};
+use ironplc_vm::error::Trap;
 use ironplc_vm::{Slot, VariableView, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -123,6 +124,23 @@ pub fn dialects() -> String {
         })
         .collect();
     serde_json::to_string(&options).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Return the problem-code prefix → documentation-section map as a JSON object,
+/// so the front end links a diagnostic's code to the right part of the reference
+/// site without knowing the mapping itself.
+///
+/// The playground used to test code prefixes with its own regex, which had no
+/// `E####` arm and so disagreed with the compiler. Serving
+/// [`DOCS_SECTIONS`] across the boundary — the same table `docs_section` reads —
+/// leaves one authority for the mapping instead of two that can drift.
+#[wasm_bindgen]
+pub fn doc_sections() -> String {
+    let map: std::collections::BTreeMap<String, &str> = DOCS_SECTIONS
+        .iter()
+        .map(|(prefix, section)| (prefix.to_string(), *section))
+        .collect();
+    serde_json::to_string(&map).unwrap_or_else(|_| "{}".to_string())
 }
 
 /// Result of a compilation attempt.
@@ -239,6 +257,24 @@ fn internal_run_error(message: String) -> RunError {
     }
 }
 
+/// Builds the [`RunError`] for a VM trap, keyed by the trap's v-code.
+///
+/// `location` is the faulting task and program instance, or `None` for a trap
+/// raised while loading the container, which belongs to no task.
+fn vm_trap_error(context: &str, trap: &Trap, location: Option<(TaskId, InstanceId)>) -> RunError {
+    let message = match location {
+        Some((task_id, instance_id)) => {
+            format!("{context}: {trap} (task {task_id}, instance {instance_id})")
+        }
+        None => format!("{context}: {trap}"),
+    };
+    RunError {
+        message,
+        code: Some(trap.v_code().to_string()),
+        ..Default::default()
+    }
+}
+
 /// Serializes a fallback [`RunError`] for the serde-to-JSON error path. The full
 /// result already failed to serialize, but this tiny error object does not; the
 /// static literal is a last-ditch guard should even that fail.
@@ -289,8 +325,8 @@ struct VariableInfo {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     type_name: String,
     /// `false` when `value` is a placeholder shown because the actual value
-    /// could not be read (e.g., STRING data-region offset out of bounds, or
-    /// WSTRING which is not yet implemented).
+    /// could not be read (e.g., a STRING or WSTRING data-region offset out of
+    /// bounds, or an aggregate whose contents the renderer cannot reach).
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     valid: bool,
 }
@@ -405,9 +441,8 @@ fn compile_inner(source: &str, dialect: &str, allows: &str, libraries: &str) -> 
     let options = compiler_options_from(dialect, allows);
 
     // Activated compatibility libraries, loaded from their served plain-text
-    // files. They are injected ahead of user source (base stdlib -> library ->
-    // user), so a user declaration shadows a library declaration of the same
-    // name (`REQ-CL-playground-001`).
+    // files (`REQ-CL-playground-001`). They are injected ahead of user source
+    // (base stdlib -> library -> user) and merge as ordinary declarations.
     let compat_libraries = match parse_activated_libraries(libraries, &options) {
         Ok(libs) => libs,
         Err(result) => return result,
@@ -507,21 +542,23 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
 
     let mut bufs = VmBuffers::from_container(&container);
 
-    let mut running = match Vm::new().load(&container, &mut bufs).start() {
+    const INIT_TRAP: &str = "VM trap during init";
+    let running = Vm::new()
+        .load(&container, &mut bufs)
+        .map_err(|trap| vm_trap_error(INIT_TRAP, &trap, None))
+        .and_then(|ready| {
+            ready.start().map_err(|ctx| {
+                vm_trap_error(INIT_TRAP, &ctx.trap, Some((ctx.task_id, ctx.instance_id)))
+            })
+        });
+    let mut running = match running {
         Ok(vm) => vm,
-        Err(ctx) => {
+        Err(error) => {
             return RunResult {
                 ok: false,
                 variables: vec![],
                 scans_completed: 0,
-                error: Some(RunError {
-                    message: format!(
-                        "VM trap during init: {} (task {}, instance {})",
-                        ctx.trap, ctx.task_id, ctx.instance_id
-                    ),
-                    code: Some(ctx.trap.v_code().to_string()),
-                    ..Default::default()
-                }),
+                error: Some(error),
             };
         }
     };
@@ -537,16 +574,11 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                 ok: false,
                 variables,
                 scans_completed: round as u64,
-                error: Some(RunError {
-                    message: format!(
-                        "VM trap: {} (task {}, instance {})",
-                        faulted.trap(),
-                        faulted.task_id(),
-                        faulted.instance_id()
-                    ),
-                    code: Some(faulted.trap().v_code().to_string()),
-                    ..Default::default()
-                }),
+                error: Some(vm_trap_error(
+                    "VM trap",
+                    faulted.trap(),
+                    Some((faulted.task_id(), faulted.instance_id())),
+                )),
             };
         }
     }
@@ -707,23 +739,22 @@ fn load_program_inner(
     // Subsequent calls to step() will use resume() to skip re-initialization.
     let mut bufs = VmBuffers::from_container(&container);
 
-    match Vm::new().load(&container, &mut bufs).start() {
-        Ok(running) => {
-            running.stop();
-        }
-        Err(ctx) => {
-            return StepResult {
-                ok: false,
-                diagnostics: vec![],
-                variables: vec![],
-                total_scans: 0,
-                error: Some(RunError {
-                    message: format!("VM init trap: {}", ctx.trap),
-                    code: Some(ctx.trap.v_code().to_string()),
-                    ..Default::default()
-                }),
-            };
-        }
+    let trap = match Vm::new().load(&container, &mut bufs) {
+        Ok(ready) => ready
+            .start()
+            .map(|running| running.stop())
+            .err()
+            .map(|ctx| ctx.trap),
+        Err(trap) => Some(trap),
+    };
+    if let Some(trap) = trap {
+        return StepResult {
+            ok: false,
+            diagnostics: vec![],
+            variables: vec![],
+            total_scans: 0,
+            error: Some(vm_trap_error("VM init trap", &trap, None)),
+        };
     }
 
     SESSION.with(|cell| {
@@ -866,7 +897,13 @@ fn run_vm_scans(
     scans: u32,
     cycle_time_us: u64,
 ) -> (Vec<VariableInfo>, u64, Option<RunError>) {
-    let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
+    let mut running = match Vm::new().load(container, bufs) {
+        Ok(ready) => ready.resume(base_scan_count),
+        Err(trap) => {
+            let error = vm_trap_error("VM trap", &trap, None);
+            return (vec![], base_scan_count, Some(error));
+        }
+    };
 
     for _ in 0..scans {
         let uptime_us = running.scan_count() * cycle_time_us;
@@ -874,16 +911,11 @@ fn run_vm_scans(
             let total_scans = running.scan_count();
             let faulted = running.fault(ctx);
             let variables = read_all_variables(&faulted, &VariableRenderer::new(container));
-            let error = RunError {
-                message: format!(
-                    "VM trap: {} (task {}, instance {})",
-                    faulted.trap(),
-                    faulted.task_id(),
-                    faulted.instance_id()
-                ),
-                code: Some(faulted.trap().v_code().to_string()),
-                ..Default::default()
-            };
+            let error = vm_trap_error(
+                "VM trap",
+                faulted.trap(),
+                Some((faulted.task_id(), faulted.instance_id())),
+            );
             return (variables, total_scans, Some(error));
         }
     }
@@ -1753,6 +1785,21 @@ END_PROGRAM
         let defaults: Vec<&DialectOption> = options.iter().filter(|o| o.is_default).collect();
         assert_eq!(defaults.len(), 1);
         assert_eq!(defaults[0].value, Dialect::default().cli_name());
+    }
+
+    #[test]
+    fn doc_sections_when_called_then_agrees_with_docs_section_for_every_family() {
+        use ironplc_dsl::diagnostic::docs_section;
+
+        let map: std::collections::BTreeMap<String, String> =
+            serde_json::from_str(&doc_sections()).unwrap();
+        assert_eq!(map.len(), DOCS_SECTIONS.len());
+
+        // The served map must resolve a code exactly as the compiler's own
+        // `docs_section` does; the front end builds documentation links from it.
+        for (prefix, section) in &map {
+            assert_eq!(docs_section(&format!("{prefix}0001")), section);
+        }
     }
 
     #[test]

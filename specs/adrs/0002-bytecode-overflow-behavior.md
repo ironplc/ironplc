@@ -1,7 +1,8 @@
 # Configurable Overflow Behavior for Integer Arithmetic
 
-status: proposed
+status: superseded by ADR-0049
 date: 2026-02-17
+amended: 2026-09-03 (superseded by ADR-0049; never implemented)
 
 ## Context and Problem Statement
 
@@ -124,3 +125,15 @@ With native SINT wrapping:
 The results match. For wrapping, this is guaranteed by the properties of modular arithmetic — the low bits of the result are the same regardless of when truncation occurs. However, the compiler should still emit NARROW instructions at statement boundaries (not within sub-expressions) to minimize unnecessary narrowing, since for wrapping the final truncation is sufficient.
 
 For saturating or fault policies, intermediate narrowing changes results (as analyzed in the design discussion). The compiler must emit NARROW after every operation where IEC 61131-3 semantics require the result to be in the target type's range — which is at every assignment, not within expressions.
+
+### Superseded by ADR-0049
+
+This decision was never implemented. The VM has no overflow policy setting;
+`ADD_*`, `SUB_*`, `MUL_*`, `NEG_*`, and `TRUNC_*` wrap unconditionally, and no
+bytecode encodes a policy.
+[ADR-0049](0049-behavior-policies-selected-at-compile-time.md) decides that
+implementer-specific behavior is selected at compile time and encoded in the
+bytecode rather than configured on the VM instance, keeps wrapping as the
+arithmetic behavior, and applies the new rule first to string-to-number
+conversion. The vendor survey in *More Information* above remains the record
+of why wrapping is a documented, legitimate default.

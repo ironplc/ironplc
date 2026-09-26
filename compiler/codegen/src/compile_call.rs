@@ -9,22 +9,25 @@ use std::collections::HashMap;
 use ironplc_analyzer::{operator_function_form, FormOf};
 use ironplc_container::opcode;
 use ironplc_dsl::core::{Id, Located};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     Expr, ExprKind, Function, ParamAssignmentKind, SymbolicVariableKind, Variable,
 };
 
 use super::compile::{
     CompileContext, OpType, OpWidth, Signedness, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
+    NARROW_CHAR_WIDTH,
 };
+use super::compile_arith::compile_arith_fold;
 use super::compile_expr::{
-    compile_expr, emit_add, emit_arithmetic_op, emit_compare_op, emit_div, emit_mod, emit_mul,
-    emit_not, emit_sub, emit_truncation, op_type, op_type_from_expr, storage_bits,
+    compile_expr, emit_compare_op, emit_mod, emit_mul, emit_not, emit_sub, emit_truncation,
+    op_type, storage_bits, unresolved_expr_type,
 };
 use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
     compile_mid, compile_replace, compile_right, resolve_string_arg,
 };
+use super::compile_time_arith::{compile_time_arith, time_arith_for, Operand};
 use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
@@ -178,6 +181,12 @@ pub(crate) fn compile_function_call(
     if let Some(form) = operator_function_form(name.as_str()) {
         return compile_operator_form(emitter, ctx, func, op_type, &form.operator);
     }
+    // A typed time or date function (ADD_TIME, SUB_DATE_DATE, ...) compiles
+    // as the instruction sequence for the units of its operands.
+    if let Some((arith, width)) = time_arith_for(name.as_str()) {
+        let (in1, in2) = extract_two_positional_args(func)?;
+        return compile_time_arith(emitter, ctx, arith, width, Operand::Expr(in1), in2);
+    }
     match name.as_str() {
         "shl" | "shr" | "rol" | "ror" => {
             compile_shift_rotate(emitter, ctx, func, op_type, name.as_str())
@@ -202,32 +211,9 @@ pub(crate) fn compile_function_call(
         "right" => compile_right(emitter, ctx, func),
         "mid" => compile_mid(emitter, ctx, func),
         "concat" => compile_concat(emitter, ctx, func),
-        // Time functions — Group 1: direct i32 operations (same units)
-        "add_time" | "add_tod_time" => compile_two_arg_operator(
-            emitter,
-            ctx,
-            func,
-            (OpWidth::W32, Signedness::Signed),
-            emit_add,
-        ),
-        "sub_time" | "sub_tod_time" | "sub_tod_tod" => compile_two_arg_operator(
-            emitter,
-            ctx,
-            func,
-            (OpWidth::W32, Signedness::Signed),
-            emit_sub,
-        ),
-        // Time functions — Group 2: ms-to-seconds conversion before add/sub
-        "add_dt_time" | "concat_date_tod" => compile_dt_time_add_sub(emitter, ctx, func, emit_add),
-        "sub_dt_time" => compile_dt_time_add_sub(emitter, ctx, func, emit_sub),
-        // Time functions — Group 3: seconds-to-ms conversion after sub
-        "sub_dt_dt" | "sub_date_date" => compile_sub_to_time(emitter, ctx, func),
-        // Time functions — Group 5: datetime decomposition
+        // Time functions: datetime decomposition
         "dt_to_date" | "date_and_time_to_date" => compile_dt_to_date(emitter, ctx, func),
         "dt_to_tod" | "date_and_time_to_time_of_day" => compile_dt_to_tod(emitter, ctx, func),
-        // Time functions — Group 4: type-dependent MUL/DIV
-        "mul_time" => compile_mul_div_time(emitter, ctx, func, true),
-        "div_time" => compile_mul_div_time(emitter, ctx, func, false),
         _ => {
             // Check user-defined functions first.
             if let Some(func_info) = ctx.user_functions.get(name.as_str()).cloned() {
@@ -271,8 +257,10 @@ fn compile_user_function_call(
                 str_info.max_length,
                 str_info.char_width,
             );
-            let src_offset = resolve_string_arg(emitter, ctx, arg, &func.name.span())?;
-            ctx.num_temp_bufs += 1;
+            // The parameter slot was just initialized at its declared
+            // encoding, and the copy below has to agree with it.
+            let src_offset =
+                resolve_string_arg(emitter, ctx, arg, &func.name.span(), str_info.char_width)?;
             emitter.emit_str_load_var(src_offset);
             emitter.emit_str_store_var(str_info.data_offset);
 
@@ -375,30 +363,16 @@ fn compile_generic_builtin(
     Ok(())
 }
 
-/// Compiles a two-argument function form that maps to an existing operator.
-///
-/// Extracts the two positional arguments, compiles them with the given `op_type`,
-/// and calls the provided emit function. This is used for function forms like
-/// ADD(a, b) which are equivalent to the operator form a + b.
-fn compile_two_arg_operator(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    op_type: OpType,
-    emit_fn: impl FnOnce(&mut Emitter, OpType),
-) -> Result<(), Diagnostic> {
-    let (in1, in2) = extract_two_positional_args(func)?;
-    compile_expr(emitter, ctx, in1, op_type)?;
-    compile_expr(emitter, ctx, in2, op_type)?;
-    emit_fn(emitter, op_type);
-    Ok(())
-}
-
 /// Compiles the function form of an operator as the operator itself.
 ///
 /// The arguments compile at the enclosing expression's operation type, as
 /// every function argument does, and the opcode comes from the emitter the
 /// operator expression uses, so `AND(a, b)` and `a AND b` cannot diverge.
+///
+/// A binary operator folds its arguments from the left, so `ADD(a, b, c)`
+/// compiles as `(a + b) + c`. The analyzer has already enforced how many
+/// arguments the form takes; the fold is the same code for the two of a
+/// binary form and the two or more of an extensible one.
 fn compile_operator_form(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -407,13 +381,9 @@ fn compile_operator_form(
     operator: &FormOf,
 ) -> Result<(), Diagnostic> {
     match operator {
-        FormOf::Arithmetic(op) => {
-            compile_two_arg_operator(emitter, ctx, func, op_type, |emitter, op_type| {
-                emit_arithmetic_op(emitter, op, op_type)
-            })
-        }
+        FormOf::Arithmetic(op) => compile_arith_fold(emitter, ctx, func, op, op_type),
         FormOf::Compare(op) => {
-            compile_two_arg_operator(emitter, ctx, func, op_type, |emitter, op_type| {
+            compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {
                 emit_compare_op(emitter, op, op_type)
             })
         }
@@ -428,53 +398,36 @@ fn compile_operator_form(
     }
 }
 
+/// Compiles a call's two or more positional arguments, emitting the operator
+/// after each argument but the first, so the arguments fold from the left.
+pub(crate) fn compile_left_fold(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+    emit_fn: impl Fn(&mut Emitter, OpType),
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+    let [first, rest @ ..] = args.as_slice() else {
+        return Err(Diagnostic::todo_with_span(func.name.span()));
+    };
+    if rest.is_empty() {
+        return Err(Diagnostic::todo_with_span(func.name.span()));
+    }
+    compile_expr(emitter, ctx, first, op_type)?;
+    for arg in rest {
+        compile_expr(emitter, ctx, arg, op_type)?;
+        emit_fn(emitter, op_type);
+    }
+    Ok(())
+}
+
 /// Extracts two positional input arguments from a function call.
 fn extract_two_positional_args(func: &Function) -> Result<(&Expr, &Expr), Diagnostic> {
     match collect_positional_args(func).as_slice() {
         [in1, in2] => Ok((in1, in2)),
         _ => Err(Diagnostic::todo_with_span(func.name.span())),
     }
-}
-
-/// Compiles ADD_DT_TIME, SUB_DT_TIME, and CONCAT_DATE_TOD.
-///
-/// IN2 (TIME or TOD) is in milliseconds while IN1 (DT or DATE) is in seconds.
-/// Converts IN2 from ms to seconds by dividing by 1000, then adds or subtracts.
-fn compile_dt_time_add_sub(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    emit_fn: fn(&mut Emitter, OpType),
-) -> Result<(), Diagnostic> {
-    let (in1, in2) = extract_two_positional_args(func)?;
-    let op_type = (OpWidth::W32, Signedness::Signed);
-    compile_expr(emitter, ctx, in1, op_type)?;
-    compile_expr(emitter, ctx, in2, op_type)?;
-    let pool_idx = ctx.add_i32_constant(1000);
-    emitter.emit_load_const_i32(pool_idx);
-    emit_div(emitter, op_type);
-    emit_fn(emitter, op_type);
-    Ok(())
-}
-
-/// Compiles SUB_DT_DT and SUB_DATE_DATE.
-///
-/// Subtracts two values in seconds, then multiplies by 1000 to produce TIME
-/// in milliseconds.
-fn compile_sub_to_time(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-) -> Result<(), Diagnostic> {
-    let (in1, in2) = extract_two_positional_args(func)?;
-    let op_type = (OpWidth::W32, Signedness::Signed);
-    compile_expr(emitter, ctx, in1, op_type)?;
-    compile_expr(emitter, ctx, in2, op_type)?;
-    emit_sub(emitter, op_type);
-    let pool_idx = ctx.add_i32_constant(1000);
-    emitter.emit_load_const_i32(pool_idx);
-    emit_mul(emitter, op_type);
-    Ok(())
 }
 
 /// Compiles DT_TO_DATE and DATE_AND_TIME_TO_DATE.
@@ -539,77 +492,6 @@ fn compile_dt_to_tod(
     Ok(())
 }
 
-/// Compiles MUL_TIME and DIV_TIME.
-///
-/// IN1 is TIME (i32 ms). IN2 is ANY_NUM — codegen inspects IN2's resolved type
-/// to select the appropriate instruction sequence. For integer IN2 we use
-/// direct i32 multiply/divide. For float IN2 we convert TIME to float, operate,
-/// and convert back.
-fn compile_mul_div_time(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    is_mul: bool,
-) -> Result<(), Diagnostic> {
-    let (in1, in2) = extract_two_positional_args(func)?;
-    let time_op = (OpWidth::W32, Signedness::Signed);
-
-    let in2_op = op_type_from_expr(in2).unwrap_or(time_op);
-
-    match in2_op.0 {
-        OpWidth::W32 => {
-            compile_expr(emitter, ctx, in1, time_op)?;
-            compile_expr(emitter, ctx, in2, time_op)?;
-            if is_mul {
-                emit_mul(emitter, time_op);
-            } else {
-                emit_div(emitter, time_op);
-            }
-        }
-        OpWidth::F32 => {
-            compile_expr(emitter, ctx, in1, time_op)?;
-            emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F32);
-            compile_expr(emitter, ctx, in2, (OpWidth::F32, Signedness::Signed))?;
-            let f32_op = (OpWidth::F32, Signedness::Signed);
-            if is_mul {
-                emit_mul(emitter, f32_op);
-            } else {
-                emit_div(emitter, f32_op);
-            }
-            emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I32);
-        }
-        OpWidth::F64 => {
-            compile_expr(emitter, ctx, in1, time_op)?;
-            emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64);
-            compile_expr(emitter, ctx, in2, (OpWidth::F64, Signedness::Signed))?;
-            let f64_op = (OpWidth::F64, Signedness::Signed);
-            if is_mul {
-                emit_mul(emitter, f64_op);
-            } else {
-                emit_div(emitter, f64_op);
-            }
-            emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I32);
-        }
-        OpWidth::W64 => {
-            // LINT/ULINT: promote TIME to f64, convert IN2 to f64, operate, convert back.
-            // This avoids needing an i64→i32 truncation opcode.
-            compile_expr(emitter, ctx, in1, time_op)?;
-            emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64);
-            compile_expr(emitter, ctx, in2, (OpWidth::W64, in2_op.1))?;
-            emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F64);
-            let f64_op = (OpWidth::F64, Signedness::Signed);
-            if is_mul {
-                emit_mul(emitter, f64_op);
-            } else {
-                emit_div(emitter, f64_op);
-            }
-            emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I32);
-        }
-    }
-
-    Ok(())
-}
-
 /// Compiles the MOVE function form.
 ///
 /// MOVE(IN) is equivalent to assignment. Takes a single argument and returns
@@ -650,7 +532,7 @@ fn compile_trunc(
     }
 
     // Determine the argument's float type from its resolved type.
-    let arg_op_type = op_type(args[0])?;
+    let arg_op_type = op_type(ctx, args[0])?;
     compile_expr(emitter, ctx, args[0], arg_op_type)?;
 
     // Build VarTypeInfo for source (float) and target (integer) to reuse
@@ -719,8 +601,8 @@ fn sizeof_from_resolved_type(expr: &Expr) -> Result<u32, Diagnostic> {
     let resolved = expr
         .resolved_type
         .as_ref()
-        .ok_or_else(|| Diagnostic::todo())?;
-    let info = resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo())?;
+        .ok_or_else(|| unresolved_expr_type(expr))?;
+    let info = resolve_type_name(&resolved.name).ok_or_else(|| unresolved_expr_type(expr))?;
     // Ceiling division: types like BOOL (1 bit) still occupy 1 byte.
     Ok((info.storage_bits as u32).div_ceil(8))
 }
@@ -741,7 +623,7 @@ fn compile_bcd_to_int(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let arg_op_type = op_type(args[0])?;
+    let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(args[0])?;
     compile_expr(emitter, ctx, args[0], arg_op_type)?;
 
@@ -772,7 +654,7 @@ fn compile_int_to_bcd(
         return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
-    let arg_op_type = op_type(args[0])?;
+    let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(args[0])?;
     compile_expr(emitter, ctx, args[0], arg_op_type)?;
 
@@ -1178,23 +1060,61 @@ pub(crate) fn compile_string_conversion(
                 }
             };
             emitter.emit_builtin(func_id);
-            ctx.num_temp_bufs += 1;
             Ok(())
         }
         StringConversion::StringToNum { target } => {
-            let data_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+            // STRING_TO_* parses Latin-1 digits, so a WSTRING argument has no
+            // conversion -- P4034 rather than an encoding-mismatch trap.
+            let data_offset =
+                resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
             let pool_index = ctx.add_i32_constant(data_offset as i32);
             emitter.emit_load_const_i32(pool_index);
 
-            let func_id = match target.op_width {
-                OpWidth::W32 => opcode::builtin::CONV_STR_TO_I32,
-                OpWidth::F32 => opcode::builtin::CONV_STR_TO_F32,
-                _ => {
-                    return Err(Diagnostic::todo_with_span(func.name.span()));
+            use opcode::builtin::str_to_num::{func_id as block_func_id, Target};
+            // Every target is a policy-bearing conversion (ADR-0049): the
+            // func_id names the target and both selected policies, the VM
+            // range-checks against the target's own bounds, and no
+            // truncation follows. `STRING_TO_SINT('300')` fails; it never
+            // wraps to 44. A bit-string type has the signedness and value
+            // width of the unsigned integer it aliases, so it lands on that
+            // integer's target.
+            let block = |target: Target| {
+                block_func_id(
+                    target,
+                    ctx.string_to_num.non_numeric,
+                    ctx.string_to_num.failure,
+                )
+            };
+            let func_id = match (target.op_width, target.signedness, target.storage_bits) {
+                (OpWidth::W32, Signedness::Unsigned, 32) => block(Target::U32),
+                (OpWidth::W32, Signedness::Signed, 32) => block(Target::I32),
+                (OpWidth::W32, Signedness::Unsigned, 8) => block(Target::U8),
+                (OpWidth::W32, Signedness::Signed, 8) => block(Target::I8),
+                (OpWidth::W32, Signedness::Unsigned, 16) => block(Target::U16),
+                (OpWidth::W32, Signedness::Signed, 16) => block(Target::I16),
+                (OpWidth::W64, Signedness::Unsigned, 64) => block(Target::U64),
+                (OpWidth::W64, Signedness::Signed, 64) => block(Target::I64),
+                (OpWidth::F32, _, _) => block(Target::F32),
+                (OpWidth::F64, _, _) => block(Target::F64),
+                // A 64-bit slot holds only the 64-bit value width.
+                (OpWidth::W64, _, _) => {
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        func.name.span(),
+                        "STRING_TO_* 64-bit target has no conversion",
+                    )));
+                }
+                // A 32-bit slot holds only the value widths above. The
+                // analyzer offers no other STRING_TO_* with a 32-bit
+                // target (there is no STRING_TO_BOOL), so this is a
+                // compiler bug, not a program error.
+                (OpWidth::W32, _, _) => {
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        func.name.span(),
+                        "STRING_TO_* target has no conversion",
+                    )));
                 }
             };
             emitter.emit_builtin(func_id);
-            emit_truncation(emitter, target);
             Ok(())
         }
     }

@@ -50,7 +50,8 @@ pub(crate) struct StructArrayVarInfo {
 /// `Trigger` in `MyBay.Devices.MeterQRScanner[i].Trigger` or in `Scanners[i].Trigger`.
 ///
 /// The array itself is either a field of a structure or a variable in its own
-/// right; [`struct_array_element_field`] handles both once the base is known.
+/// right; [`locate_array_of_struct`] finds it, and [`struct_array_element_field`]
+/// builds the access.
 ///
 /// `field_subscripts` carries the subscripts applied to the selected field, so
 /// that `a[i].values[j]` -- an array inside the element structure -- resolves
@@ -60,6 +61,47 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
     structured: &'ast ironplc_dsl::textual::StructuredVariable,
     field_subscripts: Vec<&'ast Expr>,
 ) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
+    let array = locate_array_of_struct(ctx, structured)?;
+    struct_array_element_field(
+        array.var_index,
+        array.desc_index,
+        array.base_slot_offset,
+        &array.element_type,
+        &array.dimensions,
+        &structured.field,
+        array.subscripts,
+        field_subscripts,
+        &array.span,
+    )
+}
+
+/// An array of structures, located from the record of `<array>[i].field`.
+struct LocatedArrayOfStruct<'ast> {
+    /// Variable table index holding the data offset of the region that holds
+    /// the array.
+    var_index: VarIndex,
+    /// Slot-typed descriptor over that whole region.
+    desc_index: u16,
+    /// Slot offset of element 0 within the region.
+    base_slot_offset: u32,
+    /// The element structure type.
+    element_type: IntermediateType,
+    /// Array bounds, in element units.
+    dimensions: Vec<ArrayDimension>,
+    /// The element subscripts, outermost first.
+    subscripts: Vec<&'ast Expr>,
+    /// Where the array is named, for diagnostics.
+    span: SourceSpan,
+}
+
+/// Locates the array of structures that the record of `structured` indexes.
+///
+/// The array itself is either a field of a structure or a variable in its own
+/// right.
+fn locate_array_of_struct<'ast>(
+    ctx: &CompileContext,
+    structured: &'ast ironplc_dsl::textual::StructuredVariable,
+) -> Result<LocatedArrayOfStruct<'ast>, Diagnostic> {
     let SymbolicVariableKind::Array(array_var) = structured.record.as_ref() else {
         return Err(Diagnostic::todo_with_span(structured.span()));
     };
@@ -89,8 +131,8 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
 
             let IntermediateType::Array {
                 element_type,
-                dimensions: array_dims,
-            } = &field_type
+                dimensions,
+            } = field_type
             else {
                 return Err(Diagnostic::not_implemented(Label::span(
                     base.field.span(),
@@ -105,17 +147,15 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
                 ))
             })?;
 
-            struct_array_element_field(
-                struct_info.var_index,
-                struct_info.desc_index,
-                field_slot_offset.raw(),
-                element_type,
-                array_dims,
-                &structured.field,
+            Ok(LocatedArrayOfStruct {
+                var_index: struct_info.var_index,
+                desc_index: struct_info.desc_index,
+                base_slot_offset: field_slot_offset.raw(),
+                element_type: *element_type,
+                dimensions,
                 subscripts,
-                field_subscripts,
-                &base.field.span(),
-            )
+                span: base.field.span(),
+            })
         }
         ArrayOfStructBase::Variable(name) => {
             let info = ctx.struct_array_vars.get(name).ok_or_else(|| {
@@ -125,17 +165,15 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
                 ))
             })?;
 
-            struct_array_element_field(
-                info.var_index,
-                info.desc_index,
-                0,
-                &info.element_type,
-                &info.dimensions,
-                &structured.field,
+            Ok(LocatedArrayOfStruct {
+                var_index: info.var_index,
+                desc_index: info.desc_index,
+                base_slot_offset: 0,
+                element_type: info.element_type.clone(),
+                dimensions: info.dimensions.clone(),
                 subscripts,
-                field_subscripts,
-                &name.span(),
-            )
+                span: name.span(),
+            })
         }
     }
 }
@@ -395,24 +433,10 @@ pub(crate) fn register_struct_array_variable(
         )));
     }
 
-    let data_offset = ctx.data_region_offset;
     let total_bytes = total_slots.checked_mul(8).ok_or_else(|| {
         Diagnostic::not_supported(Label::span(span.clone(), "Data region overflow"))
     })?;
-    ctx.data_region_offset = ctx
-        .data_region_offset
-        .checked_add(total_bytes)
-        .ok_or_else(|| {
-            Diagnostic::not_supported(Label::span(span.clone(), "Data region overflow"))
-        })?;
-
-    // The offset is stored in the variable slot via LOAD_CONST_I32.
-    if ctx.data_region_offset > i32::MAX as u32 {
-        return Err(Diagnostic::not_supported(Label::span(
-            span.clone(),
-            "Data region exceeds 2 GiB limit",
-        )));
-    }
+    let data_offset = crate::data_region::reserve(ctx, total_bytes, span)?;
 
     let desc_index =
         builder.add_array_descriptor(ironplc_container::FieldType::Slot as u8, total_slots, 0);

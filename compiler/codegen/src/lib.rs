@@ -31,25 +31,32 @@
 mod call_graph;
 mod compile;
 mod compile_aggregate;
+mod compile_arith;
 mod compile_array;
 mod compile_array_struct;
 mod compile_call;
 mod compile_enum;
 mod compile_expr;
+mod compile_fb_init;
 mod compile_fn;
 mod compile_method;
+mod compile_reference;
 mod compile_setup;
 mod compile_short_circuit;
 mod compile_stmt;
 mod compile_string;
 mod compile_struct;
+mod compile_struct_init;
+mod compile_time_arith;
+mod data_region;
 mod emit;
 mod optimize;
 mod source_lookup;
 mod stack_balance;
+mod string_width;
 mod type_info;
 
-pub use compile::{compile, CodegenOptions};
+pub use compile::{compile, CodegenOptions, StringToNumPolicies};
 pub use source_lookup::{EmptyLookup, SourceLookup};
 
 // Spec conformance testing infrastructure (test-only)
@@ -61,5 +68,11 @@ mod spec_requirements {
 mod spec_conformance;
 #[cfg(test)]
 mod spec_conformance_adr;
+#[cfg(test)]
+mod spec_conformance_arithmetic_operator_overloads;
+#[cfg(test)]
+mod spec_conformance_behavior_policies;
+#[cfg(test)]
+mod spec_conformance_container_format;
 #[cfg(test)]
 mod spec_conformance_keyword_function_forms;

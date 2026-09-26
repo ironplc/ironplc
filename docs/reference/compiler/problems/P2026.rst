@@ -113,6 +113,37 @@ variable can never equal makes a branch that can never run:
        END_IF;
    END_PROGRAM
 
+The same holds wherever a constant is stored: an element of an array
+initializer (including each repetition, as in ``[2(300)]``), an element of a
+structure or function block instance initializer, the default of a structure
+field or a type declaration, and an argument passed to a function or function
+block input, which is checked against the parameter's type:
+
+.. code-block::
+
+   TYPE
+       Small : USINT := 300;  (* Error: a USINT holds 0 to 255 *)
+   END_TYPE
+
+   FUNCTION Scale : USINT
+       VAR_INPUT
+           value : USINT;
+       END_VAR
+       Scale := value;
+   END_FUNCTION
+
+   PROGRAM main
+       VAR
+           readings : ARRAY[1..2] OF USINT := [1, 300];  (* Error *)
+           result : USINT;
+       END_VAR
+
+       result := Scale(value := 300);  (* Error: the parameter is a USINT *)
+   END_PROGRAM
+
+A generic parameter of a standard function, such as the ``ANY_NUM`` inputs of
+``ADD``, states no range of its own, so its argument is not checked.
+
 A subrange type states its own range, and a constant outside it is reported
 the same way:
 
@@ -127,6 +158,43 @@ the same way:
            r : Ratio := 20;  (* Error: Ratio holds 0 to 10 *)
        END_VAR
    END_PROGRAM
+
+A prefixed literal states its own type
+--------------------------------------
+
+An integer literal can name its type with a prefix, as in ``INT#42``. The
+prefix is a statement about the value, so the value is checked against the
+prefixed type as well as against the type it is stored into. ``INT#40000`` is
+not an ``INT``, whatever it is assigned to:
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           wide : DINT := INT#40000;  (* Error: an INT holds -32768 to 32767 *)
+       END_VAR
+   END_PROGRAM
+
+To fix this error, name the type the value belongs to, or drop the prefix so
+that the destination alone decides:
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           wide : DINT := DINT#40000;
+           other : DINT := 40000;
+       END_VAR
+   END_PROGRAM
+
+The two checks are independent. A literal that fits its own type but not the
+destination, such as ``small : SINT := INT#200``, is reported against the
+destination only, and one that fits neither is reported once for each.
+
+A radix form with an integer type prefix is checked by its value in the same
+way: ``INT#16#FFFF`` is 65535, which no ``INT`` can hold. A bit pattern that
+is meant to fill the word is spelled with a bit-string prefix, such as
+``WORD#16#FFFF``, which is not checked.
 
 Bit strings are not checked
 ---------------------------
