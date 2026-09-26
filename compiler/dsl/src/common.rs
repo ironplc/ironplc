@@ -2207,49 +2207,7 @@ impl VarDecl {
     }
 
     pub fn type_name(&self) -> TypeReference {
-        match &self.initializer {
-            InitialValueAssignmentKind::None(_source_span) => TypeReference::Unspecified,
-            InitialValueAssignmentKind::Simple(simple_initializer) => {
-                TypeReference::Named(simple_initializer.type_name.clone())
-            }
-            InitialValueAssignmentKind::String(string_initializer) => {
-                TypeReference::Named(string_initializer.type_name())
-            }
-            InitialValueAssignmentKind::EnumeratedValues(_enumerated_values_initializer) => {
-                TypeReference::Inline
-            }
-            InitialValueAssignmentKind::EnumeratedType(enumerated_initial_value_assignment) => {
-                TypeReference::Named(enumerated_initial_value_assignment.type_name.clone())
-            }
-            InitialValueAssignmentKind::FunctionBlock(function_block_initial_value_assignment) => {
-                TypeReference::Named(function_block_initial_value_assignment.type_name.clone())
-            }
-            InitialValueAssignmentKind::FunctionBlockCall(function_block_call_initializer) => {
-                TypeReference::Named(function_block_call_initializer.type_name.clone())
-            }
-            InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
-                match subrange_specification_kind {
-                    SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
-                    SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
-                }
-            }
-            InitialValueAssignmentKind::Structure(structure_initialization_declaration) => {
-                TypeReference::Named(structure_initialization_declaration.type_name.clone())
-            }
-            InitialValueAssignmentKind::Array(array_initial_value_assignment) => {
-                match &array_initial_value_assignment.spec {
-                    SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
-                    SpecificationKind::Inline(_) => TypeReference::Inline,
-                }
-            }
-            InitialValueAssignmentKind::Reference(_) => TypeReference::Inline,
-            InitialValueAssignmentKind::LateResolvedType(late) => {
-                TypeReference::Named(late.type_name.clone())
-            }
-            InitialValueAssignmentKind::SimpleExpr(simple_expr_initializer) => {
-                TypeReference::Named(simple_expr_initializer.type_name.clone())
-            }
-        }
+        self.initializer.type_reference()
     }
 }
 
@@ -2641,6 +2599,54 @@ pub enum LateResolvedInitialValue {
 }
 
 impl InitialValueAssignmentKind {
+    /// Returns the type this initializer declares: the name it states, or
+    /// [`TypeReference::Inline`] for a type spelled out in place.
+    pub fn type_reference(&self) -> TypeReference {
+        match self {
+            InitialValueAssignmentKind::None(_source_span) => TypeReference::Unspecified,
+            InitialValueAssignmentKind::Simple(simple_initializer) => {
+                TypeReference::Named(simple_initializer.type_name.clone())
+            }
+            InitialValueAssignmentKind::String(string_initializer) => {
+                TypeReference::Named(string_initializer.type_name())
+            }
+            InitialValueAssignmentKind::EnumeratedValues(_enumerated_values_initializer) => {
+                TypeReference::Inline
+            }
+            InitialValueAssignmentKind::EnumeratedType(enumerated_initial_value_assignment) => {
+                TypeReference::Named(enumerated_initial_value_assignment.type_name.clone())
+            }
+            InitialValueAssignmentKind::FunctionBlock(function_block_initial_value_assignment) => {
+                TypeReference::Named(function_block_initial_value_assignment.type_name.clone())
+            }
+            InitialValueAssignmentKind::FunctionBlockCall(function_block_call_initializer) => {
+                TypeReference::Named(function_block_call_initializer.type_name.clone())
+            }
+            InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
+                match subrange_specification_kind {
+                    SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
+                    SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
+                }
+            }
+            InitialValueAssignmentKind::Structure(structure_initialization_declaration) => {
+                TypeReference::Named(structure_initialization_declaration.type_name.clone())
+            }
+            InitialValueAssignmentKind::Array(array_initial_value_assignment) => {
+                match &array_initial_value_assignment.spec {
+                    SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
+                    SpecificationKind::Inline(_) => TypeReference::Inline,
+                }
+            }
+            InitialValueAssignmentKind::Reference(_) => TypeReference::Inline,
+            InitialValueAssignmentKind::LateResolvedType(late) => {
+                TypeReference::Named(late.type_name.clone())
+            }
+            InitialValueAssignmentKind::SimpleExpr(simple_expr_initializer) => {
+                TypeReference::Named(simple_expr_initializer.type_name.clone())
+            }
+        }
+    }
+
     /// Returns whether the declaration states an initial value: a literal,
     /// enumerated or string value, at least one array element, at least one
     /// structure member, or a reference target. A function-block instance
