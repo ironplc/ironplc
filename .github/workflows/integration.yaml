@@ -3,6 +3,10 @@ on:
   pull_request:
     branches:
       - main
+  # Run the same checks on the merge queue's candidate commit so required
+  # status checks are reported for it.
+  merge_group:
+    types: [checks_requested]
   # Allow triggering directly
   workflow_dispatch:
 
@@ -14,10 +18,14 @@ jobs:
   # `pr-ci` environment clicks Approve, scoped to that exact commit.
   # See specs/adrs/0032-ci-gating-and-secret-scoping.md for the rationale,
   # threat model, and one-time GitHub setup required.
+  #
+  # Merge queue runs skip the environment (an empty name means none): only a
+  # maintainer can enqueue a pull request, and it must already have passed
+  # this gate and review. The job still runs so its check is reported.
   approve:
     name: Awaiting maintainer approval
     runs-on: ubuntu-latest
-    environment: pr-ci
+    environment: ${{ github.event_name != 'merge_group' && 'pr-ci' || '' }}
     steps:
       - run: echo "Approved by ${{ github.actor }}"
 
