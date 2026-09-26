@@ -14,6 +14,10 @@ signed argument for an unsigned parameter.
 For the full set of allowed implicit conversions, see
 :doc:`/explanation/type-conversions`.
 
+The arithmetic functions ``ADD``, ``SUB``, ``MUL`` and ``DIV`` are the exception: they
+accept the numeric types and the time and date types, so a mismatch in their inputs is
+reported as :doc:`P4049` instead, as it is for the operators ``+``, ``-``, ``*`` and ``/``.
+
 Example
 -------
 
