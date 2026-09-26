@@ -297,7 +297,7 @@ fn container_spec_req_cf_016_signature_directory_entries_are_zero() {
 
 // ---------------------------------------------------------------------------
 // Container Format — Content and Debug Hashes (REQ-CF-container-028 through
-// REQ-CF-container-033)
+// REQ-CF-container-034)
 // ---------------------------------------------------------------------------
 
 /// The bytes of one section, as the header's directory locates it.
@@ -326,24 +326,62 @@ fn assert_flipped_byte_is_rejected(buf: &[u8], index: usize) {
     ));
 }
 
-/// REQ-CF-container-028: content_hash is BLAKE3 over the type section,
-/// constant pool and code section bytes in file order; an absent type
-/// section contributes nothing.
-#[spec_test(REQ_CF_container_028)]
-fn container_spec_req_cf_028_content_hash_covers_type_const_and_code() {
-    let (buf, h) = full_container_bytes();
+/// The header image the content hash covers, recomputed from the spec's
+/// description rather than from `integrity::masked_header`.
+fn spec_masked_header(buf: &[u8]) -> Vec<u8> {
+    let mut image = buf[..HEADER_SIZE].to_vec();
+    image[7] &= !FLAG_HAS_DEBUG_SECTION;
+    image[8..40].fill(0);
+    image[72..104].fill(0);
+    image[136..192].fill(0);
+    image
+}
+
+/// BLAKE3 over the masked header followed by each section in file order,
+/// each located by the header's directory.
+fn spec_content_hash(buf: &[u8], h: &FileHeader) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
-    hasher.update(section(&buf, h.type_section_offset, h.type_section_size));
-    hasher.update(section(&buf, h.const_section_offset, h.const_section_size));
-    hasher.update(section(&buf, h.code_section_offset, h.code_section_size));
-    assert_eq!(h.content_hash, *hasher.finalize().as_bytes());
+    hasher.update(&spec_masked_header(buf));
+    hasher.update(section(buf, h.task_section_offset, h.task_section_size));
+    hasher.update(section(buf, h.type_section_offset, h.type_section_size));
+    hasher.update(section(buf, h.const_section_offset, h.const_section_size));
+    hasher.update(section(buf, h.code_section_offset, h.code_section_size));
+    *hasher.finalize().as_bytes()
+}
+
+/// REQ-CF-container-028: content_hash is BLAKE3 over the masked header, task
+/// table, type section, constant pool and code section in file order; an
+/// absent type section contributes nothing.
+#[spec_test(REQ_CF_container_028)]
+fn container_spec_req_cf_028_content_hash_covers_header_task_type_const_and_code() {
+    let (buf, h) = full_container_bytes();
+    assert_eq!(h.content_hash, spec_content_hash(&buf, &h));
     assert_ne!(h.content_hash, integrity::NO_HASH);
 
     let (buf, h) = minimal_container_bytes();
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(section(&buf, h.const_section_offset, h.const_section_size));
-    hasher.update(section(&buf, h.code_section_offset, h.code_section_size));
-    assert_eq!(h.content_hash, *hasher.finalize().as_bytes());
+    assert_eq!(h.type_section_size, 0);
+    assert_eq!(h.content_hash, spec_content_hash(&buf, &h));
+}
+
+/// REQ-CF-container-034: the hashed header image zeroes exactly
+/// content_hash, debug_hash and the section directory, and clears the debug
+/// flag bit; every other header byte is covered.
+#[spec_test(REQ_CF_container_034)]
+fn container_spec_req_cf_034_header_image_masks_hashes_directory_and_debug_flag() {
+    let (buf, _) = full_container_bytes();
+    let header: [u8; HEADER_SIZE] = buf[..HEADER_SIZE].try_into().unwrap();
+    let image = integrity::masked_header(&header);
+    assert_eq!(image.to_vec(), spec_masked_header(&buf));
+
+    // The masked bytes carry nothing; the rest carries the header verbatim.
+    assert_eq!(image[7] & FLAG_HAS_DEBUG_SECTION, 0);
+    assert_eq!(&image[8..40], &[0u8; 32]);
+    assert_eq!(&image[72..104], &[0u8; 32]);
+    assert_eq!(&image[136..192], &[0u8; 56]);
+    assert_eq!(&image[0..7], &header[0..7]);
+    assert_eq!(&image[40..72], &header[40..72]);
+    assert_eq!(&image[104..136], &header[104..136]);
+    assert_eq!(&image[192..256], &header[192..256]);
 }
 
 /// REQ-CF-container-029: debug_hash is BLAKE3 over the debug section bytes,
@@ -358,11 +396,19 @@ fn container_spec_req_cf_029_debug_hash_covers_debug_section() {
     assert_eq!(h.debug_hash, integrity::NO_HASH);
 }
 
-/// REQ-CF-container-030: a byte changed in any hashed section is rejected
-/// with ContentHashMismatch by both readers.
+/// REQ-CF-container-030: a byte changed in the covered header bytes or in
+/// any hashed section is rejected with ContentHashMismatch by both readers.
 #[spec_test(REQ_CF_container_030)]
-fn container_spec_req_cf_030_modified_hashed_section_is_rejected() {
+fn container_spec_req_cf_030_modified_hashed_content_is_rejected() {
     let (buf, h) = full_container_bytes();
+    // Header: `profile` (byte 6) and `data_region_bytes` (bytes 198–201)
+    // are covered and not otherwise validated by the reader.
+    assert_flipped_byte_is_rejected(&buf, 6);
+    assert_flipped_byte_is_rejected(&buf, 198);
+    assert_flipped_byte_is_rejected(
+        &buf,
+        last_byte_of(h.task_section_offset, h.task_section_size),
+    );
     assert_flipped_byte_is_rejected(
         &buf,
         last_byte_of(h.type_section_offset, h.type_section_size),

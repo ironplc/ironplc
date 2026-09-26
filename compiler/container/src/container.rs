@@ -74,12 +74,20 @@ impl Container {
             header.flags |= FLAG_HAS_DEBUG_SECTION;
         }
 
-        header.content_hash = integrity::content_hash(&type_bytes, &const_bytes, &code_bytes);
         header.debug_hash = if self.debug_section.is_some() {
             integrity::debug_hash(&debug_bytes)
         } else {
             integrity::NO_HASH
         };
+        // The header is part of the hashed content (masked), so it is
+        // serialized once to hash and again to write with the hash in it.
+        header.content_hash = integrity::content_hash(&integrity::Content {
+            header: &header_image(&header)?,
+            task_table: &task_bytes,
+            type_section: &type_bytes,
+            const_section: &const_bytes,
+            code_section: &code_bytes,
+        });
 
         header.write_to(w)?;
         w.write_all(&task_bytes)?;
@@ -94,13 +102,15 @@ impl Container {
     /// Reads a container from the given reader.
     ///
     /// Rejects the container with [`ContainerError::ContentHashMismatch`]
-    /// when the header carries a content hash that the type, constant and
-    /// code sections do not reproduce. A debug section whose bytes do not
+    /// when the header carries a content hash that the header, task table,
+    /// type, constant and code sections do not reproduce. A debug section whose bytes do not
     /// reproduce a carried `debug_hash` is discarded, not fatal, so a
     /// modified or stale debug section cannot stop a program from running
     /// — that is the separation ADR-0007 asks for.
     pub fn read_from(r: &mut impl Read) -> Result<Self, ContainerError> {
-        let header = FileHeader::read_from(r)?;
+        let mut header_bytes = [0u8; HEADER_SIZE];
+        r.read_exact(&mut header_bytes)?;
+        let header = FileHeader::from_bytes(&header_bytes)?;
 
         // Read remaining bytes after the header so we can seek to
         // section offsets within them.
@@ -114,15 +124,20 @@ impl Container {
         // cause. An unhashed container skips this and is parsed as
         // leniently as before.
         if header.content_hash != integrity::NO_HASH {
+            let h = &header;
             integrity::check_content_hash(
-                &header.content_hash,
-                section_bytes(&rest, header.type_section_offset, header.type_section_size)?,
-                section_bytes(
-                    &rest,
-                    header.const_section_offset,
-                    header.const_section_size,
-                )?,
-                section_bytes(&rest, header.code_section_offset, header.code_section_size)?,
+                &h.content_hash,
+                &integrity::Content {
+                    header: &header_bytes,
+                    task_table: section_bytes(&rest, h.task_section_offset, h.task_section_size)?,
+                    type_section: section_bytes(&rest, h.type_section_offset, h.type_section_size)?,
+                    const_section: section_bytes(
+                        &rest,
+                        h.const_section_offset,
+                        h.const_section_size,
+                    )?,
+                    code_section: section_bytes(&rest, h.code_section_offset, h.code_section_size)?,
+                },
             )?;
         }
 
@@ -198,6 +213,14 @@ fn section_bytes(rest: &[u8], offset: u32, size: u32) -> Result<&[u8], Container
         .ok_or(ContainerError::SectionSizeMismatch)?;
     rest.get(start..start + size as usize)
         .ok_or(ContainerError::SectionSizeMismatch)
+}
+
+/// Serializes a header to its 256 on-disk bytes.
+fn header_image(header: &FileHeader) -> Result<[u8; HEADER_SIZE], ContainerError> {
+    let bytes = serialize(|buf| header.write_to(buf))?;
+    bytes
+        .try_into()
+        .map_err(|_| ContainerError::SectionSizeMismatch)
 }
 
 /// Runs a section writer against a fresh buffer and returns the bytes.

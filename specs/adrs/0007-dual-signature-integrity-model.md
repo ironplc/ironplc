@@ -5,6 +5,7 @@ date: 2026-02-18
 amended: 2026-05-22 (BLAKE3 throughout; per-file source hashes moved to debug section)
 amended: 2026-09-11 (Implementation Status added; status unchanged)
 amended: 2026-09-19 (Implementation Status updated: content and debug hashes computed and checked; status unchanged)
+amended: 2026-09-26 (postscript: content hash scope widened to the masked header and task table; status unchanged)
 
 ## Context and Problem Statement
 
@@ -78,7 +79,8 @@ reader is not left to infer it. Tracked by
 What landed:
 
 * **Content hash (element 1) and debug hash (element 3).** `Container::write_to`
-  computes `content_hash` as BLAKE3 over the type, constant and code sections
+  computes `content_hash` as BLAKE3 over the masked header, task table, type,
+  constant and code sections (see the postscript under *More Information*)
   and `debug_hash` as BLAKE3 over the debug section; `Container::read_from` and
   the `no_std` `ContainerRef::from_slice` recompute the content hash and reject
   a mismatch with `ContainerError::ContentHashMismatch`, and `read_from`
@@ -171,6 +173,25 @@ Independent content signature and debug signature.
 * Bad, because the key management surface is larger (two keys instead of one)
 
 ## More Information
+
+### Postscript (2026-09-26): content hash scope
+
+The *Decision Outcome* describes the content hash as covering the type
+section, constant pool and code section. When the hash was implemented, that
+scope turned out to be too narrow for the tamper-evidence it is meant to give:
+the header's `format_version`, `profile`, flags and runtime parameters change
+how the same code section is interpreted, and the task table changes when it
+runs. None of those would be caught by a hash over the three sections alone.
+
+The implemented `content_hash` therefore also covers the task table and a
+*masked* image of the header — the header with `content_hash`, `debug_hash`,
+the section directory and the debug flag bit zeroed. The mask keeps the two
+properties this ADR argued for: the debug section can still be stripped
+without invalidating the content hash, and the signature sections can still be
+inserted after hashing (they shift the directory, which is masked). The
+decision — two independent hashes, two independent signatures — is unchanged;
+only what "content" means is wider. The normative definition is in
+`specs/design/bytecode-container-format.md` under *Content Hash Scope*.
 
 ### Signature scope diagram
 

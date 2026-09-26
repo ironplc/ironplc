@@ -76,7 +76,7 @@ Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 
 | **REQ-CF-container-003** | 4 | format_version | u16 | Container format version (currently 3; bumped to 2 from 1 by ADR-0033 opcode-encoding migration, then to 3 by ADR-0035 WSTRING string-header/constant-pool encoding tags) |
 | | 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
 | **REQ-CF-container-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section (`FLAG_HAS_DEBUG_SECTION`); Bit 2: has type section (`FLAG_HAS_TYPE_SECTION`); bits 3–7 reserved. No bit indicates a signature section (see below) |
-| | 8 | content_hash | [u8; 32] | BLAKE3 over `type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope). All zeros means no hash was computed |
+| | 8 | content_hash | [u8; 32] | BLAKE3 over the masked header, task table, type section, constant pool and code section (see Content Hash Scope). All zeros means no hash was computed |
 | | 40 | reserved_hash_slot | [u8; 32] | Reserved (formerly `source_hash`); must be zero. Per-file source integrity is now in the debug section's `SOURCE_FILE_TABLE` (tag 6). |
 | | 72 | debug_hash | [u8; 32] | BLAKE3 over debug section (all zeros if no debug section, or if no hash was computed) |
 | | 104 | layout_hash | [u8; 32] | BLAKE3 over the memory layout signature (see Layout Hash and Online Change). **Planned** — currently written as all zeros |
@@ -584,7 +584,7 @@ The VM loads a bytecode container in this order:
    c. Verify signature over content_hash
    d. If invalid → reject with "signature verification failed" error
 7. Read type + constant + code sections
-8. Compute BLAKE3 over type + constant + code sections
+8. Compute BLAKE3 over masked header + task table + type + constant + code sections
 9. Compare computed hash to content_hash in header
     If mismatch → reject with "content hash mismatch" error
 10. If on-device verification is enabled:
@@ -604,21 +604,25 @@ Steps 6–9 are the minimum for constrained targets (signature fallback). Step 1
 
 ## Content Hash Scope
 
-The content hash covers the type section, constant pool, and code section in file order. It does **not** cover:
+The content hash covers everything that determines how the program executes, in file order: the file header (masked as described below), the task table, the type section, the constant pool and the code section. It does **not** cover:
 
-- The file header itself (the header contains the hash, so including it would be circular)
+- The hash fields and section directory within the header (the header contains the hash, so hashing it verbatim would be circular; the directory only locates bytes that are hashed directly)
 - The signature sections (signatures are over the hash, not the other way around)
 - The debug section (independently hashed and signed)
 
+The header is covered so that a changed `format_version`, `profile`, flag or runtime parameter — any of which changes how the same code section is interpreted — is caught, and the task table so that a changed schedule is. The header image that is hashed is the 256 header bytes with `content_hash` (bytes 8–39), `debug_hash` (bytes 72–103) and the section directory (bytes 136–191) zeroed and `FLAG_HAS_DEBUG_SECTION` cleared. Zeroing the directory rather than only the debug entry means a signature section can be inserted before the task table — shifting every later offset — without invalidating the hash it signs, and a debug strip changes only masked bytes.
+
 Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 6): each entry carries a BLAKE3 hash over the exact source bytes the parser saw, so a debugger can detect drift between an `.iplc` and the user's working copy on a per-file basis. The header has no top-level `source_hash` field — the debug section's `debug_hash` (BLAKE3 over the whole debug section) transitively protects every per-file hash.
 
-Note: The content hash does not directly cover the header bytes. Instead, the content signature signs the content_hash value, and the VM verifies that the content_hash in the header matches the actual hash of the type+constant+code sections (step 9 in the loading sequence). To make the binding explicit: the content_hash is computed as `BLAKE3(type_section_bytes || const_section_bytes || code_section_bytes)`.
+Note: The content signature signs the content_hash value, and the VM verifies that the content_hash in the header matches the actual hash of the content (step 9 in the loading sequence). To make the binding explicit: `content_hash = BLAKE3(masked_header || task_table_bytes || type_section_bytes || const_section_bytes || code_section_bytes)`.
 
-**REQ-CF-container-028** `content_hash` is the BLAKE3 digest of the type section, constant pool and code section bytes concatenated in file order, each located by its section directory entry; an absent type section contributes no bytes.
+**REQ-CF-container-028** `content_hash` is the BLAKE3 digest of the masked header image followed by the task table, type section, constant pool and code section bytes in file order, each section located by its directory entry; an absent type section contributes no bytes.
+
+**REQ-CF-container-034** The masked header image is the 256 header bytes with `content_hash`, `debug_hash` and the section directory (bytes 136–191) zeroed and `FLAG_HAS_DEBUG_SECTION` cleared; every other header byte is covered as written.
 
 **REQ-CF-container-029** `debug_hash` is the BLAKE3 digest of the debug section bytes, and all zeros when the container has no debug section.
 
-**REQ-CF-container-030** A reader recomputes the content hash over the sections it located and rejects a container whose nonzero `content_hash` differs with `ContainerError::ContentHashMismatch`, before parsing any section.
+**REQ-CF-container-030** A reader recomputes the content hash over the header and the sections it located and rejects a container whose nonzero `content_hash` differs with `ContainerError::ContentHashMismatch`, before parsing any section.
 
 **REQ-CF-container-031** An all-zero `content_hash` means no hash was computed; a reader accepts such a container without a content hash check.
 

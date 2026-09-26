@@ -165,9 +165,22 @@ impl<'a> ContainerRef<'a> {
         let func_dir = &code_section[..func_dir_size];
         let code_bytes = &code_section[func_dir_size..];
 
-        // 5. Check the content hash over type || const || code. The type
-        // section is not otherwise used here, so it is sliced only for this,
-        // and only when there is a hash to check.
+        // 5. Slice out task table section
+        let task_start = header.task_section_offset as usize;
+        let task_end = task_start + header.task_section_size as usize;
+        if task_end > data.len() {
+            return Err(ContainerError::SectionSizeMismatch);
+        }
+        let task_table_bytes = &data[task_start..task_end];
+
+        // Validate task table has at least a header
+        if header.task_section_size > 0 && task_table_bytes.len() < TASK_TABLE_HEADER_SIZE {
+            return Err(ContainerError::SectionSizeMismatch);
+        }
+
+        // 6. Check the content hash. The type section is not otherwise used
+        // here, so it is sliced only for this, and only when there is a hash
+        // to check.
         if header.content_hash != integrity::NO_HASH {
             let type_start = header.type_section_offset as usize;
             let type_end = type_start + header.type_section_size as usize;
@@ -181,23 +194,14 @@ impl<'a> ContainerRef<'a> {
             };
             integrity::check_content_hash(
                 &header.content_hash,
-                type_section,
-                const_section,
-                code_section,
+                &integrity::Content {
+                    header: header_bytes,
+                    task_table: task_table_bytes,
+                    type_section,
+                    const_section,
+                    code_section,
+                },
             )?;
-        }
-
-        // 6. Slice out task table section
-        let task_start = header.task_section_offset as usize;
-        let task_end = task_start + header.task_section_size as usize;
-        if task_end > data.len() {
-            return Err(ContainerError::SectionSizeMismatch);
-        }
-        let task_table_bytes = &data[task_start..task_end];
-
-        // Validate task table has at least a header
-        if header.task_section_size > 0 && task_table_bytes.len() < TASK_TABLE_HEADER_SIZE {
-            return Err(ContainerError::SectionSizeMismatch);
         }
 
         Ok(ContainerRef {
@@ -690,8 +694,11 @@ mod tests {
         // When task_section_size is 0, from_slice accepts the container and
         // the runtime accessors fall back to zero rather than indexing an
         // empty slice.
+        // Dropping the task table changes the hashed bytes, so this is only
+        // loadable as an unhashed container.
         let data = with_tampered_header(&steel_thread_bytes(), |h| {
             h.task_section_size = 0;
+            h.content_hash = integrity::NO_HASH;
         });
         let mut offsets = vec![0u32; 4];
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
