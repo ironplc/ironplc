@@ -17,7 +17,7 @@ use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit
 use super::compile::{CompileContext, OpType, OpWidth, DEFAULT_STRING_MAX_LENGTH};
 use super::compile_expr::compile_constant;
 use super::compile_setup::emit_zero_const;
-use super::compile_struct::{build_struct_fields, emit_truncation_for_field};
+use super::compile_struct::{build_struct_fields, emit_truncation_for_field, StructVarInfo};
 use crate::emit::Emitter;
 
 /// Emits a constant load for the type-appropriate default value of a struct field.
@@ -119,6 +119,46 @@ pub(crate) struct FieldInitInfo {
     pub op_type: Option<OpType>,
     /// For STRING fields, the maximum character length. `None` for non-STRING fields.
     pub string_max_length: Option<u16>,
+}
+
+/// Emits the initialization of a structure variable: stores its data-region
+/// offset into the variable's slot, then initializes every field.
+///
+/// `element_inits` are the explicit field initializers from the declaration,
+/// empty when there are none.
+pub(crate) fn initialize_struct_variable(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    info: &StructVarInfo,
+    element_inits: &[StructureElementInit],
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let offset_const = ctx.add_i32_constant(info.data_offset as i32);
+    emitter.emit_load_const_i32(offset_const);
+    emitter.emit_store_var_i32(info.var_index);
+
+    let fields: Vec<FieldInitInfo> = info
+        .fields
+        .iter()
+        .map(|f| FieldInitInfo {
+            name: f.name.clone(),
+            slot_offset: f.slot_offset,
+            field_type: f.field_type.clone(),
+            op_type: f.op_type,
+            string_max_length: f.string_max_length,
+        })
+        .collect();
+
+    initialize_struct_fields(
+        emitter,
+        ctx,
+        info.var_index,
+        info.desc_index,
+        info.data_offset,
+        &fields,
+        element_inits,
+        span,
+    )
 }
 
 /// Initializes fields of a structure variable.
