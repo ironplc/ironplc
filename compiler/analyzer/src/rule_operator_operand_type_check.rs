@@ -1,33 +1,32 @@
-//! Semantic rule that checks the operands of an operator against the type
-//! category the operator is defined for.
-//!
-//! A function form like `MOD(a, b)` is held to its operand type by the
-//! function-call rule, whose signature is derived from that operator's row
-//! of the operator-form table. The operator spelling `a MOD b` has no
-//! signature, so this rule reads the same row and asks the same question of
-//! each operand, through [`are_types_compatible`]. The two spellings
-//! therefore agree by construction: whatever `MOD(a, b)` accepts, `a MOD b`
-//! accepts.
+//! Semantic rule that checks the operands of an operator against the types
+//! the operator is defined for.
 //!
 //! Two families are checked:
 //!
-//! - `MOD`, defined over `ANY_INT` (Table 24). See [`checked_form`].
+//! - The arithmetic operators `+`, `-`, `*`, `/` and `MOD`, and the calls
+//!   `ADD`, `SUB`, `MUL` and `DIV`. IEC 61131-3 defines each as a numeric
+//!   overload (Table 24) and, for the first four, a set of typed overloads
+//!   on the time and date types (Table 30). The rule asks
+//!   [`resolve_arithmetic_overload`] whether any overload applies to the
+//!   operand types, the same question the type resolver and codegen ask, so
+//!   what this rule accepts is what they type and compile. An expression no
+//!   overload applies to is reported once, naming both operand types; a
+//!   call is folded from the left and reported at the step that fails. See
+//!   `specs/design/arithmetic-operator-overloads.md`.
 //! - `AND`, `OR`, `XOR` and `NOT`, defined over `ANY_BIT` (Table 28). See
-//!   [`checked_compare_form`] and [`checked_unary_form`].
-//!
-//! The bit-string family matters because codegen selects its opcode by
-//! width and signedness, which cannot separate `BOOL` from a signed
-//! integer. An `ANY_INT` operand therefore reached the *logical* opcode and
-//! the program silently computed a truthiness rather than a bit pattern:
-//! `d AND 3` with `d : DINT := 10` yielded 1 rather than 2, and `NOT d`
-//! yielded 0 rather than -11, with no diagnostic. Issue #1567 fixed the
-//! functional spelling of the same family in the other direction, by
-//! declaring it `ANY_BIT`; this holds the operator spelling to that row.
+//!   [`checked_compare_form`] and [`checked_unary_form`]. Each operand
+//!   outside `ANY_BIT` is reported. This family matters because codegen
+//!   selects its opcode by width and signedness, which cannot separate
+//!   `BOOL` from a signed integer: `d AND 3` with `d : DINT := 10` yielded 1
+//!   rather than 2, and `NOT d` yielded 0 rather than -11, with no
+//!   diagnostic. Issue #1567 fixed the functional spelling of the same
+//!   family by declaring it `ANY_BIT`; this holds the operator spelling to
+//!   that row.
 //!
 //! An operand whose resolved type the predicate cannot judge (a subrange,
 //! an enumeration, a structure) is skipped rather than reported, as the
 //! assignment check skips such targets: `p MOD 2` on a subrange of `INT`
-//! compiles today and this rule leaves that alone.
+//! compiles and this rule leaves that alone.
 //!
 //! ## Passes
 //!
@@ -49,6 +48,7 @@
 //!     d : DINT;
 //! END_VAR
 //!     r := r MOD 2.0;    (* P4049: MOD is not defined for REAL *)
+//!     d := d + r;        (* P4049: DINT does not widen to REAL *)
 //!     d := d AND 3;      (* P4049: AND is not defined for DINT *)
 //! END_PROGRAM
 //! ```
@@ -64,8 +64,11 @@ use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 use std::convert::Infallible;
 
+use crate::intermediates::arithmetic_overload::{
+    resolve_arithmetic_fold, resolve_arithmetic_overload, FoldFailure,
+};
 use crate::intermediates::operator_function_form::{
-    form_of_operator, FormOf, OperatorFunctionForm,
+    form_of_operator, operator_function_form, FormOf, OperatorFunctionForm,
 };
 use crate::result::SemanticResult;
 use crate::rule_support::{run_rule, DiagnosticVisitor};
@@ -86,25 +89,6 @@ pub fn apply(
     )
 }
 
-/// Returns the operator-form row whose operand type the operands of `op`
-/// must have, or `None` for an operator this rule does not check.
-///
-/// `MOD` is the only arithmetic operator checked. It is the one whose
-/// category is narrower than the others' (`ANY_INT` rather than `ANY_NUM`)
-/// and the one codegen has no floating-point opcode for, so a real `MOD`
-/// that gets past analysis fails in codegen as an internal error. The other
-/// arithmetic operators are declared `ANY_NUM` in the table, but their
-/// operator spellings also compile for `TIME` and bit-string operands
-/// (`t1 + t2`, `b1 + 1`), and IEC 61131-3 Table 30 defines `ADD` and `SUB`
-/// on `TIME`, so holding them to the table is a separate decision from this
-/// rule. See issue #1621.
-fn checked_form(op: &Operator) -> Option<&'static OperatorFunctionForm> {
-    match op {
-        Operator::Mod => form_of_operator(&FormOf::Arithmetic(Operator::Mod)),
-        Operator::Add | Operator::Sub | Operator::Mul | Operator::Div | Operator::Pow => None,
-    }
-}
-
 /// Returns the row whose operand type the operands of `op` must have, or
 /// `None` for a compare operator this rule does not check.
 ///
@@ -117,8 +101,7 @@ fn checked_form(op: &Operator) -> Option<&'static OperatorFunctionForm> {
 /// one, which issue #1567 already fixed in the other direction.
 ///
 /// The relational operators are declared `ANY_ELEMENTARY` in the table.
-/// Holding them to that is a separate decision from this rule, as it is for
-/// the arithmetic operators above (issue #1621).
+/// Holding them to that is a separate decision from this rule.
 fn checked_compare_form(op: &CompareOp) -> Option<&'static OperatorFunctionForm> {
     match op {
         CompareOp::And | CompareOp::Or | CompareOp::Xor => {
@@ -149,8 +132,8 @@ fn checked_compare_form(op: &CompareOp) -> Option<&'static OperatorFunctionForm>
 fn checked_unary_form(op: &UnaryOp) -> Option<&'static OperatorFunctionForm> {
     match op {
         UnaryOp::Not => form_of_operator(&FormOf::Not),
-        // Negation is `ANY_NUM`, the same separate decision as the
-        // arithmetic operators.
+        // Negation is `ANY_NUM`; holding it to that is a separate decision,
+        // outside the arithmetic overloads (it has no function form).
         UnaryOp::Neg => None,
     }
 }
@@ -167,6 +150,87 @@ impl DiagnosticVisitor for RuleOperatorOperandTypeCheck<'_> {
 }
 
 impl RuleOperatorOperandTypeCheck<'_> {
+    /// Reports P4049 when no overload of the arithmetic operator applies to
+    /// the operand types of `binary`, labelled at the whole expression.
+    fn check_arithmetic_operator(&mut self, expr: &Expr, binary: &BinaryExpr) {
+        let left = binary.left.resolved_type.as_ref();
+        let right = binary.right.resolved_type.as_ref();
+        if resolve_arithmetic_overload(&binary.op, left, right, self.options).is_some() {
+            return;
+        }
+        // `None` is only returned for a pair that has both types.
+        if let (Some(left), Some(right)) = (left, right) {
+            self.report_arithmetic(
+                Label::span(expr.span(), "Expression"),
+                &binary.op.to_string(),
+                left,
+                right,
+            );
+        }
+    }
+
+    /// Reports P4049 when a call to `ADD`, `SUB`, `MUL` or `DIV`, folded from
+    /// the left, has a step no overload applies to, labelled at the name.
+    ///
+    /// Only these four are checked here: they are the arithmetic functions
+    /// with typed overloads, and the function-call rule leaves their inputs
+    /// to this one. `MOD(a, b)` has no overloads and is checked against its
+    /// signature by the function-call rule.
+    fn check_arithmetic_call(&mut self, function: &Function) {
+        let Some(form) = operator_function_form(&function.name.to_string()) else {
+            return;
+        };
+        let FormOf::Arithmetic(op) = &form.operator else {
+            return;
+        };
+        if form.typed_overloads().is_empty() {
+            return;
+        }
+        let inputs: Option<Vec<Option<&TypeName>>> = function
+            .param_assignment
+            .iter()
+            .map(|p| match p {
+                ParamAssignmentKind::PositionalInput(input) => {
+                    Some(input.expr.resolved_type.as_ref())
+                }
+                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
+            })
+            .collect();
+        // A named input is left only on a call the named-argument pass has
+        // already diagnosed.
+        let Some(inputs) = inputs else {
+            return;
+        };
+        if let Err(FoldFailure { left, right }) = resolve_arithmetic_fold(op, &inputs, self.options)
+        {
+            self.report_arithmetic(
+                Label::span(function.name.span(), "Function call"),
+                &function.name.original().to_string(),
+                &left,
+                &right,
+            );
+        }
+    }
+
+    /// Pushes a P4049 naming the operator (or function) and both operand
+    /// types. The types are upper-cased: a fold step's left type is an
+    /// overload's result type while the right is an operand's resolved type,
+    /// and the two are spelled differently.
+    fn report_arithmetic(
+        &mut self,
+        label: Label,
+        operator: &str,
+        left: &TypeName,
+        right: &TypeName,
+    ) {
+        self.diagnostics.push(
+            Diagnostic::problem(Problem::OperatorOperandTypeMismatch, label)
+                .with_context("operator", &operator.to_string())
+                .with_context("left", &left.to_string().to_uppercase())
+                .with_context("right", &right.to_string().to_uppercase()),
+        );
+    }
+
     /// Reports P4049 for each operand of `op` that is not acceptable where the
     /// row's operand type is required.
     ///
@@ -215,11 +279,8 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
     /// as well as each operand's.
     fn visit_expr(&mut self, node: &Expr) -> Result<Self::Value, Infallible> {
         match &node.kind {
-            ExprKind::BinaryOp(binary) => {
-                if let Some(form) = checked_form(&binary.op) {
-                    self.check_operands(form, &[&binary.left, &binary.right]);
-                }
-            }
+            ExprKind::BinaryOp(binary) => self.check_arithmetic_operator(node, binary),
+            ExprKind::Function(function) => self.check_arithmetic_call(function),
             ExprKind::Compare(compare) => {
                 if let Some(form) = checked_compare_form(&compare.op) {
                     self.check_operands(form, &[&compare.left, &compare.right]);
@@ -295,7 +356,7 @@ END_PROGRAM"
     );
 
     rule_ctx_ok!(
-        /// Only MOD is checked: `+` on TIME compiles today and stays accepted.
+        /// `+` on two TIME operands is the typed overload ADD_TIME.
         apply_when_add_of_time_variables_then_ok,
         "
 PROGRAM main
@@ -308,8 +369,9 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_errn!(
-        apply_when_mod_of_real_variables_then_p4049_per_operand,
+    rule_ctx_err1!(
+        /// An arithmetic expression is reported once, not once per operand.
+        apply_when_mod_of_real_variables_then_p4049_once,
         "
 PROGRAM main
 VAR
@@ -319,7 +381,6 @@ VAR
 END_VAR
     r3 := r1 MOD r2;
 END_PROGRAM",
-        2,
         Problem::OperatorOperandTypeMismatch
     );
 
@@ -347,9 +408,9 @@ END_PROGRAM",
         Problem::OperatorOperandTypeMismatch
     );
 
-    rule_ctx_errn!(
+    rule_ctx_err1!(
         /// Real literals are not folded for MOD, so the rule sees them.
-        apply_when_mod_of_real_literals_then_p4049_per_operand,
+        apply_when_mod_of_real_literals_then_p4049_once,
         "
 PROGRAM main
 VAR
@@ -357,7 +418,6 @@ VAR
 END_VAR
     r := 7.5 MOD 2.0;
 END_PROGRAM",
-        2,
         Problem::OperatorOperandTypeMismatch
     );
 
@@ -373,6 +433,143 @@ END_VAR
 END_PROGRAM",
         Problem::OperatorOperandTypeMismatch
     );
+
+    rule_ctx_err1!(
+        /// No overload multiplies two durations.
+        apply_when_mul_of_time_variables_then_p4049,
+        "
+PROGRAM main
+VAR
+    t1 : TIME;
+    t2 : TIME;
+END_VAR
+    t1 := t1 * t2;
+END_PROGRAM",
+        Problem::OperatorOperandTypeMismatch
+    );
+
+    rule_ctx_err1!(
+        /// DINT does not widen losslessly to REAL, nor REAL to DINT.
+        apply_when_add_of_dint_and_real_then_p4049,
+        "
+PROGRAM main
+VAR
+    d : DINT;
+    r : REAL;
+END_VAR
+    r := r + d;
+END_PROGRAM",
+        Problem::OperatorOperandTypeMismatch
+    );
+
+    rule_ctx_ok!(
+        apply_when_sub_of_dates_then_ok,
+        "
+PROGRAM main
+VAR
+    d1 : DATE;
+    d2 : DATE;
+    t : TIME;
+END_VAR
+    t := d1 - d2;
+END_PROGRAM"
+    );
+
+    rule_ctx_err1!(
+        /// The function form is folded from the left and reported at the
+        /// step that fails: TIME + REAL.
+        apply_when_add_call_on_time_and_real_then_p4049,
+        "
+PROGRAM main
+VAR
+    t : TIME;
+    r : REAL;
+END_VAR
+    t := ADD(t, t, r);
+END_PROGRAM",
+        Problem::OperatorOperandTypeMismatch
+    );
+
+    rule_ctx_ok!(
+        apply_when_add_call_on_times_then_ok,
+        "
+PROGRAM main
+VAR
+    t : TIME;
+END_VAR
+    t := ADD(t, t, t);
+END_PROGRAM"
+    );
+
+    rule_ctx_ok!(
+        /// MOD has no overloads, so its function form is left to the
+        /// function-call rule.
+        apply_when_mod_call_on_real_then_not_this_rule,
+        "
+PROGRAM main
+VAR
+    r : REAL;
+END_VAR
+    r := MOD(r, r);
+END_PROGRAM"
+    );
+
+    rule_ctx_err1!(
+        /// Bit-string arithmetic needs --allow-bit-string-arithmetic.
+        apply_when_add_of_byte_without_flag_then_p4049,
+        "
+PROGRAM main
+VAR
+    b : BYTE;
+END_VAR
+    b := b + 1;
+END_PROGRAM",
+        Problem::OperatorOperandTypeMismatch
+    );
+
+    #[test]
+    fn apply_when_add_of_byte_with_flag_then_ok() {
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_context(
+            "
+PROGRAM main
+VAR
+    b : BYTE;
+END_VAR
+    b := b + 1;
+END_PROGRAM",
+        );
+        let options = CompilerOptions {
+            allow_bit_string_arithmetic: true,
+            ..CompilerOptions::default()
+        };
+        assert!(apply(&library, &context, &options).is_ok());
+    }
+
+    #[test]
+    fn apply_when_call_fails_then_diagnostic_names_function_and_failing_step() {
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_context(
+            "
+PROGRAM main
+VAR
+    t : TIME;
+    r : REAL;
+END_VAR
+    t := MUL(t, r, t);
+END_PROGRAM",
+        );
+        let errors = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
+        assert_eq!(errors.len(), 1);
+        let described = &errors[0].described;
+        assert!(
+            described.contains(&"operator=MUL".to_owned()),
+            "{described:?}"
+        );
+        assert!(described.contains(&"left=TIME".to_owned()), "{described:?}");
+        assert!(
+            described.contains(&"right=TIME".to_owned()),
+            "{described:?}"
+        );
+    }
 
     #[test]
     fn apply_when_mod_of_real_then_diagnostic_names_operator_and_types() {
@@ -393,12 +590,9 @@ END_PROGRAM",
             described.contains(&"operator=MOD".to_owned()),
             "{described:?}"
         );
+        assert!(described.contains(&"left=DINT".to_owned()), "{described:?}");
         assert!(
-            described.contains(&"expected=ANY_INT".to_owned()),
-            "{described:?}"
-        );
-        assert!(
-            described.contains(&"actual=real".to_owned()),
+            described.contains(&"right=REAL".to_owned()),
             "{described:?}"
         );
     }

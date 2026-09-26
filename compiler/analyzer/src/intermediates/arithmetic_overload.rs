@@ -72,7 +72,10 @@ pub struct FoldFailure {
 ///    [`Overload::Unchecked`].
 /// 2. The numeric overload applies when both operands are in the operator's
 ///    category and one is acceptable where the other is expected; the result
-///    is the operand the other widens to.
+///    is the operand the other widens to. With
+///    `--allow-bit-string-arithmetic`, a `BYTE`, `WORD`, `DWORD` or `LWORD`
+///    operand of `ADD`, `SUB`, `MUL` or `DIV` is judged as the unsigned
+///    integer of its width (ADR-0053).
 /// 3. Otherwise [`typed_overload`] is asked.
 pub fn resolve_arithmetic_overload(
     op: &Operator,
@@ -93,7 +96,7 @@ pub fn resolve_arithmetic_overload(
     if !is_checkable_type(left) || !is_checkable_type(right) {
         return Some(unchecked());
     }
-    numeric_overload(form, left, right, options).or_else(|| typed_overload(op, left, right))
+    numeric_overload(form, op, left, right, options).or_else(|| typed_overload(op, left, right))
 }
 
 /// Resolves an extensible call's inputs by folding from the left:
@@ -177,13 +180,16 @@ fn arithmetic_form(op: &Operator) -> Option<&'static OperatorFunctionForm> {
 /// The numeric overload: step 2 of [`resolve_arithmetic_overload`].
 fn numeric_overload(
     form: &OperatorFunctionForm,
+    op: &Operator,
     left: &TypeName,
     right: &TypeName,
     options: &CompilerOptions,
 ) -> Option<Overload> {
     let category = form.operand_type();
-    if !are_types_compatible(&category, left, options)
-        || !are_types_compatible(&category, right, options)
+    let judged_left = judged_as_numeric(op, left, options);
+    let judged_right = judged_as_numeric(op, right, options);
+    if !are_types_compatible(&category, &judged_left, options)
+        || !are_types_compatible(&category, &judged_right, options)
     {
         return None;
     }
@@ -191,21 +197,49 @@ fn numeric_overload(
     // or the concrete one when the other is an untyped literal. A literal's
     // category accepts any concrete type in it, so the concrete operand is
     // tried as the expected type first: `1 + d` is `DINT`, not `ANY_INT`.
-    let (first, second) = if is_generic(left) && !is_generic(right) {
+    // The result is the operand as written, so a bit string judged as its
+    // unsigned integer stays a bit string: `b + 1` on `BYTE` is `BYTE`.
+    let left = (left, judged_left);
+    let right = (right, judged_right);
+    let (first, second) = if is_generic(&left.1) && !is_generic(&right.1) {
         (right, left)
     } else {
         (left, right)
     };
-    let result = if are_types_compatible(first, second, options) {
-        first
-    } else if are_types_compatible(second, first, options) {
-        second
+    let result = if are_types_compatible(&first.1, &second.1, options) {
+        first.0
+    } else if are_types_compatible(&second.1, &first.1, options) {
+        second.0
     } else {
         return None;
     };
     Some(Overload::Numeric {
         result: result.clone(),
     })
+}
+
+/// Returns the type `operand` is judged as by the numeric overload of `op`.
+///
+/// With `--allow-bit-string-arithmetic` (ADR-0053), a `BYTE`, `WORD`,
+/// `DWORD` or `LWORD` operand of `ADD`, `SUB`, `MUL` or `DIV` is judged as
+/// the unsigned integer of its width, and widens only as that integer:
+/// `w + i` on `WORD` and `INT` does not resolve, since `UINT` and `INT` do
+/// not widen to each other. `MOD` is excluded so that `b MOD 2` agrees with
+/// its function form `MOD(b, 2)`, which is held to `ANY_INT` by the
+/// function-call rule. `BOOL` is never an integer. Every other operand is
+/// judged as itself.
+fn judged_as_numeric(op: &Operator, operand: &TypeName, options: &CompilerOptions) -> TypeName {
+    if !options.allow_bit_string_arithmetic || *op == Operator::Mod {
+        return operand.clone();
+    }
+    let unsigned = match ElementaryTypeName::try_from(&operand.name) {
+        Ok(ElementaryTypeName::BYTE) => "USINT",
+        Ok(ElementaryTypeName::WORD) => "UINT",
+        Ok(ElementaryTypeName::DWORD) => "UDINT",
+        Ok(ElementaryTypeName::LWORD) => "ULINT",
+        _ => return operand.clone(),
+    };
+    TypeName::from(unsigned)
 }
 
 /// An operand of a typed overload: its type, and that type as an

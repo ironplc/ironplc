@@ -210,6 +210,11 @@ Options
    ``0`` to ``BYTE``). This is a dialect extension supported by CODESYS,
    TwinCAT, and RuSTy.
 
+``--allow-bit-string-arithmetic``
+   Allow arithmetic on bit-string operands (e.g. ``b + 1`` where ``b`` is a
+   ``BYTE``), treating a bit string as the unsigned integer of its width.
+   This is a dialect extension supported by CODESYS, TwinCAT, and RuSTy.
+
 ``--allow-partial-access-syntax``
    Allow IEC 61131-3:2013 partial-access syntax: the bit form ``.%Xn`` (an
    alias for the short form ``.n``) and the byte, word, double word, and

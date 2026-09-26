@@ -4,25 +4,98 @@ P4049
 
 .. problem-summary:: P4049
 
-This error occurs when an operator is applied to an operand whose type the
-operator is not defined for.
+This error occurs when an operator is applied to operand types it is not
+defined for. The message names the operator and the operand types.
 
-IEC 61131-3 defines the ``MOD`` operator only for the integer types (``SINT``,
-``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``). There
-is no floating-point remainder operator, so a ``REAL`` or ``LREAL`` operand is a
-type error.
+The arithmetic operators ``+``, ``-``, ``*`` and ``/`` are defined for two
+numeric operands (``SINT`` through ``ULINT``, ``REAL`` and ``LREAL``) where one
+widens to the other, and for the time and date combinations listed on the
+:doc:`ADD </reference/standard-library/functions/add>`,
+:doc:`SUB </reference/standard-library/functions/sub>`,
+:doc:`MUL </reference/standard-library/functions/mul>` and
+:doc:`DIV </reference/standard-library/functions/div>` pages, such as a
+``TIME`` plus a ``TIME`` or a ``DATE`` minus a ``DATE``. ``MOD`` is defined for
+two integer operands only. The function forms ``ADD``, ``SUB``, ``MUL`` and
+``DIV`` are checked the same way and report this error too, naming the two
+operand types of the step that fails; ``MOD(a, b)`` is checked against its
+signature and reports :doc:`P4026` instead.
 
-The bit-string operators ``AND``, ``OR``, ``XOR`` and ``NOT`` are defined over
-the bit-string types (``BOOL``, ``BYTE``, ``WORD``, ``DWORD``, ``LWORD``). An
-integer operand is a type error: ``x AND 3`` where ``x`` is a ``DINT`` does not
-mean a bitwise AND of the two numbers. Convert the operand to a bit-string type
-of the same width when a bit-wise result is what you want.
+Each arithmetic expression is reported once, naming both operand types. When
+an operand of an expression is itself an expression that failed, the
+enclosing expression may be reported as well.
 
-The function form of an operator accepts the same operand types as the operator
-itself. A mismatch there is reported as :doc:`P4026` instead.
+Mixed numeric types
+-------------------
 
-Example
--------
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       count : DINT := 7;
+       factor : REAL := 1.5;
+       scaled : REAL;
+   END_VAR
+       scaled := factor * count;
+   END_PROGRAM
+
+A ``DINT`` does not widen to ``REAL`` without loss, because ``REAL`` cannot
+hold every 32-bit integer exactly, and a ``REAL`` does not widen to ``DINT``.
+Neither operand can take the other's type, so the operator is not defined for
+the pair. The same applies to a signed and an unsigned integer of the same
+width, such as ``DINT`` and ``UDINT``.
+
+To fix this error, convert one operand explicitly, or use a type that holds
+both:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       count : DINT := 7;
+       factor : REAL := 1.5;
+       scaled : REAL;
+   END_VAR
+       scaled := factor * DINT_TO_REAL(count);   (* 10.5 *)
+   END_PROGRAM
+
+See :doc:`/explanation/type-conversions` for which types widen to which.
+
+Time and date operands
+----------------------
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       interval : TIME := T#2s;
+       repeats : TIME := T#3s;
+       total : TIME;
+   END_VAR
+       total := interval * repeats;
+   END_PROGRAM
+
+A duration can be multiplied or divided by a number, but not by another
+duration, and two dates can be subtracted but not added.
+
+To fix this error, use a number for the factor:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       interval : TIME := T#2s;
+       repeats : DINT := 3;
+       total : TIME;
+   END_VAR
+       total := interval * repeats;   (* T#6s *)
+   END_PROGRAM
+
+Remainder of a real number
+--------------------------
 
 The following code will generate error P4049:
 
@@ -36,7 +109,8 @@ The following code will generate error P4049:
        wrapped := angle MOD 360.0;
    END_PROGRAM
 
-The variable ``angle`` is ``REAL``, but ``MOD`` accepts only integer operands.
+``MOD`` accepts only integer operands. There is no floating-point remainder
+operator.
 
 To fix this error, convert the operands to an integer type when an integer
 remainder is what you want:
@@ -68,8 +142,46 @@ type:
 
 The result has the sign of the dividend, as ``MOD`` does for integers.
 
+Arithmetic on bit strings
+-------------------------
+
+The following code will generate error P4049 unless bit-string arithmetic is
+enabled:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       counter : BYTE;
+   END_VAR
+       counter := counter + 1;
+   END_PROGRAM
+
+IEC 61131-3 defines no arithmetic on the bit-string types. CODESYS, TwinCAT and
+RuSTy treat a bit string as the unsigned integer of its width, and IronPLC
+does the same with ``--allow-bit-string-arithmetic``, which the ``rusty``,
+``codesys`` and ``twincat`` dialects enable. See
+:doc:`/explanation/enabling-dialects-and-features`.
+
+Without the flag, declare the variable as an unsigned integer of the same
+width:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       counter : USINT;
+   END_VAR
+       counter := counter + 1;
+   END_PROGRAM
+
 Bit-string operators
 --------------------
+
+The bit-string operators ``AND``, ``OR``, ``XOR`` and ``NOT`` are defined over
+the bit-string types (``BOOL``, ``BYTE``, ``WORD``, ``DWORD``, ``LWORD``). For
+these operators, each operand outside that set is reported separately, naming
+the expected category and the actual type.
 
 The following code will generate error P4049:
 
@@ -84,7 +196,8 @@ The following code will generate error P4049:
    END_PROGRAM
 
 The variable ``flags`` is a ``DINT``, but ``AND`` accepts only bit-string
-operands.
+operands. ``x AND 3`` where ``x`` is a ``DINT`` does not mean a bitwise AND of
+the two numbers.
 
 To fix this error, declare the operands as a bit-string type of the width you
 want:
@@ -96,7 +209,7 @@ want:
        flags : BYTE := 16#0A;
        masked : BYTE;
    END_VAR
-       masked := flags AND 16#03;   (* 16#02 *)
+       masked := flags AND BYTE#16#03;   (* 16#02 *)
    END_PROGRAM
 
 The same applies to ``NOT``, whose operand is a single bit string:

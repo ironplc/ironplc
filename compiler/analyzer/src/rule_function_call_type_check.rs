@@ -57,6 +57,7 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
+    intermediates::operator_function_form::operator_function_form,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
@@ -277,8 +278,19 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
             // generic ANY_* categories (or concrete types for the conversion
             // functions), all handled by `are_types_compatible`. The parameter
             // list continues past the declared ones for an extensible
-            // function, so every input of `ADD(a, b, c)` is checked.
-            for (param, arg_expr) in signature.bind_inputs(&node.param_assignment) {
+            // function, so every input of `AND(a, b, c)` is checked.
+            //
+            // `ADD`, `SUB`, `MUL` and `DIV` are the exception. Their inputs
+            // are checked against every overload (the numeric one and the
+            // typed ones on the time and date types) by the operator rule,
+            // which reports a mismatch as P4049; their `ANY_NUM` signature
+            // states only the numeric overload.
+            let overloaded = operator_function_form(&node.name.to_string())
+                .is_some_and(|form| !form.typed_overloads().is_empty());
+            let inputs = signature
+                .bind_inputs(&node.param_assignment)
+                .filter(|_| !overloaded);
+            for (param, arg_expr) in inputs {
                 if let Some(ref arg_type) = arg_expr.resolved_type {
                     if !are_types_compatible(&param.param_type, arg_type, self.options) {
                         self.diagnostics.push(
@@ -490,12 +502,12 @@ END_PROGRAM"
         "
 PROGRAM main
 VAR
-    a : DINT;
-    b : DINT;
+    a : WORD;
+    b : WORD;
     c : STRING;
-    result : DINT;
+    result : WORD;
 END_VAR
-    result := ADD(a, b, c);
+    result := AND(a, b, c);
 END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
