@@ -6,9 +6,12 @@
 //! nothing said about it (issue #1784). Neither is the number the program
 //! wrote.
 //!
-//! An untyped literal is held to the `LREAL` range, since that is how it is
-//! parsed. A `REAL#` literal states its own type, as `INT#40000` does, and is
-//! held to the `REAL` range wherever it is written.
+//! A `REAL#` literal states its own type, as `INT#40000` does, and is held to
+//! the `REAL` range wherever it is written. An untyped literal takes its type
+//! from where it is used. This rule holds it to the widest real type, which
+//! is all it can know here; `rule_constant_range` knows the type the literal
+//! is stored into and holds it to a `REAL` there, reporting through
+//! [`out_of_range`] so that both read as one problem.
 //!
 //! See section 2.2.1.
 //!
@@ -79,22 +82,26 @@ fn literal_range(node: &RealLiteral) -> (RealTypeName, bool) {
     }
 }
 
+/// The diagnostic for `literal` naming a value outside the range of
+/// `type_name`.
+pub(crate) fn out_of_range(literal: &RealLiteral, type_name: RealTypeName) -> Diagnostic {
+    Diagnostic::problem(
+        Problem::RealLiteralOutOfRange,
+        Label::span(
+            literal.span.clone(),
+            format!("Value is outside the range of {type_name}"),
+        ),
+    )
+    .with_context("type", &type_name.to_string())
+}
+
 impl Visitor<Infallible> for RuleRealLiteralRange {
     type Value = ();
 
     fn visit_real_literal(&mut self, node: &RealLiteral) -> Result<(), Infallible> {
         let (type_name, is_finite) = literal_range(node);
         if !is_finite {
-            self.diagnostics.push(
-                Diagnostic::problem(
-                    Problem::RealLiteralOutOfRange,
-                    Label::span(
-                        node.span.clone(),
-                        format!("Value is outside the range of {type_name}"),
-                    ),
-                )
-                .with_context("type", &type_name.to_string()),
-            );
+            self.diagnostics.push(out_of_range(node, type_name));
         }
         Ok(())
     }

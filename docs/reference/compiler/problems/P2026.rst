@@ -165,43 +165,6 @@ way: ``INT#16#FFFF`` is 65535, which no ``INT`` can hold. A bit pattern that
 is meant to fill the word is spelled with a bit-string prefix, such as
 ``WORD#16#FFFF``, which is not checked.
 
-A real constant stored into a REAL
-----------------------------------
-
-A real constant is an :doc:`/reference/language/data-types/elementary/lreal`
-until it is stored. :doc:`/reference/language/data-types/elementary/real`
-holds a smaller range, about -3.4028235E38 to 3.4028235E38, so a constant that
-is a valid ``LREAL`` can still be too large for the ``REAL`` it is stored
-into. Storing it would hold infinity in place of the number the program
-wrote, so the compiler reports it instead. That includes a constant the
-compiler computes from other constants:
-
-.. playground::
-
-   PROGRAM main
-       VAR
-           limit : REAL := 1.0E300;  (* Error: beyond REAL *)
-       END_VAR
-
-       limit := 1.0E30 * 1.0E30;  (* Error: 1.0E60 is beyond REAL *)
-   END_PROGRAM
-
-To fix this error, use a value a ``REAL`` can hold, or declare the variable as
-``LREAL``:
-
-.. playground::
-
-   PROGRAM main
-       VAR
-           limit : LREAL := 1.0E300;
-       END_VAR
-
-       limit := 1.0E30 * 1.0E30;
-   END_PROGRAM
-
-A real literal that is too large for its own type, such as ``1.0E400`` or
-``REAL#1.0E40``, is reported as :doc:`P2040` instead.
-
 Bit strings are not checked
 ---------------------------
 
