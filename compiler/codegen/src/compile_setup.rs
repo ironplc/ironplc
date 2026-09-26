@@ -473,8 +473,9 @@ pub(crate) fn emit_initial_values(
                 InitialValueAssignmentKind::Array(array_init) => {
                     // An array of structures holds the data region offset in
                     // its variable slot, like a structure variable does. Its
-                    // element fields are left zeroed, matching what an
-                    // array-of-struct field of a structure gets today.
+                    // element field values are left zeroed, matching what an
+                    // array-of-struct field of a structure gets today; only
+                    // the headers of its STRING fields are written.
                     if let Some(struct_array_info) = ctx.struct_array_vars.get(id) {
                         if !array_init.initial_values.is_empty() {
                             return Err(Diagnostic::not_implemented(Label::span(
@@ -484,9 +485,19 @@ pub(crate) fn emit_initial_values(
                         }
                         let data_offset = struct_array_info.data_offset;
                         let var_index = struct_array_info.var_index;
+                        let scratch_var_index = struct_array_info.scratch_var_index;
+                        let element_strings = struct_array_info.element_strings.clone();
                         let offset_const = ctx.add_i32_constant(data_offset as i32);
                         emitter.emit_load_const_i32(offset_const);
                         emitter.emit_store_var_i32(var_index);
+                        crate::compile_struct_init::initialize_element_strings(
+                            emitter,
+                            ctx,
+                            data_offset,
+                            scratch_var_index,
+                            &element_strings,
+                            &decl.identifier.span(),
+                        )?;
                     } else if let Some(array_info) = ctx.array_vars.get(id) {
                         let data_offset = array_info.data_offset;
                         let var_index = array_info.var_index;

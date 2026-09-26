@@ -154,15 +154,26 @@ fn variable_shape(ctx: &CompileContext, variable: &Variable) -> Result<StringSha
                 })
         }
         SymbolicVariableKind::Structured(structured) => {
-            let (_, _, field_type) = crate::compile_struct::walk_struct_chain(
-                ctx,
-                &structured.record,
-                &structured.field,
-                0,
-            )
-            .map_err(|_| {
-                unknown_string_encoding(variable_span(variable), "an unresolvable structure field")
-            })?;
+            // `a[i].s` -- the record is an array element, which the struct
+            // chain walk cannot follow; the array-of-struct path locates it.
+            let field_type =
+                if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
+                    crate::compile_array_struct::struct_array_element_field_type(ctx, structured)
+                } else {
+                    crate::compile_struct::walk_struct_chain(
+                        ctx,
+                        &structured.record,
+                        &structured.field,
+                        0,
+                    )
+                    .map(|(_, _, field_type)| field_type)
+                }
+                .map_err(|_| {
+                    unknown_string_encoding(
+                        variable_span(variable),
+                        "an unresolvable structure field",
+                    )
+                })?;
             string_shape_of(&field_type).ok_or_else(|| {
                 unknown_string_encoding(
                     variable_span(variable),
