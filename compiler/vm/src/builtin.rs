@@ -59,7 +59,7 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             let mx = stack.pop()?.as_i32();
             let in_val = stack.pop()?.as_i32();
             let mn = stack.pop()?.as_i32();
-            stack.push(Slot::from_i32(in_val.clamp(mn, mx)))?;
+            stack.push(Slot::from_i32(limit(in_val, mn, mx)))?;
             Ok(())
         }
         opcode::builtin::SEL_I32 => {
@@ -348,7 +348,7 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             if b < 0 {
                 return Err(Trap::NegativeExponent);
             }
-            stack.push(Slot::from_i64(a.wrapping_pow(b as u32)))?;
+            stack.push(Slot::from_i64(wrapping_pow_i64(a, b as u64)))?;
             Ok(())
         }
         opcode::builtin::ABS_I64 => {
@@ -372,7 +372,7 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             let mx = stack.pop()?.as_i64();
             let in_val = stack.pop()?.as_i64();
             let mn = stack.pop()?.as_i64();
-            stack.push(Slot::from_i64(in_val.clamp(mn, mx)))?;
+            stack.push(Slot::from_i64(limit(in_val, mn, mx)))?;
             Ok(())
         }
         opcode::builtin::SEL_I64 => {
@@ -398,7 +398,7 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             let mx = stack.pop()?.as_i32() as u32;
             let in_val = stack.pop()?.as_i32() as u32;
             let mn = stack.pop()?.as_i32() as u32;
-            stack.push(Slot::from_i32(in_val.clamp(mn, mx) as i32))?;
+            stack.push(Slot::from_i32(limit(in_val, mn, mx) as i32))?;
             Ok(())
         }
         opcode::builtin::MIN_U64 => {
@@ -417,7 +417,7 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             let mx = stack.pop()?.as_i64() as u64;
             let in_val = stack.pop()?.as_i64() as u64;
             let mn = stack.pop()?.as_i64() as u64;
-            stack.push(Slot::from_i64(in_val.clamp(mn, mx) as i64))?;
+            stack.push(Slot::from_i64(limit(in_val, mn, mx) as i64))?;
             Ok(())
         }
         // --- Type conversion opcodes ---
@@ -630,6 +630,29 @@ fn dispatch_mux_f64(n: usize, stack: &mut OperandStack) -> Result<(), Trap> {
     Ok(())
 }
 
+/// `LIMIT` as IEC 61131-3 defines it, `MIN(MAX(IN, MN), MX)`. Unlike
+/// `Ord::clamp`, it does not panic when `MN > MX`; the result is then `MX`.
+fn limit<T: Ord>(val: T, mn: T, mx: T) -> T {
+    val.max(mn).min(mx)
+}
+
+/// `base` raised to `exp`, wrapping on overflow, for any 64-bit exponent.
+/// `i64::wrapping_pow` takes a `u32` exponent, so a larger one would have to
+/// be truncated first.
+fn wrapping_pow_i64(base: i64, exp: u64) -> i64 {
+    let mut result: i64 = 1;
+    let mut base = base;
+    let mut exp = exp;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            result = result.wrapping_mul(base);
+        }
+        base = base.wrapping_mul(base);
+        exp >>= 1;
+    }
+    result
+}
+
 /// IEEE 754-safe clamp for f32. Unlike `f32::clamp`, this does not panic
 /// when `mn`, `mx`, or `val` is NaN. NaN propagates: if any input is NaN
 /// the result is NaN.
@@ -638,12 +661,12 @@ fn float_clamp_f32(val: f32, mn: f32, mx: f32) -> f32 {
     if val.is_nan() || mn.is_nan() || mx.is_nan() {
         return f32::NAN;
     }
-    if val < mn {
-        mn
-    } else if val > mx {
+    // MIN(MAX(IN, MN), MX), as for the integer handlers.
+    let at_least_mn = if val < mn { mn } else { val };
+    if at_least_mn > mx {
         mx
     } else {
-        val
+        at_least_mn
     }
 }
 
@@ -759,11 +782,11 @@ fn float_clamp_f64(val: f64, mn: f64, mx: f64) -> f64 {
     if val.is_nan() || mn.is_nan() || mx.is_nan() {
         return f64::NAN;
     }
-    if val < mn {
-        mn
-    } else if val > mx {
+    // MIN(MAX(IN, MN), MX), as for the integer handlers.
+    let at_least_mn = if val < mn { mn } else { val };
+    if at_least_mn > mx {
         mx
     } else {
-        val
+        at_least_mn
     }
 }
