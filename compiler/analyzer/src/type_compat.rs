@@ -105,20 +105,42 @@ pub(crate) fn are_types_compatible(
     false
 }
 
+/// The temporal families: each has a short and a long width (ADR-0021).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TemporalFamily {
+    /// `TIME` and `LTIME`.
+    Duration,
+    /// `DATE` and `LDATE`.
+    Date,
+    /// `TIME_OF_DAY` and `LTIME_OF_DAY`.
+    TimeOfDay,
+    /// `DATE_AND_TIME` and `LDATE_AND_TIME`.
+    DateAndTime,
+}
+
+/// Returns the temporal family of `t` and whether `t` is its long width,
+/// or `None` when `t` is not a temporal type.
+pub(crate) fn temporal_family(t: &ElementaryTypeName) -> Option<(TemporalFamily, bool)> {
+    match t {
+        ElementaryTypeName::TIME => Some((TemporalFamily::Duration, false)),
+        ElementaryTypeName::LTIME => Some((TemporalFamily::Duration, true)),
+        ElementaryTypeName::DATE => Some((TemporalFamily::Date, false)),
+        ElementaryTypeName::LDATE => Some((TemporalFamily::Date, true)),
+        ElementaryTypeName::TimeOfDay => Some((TemporalFamily::TimeOfDay, false)),
+        ElementaryTypeName::LTimeOfDay => Some((TemporalFamily::TimeOfDay, true)),
+        ElementaryTypeName::DateAndTime => Some((TemporalFamily::DateAndTime, false)),
+        ElementaryTypeName::LDateAndTime => Some((TemporalFamily::DateAndTime, true)),
+        _ => None,
+    }
+}
+
 /// Returns true if both types belong to the same temporal family (the short and
 /// long widths of TIME, DATE, TIME_OF_DAY, or DATE_AND_TIME).
 fn same_temporal_family(a: &ElementaryTypeName, b: &ElementaryTypeName) -> bool {
-    use ElementaryTypeName::*;
-    fn family(t: &ElementaryTypeName) -> Option<u8> {
-        match t {
-            TIME | LTIME => Some(0),
-            DATE | LDATE => Some(1),
-            TimeOfDay | LTimeOfDay => Some(2),
-            DateAndTime | LDateAndTime => Some(3),
-            _ => None,
-        }
-    }
-    matches!((family(a), family(b)), (Some(x), Some(y)) if x == y)
+    matches!(
+        (temporal_family(a), temporal_family(b)),
+        (Some((x, _)), Some((y, _))) if x == y
+    )
 }
 
 /// Returns true if `actual` is acceptable where a generic parameter type

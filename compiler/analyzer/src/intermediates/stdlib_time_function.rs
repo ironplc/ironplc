@@ -29,11 +29,11 @@ pub(super) fn get_time_functions() -> Vec<FunctionSignature> {
 /// One typed overload of an arithmetic function on the time and date types
 /// (IEC 61131-3 Table 30): a fixed signature with its own name, such as
 /// `ADD_TIME` for `ADD` on two `TIME` operands.
-struct TimeOverload {
-    name: &'static str,
-    in1: &'static str,
-    in2: &'static str,
-    result: &'static str,
+pub(crate) struct TimeOverload {
+    pub(crate) name: &'static str,
+    pub(crate) in1: &'static str,
+    pub(crate) in2: &'static str,
+    pub(crate) result: &'static str,
 }
 
 impl TimeOverload {
@@ -48,7 +48,7 @@ impl TimeOverload {
 
     /// The long form of this overload: the same shape with each temporal
     /// type replaced by its long-width type, under the long name.
-    fn long(&self) -> TimeOverload {
+    pub(crate) fn long(&self) -> TimeOverload {
         TimeOverload {
             name: long_form(self.name).expect("every overload has a long form"),
             in1: long_type(self.in1),
@@ -56,6 +56,12 @@ impl TimeOverload {
             result: long_type(self.result),
         }
     }
+}
+
+/// Returns the short-form overload named `name` (case-insensitive), or
+/// `None` when `name` is not the short form of a typed overload.
+pub(crate) fn short_overload(name: &str) -> Option<&'static TimeOverload> {
+    OVERLOADS.iter().find(|o| o.name.eq_ignore_ascii_case(name))
 }
 
 /// Returns the name of the long form of the typed overload `short`, or

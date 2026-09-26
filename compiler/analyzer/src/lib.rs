@@ -104,6 +104,9 @@ pub use function_environment::{
     FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
 };
 pub use intermediate_type::IntermediateType;
+pub use intermediates::arithmetic_overload::{
+    resolve_arithmetic_fold, resolve_arithmetic_overload, typed_overload, FoldFailure, Overload,
+};
 pub use intermediates::enumeration::resolve_ordinal_values;
 pub use intermediates::operator_function_form::{
     operator_function_form, FormOf, OperatorFunctionForm,
@@ -127,6 +130,8 @@ mod spec_requirements {
 mod spec_conformance;
 #[cfg(test)]
 mod spec_conformance_adr;
+#[cfg(test)]
+mod spec_conformance_arithmetic_operator_overloads;
 #[cfg(test)]
 mod spec_conformance_constant_inference;
 #[cfg(test)]
