@@ -1203,6 +1203,18 @@ pub(crate) struct StringParamInfo {
     pub(crate) char_width: CharWidth,
 }
 
+/// How a call site passes an argument to one input parameter
+/// (`VAR_INPUT`/`VAR_IN_OUT`) of a user-defined function.
+#[derive(Clone)]
+pub(crate) enum ParamPassing {
+    /// The argument's value is pushed onto the operand stack at this type,
+    /// and `CALL` stores it in the parameter's slot.
+    Value(OpType),
+    /// The argument is copied into the parameter's data region space before
+    /// `CALL`, and a dummy value is pushed for the slot `CALL` pops.
+    String(StringParamInfo),
+}
+
 /// Metadata for a STRING/WSTRING return value in a user-defined function.
 ///
 /// When a function returns STRING/WSTRING, the return value lives in the
@@ -1226,11 +1238,8 @@ pub(crate) struct UserFunctionInfo {
     pub(crate) var_offset: VarIndex,
     /// Number of input parameters.
     pub(crate) num_params: u16,
-    /// OpTypes for each input parameter, in declaration order.
-    pub(crate) param_op_types: Vec<OpType>,
-    /// For each input parameter (in order), `Some(info)` if it is a STRING
-    /// parameter that needs copy-in at the call site, `None` for scalar params.
-    pub(crate) param_string_info: Vec<Option<StringParamInfo>>,
+    /// How the call site passes each input parameter, in declaration order.
+    pub(crate) params: Vec<ParamPassing>,
     /// If the function returns STRING/WSTRING, info about the return string
     /// in the data region. Used at call sites to initialize the return string
     /// header before CALL.

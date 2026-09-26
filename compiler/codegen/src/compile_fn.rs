@@ -17,7 +17,7 @@ use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use super::compile::{
     char_width_for_string_type, finalize_function, string_region_size, CompileContext,
-    CompiledFunction, CurrentFunctionReturn, OpType, OpWidth, SavedFbScope, Signedness,
+    CompiledFunction, CurrentFunctionReturn, OpWidth, ParamPassing, SavedFbScope, Signedness,
     StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, DEFAULT_OP_TYPE,
     NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
 };
@@ -375,56 +375,40 @@ pub(crate) fn compile_user_function(
     // Record function metadata for use at call sites.
     let func_name = func_decl.name.lower_case();
 
-    // Record parameter OpTypes and STRING info from the function's declarations.
-    let mut param_op_types: Vec<OpType> = Vec::new();
-    let mut param_string_info: Vec<Option<StringParamInfo>> = Vec::new();
+    // Record how a call site passes each parameter. The signature's input
+    // parameters are the input-compatible declarations in the same order.
+    let mut signature_params = functions
+        .get(&func_decl.name)
+        .into_iter()
+        .flat_map(|sig| sig.input_parameters());
+    let mut params: Vec<ParamPassing> = Vec::new();
     for decl in &func_decl.variables {
         if !decl.var_type.is_input_compatible() {
             continue;
         }
-        match &decl.initializer {
-            InitialValueAssignmentKind::String(_) => {
-                param_op_types.push(DEFAULT_OP_TYPE);
-                if let Some(id) = decl.identifier.symbolic_id() {
-                    if let Some(info) = ctx.string_vars.get(id) {
-                        param_string_info.push(Some(StringParamInfo {
-                            data_offset: info.data_offset,
-                            max_length: info.max_length,
-                            char_width: info.char_width,
-                        }));
-                    } else {
-                        param_string_info.push(None);
-                    }
-                } else {
-                    param_string_info.push(None);
-                }
-            }
+        let signature_param = signature_params.next();
+        let passing = match &decl.initializer {
+            InitialValueAssignmentKind::String(_) => decl
+                .identifier
+                .symbolic_id()
+                .and_then(|id| ctx.string_vars.get(id))
+                .map_or(ParamPassing::Value(DEFAULT_OP_TYPE), |info| {
+                    ParamPassing::String(StringParamInfo {
+                        data_offset: info.data_offset,
+                        max_length: info.max_length,
+                        char_width: info.char_width,
+                    })
+                }),
             InitialValueAssignmentKind::Reference(_) => {
-                param_op_types.push((OpWidth::W64, Signedness::Unsigned));
-                param_string_info.push(None);
+                ParamPassing::Value((OpWidth::W64, Signedness::Unsigned))
             }
-            _ => {
-                if let Some(sig) = functions.get(&func_decl.name) {
-                    if let Some(param) = sig
-                        .parameters
-                        .iter()
-                        .filter(|p| p.is_input)
-                        .nth(param_op_types.len())
-                    {
-                        param_op_types.push(
-                            resolve_type_name(&param.param_type.name)
-                                .map(|info| (info.op_width, info.signedness))
-                                .unwrap_or(DEFAULT_OP_TYPE),
-                        );
-                    } else {
-                        param_op_types.push(DEFAULT_OP_TYPE);
-                    }
-                } else {
-                    param_op_types.push(DEFAULT_OP_TYPE);
-                }
-                param_string_info.push(None);
-            }
-        }
+            _ => ParamPassing::Value(
+                signature_param
+                    .and_then(|param| resolve_type_name(&param.param_type.name))
+                    .map_or(DEFAULT_OP_TYPE, |info| (info.op_width, info.signedness)),
+            ),
+        };
+        params.push(passing);
     }
 
     ctx.user_functions.insert(
@@ -433,8 +417,7 @@ pub(crate) fn compile_user_function(
             function_id,
             var_offset,
             num_params,
-            param_op_types,
-            param_string_info,
+            params,
             return_string_info,
             return_struct_desc_index,
             max_stack_depth: finalized.max_stack_depth,
