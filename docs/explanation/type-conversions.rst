@@ -414,8 +414,8 @@ Bit-string arithmetic
 IEC 61131-3 defines no arithmetic on bit strings, so ``counter + 1`` where
 ``counter`` is a ``BYTE`` is an error
 (:doc:`P4049 </reference/compiler/problems/P4049>`) unless
-``--allow-bit-string-arithmetic`` is enabled. The ``Rusty``, ``CODESYS`` and
-``TwinCAT`` dialects enable it.
+``--allow-bit-string-arithmetic`` is enabled. See
+:doc:`/explanation/enabling-dialects-and-features` for how to enable it.
 
 With the flag, a ``BYTE``, ``WORD``, ``DWORD`` or ``LWORD`` operand of ``+``,
 ``-``, ``*`` or ``/`` is treated as the unsigned integer of its width
