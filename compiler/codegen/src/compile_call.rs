@@ -27,7 +27,7 @@ use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
     compile_mid, compile_replace, compile_right, resolve_string_arg,
 };
-use super::compile_time_arith::{compile_time_arith, time_arith_for};
+use super::compile_time_arith::{compile_time_arith, time_arith_for, Operand};
 use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
@@ -185,7 +185,7 @@ pub(crate) fn compile_function_call(
     // as the instruction sequence for the units of its operands.
     if let Some((arith, width)) = time_arith_for(name.as_str()) {
         let (in1, in2) = extract_two_positional_args(func)?;
-        return compile_time_arith(emitter, ctx, arith, width, in1, in2);
+        return compile_time_arith(emitter, ctx, arith, width, Operand::Expr(in1), in2);
     }
     match name.as_str() {
         "shl" | "shr" | "rol" | "ror" => {
