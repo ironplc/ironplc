@@ -125,6 +125,9 @@ pub(crate) struct StructStringElement<'ast> {
     pub string_desc_index: u16,
     /// Byte offset of the array field within the struct (slot_offset * 8).
     pub field_byte_offset: u32,
+    /// Encoding of the element, which a stored value must be produced at
+    /// (ADR-0034).
+    pub char_width: CharWidth,
     /// Dimension info for computing the flat index from subscripts.
     pub dimensions: Vec<DimensionInfo>,
     /// Subscript expressions.
@@ -311,7 +314,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
 
     // STRING array fields use dedicated STR_LOAD/STORE_ARRAY_ELEM opcodes
     // with a scratch variable and a STRING-specific array descriptor.
-    if let IntermediateType::String { .. } = element_type.as_ref() {
+    if let IntermediateType::String { char_width, .. } = element_type.as_ref() {
         let field_name = structured.field.to_string().to_lowercase();
         let &(str_desc_index, _, _) =
             struct_info
@@ -337,6 +340,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
                 scratch_var_index: scratch,
                 string_desc_index: str_desc_index,
                 field_byte_offset,
+                char_width: *char_width,
                 dimensions,
                 subscripts,
             },

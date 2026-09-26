@@ -379,8 +379,9 @@ fn compile_statement(
                     crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(
                         element,
                     ) => {
-                        // The RHS produces the temp buffer index the store consumes.
-                        compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+                        // The RHS produces, at the element's encoding, the
+                        // temp buffer index the store consumes (ADR-0034).
+                        compile_string_value(emitter, ctx, &assignment.value, element.char_width)?;
                         element.emit_base_and_index(
                             emitter,
                             ctx,
