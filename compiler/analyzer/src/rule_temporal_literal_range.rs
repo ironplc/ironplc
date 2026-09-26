@@ -354,8 +354,8 @@ END_PROGRAM",
 
     // --- The literal's own type decides, not the variable's ---
 
-    /// `DATE#` names a `DATE` whatever it is stored into, the way `INT#40000`
-    /// names an `INT`. Widening the variable does not widen the literal.
+    // `DATE#` names a `DATE` whatever it is stored into, the way `INT#40000`
+    // names an `INT`. Widening the variable does not widen the literal.
     rule_err1_at!(
         apply_when_short_literal_is_out_of_range_in_a_long_variable_then_error,
         "
@@ -427,8 +427,8 @@ END_VAR
 END_PROGRAM"
     );
 
-    /// A time of day is bounded by construction at either width, so neither
-    /// can be out of range.
+    // A time of day is bounded by construction at either width, so neither
+    // can be out of range.
     rule_ok_with!(
         apply_when_time_of_day_is_end_of_day_then_ok,
         edition3(),

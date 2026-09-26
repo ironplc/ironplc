@@ -9,7 +9,6 @@
 //! - DATE_AND_TIME (DT): stored as u32 seconds since 1970-01-01
 
 use ironplc_parser::options::CompilerOptions;
-use ironplc_problems::Problem;
 use rstest::rstest;
 
 use crate::common::{parse_and_run, try_parse_and_compile};
