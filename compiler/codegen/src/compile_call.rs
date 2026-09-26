@@ -277,6 +277,7 @@ fn compile_user_function_call(
             ParamPassing::Value(param_op_type) => {
                 compile_value_arg(emitter, ctx, arg, param_op_type)?;
             }
+            ParamPassing::Reference => compile_reference_arg(emitter, ctx, arg)?,
         }
     }
 
@@ -296,6 +297,52 @@ fn compile_user_function_call(
     // For STRING-returning functions, the CALL leaves a buf_idx on the stack
     // (from emit_str_load_var in the function epilogue). The caller's
     // assignment path will consume it via emit_str_store_var.
+    Ok(())
+}
+
+/// Compiles an argument passed to a `VAR_IN_OUT` parameter: pushes a
+/// reference to the argument variable, as `REF(x)` does.
+///
+/// When the argument is itself a `VAR_IN_OUT` parameter of the function
+/// being compiled, its slot already holds a reference to the caller's
+/// variable, and that reference is passed on. The analyzer has checked the
+/// argument is a variable of the parameter's type (P4057, P4058); only a
+/// named elementary variable, which occupies one slot, is supported.
+fn compile_reference_arg(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    arg: &Expr,
+) -> Result<(), Diagnostic> {
+    let name = match &arg.kind {
+        ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
+            Some(&named.name)
+        }
+        ExprKind::LateBound(late_bound) => Some(&late_bound.value),
+        _ => None,
+    };
+    // An elementary variable has type info and lives in its own slot; a
+    // string, array, structure or instance lives in the data region.
+    let single_slot = |name: &&Id| {
+        ctx.var_type_info(name).is_some()
+            && !ctx.string_vars.contains_key(*name)
+            && !ctx.array_vars.contains_key(*name)
+            && !ctx.struct_vars.contains_key(*name)
+            && !ctx.struct_array_vars.contains_key(*name)
+            && !ctx.fb_instances.contains_key(*name)
+    };
+    let Some(name) = name.filter(single_slot) else {
+        return Err(Diagnostic::not_implemented(Label::span(
+            arg.span(),
+            "VAR_IN_OUT argument that is not a named variable of an elementary type",
+        )));
+    };
+    if let Some(ref_slot) = ctx.in_out_ref_slot(name) {
+        emitter.emit_load_var_i64(ref_slot);
+    } else {
+        let var_index = ctx.var_index(name)?;
+        let pool_index = ctx.add_i64_constant(var_index.into());
+        emitter.emit_load_const_i64(pool_index);
+    }
     Ok(())
 }
 

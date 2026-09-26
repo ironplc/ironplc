@@ -78,6 +78,10 @@ pub(crate) struct ArrayVarInfo {
 pub(crate) enum ResolvedAccess<'ctx, 'ast> {
     /// Simple named variable — use LOAD_VAR/STORE_VAR.
     Scalar { var_index: VarIndex },
+    /// `VAR_IN_OUT` parameter of the function being compiled. Its slot holds
+    /// a reference to the caller's variable: load the reference with
+    /// LOAD_VAR_I64, then use LOAD_INDIRECT/STORE_INDIRECT.
+    InOut { ref_slot: VarIndex },
     /// Array element — compute flat index, use LOAD_ARRAY/STORE_ARRAY.
     ArrayElement {
         info: &'ctx ArrayVarInfo,
@@ -270,6 +274,9 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
             )
         }
         _ => {
+            if let Some(ref_slot) = super::compile_expr::in_out_ref_slot(ctx, variable) {
+                return Ok(ResolvedAccess::InOut { ref_slot });
+            }
             // Fall through to existing resolve_variable() for scalars.
             let var_index = super::compile_expr::resolve_variable(ctx, variable)?;
             Ok(ResolvedAccess::Scalar { var_index })

@@ -129,7 +129,10 @@ fn compile_statement(
             // Compile the RHS, load the reference variable, emit STORE_INDIRECT.
             if assignment.deref {
                 let target_name = resolve_variable_name(&assignment.target);
+                // A VAR_IN_OUT parameter's slot holds a reference to the
+                // caller's variable, not the reference to dereference.
                 let target_index = target_name
+                    .filter(|name| !ctx.in_out_params.contains(*name))
                     .and_then(|name| ctx.variables.get(name).copied())
                     .ok_or_else(|| {
                         Diagnostic::not_implemented(Label::span(
@@ -266,6 +269,19 @@ fn compile_statement(
                             emit_truncation(emitter, ti);
                         }
                         emit_store_var(emitter, var_index, op_type);
+                    }
+                    crate::compile_array::ResolvedAccess::InOut { ref_slot } => {
+                        // Store through the reference into the caller's variable.
+                        let type_info = target_name.and_then(|name| ctx.var_type_info(name));
+                        let op_type = type_info
+                            .map(|ti| (ti.op_width, ti.signedness))
+                            .unwrap_or(DEFAULT_OP_TYPE);
+                        compile_expr(emitter, ctx, &assignment.value, op_type)?;
+                        if let Some(ti) = type_info {
+                            emit_truncation(emitter, ti);
+                        }
+                        emitter.emit_load_var_i64(ref_slot);
+                        emitter.emit_store_indirect();
                     }
                     crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
                         // Copy scalar fields from info (borrows ctx) before using ctx mutably.

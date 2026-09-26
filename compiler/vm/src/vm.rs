@@ -1227,6 +1227,12 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 variables.store(index, slot)?;
             }
             // --- Indirect load/store (reference dereference) ---
+            //
+            // The target is checked against the program instance's scope,
+            // not the current frame's: a reference (a VAR_IN_OUT argument,
+            // or a REF_TO passed down) names a variable in a caller's frame,
+            // which the callee's own scope does not cover. Another program
+            // instance's partition is still out of reach.
             opcode::LOAD_INDIRECT => {
                 let ref_slot = stack.pop()?;
                 if ref_slot.is_null_ref() {
@@ -1235,7 +1241,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let target_index = ref_slot
                     .as_var_index()
                     .ok_or(Trap::InvalidVariableIndex(VarIndex::new(u16::MAX)))?;
-                scope.check_access(target_index)?;
+                entry_scope.check_access(target_index)?;
                 let value = variables.load(target_index)?;
                 stack.push(value)?;
             }
@@ -1247,7 +1253,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let target_index = ref_slot
                     .as_var_index()
                     .ok_or(Trap::InvalidVariableIndex(VarIndex::new(u16::MAX)))?;
-                scope.check_access(target_index)?;
+                entry_scope.check_access(target_index)?;
                 let value = stack.pop()?;
                 variables.store(target_index, value)?;
             }

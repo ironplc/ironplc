@@ -168,6 +168,10 @@ pub(crate) fn compile_expr(
             }
         },
         ExprKind::LateBound(late_bound) => {
+            if let Some(ref_slot) = ctx.in_out_ref_slot(&late_bound.value) {
+                emit_load_in_out(emitter, ref_slot);
+                return Ok(());
+            }
             let var_index = ctx.var_index(&late_bound.value)?;
             emit_load_var(emitter, var_index, op_type);
             Ok(())
@@ -183,6 +187,12 @@ pub(crate) fn compile_expr(
         }
         ExprKind::Function(func) => compile_function_call(emitter, ctx, func, op_type),
         ExprKind::Ref(variable) => {
+            // REF(param) of a VAR_IN_OUT parameter is the reference its slot
+            // already holds: the caller's variable.
+            if let Some(ref_slot) = in_out_ref_slot(ctx, variable) {
+                emitter.emit_load_var_i64(ref_slot);
+                return Ok(());
+            }
             // REF(var) → push the variable's table index as a u64 constant.
             let var_index = resolve_variable(ctx, variable)?;
             let pool_index = ctx.add_i64_constant(var_index.into());
@@ -795,6 +805,9 @@ pub(crate) fn compile_variable_read(
                 crate::compile_array::ResolvedAccess::Scalar { var_index } => {
                     emit_load_var(emitter, var_index, op_type);
                 }
+                crate::compile_array::ResolvedAccess::InOut { ref_slot } => {
+                    emit_load_in_out(emitter, ref_slot);
+                }
                 crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
                     let arr_var_index = info.var_index;
                     let arr_desc_index = info.desc_index;
@@ -903,6 +916,21 @@ pub(crate) fn resolve_symbolic_variable_name(
         // error, never a guess at some enclosing name.
         SymbolicVariableKind::SelfRef(self_ref) => Err(Diagnostic::todo_with_span(self_ref.span())),
     }
+}
+
+/// Returns the slot holding the reference when `variable` names a
+/// `VAR_IN_OUT` parameter of the function being compiled.
+pub(crate) fn in_out_ref_slot(ctx: &CompileContext, variable: &Variable) -> Option<VarIndex> {
+    match variable {
+        Variable::Symbolic(SymbolicVariableKind::Named(named)) => ctx.in_out_ref_slot(&named.name),
+        _ => None,
+    }
+}
+
+/// Loads the value of the variable a `VAR_IN_OUT` parameter refers to.
+pub(crate) fn emit_load_in_out(emitter: &mut Emitter, ref_slot: VarIndex) {
+    emitter.emit_load_var_i64(ref_slot);
+    emitter.emit_load_indirect();
 }
 
 /// Resolves a variable reference to its variable table index.

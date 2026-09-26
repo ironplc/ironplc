@@ -4,22 +4,22 @@
 //! including variable setup, body compilation, and metadata registration.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
-use ironplc_container::debug_section::{var_section, VarNameEntry};
+use ironplc_container::debug_section::{iec_type_tag, var_section, VarNameEntry};
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType, InitialValueAssignmentKind,
     VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
 use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use super::compile::{
     char_width_for_string_type, finalize_function, string_region_size, CompileContext,
     CompiledFunction, CurrentFunctionReturn, OpWidth, ParamPassing, SavedFbScope, Signedness,
-    StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, DEFAULT_OP_TYPE,
-    NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
+    StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo,
+    DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{
@@ -44,6 +44,13 @@ fn push_local_var_name(
     id: &Id,
 ) {
     let (tag, type_name) = debug_type_for_decl(decl);
+    // A VAR_IN_OUT parameter's slot holds a reference to the caller's
+    // variable, so it is described as one rather than as the value.
+    let (tag, type_name) = if decl.var_type == VariableType::InOut {
+        (iec_type_tag::OTHER, format!("REF_TO {type_name}"))
+    } else {
+        (tag, type_name)
+    };
     ctx.debug_var_names.push(VarNameEntry {
         var_index,
         function_id,
@@ -52,6 +59,25 @@ fn push_local_var_name(
         name: id.to_string(),
         type_name,
     });
+}
+
+/// Returns the type of the value a function's `VAR_IN_OUT` parameter
+/// refers to.
+///
+/// A `VAR_IN_OUT` parameter is passed as a reference to a single slot, so
+/// only elementary types are supported. A string, array, structure,
+/// reference or function block instance lives in the data region (or is
+/// itself a reference), and passing one by reference is not implemented.
+fn in_out_value_type(decl: &VarDecl) -> Result<VarTypeInfo, Diagnostic> {
+    if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
+        if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+            return Ok(type_info);
+        }
+    }
+    Err(Diagnostic::not_implemented(Label::span(
+        decl.identifier.span(),
+        "VAR_IN_OUT parameter of a type other than an elementary type",
+    )))
 }
 
 /// Compiles a single user-defined function body.
@@ -81,6 +107,7 @@ pub(crate) fn compile_user_function(
     let saved_array_vars = std::mem::take(&mut ctx.array_vars);
     let saved_struct_vars = std::mem::take(&mut ctx.struct_vars);
     let saved_struct_array_vars = std::mem::take(&mut ctx.struct_array_vars);
+    let saved_in_out_params = std::mem::take(&mut ctx.in_out_params);
 
     // Re-insert global variable mappings so the function body can access them.
     for (id, index) in &saved_variables {
@@ -136,6 +163,16 @@ pub(crate) fn compile_user_function(
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
             push_local_var_name(ctx, current_index, function_id, decl, id);
+            if decl.var_type == VariableType::InOut {
+                // The slot holds a reference to the caller's variable; its
+                // type info is the referenced value's, for reads and writes.
+                let type_info = in_out_value_type(decl)?;
+                ctx.var_types.insert(id.clone(), type_info);
+                ctx.in_out_params.insert(id.clone());
+                current_index = VarIndex::new(current_index.raw() + 1);
+                num_params += 1;
+                continue;
+            }
             match &decl.initializer {
                 InitialValueAssignmentKind::Simple(simple) => {
                     if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
@@ -387,6 +424,10 @@ pub(crate) fn compile_user_function(
             continue;
         }
         let signature_param = signature_params.next();
+        if decl.var_type == VariableType::InOut {
+            params.push(ParamPassing::Reference);
+            continue;
+        }
         let passing = match &decl.initializer {
             InitialValueAssignmentKind::String(_) => decl
                 .identifier
@@ -431,6 +472,7 @@ pub(crate) fn compile_user_function(
     ctx.array_vars = saved_array_vars;
     ctx.struct_vars = saved_struct_vars;
     ctx.struct_array_vars = saved_struct_array_vars;
+    ctx.in_out_params = saved_in_out_params;
 
     Ok(CompiledFunction {
         function_id,
