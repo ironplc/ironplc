@@ -137,6 +137,7 @@ impl Visitor<Infallible> for RuleFunctionCallDeclared<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     rule_ctx_ok!(
         apply_when_stdlib_function_called_then_ok,
@@ -490,6 +491,68 @@ VAR
     result : WORD;
 END_VAR
     result := MY_SHIFT(B := BYTE#16#AB);
+END_PROGRAM"
+    );
+
+    // A VAR_IN_OUT parameter takes an argument like a VAR_INPUT does, in
+    // either declaration order and with either call form (#1658).
+    #[rstest]
+    #[case::in_out_last_named(
+        "VAR_INPUT n : DINT; END_VAR VAR_IN_OUT data : DINT; END_VAR",
+        "ADD_N(n := 42, data := x)"
+    )]
+    #[case::in_out_last_positional(
+        "VAR_INPUT n : DINT; END_VAR VAR_IN_OUT data : DINT; END_VAR",
+        "ADD_N(42, x)"
+    )]
+    #[case::in_out_first_named(
+        "VAR_IN_OUT data : DINT; END_VAR VAR_INPUT n : DINT; END_VAR",
+        "ADD_N(n := 42, data := x)"
+    )]
+    #[case::in_out_first_positional(
+        "VAR_IN_OUT data : DINT; END_VAR VAR_INPUT n : DINT; END_VAR",
+        "ADD_N(x, 42)"
+    )]
+    fn apply_when_function_has_in_out_then_counts_in_out_argument(
+        #[case] params: &str,
+        #[case] call: &str,
+    ) {
+        let program = format!(
+            "
+FUNCTION ADD_N : DINT
+{params}
+    data := data + n;
+    ADD_N := data;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    x : DINT := 100;
+    result : DINT;
+END_VAR
+    result := {call};
+END_PROGRAM"
+        );
+        let (library, context) =
+            crate::test_helpers::parse_and_resolve_types_with_context(&program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    rule_ctx_err!(
+        apply_when_in_out_argument_missing_then_error,
+        "
+FUNCTION ADD_N : DINT
+VAR_INPUT n : DINT; END_VAR
+VAR_IN_OUT data : DINT; END_VAR
+    ADD_N := data + n;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+END_VAR
+    result := ADD_N(42);
 END_PROGRAM"
     );
 }

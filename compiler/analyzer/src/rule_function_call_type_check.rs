@@ -506,6 +506,37 @@ END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
+    // A VAR_IN_OUT declared before a VAR_INPUT takes the first positional
+    // argument, so a mismatch on the second names the VAR_INPUT (#1658).
+    #[test]
+    fn apply_when_in_out_before_input_mismatch_then_names_input_parameter() {
+        let program = "
+FUNCTION Scale : INT
+VAR_IN_OUT acc : INT; END_VAR
+VAR_INPUT factor : INT; END_VAR
+    acc := acc * factor;
+    Scale := acc;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    total : INT;
+    s : STRING;
+    result : INT;
+END_VAR
+    result := Scale(total, s);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let errors = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].code, Problem::FunctionCallArgTypeMismatch.code());
+        assert!(
+            errors[0].described.contains(&"parameter=factor".to_owned()),
+            "{:?}",
+            errors[0].described
+        );
+    }
+
     // NOT(x) parses as the unary operator; the named-argument spelling is the
     // one that reaches the function signature.
     rule_ctx_ok!(
