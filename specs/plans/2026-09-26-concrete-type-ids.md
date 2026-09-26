@@ -138,6 +138,15 @@ Three reshapes, each behaviour-preserving, before any new behaviour:
 2. **Explicit enumeration fallback in codegen.** `op_type` treats any
    unrecognised name as an enumeration. Make it ask the type environment
    whether the type *is* an enumeration and report P9999 otherwise.
+
+   This turned out to be a fix, not a prefactor. Named subranges also reach
+   the fallback, so a `ULINT` subrange was operated on as a `DINT`
+   (`IF x > 4000000000` was rejected with P2026). Codegen now builds
+   `named_types` from the type environment: enumerations map to `DINT`,
+   subranges to their base type, and anything else is P9999.
+
+   Also found: `ABS(x)` for a named `ULINT` subrange is rejected with P4026,
+   because the analyzer compares type names as strings. PR 4 covers it.
 3. **`TypeId` in the `TypeEnvironment`.** Introduce the indexed table and
    `TypeEntry`; elementary IDs equal `iec_type_tag`. Existing name lookups go
    name → ID → entry. Codegen's `resolve_iec_type_tag` string match is replaced
@@ -184,7 +193,7 @@ A tracking issue records PRs 1–5 before the first core PR.
 
 - [ ] Open tracking issue for PRs 1–5 and a follow-up issue for the debug-section type table
 - [x] PR 1: one `Declarations` table for the resolver and the argument/assignment rule (tests unchanged): ironplc/ironplc#1802
-- [ ] PR 2: explicit enumeration fallback in codegen `op_type`
+- [x] PR 2: codegen takes a named type's operand type from the type environment: ironplc/ironplc#1810
 - [ ] PR 3: `TypeId` table in `TypeEnvironment`; elementary IDs = `iec_type_tag`; debug tag from ID; ADR
 - [ ] PR 4: `ExprType` on `Expr`; IDs for anonymous types and aliases; checks reject aggregates/enums where a scalar is expected; tests for every row of the table above
 - [ ] PR 5: codegen on `TypeId`; remove string-based type resolution; update design doc
