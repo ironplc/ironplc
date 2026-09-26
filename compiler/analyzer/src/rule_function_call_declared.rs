@@ -101,6 +101,21 @@ impl Visitor<Infallible> for RuleFunctionCallDeclared<'_> {
                     .filter(|p| matches!(p, ParamAssignmentKind::NamedInput(_)))
                     .count();
 
+                // A call is either formal or non-formal. With both, the
+                // count below would be checked against a misreading of the
+                // arguments, so the mix is the one diagnostic, as for a
+                // function block invocation.
+                if call_input_count > 0 && call_named_count > 0 {
+                    self.diagnostics.push(
+                        Diagnostic::problem(
+                            Problem::FunctionCallMixedArgTypes,
+                            Label::span(node.name.span(), "Function call"),
+                        )
+                        .with_context("function", &node.name.original().to_string()),
+                    );
+                    return node.recurse_visit(self);
+                }
+
                 // Total input arguments provided
                 let total_inputs = call_input_count + call_named_count;
 
@@ -490,6 +505,52 @@ VAR
     result : WORD;
 END_VAR
     result := MY_SHIFT(B := BYTE#16#AB);
+END_PROGRAM"
+    );
+
+    // A call is either formal or non-formal; with a mix, the arity check
+    // below it would count a misreading of the arguments, so P4001 is the
+    // only diagnostic (#1816).
+    rule_ctx_err1!(
+        apply_when_function_call_mixes_positional_and_named_then_error,
+        "
+FUNCTION F : INT
+VAR_INPUT
+    a : INT;
+    b : INT;
+END_VAR
+    F := a - b;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    x : INT;
+END_VAR
+    x := F(1, b := 2);
+END_PROGRAM",
+        Problem::FunctionCallMixedArgTypes
+    );
+
+    rule_ctx_ok!(
+        apply_when_function_call_named_with_output_then_ok,
+        "
+FUNCTION F : INT
+VAR_INPUT
+    a : INT;
+END_VAR
+VAR_OUTPUT
+    q : INT;
+END_VAR
+    q := a;
+    F := a;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+    x := F(a := 1, q => y);
 END_PROGRAM"
     );
 }
