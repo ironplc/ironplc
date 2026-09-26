@@ -209,4 +209,27 @@ mod test {
         assert_eq!(last.text, "// c");
         assert_eq!((last.line, last.col), (1, 0));
     }
+
+    // IEC 61131-3 spells the delimiter inside a literal as `$'` (single-byte)
+    // or `$"` (double-byte). A `$` always takes the next character with it,
+    // so `$$` before the closing quote is an escaped dollar, not an escape of
+    // the quote.
+    #[rstest::rstest]
+    #[case::escaped_single_quote("'it$'s'", TokenType::SingleByteString)]
+    #[case::escaped_dollar_before_close("'costs $$'", TokenType::SingleByteString)]
+    #[case::escaped_double_quote("\"say $\"hi$\"\"", TokenType::DoubleByteString)]
+    fn tokenize_when_string_contains_escaped_delimiter_then_one_string_token(
+        #[case] source: &str,
+        #[case] expected: TokenType,
+    ) {
+        use dsl::core::FileId;
+        let (tokens, diagnostics) = super::tokenize(source, &FileId::default(), 0, 0);
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+        assert_eq!(tokens.len(), 1, "tokens: {tokens:?}");
+        assert_eq!(tokens[0].token_type, expected);
+        assert_eq!(tokens[0].text, source);
+    }
 }

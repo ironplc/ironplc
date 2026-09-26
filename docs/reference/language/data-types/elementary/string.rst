@@ -22,7 +22,7 @@ Literals
 .. code-block::
 
    'Hello, world!'
-   'It''s escaped'
+   'It$'s escaped'
    STRING#'typed literal'
 
 The maximum length can be specified in the declaration:

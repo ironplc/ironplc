@@ -25,6 +25,7 @@ Literals
 
    "Hello, world!"
    "Double-byte string"
+   "Say $"hi$""
    WSTRING#"typed literal"
 
 The maximum length can be specified in the declaration:
