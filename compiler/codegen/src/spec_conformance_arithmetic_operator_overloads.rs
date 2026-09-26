@@ -1,9 +1,11 @@
 //! Spec conformance tests for arithmetic operator overloads (codegen-owned
 //! requirements that compare bytecode).
 //!
-//! Each test is named for the requirement it covers. The design is not yet
-//! listed in `build.rs`, so the tests carry `#[test]`; they take
-//! `#[spec_test(REQ_AO_codegen_NNN)]` when the requirements are enforced.
+//! Each test is annotated with `#[spec_test(REQ_AO_codegen_NNN)]`, which
+//! adds `#[test]` and references a build-script-generated constant so the
+//! test fails to compile if the requirement is removed from the spec. The
+//! `all_spec_requirements_have_tests` meta-test in `spec_conformance`
+//! asserts every codegen-owned requirement has a test.
 //! The requirements checked by value run on the VM in
 //! `tests/it/end_to_end_arithmetic_overloads.rs`.
 //!
@@ -16,6 +18,7 @@ use ironplc_dsl::core::FileId;
 use ironplc_dsl::textual::Operator;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
+use spec_test_macro::spec_test;
 
 use crate::compile_time_arith::time_arith_for;
 
@@ -57,6 +60,7 @@ END_PROGRAM"
 
 /// REQ-AO-codegen-001: an operator expression on a Table 30 pair compiles to
 /// the same bytecode as the call to its typed name, at both widths.
+#[spec_test(REQ_AO_codegen_001)]
 #[rstest]
 #[case("TIME", "TIME", "TIME", "a + b", "ADD_TIME(a, b)")]
 #[case("TIME_OF_DAY", "TIME", "TIME_OF_DAY", "a + b", "ADD_TOD_TIME(a, b)")]
@@ -135,6 +139,7 @@ fn codegen_spec_req_ao_001_operator_on_table_30_pair_compiles_as_typed_call(
 /// REQ-AO-codegen-009: an extensible call on a Table 30 pair folds through
 /// the typed routine from the left, so `ADD(a, b, c)` compiles to what
 /// `a + b + c` compiles to.
+#[spec_test(REQ_AO_codegen_009)]
 #[rstest]
 #[case("TIME", "TIME", "TIME", "ADD(a, b, c)", "a + b + c")]
 #[case("TIME_OF_DAY", "TIME", "TIME_OF_DAY", "ADD(a, b, c)", "a + b + c")]
