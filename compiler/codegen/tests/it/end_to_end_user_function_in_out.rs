@@ -327,7 +327,7 @@ END_PROGRAM",
 
 fn assert_not_implemented(source: &str, options: &CompilerOptions) {
     let result = try_parse_and_compile(source, options);
-    let diagnostic = result.err().expect("compile should refuse the program");
+    let diagnostic = result.expect_err("compile should refuse the program");
     assert_eq!(diagnostic.code, "P9999", "{diagnostic:?}");
 }
 
