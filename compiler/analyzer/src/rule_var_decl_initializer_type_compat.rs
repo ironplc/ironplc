@@ -26,13 +26,14 @@ use ironplc_dsl::{
     common::*,
     core::Located,
     diagnostic::{Diagnostic, Label},
+    time::TemporalWidth,
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::IntermediateType,
+    intermediate_type::{ByteSized, IntermediateType},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
@@ -66,6 +67,17 @@ impl DiagnosticVisitor for RuleInitializerTypeCompat<'_> {
 }
 
 /// Checks whether a constant literal is type-compatible with the target type.
+/// Whether a temporal literal of `width` can initialize storage of `size`.
+///
+/// The 32-bit member widens into the 64-bit one, holding the same unit in more
+/// bits, so it fits either. The 64-bit member fits only 64-bit storage.
+fn fits_width(width: TemporalWidth, size: &ByteSized) -> bool {
+    match width {
+        TemporalWidth::Short => true,
+        TemporalWidth::Long => matches!(size, ByteSized::B64),
+    }
+}
+
 fn is_compatible(constant: &ConstantKind, target: &IntermediateType) -> bool {
     match target {
         IntermediateType::Bool => matches!(constant, ConstantKind::Boolean(_)),
@@ -88,10 +100,23 @@ fn is_compatible(constant: &ConstantKind, target: &IntermediateType) -> bool {
             )
         }
         IntermediateType::String { .. } => matches!(constant, ConstantKind::CharacterString(_)),
-        IntermediateType::Time { .. } => matches!(constant, ConstantKind::Duration(_)),
-        IntermediateType::Date { .. } => matches!(constant, ConstantKind::Date(_)),
-        IntermediateType::TimeOfDay { .. } => matches!(constant, ConstantKind::TimeOfDay(_)),
-        IntermediateType::DateAndTime { .. } => matches!(constant, ConstantKind::DateAndTime(_)),
+        // A temporal literal names its own member of the family, so the size
+        // is compared as well as the kind: `TIME#` initializes an `LTIME`
+        // because the short member widens, while `LTIME#` does not initialize
+        // a `TIME` -- the long member exists to hold what the short one
+        // cannot.
+        IntermediateType::Time { size } => {
+            matches!(constant, ConstantKind::Duration(lit) if fits_width(lit.width, size))
+        }
+        IntermediateType::Date { size } => {
+            matches!(constant, ConstantKind::Date(lit) if fits_width(lit.width, size))
+        }
+        IntermediateType::TimeOfDay { size } => {
+            matches!(constant, ConstantKind::TimeOfDay(lit) if fits_width(lit.width, size))
+        }
+        IntermediateType::DateAndTime { size } => {
+            matches!(constant, ConstantKind::DateAndTime(lit) if fits_width(lit.width, size))
+        }
         IntermediateType::Subrange { base_type, .. } => is_compatible(constant, base_type),
         // Complex types (Enumeration, Structure, Array, FunctionBlock, Function)
         // use different InitialValueAssignmentKind variants, not Simple.
