@@ -30,6 +30,7 @@ mod struct_init_expressions;
 mod tasks;
 mod this_super;
 mod time_functions;
+mod type_alias;
 mod types_and_returns;
 mod var_declarations;
 mod whitespace;
