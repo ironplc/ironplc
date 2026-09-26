@@ -112,6 +112,7 @@ mod end_to_end_limit_float;
 mod end_to_end_limit_lint;
 mod end_to_end_limit_udint;
 mod end_to_end_limit_ulint;
+mod end_to_end_long_time_functions;
 mod end_to_end_loops;
 mod end_to_end_ltime;
 mod end_to_end_math;
