@@ -1,0 +1,60 @@
+=====
+P2041
+=====
+
+.. problem-summary:: P2041
+
+This error occurs when a ``STRING`` or ``WSTRING`` is declared with a length
+greater than a string can hold.
+
+Every string, wherever it is stored, records its capacity in a 16-bit field,
+so the longest string a program can declare holds 65,535 code units. A length
+above that has no capacity to be recorded as, so the compiler reports it
+rather than keeping the low bits, which would give a shorter string than the
+one the program declared and silently cut every value written into it.
+
+The check applies wherever a length is declared:
+
+- a variable, ``s : STRING[70000]``
+- a structure field
+- an array element type, ``ARRAY[0..9] OF STRING[70000]``
+- a function or method return type, ``FUNCTION f : STRING[70000]``
+- a named type, ``TYPE Long : STRING[70000]; END_TYPE``
+
+Example
+-------
+
+The following code will generate error P2041:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           document : STRING[70000];
+       END_VAR
+   END_PROGRAM
+
+To fix this error, declare a length the string can hold:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           document : STRING[65535];
+       END_VAR
+   END_PROGRAM
+
+Long text in a control program
+------------------------------
+
+A string is copied whole every time it is assigned, passed to a function or
+compared, so a very long string costs time on every scan that touches it as
+well as memory. Where a program handles more text than one string can hold,
+split it across an array of shorter strings and work on one element at a
+time.
+
+See Also
+--------
+
+- :doc:`/reference/language/data-types/elementary/string` — ``STRING``
+- :doc:`/reference/language/data-types/elementary/wstring` — ``WSTRING``

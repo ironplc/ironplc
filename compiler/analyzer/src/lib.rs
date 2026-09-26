@@ -54,6 +54,7 @@ mod rule_real_literal_range;
 mod rule_ref_to;
 mod rule_stdlib_type_redefinition;
 mod rule_string_encoding_compat;
+mod rule_string_length_range;
 mod rule_string_literal_char_range;
 mod rule_struct_initializer_expression_allowed;
 mod rule_support;
