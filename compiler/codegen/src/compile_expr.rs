@@ -323,9 +323,9 @@ fn within_storage(
     problem: Problem,
     span: &SourceSpan,
 ) -> Result<i128, Diagnostic> {
-    let (minimum, maximum) =
-        ironplc_analyzer::value_range::for_integer(bits, signedness == Signedness::Signed);
-    if count < minimum || count > maximum {
+    let signed = signedness == Signedness::Signed;
+    if !ironplc_analyzer::value_range::fits(count, bits, signed) {
+        let (minimum, maximum) = ironplc_analyzer::value_range::for_integer(bits, signed);
         return Err(Diagnostic::problem(
             problem,
             Label::span(

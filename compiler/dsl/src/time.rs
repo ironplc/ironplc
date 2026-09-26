@@ -13,6 +13,41 @@ const SECOND_PER_DAY: u64 = Second::per(Day) as u64;
 const SECOND_PER_HOUR: u64 = Second::per(Hour) as u64;
 const SECOND_PER_MINUTE: u64 = Second::per(Minute) as u64;
 
+/// The count a temporal literal holds, together with the storage its own type
+/// gives that count.
+///
+/// A temporal value is an integer count in a fixed unit — milliseconds for a
+/// duration or a time of day, seconds since 1970-01-01 for a date or a
+/// date-and-time — and the literal's type decides how many bits hold it and
+/// whether they are signed. Answering all three together is what lets one
+/// range check serve every family: the caller asks whether `count` fits
+/// `bits` of the stated signedness and needs to know nothing else about dates
+/// or durations.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct StoredCount {
+    /// The count, in the unit the type stores.
+    ///
+    /// Wider than any storage so that a value the storage cannot hold arrives
+    /// intact to be judged, rather than having been truncated on the way.
+    pub count: i128,
+    /// How many bits hold it: 32 for the short member, 64 for the long one.
+    pub bits: u32,
+    /// Whether those bits are signed. A duration is signed because it can be
+    /// negative (ADR-0021); the calendar types are unsigned counts from the
+    /// epoch (ADR-0025).
+    pub signed: bool,
+}
+
+impl TemporalWidth {
+    /// How many bits this width holds.
+    pub fn bits(&self) -> u32 {
+        match self {
+            TemporalWidth::Short => 32,
+            TemporalWidth::Long => 64,
+        }
+    }
+}
+
 /// Which member of a temporal family a literal names: the 32-bit type or the
 /// 64-bit one.
 ///
@@ -80,6 +115,19 @@ impl DurationLiteral {
         match self.width {
             TemporalWidth::Short => ElementaryTypeName::TIME,
             TemporalWidth::Long => ElementaryTypeName::LTIME,
+        }
+    }
+
+    /// The millisecond count this literal holds and the storage its type gives
+    /// it.
+    ///
+    /// A duration is signed: subtracting a later time from an earlier one
+    /// gives a negative result (ADR-0021).
+    pub fn stored_count(&self) -> StoredCount {
+        StoredCount {
+            count: self.interval.whole_milliseconds(),
+            bits: self.width.bits(),
+            signed: true,
         }
     }
 
@@ -243,6 +291,21 @@ impl TimeOfDayLiteral {
         }
     }
 
+    /// The millisecond-since-midnight count this literal holds and the storage
+    /// its type gives it.
+    ///
+    /// The count is unsigned and bounded by 86,399,999 by construction, so it
+    /// fits either width; the range check is vacuous rather than absent, so
+    /// that a bound which stopped holding would be reported rather than
+    /// silently truncated.
+    pub fn stored_count(&self) -> StoredCount {
+        StoredCount {
+            count: i128::from(self.whole_milliseconds()),
+            bits: self.width.bits(),
+            signed: false,
+        }
+    }
+
     /// Returns the hour, minute, second and microsecond from the literal.
     pub fn hmsm(&self) -> (u8, u8, u8, u32) {
         self.value.as_hms_micro()
@@ -315,6 +378,19 @@ impl DateLiteral {
         }
     }
 
+    /// The epoch-second count this literal holds and the storage its type
+    /// gives it.
+    ///
+    /// The count is unsigned (ADR-0025), so a date before 1970-01-01 has
+    /// nowhere to go at either width.
+    pub fn stored_count(&self) -> StoredCount {
+        StoredCount {
+            count: i128::from(self.seconds_since_epoch()),
+            bits: self.width.bits(),
+            signed: false,
+        }
+    }
+
     /// Returns the year, month, day from the literal.
     pub fn ymd(&self) -> (i32, u8, u8) {
         let year = self.value.year();
@@ -383,6 +459,18 @@ impl DateAndTimeLiteral {
         match self.width {
             TemporalWidth::Short => ElementaryTypeName::DateAndTime,
             TemporalWidth::Long => ElementaryTypeName::LDateAndTime,
+        }
+    }
+
+    /// The epoch-second count this literal holds and the storage its type
+    /// gives it.
+    ///
+    /// As with [`DateLiteral::stored_count`], the count is unsigned.
+    pub fn stored_count(&self) -> StoredCount {
+        StoredCount {
+            count: i128::from(self.seconds_since_epoch()),
+            bits: self.width.bits(),
+            signed: false,
         }
     }
 
