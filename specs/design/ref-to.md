@@ -83,7 +83,7 @@ References allow aliasing: two references can point to the same variable, and mo
 
 All variable-table indices are global to a program instance. References created inside a function block scope remain valid after the function block call returns, because the referenced variable persists in the flat variable table. `LOAD_INDIRECT` and `STORE_INDIRECT` check the target index against the program instance's scope (its shared globals and its own partition of the variable table), not against the current frame's scope. This means cross-scope references are valid — a reference obtained in one function block can be used in another, and a function can write through a reference to a variable in its caller's frame — while another program instance's variables stay out of reach.
 
-`VAR_IN_OUT` parameters of functions use this mechanism: each is an implicit reference, never null and never reassigned, bound by the caller. See [user-defined function calls](user-defined-function-calls-design.md#var_in_out-parameters).
+`VAR_IN_OUT` parameters of functions use this mechanism: each is an implicit reference, never null and never reassigned, bound by the caller. See [VAR_IN_OUT parameters](var-in-out-parameters.md).
 
 ### Why Variable-Table Indices (Not Raw Pointers)
 

@@ -23,7 +23,7 @@ Enable compilation and execution of user-defined IEC 61131-3 functions. A user-d
 - `ANY_*` type parameters (stdlib functions only)
 - Implicit type widening/coercion
 - Recursive call detection (IEC 61131-3 forbids recursion, but we don't enforce this yet)
-- `VAR_OUTPUT` parameters on user-defined functions (`VAR_IN_OUT` was added later; see [VAR_IN_OUT parameters](#var_in_out-parameters))
+- `VAR_OUTPUT` parameters on user-defined functions (`VAR_IN_OUT` was added later; see [VAR_IN_OUT parameters](var-in-out-parameters.md))
 
 ## Key Decisions
 
@@ -102,43 +102,8 @@ New problem codes: `FunctionCallArgTypeMismatch`, `FunctionCallReturnTypeMismatc
 
 ### VAR_IN_OUT parameters
 
-A `VAR_IN_OUT` parameter is passed by reference, as an implicit `REF_TO` that
-is never null and never reassigned (see [REF_TO design](ref-to.md)). It takes
-an argument like a `VAR_INPUT` does: the argument list is the `VAR_INPUT` and
-`VAR_IN_OUT` declarations in declaration order, and `CALL` pops one slot per
-parameter into that order.
-
-**Analysis.** `FunctionSignature::input_parameters` lists both kinds, so the
-arity check (P4018) and argument binding agree with the named-to-positional
-rewrite. `rule_function_call_in_out_argument` requires a `VAR_IN_OUT` argument
-to be a variable (P4057) of exactly the parameter's elementary type (P4058):
-the function writes values of the parameter's type into the caller's variable,
-so no implicit conversion is sound. P4026 does not check `VAR_IN_OUT`
-arguments.
-
-**Call site.** The caller pushes the argument variable's table index (what
-`REF(x)` pushes) instead of its value. An argument that is itself a
-`VAR_IN_OUT` parameter of the calling function forwards the reference its
-slot holds.
-
-**Callee.** The parameter's slot holds the reference. A read compiles to
-`LOAD_VAR_I64 slot; LOAD_INDIRECT`, a write to `<value>; <truncate>;
-LOAD_VAR_I64 slot; STORE_INDIRECT`, and `REF(param)` to `LOAD_VAR_I64 slot`.
-`CompileContext::in_out_params` names the parameters; `CompileContext::var_index`
-refuses them, so a site that would load or store the slot directly is reported
-as not implemented rather than compiled wrongly.
-
-**VM.** The referenced variable lives in a caller's frame (a program variable,
-a function block's fields, or a calling function's locals), outside the
-callee's own scope. `LOAD_INDIRECT`/`STORE_INDIRECT` therefore check the
-target against the program instance's scope, not the current frame's.
-
-**Not yet supported** (reported as not implemented by codegen): parameters of
-a non-elementary type (strings, arrays, structures, references, function block
-instances), arguments that are array elements or structure fields, and a
-`VAR_IN_OUT` parameter used as a `FOR` control variable, a bit or partial
-access write target, or a dereference assignment target. `VAR_IN_OUT` on
-function blocks and methods is still passed by value.
+A `VAR_IN_OUT` parameter takes an argument like a `VAR_INPUT` does and is
+passed by reference. See [VAR_IN_OUT parameters](var-in-out-parameters.md).
 
 ### Debug Section
 
