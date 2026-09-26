@@ -6,8 +6,7 @@ V9017
 
 The container's declared worst-case call depth
 (``FileHeader.max_call_depth``) is zero. The VM rejects the container
-when it starts or resumes, before any code runs, so no PLC instructions
-execute.
+when it is loaded, before any code runs, so no PLC instructions execute.
 
 Every program needs at least one call frame for its entry function, so
 codegen always computes a depth of one or more (the longest path through

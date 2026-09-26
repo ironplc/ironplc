@@ -74,18 +74,21 @@ impl VmRunner {
 
         // Run init to apply initial values
         let mut bufs = VmBuffers::from_container(&container);
-        match Vm::new().load(&container, &mut bufs).start() {
-            Ok(running) => {
-                running.stop();
-            }
-            Err(ctx) => {
-                return Err(RunResult {
-                    ok: false,
-                    variables: vec![],
-                    total_scans: 0,
-                    error: Some(format!("VM init trap: {}", ctx.trap)),
-                });
-            }
+        let trap = match Vm::new().load(&container, &mut bufs) {
+            Ok(ready) => ready
+                .start()
+                .map(|running| running.stop())
+                .err()
+                .map(|ctx| ctx.trap),
+            Err(trap) => Some(trap),
+        };
+        if let Some(trap) = trap {
+            return Err(RunResult {
+                ok: false,
+                variables: vec![],
+                total_scans: 0,
+                error: Some(format!("VM init trap: {trap}")),
+            });
         }
 
         let runner = VmRunner {
@@ -169,17 +172,14 @@ fn run_step_scans(
     scans: u32,
     cycle_time_us: u64,
 ) -> RunResult {
-    let mut running = match Vm::new().load(container, bufs).resume(base_scan_count) {
-        Ok(running) => running,
-        Err(ctx) => {
+    let mut running = match Vm::new().load(container, bufs) {
+        Ok(ready) => ready.resume(base_scan_count),
+        Err(trap) => {
             return RunResult {
                 ok: false,
                 variables: vec![],
                 total_scans: base_scan_count,
-                error: Some(format!(
-                    "VM trap: {} (task {}, instance {})",
-                    ctx.trap, ctx.task_id, ctx.instance_id
-                )),
+                error: Some(format!("VM trap: {trap}")),
             };
         }
     };

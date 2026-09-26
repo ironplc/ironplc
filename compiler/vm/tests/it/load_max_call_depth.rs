@@ -1,9 +1,10 @@
 //! Integration tests for the `header.max_call_depth` validation
-//! performed by `VmReady::start` and `VmReady::resume`.
+//! performed by `Vm::load`.
 //!
 //! The validation lets a container declare its worst-case PLC call
 //! depth so the VM can reject a program that would not fit in the
-//! embedder's frame buffer *before* any init bytecode runs.
+//! embedder's frame buffer *before* any bytecode runs, whichever entry
+//! path (`VmReady::start` or `VmReady::resume`) follows.
 
 use ironplc_container::{opcode, ContainerBuilder, FunctionId};
 use ironplc_vm::error::Trap;
@@ -25,7 +26,7 @@ fn empty_init_container_with_depth(max_call_depth: u16) -> ironplc_container::Co
 }
 
 #[test]
-fn start_when_container_declares_call_depth_exceeding_buffer_then_returns_program_exceeds_call_depth(
+fn load_when_container_declares_call_depth_exceeding_buffer_then_returns_program_exceeds_call_depth(
 ) {
     // Construct the frame buffer from a small container, then load a
     // deeper container into it. This mirrors the embedded scenario the
@@ -36,12 +37,12 @@ fn start_when_container_declares_call_depth_exceeding_buffer_then_returns_progra
     assert_eq!(b.frames.len(), 8, "buffer sized from the small container");
 
     let deep = empty_init_container_with_depth(64);
-    let fault = match Vm::new().load(&deep, &mut b).start() {
-        Ok(_) => panic!("start should reject over-deep container"),
-        Err(f) => f,
+    let trap = match Vm::new().load(&deep, &mut b) {
+        Ok(_) => panic!("load should reject over-deep container"),
+        Err(t) => t,
     };
     assert_eq!(
-        fault.trap,
+        trap,
         Trap::ProgramExceedsCallDepth {
             required: 64,
             capacity: 8,
@@ -60,31 +61,31 @@ fn from_container_when_max_call_depth_set_then_buffer_sized_to_declared_depth() 
 fn from_container_when_max_call_depth_zero_then_buffer_is_empty() {
     // A declared depth of 0 is invalid (codegen always declares >= 1),
     // so the buffer allocates no frames. Such a container is rejected by
-    // both `VmReady::start` and `VmReady::resume` before any code runs.
+    // `Vm::load` before any code runs.
     let c = empty_init_container_with_depth(0);
     let b = VmBuffers::from_container(&c);
     assert_eq!(b.frames.len(), 0);
 }
 
 #[test]
-fn start_when_container_declares_zero_call_depth_then_rejected() {
+fn load_when_container_declares_zero_call_depth_then_rejected() {
     // Every program needs at least one call frame for its entry function.
     // A declared depth of 0 means the field was never computed (a legacy
     // or hand-built container) and is rejected at load.
     let c = empty_init_container_with_depth(0);
     let mut b = VmBuffers::from_container(&c);
-    let fault = match Vm::new().load(&c, &mut b).start() {
-        Ok(_) => panic!("start should reject a zero-call-depth container"),
-        Err(f) => f,
+    let trap = match Vm::new().load(&c, &mut b) {
+        Ok(_) => panic!("load should reject a zero-call-depth container"),
+        Err(t) => t,
     };
-    assert_eq!(fault.trap, Trap::ZeroCallDepth);
+    assert_eq!(trap, Trap::ZeroCallDepth);
 }
 
 #[test]
 fn start_when_container_declares_call_depth_within_buffer_then_succeeds() {
     let c = empty_init_container_with_depth(16);
     let mut b = VmBuffers::from_container(&c);
-    let ok = Vm::new().load(&c, &mut b).start().is_ok();
+    let ok = Vm::new().load(&c, &mut b).unwrap().start().is_ok();
     assert!(ok, "start should succeed when max_call_depth fits");
 }
 
@@ -95,49 +96,15 @@ fn start_when_container_declares_call_depth_equal_to_buffer_then_succeeds() {
     // is strict greater-than).
     let c = empty_init_container_with_depth(32);
     let mut b = VmBuffers::from_container(&c);
-    let ok = Vm::new().load(&c, &mut b).start().is_ok();
+    let ok = Vm::new().load(&c, &mut b).unwrap().start().is_ok();
     assert!(ok, "start should succeed at exact-fit boundary");
-}
-
-#[test]
-fn resume_when_container_declares_zero_call_depth_then_rejected() {
-    let c = empty_init_container_with_depth(0);
-    let mut b = VmBuffers::from_container(&c);
-    let fault = match Vm::new().load(&c, &mut b).resume(0) {
-        Ok(_) => panic!("resume should reject a zero-call-depth container"),
-        Err(f) => f,
-    };
-    assert_eq!(fault.trap, Trap::ZeroCallDepth);
-}
-
-#[test]
-fn resume_when_container_declares_call_depth_exceeding_buffer_then_returns_program_exceeds_call_depth(
-) {
-    let small = empty_init_container_with_depth(8);
-    let mut b = VmBuffers::from_container(&small);
-
-    let deep = empty_init_container_with_depth(64);
-    let fault = match Vm::new().load(&deep, &mut b).resume(0) {
-        Ok(_) => panic!("resume should reject over-deep container"),
-        Err(f) => f,
-    };
-    assert_eq!(
-        fault.trap,
-        Trap::ProgramExceedsCallDepth {
-            required: 64,
-            capacity: 8,
-        }
-    );
 }
 
 #[test]
 fn resume_when_container_declares_call_depth_within_buffer_then_continues_scan_count() {
     let c = empty_init_container_with_depth(16);
     let mut b = VmBuffers::from_container(&c);
-    let mut running = match Vm::new().load(&c, &mut b).resume(41) {
-        Ok(r) => r,
-        Err(f) => panic!("resume should succeed when max_call_depth fits: {:?}", f),
-    };
+    let mut running = Vm::new().load(&c, &mut b).unwrap().resume(41);
     assert_eq!(running.scan_count(), 41);
     running.run_round(0).unwrap();
     assert_eq!(running.scan_count(), 42);

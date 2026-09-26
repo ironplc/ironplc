@@ -14,13 +14,14 @@ use std::io::Cursor;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use ironplc_container::debug_format::VariableRenderer;
-use ironplc_container::Container;
+use ironplc_container::{Container, InstanceId, TaskId};
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, LineColumn, DOCS_SECTIONS};
 use ironplc_parser::options::{CompilerOptions, Dialect, FeatureDescriptor};
 use ironplc_project::MemoryBackedProject;
 use ironplc_sources::{parse_source, FileType};
+use ironplc_vm::error::Trap;
 use ironplc_vm::{Slot, VariableView, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -253,6 +254,24 @@ fn internal_run_error(message: String) -> RunError {
         code: Some(code),
         compiler_file: loc.file().to_string(),
         compiler_line: loc.line(),
+    }
+}
+
+/// Builds the [`RunError`] for a VM trap, keyed by the trap's v-code.
+///
+/// `location` is the faulting task and program instance, or `None` for a trap
+/// raised while loading the container, which belongs to no task.
+fn vm_trap_error(context: &str, trap: &Trap, location: Option<(TaskId, InstanceId)>) -> RunError {
+    let message = match location {
+        Some((task_id, instance_id)) => {
+            format!("{context}: {trap} (task {task_id}, instance {instance_id})")
+        }
+        None => format!("{context}: {trap}"),
+    };
+    RunError {
+        message,
+        code: Some(trap.v_code().to_string()),
+        ..Default::default()
     }
 }
 
@@ -523,21 +542,23 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
 
     let mut bufs = VmBuffers::from_container(&container);
 
-    let mut running = match Vm::new().load(&container, &mut bufs).start() {
+    const INIT_TRAP: &str = "VM trap during init";
+    let running = Vm::new()
+        .load(&container, &mut bufs)
+        .map_err(|trap| vm_trap_error(INIT_TRAP, &trap, None))
+        .and_then(|ready| {
+            ready.start().map_err(|ctx| {
+                vm_trap_error(INIT_TRAP, &ctx.trap, Some((ctx.task_id, ctx.instance_id)))
+            })
+        });
+    let mut running = match running {
         Ok(vm) => vm,
-        Err(ctx) => {
+        Err(error) => {
             return RunResult {
                 ok: false,
                 variables: vec![],
                 scans_completed: 0,
-                error: Some(RunError {
-                    message: format!(
-                        "VM trap during init: {} (task {}, instance {})",
-                        ctx.trap, ctx.task_id, ctx.instance_id
-                    ),
-                    code: Some(ctx.trap.v_code().to_string()),
-                    ..Default::default()
-                }),
+                error: Some(error),
             };
         }
     };
@@ -553,16 +574,11 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                 ok: false,
                 variables,
                 scans_completed: round as u64,
-                error: Some(RunError {
-                    message: format!(
-                        "VM trap: {} (task {}, instance {})",
-                        faulted.trap(),
-                        faulted.task_id(),
-                        faulted.instance_id()
-                    ),
-                    code: Some(faulted.trap().v_code().to_string()),
-                    ..Default::default()
-                }),
+                error: Some(vm_trap_error(
+                    "VM trap",
+                    faulted.trap(),
+                    Some((faulted.task_id(), faulted.instance_id())),
+                )),
             };
         }
     }
@@ -723,23 +739,22 @@ fn load_program_inner(
     // Subsequent calls to step() will use resume() to skip re-initialization.
     let mut bufs = VmBuffers::from_container(&container);
 
-    match Vm::new().load(&container, &mut bufs).start() {
-        Ok(running) => {
-            running.stop();
-        }
-        Err(ctx) => {
-            return StepResult {
-                ok: false,
-                diagnostics: vec![],
-                variables: vec![],
-                total_scans: 0,
-                error: Some(RunError {
-                    message: format!("VM init trap: {}", ctx.trap),
-                    code: Some(ctx.trap.v_code().to_string()),
-                    ..Default::default()
-                }),
-            };
-        }
+    let trap = match Vm::new().load(&container, &mut bufs) {
+        Ok(ready) => ready
+            .start()
+            .map(|running| running.stop())
+            .err()
+            .map(|ctx| ctx.trap),
+        Err(trap) => Some(trap),
+    };
+    if let Some(trap) = trap {
+        return StepResult {
+            ok: false,
+            diagnostics: vec![],
+            variables: vec![],
+            total_scans: 0,
+            error: Some(vm_trap_error("VM init trap", &trap, None)),
+        };
     }
 
     SESSION.with(|cell| {
@@ -882,17 +897,10 @@ fn run_vm_scans(
     scans: u32,
     cycle_time_us: u64,
 ) -> (Vec<VariableInfo>, u64, Option<RunError>) {
-    let mut running = match Vm::new().load(container, bufs).resume(base_scan_count) {
-        Ok(running) => running,
-        Err(ctx) => {
-            let error = RunError {
-                message: format!(
-                    "VM trap: {} (task {}, instance {})",
-                    ctx.trap, ctx.task_id, ctx.instance_id
-                ),
-                code: Some(ctx.trap.v_code().to_string()),
-                ..Default::default()
-            };
+    let mut running = match Vm::new().load(container, bufs) {
+        Ok(ready) => ready.resume(base_scan_count),
+        Err(trap) => {
+            let error = vm_trap_error("VM trap", &trap, None);
             return (vec![], base_scan_count, Some(error));
         }
     };
@@ -903,16 +911,11 @@ fn run_vm_scans(
             let total_scans = running.scan_count();
             let faulted = running.fault(ctx);
             let variables = read_all_variables(&faulted, &VariableRenderer::new(container));
-            let error = RunError {
-                message: format!(
-                    "VM trap: {} (task {}, instance {})",
-                    faulted.trap(),
-                    faulted.task_id(),
-                    faulted.instance_id()
-                ),
-                code: Some(faulted.trap().v_code().to_string()),
-                ..Default::default()
-            };
+            let error = vm_trap_error(
+                "VM trap",
+                faulted.trap(),
+                Some((faulted.task_id(), faulted.instance_id())),
+            );
             return (variables, total_scans, Some(error));
         }
     }
