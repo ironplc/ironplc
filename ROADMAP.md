@@ -20,11 +20,16 @@ case came from.
 The Edition 2 bar is not negotiable. Everything else is judged on its quality
 at the time the Edition 2 core is trusted.
 
-IronPLC is not limited to Edition 2. It already supports Edition 3 features,
-including object-oriented programming and references, as well as language
-extensions and dialects for CODESYS, Beckhoff TwinCAT and RuSTy. These work
-today and you can use them. They are just not what decides when IronPLC
-reaches 1.0.
+## IronPLC is more than Edition 2
+
+The 1.0 goal names Edition 2 because it is the minimum, not because it is the
+limit. IronPLC already supports Edition 3 features, including object-oriented
+programming and references, as well as language extensions and dialects for
+CODESYS, Beckhoff TwinCAT and RuSTy. These work today and you can use them.
+They are just not what decides when IronPLC reaches 1.0.
+
+How 1.0 will show which features are trusted and which are not has not been
+decided yet.
 
 ## Where things are now
 
@@ -41,10 +46,9 @@ the corpus, and making implementer-defined behavior into policies.
 
 ## Included in 1.0 if ready
 
-Most of these are already available today. They become part of the 1.0
-promise if they are as trustworthy as the Edition 2 core when 1.0 is ready.
-They do not delay 1.0. Anything not ready stays available behind its
-`--allow-*` flag or dialect, without the promise, until a later release.
+Most of these are already available today. They can be trusted in 1.0 if
+they are as trustworthy as the Edition 2 core when 1.0 is ready. They do not
+delay 1.0.
 
 - Edition 3 features, including object-oriented programming and references
   (`REF_TO`, `REF`) (available)
@@ -57,8 +61,8 @@ They do not delay 1.0. Anything not ready stays available behind its
   working across 1.x.
 - **Results are stable.** The same source, compiled with the same dialect and
   policy selections, produces the same observed values on every 1.x release.
-  The promise covers the default Edition 2 dialect and anything the release
-  notes declare ready. The one exception is a defect fix: if IronPLC produces
+  The promise covers Edition 2 and anything else that is trusted at 1.0.
+  The one exception is a defect fix: if IronPLC produces
   a wrong value, a 1.x release may correct it.
 - **Bytecode is safe but not stable.** A compiled `.iplc` file may not load
   in a different version of the runtime. Any change that alters how bytecode
@@ -71,14 +75,14 @@ They do not delay 1.0. Anything not ready stays available behind its
 - **Code-level integration.** The Rust crates that make up IronPLC have no
   stability guarantee. Projects that build on them should pin an exact
   version.
-- **Features behind a flag or a non-default dialect,** unless the release
-  notes declare them ready.
+- **Features that are not trusted at 1.0.** They remain available, but
+  without the promise.
 - **Performance.** Performance is a 2.0 concern.
 
 ## Contributing
 
 Contributions are welcome, including toward anything under
-[Included in 1.0 if ready](#included-in-10-if-ready). A contribution can land
-behind a flag at any time, and it can join the 1.0 promise if it meets the
-same bar as the Edition 2 core. Contributions do not change the 1.0 criteria.
+[Included in 1.0 if ready](#included-in-10-if-ready). A contribution can land at
+any time, and it can be trusted in 1.0 if it meets the same bar as the
+Edition 2 core. Contributions do not change the 1.0 criteria.
 See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
