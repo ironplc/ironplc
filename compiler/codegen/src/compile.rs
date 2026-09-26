@@ -313,6 +313,7 @@ pub fn compile(
         context.types(),
         enum_map,
         options.string_to_num,
+        *context.compiler_options(),
         sources,
     )?;
 
@@ -714,6 +715,7 @@ fn compile_program_with_functions(
     types: &TypeEnvironment,
     enum_map: crate::compile_enum::EnumOrdinalMap,
     string_to_num: StringToNumPolicies,
+    compiler_options: CompilerOptions,
     sources: &dyn crate::source_lookup::SourceLookup,
 ) -> Result<Container, Diagnostic> {
     let ProgramInputs {
@@ -726,6 +728,7 @@ fn compile_program_with_functions(
     ctx.enum_map = enum_map;
     ctx.named_types = crate::type_info::named_type_infos(types);
     ctx.string_to_num = string_to_num;
+    ctx.compiler_options = compiler_options;
     let mut builder = ContainerBuilder::new();
 
     // Register every top-level POU's source file with the debug
@@ -1354,6 +1357,10 @@ pub(crate) struct CompileContext {
     /// The behavior policies `STRING_TO_<numeric>` calls select their
     /// builtin by (ADR-0049).
     pub(crate) string_to_num: StringToNumPolicies,
+    /// The options the analyzer ran with. Codegen asks the arithmetic
+    /// overload resolver the analyzer asked, with the same options, for the
+    /// result type of each step of an arithmetic call.
+    pub(crate) compiler_options: CompilerOptions,
     /// Next available byte offset in the data region.
     pub(crate) data_region_offset: u32,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
@@ -1434,6 +1441,7 @@ impl CompileContext {
             enum_map: crate::compile_enum::EnumOrdinalMap::default(),
             named_types: HashMap::new(),
             string_to_num: StringToNumPolicies::default(),
+            compiler_options: CompilerOptions::default(),
             current_function_return: None,
             current_function_id: None,
             call_graph: HashMap::new(),
