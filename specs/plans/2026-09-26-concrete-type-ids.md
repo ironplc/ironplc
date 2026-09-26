@@ -65,6 +65,9 @@ A numeric identity for a **concrete** type, allocated by the
 - **Generic categories never get a `TypeId`.** `ANY_INT` is a set of types,
   not a type. See *Untyped literals* below.
 
+Every entry keeps the name it was declared with, and the environment answers
+`name_of(id)` for diagnostics and debugging. Comparison never uses the name.
+
 `TypeId` is an opaque `u32` newtype defined in `ironplc-dsl` (so `Expr` can
 hold it without depending on the analyzer). Only the `TypeEnvironment` mints
 one, so holding a `TypeId` guarantees the table has an entry for it — a lookup
@@ -194,7 +197,7 @@ A tracking issue records PRs 1–5 before the first core PR.
 - [ ] Open tracking issue for PRs 1–5 and a follow-up issue for the debug-section type table
 - [x] PR 1: one `Declarations` table for the resolver and the argument/assignment rule (tests unchanged): ironplc/ironplc#1802
 - [x] PR 2: codegen takes a named type's operand type from the type environment: ironplc/ironplc#1810
-- [ ] PR 3: `TypeId` table in `TypeEnvironment`; elementary IDs = `iec_type_tag`; debug tag from ID; ADR
+- [x] PR 3: `TypeId` table in `TypeEnvironment`; elementary IDs = `iec_type_tag`; `name_of`; debug tag from ID; ADR-0055: ironplc/ironplc#1825
 - [ ] PR 4: `ExprType` on `Expr`; IDs for anonymous types and aliases; checks reject aggregates/enums where a scalar is expected; tests for every row of the table above
 - [ ] PR 5: codegen on `TypeId`; remove string-based type resolution; update design doc
 - [ ] Close #1761 and the tracking issue
