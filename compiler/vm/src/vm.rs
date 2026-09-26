@@ -148,31 +148,7 @@ impl<'a> VmReady<'a> {
     pub fn start(mut self) -> Result<VmRunning<'a>, FaultContext> {
         let shared_globals_size = self.container.task_table.shared_globals_size;
 
-        // Validate the container's declared call depth against the
-        // embedder's frame buffer. Codegen populates `max_call_depth`
-        // from the static call graph and always declares at least one
-        // frame (the entry function), so a value of 0 is invalid: it
-        // means the field was never computed (a legacy or hand-built
-        // container). Reject it before any init code runs.
-        let declared = self.container.header.max_call_depth;
-        let capacity = self.frames.len();
-        if declared == 0 {
-            return Err(FaultContext {
-                trap: Trap::ZeroCallDepth,
-                task_id: TaskId::DEFAULT,
-                instance_id: InstanceId::DEFAULT,
-            });
-        }
-        if declared as usize > capacity {
-            return Err(FaultContext {
-                trap: Trap::ProgramExceedsCallDepth {
-                    required: declared,
-                    capacity: capacity.min(u16::MAX as usize) as u16,
-                },
-                task_id: TaskId::DEFAULT,
-                instance_id: InstanceId::DEFAULT,
-            });
-        }
+        self.validate_call_depth()?;
 
         // Execute init functions once before entering scan mode.
         for pi in 0..self.program_instances.len() {
@@ -261,6 +237,37 @@ impl<'a> VmReady<'a> {
             #[cfg(feature = "profiling")]
             profile: self.profile,
         }
+    }
+
+    /// Validates the container's declared call depth against the
+    /// embedder's frame buffer.
+    ///
+    /// Codegen populates `max_call_depth` from the static call graph and
+    /// always declares at least one frame (the entry function), so a value
+    /// of 0 is invalid: it means the field was never computed (a legacy or
+    /// hand-built container). Both entry paths ([`start`](VmReady::start)
+    /// and [`resume`](VmReady::resume)) run this before any bytecode.
+    fn validate_call_depth(&self) -> Result<(), FaultContext> {
+        let declared = self.container.header.max_call_depth;
+        let capacity = self.frames.len();
+        if declared == 0 {
+            return Err(FaultContext {
+                trap: Trap::ZeroCallDepth,
+                task_id: TaskId::DEFAULT,
+                instance_id: InstanceId::DEFAULT,
+            });
+        }
+        if declared as usize > capacity {
+            return Err(FaultContext {
+                trap: Trap::ProgramExceedsCallDepth {
+                    required: declared,
+                    capacity: capacity.min(u16::MAX as usize) as u16,
+                },
+                task_id: TaskId::DEFAULT,
+                instance_id: InstanceId::DEFAULT,
+            });
+        }
+        Ok(())
     }
 
     /// Reads a variable value as an i32.
