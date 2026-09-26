@@ -418,16 +418,20 @@ parser! {
     rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()) }
     rule hex_integer() -> Integer = n:tok(TokenType::HexDigits) {? Integer::try_hex(n.text.as_str()) }
     // real_literal_type is used specifically for real literals (returns RealTypeName)
-    rule real_literal_type() -> RealTypeName =
-      tok(TokenType::Real) { RealTypeName::REAL }
-      / tok(TokenType::Lreal) { RealTypeName::LREAL }
-    rule real_literal() -> RealLiteral = tn:(t:real_literal_type() tok(TokenType::Hash) {t})? sign:(tok(TokenType::Minus) { -1.0 }/ tok(TokenType::Plus) { 1.0 })? literal:(fp:tok(TokenType::FloatingPoint) {fp.text.as_str()} / fp:tok(TokenType::FixedPoint) {fp.text.as_str()} ){?
-      let sign = sign.unwrap_or(1.0);
-      RealLiteral::try_parse(literal, tn).map(|node| {
+    rule real_literal_type() -> (RealTypeName, &'input Token) =
+      t:tok(TokenType::Real) { (RealTypeName::REAL, t) }
+      / t:tok(TokenType::Lreal) { (RealTypeName::LREAL, t) }
+    rule real_literal() -> RealLiteral = tn:(t:real_literal_type() tok(TokenType::Hash) {t})? sign:(s:tok(TokenType::Minus) { (-1.0, s) }/ s:tok(TokenType::Plus) { (1.0, s) })? fp:(fp:tok(TokenType::FloatingPoint) {fp} / fp:tok(TokenType::FixedPoint) {fp} ){?
+      // The span runs from the first token of the literal -- its type prefix,
+      // else its sign, else its digits -- to the end of the digits.
+      let first = tn.as_ref().map(|(_, t)| *t).or(sign.map(|(_, s)| s)).unwrap_or(fp);
+      let span = SourceSpan::join(&first.span, &fp.span);
+      let sign = sign.map_or(1.0, |(v, _)| v);
+      RealLiteral::try_parse(fp.text.as_str(), tn.map(|(t, _)| t)).map(|node| {
         RealLiteral {
           value: node.value * sign,
           data_type: node.data_type,
-          span: node.span,
+          span,
         }
       })
     }

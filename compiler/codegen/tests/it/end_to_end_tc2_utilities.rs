@@ -197,9 +197,12 @@ fn end_to_end_when_at_or_beyond_two_pow_63_then_empty() {
 
 #[test]
 fn end_to_end_when_infinite_then_empty() {
-    // Constructed arithmetically: 1.0E308 * 10.0 overflows to +infinity.
-    assert_eq!(fmt("1.0E308 * 10.0", 2, true), "");
-    assert_eq!(fmt("-1.0E308 * 10.0", 2, true), "");
+    // Constructed arithmetically at runtime: x * 10.0 with x = 1.0E308
+    // overflows to +infinity. The multiply goes through the variable
+    // because a constant `1.0E308 * 10.0` is rejected at compile time
+    // (P4040).
+    assert_eq!(fmt("1.0E308;\n    x := x * 10.0", 2, true), "");
+    assert_eq!(fmt("-1.0E308;\n    x := x * 10.0", 2, true), "");
 }
 
 #[test]

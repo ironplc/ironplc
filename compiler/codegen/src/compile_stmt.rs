@@ -376,33 +376,20 @@ fn compile_statement(
                         emitter.emit_add_i64();
                         emitter.emit_store_array(var_index, desc_index);
                     }
-                    crate::compile_array::ResolvedAccess::StructFieldStringArrayElement {
-                        var_index,
-                        scratch_var_index,
-                        string_desc_index,
-                        field_byte_offset,
-                        ref dimensions,
-                        subscripts,
-                    } => {
-                        let target_span = variable_span(&assignment.target);
-                        // 1. Compile RHS (produces buf_idx on stack).
+                    crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(
+                        element,
+                    ) => {
+                        // The RHS produces the temp buffer index the store consumes.
                         compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
-                        // 2. Compute base: struct_data_offset + field_byte_offset → scratch.
-                        emitter.emit_load_var_i32(var_index);
-                        let offset_const = ctx.add_i32_constant(field_byte_offset as i32);
-                        emitter.emit_load_const_i32(offset_const);
-                        emitter.emit_add_i32();
-                        emitter.emit_store_var_i32(scratch_var_index);
-                        // 3. Compute flat index.
-                        crate::compile_array::emit_flat_index(
+                        element.emit_base_and_index(
                             emitter,
                             ctx,
-                            &subscripts,
-                            dimensions,
-                            &target_span,
+                            &variable_span(&assignment.target),
                         )?;
-                        // 4. Store string element.
-                        emitter.emit_str_store_array_elem(scratch_var_index, string_desc_index);
+                        emitter.emit_str_store_array_elem(
+                            element.scratch_var_index,
+                            element.string_desc_index,
+                        );
                     }
                 }
             }
