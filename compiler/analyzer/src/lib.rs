@@ -86,6 +86,7 @@ mod type_table;
 pub mod value_range;
 pub mod value_type;
 mod variable_type;
+mod write_collector;
 mod xform_fold_constant_expressions;
 mod xform_fold_initializer_expressions;
 mod xform_insert_implicit_deref;
