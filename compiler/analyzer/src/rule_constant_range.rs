@@ -457,11 +457,11 @@ impl RuleConstantRange<'_> {
         let Some(declared) = self.declarations.find(&node.var_name) else {
             return;
         };
-        let InitialValueAssignmentKind::FunctionBlock(instance) = &declared.0 else {
+        let TypeReference::Named(type_name) = declared.type_reference() else {
             return;
         };
         let Some(IntermediateType::FunctionBlock { fields, .. }) =
-            self.representation_of(&instance.type_name)
+            self.representation_of(&type_name)
         else {
             return;
         };
