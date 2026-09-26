@@ -66,7 +66,7 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
-use std::convert::Infallible;
+use std::{convert::Infallible, fmt::Display};
 
 use crate::{
     intermediate_type::{ByteSized, IntermediateType},
@@ -180,7 +180,12 @@ impl RuleConstantRange<'_> {
     /// Every out-of-range constant is reported the same way, whatever
     /// context it was found in, so that the range that decides the outcome
     /// is the only thing that varies between reports.
-    fn report_out_of_range(&mut self, span: SourceSpan, reported: &String, range: (i128, i128)) {
+    fn report_out_of_range<T: Display>(
+        &mut self,
+        span: SourceSpan,
+        reported: &String,
+        range: (T, T),
+    ) {
         let (minimum, maximum) = range;
         self.diagnostics.push(
             Diagnostic::problem(
