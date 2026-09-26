@@ -4,8 +4,8 @@
 //! REQ-TOL-mcp-220 and REQ-TOL-mcp-221.
 
 use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, Library,
-    LibraryElementKind, ProgramDeclaration, TypeReference, VarDecl, VariableType,
+    ConstantKind, FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind,
+    Library, LibraryElementKind, ProgramDeclaration, TypeReference, VarDecl, VariableType,
 };
 use ironplc_dsl::core::FileId;
 use ironplc_project::project::{MemoryBackedProject, Project};
@@ -220,7 +220,7 @@ fn render_initial_value(init: &InitialValueAssignmentKind) -> Option<String> {
         InitialValueAssignmentKind::String(s) => s
             .initial_value
             .as_ref()
-            .map(|lit| format!("'{}'", lit.value.iter().collect::<String>())),
+            .map(|lit| ConstantKind::CharacterString(lit.clone()).to_string()),
         InitialValueAssignmentKind::EnumeratedType(e) => {
             e.initial_value.as_ref().map(|v| v.value.to_string())
         }

@@ -10,5 +10,7 @@ fn main() {
         "adr-and-pointer-to.md",
         // Partial-access syntax (`REQ-PAB-plc2plc-*`): round-trip rendering.
         "partial-access-bit-syntax.md",
+        // Character string literals (`REQ-SL-plc2plc-*`): escaped rendering.
+        "string-literals.md",
     ]);
 }

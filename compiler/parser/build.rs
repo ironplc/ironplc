@@ -8,5 +8,7 @@ fn main() {
         // Behavior policies (`REQ-BP-parser-*`): the option surface and the
         // dialect presets.
         "behavior-policies.md",
+        // Character string literals (`REQ-SL-parser-*`): `$` escapes.
+        "string-literals.md",
     ]);
 }
