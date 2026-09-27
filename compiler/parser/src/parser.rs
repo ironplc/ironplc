@@ -1254,6 +1254,7 @@ parser! {
         qualifier: DeclarationQualifier::Unspecified,
         initializer,
         block: next_block_id(),
+        type_id: None,
       }
     }
     // We use the same type as in other places for VarInit, but the external always omits the initializer
@@ -1280,6 +1281,7 @@ parser! {
         qualifier: DeclarationQualifier::Unspecified,
         initializer: spec,
         block: next_block_id(),
+        type_id: None,
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
@@ -1305,6 +1307,7 @@ parser! {
           // TODO this is clearly wrong
           initializer: init,
           block: next_block_id(),
+          type_id: None,
         }
       }).collect()
      }

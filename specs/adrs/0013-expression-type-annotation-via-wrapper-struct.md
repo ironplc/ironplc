@@ -2,6 +2,7 @@
 
 status: accepted
 date: 2026-03-02
+amended: 2026-09-27 (expressions also carry `expr_type`, a `TypeId`; see ADR-0055)
 
 ## Context and Problem Statement
 
@@ -113,3 +114,13 @@ The late-bound expression resolution pass (`xform_resolve_late_bound_expr_kind`)
 ### Why not `IntermediateType`?
 
 `IntermediateType` is defined in the analyzer crate and represents fully resolved types (including structure layouts, array dimensions, etc.). Storing it on AST nodes would require the DSL crate to depend on the analyzer crate, creating a circular dependency. `TypeName` is a lightweight string-based reference already defined in the DSL crate. Codegen maps `TypeName` to operation widths using its existing `resolve_type_name()` function — but with aliases resolved, the string matching works correctly.
+
+### Amendment: `expr_type` (2026-09-27)
+
+`Expr` also carries `expr_type: Option<ExprType>`, the type of its value by
+identity (ADR-0055): `Concrete(TypeId)` for a value of one type, or
+`Literal(GenericTypeName)` for an untyped literal. Unlike `resolved_type` it
+is set for a type without a name, such as a whole `ARRAY[1..2] OF DINT`
+variable. `resolved_type` stays until its readers move to `expr_type`.
+`expr_type` is left out of `Expr`'s equality because it is derived from
+`resolved_type` and the declarations in scope.

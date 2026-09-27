@@ -26,7 +26,7 @@ enum TypeDefinitionKind {
     Enumeration,
     Subrange,
     Simple,
-    Array(ArraySpecificationKind),
+    Array,
     Structure,
     StructureInitialization,
     String(StringType, IntegerRef),
@@ -97,10 +97,9 @@ impl Visitor<Diagnostic> for ScopedTable<'_, TypeName, TypeDefinitionKind> {
             DataTypeDeclarationKind::Simple(node) => {
                 self.add_if_new(&node.type_name, TypeDefinitionKind::Simple)
             }
-            DataTypeDeclarationKind::Array(node) => self.add_if_new(
-                &node.type_name,
-                TypeDefinitionKind::Array(node.spec.clone()),
-            ),
+            DataTypeDeclarationKind::Array(node) => {
+                self.add_if_new(&node.type_name, TypeDefinitionKind::Array)
+            }
             DataTypeDeclarationKind::Structure(node) => {
                 self.add_if_new(&node.type_name, TypeDefinitionKind::Structure)
             }
@@ -308,9 +307,12 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                                 keyword_span: SourceSpan::default(),
                             }))
                         }
-                        TypeDefinitionKind::Array(spec) => Ok(InitialValueAssignmentKind::Array(
+                        // Keeps the name, as for a subrange, so the declaration
+                        // still says which array type it declares; the name
+                        // resolves to the same array as its definition would.
+                        TypeDefinitionKind::Array => Ok(InitialValueAssignmentKind::Array(
                             ArrayInitialValueAssignment {
-                                spec: spec.clone(),
+                                spec: SpecificationKind::Named(name),
                                 initial_values: vec![],
                             },
                         )),
@@ -540,6 +542,43 @@ END_FUNCTION_BLOCK
                 if *tn == TypeName::from("my_range")
             ));
         }
+    }
+
+    #[test]
+    fn apply_when_has_array_type_then_array_keeps_type_name() {
+        let program = "
+TYPE
+    my_array : ARRAY[1..2] OF INT;
+END_TYPE
+
+FUNCTION_BLOCK caller
+    VAR
+        the_var : my_array;
+    END_VAR
+
+END_FUNCTION_BLOCK
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironment::new();
+        let result = apply(input, &mut type_environment).unwrap().0;
+
+        let caller_fb = result.elements.iter().find_map(|e| match e {
+            LibraryElementKind::FunctionBlockDeclaration(fb)
+                if fb.name == TypeName::from("caller") =>
+            {
+                Some(fb)
+            }
+            _ => None,
+        });
+        assert!(matches!(
+            &caller_fb.unwrap().variables[0].initializer,
+            InitialValueAssignmentKind::Array(ArrayInitialValueAssignment {
+                spec: SpecificationKind::Named(tn),
+                ..
+            }) if *tn == TypeName::from("my_array")
+        ));
     }
 
     /// A repeated type name is the symbol environment's to report; this

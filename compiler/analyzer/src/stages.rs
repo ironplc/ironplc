@@ -36,7 +36,7 @@ use crate::{
     type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
     xform_insert_implicit_deref, xform_int_to_bool_initializer, xform_mark_unwritten_constants,
     xform_named_to_positional_args, xform_resolve_adr, xform_resolve_constant_expressions,
-    xform_resolve_expr_types, xform_resolve_late_bound_expr_kind,
+    xform_resolve_decl_types, xform_resolve_expr_types, xform_resolve_late_bound_expr_kind,
     xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
     xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
@@ -274,6 +274,12 @@ pub fn resolve_types(
     // state reverting would leave every call in -- including the valid ones.
     library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_named_to_positional_args::apply(lib, &function_environment)
+    });
+
+    // Record the type id each declaration declares, entering types spelled
+    // out in place as anonymous types.
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_resolve_decl_types::apply(lib, &mut type_environment)
     });
 
     // Resolve expression types using the function environment.

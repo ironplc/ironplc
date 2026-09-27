@@ -15,6 +15,7 @@ use ironplc_dsl::textual::*;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
+mod expr_type;
 mod single_assignment;
 
 /// Runs the prerequisite passes and then the expression type resolution pass.

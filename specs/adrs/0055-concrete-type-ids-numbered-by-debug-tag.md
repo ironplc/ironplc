@@ -77,9 +77,10 @@ Codegen derives a variable's debug tag from its type's id: the id itself for
 an elementary type, and `OTHER` otherwise. The container format does not
 change.
 
-Two things are decided here and will be built later: expressions carrying a
-`TypeId`, and anonymous types getting ids. When expressions carry the id,
-ADR-0013's `resolved_type: Option<TypeName>` will be amended.
+An anonymous type gets an id of its own, with no name, for every
+declaration that spells it out (`a : ARRAY[1..2] OF DINT`). Each declaration
+records its type's id in `VarDecl::type_id`, and each expression the id of
+its value's type in `Expr::expr_type` (see the amendment to ADR-0013).
 
 ### Consequences
 

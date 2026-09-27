@@ -105,7 +105,7 @@ impl RuleAggregateAssignment<'_> {
     /// specification (`a : ARRAY[1..2] OF DINT`) built from the declaration.
     fn declared_type(&mut self, id: &Id) -> Option<IntermediateType> {
         let type_environment = self.type_environment;
-        let Declared::Variable(declared) = self.declarations.find(id)? else {
+        let Declared::Variable { init: declared, .. } = self.declarations.find(id)? else {
             // This rule binds only declared variables.
             return None;
         };
