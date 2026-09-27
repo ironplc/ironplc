@@ -660,7 +660,20 @@ pub(crate) fn emit_function_local_prologue(
     return_var_index: VarIndex,
     return_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    // Re-initialize VAR locals (not Input parameters).
+    emit_locals_reinit(emitter, ctx, variables)?;
+    emit_return_reinit(emitter, ctx, return_id, return_var_index, return_op_type)
+}
+
+/// Emits the re-initialization of the `VAR` variables among `variables` to
+/// their declared initial values, or to zero when they declare none;
+/// parameters are left alone. Unlike `emit_initial_values`,
+/// which runs once over a zeroed data region, this writes every scalar, so
+/// it can run again at every call of a function or every scan of a program.
+pub(crate) fn emit_locals_reinit(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    variables: &[VarDecl],
+) -> Result<(), Diagnostic> {
     for decl in variables {
         if decl.var_type != VariableType::Var {
             continue;
@@ -742,7 +755,17 @@ pub(crate) fn emit_function_local_prologue(
         }
     }
 
-    // Zero-initialize the return variable.
+    Ok(())
+}
+
+/// Emits the zero-initialization of a function's return variable.
+fn emit_return_reinit(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    return_id: &Id,
+    return_var_index: VarIndex,
+    return_op_type: OpType,
+) -> Result<(), Diagnostic> {
     if let Some(struct_info) = ctx.struct_vars.get(return_id).cloned() {
         // Struct return: store data_offset into the return var slot and
         // zero all struct fields. Functions are stateless, so the struct
