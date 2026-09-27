@@ -216,6 +216,10 @@ sites cost anything. What's left is whether tier 2 is allowed at all.
   traps with a VM error code (ADR-0014; the category is chosen when
   implementing). The trap costs nothing extra, because the default branch
   exists anyway.
+- TwinCAT also stops at such a call, but without a diagnostic: the runtime
+  goes to ERROR with no call stack and no message (see
+  [TwinCAT behaviour checked](#twincat-behaviour-checked)). A trap naming
+  the call site keeps the outcome and improves the diagnosis.
 
 ## `__QUERYINTERFACE` / `__QUERYPOINTER`
 
@@ -231,8 +235,7 @@ implement the target interface, it copies the fat reference and returns
 
 ## TwinCAT behaviour checked
 
-Checked in XAE 3.1.4024 on 2026-09-27. Compile-time only; runtime behaviour
-(calling through a null interface) is not checked yet.
+Checked in XAE 3.1.4024 on 2026-09-27, on a local runtime.
 
 | Statement | TwinCAT |
 |---|---|
@@ -245,6 +248,7 @@ Checked in XAE 3.1.4024 on 2026-09-27. Compile-time only; runtime behaviour
 | `__QUERYINTERFACE` without `__SYSTEM.IQueryInterface` | error |
 | `REF=` of an unrelated FB | error |
 | `ADR()` of an unrelated FB into `POINTER TO` base | accepted, no warning |
+| Call through a never-assigned interface | compiles without a warning; at run time the runtime goes to state ERROR, with an empty call stack and nothing in the error list |
 
 ## Memory and safety
 
