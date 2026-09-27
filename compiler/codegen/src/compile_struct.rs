@@ -541,6 +541,7 @@ mod tests {
             offset: 0,
             var_type: None,
             has_default: false,
+            default: None,
         }
     }
 

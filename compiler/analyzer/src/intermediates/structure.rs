@@ -44,6 +44,7 @@ pub fn try_from(
             offset: aligned_offset,
             var_type: None, // Structure fields don't have input/output distinction
             has_default,
+            default: None,
         };
 
         fields.push(field);

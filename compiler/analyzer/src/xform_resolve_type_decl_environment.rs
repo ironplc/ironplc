@@ -428,6 +428,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                     offset: aligned_offset,
                     var_type: Some(var_type),
                     has_default: false,
+                    default: None,
                 });
 
                 current_offset = aligned_offset + size;
