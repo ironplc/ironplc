@@ -163,6 +163,29 @@ Each `Point` element occupies 2 slots (stride = 2). For `points[2].y`:
 
 **Recommendation**: Option A — treat arrays of structures as flat slot arrays with `total_elements = array_size * struct_slots`. The `flat_index` for `arr[i].field` becomes `(i - lower) * struct_slots + field_slot_offset`. This reuses the existing array infrastructure entirely. The trade-off (coarser bounds granularity) is identical to the multi-dimensional array case documented in ADR-0023 case (3) — it prevents memory-safety violations while allowing logically invalid indices that happen to land in-bounds. This is acceptable per the established precedent.
 
+#### STRING fields of array elements: `arr[i].s`
+
+A STRING field has no single-slot load or store, so Option A does not apply to
+it. It is addressed with the string-array opcodes instead, through a
+**strided STRING descriptor** ([ADR-0054](../adrs/0054-explicit-element-stride-in-array-descriptors.md)):
+
+- `total_elements` is the number of structures (not slots), and
+  `element_stride` is the size of one structure (`struct_slots * 8`), so
+  consecutive copies of the field are one structure apart.
+- The access computes `base + field_byte_offset` into a scratch variable,
+  where `field_byte_offset` locates element 0's copy of the field, then
+  passes the unscaled flat element index. The VM multiplies by the stride and
+  bounds-checks the index against the structure count. So, unlike Option A,
+  the trap is exact.
+- The descriptor is registered when the variable holding the array is
+  declared, for every direct STRING field of the element type, including
+  arrays reached through nested structure fields. Initialization and access
+  use the same descriptor.
+
+A STRING nested deeper inside the element (`arr[i].names[j]`,
+`arr[i].inner.s`) is not supported
+([#1791](https://github.com/ironplc/ironplc/issues/1791)).
+
 ### 2.4 Struct-with-Array Access: `s.arr[i]`
 
 Given:
@@ -271,7 +294,16 @@ For nested structures, initialization is recursive. Each leaf field gets its own
 
 ### 3.3 Array-of-Struct Initialization
 
-Arrays of structures are initialized element by element, field by field. For an `ARRAY[1..3] OF Point`, the init function emits 6 stores (3 elements × 2 fields).
+The element field values of an array of structures are not initialized: the
+data region starts zeroed, so every field reads as zero. Default and
+explicit initial values for element fields are not applied
+([#1542](https://github.com/ironplc/ironplc/issues/1542)).
+
+The headers of STRING fields are the exception, because a zeroed header has
+`char_width` 0 and traps on first use. The init function writes them with one
+`STR_INIT_ARRAY` per STRING field, through the field's strided descriptor
+(section 2.3), so every element's copy is initialized by a single
+instruction.
 
 ---
 

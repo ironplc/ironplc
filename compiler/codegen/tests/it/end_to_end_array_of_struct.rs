@@ -801,27 +801,6 @@ END_PROGRAM
 }
 
 #[test]
-fn compile_when_top_level_array_of_struct_string_field_read_then_not_implemented() {
-    assert_codegen_rejects(
-        "
-TYPE Item : STRUCT
-  name : STRING[8];
-END_STRUCT;
-END_TYPE
-
-PROGRAM main
-  VAR
-    arr : ARRAY[1..3] OF Item;
-    result : STRING[8];
-  END_VAR
-  result := arr[1].name;
-END_PROGRAM
-",
-        "a STRING field of an element",
-    );
-}
-
-#[test]
 fn compile_when_top_level_array_of_struct_composite_field_read_then_not_implemented() {
     assert_codegen_rejects(
         "

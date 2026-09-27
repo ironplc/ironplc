@@ -43,12 +43,16 @@ pub(crate) struct StructVarInfo {
     /// Maps field name (lowercase) to index in `fields` Vec for O(1) lookup.
     pub field_index: HashMap<String, usize>,
     /// Scratch variable for STRING array field access. Allocated lazily
-    /// only when the struct has at least one STRING array field. Holds
+    /// only when the struct has at least one STRING array field or one
+    /// STRING field of an array-of-struct element. Holds
     /// `struct_data_offset + field_byte_offset` during STR_LOAD/STORE_ARRAY_ELEM.
     pub scratch_var_index: Option<VarIndex>,
     /// Per-field STRING array descriptor info. Maps field name (lowercase) to
     /// `(desc_index, total_elements, max_string_len)`.
     pub string_array_descs: HashMap<String, (u16, u32, u16)>,
+    /// The STRING fields of the elements of the arrays of structures this
+    /// structure holds, at any depth of nested structure fields.
+    pub element_strings: Vec<crate::compile_array_struct::ElementStringField>,
 }
 
 /// Metadata for a single structure field.
@@ -490,6 +494,21 @@ pub(crate) fn allocate_struct_variable(
         }
     }
 
+    // Register a strided STRING descriptor for each STRING field of the
+    // elements of the arrays of structures this structure holds.
+    let mut element_strings = Vec::new();
+    crate::compile_array_struct::register_struct_element_strings(
+        ctx,
+        builder,
+        fields,
+        0,
+        span,
+        &mut element_strings,
+    )?;
+    if !element_strings.is_empty() && scratch_var_index.is_none() {
+        scratch_var_index = Some(ctx.allocate_scratch_variable(&id.to_string()));
+    }
+
     // Store metadata
     ctx.struct_vars.insert(
         id.clone(),
@@ -502,6 +521,7 @@ pub(crate) fn allocate_struct_variable(
             field_index,
             scratch_var_index,
             string_array_descs,
+            element_strings,
         },
     );
     Ok(())
