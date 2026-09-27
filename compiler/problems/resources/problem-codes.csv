@@ -124,3 +124,4 @@ P4056,EnumBaseTypeNotAllowed,Enumeration base-type suffix requires choosing a di
 P2038,DateLiteralOutOfRange,Date literal is outside the range the date type can represent
 P2039,DurationLiteralOutOfRange,Duration literal is outside the range the duration type can represent
 P2040,RealLiteralOutOfRange,Real literal is outside the range the real type can represent
+P2041,StringLengthOutOfRange,String length is more than a string can hold

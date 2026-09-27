@@ -840,50 +840,35 @@ fn parse_duration(duration_str: &str, file_id: &FileId) -> Result<DurationLitera
             .parse()
             .map_err(|_| invalid_duration_error(duration_str, file_id))?;
         let micros = (value * 1000.0) as i64;
-        return Ok(DurationLiteral {
-            span,
-            interval: Duration::microseconds(micros),
-        });
+        return Ok(DurationLiteral::new(span, Duration::microseconds(micros)));
     }
     if let Some(s) = value_part.strip_suffix('s') {
         let value: f64 = s
             .parse()
             .map_err(|_| invalid_duration_error(duration_str, file_id))?;
         let micros = (value * 1_000_000.0) as i64;
-        return Ok(DurationLiteral {
-            span,
-            interval: Duration::microseconds(micros),
-        });
+        return Ok(DurationLiteral::new(span, Duration::microseconds(micros)));
     }
     if let Some(m) = value_part.strip_suffix('m') {
         let value: f64 = m
             .parse()
             .map_err(|_| invalid_duration_error(duration_str, file_id))?;
         let micros = (value * 60.0 * 1_000_000.0) as i64;
-        return Ok(DurationLiteral {
-            span,
-            interval: Duration::microseconds(micros),
-        });
+        return Ok(DurationLiteral::new(span, Duration::microseconds(micros)));
     }
     if let Some(h) = value_part.strip_suffix('h') {
         let value: f64 = h
             .parse()
             .map_err(|_| invalid_duration_error(duration_str, file_id))?;
         let micros = (value * 3600.0 * 1_000_000.0) as i64;
-        return Ok(DurationLiteral {
-            span,
-            interval: Duration::microseconds(micros),
-        });
+        return Ok(DurationLiteral::new(span, Duration::microseconds(micros)));
     }
     if let Some(d) = value_part.strip_suffix('d') {
         let value: f64 = d
             .parse()
             .map_err(|_| invalid_duration_error(duration_str, file_id))?;
         let micros = (value * 86400.0 * 1_000_000.0) as i64;
-        return Ok(DurationLiteral {
-            span,
-            interval: Duration::microseconds(micros),
-        });
+        return Ok(DurationLiteral::new(span, Duration::microseconds(micros)));
     }
 
     Err(invalid_duration_error(duration_str, file_id))

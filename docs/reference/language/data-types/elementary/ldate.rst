@@ -14,15 +14,20 @@ LDATE
    * - **Default**
      - ``LDATE#1970-01-01``
    * - **Range**
-     - ``LDATE#1970-01-01`` to ``LDATE#2106-02-07``
+     - ``LDATE#1970-01-01`` to ``LDATE#9999-12-31``
    * - **IEC 61131-3**
      - Section 2.3.1 (Edition 3)
    * - **Support**
      - Supported (:doc:`Edition 3 </reference/language/edition-support>`)
 
-A date is stored as a count of seconds since 1970-01-01, so a literal
-outside ``LDATE#1970-01-01`` to ``LDATE#2106-02-07`` is reported as
+A date is stored as a count of seconds since 1970-01-01. ``LDATE`` counts them
+in 64 bits, so it reaches far past the 2106 ceiling a 32-bit :doc:`date` has; a
+literal outside ``LDATE#1970-01-01`` to ``LDATE#9999-12-31`` is reported as
 :doc:`P2038 </reference/compiler/problems/P2038>`.
+
+An ``LDATE`` accepts a ``DATE#`` literal, which widens, but a ``DATE`` does not
+accept an ``LDATE#`` one — that narrows, and is reported as
+:doc:`P4022 </reference/compiler/problems/P4022>`.
 
 Literals
 --------

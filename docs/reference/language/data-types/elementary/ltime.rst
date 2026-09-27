@@ -11,6 +11,8 @@ LTIME
 
    * - **Size**
      - 64 bits (millisecond resolution)
+   * - **Range**
+     - about ±292 million years
    * - **Default**
      - ``LTIME#0s``
    * - **IEC 61131-3**
@@ -28,6 +30,13 @@ Example
    a := LTIME#1h;
    b := LTIME#30m;
    c := a + b;  (* c = LTIME#1h30m *)
+
+A duration is stored as a signed count of milliseconds. ``LTIME`` counts them
+in 64 bits, so it reaches far past the ±24.8 days a 32-bit :doc:`time` holds.
+
+An ``LTIME`` accepts a ``T#`` literal, which widens, but a ``TIME`` does not
+accept an ``LTIME#`` one — that narrows, and is reported as
+:doc:`P4022 </reference/compiler/problems/P4022>`.
 
 Literals
 --------
