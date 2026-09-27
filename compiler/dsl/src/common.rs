@@ -17,6 +17,7 @@ use crate::scope::ScopeBearing;
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
 use crate::time::*;
+use crate::type_id::TypeId;
 use crate::visitor::Visitor;
 
 /// Container for elementary constants.
@@ -2048,6 +2049,12 @@ pub struct VarDecl {
     /// coincidence if this field were compared.
     #[recurse(ignore)]
     pub block: BlockId,
+    /// The type the declaration declares, by identity. Populated by the
+    /// analyzer; `None` before it runs and for a declaration whose type it
+    /// could not resolve. Left out of `PartialEq` like `block`: it is
+    /// derived from `initializer`.
+    #[recurse(ignore)]
+    pub type_id: Option<TypeId>,
 }
 
 impl PartialEq for VarDecl {
@@ -2071,6 +2078,7 @@ impl VarDecl {
                 type_name,
             )),
             block: next_block_id(),
+            type_id: None,
         }
     }
 
@@ -2086,6 +2094,7 @@ impl VarDecl {
                 keyword_span: SourceSpan::default(),
             }),
             block: next_block_id(),
+            type_id: None,
         }
     }
 
@@ -2103,6 +2112,7 @@ impl VarDecl {
                 },
             ),
             block: next_block_id(),
+            type_id: None,
         }
     }
 
@@ -2120,6 +2130,7 @@ impl VarDecl {
                 initial_value: Some(LateResolvedInitialValue::Value(Id::from(initial_value))),
             }),
             block: next_block_id(),
+            type_id: None,
         }
     }
 
@@ -2141,6 +2152,7 @@ impl VarDecl {
                 },
             ),
             block: next_block_id(),
+            type_id: None,
         }
     }
 
@@ -2158,6 +2170,7 @@ impl VarDecl {
                 },
             ),
             block: next_block_id(),
+            type_id: None,
         }
     }
 
@@ -2174,6 +2187,7 @@ impl VarDecl {
                 },
             ),
             block: next_block_id(),
+            type_id: None,
         }
     }
 
@@ -2191,6 +2205,7 @@ impl VarDecl {
                 LateResolvedInitializer::bare(TypeName::from(type_name)),
             ),
             block: next_block_id(),
+            type_id: None,
         }
     }
 
@@ -3250,6 +3265,7 @@ mod tests {
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::None(SourceSpan::default()),
             block,
+            type_id: None,
         }
     }
 

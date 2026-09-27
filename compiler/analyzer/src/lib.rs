@@ -88,6 +88,7 @@ mod xform_mark_unwritten_constants;
 mod xform_named_to_positional_args;
 mod xform_resolve_adr;
 mod xform_resolve_constant_expressions;
+mod xform_resolve_decl_types;
 mod xform_resolve_expr_types;
 mod xform_resolve_late_bound_expr_kind;
 mod xform_resolve_late_bound_type_initializer;

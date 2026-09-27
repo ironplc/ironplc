@@ -270,8 +270,8 @@ pub fn elementary_type(type_name: &TypeName) -> Option<&'static IntermediateType
 /// A type in the environment: what it is, and the name it was declared with.
 #[derive(Debug)]
 struct TypeEntry {
-    /// The name the type was first entered under. Every type in the
-    /// environment has one today; an anonymous type will not. It is for
+    /// The name the type was first entered under, or `None` for an
+    /// anonymous type (see [`TypeEnvironment::insert_anonymous`]). It is for
     /// people reading diagnostics and debug output -- a type's identity is
     /// its [`TypeId`], never its name.
     name: Option<TypeName>,
@@ -322,8 +322,7 @@ impl TypeEnvironment {
         symbol: crate::type_attributes::TypeAttributes,
     ) {
         let Some(existing) = self.get(type_name) else {
-            let id = TypeId::from_raw(self.next_id);
-            self.next_id += 1;
+            let id = self.allocate();
             self.bind(type_name, id, symbol);
             return;
         };
@@ -345,6 +344,25 @@ impl TypeEnvironment {
         ));
     }
 
+    /// Adds a type that has no name -- one spelled out where it is used,
+    /// such as `a : ARRAY[1..2] OF DINT` -- and returns its id. Every call
+    /// adds a new type: two declarations that spell the same shape declare
+    /// two types.
+    pub fn insert_anonymous(
+        &mut self,
+        attributes: crate::type_attributes::TypeAttributes,
+    ) -> TypeId {
+        let id = self.allocate();
+        self.entries.insert(
+            id,
+            TypeEntry {
+                name: None,
+                attributes,
+            },
+        );
+        id
+    }
+
     /// Adds an elementary type under one of its spellings. The first
     /// spelling entered names the type; a later one is another name for it.
     fn insert_elementary(
@@ -359,6 +377,13 @@ impl TypeEnvironment {
         } else {
             self.bind(type_name, id, symbol);
         }
+    }
+
+    /// Allocates the id of a type that is not elementary.
+    fn allocate(&mut self) -> TypeId {
+        let id = TypeId::from_raw(self.next_id);
+        self.next_id += 1;
+        id
     }
 
     /// Enters a new type under `type_name` with id `id`.

@@ -222,6 +222,7 @@ mod tests {
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::None(SourceSpan::default()),
             block: next_block_id(),
+            type_id: None,
         }
     }
 

@@ -150,7 +150,7 @@ impl ExprTypeResolver<'_> {
     /// declaration without a type.
     fn declared_type_name(&self, id: &Id) -> Option<TypeName> {
         let init = match self.declarations.find(id)? {
-            Declared::Variable(init) => init,
+            Declared::Variable { init, .. } => init,
             Declared::Typed(type_name) => return Some(type_name.clone()),
         };
         match init.as_ref() {
@@ -187,7 +187,7 @@ impl ExprTypeResolver<'_> {
     /// For `arr : ARRAY[0..10] OF INT` this is `"int"`; for
     /// `pt : REF_TO ARRAY[1..255] OF BYTE` it is `"byte"`.
     fn declared_element_type_name(&self, id: &Id) -> Option<TypeName> {
-        let Declared::Variable(init) = self.declarations.find(id)? else {
+        let Declared::Variable { init, .. } = self.declarations.find(id)? else {
             // A result variable or system global is never subscripted.
             return None;
         };
@@ -377,6 +377,41 @@ impl ExprTypeResolver<'_> {
             Ok(Overload::Numeric { result } | Overload::Typed { result, .. }) => Some(result),
             Ok(Overload::Unchecked { .. }) | Err(_) => None,
         }
+    }
+
+    /// Determines the type of `expr`'s value by identity, once its
+    /// `resolved_type` is known.
+    ///
+    /// A whole variable takes the type its declaration declares, which is
+    /// the only answer for an anonymous type and the precise one for an
+    /// alias (`x : MyByte` is a `MyByte`, where `resolved_type` says
+    /// `BYTE`). Anything else takes the type its `resolved_type` names, or
+    /// is a literal of the generic category it names.
+    fn resolve_expr_type(&self, expr: &Expr) -> Option<ExprType> {
+        match &expr.kind {
+            ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(nv))) => {
+                let declared = self
+                    .declarations
+                    .find(&nv.name)
+                    .and_then(|declared| declared.type_id(self.type_environment));
+                if let Some(id) = declared {
+                    return Some(ExprType::Concrete(id));
+                }
+            }
+            ExprKind::Expression(inner) => return inner.expr_type.clone(),
+            // `resolved_type` records the referenced variable's type for
+            // `REF(x)` and a placeholder for `NULL`; neither is the type of
+            // the value.
+            ExprKind::Ref(_) | ExprKind::Null(_) => return None,
+            _ => {}
+        }
+        let type_name = expr.resolved_type.as_ref()?;
+        if let Ok(generic) = GenericTypeName::try_from(&type_name.name) {
+            return Some(ExprType::Literal(generic));
+        }
+        self.type_environment
+            .id_of(type_name)
+            .map(ExprType::Concrete)
     }
 
     fn resolve_const_type(&self, constant: &ConstantKind) -> Option<TypeName> {
@@ -644,6 +679,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
 
         // Then determine type based on the (now-folded) kind
         expr.resolved_type = self.resolve_type(&expr.kind);
+        expr.expr_type = self.resolve_expr_type(&expr);
         Ok(expr)
     }
 
