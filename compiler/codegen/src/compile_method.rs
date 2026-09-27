@@ -13,14 +13,16 @@ use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionReturnType, InitialValueAssignmentKind, MethodDeclaration,
 };
+use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::textual::{Expr, MethodCall, MethodReceiver, ParamAssignmentKind};
 
 use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
     finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn, DEFAULT_OP_TYPE,
 };
-use super::compile_expr::emit_load_var;
+use super::compile_expr::{compile_expr, emit_load_var};
 use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::compile_statements;
 use super::type_info::resolve_type_name;
@@ -250,4 +252,130 @@ fn compile_user_method(
         name: method.name.to_string(),
         line_map: finalized.line_map,
     })
+}
+
+/// Compiles a method call (`instance.MethodName(args)`, OOP extension,
+/// ADR-0041 Phase 1 static dispatch). See `METHOD_CALL`'s doc comment in
+/// `ironplc_container::opcode` for the calling convention.
+///
+/// Scoped to methods declared directly on the instance's own function
+/// block type. A method reached only via the instance type's `EXTENDS`
+/// chain (already accepted by `rule_method_call_declared` at the
+/// semantic-analysis level) is not yet supported here: a derived type's
+/// data-region layout doesn't currently reserve storage for a base
+/// type's fields at all (`compile_user_function_block`'s field list
+/// comes from `fb_decl.variables` only, never flattened with inherited
+/// fields), so there is nothing correct to copy-in/copy-out from.
+///
+/// Leaves the instance reference on the stack with the return value, if
+/// the method has one, on top of it, and returns whether it does. The
+/// caller decides what to keep.
+fn compile_method_call(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    call: &MethodCall,
+) -> Result<bool, Diagnostic> {
+    // `THIS^.M()` / `SUPER^.M()` receivers parse but are rejected earlier by
+    // `rule_method_call_declared`, so codegen only ever sees a named instance.
+    let instance = match &call.receiver {
+        MethodReceiver::Instance(id) => id,
+        MethodReceiver::SelfRef(self_ref) => {
+            return Err(Diagnostic::todo_with_span(self_ref.span()))
+        }
+    };
+
+    let fb_info = ctx
+        .fb_instances
+        .get(instance)
+        .ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
+    let type_id = fb_info.type_id;
+    let var_index = fb_info.var_index;
+
+    let fb_name = ctx
+        .user_fb_types
+        .iter()
+        .find(|(_, info)| info.type_id == type_id)
+        .map(|(name, _)| name.clone())
+        .ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
+    let fb_type_info = &ctx.user_fb_types[&fb_name];
+
+    let method_name = call.method.to_string().to_lowercase();
+    let method_info = fb_type_info
+        .methods
+        .get(&method_name)
+        .ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
+
+    let function_id = method_info.function_id;
+    let field_var_off = ironplc_container::VarIndex::new(fb_type_info.var_offset);
+    let num_fields = fb_type_info.num_fields as u8;
+    let param_var_off = ironplc_container::VarIndex::new(method_info.param_var_off);
+    let num_params = method_info.num_params;
+    let param_names_in_order = method_info.param_names_in_order.clone();
+    let param_op_types = method_info.param_op_types.clone();
+    let has_return_value = method_info.has_return_value;
+    let max_stack_depth = method_info.max_stack_depth;
+
+    emitter.emit_fb_load_instance(var_index);
+
+    // Resolve named/positional args to the method's declared VAR_INPUT
+    // order (arity and name validity already checked by
+    // rule_method_call_declared, so any argument that doesn't line up
+    // here indicates a codegen bug, not a user error -- hence `todo`
+    // rather than a user-facing diagnostic).
+    let mut ordered_args: Vec<Option<&Expr>> = vec![None; param_names_in_order.len()];
+    for param in &call.params {
+        match param {
+            ParamAssignmentKind::PositionalInput(p) => {
+                if let Some(slot) = ordered_args.iter_mut().find(|s| s.is_none()) {
+                    *slot = Some(&p.expr);
+                }
+            }
+            ParamAssignmentKind::NamedInput(n) => {
+                let name = n.name.to_string().to_lowercase();
+                if let Some(idx) = param_names_in_order.iter().position(|p| *p == name) {
+                    ordered_args[idx] = Some(&n.expr);
+                }
+            }
+            ParamAssignmentKind::Output(_) => {
+                // Methods have no VAR_OUTPUT `=>` call syntax in this slice.
+            }
+        }
+    }
+
+    for (i, arg) in ordered_args.iter().enumerate() {
+        let expr = arg.ok_or_else(|| Diagnostic::todo_with_span(call.span()))?;
+        let op_type = param_op_types.get(i).copied().unwrap_or(DEFAULT_OP_TYPE);
+        compile_expr(emitter, ctx, expr, op_type)?;
+    }
+
+    // Record a call-graph edge; unlike FB_CALL, a method call is always
+    // user-defined (no intrinsic-FB branch), so this is unconditional.
+    ctx.record_call_edge(function_id);
+
+    emitter.emit_method_call(
+        function_id,
+        field_var_off,
+        num_fields,
+        param_var_off,
+        num_params,
+        has_return_value,
+        max_stack_depth,
+    );
+
+    Ok(has_return_value)
+}
+
+/// Compiles a method call in statement position: the call, then discards
+/// the return value (if any) and the instance reference beneath it.
+pub(crate) fn compile_method_call_statement(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    call: &MethodCall,
+) -> Result<(), Diagnostic> {
+    let has_return_value = compile_method_call(emitter, ctx, call)?;
+    if has_return_value {
+        emitter.emit_pop();
+    }
+    emitter.emit_pop();
+    Ok(())
 }
