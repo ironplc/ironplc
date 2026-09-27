@@ -1,5 +1,25 @@
 # VAR_IN_OUT Parameters
 
+status: partially implemented
+date: 2026-09-27
+
+## Implementation Status
+
+Work is tracked in [#1793](https://github.com/ironplc/ironplc/issues/1793).
+Anything not yet implemented is reported as not implemented (P9999) rather
+than compiled with by-value semantics.
+
+| Section | Status |
+|---|---|
+| [Writable arguments](#writable-arguments), [Argument list](#argument-list), [Rules](#rules) | Implemented for function calls: P4057, P4058, P4059. P4060 and P4061 (function blocks) are not. Function block and method calls do not yet include `VAR_IN_OUT` in the positional order. |
+| [Constant arguments](#constant-arguments) | Not implemented; `VAR_IN_OUT CONSTANT` is not parsed. |
+| [References](#references) | Variable references and their instance-scope check are implemented. Data-region references, `REF_ELEM` and `REF_BASE` are not. |
+| [Call site](#call-site), [Parameter slots](#parameter-slots) | Implemented for functions with an elementary parameter, when the argument is a named variable or a forwarded `VAR_IN_OUT`. |
+| [Accesses by parameter type](#accesses-by-parameter-type) | Elementary: implemented. `REF_TO`, strings, arrays, structures and instances: not implemented. |
+| [Function blocks](#function-blocks), [Methods](#methods) | Not implemented: their `VAR_IN_OUT` is still passed by value. |
+| [Refusing unhandled sites](#refusing-unhandled-sites) | The refusal is implemented. The `FOR` control variable, bit and partial access writes, and `=>` targets are refused rather than handled. |
+| [Debug information](#debug-information) | Implemented. |
+
 ## Overview
 
 A `VAR_IN_OUT` parameter lets a POU read and write a variable that belongs to

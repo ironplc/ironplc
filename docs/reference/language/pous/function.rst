@@ -74,7 +74,9 @@ the caller after the call returns.
 
 The argument for a ``VAR_IN_OUT`` parameter must be a variable
 (:doc:`P4057 </reference/compiler/problems/P4057>`) of exactly the
-parameter's type (:doc:`P4058 </reference/compiler/problems/P4058>`).
+parameter's type (:doc:`P4058 </reference/compiler/problems/P4058>`) that
+the compiler can prove is writable: not ``CONSTANT``, and not a ``VAR_INPUT``
+of the calling POU (:doc:`P4059 </reference/compiler/problems/P4059>`).
 
 IronPLC supports ``VAR_IN_OUT`` parameters of elementary types (integers,
 reals, bit strings, ``BOOL``, and time and date types) bound to a named
@@ -101,6 +103,7 @@ Related Problem Codes
 - :doc:`/reference/compiler/problems/P4001` — Mixed named and positional arguments
 - :doc:`/reference/compiler/problems/P4057` — ``VAR_IN_OUT`` argument is not a variable
 - :doc:`/reference/compiler/problems/P4058` — ``VAR_IN_OUT`` argument type is not the parameter type
+- :doc:`/reference/compiler/problems/P4059` — ``VAR_IN_OUT`` argument cannot be proved writable
 
 See Also
 --------
