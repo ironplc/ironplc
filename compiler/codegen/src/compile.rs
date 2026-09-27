@@ -762,23 +762,7 @@ fn compile_program_with_functions(
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let mut field_indices: HashMap<String, u8> = HashMap::new();
         let mut field_op_types: HashMap<String, OpType> = HashMap::new();
-        let mut field_decls_tmp: Vec<&VarDecl> = Vec::new();
-
-        for decl in &fb_decl.variables {
-            if decl.var_type == VariableType::Input {
-                field_decls_tmp.push(decl);
-            }
-        }
-        for decl in &fb_decl.variables {
-            if decl.var_type == VariableType::Output {
-                field_decls_tmp.push(decl);
-            }
-        }
-        for decl in &fb_decl.variables {
-            if decl.var_type == VariableType::Var {
-                field_decls_tmp.push(decl);
-            }
-        }
+        let field_decls_tmp = crate::compile_fn::fb_fields_in_layout_order(fb_decl);
         for (i, decl) in field_decls_tmp.iter().enumerate() {
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
