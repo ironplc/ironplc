@@ -124,6 +124,7 @@ mod end_to_end_max_float;
 mod end_to_end_max_lint;
 mod end_to_end_max_udint;
 mod end_to_end_max_ulint;
+mod end_to_end_method_call_expression;
 mod end_to_end_methods;
 mod end_to_end_mid;
 mod end_to_end_min;

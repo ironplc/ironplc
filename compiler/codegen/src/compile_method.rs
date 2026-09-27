@@ -365,6 +365,24 @@ fn compile_method_call(
     Ok(has_return_value)
 }
 
+/// Compiles a method call in expression position: the call, then drops the
+/// instance reference from beneath the return value, leaving only the value.
+/// `rule_method_call_declared` rejects an expression call to a method
+/// without a return type (P4057), so reaching one here is a compiler bug.
+pub(crate) fn compile_method_call_expression(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    call: &MethodCall,
+) -> Result<(), Diagnostic> {
+    let has_return_value = compile_method_call(emitter, ctx, call)?;
+    if !has_return_value {
+        return Err(Diagnostic::todo_with_span(call.span()));
+    }
+    emitter.emit_swap();
+    emitter.emit_pop();
+    Ok(())
+}
+
 /// Compiles a method call in statement position: the call, then discards
 /// the return value (if any) and the instance reference beneath it.
 pub(crate) fn compile_method_call_statement(

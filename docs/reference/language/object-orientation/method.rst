@@ -31,9 +31,7 @@ introduced in IEC 61131-3 Edition 3.
        resolved against the declared type of the instance, walking the
        ``EXTENDS`` chain to find the method. A call that the chain
        resolves to an inherited method is accepted by analysis but not
-       yet compiled, and a method body sets its return value by assigning
-       the method's own name without that value being consumable at the
-       call site (see :ref:`method-limitations`). Enable with
+       yet compiled (see :ref:`method-limitations`). Enable with
        ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.
 
@@ -57,13 +55,19 @@ Parameters are declared the same way as on a
 ``VAR_OUTPUT``, and ``VAR_IN_OUT`` blocks; ``VAR`` declares locals of the
 method itself.
 
-A method is called on an instance, as a statement, using the same dot
-notation as a structure member. Arguments are written positionally or by
-name, exactly as for a function block invocation:
+A method is called on an instance using the same dot notation as a
+structure member. Arguments are written positionally or by name, exactly as
+for a function block invocation. The call can be a statement, which discards
+any return value, or part of an expression, where it evaluates to the
+method's return value:
 
 .. code-block:: bnf
 
    instance_name.method_name(argument_list);
+   variable := instance_name.method_name(argument_list);
+
+A method without a return type has no value to use, so calling it in an
+expression reports :doc:`P4057 </reference/compiler/problems/P4057>`.
 
 The method to call is chosen from the *declared* type of the instance: the
 type's own methods first, then those of its ``EXTENDS`` base, and so on up
@@ -89,10 +93,15 @@ Example
        METHOD Stop
            speed := 0;
        END_METHOD
+
+       METHOD IsRunning : BOOL
+           IsRunning := speed > 0;
+       END_METHOD
    END_FUNCTION_BLOCK
 
 ``SetSpeed`` takes one parameter; ``Stop`` takes none. Both act on the
-``speed`` variable of the instance they are called on:
+``speed`` variable of the instance they are called on. ``IsRunning`` returns
+a value, so it can be used in a condition:
 
 .. code-block::
 
@@ -101,7 +110,9 @@ Example
            motor : FB_Motor;
        END_VAR
        motor.SetSpeed(newSpeed := 1200);
-       motor.Stop();
+       IF motor.IsRunning() THEN
+           motor.Stop();
+       END_IF;
    END_PROGRAM
 
 .. _method-limitations:
@@ -109,13 +120,8 @@ Example
 Current limitations
 -------------------
 
-A method body sets its return value by assigning the method's own name,
-the same way a :doc:`function </reference/language/pous/function>` body
-does. What is missing is the other half: a call is a statement, not an
-expression, so ``x := instance.Method()`` is a syntax error and the
-return value is discarded at the call site. Until that is supported, a
-method with a return type is useful only for what its body does — write
-the result to a field of the function block and read that field.
+A method with a ``STRING`` or ``WSTRING`` return type reports
+:doc:`P9999 </reference/compiler/problems/P9999>` when compiled.
 
 A call to a method the instance's type inherits through
 :doc:`EXTENDS <extends>` passes analysis but reports
