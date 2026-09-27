@@ -439,6 +439,12 @@ pub(crate) fn emit_initial_values(
                         // own members. The slot offset has to be in place
                         // first, because each member store addresses the
                         // instance through it.
+                        crate::compile_fb_init::emit_fb_type_field_defaults(
+                            emitter,
+                            ctx,
+                            id,
+                            &fb_init.type_name.to_string().to_uppercase(),
+                        )?;
                         crate::compile_fb_init::emit_fb_instance_member_initializers(
                             emitter,
                             ctx,

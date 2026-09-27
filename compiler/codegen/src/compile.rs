@@ -61,6 +61,7 @@ use ironplc_dsl::configuration::{
 };
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::textual::{Expr, ExprKind};
 use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
 use ironplc_problems::Problem;
 
@@ -779,6 +780,25 @@ fn compile_program_with_functions(
             }
         }
 
+        let field_defaults = field_decls_tmp
+            .iter()
+            .filter_map(|decl| {
+                let id = decl.identifier.symbolic_id()?;
+                let value = match &decl.initializer {
+                    InitialValueAssignmentKind::Simple(simple) => simple
+                        .initial_value
+                        .clone()
+                        .map(|constant| Expr::new(ExprKind::Const(constant))),
+                    InitialValueAssignmentKind::EnumeratedType(enumerated) => enumerated
+                        .initial_value
+                        .clone()
+                        .map(|value| Expr::new(ExprKind::EnumeratedValue(value))),
+                    _ => None,
+                }?;
+                Some((id.clone(), value))
+            })
+            .collect();
+
         let type_id = ctx.next_user_fb_type_id;
         ctx.next_user_fb_type_id += 1;
         ctx.user_fb_types.insert(
@@ -790,6 +810,7 @@ fn compile_program_with_functions(
                 function_id: FunctionId::new(next_function_id),
                 var_offset: 0, // updated after program vars are assigned
                 field_op_types,
+                field_defaults,
                 methods: HashMap::new(),
             },
         );
@@ -1275,6 +1296,9 @@ pub(crate) struct UserFbTypeInfo {
     pub(crate) var_offset: u16,
     /// Maps field name (lowercase) to its op type for codegen at call sites.
     pub(crate) field_op_types: HashMap<String, OpType>,
+    /// The initial value each field declares, in field order: what every
+    /// instance holds before its own member initializers and its first call.
+    pub(crate) field_defaults: Vec<(Id, Expr)>,
     /// Maps method name (lowercase) to compilation metadata (OOP
     /// extension, ADR-0041 Phase 1). Populated in two steps: `function_id`,
     /// `num_params`, `param_op_types`, and `has_return_value` are known
