@@ -50,8 +50,9 @@ Each pattern gets one minimal example.
 2. **Injected dependency.** An input `comm : I_Comm`, wired once to a
    concrete implementer. The target doesn't change after wiring, but the
    callee's declared type doesn't say which one it is.
-3. **Optional component.** `ipFocus : I_Focus`, checked with `<> 0` or
-   `__ISVALIDREF` before use.
+3. **Optional component.** A component held as an interface or a
+   `REFERENCE TO`, which may be unset. It is checked before use, with
+   `<> 0` or with `__ISVALIDREF` on the reference.
 4. **Deep `EXTENDS` on concrete instances.** A chain like
    `FB_AzimuthAxis EXTENDS FB_Axis EXTENDS FB_BaseAxis`, used through
    `REFERENCE TO FB_AzimuthAxis`, a concrete type. Tier 1 covers this.
@@ -170,9 +171,13 @@ because dispatch ids are dense.
   start at 256 and anonymous types take ids too), and a dense numbering keeps
   the jump-table option open. Both are per compilation, so nothing is lost.
 - A dispatch id names a **concrete type, not an interface**. So an upcast
-  between interfaces (pattern 5) copies the fat reference unchanged.
-- Assigning an FB instance or an exact-typed reference to an interface
-  variable builds the fat reference from the static type. That is correct
+  between interfaces (pattern 5) copies the fat reference unchanged. A
+  downcast by assignment is a diagnostic, as in TwinCAT ("Cannot convert
+  type 'I_Base' to type 'I_Derived'"). Only `__QUERYINTERFACE` converts
+  downwards.
+- Assigning an FB instance or a `REFERENCE TO` an FB to an interface
+  variable builds the fat reference from the static type. TwinCAT accepts
+  both. Taking the dispatch id from a reference's static type is correct
   only because of the exact-type rule in tier 1.
 - A property read or write through an interface is a `GET` / `SET` call,
   dispatched like any method.
@@ -201,9 +206,12 @@ sites cost anything. What's left is whether tier 2 is allowed at all.
 - The default value of an interface variable is null: dispatch id 0 and
   instance reference 0.
 - `= 0` and `<> 0` on an interface value compare the dispatch id.
-  `__ISVALIDREF` on an interface value means the dispatch id is not 0
-  (whether TwinCAT accepts `__ISVALIDREF` on an interface is unverified).
-  `__ISVALIDREF` on `REFERENCE TO` keeps its existing meaning.
+- `__ISVALIDREF` on an interface value is a diagnostic. TwinCAT rejects it
+  ("Operand for __ISVALIDREF must be of type REFERENCE"), so `= 0` is the
+  only null test. `__ISVALIDREF` on `REFERENCE TO` keeps its existing
+  meaning.
+- Two interface values compare equal (`=`, `<>`) when both parts of the fat
+  reference are equal. TwinCAT accepts `iA = iB`.
 - A call through null lands in the default branch of the M2 dispatch and
   traps with a VM error code (ADR-0014; the category is chosen when
   implementing). The trap costs nothing extra, because the default branch
@@ -211,11 +219,32 @@ sites cost anything. What's left is whether tier 2 is allowed at all.
 
 ## `__QUERYINTERFACE` / `__QUERYPOINTER`
 
+TwinCAT only allows `__QUERYINTERFACE` on interfaces that extend the
+built-in `__SYSTEM.IQueryInterface`. Supporting it therefore also means
+providing that interface.
+
 **Proposal:** a follow-up PR after tier 2, since the usage patterns don't use
 them. Both compile the same way as a call. `__QUERYINTERFACE(src, dst)`
 branches over the implementers of the source interface. For those that also
 implement the target interface, it copies the fat reference and returns
 `TRUE`. Otherwise it returns `FALSE`. No table is needed.
+
+## TwinCAT behaviour checked
+
+Checked in XAE 3.1.4024 on 2026-09-27. Compile-time only; runtime behaviour
+(calling through a null interface) is not checked yet.
+
+| Statement | TwinCAT |
+|---|---|
+| FB instance to interface | accepted |
+| `REFERENCE TO` FB to interface | accepted |
+| Interface upcast by `:=` | accepted |
+| Interface downcast by `:=` | error |
+| `iA = 0`, `iA = iB` | accepted |
+| `__ISVALIDREF` on an interface | error |
+| `__QUERYINTERFACE` without `__SYSTEM.IQueryInterface` | error |
+| `REF=` of an unrelated FB | error |
+| `ADR()` of an unrelated FB into `POINTER TO` base | accepted, no warning |
 
 ## Memory and safety
 
