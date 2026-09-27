@@ -48,26 +48,40 @@ pub(crate) struct Mismatch {
 /// Classifies the value of `expr`, or `None` when the analyzer resolved no
 /// type for it.
 pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
-    if let Some(ExprType::Concrete(id)) = &expr.expr_type {
-        match types
-            .get_by_id(*id)
-            .map(|attributes| &attributes.representation)
-        {
-            Some(
-                IntermediateType::Array { .. }
-                | IntermediateType::Structure { .. }
-                | IntermediateType::Enumeration { .. }
-                | IntermediateType::FunctionBlock { .. },
-            ) => return Some(ValueType::Composite(*id)),
-            Some(IntermediateType::Subrange { base_type, .. }) => {
-                if let Some(base) = types.elementary_type_name_for(base_type) {
-                    return Some(ValueType::Scalar(base));
-                }
-            }
-            _ => {}
-        }
+    let by_name = || expr.resolved_type.clone().map(ValueType::Scalar);
+    let Some(ExprType::Concrete(id)) = &expr.expr_type else {
+        return by_name();
+    };
+    let Some(attributes) = types.get_by_id(*id) else {
+        return by_name();
+    };
+    match &attributes.representation {
+        IntermediateType::Array { .. }
+        | IntermediateType::Structure { .. }
+        | IntermediateType::Enumeration { .. }
+        | IntermediateType::FunctionBlock { .. } => Some(ValueType::Composite(*id)),
+        IntermediateType::Subrange { base_type, .. } => types
+            .elementary_type_name_for(base_type)
+            .map(ValueType::Scalar)
+            .or_else(by_name),
+        // Compared by the name `resolved_type` gives them, as before: an
+        // elementary type by its own name, a string by `STRING` or
+        // `WSTRING`, a reference by the name of the type it references. A
+        // function is not the type of any value, so it never gets here with
+        // a name that matters.
+        IntermediateType::Bool
+        | IntermediateType::Int { .. }
+        | IntermediateType::UInt { .. }
+        | IntermediateType::Real { .. }
+        | IntermediateType::Bytes { .. }
+        | IntermediateType::Time { .. }
+        | IntermediateType::Date { .. }
+        | IntermediateType::TimeOfDay { .. }
+        | IntermediateType::DateAndTime { .. }
+        | IntermediateType::String { .. }
+        | IntermediateType::Reference { .. }
+        | IntermediateType::Function { .. } => by_name(),
     }
-    expr.resolved_type.clone().map(ValueType::Scalar)
 }
 
 /// Checks that the value of `expr` may be used where `expected` is
@@ -185,7 +199,18 @@ fn describe_representation(types: &TypeEnvironment, representation: &Intermediat
                 describe_representation(types, base_type)
             )
         }
-        _ => "a derived type".to_string(),
+        IntermediateType::Function { .. } => "a function".to_string(),
+        // Every elementary representation is named above; these only reach
+        // here in a representation the elementary table does not list.
+        IntermediateType::Bool
+        | IntermediateType::Int { .. }
+        | IntermediateType::UInt { .. }
+        | IntermediateType::Real { .. }
+        | IntermediateType::Bytes { .. }
+        | IntermediateType::Time { .. }
+        | IntermediateType::Date { .. }
+        | IntermediateType::TimeOfDay { .. }
+        | IntermediateType::DateAndTime { .. } => "an elementary type".to_string(),
     }
 }
 
