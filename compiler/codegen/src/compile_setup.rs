@@ -664,9 +664,9 @@ pub(crate) fn emit_function_local_prologue(
     emit_return_reinit(emitter, ctx, return_id, return_var_index, return_op_type)
 }
 
-/// Emits the re-initialization of the `VAR` variables among `variables` to
-/// their declared initial values, or to zero when they declare none;
-/// parameters are left alone. Unlike `emit_initial_values`,
+/// Emits the re-initialization of the `VAR` and `VAR_TEMP` variables among
+/// `variables` to their declared initial values, or to zero when they
+/// declare none; parameters are left alone. Unlike `emit_initial_values`,
 /// which runs once over a zeroed data region, this writes every scalar, so
 /// it can run again at every call of a function or every scan of a program.
 pub(crate) fn emit_locals_reinit(
@@ -675,7 +675,7 @@ pub(crate) fn emit_locals_reinit(
     variables: &[VarDecl],
 ) -> Result<(), Diagnostic> {
     for decl in variables {
-        if decl.var_type != VariableType::Var {
+        if !decl.var_type.is_local() {
             continue;
         }
         if let Some(id) = decl.identifier.symbolic_id() {

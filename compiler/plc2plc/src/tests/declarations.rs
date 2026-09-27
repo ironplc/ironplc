@@ -174,3 +174,11 @@ fn write_to_string_when_simple_type_declaration_with_initializer_then_keeps_colo
         "rendered:\n{rendered}"
     );
 }
+
+#[test]
+fn write_to_string_when_program_has_var_temp_then_round_trips() {
+    // VAR_TEMP in a PROGRAM was a syntax error (#1857).
+    let source = "PROGRAM main\nVAR\n    q : INT;\nEND_VAR\nVAR_TEMP\n    t : INT := 5;\nEND_VAR\nq := t;\nEND_PROGRAM\n";
+    let rendered = assert_round_trips(source, &CompilerOptions::default());
+    assert!(rendered.contains("VAR_TEMP"), "rendered:\n{rendered}");
+}

@@ -966,6 +966,28 @@ fn compile_program_with_functions(
     // emitted from inside the body records a call-graph edge.
     let mut scan_emitter = Emitter::new();
     ctx.current_function_id = Some(FunctionId::SCAN);
+    // A program's VAR_TEMP variables start from their initial values on
+    // every scan, so the scan re-runs their initialization first.
+    let temp_vars: Vec<VarDecl> = local_vars
+        .iter()
+        .filter(|decl| decl.var_type == VariableType::VarTemp)
+        .cloned()
+        .collect();
+    reject_unresettable_temp_arrays(&temp_vars)?;
+    // A scalar is rewritten to its initial value or zero; an aggregate or an
+    // instance goes through its setup initialization, which also restores
+    // the data-region offset its slot holds.
+    let (aggregate_temps, scalar_temps): (Vec<VarDecl>, Vec<VarDecl>) =
+        temp_vars.into_iter().partition(|decl| {
+            decl.identifier.symbolic_id().is_some_and(|id| {
+                ctx.struct_vars.contains_key(id)
+                    || ctx.array_vars.contains_key(id)
+                    || ctx.struct_array_vars.contains_key(id)
+                    || ctx.fb_instances.contains_key(id)
+            })
+        });
+    crate::compile_setup::emit_locals_reinit(&mut scan_emitter, &mut ctx, &scalar_temps)?;
+    emit_initial_values(&mut scan_emitter, &mut ctx, &aggregate_temps, types)?;
     compile_body(
         &mut scan_emitter,
         &mut ctx,
@@ -1289,6 +1311,24 @@ pub(crate) struct FbInstanceInfo {
     pub(crate) data_offset: u32,
     /// Maps field name (lowercase) to field index.
     pub(crate) field_indices: HashMap<String, u8>,
+}
+
+/// Refuses a PROGRAM `VAR_TEMP` array with no initial values: re-running its
+/// initialization at the start of a scan sets only the elements an initial
+/// value names, and relies on a zeroed data region for the others, so the
+/// array would silently keep the previous scan's values.
+fn reject_unresettable_temp_arrays(temp_vars: &[VarDecl]) -> Result<(), Diagnostic> {
+    for decl in temp_vars {
+        if let InitialValueAssignmentKind::Array(array) = &decl.initializer {
+            if array.initial_values.is_empty() {
+                return Err(Diagnostic::not_supported(Label::span(
+                    decl.identifier.span(),
+                    "VAR_TEMP array in a PROGRAM without initial values",
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Metadata for a compiled user-defined function block type.
