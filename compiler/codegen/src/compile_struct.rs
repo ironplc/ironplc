@@ -16,7 +16,7 @@ use ironplc_analyzer::intermediate_type::{
 use ironplc_analyzer::TypeEnvironment;
 use ironplc_container::FieldType;
 use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
-use ironplc_dsl::common::TypeName;
+use ironplc_dsl::common::{StructInitialValueAssignmentKind, TypeName};
 
 use super::compile::{
     CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_STRING_MAX_LENGTH,
@@ -69,6 +69,8 @@ pub(crate) struct StructFieldInfo {
     pub op_type: Option<OpType>,
     /// For STRING fields, the maximum character length. `None` for non-STRING fields.
     pub string_max_length: Option<u16>,
+    /// The initial value the structure type declares for the field, if any.
+    pub default: Option<StructInitialValueAssignmentKind>,
 }
 
 /// Maps an IntermediateType to its OpType for leaf fields.
@@ -172,6 +174,7 @@ pub(crate) fn build_struct_fields(
             field_type: field.field_type.clone(),
             op_type,
             string_max_length,
+            default: field.default.clone(),
         });
         slot_offset = SlotIndex::new(slot_offset.raw() + field_slots);
     }

@@ -120,6 +120,9 @@ pub(crate) struct FieldInitInfo {
     pub op_type: Option<OpType>,
     /// For STRING fields, the maximum character length. `None` for non-STRING fields.
     pub string_max_length: Option<u16>,
+    /// The initial value the structure type declares for the field, used
+    /// when the variable's own initializer does not set it.
+    pub default: Option<StructInitialValueAssignmentKind>,
 }
 
 /// Emits the initialization of a structure variable: stores its data-region
@@ -147,6 +150,7 @@ pub(crate) fn initialize_struct_variable(
             field_type: f.field_type.clone(),
             op_type: f.op_type,
             string_max_length: f.string_max_length,
+            default: f.default.clone(),
         })
         .collect();
 
@@ -243,7 +247,12 @@ pub(crate) fn initialize_struct_fields(
 
         if let Some(op_type) = field_info.op_type {
             // Leaf field (primitive/enum)
-            if let Some(init_value) = init_map.get(&field_info.name) {
+            // The variable's initializer first, then the type's default.
+            let init_value = init_map
+                .get(&field_info.name)
+                .copied()
+                .or(field_info.default.as_ref());
+            if let Some(init_value) = init_value {
                 // Emit explicit initial value
                 compile_struct_field_init(emitter, ctx, init_value, op_type)?;
             } else {
@@ -261,15 +270,21 @@ pub(crate) fn initialize_struct_fields(
         } else if let IntermediateType::Structure { fields } = &field_info.field_type {
             // Nested structure field — recursively initialize inner fields.
             // Extract nested initializers from the init map for this field.
-            let nested_inits: Vec<StructureElementInit> =
-                if let Some(StructInitialValueAssignmentKind::Structure(nested)) =
-                    init_map.get(&field_info.name)
-                {
-                    nested.to_vec()
-                } else {
-                    // No explicit init — inner fields will be default-initialized.
-                    vec![]
-                };
+            // The type's default for this field first, each of its elements
+            // replaced by the variable's own initializer where that sets it.
+            // Inner fields set by neither take the inner type's defaults.
+            let mut nested_inits: Vec<StructureElementInit> = match &field_info.default {
+                Some(StructInitialValueAssignmentKind::Structure(defaults)) => defaults.to_vec(),
+                _ => vec![],
+            };
+            if let Some(StructInitialValueAssignmentKind::Structure(explicit)) =
+                init_map.get(&field_info.name)
+            {
+                for element in explicit {
+                    nested_inits.retain(|d| d.name != element.name);
+                    nested_inits.push(element.clone());
+                }
+            }
 
             // Build inner field metadata with offsets adjusted to the parent's base.
             let (inner_fields, _) = build_struct_fields(fields, span)?;
@@ -281,6 +296,7 @@ pub(crate) fn initialize_struct_fields(
                     field_type: f.field_type.clone(),
                     op_type: f.op_type,
                     string_max_length: f.string_max_length,
+                    default: f.default.clone(),
                 })
                 .collect();
 

@@ -164,6 +164,7 @@ mod end_to_end_string_to_int;
 mod end_to_end_string_to_real;
 mod end_to_end_string_to_udint;
 mod end_to_end_struct;
+mod end_to_end_struct_type_defaults;
 mod end_to_end_sub;
 mod end_to_end_subrange;
 mod end_to_end_system_uptime;
