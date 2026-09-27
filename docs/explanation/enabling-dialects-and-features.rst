@@ -57,6 +57,7 @@ Supported Dialects
    ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
    ``--allow-system-uptime-global``, ``--allow-cross-family-widening``,
    ``--allow-cross-family-conversion``, ``--allow-int-literal-to-bit-string``,
+   ``--allow-bit-string-arithmetic``,
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
@@ -91,7 +92,8 @@ Supported Dialects
    ``--allow-ref-stack-variables``, ``--allow-ref-type-punning``,
    ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
    ``--allow-cross-family-widening``,
-   ``--allow-cross-family-conversion``, ``--allow-int-literal-to-bit-string``, ``--allow-partial-access-syntax``,
+   ``--allow-cross-family-conversion``, ``--allow-int-literal-to-bit-string``,
+   ``--allow-bit-string-arithmetic``, ``--allow-partial-access-syntax``,
    ``--allow-pragmas``, ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
@@ -133,6 +135,7 @@ Supported Dialects
    ``--allow-int-to-bool-initializer``,
    ``--allow-sizeof``, ``--allow-cross-family-widening``,
    ``--allow-cross-family-conversion``, ``--allow-int-literal-to-bit-string``,
+   ``--allow-bit-string-arithmetic``,
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
@@ -333,6 +336,16 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    Allow a bare integer literal where a bit-string type is expected. For
    example, passing ``0`` where a ``BYTE`` parameter is expected. This is
    an extension supported by CODESYS, TwinCAT, and RuSTy.
+
+``--allow-bit-string-arithmetic``
+   Allow the arithmetic operators ``+``, ``-``, ``*`` and ``/`` (and
+   ``ADD``, ``SUB``, ``MUL`` and ``DIV``) on bit-string operands. For
+   example, ``counter := counter + 1`` where ``counter`` is a ``BYTE``. A
+   ``BYTE``, ``WORD``, ``DWORD`` or ``LWORD`` operand is treated as the
+   unsigned integer of its width, and the result keeps the bit-string type:
+   ``BYTE#255 + 1`` is ``BYTE#0``. ``BOOL`` and ``MOD`` are not included.
+   See :doc:`/explanation/type-conversions`. This is an extension supported
+   by CODESYS, TwinCAT, and RuSTy.
 
 ``--allow-partial-access-syntax``
    Allow IEC 61131-3:2013 partial-access syntax: the bit form ``.%Xn``

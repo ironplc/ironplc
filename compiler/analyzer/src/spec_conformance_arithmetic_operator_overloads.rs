@@ -282,6 +282,90 @@ fn analyzer_spec_req_ao_009_pair_without_overload_does_not_resolve(
     assert_eq!(resolve(op, left, right), None);
 }
 
+/// Resolves `op` on operands of the named types with
+/// `--allow-bit-string-arithmetic` on or off.
+fn resolve_with_bit_strings(op: Operator, left: &str, right: &str, on: bool) -> Option<Overload> {
+    let options = CompilerOptions {
+        allow_bit_string_arithmetic: on,
+        ..CompilerOptions::default()
+    };
+    resolve_arithmetic_overload(
+        &op,
+        Some(&TypeName::from(left)),
+        Some(&TypeName::from(right)),
+        &options,
+    )
+}
+
+/// REQ-AO-analyzer-010: with the flag, a bit string resolves as the unsigned
+/// integer of its width: two bit strings give the wider one, and a bit
+/// string with a number gives what the widening picks.
+#[rstest]
+#[case("BYTE", "BYTE", Some("BYTE"))]
+#[case("BYTE", "WORD", Some("WORD"))]
+#[case("LWORD", "DWORD", Some("LWORD"))]
+#[case("BYTE", "ANY_INT", Some("BYTE"))]
+#[case("ANY_INT", "WORD", Some("WORD"))]
+#[case("BYTE", "INT", Some("INT"))]
+#[case("BYTE", "REAL", Some("REAL"))]
+#[case("DWORD", "LINT", Some("LINT"))]
+// Judged as UINT, a WORD neither widens to INT nor is widened to by it.
+#[case("WORD", "INT", None)]
+#[case("BYTE", "SINT", None)]
+// BOOL is never an integer.
+#[case("BOOL", "BOOL", None)]
+#[case("BOOL", "ANY_INT", None)]
+fn analyzer_spec_req_ao_010_bit_string_resolves_as_unsigned_integer_with_flag(
+    #[case] left: &str,
+    #[case] right: &str,
+    #[case] result: Option<&str>,
+) {
+    for op in [Operator::Add, Operator::Sub, Operator::Mul, Operator::Div] {
+        assert_eq!(
+            resolve_with_bit_strings(op.clone(), left, right, true),
+            result.and_then(numeric),
+            "{op:?} on {left}, {right}"
+        );
+    }
+}
+
+/// REQ-AO-analyzer-011: without the flag, a bit-string operand does not
+/// resolve.
+#[rstest]
+#[case("BYTE", "BYTE")]
+#[case("BYTE", "ANY_INT")]
+#[case("WORD", "UINT")]
+#[case("DINT", "DWORD")]
+#[case("LWORD", "LWORD")]
+fn analyzer_spec_req_ao_011_bit_string_does_not_resolve_without_flag(
+    #[case] left: &str,
+    #[case] right: &str,
+) {
+    for op in [Operator::Add, Operator::Sub, Operator::Mul, Operator::Div] {
+        assert_eq!(
+            resolve_with_bit_strings(op.clone(), left, right, false),
+            None,
+            "{op:?} on {left}, {right}"
+        );
+    }
+}
+
+/// REQ-AO-analyzer-015: the flag does not apply to `MOD`, so `b MOD 2` on a
+/// bit string does not resolve, as `MOD(b, 2)` is rejected by its signature.
+#[rstest]
+#[case("BYTE", "ANY_INT")]
+#[case("WORD", "WORD")]
+#[case("DWORD", "UDINT")]
+fn analyzer_spec_req_ao_015_mod_on_bit_string_does_not_resolve_with_flag(
+    #[case] left: &str,
+    #[case] right: &str,
+) {
+    assert_eq!(
+        resolve_with_bit_strings(Operator::Mod, left, right, true),
+        None
+    );
+}
+
 /// REQ-AO-analyzer-012: an operand with no type, or a type the predicate
 /// cannot judge, resolves as unchecked with the left operand's type, which
 /// is not the numeric overload.

@@ -102,6 +102,51 @@ fn check_when_semantic_error_file_then_err() -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
+/// Bit-string arithmetic is a vendor extension (ADR-0053): the default
+/// dialect reports it as P4049.
+#[test]
+fn check_when_bit_string_arithmetic_and_default_dialect_then_err(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("check")
+        .arg(shared_resource_path("bit_string_arithmetic.st"));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("P4049"));
+
+    Ok(())
+}
+
+/// The CODESYS dialect enables `--allow-bit-string-arithmetic`.
+#[test]
+fn check_when_bit_string_arithmetic_and_codesys_dialect_then_ok(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("check")
+        .arg("--dialect")
+        .arg("codesys")
+        .arg(shared_resource_path("bit_string_arithmetic.st"));
+    cmd.assert().success();
+
+    Ok(())
+}
+
+/// The flag enables bit-string arithmetic on top of the default dialect.
+#[test]
+fn check_when_bit_string_arithmetic_and_allow_flag_then_ok(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("check")
+        .arg("--allow-bit-string-arithmetic")
+        .arg(shared_resource_path("bit_string_arithmetic.st"));
+    cmd.assert().success();
+
+    Ok(())
+}
+
 #[test]
 fn echo_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
