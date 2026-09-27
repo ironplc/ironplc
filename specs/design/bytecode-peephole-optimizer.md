@@ -1,5 +1,8 @@
 # Design: Bytecode Peephole Optimizer
 
+status: implemented
+date: 2026-09-26
+
 ## Overview
 
 This design specifies the post-emission peephole optimizer in
