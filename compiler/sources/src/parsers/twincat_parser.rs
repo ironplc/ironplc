@@ -408,35 +408,54 @@ fn append_methods(
         .children()
         .filter(|n| n.is_element() && n.tag_name().name() == "Method")
     {
-        let declaration = match find_child_element(&method, "Declaration") {
-            Some(elem) => elem,
-            None => {
-                return Err(Diagnostic::problem(
-                    Problem::TwinCatMalformed,
-                    Label::file(
-                        file_id.clone(),
-                        format!(
-                            "Method '{}' is missing required 'Declaration' element",
-                            method.attribute("Name").unwrap_or("<unnamed>")
-                        ),
-                    ),
-                ));
-            }
-        };
-
-        let (declaration_text, declaration_byte_offset) = cdata_text_with_offset(&declaration);
-        let (impl_text, impl_byte_offset) = extract_implementation(&method, file_id)?;
-
-        builder.push_synthetic("\n");
-        builder.push_cdata(&declaration_text, declaration_byte_offset);
-        builder.push_synthetic("\n");
-        match impl_byte_offset {
-            Some(offset) => builder.push_cdata(&impl_text, offset),
-            None => builder.push_synthetic(&impl_text),
-        }
-
-        builder.push_synthetic("\nEND_METHOD");
+        append_declared_block(builder, &method, "Method", "END_METHOD", file_id)?;
     }
+
+    Ok(())
+}
+
+/// Append one element that carries a `<Declaration>` and an optional
+/// `<Implementation><ST>`, followed by the `closing` keyword that the XML
+/// structure leaves implicit.
+///
+/// `kind` names the element in the diagnostic when its `<Declaration>` is
+/// missing.
+fn append_declared_block(
+    builder: &mut CombinedText,
+    element: &roxmltree::Node,
+    kind: &str,
+    closing: &str,
+    file_id: &FileId,
+) -> Result<(), Diagnostic> {
+    let declaration = match find_child_element(element, "Declaration") {
+        Some(elem) => elem,
+        None => {
+            return Err(Diagnostic::problem(
+                Problem::TwinCatMalformed,
+                Label::file(
+                    file_id.clone(),
+                    format!(
+                        "{kind} '{}' is missing required 'Declaration' element",
+                        element.attribute("Name").unwrap_or("<unnamed>")
+                    ),
+                ),
+            ));
+        }
+    };
+
+    let (declaration_text, declaration_byte_offset) = cdata_text_with_offset(&declaration);
+    let (impl_text, impl_byte_offset) = extract_implementation(element, file_id)?;
+
+    builder.push_synthetic("\n");
+    builder.push_cdata(&declaration_text, declaration_byte_offset);
+    builder.push_synthetic("\n");
+    match impl_byte_offset {
+        Some(offset) => builder.push_cdata(&impl_text, offset),
+        None => builder.push_synthetic(&impl_text),
+    }
+
+    builder.push_synthetic("\n");
+    builder.push_synthetic(closing);
 
     Ok(())
 }
