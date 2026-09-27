@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::{
-    common::{ReferenceTarget, SpecificationKind, TypeName},
+    common::{ElementaryTypeName, ReferenceTarget, SpecificationKind, TypeName},
     core::Located,
     diagnostic::{Diagnostic, Label},
     textual::Expr,
@@ -15,6 +15,8 @@ use ironplc_problems::Problem;
 use crate::intermediate_type::{ByteSized, IntermediateType};
 use crate::intermediates::array;
 use crate::symbol_environment::duplicate_declaration;
+use crate::type_id;
+use ironplc_dsl::type_id::TypeId;
 
 /// Context for type usage validation
 #[derive(Debug, Clone, PartialEq)]
@@ -37,28 +39,32 @@ pub enum UsageContext {
     General,
 }
 
-static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
+static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, IntermediateType); 29] = [
     // signed_integer_type_name
     (
         "sint",
+        ElementaryTypeName::SINT,
         IntermediateType::Int {
             size: ByteSized::B8,
         },
     ),
     (
         "int",
+        ElementaryTypeName::INT,
         IntermediateType::Int {
             size: ByteSized::B16,
         },
     ),
     (
         "dint",
+        ElementaryTypeName::DINT,
         IntermediateType::Int {
             size: ByteSized::B32,
         },
     ),
     (
         "lint",
+        ElementaryTypeName::LINT,
         IntermediateType::Int {
             size: ByteSized::B64,
         },
@@ -66,24 +72,28 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
     // unsigned_integer_type_name
     (
         "usint",
+        ElementaryTypeName::USINT,
         IntermediateType::UInt {
             size: ByteSized::B8,
         },
     ),
     (
         "uint",
+        ElementaryTypeName::UINT,
         IntermediateType::UInt {
             size: ByteSized::B16,
         },
     ),
     (
         "udint",
+        ElementaryTypeName::UDINT,
         IntermediateType::UInt {
             size: ByteSized::B32,
         },
     ),
     (
         "ulint",
+        ElementaryTypeName::ULINT,
         IntermediateType::UInt {
             size: ByteSized::B64,
         },
@@ -91,12 +101,14 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
     // real_type_name
     (
         "real",
+        ElementaryTypeName::REAL,
         IntermediateType::Real {
             size: ByteSized::B32,
         },
     ),
     (
         "lreal",
+        ElementaryTypeName::LREAL,
         IntermediateType::Real {
             size: ByteSized::B64,
         },
@@ -105,6 +117,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
     // resolve_elementary_type_name() finds the canonical name first.
     (
         "time",
+        ElementaryTypeName::TIME,
         IntermediateType::Time {
             size: ByteSized::B32,
         },
@@ -112,6 +125,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
     // LTIME is 64-bit (milliseconds) — IEC 61131-3 Edition 3 (2013)
     (
         "ltime",
+        ElementaryTypeName::LTIME,
         IntermediateType::Time {
             size: ByteSized::B64,
         },
@@ -120,30 +134,35 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
     // same reason.
     (
         "date",
+        ElementaryTypeName::DATE,
         IntermediateType::Date {
             size: ByteSized::B32,
         },
     ),
     (
         "time_of_day",
+        ElementaryTypeName::TimeOfDay,
         IntermediateType::TimeOfDay {
             size: ByteSized::B32,
         },
     ),
     (
         "tod",
+        ElementaryTypeName::TimeOfDay,
         IntermediateType::TimeOfDay {
             size: ByteSized::B32,
         },
     ),
     (
         "date_and_time",
+        ElementaryTypeName::DateAndTime,
         IntermediateType::DateAndTime {
             size: ByteSized::B32,
         },
     ),
     (
         "dt",
+        ElementaryTypeName::DateAndTime,
         IntermediateType::DateAndTime {
             size: ByteSized::B32,
         },
@@ -151,56 +170,65 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
     // IEC 61131-3 Edition 3 (2013) long date/time types
     (
         "ldate",
+        ElementaryTypeName::LDATE,
         IntermediateType::Date {
             size: ByteSized::B64,
         },
     ),
     (
         "ltime_of_day",
+        ElementaryTypeName::LTimeOfDay,
         IntermediateType::TimeOfDay {
             size: ByteSized::B64,
         },
     ),
     (
         "ltod",
+        ElementaryTypeName::LTimeOfDay,
         IntermediateType::TimeOfDay {
             size: ByteSized::B64,
         },
     ),
     (
         "ldate_and_time",
+        ElementaryTypeName::LDateAndTime,
         IntermediateType::DateAndTime {
             size: ByteSized::B64,
         },
     ),
     (
         "ldt",
+        ElementaryTypeName::LDateAndTime,
         IntermediateType::DateAndTime {
             size: ByteSized::B64,
         },
     ),
     // bit_string_type_name
-    ("bool", IntermediateType::Bool),
+    ("bool", ElementaryTypeName::BOOL, IntermediateType::Bool),
     (
         "byte",
+        ElementaryTypeName::BYTE,
         IntermediateType::Bytes {
             size: ByteSized::B8,
         },
     ),
     (
         "word",
+        ElementaryTypeName::WORD,
         IntermediateType::Bytes {
             size: ByteSized::B16,
         },
     ),
     (
         "dword",
+        ElementaryTypeName::DWORD,
         IntermediateType::Bytes {
             size: ByteSized::B32,
         },
     ),
     (
         "lword",
+        ElementaryTypeName::LWORD,
         IntermediateType::Bytes {
             size: ByteSized::B64,
         },
@@ -208,6 +236,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
     // remaining elementary_type_name
     (
         "string",
+        ElementaryTypeName::STRING,
         IntermediateType::String {
             max_len: None,
             char_width: CharWidth::Narrow,
@@ -215,6 +244,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
     ),
     (
         "wstring",
+        ElementaryTypeName::WSTRING,
         IntermediateType::String {
             max_len: None,
             char_width: CharWidth::Wide,
@@ -233,13 +263,33 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
 pub fn elementary_type(type_name: &TypeName) -> Option<&'static IntermediateType> {
     ELEMENTARY_TYPES_LOWER_CASE
         .iter()
-        .find(|(name, _)| type_name.name.lower_case == *name)
-        .map(|(_, elem_type)| elem_type)
+        .find(|(name, _, _)| type_name.name.lower_case == *name)
+        .map(|(_, _, elem_type)| elem_type)
 }
 
+/// A type in the environment: what it is, and the name it was declared with.
+#[derive(Debug)]
+struct TypeEntry {
+    /// The name the type was first entered under. Every type in the
+    /// environment has one today; an anonymous type will not. It is for
+    /// people reading diagnostics and debug output -- a type's identity is
+    /// its [`TypeId`], never its name.
+    name: Option<TypeName>,
+    attributes: crate::type_attributes::TypeAttributes,
+}
+
+/// Every type the program can use, each identified by a [`TypeId`].
+///
+/// Names map to ids. Most types have one name; the spellings of an
+/// elementary type (`TIME_OF_DAY` and `TOD`) share the elementary type's id.
+/// A type alias (`TYPE MyByte : BYTE`) is a type of its own with an id of its
+/// own. See [`crate::type_id`] for how ids are numbered.
 #[derive(Debug)]
 pub struct TypeEnvironment {
-    table: HashMap<TypeName, crate::type_attributes::TypeAttributes>,
+    entries: HashMap<TypeId, TypeEntry>,
+    names: HashMap<TypeName, TypeId>,
+    /// The id the next type that is not elementary gets.
+    next_id: u32,
     /// The repeated declarations met while populating, until the transform
     /// that populates the environment drains them with
     /// [`Self::take_duplicates`]. Recorded rather than returned so that a
@@ -252,7 +302,9 @@ impl TypeEnvironment {
     /// Initializes a new instance of the type environment.
     pub fn new() -> Self {
         Self {
-            table: HashMap::new(),
+            entries: HashMap::new(),
+            names: HashMap::new(),
+            next_id: type_id::FIRST_ALLOCATED,
             duplicates: Vec::new(),
         }
     }
@@ -269,8 +321,10 @@ impl TypeEnvironment {
         type_name: &TypeName,
         symbol: crate::type_attributes::TypeAttributes,
     ) {
-        let Some(existing) = self.table.get(type_name) else {
-            self.table.insert(type_name.clone(), symbol);
+        let Some(existing) = self.get(type_name) else {
+            let id = TypeId::from_raw(self.next_id);
+            self.next_id += 1;
+            self.bind(type_name, id, symbol);
             return;
         };
         let is_function_block = |attributes: &crate::type_attributes::TypeAttributes| {
@@ -291,6 +345,39 @@ impl TypeEnvironment {
         ));
     }
 
+    /// Adds an elementary type under one of its spellings. The first
+    /// spelling entered names the type; a later one is another name for it.
+    fn insert_elementary(
+        &mut self,
+        type_name: &TypeName,
+        elementary: &ElementaryTypeName,
+        symbol: crate::type_attributes::TypeAttributes,
+    ) {
+        let id = type_id::elementary(elementary);
+        if self.entries.contains_key(&id) {
+            self.names.insert(type_name.clone(), id);
+        } else {
+            self.bind(type_name, id, symbol);
+        }
+    }
+
+    /// Enters a new type under `type_name` with id `id`.
+    fn bind(
+        &mut self,
+        type_name: &TypeName,
+        id: TypeId,
+        attributes: crate::type_attributes::TypeAttributes,
+    ) {
+        self.names.insert(type_name.clone(), id);
+        self.entries.insert(
+            id,
+            TypeEntry {
+                name: Some(type_name.clone()),
+                attributes,
+            },
+        );
+    }
+
     /// The repeated declarations recorded by [`Self::insert_type`] since the
     /// last call, in the order they were met.
     pub fn take_duplicates(&mut self) -> Vec<Diagnostic> {
@@ -307,7 +394,7 @@ impl TypeEnvironment {
         type_name: &TypeName,
         base_type_name: &TypeName,
     ) -> Result<(), Diagnostic> {
-        let base_intermediate_type = self.table.get(base_type_name).ok_or_else(|| {
+        let base_intermediate_type = self.get(base_type_name).ok_or_else(|| {
             Diagnostic::problem(
                 Problem::AliasParentTypeNotDeclared,
                 Label::span(type_name.span(), "Type alias"),
@@ -321,7 +408,25 @@ impl TypeEnvironment {
 
     /// Gets the type from the environment.
     pub fn get(&self, type_name: &TypeName) -> Option<&crate::type_attributes::TypeAttributes> {
-        self.table.get(type_name)
+        self.get_by_id(self.id_of(type_name)?)
+    }
+
+    /// The id of the type `type_name` names.
+    pub fn id_of(&self, type_name: &TypeName) -> Option<TypeId> {
+        self.names.get(type_name).copied()
+    }
+
+    /// Gets the type `id` identifies. `None` only for an id this environment
+    /// did not allocate.
+    pub fn get_by_id(&self, id: TypeId) -> Option<&crate::type_attributes::TypeAttributes> {
+        self.entries.get(&id).map(|entry| &entry.attributes)
+    }
+
+    /// The name the type `id` identifies was declared with, for diagnostics
+    /// and debugging. `None` for a type without a name, or an id this
+    /// environment did not allocate.
+    pub fn name_of(&self, id: TypeId) -> Option<&TypeName> {
+        self.entries.get(&id)?.name.as_ref()
     }
 
     /// Resolves the type a `REF_TO` points at, whether it is named
@@ -375,8 +480,7 @@ impl TypeEnvironment {
 
     /// Returns if the type is an enumeration.
     pub fn is_enumeration(&self, name: &TypeName) -> bool {
-        self.table
-            .get(name)
+        self.get(name)
             .map(|ty| ty.representation.is_enumeration())
             .unwrap_or(false)
     }
@@ -390,8 +494,8 @@ impl TypeEnvironment {
         let repr = &self.get(type_name)?.representation;
         ELEMENTARY_TYPES_LOWER_CASE
             .iter()
-            .find(|(_, elem_type)| elem_type == repr)
-            .map(|(name, _)| TypeName::from(name))
+            .find(|(_, _, elem_type)| elem_type == repr)
+            .map(|(name, _, _)| TypeName::from(name))
     }
 
     /// Maps an `IntermediateType` back to its elementary `TypeName`.
@@ -403,8 +507,8 @@ impl TypeEnvironment {
     pub fn elementary_type_name_for(&self, it: &IntermediateType) -> Option<TypeName> {
         ELEMENTARY_TYPES_LOWER_CASE
             .iter()
-            .find(|(_, elem_type)| elem_type == it)
-            .map(|(name, _)| TypeName::from(name))
+            .find(|(_, _, elem_type)| elem_type == it)
+            .map(|(name, _, _)| TypeName::from(name))
     }
 
     /// Returns the intermediate type for a named array type.
@@ -462,7 +566,9 @@ impl TypeEnvironment {
     pub fn iter(
         &self,
     ) -> impl Iterator<Item = (&TypeName, &crate::type_attributes::TypeAttributes)> {
-        self.table.iter()
+        self.names
+            .iter()
+            .filter_map(|(name, id)| Some((name, self.get_by_id(*id)?)))
     }
 
     /// Returns an iterator over user-defined types, excluding elementary types,
@@ -471,7 +577,7 @@ impl TypeEnvironment {
         &self,
     ) -> impl Iterator<Item = (&TypeName, &crate::type_attributes::TypeAttributes)> {
         use crate::type_category::TypeCategory;
-        self.table.iter().filter(|(_, attrs)| {
+        self.iter().filter(|(_, attrs)| {
             attrs.type_category != TypeCategory::Elementary
                 && !matches!(
                     attrs.representation,
@@ -487,8 +593,7 @@ impl TypeEnvironment {
     /// or `Err` if the type is not declared.
     #[allow(dead_code)]
     pub fn get_memory_size(&self, type_name: &TypeName) -> Result<Option<u32>, Diagnostic> {
-        self.table
-            .get(type_name)
+        self.get(type_name)
             .map(|attrs| attrs.size_bytes())
             .ok_or_else(|| {
                 Diagnostic::problem(
@@ -505,7 +610,7 @@ impl TypeEnvironment {
         type_name: &TypeName,
         context: &UsageContext,
     ) -> Result<(), Diagnostic> {
-        let type_attrs = self.table.get(type_name).ok_or_else(|| {
+        let type_attrs = self.get(type_name).ok_or_else(|| {
             Diagnostic::problem(
                 Problem::TypeEnvironmentUnknownType,
                 Label::span(type_name.span(), "Type reference"),
@@ -568,7 +673,7 @@ impl TypeEnvironment {
         &self,
     ) -> std::collections::HashMap<crate::type_category::TypeCategory, Vec<&TypeName>> {
         let mut result = std::collections::HashMap::new();
-        for (name, attrs) in &self.table {
+        for (name, attrs) in self.iter() {
             result
                 .entry(attrs.type_category.clone())
                 .or_insert_with(Vec::new)
@@ -621,9 +726,10 @@ impl TypeEnvironmentBuilder {
     pub fn build(self) -> Result<TypeEnvironment, Diagnostic> {
         let mut env = TypeEnvironment::new();
         if self.has_elementary_types {
-            for (name, representation) in ELEMENTARY_TYPES_LOWER_CASE.iter() {
-                env.insert_type(
+            for (name, elementary, representation) in ELEMENTARY_TYPES_LOWER_CASE.iter() {
+                env.insert_elementary(
                     &TypeName::from(name),
+                    elementary,
                     crate::type_attributes::TypeAttributes::elementary(representation.clone()),
                 );
             }
