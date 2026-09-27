@@ -261,12 +261,22 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    // Every temporal literal is written with the prefix of the type it names,
+    // taken from the literal itself. Writing the 32-bit prefix for all of them
+    // narrowed the type on round trip -- `LTIME#30d` came back as
+    // `TIME#2592000000ms`, which is a different type and, since that count does
+    // not fit a `TIME`, no longer compiles.
+
     fn visit_duration_literal(
         &mut self,
         node: &DurationLiteral,
     ) -> Result<Self::Value, Diagnostic> {
         // Always write out as milliseconds. The largest unit is allowed to be "out of range"
-        let val = format!("TIME#{}ms", node.interval.whole_milliseconds());
+        let val = format!(
+            "{}#{}ms",
+            node.type_name(),
+            node.interval.whole_milliseconds()
+        );
         self.write_ws(val.as_str());
         Ok(())
     }
@@ -276,13 +286,19 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &TimeOfDayLiteral,
     ) -> Result<Self::Value, Diagnostic> {
         let (hr, min, sec, milli) = node.hmsm();
-        self.write_ws(format!("TIME_OF_DAY#{hr:0>2}:{min:0>2}:{sec:0>2}.{milli:0>2}").as_str());
+        self.write_ws(
+            format!(
+                "{}#{hr:0>2}:{min:0>2}:{sec:0>2}.{milli:0>2}",
+                node.type_name()
+            )
+            .as_str(),
+        );
         Ok(())
     }
 
     fn visit_date_literal(&mut self, node: &DateLiteral) -> Result<Self::Value, Diagnostic> {
         let (year, month, day) = node.ymd();
-        self.write_ws(format!("DATE#{year:0>4}-{month:0>2}-{day:0>2}").as_str());
+        self.write_ws(format!("{}#{year:0>4}-{month:0>2}-{day:0>2}", node.type_name()).as_str());
         Ok(())
     }
 
@@ -294,7 +310,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         let (year, month, day) = node.ymd();
         self.write_ws(
             format!(
-                "DATE_AND_TIME#{year:0>4}-{month:0>2}-{day:0>2}-{hr:0>2}:{min:0>2}:{sec:0>2}.{milli:0>2}"
+                "{}#{year:0>4}-{month:0>2}-{day:0>2}-{hr:0>2}:{min:0>2}:{sec:0>2}.{milli:0>2}",
+                node.type_name()
             )
             .as_str(),
         );
