@@ -1,12 +1,12 @@
 set windows-shell := ["powershell.exe", "-c"]
 
-# Checks over the specs themselves. Both recipes run from the repository root
+# Checks over the specs themselves. These recipes run from the repository root
 # rather than from specs/: what they police -- an ADR number cited as a bare
 # "ADR-NNNN", a link to a plan that is about to be deleted -- is written in code
 # comments, workflows and documentation all over the repository, not only here.
 
 alias ci := default
-default: adr-numbers adr-front-matter plan-citations
+default: adr-numbers adr-front-matter design-front-matter plan-citations
 
 # Fail if one ADR number names more than one decision. The four-digit prefix of
 # a file in specs/adrs/ is that decision's identity: prose and code comments cite
@@ -74,6 +74,55 @@ adr-front-matter:
     exit 1
   fi
   echo "ADR front matter: all well-formed. Check passed."
+
+# Fail if a design document's `status:` line holds a value the status table in
+# specs/steering/development-standards.md does not define. The field separates a
+# specification of intent from a specification of fact -- `approved` says the code
+# does not implement this yet, `implemented` says it does -- so a misspelled or
+# invented value is worse than no value: it reads as settled without saying which
+# kind of settled, and the reader who finds a divergence cannot tell whether to
+# fix the code or the document.
+#
+# Unlike the ADR check, presence is NOT required. The field arrived after most of
+# specs/design/ was written, and a status inferred from a distance by whoever was
+# migrating files is exactly the misinformation it exists to prevent. Documents
+# gain it as someone who knows touches them.
+design-front-matter:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd {{justfile_directory()}}/..
+  failed=0
+  while read -r doc; do
+    # Line 1 is the H1, line 2 blank, then the optional status: and date:. Read
+    # only the first four lines so that a `status:` string quoted deeper in the
+    # prose -- these documents discuss ADR status constantly -- cannot be
+    # mistaken for front matter.
+    front=$(head -4 "$doc")
+    status=$(printf '%s\n' "$front" | sed -n 's/^status: //p')
+    if [ -z "$status" ]; then
+      continue
+    fi
+    case "$status" in
+      proposed|approved|"partially implemented"|implemented) ;;
+      *)
+        echo "error: $doc has status \"$status\", which is not one of" >&2
+        echo "proposed, approved, partially implemented, or implemented." >&2
+        failed=1
+        continue
+        ;;
+    esac
+    date=$(printf '%s\n' "$front" | sed -n 's/^date: //p')
+    if [ -z "$date" ]; then
+      echo "error: $doc has a 'status:' but no 'date:' in its front matter." >&2
+      failed=1
+    fi
+  done < <(git ls-files 'specs/design/**.md' 'specs/design/*.md' | sort -u)
+  if [ "$failed" != "0" ]; then
+    echo >&2
+    echo "See specs/steering/development-standards.md for the status table." >&2
+    exit 1
+  fi
+  echo "Design document front matter: all well-formed. Check passed."
 
 # Fail if anything cites specs/plans/. A plan is deleted before its own PR
 # merges, so a reference to one is either already dead or about to be. Rationale

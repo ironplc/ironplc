@@ -159,9 +159,8 @@ enabled:
 
 IEC 61131-3 defines no arithmetic on the bit-string types. CODESYS, TwinCAT and
 RuSTy treat a bit string as the unsigned integer of its width, and IronPLC
-does the same with ``--allow-bit-string-arithmetic``, which the ``rusty``,
-``codesys`` and ``twincat`` dialects enable. See
-:doc:`/explanation/enabling-dialects-and-features`.
+does the same with ``--allow-bit-string-arithmetic``. See
+:doc:`/explanation/enabling-dialects-and-features` for how to enable it.
 
 Without the flag, declare the variable as an unsigned integer of the same
 width:
