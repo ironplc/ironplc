@@ -6,7 +6,7 @@ pub mod disassemble;
 pub mod project;
 pub mod tokenizer;
 
-pub use compile::{compile, CompileOutput};
+pub use compile::{analyze, compile, CompileOutput};
 pub use project::{FileBackedProject, MemoryBackedProject, Project};
 
 #[cfg(test)]

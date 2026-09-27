@@ -52,6 +52,11 @@ Build Commands
       generation does not yet support produces a code generation error
       rather than incorrect bytecode.
 
+   With ``--target wasm``, the command writes a WebAssembly logic module
+   instead, and its symbol map beside it: ``-o main.wasm`` also writes
+   :file:`main.symbols.json`. See
+   :doc:`/how-to-guides/getting-started/compile-to-webassembly`.
+
 Diagnostic Commands
 -------------------
 
@@ -99,6 +104,22 @@ Options
    override the dialect's defaults. Available values: ``iec61131-3-ed2``
    (default), ``iec61131-3-ed3``, ``rusty``, ``codesys``, ``twincat``. See
    :doc:`/explanation/enabling-dialects-and-features` for details.
+
+``--target`` *TARGET*
+   Select what ``compile`` produces: ``bytecode`` (default), a bytecode
+   container for :program:`ironplcvm`, or ``wasm``, a WebAssembly logic
+   module.
+
+``--wasm-fuel``
+   With ``--target wasm``, count the instructions a cycle executes so that
+   a runtime can stop a cycle that does not end.
+
+``--wasm-debug-hooks``
+   With ``--target wasm``, call the runtime's debug hook before each
+   statement.
+
+``--wasm-no-bounds-checks``
+   With ``--target wasm``, leave out the array bounds checks.
 
 ``--library`` *NAME*
    Activate a :doc:`compatibility library </reference/compatibility-libraries/index>`

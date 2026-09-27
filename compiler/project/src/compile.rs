@@ -11,8 +11,10 @@
 //! codes and a file on disk, a JSON response and a cache handle, or a base64
 //! string handed back to JavaScript.
 
+use ironplc_analyzer::SemanticContext;
 use ironplc_codegen::{CodegenOptions, SourceLookup};
 use ironplc_container::Container;
+use ironplc_dsl::common::Library;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::CompilerOptions;
 use log::debug;
@@ -62,29 +64,16 @@ pub fn compile(
     project: &mut dyn Project,
     compiler_options: &CompilerOptions,
     source_lookup: &dyn SourceLookup,
-    mut diagnostics: Vec<Diagnostic>,
+    diagnostics: Vec<Diagnostic>,
 ) -> CompileOutput {
-    // Parse and analyze. Analysis goes as far as it can and reports everything
-    // it found; it never short-circuits on the seeded diagnostics.
-    diagnostics.extend(project.semantic());
-
-    if !diagnostics.is_empty() {
-        debug!("Skipping codegen, {} problem(s) found", diagnostics.len());
-        return CompileOutput {
-            diagnostics,
-            container: None,
-        };
-    }
-
-    let (Some(library), Some(context)) = (project.analyzed_library(), project.semantic_context())
-    else {
-        // A clean analysis always caches its artifacts, so this is a compiler
-        // defect rather than a problem with the input.
-        diagnostics.push(Diagnostic::internal_error());
-        return CompileOutput {
-            diagnostics,
-            container: None,
-        };
+    let (library, context) = match analyze(project, diagnostics) {
+        Ok(analyzed) => analyzed,
+        Err(diagnostics) => {
+            return CompileOutput {
+                diagnostics,
+                container: None,
+            }
+        }
     };
 
     // Generate bytecode, skipping user-defined functions not reachable from
@@ -93,16 +82,42 @@ pub fn compile(
 
     match ironplc_codegen::compile(library, context, &codegen_options, source_lookup) {
         Ok(container) => CompileOutput {
-            diagnostics,
+            diagnostics: vec![],
             container: Some(container),
         },
-        Err(err) => {
-            diagnostics.push(err);
-            CompileOutput {
-                diagnostics,
-                container: None,
-            }
-        }
+        Err(err) => CompileOutput {
+            diagnostics: vec![err],
+            container: None,
+        },
+    }
+}
+
+/// Runs parsing and semantic analysis over `project` and hands back what a
+/// code generator needs, or every diagnostic that prevents code generation.
+///
+/// This is the rule every target shares: analysis always runs, and code
+/// generation may run only when nothing at all -- the seeded `diagnostics`,
+/// parsing, or analysis -- reported a problem. `diagnostics` seeds the
+/// collection as in [`compile`].
+pub fn analyze(
+    project: &mut dyn Project,
+    mut diagnostics: Vec<Diagnostic>,
+) -> Result<(&Library, &SemanticContext), Vec<Diagnostic>> {
+    // Parse and analyze. Analysis goes as far as it can and reports everything
+    // it found; it never short-circuits on the seeded diagnostics.
+    diagnostics.extend(project.semantic());
+
+    if !diagnostics.is_empty() {
+        debug!("Skipping codegen, {} problem(s) found", diagnostics.len());
+        return Err(diagnostics);
+    }
+
+    let project: &dyn Project = project;
+    match (project.analyzed_library(), project.semantic_context()) {
+        (Some(library), Some(context)) => Ok((library, context)),
+        // A clean analysis always caches its artifacts, so this is a compiler
+        // defect rather than a problem with the input.
+        _ => Err(vec![Diagnostic::internal_error()]),
     }
 }
 

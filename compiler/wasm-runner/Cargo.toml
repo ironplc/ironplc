@@ -1,0 +1,17 @@
+[package]
+name = "ironplc-wasm-runner"
+description = "Runs IronPLC WebAssembly logic modules in wasmtime and wasmi for tests"
+version = "0.247.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ironplc-wasm-symbols = { path = "../wasm-symbols", version = "0.247.0" }
+wasmi = "=2.0.0"
+wasmtime = { version = "49", default-features = false, features = ["cranelift", "runtime", "std"] }
+
+[lints]
+workspace = true

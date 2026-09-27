@@ -173,7 +173,7 @@ impl ironplc_codegen::SourceLookup for HashMapSourceLookup {
 /// discovery, parsing, analysis, codegen — and must not decide
 /// success/failure anywhere else, so that a problem in one stage never
 /// prevents a later stage from reporting its own.
-fn finish(
+pub(crate) fn finish(
     command: &str,
     diagnostics: Vec<Diagnostic>,
     project: Option<&FileBackedProject>,
@@ -201,7 +201,7 @@ fn finish(
 /// against it — real diagnostics in the resolvable files must not be
 /// hidden behind a discovery-time problem — and fold the returned
 /// diagnostics into their final result via [`finish`].
-fn create_project(
+pub(crate) fn create_project(
     paths: &[PathBuf],
     compiler_options: CompilerOptions,
     libraries: &[LibraryName],
@@ -433,7 +433,7 @@ fn map_label(
 /// distinct paths with nothing for `canonicalize` to resolve, so writing
 /// through one destroys a source reached by the other. Comparing device and
 /// inode instead of canonical paths would close that hole.
-fn output_conflicts_with_source(project: &FileBackedProject, output: &Path) -> bool {
+pub(crate) fn output_conflicts_with_source(project: &FileBackedProject, output: &Path) -> bool {
     let Ok(output) = canonicalize(output) else {
         return false;
     };
@@ -444,7 +444,7 @@ fn output_conflicts_with_source(project: &FileBackedProject, output: &Path) -> b
     })
 }
 
-fn diagnostic(problem: Problem, path: &Path, message: String) -> Vec<Diagnostic> {
+pub(crate) fn diagnostic(problem: Problem, path: &Path, message: String) -> Vec<Diagnostic> {
     vec![Diagnostic::problem(
         problem,
         Label::file(FileId::from_path(path), message),

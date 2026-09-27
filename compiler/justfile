@@ -58,6 +58,14 @@ dupes:
 dupes-tests:
   cargo dupes check --max-exact-percent 100 --max-near-percent 100 --min-lines 10
 
+# Differential gate of the WebAssembly target (specs/design/wasm-target.md):
+# runs the programs of the codegen tests, the .st resources and the examples
+# on the VM, wasmtime and wasmi, compares the program variables after each
+# cycle, and writes target/wasm-gate/report.md. Pass a directory of .st
+# probes to add them.
+wasm-gate probes="":
+  IRONPLC_WASM_PROBES="{{probes}}" cargo test -p ironplc-wasm --test it gate -- --ignored --nocapture
+
 # Set the version number for this component.
 version version:
   cargo release version {{version}} --execute --no-confirm

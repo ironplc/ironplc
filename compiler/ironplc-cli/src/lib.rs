@@ -10,6 +10,8 @@ pub mod lsp;
 pub mod lsp_project;
 pub mod lsp_runner;
 mod semantic_tokens;
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 #[cfg(test)]
 mod test_helpers;

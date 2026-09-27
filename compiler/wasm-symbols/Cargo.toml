@@ -1,0 +1,22 @@
+[package]
+name = "ironplc-wasm-symbols"
+description = "WebAssembly target of IronPLC: symbol map, its JSON and CBOR encodings and the plc.meta section"
+version = "0.247.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ciborium = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+wasmparser = "0.259"
+
+[dev-dependencies]
+jsonschema = { version = "0.58", default-features = false }
+wasm-encoder = "0.259"
+
+[lints]
+workspace = true

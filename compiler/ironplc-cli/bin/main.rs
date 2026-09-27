@@ -13,6 +13,15 @@ use ironplc_sources::LibraryName;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The output of `compile`.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+enum Target {
+    /// Bytecode container for the IronPLC VM (.iplc).
+    Bytecode,
+    /// WebAssembly logic module (.wasm).
+    Wasm,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "ironplcc", about = "IronPLC compiler")]
 struct Args {
@@ -377,7 +386,8 @@ enum Action {
         #[command(flatten)]
         file_args: FileArgs,
 
-        /// Output file path for the compiled bytecode container (.iplc).
+        /// Output file path for the compiled bytecode container (.iplc), or
+        /// for the WebAssembly module (.wasm) with `--target wasm`.
         #[arg(short, long)]
         output: PathBuf,
 
@@ -385,6 +395,24 @@ enum Action {
         /// `--library Tc2_System`. See `check --library`.
         #[arg(long = "library")]
         libraries: Vec<LibraryName>,
+
+        /// What to generate: a bytecode container for the IronPLC VM, or a
+        /// WebAssembly logic module (logic module ABI 1.1) with its symbol
+        /// map written beside it as `<output>.symbols.json`.
+        #[arg(long, value_enum, default_value_t = Target::Bytecode)]
+        target: Target,
+
+        /// WebAssembly target: count fuel so that a runtime can bound a cycle.
+        #[arg(long)]
+        wasm_fuel: bool,
+
+        /// WebAssembly target: call the runtime's debug hook before each statement.
+        #[arg(long)]
+        wasm_debug_hooks: bool,
+
+        /// WebAssembly target: leave out the array bounds checks.
+        #[arg(long)]
+        wasm_no_bounds_checks: bool,
     },
     /// The echo action reads (parses) the libraries and writes the context to the
     /// standard output.
@@ -415,6 +443,39 @@ enum Action {
     Version,
 }
 
+#[cfg(feature = "wasm")]
+fn compile_wasm(
+    files: &[PathBuf],
+    output: &std::path::Path,
+    options: CompilerOptions,
+    libraries: &[LibraryName],
+    [fuel, debug_hooks, bounds_checks]: [bool; 3],
+) -> Result<(), String> {
+    ironplc_cli::wasm::compile_wasm(
+        files,
+        output,
+        options,
+        libraries,
+        ironplc_wasm::WasmOptions {
+            fuel,
+            debug_hooks,
+            bounds_checks,
+        },
+        false,
+    )
+}
+
+#[cfg(not(feature = "wasm"))]
+fn compile_wasm(
+    _: &[PathBuf],
+    _: &std::path::Path,
+    _: CompilerOptions,
+    _: &[LibraryName],
+    _: [bool; 3],
+) -> Result<(), String> {
+    Err("This ironplcc was built without the WebAssembly target (feature `wasm`)".into())
+}
+
 pub fn main() -> Result<(), String> {
     // The Err variant is a String so that the command line shows a nice message.
     let args = Args::parse();
@@ -436,12 +497,29 @@ pub fn main() -> Result<(), String> {
             file_args,
             output,
             libraries,
+            target: Target::Bytecode,
+            ..
         } => cli::compile(
             &file_args.files,
             &output,
             file_args.compiler_options(),
             &libraries,
             false,
+        ),
+        Action::Compile {
+            file_args,
+            output,
+            libraries,
+            target: Target::Wasm,
+            wasm_fuel,
+            wasm_debug_hooks,
+            wasm_no_bounds_checks,
+        } => compile_wasm(
+            &file_args.files,
+            &output,
+            file_args.compiler_options(),
+            &libraries,
+            [wasm_fuel, wasm_debug_hooks, !wasm_no_bounds_checks],
         ),
         Action::Echo { file_args } => {
             cli::echo(&file_args.files, file_args.compiler_options(), false)

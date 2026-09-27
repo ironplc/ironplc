@@ -9,6 +9,7 @@ and IEC 61131-3.
    :maxdepth: 1
 
    Check, Compile, and Run from the CLI <check-compile-run-from-cli>
+   Compile to WebAssembly <compile-to-webassembly>
    Structure a Multi-File Project <structure-a-multi-file-project>
    Debug a Program <debug-a-program>
    Read Compiler Error Messages <read-compiler-error-messages>

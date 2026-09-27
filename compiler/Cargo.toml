@@ -19,6 +19,11 @@ members = [
     "test",
     "vm",
     "vm-cli",
+    "wasm",
+    "wasm-codegen",
+    "wasm-ir",
+    "wasm-runner",
+    "wasm-symbols",
     "playground",
     "spec_test_macro"
 ]
