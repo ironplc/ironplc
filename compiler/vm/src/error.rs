@@ -41,8 +41,8 @@ pub enum Trap {
     /// `2` (WSTRING). The bytecode is malformed or has been tampered with.
     InvalidCharWidth(u8),
     /// The container's `header.max_call_depth` exceeds the frame-stack
-    /// buffer provided by the embedder. The container was rejected at
-    /// `VmReady::start` before any init code executed.
+    /// buffer provided by the embedder. The container was rejected by
+    /// `Vm::load` before any code executed.
     ///
     /// `required` is the depth codegen declared the program needs;
     /// `capacity` is the size of the embedder's frame buffer. The
@@ -55,8 +55,8 @@ pub enum Trap {
     /// The container's `header.max_call_depth` is zero. Every program needs
     /// at least one call frame for its entry function, so codegen always
     /// declares a depth of one or more; a zero means the field was never
-    /// computed (a hand-built or legacy container). `VmReady::start`
-    /// rejects it before any init code runs.
+    /// computed (a hand-built or legacy container). `Vm::load` rejects it
+    /// before any code runs.
     ZeroCallDepth,
     /// A `COPY_REGION` named a destination and a source whose array
     /// descriptors describe spans of different byte sizes.

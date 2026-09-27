@@ -42,8 +42,9 @@ fn all_spec_requirements_have_tests() {
 /// Adding a new entry to this generator is fine; if you ever need to
 /// refresh the steel-thread golden, do it from a throwaway script with
 /// full awareness of what the format change is. It was last refreshed for
-/// the format_version 2 -> 3 string-header/constant-pool encoding bump
-/// (ADR-0035); the reader only accepts the current `FORMAT_VERSION`.
+/// the format_version 3 -> 4 array-descriptor stride bump (ADR-0054), which
+/// changed only the version field because the file has no type section;
+/// the reader only accepts the current `FORMAT_VERSION`.
 #[test]
 #[ignore]
 fn generate_golden_files() {
@@ -204,6 +205,32 @@ fn run_when_invalid_file_then_exit_2_and_v6002() -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
+/// A container modified after compilation fails its content hash check and
+/// is reported under the container-read code, before anything executes.
+#[test]
+fn run_when_code_byte_modified_then_exit_2_and_v6002() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("modified.iplc");
+    let mut bytes = container_bytes(&steel_thread_debug_builder().build());
+    let container = Container::read_from(&mut std::io::Cursor::new(&bytes))?;
+    let last_code_byte =
+        (container.header.code_section_offset + container.header.code_section_size - 1) as usize;
+    bytes[last_code_byte] ^= 0xFF;
+    std::fs::write(&container_path, &bytes)?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run").arg(&container_path).arg("--scans").arg("1");
+    cmd.assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("V6002"))
+        .stderr(predicate::str::contains("content hash mismatch"));
+
+    Ok(())
+}
+
+/// The frozen golden predates hashing, so its header carries no hash and
+/// the reader accepts it unchecked.
 #[test]
 fn run_when_golden_container_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let golden_path = path_to_golden_resource("steel_thread.iplc");

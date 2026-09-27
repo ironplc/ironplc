@@ -57,11 +57,12 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
+    intermediates::operator_function_form::operator_function_form,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
-    scoped_table::ScopedTable,
     semantic_context::SemanticContext,
     type_compat::{are_types_compatible, is_checkable_type},
+    variable_type::{Declarations, Declared},
 };
 use ironplc_parser::options::CompilerOptions;
 pub fn apply(
@@ -74,7 +75,7 @@ pub fn apply(
             context,
             options,
             diagnostics: vec![],
-            var_types: ScopedTable::new(),
+            declarations: Declarations::new(),
         },
         lib,
     )
@@ -84,12 +85,12 @@ struct RuleFunctionCallTypeCheck<'a> {
     context: &'a SemanticContext,
     options: &'a CompilerOptions,
     diagnostics: Vec<Diagnostic>,
-    /// Maps variable name to declared type, scoped.
+    /// Declared type of every variable in scope.
     ///
     /// Each declaration the traversal enters pushes a frame, so a
     /// method's locals do not outlive the method and a local shadows a
     /// field of the same name only within its own body.
-    var_types: ScopedTable<'static, Id, TypeName>,
+    declarations: Declarations<'static>,
 }
 
 impl DiagnosticVisitor for RuleFunctionCallTypeCheck<'_> {
@@ -99,6 +100,15 @@ impl DiagnosticVisitor for RuleFunctionCallTypeCheck<'_> {
 }
 
 impl RuleFunctionCallTypeCheck<'_> {
+    /// The type name a variable in scope was declared with, or `None` for
+    /// one declared with an inline type or not declared at all.
+    fn declared_type_name(&self, id: &Id) -> Option<TypeName> {
+        match self.declarations.find(id)?.type_reference() {
+            TypeReference::Named(type_name) => Some(type_name),
+            TypeReference::Inline | TypeReference::Unspecified => None,
+        }
+    }
+
     /// Checks whether a function call expression assigned to a variable has a
     /// matching return type. Emits P4027 if there is a mismatch.
     ///
@@ -116,14 +126,14 @@ impl RuleFunctionCallTypeCheck<'_> {
         let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target else {
             return;
         };
-        let Some(target_type) = self.var_types.find(&nv.name) else {
+        let Some(target_type) = self.declared_type_name(&nv.name) else {
             return;
         };
         let Some(ref return_type) = value.resolved_type else {
             return;
         };
 
-        if !are_types_compatible(target_type, return_type, self.options) {
+        if !are_types_compatible(&target_type, return_type, self.options) {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::FunctionCallReturnTypeMismatch,
@@ -155,7 +165,7 @@ impl RuleFunctionCallTypeCheck<'_> {
         let Variable::Symbolic(SymbolicVariableKind::Named(nv)) = target else {
             return;
         };
-        let Some(declared) = self.var_types.find(&nv.name) else {
+        let Some(declared) = self.declared_type_name(&nv.name) else {
             return;
         };
         // Resolve aliases/subranges to the underlying elementary type so the
@@ -163,8 +173,8 @@ impl RuleFunctionCallTypeCheck<'_> {
         let target_type = self
             .context
             .types()
-            .resolve_elementary_type_name(declared)
-            .unwrap_or_else(|| declared.clone());
+            .resolve_elementary_type_name(&declared)
+            .unwrap_or(declared);
         if !is_checkable_type(&target_type) {
             return;
         }
@@ -200,7 +210,7 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
     /// the enclosing function block's fields, and not clearing left a
     /// method's locals shadowing those fields for every later method.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.var_types.enter();
+        self.declarations.enter();
 
         // A declaration's own name is its result variable, so assigning
         // it is an assignment with a target type like any other. Without
@@ -209,15 +219,16 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
         // much as for a METHOD.
         match node {
             ScopeNode::Function(node) => {
-                self.var_types
-                    .add(&node.name, node.return_type.to_type_name());
+                self.declarations
+                    .add(&node.name, Declared::Typed(node.return_type.to_type_name()));
             }
             // Only a method that declares a return type has a result to
             // assign; `rule_use_declared_symbolic_var` rejects the
             // assignment outright for one that does not.
             ScopeNode::Method(node) => {
                 if let Some(return_type) = &node.return_type {
-                    self.var_types.add(&node.name, return_type.to_type_name());
+                    self.declarations
+                        .add(&node.name, Declared::Typed(return_type.to_type_name()));
                 }
             }
             // Neither has a result variable.
@@ -228,14 +239,12 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
     }
 
     fn exit_scope(&mut self) {
-        self.var_types.exit();
+        self.declarations.exit();
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let VariableIdentifier::Symbol(ref id) = node.identifier {
-            if let TypeReference::Named(ref type_name) = node.type_name() {
-                self.var_types.add(id, type_name.clone());
-            }
+            self.declarations.add(id, Declared::of(node));
         }
         node.recurse_visit(self)
     }
@@ -269,10 +278,21 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
             // generic ANY_* categories (or concrete types for the conversion
             // functions), all handled by `are_types_compatible`. The parameter
             // list continues past the declared ones for an extensible
-            // function, so every input of `ADD(a, b, c)` is checked. A
+            // function, so every input of `AND(a, b, c)` is checked. A
             // VAR_IN_OUT argument must match exactly, not just be compatible;
             // `rule_function_call_in_out_argument` checks it.
-            for (param, arg_expr) in signature.bind_inputs(&node.param_assignment) {
+            //
+            // `ADD`, `SUB`, `MUL` and `DIV` are the exception. Their inputs
+            // are checked against every overload (the numeric one and the
+            // typed ones on the time and date types) by the operator rule,
+            // which reports a mismatch as P4049; their `ANY_NUM` signature
+            // states only the numeric overload.
+            let overloaded = operator_function_form(&node.name.to_string())
+                .is_some_and(|form| !form.typed_overloads().is_empty());
+            let inputs = signature
+                .bind_inputs(&node.param_assignment)
+                .filter(|_| !overloaded);
+            for (param, arg_expr) in inputs {
                 if param.is_inout {
                     continue;
                 }
@@ -487,12 +507,12 @@ END_PROGRAM"
         "
 PROGRAM main
 VAR
-    a : DINT;
-    b : DINT;
+    a : WORD;
+    b : WORD;
     c : STRING;
-    result : DINT;
+    result : WORD;
 END_VAR
-    result := ADD(a, b, c);
+    result := AND(a, b, c);
 END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );

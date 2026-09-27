@@ -267,17 +267,21 @@ pub fn execute(
 
     let mut bufs = VmBuffers::from_container(&container);
 
-    let mut running = match Vm::new().load(&container, &mut bufs).start() {
+    let running = Vm::new()
+        .load(&container, &mut bufs)
+        .and_then(|ready| ready.start().map_err(|ctx| ctx.trap));
+    let mut running = match running {
         Ok(r) => r,
-        Err(ctx) => {
-            // Start-time fault (e.g. init function trapped).
+        Err(trap) => {
+            // Load- or start-time fault (e.g. invalid call depth, or an init
+            // function trapped).
             return Ok(RunOutcome {
                 trace: vec![],
                 final_values: vec![],
                 completed_cycles: vec![],
                 terminated_reason: TerminatedReason::Error,
                 truncated: false,
-                error_message: Some(format!("VM start fault: {}", ctx.trap)),
+                error_message: Some(format!("VM start fault: {trap}")),
                 interval,
             });
         }

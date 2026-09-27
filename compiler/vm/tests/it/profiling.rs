@@ -47,7 +47,11 @@ fn vm_stop_when_profiling_enabled_then_profile_has_counts() {
     ];
     let container = single_function_container(bytecode, 1, &[10, 20]);
     let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = Vm::new().load(&container, &mut bufs).start().unwrap();
+    let mut vm = Vm::new()
+        .load(&container, &mut bufs)
+        .unwrap()
+        .start()
+        .unwrap();
     vm.run_round(0).unwrap();
     let stopped = vm.stop();
 

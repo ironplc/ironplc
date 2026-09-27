@@ -50,7 +50,6 @@ reference/compiler/problems/P9998
 reference/runtime/problems/V4001
 reference/runtime/problems/V4002
 reference/runtime/problems/V6001
-reference/runtime/problems/V6002
 reference/runtime/problems/V6003
 reference/runtime/problems/V6004
 reference/runtime/problems/V6005

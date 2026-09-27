@@ -5,7 +5,7 @@
 //! keep module sizes within the 1000-line guideline.
 
 use ironplc_dsl::common::{
-    BitStringLiteral, ConstantKind, FunctionBlockBodyKind, IntegerRef, SignedInteger,
+    BitStringLiteral, ConstantKind, FunctionBlockBodyKind, Integer, IntegerRef, SignedInteger,
     SignedIntegerRef, StringInitializer, StringSpecification,
 };
 use ironplc_dsl::core::{Located, SourceSpan};
@@ -395,8 +395,9 @@ fn compile_statement(
                     crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(
                         element,
                     ) => {
-                        // The RHS produces the temp buffer index the store consumes.
-                        compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+                        // The RHS produces, at the element's encoding, the
+                        // temp buffer index the store consumes (ADR-0034).
+                        compile_string_value(emitter, ctx, &assignment.value, element.char_width)?;
                         element.emit_base_and_index(
                             emitter,
                             ctx,
@@ -663,7 +664,7 @@ fn compile_if(
     if let Some(classified) = try_classify_cmp(ctx, &if_stmt.expr) {
         emit_classified_cmp_br(emitter, classified, false, next_label);
     } else {
-        let cond_type = condition_op_type(&if_stmt.expr)?;
+        let cond_type = condition_op_type(ctx, &if_stmt.expr)?;
         compile_expr(emitter, ctx, &if_stmt.expr, cond_type)?;
         emitter.emit_jmp_if_not(next_label);
     }
@@ -684,7 +685,7 @@ fn compile_if(
         if let Some(classified) = try_classify_cmp(ctx, &elsif.expr) {
             emit_classified_cmp_br(emitter, classified, false, elsif_next);
         } else {
-            let elsif_op_type = condition_op_type(&elsif.expr)?;
+            let elsif_op_type = condition_op_type(ctx, &elsif.expr)?;
             compile_expr(emitter, ctx, &elsif.expr, elsif_op_type)?;
             emitter.emit_jmp_if_not(elsif_next);
         }
@@ -737,7 +738,7 @@ fn compile_case(
     // since all enums use DINT at codegen level (REQ-EN-codegen-003).
     let selector = CaseSelector {
         expr: &case_stmt.selector,
-        op_type: op_type(&case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE),
+        op_type: op_type(ctx, &case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE),
     };
 
     for group in &case_stmt.statement_groups {
@@ -910,7 +911,7 @@ pub(crate) fn resolve_string_max_length(
 ) -> Result<u16, Diagnostic> {
     match &string_init.length {
         None => Ok(DEFAULT_STRING_MAX_LENGTH),
-        Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
+        Some(IntegerRef::Literal(i)) => string_length_u16(i),
         Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
     }
 }
@@ -923,9 +924,27 @@ pub(crate) fn resolve_string_spec_max_length(
 ) -> Result<u16, Diagnostic> {
     match &spec.length {
         None => Ok(DEFAULT_STRING_MAX_LENGTH),
-        Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
+        Some(IntegerRef::Literal(i)) => string_length_u16(i),
         Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
     }
+}
+
+/// Converts a declared string length to the `u16` the string header holds.
+///
+/// The analyzer rejects a length above `u16::MAX` (P2041) before codegen
+/// runs, so a failure here is a compiler defect -- the rule missed a
+/// declaration site -- and is reported as one rather than wrapped to a
+/// capacity the program never wrote.
+fn string_length_u16(length: &Integer) -> Result<u16, Diagnostic> {
+    u16::try_from(length.value).map_err(|_| {
+        Diagnostic::internal_error_at(Label::span(
+            length.span.clone(),
+            format!(
+                "String length {} was not rejected by the analyzer",
+                length.value
+            ),
+        ))
+    })
 }
 
 /// Extracts a concrete `SignedInteger` from a `SignedIntegerRef`, returning a
@@ -1003,7 +1022,7 @@ fn compile_while(
     let end_label = emitter.create_label();
 
     emitter.bind_label(loop_label);
-    let cond_type = condition_op_type(&while_stmt.condition)?;
+    let cond_type = condition_op_type(ctx, &while_stmt.condition)?;
     compile_expr(emitter, ctx, &while_stmt.condition, cond_type)?;
     emitter.emit_jmp_if_not(end_label);
     ctx.loop_exit_labels.push(end_label);
@@ -1043,7 +1062,7 @@ fn compile_repeat(
     if let Some(classified) = classified_until {
         emit_classified_cmp_br(emitter, classified, false, loop_label);
     } else {
-        let cond_type = condition_op_type(&repeat_stmt.until)?;
+        let cond_type = condition_op_type(ctx, &repeat_stmt.until)?;
         compile_expr(emitter, ctx, &repeat_stmt.until, cond_type)?;
         emitter.emit_jmp_if_not(loop_label);
     }

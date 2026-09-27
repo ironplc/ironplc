@@ -41,6 +41,7 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
 
     let mut running = Vm::new()
         .load(&container, &mut bufs)
+        .map_err(|trap| VmError::from_load_trap(&trap))?
         .start()
         .map_err(|ctx| VmError::from_trap(&ctx.trap, ctx.task_id, ctx.instance_id))?;
 
@@ -121,6 +122,7 @@ pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), VmError> {
 
     let mut running = Vm::new()
         .load(&container, &mut bufs)
+        .map_err(|trap| VmError::from_load_trap(&trap))?
         .start()
         .map_err(|ctx| VmError::from_trap(&ctx.trap, ctx.task_id, ctx.instance_id))?;
 

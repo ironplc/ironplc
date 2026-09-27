@@ -1,3 +1,4 @@
+pub mod arithmetic_overload;
 pub mod array;
 pub mod enumeration;
 pub mod global_vars;

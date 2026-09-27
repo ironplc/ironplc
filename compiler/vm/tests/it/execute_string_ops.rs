@@ -12,7 +12,7 @@
 
 use crate::common::VmBuffers;
 use ironplc_container::opcode;
-use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
+use ironplc_container::{ArrayDescriptor, ContainerBuilder, FieldType, FunctionId, VarIndex};
 use ironplc_vm::error::Trap;
 
 /// Helper: builds a container configured for string operations.
@@ -234,14 +234,38 @@ fn execute_when_concat_mixed_encoding_then_trap() {
 
 // --- Wide string-array tests (PR C3) ---
 
-/// Helper: container with a string array variable. var[0] holds the array
-/// base offset (0, set by INIT); var[1] is an i32 result. The constant pool
-/// is `i32_constants`, then `wstr_constants`, then a trailing i32(0) used to
-/// initialize the base offset.
+/// Helper: container with a narrow STRING array variable, its elements
+/// packed back to back. var[0] holds the array base offset (0, set by INIT);
+/// var[1] is an i32 result. The constant pool is `i32_constants`, then
+/// `wstr_constants`, then a trailing i32(0) used to initialize the base
+/// offset.
 fn wstr_array_container(
     bytecode: &[u8],
     total_elements: u32,
     max_str_len: u16,
+    i32_constants: &[i32],
+    wstr_constants: &[&[u8]],
+    data_region_bytes: u32,
+) -> ironplc_container::Container {
+    let stride = ArrayDescriptor::natural_stride(FieldType::String as u8, max_str_len);
+    strided_str_array_container(
+        bytecode,
+        total_elements,
+        max_str_len,
+        stride,
+        i32_constants,
+        wstr_constants,
+        data_region_bytes,
+    )
+}
+
+/// As [`wstr_array_container`], with the elements `element_stride` bytes
+/// apart, as for the STRING field of each element of an array of structures.
+fn strided_str_array_container(
+    bytecode: &[u8],
+    total_elements: u32,
+    max_str_len: u16,
+    element_stride: u32,
     i32_constants: &[i32],
     wstr_constants: &[&[u8]],
     data_region_bytes: u32,
@@ -266,7 +290,12 @@ fn wstr_array_container(
         builder = builder.add_wstr_constant(w);
     }
     builder = builder.add_i32_constant(0); // array base offset
-    builder.add_array_descriptor(0, total_elements, max_str_len);
+    builder.add_strided_array_descriptor(
+        FieldType::String as u8,
+        total_elements,
+        max_str_len,
+        element_stride,
+    );
     builder
         .add_function(FunctionId::new(0), &init_bytecode, 2, 2, 0)
         .add_function(FunctionId::new(1), bytecode, 16, 2, 0)
@@ -335,5 +364,89 @@ fn execute_when_wide_array_elem_roundtrip_then_preserves_bytes() {
     assert_eq!(
         &b.data_region[22..28],
         &[0x41, 0x00, 0x42, 0x00, 0x43, 0x00]
+    );
+}
+
+#[test]
+fn execute_when_str_init_array_strided_then_writes_headers_at_stride() {
+    // Three STRING[5] elements 32 bytes apart, as if each were a field of a
+    // 32-byte structure. The natural stride would be 6 + 5 = 11.
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        opcode::STR_INIT_ARRAY, 0x00, 0x00, 0x00, 0x00,
+        opcode::RET_VOID,
+    ];
+    let c = strided_str_array_container(&bytecode, 3, 5, 32, &[], &[], 96);
+    let mut b = VmBuffers::from_container(&c);
+    {
+        let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+        vm.run_round(0).unwrap();
+    }
+
+    for offset in [0, 32, 64] {
+        // max_len 5, cur_len 0, char_width 1 (narrow).
+        assert_eq!(
+            &b.data_region[offset..offset + 6],
+            &[5, 0, 0, 0, 1, 0],
+            "header at {offset}"
+        );
+    }
+    // Nothing written at the natural stride.
+    assert_eq!(&b.data_region[11..17], &[0; 6]);
+}
+
+#[test]
+fn execute_when_strided_array_elem_roundtrip_then_uses_stride() {
+    // Load element 0 (offset 0) and store it into element 2 (offset 64).
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        opcode::LOAD_CONST_I32, 0x00, 0x00,            // index 0
+        opcode::STR_LOAD_ARRAY_ELEM, 0x00, 0x00, 0x00, 0x00,
+        opcode::LOAD_CONST_I32, 0x01, 0x00,            // index 2
+        opcode::STR_STORE_ARRAY_ELEM, 0x00, 0x00, 0x00, 0x00,
+        opcode::RET_VOID,
+    ];
+    let c = strided_str_array_container(&bytecode, 3, 5, 32, &[0, 2], &[], 96);
+    let mut b = VmBuffers::from_container(&c);
+    write_str_header(&mut b.data_region, 0, 5, 3, 1);
+    b.data_region[6..9].copy_from_slice(b"ABC");
+    write_str_header(&mut b.data_region, 64, 5, 0, 1);
+    {
+        let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+        vm.run_round(0).unwrap();
+    }
+
+    // cur_len 3, then the data.
+    assert_eq!(&b.data_region[66..68], &[3, 0]);
+    assert_eq!(&b.data_region[70..73], b"ABC");
+}
+
+#[test]
+fn execute_when_strided_array_elem_index_past_end_then_out_of_bounds() {
+    // Index 3 of a 3-element strided array. The data region is large enough
+    // that the byte offset alone would not catch it: the bounds check counts
+    // elements, not bytes.
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        opcode::STR_INIT_ARRAY, 0x00, 0x00, 0x00, 0x00,
+        opcode::LOAD_CONST_I32, 0x00, 0x00,            // index 3
+        opcode::STR_LOAD_ARRAY_ELEM, 0x00, 0x00, 0x00, 0x00,
+        opcode::RET_VOID,
+    ];
+    let c = strided_str_array_container(&bytecode, 3, 5, 32, &[3], &[], 256);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let err = vm.run_round(0).unwrap_err().trap;
+
+    assert!(
+        matches!(
+            err,
+            Trap::ArrayIndexOutOfBounds {
+                index: 3,
+                total_elements: 3,
+                ..
+            }
+        ),
+        "got {err:?}"
     );
 }

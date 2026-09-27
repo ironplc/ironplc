@@ -9,8 +9,8 @@ use ironplc_container::debug_section::{
 };
 use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
-    ConstantKind, ElementaryTypeName, FunctionReturnType, InitialValueAssignmentKind,
-    ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
+    ConstantKind, FunctionReturnType, InitialValueAssignmentKind, ReferenceInitialValue,
+    SpecificationKind, TypeName, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -74,7 +74,7 @@ pub(crate) fn assign_variables(
                         if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
                             ctx.var_types.insert(id.clone(), type_info);
                         }
-                        let tag = resolve_iec_type_tag(&simple.type_name.name);
+                        let tag = resolve_iec_type_tag(types, &simple.type_name);
                         let name = simple.type_name.name.to_string().to_uppercase();
                         (tag, name)
                     }
@@ -297,38 +297,13 @@ pub(crate) fn map_var_section(vt: &VariableType) -> u8 {
     }
 }
 
-/// Maps an IEC 61131-3 type name to its debug type tag.
-fn resolve_iec_type_tag(name: &Id) -> u8 {
-    match ElementaryTypeName::try_from(name) {
-        Ok(elem) => match elem {
-            ElementaryTypeName::BOOL => iec_type_tag::BOOL,
-            ElementaryTypeName::SINT => iec_type_tag::SINT,
-            ElementaryTypeName::INT => iec_type_tag::INT,
-            ElementaryTypeName::DINT => iec_type_tag::DINT,
-            ElementaryTypeName::LINT => iec_type_tag::LINT,
-            ElementaryTypeName::USINT => iec_type_tag::USINT,
-            ElementaryTypeName::UINT => iec_type_tag::UINT,
-            ElementaryTypeName::UDINT => iec_type_tag::UDINT,
-            ElementaryTypeName::ULINT => iec_type_tag::ULINT,
-            ElementaryTypeName::REAL => iec_type_tag::REAL,
-            ElementaryTypeName::LREAL => iec_type_tag::LREAL,
-            ElementaryTypeName::BYTE => iec_type_tag::BYTE,
-            ElementaryTypeName::WORD => iec_type_tag::WORD,
-            ElementaryTypeName::DWORD => iec_type_tag::DWORD,
-            ElementaryTypeName::LWORD => iec_type_tag::LWORD,
-            ElementaryTypeName::STRING => iec_type_tag::STRING,
-            ElementaryTypeName::WSTRING => iec_type_tag::WSTRING,
-            ElementaryTypeName::TIME => iec_type_tag::TIME,
-            ElementaryTypeName::LTIME => iec_type_tag::LTIME,
-            ElementaryTypeName::DATE => iec_type_tag::DATE,
-            ElementaryTypeName::LDATE => iec_type_tag::LDATE,
-            ElementaryTypeName::TimeOfDay => iec_type_tag::TIME_OF_DAY,
-            ElementaryTypeName::LTimeOfDay => iec_type_tag::LTOD,
-            ElementaryTypeName::DateAndTime => iec_type_tag::DATE_AND_TIME,
-            ElementaryTypeName::LDateAndTime => iec_type_tag::LDT,
-        },
-        Err(()) => iec_type_tag::OTHER,
-    }
+/// The debug type tag of the type `type_name` names: the type's id when it
+/// is elementary, else `OTHER`.
+fn resolve_iec_type_tag(types: &TypeEnvironment, type_name: &TypeName) -> u8 {
+    types
+        .id_of(type_name)
+        .and_then(ironplc_analyzer::type_id::elementary_debug_tag)
+        .unwrap_or(iec_type_tag::OTHER)
 }
 
 /// Computes the debug `(iec_type_tag, type_name)` pair for a function- or
@@ -338,10 +313,10 @@ fn resolve_iec_type_tag(name: &Id) -> u8 {
 /// the per-function slot-assignment loops in `compile_fn`. Composite or
 /// unsupported initializers fall back to [`iec_type_tag::OTHER`] with a
 /// best-effort type name, matching the global behavior.
-pub(crate) fn debug_type_for_decl(decl: &VarDecl) -> (u8, String) {
+pub(crate) fn debug_type_for_decl(decl: &VarDecl, types: &TypeEnvironment) -> (u8, String) {
     match &decl.initializer {
         InitialValueAssignmentKind::Simple(simple) => (
-            resolve_iec_type_tag(&simple.type_name.name),
+            resolve_iec_type_tag(types, &simple.type_name),
             simple.type_name.name.to_string().to_uppercase(),
         ),
         InitialValueAssignmentKind::String(string_init) => {
@@ -372,14 +347,17 @@ pub(crate) fn debug_type_for_decl(decl: &VarDecl) -> (u8, String) {
 
 /// Computes the debug `(iec_type_tag, type_name)` pair for a user
 /// function's return variable, derived from its declared return type.
-pub(crate) fn debug_type_for_return(return_type: &FunctionReturnType) -> (u8, String) {
+pub(crate) fn debug_type_for_return(
+    return_type: &FunctionReturnType,
+    types: &TypeEnvironment,
+) -> (u8, String) {
     match return_type {
         FunctionReturnType::String(_) => (iec_type_tag::STRING, "STRING".into()),
         FunctionReturnType::WString(_) => (iec_type_tag::WSTRING, "WSTRING".into()),
         FunctionReturnType::Named(_) => {
             let type_name = return_type.to_type_name();
             (
-                resolve_iec_type_tag(&type_name.name),
+                resolve_iec_type_tag(types, &type_name),
                 type_name.name.to_string().to_uppercase(),
             )
         }
@@ -407,33 +385,11 @@ pub(crate) fn emit_initial_values(
                     // named types, including structs.  If the variable was
                     // registered as a struct during assign_variables,
                     // initialize it like a Structure initializer.
-                    if let Some(struct_info) = ctx.struct_vars.get(id) {
-                        let data_offset = struct_info.data_offset;
-                        let var_index = struct_info.var_index;
-                        let desc_index = struct_info.desc_index;
-                        let fields: Vec<_> = struct_info
-                            .fields
-                            .iter()
-                            .map(|f| crate::compile_struct_init::FieldInitInfo {
-                                name: f.name.clone(),
-                                slot_offset: f.slot_offset,
-                                field_type: f.field_type.clone(),
-                                op_type: f.op_type,
-                                string_max_length: f.string_max_length,
-                            })
-                            .collect();
-
-                        let offset_const = ctx.add_i32_constant(data_offset as i32);
-                        emitter.emit_load_const_i32(offset_const);
-                        emitter.emit_store_var_i32(var_index);
-
-                        crate::compile_struct_init::initialize_struct_fields(
+                    if let Some(struct_info) = ctx.struct_vars.get(id).cloned() {
+                        crate::compile_struct_init::initialize_struct_variable(
                             emitter,
                             ctx,
-                            var_index,
-                            desc_index,
-                            data_offset,
-                            &fields,
+                            &struct_info,
                             &[],
                             &decl.identifier.span(),
                         )?;
@@ -495,8 +451,9 @@ pub(crate) fn emit_initial_values(
                 InitialValueAssignmentKind::Array(array_init) => {
                     // An array of structures holds the data region offset in
                     // its variable slot, like a structure variable does. Its
-                    // element fields are left zeroed, matching what an
-                    // array-of-struct field of a structure gets today.
+                    // element field values are left zeroed, matching what an
+                    // array-of-struct field of a structure gets today; only
+                    // the headers of its STRING fields are written.
                     if let Some(struct_array_info) = ctx.struct_array_vars.get(id) {
                         if !array_init.initial_values.is_empty() {
                             return Err(Diagnostic::not_implemented(Label::span(
@@ -506,9 +463,19 @@ pub(crate) fn emit_initial_values(
                         }
                         let data_offset = struct_array_info.data_offset;
                         let var_index = struct_array_info.var_index;
+                        let scratch_var_index = struct_array_info.scratch_var_index;
+                        let element_strings = struct_array_info.element_strings.clone();
                         let offset_const = ctx.add_i32_constant(data_offset as i32);
                         emitter.emit_load_const_i32(offset_const);
                         emitter.emit_store_var_i32(var_index);
+                        crate::compile_struct_init::initialize_element_strings(
+                            emitter,
+                            ctx,
+                            data_offset,
+                            scratch_var_index,
+                            &element_strings,
+                            &decl.identifier.span(),
+                        )?;
                     } else if let Some(array_info) = ctx.array_vars.get(id) {
                         let data_offset = array_info.data_offset;
                         let var_index = array_info.var_index;
@@ -586,36 +553,11 @@ pub(crate) fn emit_initial_values(
                     emitter.emit_store_var_i64(var_index);
                 }
                 InitialValueAssignmentKind::Structure(struct_init) => {
-                    if let Some(struct_info) = ctx.struct_vars.get(id) {
-                        // Extract needed values before mutable borrow of ctx.
-                        let data_offset = struct_info.data_offset;
-                        let var_index = struct_info.var_index;
-                        let desc_index = struct_info.desc_index;
-                        let fields: Vec<_> = struct_info
-                            .fields
-                            .iter()
-                            .map(|f| crate::compile_struct_init::FieldInitInfo {
-                                name: f.name.clone(),
-                                slot_offset: f.slot_offset,
-                                field_type: f.field_type.clone(),
-                                op_type: f.op_type,
-                                string_max_length: f.string_max_length,
-                            })
-                            .collect();
-
-                        // Store data_offset into the variable slot
-                        let offset_const = ctx.add_i32_constant(data_offset as i32);
-                        emitter.emit_load_const_i32(offset_const);
-                        emitter.emit_store_var_i32(var_index);
-
-                        // Initialize each field
-                        crate::compile_struct_init::initialize_struct_fields(
+                    if let Some(struct_info) = ctx.struct_vars.get(id).cloned() {
+                        crate::compile_struct_init::initialize_struct_variable(
                             emitter,
                             ctx,
-                            var_index,
-                            desc_index,
-                            data_offset,
-                            &fields,
+                            &struct_info,
                             &struct_init.elements_init,
                             &decl.identifier.span(),
                         )?;
@@ -805,30 +747,12 @@ pub(crate) fn emit_function_local_prologue(
     if let Some(struct_info) = ctx.struct_vars.get(return_id).cloned() {
         // Struct return: store data_offset into the return var slot and
         // zero all struct fields. Functions are stateless, so the struct
-        // must be re-initialized on every call.
-        let offset_const = ctx.add_i32_constant(struct_info.data_offset as i32);
-        emitter.emit_load_const_i32(offset_const);
-        emitter.emit_store_var_i32(return_var_index);
-
-        let fields: Vec<_> = struct_info
-            .fields
-            .iter()
-            .map(|f| crate::compile_struct_init::FieldInitInfo {
-                name: f.name.clone(),
-                slot_offset: f.slot_offset,
-                field_type: f.field_type.clone(),
-                op_type: f.op_type,
-                string_max_length: f.string_max_length,
-            })
-            .collect();
-
-        crate::compile_struct_init::initialize_struct_fields(
+        // must be re-initialized on every call. The struct was registered
+        // under `return_var_index`, so `struct_info.var_index` is that slot.
+        crate::compile_struct_init::initialize_struct_variable(
             emitter,
             ctx,
-            return_var_index,
-            struct_info.desc_index,
-            struct_info.data_offset,
-            &fields,
+            &struct_info,
             &[],
             &return_id.span(),
         )?;

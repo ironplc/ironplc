@@ -42,8 +42,9 @@ fn push_local_var_name(
     function_id: FunctionId,
     decl: &VarDecl,
     id: &Id,
+    types: &TypeEnvironment,
 ) {
-    let (tag, type_name) = debug_type_for_decl(decl);
+    let (tag, type_name) = debug_type_for_decl(decl, types);
     // A VAR_IN_OUT parameter's slot holds a reference to the caller's
     // variable, so it is described as one rather than as the value.
     let (tag, type_name) = if decl.var_type == VariableType::InOut {
@@ -162,7 +163,7 @@ pub(crate) fn compile_user_function(
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
-            push_local_var_name(ctx, current_index, function_id, decl, id);
+            push_local_var_name(ctx, current_index, function_id, decl, id, types);
             if decl.var_type == VariableType::InOut {
                 // The slot holds a reference to the caller's variable; its
                 // type info is the referenced value's, for reads and writes.
@@ -224,7 +225,7 @@ pub(crate) fn compile_user_function(
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
-            push_local_var_name(ctx, current_index, function_id, decl, id);
+            push_local_var_name(ctx, current_index, function_id, decl, id, types);
             match &decl.initializer {
                 InitialValueAssignmentKind::Simple(simple) => {
                     if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
@@ -277,7 +278,7 @@ pub(crate) fn compile_user_function(
     // section; it is modeled as VAR_OUTPUT so a debugger surfaces it in the
     // "Outputs" scope (per the section->DAP-scope table in
     // specs/design/debugger-support.md).
-    let (return_tag, return_type_name_str) = debug_type_for_return(&func_decl.return_type);
+    let (return_tag, return_type_name_str) = debug_type_for_return(&func_decl.return_type, types);
     ctx.debug_var_names.push(VarNameEntry {
         var_index: return_var_index,
         function_id,
@@ -577,7 +578,7 @@ pub(crate) fn compile_user_function_block(
     for decl in &field_decls {
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
-            push_local_var_name(ctx, current_index, function_id, decl, id);
+            push_local_var_name(ctx, current_index, function_id, decl, id, types);
             match &decl.initializer {
                 InitialValueAssignmentKind::Simple(simple) => {
                     if let Some(vti) = resolve_type_name(&simple.type_name.name) {

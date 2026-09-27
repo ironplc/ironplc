@@ -129,7 +129,11 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = Vm::new().load(&container, &mut bufs).start().unwrap();
+    let mut vm = Vm::new()
+        .load(&container, &mut bufs)
+        .unwrap()
+        .start()
+        .unwrap();
 
     // Scan 1: x = 0*2+1 = 1
     // Scan 2: x = 1*2+1 = 3

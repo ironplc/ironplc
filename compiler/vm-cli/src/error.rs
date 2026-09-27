@@ -39,6 +39,16 @@ impl VmError {
         }
     }
 
+    /// Creates a `VmError` from a trap raised when loading a container,
+    /// before any task or program instance exists.
+    pub fn from_load_trap(trap: &Trap) -> Self {
+        VmError {
+            v_code: trap.v_code(),
+            exit_code: trap.exit_code(),
+            message: format!("runtime error: {trap}"),
+        }
+    }
+
     /// Creates a `VmError` for a file system or IO error.
     pub fn io(v_code: &'static str, message: String) -> Self {
         VmError {
@@ -69,6 +79,15 @@ mod tests {
         let err = VmError::from_trap(&Trap::DivideByZero, TaskId::new(0), InstanceId::new(0));
         assert_eq!(err.exit_code(), 1);
         assert!(err.to_string().starts_with("V4001"));
+    }
+
+    #[test]
+    fn from_load_trap_when_zero_call_depth_then_v9017_without_task_context() {
+        let err = VmError::from_load_trap(&Trap::ZeroCallDepth);
+        assert_eq!(err.exit_code(), Trap::ZeroCallDepth.exit_code());
+        let text = err.to_string();
+        assert!(text.starts_with("V9017"));
+        assert!(!text.contains("task"));
     }
 
     #[test]

@@ -24,7 +24,10 @@ pub fn load_and_start<'a>(
     container: &'a Container,
     bufs: &'a mut VmBuffers,
 ) -> Result<VmRunning<'a>, FaultContext> {
-    Vm::new().load(container, bufs).start()
+    Vm::new()
+        .load(container, bufs)
+        .expect("container call depth fits the buffer")
+        .start()
 }
 
 /// Asserts that a run_round produces a specific trap.

@@ -75,7 +75,7 @@ pub(crate) fn compile_time_arith(
     ctx: &mut CompileContext,
     arith: TimeArith,
     width: OpWidth,
-    in1: &Expr,
+    in1: Operand<'_>,
     in2: &Expr,
 ) -> Result<(), Diagnostic> {
     let op_type = (width, Signedness::Signed);
@@ -96,13 +96,46 @@ fn compile_scale(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     width: OpWidth,
-    in1: &Expr,
+    in1: Operand<'_>,
     in2: &Expr,
     emit_fn: fn(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
     match width {
         OpWidth::W64 => compile_mul_div_ltime(emitter, ctx, in1, in2, emit_fn),
         _ => compile_mul_div_time(emitter, ctx, in1, in2, emit_fn),
+    }
+}
+
+/// The left operand of a typed time or date function.
+///
+/// A call or operator expression has an expression on each side. In a fold
+/// such as `ADD(t1, t2, t3)`, the left operand of every step after the first
+/// is the previous step's result, already on the stack.
+#[derive(Clone, Copy)]
+pub(crate) enum Operand<'a> {
+    /// An operand expression still to compile.
+    Expr(&'a Expr),
+    /// A value already on the stack, at its natural operation type.
+    Stack(OpType),
+}
+
+/// Leaves the left operand on the stack at `op_type`: compiles it when it is
+/// an expression, and widens it in place when it is already on the stack,
+/// as [`compile_operand`] widens an expression.
+fn compile_left(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    op_type: OpType,
+    left: Operand<'_>,
+) -> Result<(), Diagnostic> {
+    match left {
+        Operand::Expr(expr) => compile_operand(emitter, ctx, op_type, expr),
+        Operand::Stack(natural) => {
+            if op_type.0 == OpWidth::W64 && natural == (OpWidth::W32, Signedness::Unsigned) {
+                emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
+            }
+            Ok(())
+        }
     }
 }
 
@@ -148,11 +181,11 @@ fn compile_same_unit(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     op_type: OpType,
-    in1: &Expr,
+    in1: Operand<'_>,
     in2: &Expr,
     emit_fn: fn(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
-    compile_operand(emitter, ctx, op_type, in1)?;
+    compile_left(emitter, ctx, op_type, in1)?;
     compile_operand(emitter, ctx, op_type, in2)?;
     emit_fn(emitter, op_type);
     Ok(())
@@ -167,11 +200,11 @@ fn compile_dt_time_add_sub(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     op_type: OpType,
-    in1: &Expr,
+    in1: Operand<'_>,
     in2: &Expr,
     emit_fn: fn(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
-    compile_operand(emitter, ctx, op_type, in1)?;
+    compile_left(emitter, ctx, op_type, in1)?;
     compile_operand(emitter, ctx, op_type, in2)?;
     load_millis_per_second(emitter, ctx, op_type);
     emit_div(emitter, op_type);
@@ -187,10 +220,10 @@ fn compile_sub_to_time(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     op_type: OpType,
-    in1: &Expr,
+    in1: Operand<'_>,
     in2: &Expr,
 ) -> Result<(), Diagnostic> {
-    compile_operand(emitter, ctx, op_type, in1)?;
+    compile_left(emitter, ctx, op_type, in1)?;
     compile_operand(emitter, ctx, op_type, in2)?;
     emit_sub(emitter, op_type);
     load_millis_per_second(emitter, ctx, op_type);
@@ -207,7 +240,7 @@ fn compile_sub_to_time(
 fn compile_mul_div_time(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    in1: &Expr,
+    in1: Operand<'_>,
     in2: &Expr,
     emit_fn: fn(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
@@ -217,12 +250,12 @@ fn compile_mul_div_time(
 
     match in2_op.0 {
         OpWidth::W32 => {
-            compile_expr(emitter, ctx, in1, time_op)?;
+            compile_left(emitter, ctx, time_op, in1)?;
             compile_expr(emitter, ctx, in2, time_op)?;
             emit_fn(emitter, time_op);
         }
         OpWidth::F32 => {
-            compile_expr(emitter, ctx, in1, time_op)?;
+            compile_left(emitter, ctx, time_op, in1)?;
             emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F32);
             compile_expr(emitter, ctx, in2, (OpWidth::F32, Signedness::Signed))?;
             let f32_op = (OpWidth::F32, Signedness::Signed);
@@ -230,7 +263,7 @@ fn compile_mul_div_time(
             emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I32);
         }
         OpWidth::F64 => {
-            compile_expr(emitter, ctx, in1, time_op)?;
+            compile_left(emitter, ctx, time_op, in1)?;
             emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64);
             compile_expr(emitter, ctx, in2, (OpWidth::F64, Signedness::Signed))?;
             let f64_op = (OpWidth::F64, Signedness::Signed);
@@ -240,7 +273,7 @@ fn compile_mul_div_time(
         OpWidth::W64 => {
             // LINT/ULINT: promote TIME to f64, convert IN2 to f64, operate, convert back.
             // This avoids needing an i64→i32 truncation opcode.
-            compile_expr(emitter, ctx, in1, time_op)?;
+            compile_left(emitter, ctx, time_op, in1)?;
             emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64);
             compile_expr(emitter, ctx, in2, (OpWidth::W64, in2_op.1))?;
             emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F64);
@@ -263,14 +296,14 @@ fn compile_mul_div_time(
 fn compile_mul_div_ltime(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    in1: &Expr,
+    in1: Operand<'_>,
     in2: &Expr,
     emit_fn: fn(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
     let ltime_op = (OpWidth::W64, Signedness::Signed);
     let in2_op = op_type_from_expr(in2).unwrap_or(ltime_op);
 
-    compile_operand(emitter, ctx, ltime_op, in1)?;
+    compile_left(emitter, ctx, ltime_op, in1)?;
     match in2_op.0 {
         OpWidth::W32 | OpWidth::W64 => {
             compile_operand(emitter, ctx, (OpWidth::W64, in2_op.1), in2)?;

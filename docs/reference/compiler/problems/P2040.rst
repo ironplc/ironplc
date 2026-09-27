@@ -40,9 +40,11 @@ enough for the value you want:
        limit := 1.0E300;
    END_PROGRAM
 
-The same applies to a variable's initial value, to an operand of an operator
-that computes at ``REAL``, and to a value the compiler computes from
-constants, such as ``1.0E30 * 1.0E30``.
+The same applies to a variable's initial value, an element of an array or
+structure initializer, the default of a structure field or type declaration,
+an argument passed to a ``REAL`` parameter, an operand of an operator that
+computes at ``REAL``, and a value the compiler computes from constants, such
+as ``1.0E30 * 1.0E30``.
 
 No real type holds a value such as ``1.0E400``, so it is reported wherever it
 is written.

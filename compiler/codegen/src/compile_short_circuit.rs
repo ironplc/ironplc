@@ -88,7 +88,7 @@ pub(crate) fn compile_short_circuit(
 ) -> Result<(), Diagnostic> {
     // Both operands are BOOL (`ShortCircuitOp::for_expr` established that), so
     // the left operand's type is the type of the whole expression.
-    let bool_op_type = op_type(&compare.left)?;
+    let bool_op_type = op_type(ctx, &compare.left)?;
 
     let alternative = emitter.create_label();
     let end = emitter.create_label();

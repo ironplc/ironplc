@@ -248,7 +248,10 @@ mod tests {
             container.header.max_stack_depth = 4;
 
             let mut bufs = ironplc_vm::VmBuffers::from_container(&container);
-            let vm = ironplc_vm::Vm::new().load(&container, &mut bufs).start();
+            let vm = ironplc_vm::Vm::new()
+                .load(&container, &mut bufs)
+                .unwrap()
+                .start();
 
             assert!(vm.is_ok());
             assert_eq!(vm.unwrap().operand_stack_depth(), 1);
