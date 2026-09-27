@@ -356,10 +356,14 @@ impl ExprTypeResolver<'_> {
             // `w := "abc"` a P4035 and `f("abc")` a P4026 -- the analyzer
             // never learned what the quotes already said.
             ConstantKind::CharacterString(lit) => Some(TypeName::from(lit.width.keyword())),
-            ConstantKind::Duration(_) => Some(TypeName::from("TIME")),
-            ConstantKind::TimeOfDay(_) => Some(TypeName::from("TIME_OF_DAY")),
-            ConstantKind::Date(_) => Some(TypeName::from("DATE")),
-            ConstantKind::DateAndTime(_) => Some(TypeName::from("DATE_AND_TIME")),
+            // The prefix is the type, as the delimiter is for a string:
+            // `LDATE#2024-01-01` is an LDATE and `DATE#2024-01-01` a DATE.
+            // Typing every temporal literal as the 32-bit member held a
+            // 64-bit literal to a 32-bit range (issue #1560).
+            ConstantKind::Duration(lit) => Some(TypeName::from_id(&lit.type_name().into())),
+            ConstantKind::TimeOfDay(lit) => Some(TypeName::from_id(&lit.type_name().into())),
+            ConstantKind::Date(lit) => Some(TypeName::from_id(&lit.type_name().into())),
+            ConstantKind::DateAndTime(lit) => Some(TypeName::from_id(&lit.type_name().into())),
         }
     }
 
