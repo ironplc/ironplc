@@ -47,6 +47,10 @@ unsafe_code = "deny"
 # constructors opt back in with `#[allow(deprecated)]`.
 deprecated = "deny"
 
+# Fail on any warning (including clippy), matching CI's `-D warnings`. To make
+# warnings non-fatal while iterating: `RUSTFLAGS=--cap-lints=warn cargo build`.
+warnings = "deny"
+
 # Reduce per-binary debug-info size. `line-tables-only` retains the file/line
 # tables that `cargo llvm-cov` needs to map coverage hits to source, but drops
 # the type-, variable-, and inline-scope DWARF sections that dominate target/

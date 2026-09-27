@@ -11,4 +11,5 @@ pub mod scope;
 pub mod sfc;
 pub mod textual;
 pub mod time;
+pub mod type_id;
 pub mod visitor;

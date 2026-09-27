@@ -24,6 +24,18 @@ pub fn for_integer(bits: u32, signed: bool) -> (i128, i128) {
     }
 }
 
+/// Whether a `bits`-wide integer of the given signedness holds `count`.
+///
+/// The one statement of "does this value fit that storage", so that a check
+/// made during analysis and the same check made at emission cannot disagree.
+/// `count` is an `i128` because every storage this answers for, up to
+/// `u64::MAX`, and every value a literal can carry have to arrive intact to be
+/// judged.
+pub fn fits(count: i128, bits: u32, signed: bool) -> bool {
+    let (minimum, maximum) = for_integer(bits, signed);
+    count >= minimum && count <= maximum
+}
+
 /// The inclusive range of values `representation` can hold, or `None` when it
 /// does not hold integers as numbers.
 ///

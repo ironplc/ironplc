@@ -196,6 +196,14 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION TAKES_BYTE : BYTE\nVAR_INPUT\nx : BYTE;\nEND_VAR\nTAKES_BYTE := x;\nEND_FUNCTION\nPROGRAM main\nVAR\nresult : BYTE;\nEND_VAR\nresult := TAKES_BYTE(0);\nEND_PROGRAM",
     },
+    // Arithmetic on a bit-string operand: `b + 1` on BYTE (P4049) is only
+    // allowed when the flag is on. It judges the bit string as the unsigned
+    // integer of its width; it widens nothing.
+    FlagFixture {
+        key: "allow_bit_string_arithmetic",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\nb : BYTE;\nEND_VAR\nb := b + 1;\nEND_PROGRAM",
+    },
     // Partial-access bit syntax `.%Xn` as an alias for `.n` (P4033).
     FlagFixture {
         key: "allow_partial_access_syntax",

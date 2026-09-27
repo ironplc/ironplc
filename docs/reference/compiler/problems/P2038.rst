@@ -8,7 +8,9 @@ This error occurs when a date literal names a date the compiler cannot
 represent.
 
 A date is stored as a count of seconds since 1970-01-01, and the count is
-unsigned, so the dates a program can write are the ones that count reaches:
+unsigned, so the dates a program can write are the ones that count reaches.
+The 32-bit types run out in 2106; the 64-bit ones reach as far as a date can
+be written:
 
 .. list-table:: Date type ranges
    :header-rows: 1
@@ -17,22 +19,29 @@ unsigned, so the dates a program can write are the ones that count reaches:
    * - Type
      - Earliest
      - Latest
-   * - **DATE**, **LDATE**
+   * - **DATE**
      - ``1970-01-01``
      - ``2106-02-07``
-   * - **DATE_AND_TIME**, **LDATE_AND_TIME**
+   * - **DATE_AND_TIME**
      - ``1970-01-01-00:00:00``
      - ``2106-02-07-06:28:15``
+   * - **LDATE**
+     - ``1970-01-01``
+     - ``9999-12-31``
+   * - **LDATE_AND_TIME**
+     - ``1970-01-01-00:00:00``
+     - ``9999-12-31-23:59:59``
 
-A date outside that range has no second count to be stored as, so the compiler
-reports it rather than storing a different date than the one the program wrote.
+A date outside its type's range has no second count to be stored as, so the
+compiler reports it rather than storing a different date than the one the
+program wrote.
 
 Example
 -------
 
 The following code will generate error P2038:
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR
@@ -42,7 +51,7 @@ The following code will generate error P2038:
 
 To fix this error, use a date the type can hold:
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR
@@ -57,7 +66,7 @@ The count of seconds is unsigned, so it has nowhere to put a date before the
 epoch. A historical date is reported for the same reason a distant future one
 is:
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR
@@ -69,14 +78,40 @@ Where a program needs to record a date outside the range, store the offset
 from a date inside it — days or seconds in an integer variable — rather than
 the date itself.
 
-The 64-bit types have the same range
-------------------------------------
+The literal names its own type
+------------------------------
 
-``LDATE`` and ``LDATE_AND_TIME`` are wider in storage than ``DATE`` and
-``DATE_AND_TIME``, but they hold the same count of seconds, and the compiler
-computes that count the same way for all four. So an ``LDATE`` literal reaches
-no further than a ``DATE`` literal, and ``LDATE#2200-01-01`` is reported
-exactly as ``DATE#2200-01-01`` is.
+A date literal is held to the range of the type its *prefix* names, not the
+range of the variable it is stored into. ``DATE#2200-01-01`` is out of range
+even in an ``LDATE`` variable, the same way ``INT#40000`` is not an ``INT``
+whatever it is assigned to:
+
+.. playground::
+   :dialect: iec61131-3-ed3
+
+   PROGRAM main
+       VAR
+           expiry : LDATE := DATE#2200-01-01;  (* Error: DATE# names a DATE *)
+       END_VAR
+   END_PROGRAM
+
+Write the prefix of the type you mean, and the 64-bit types reach well past
+2106:
+
+.. playground::
+   :dialect: iec61131-3-ed3
+
+   PROGRAM main
+       VAR
+           expiry : LDATE := LDATE#2200-01-01;
+       END_VAR
+   END_PROGRAM
+
+``LDATE`` and ``LDATE_AND_TIME`` require IEC 61131-3 Edition 3. See
+:doc:`/reference/language/edition-support`.
+
+Narrowing is reported too: an ``LDATE#`` literal does not fit a ``DATE``
+variable, which is reported as :doc:`P4022`.
 
 See Also
 --------

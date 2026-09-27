@@ -78,6 +78,30 @@ An ADR may stay `proposed` indefinitely and that is not a defect, as long as it 
 
 Specifications that describe **what** to build: architecture, formats, interfaces, algorithms, data structures, and component interactions. A design document answers "what does this system look like?" without prescribing the step-by-step work to get there.
 
+#### Status
+
+A design document may carry front matter — `status:` and `date:` — directly under the H1, in the same shape the `specs/adrs/` section above defines for ADRs:
+
+```markdown
+# Design: Bytecode Peephole Optimizer
+
+status: implemented
+date: 2026-09-26
+```
+
+| Status | Meaning |
+|---|---|
+| `proposed` | Written up, not yet agreed. A reader should expect it to change. |
+| `approved` | Agreed as the design to build, but the code does not implement it yet. |
+| `partially implemented` | Some of it is built. The document says which parts, per section. |
+| `implemented` | The code implements it, and the document describes what the compiler actually does. |
+
+The distinction that earns the field is **`approved` versus `implemented`**: both read as settled, but only one is a description of the current compiler. Without it, a reader cannot tell a specification of intent from a specification of fact, and the two call for opposite responses when the code disagrees — fix the code, or fix the document.
+
+Unlike an ADR, a design document is a *description* rather than a decision, so it is rewritten in place as the design changes and needs no superseding chain. Advance the status in the pull request that earns it, the way an ADR's `proposed` flips to `accepted` — a document whose work has shipped but still reads `approved` misdirects the next reader who finds a divergence.
+
+**The field is optional, and most documents do not carry it yet.** Add it when you touch a document and can say truthfully which state it is in; do not infer a status from a distance. `cd specs && just` checks the value of a `status:` line that *is* present, and does not require one.
+
 ### `specs/plans/` — Implementation Plans
 
 Work breakdowns that describe **how** to implement: phased task lists, specific code changes, file modifications, and verification steps. A plan document answers "what steps do I follow to build this?" Plans reference the design they implement.

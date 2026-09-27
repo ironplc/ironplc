@@ -18,7 +18,11 @@ use std::collections::HashMap;
 
 use crate::function_environment::FunctionEnvironment;
 use crate::intermediate_type::IntermediateType;
+use crate::intermediates::arithmetic_overload::{
+    resolve_arithmetic_fold, resolve_arithmetic_overload, Overload,
+};
 use crate::intermediates::inherited_fields::collect_inherited_fields;
+use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
 use crate::system_globals::SYSTEM_UPTIME_GLOBALS;
 use crate::type_environment::TypeEnvironment;
 use crate::variable_type::{Declarations, Declared};
@@ -36,6 +40,7 @@ pub fn apply(
         inherited_fields,
         type_environment,
         function_environment,
+        options: *options,
     };
 
     // Implicit system globals live in the outermost scope, so every POU
@@ -118,6 +123,9 @@ struct ExprTypeResolver<'a> {
     inherited_fields: HashMap<TypeName, Vec<VarDecl>>,
     type_environment: &'a TypeEnvironment,
     function_environment: &'a FunctionEnvironment,
+    /// The compiler options, which decide whether a bit-string operand of
+    /// an arithmetic operator is judged as an unsigned integer (ADR-0053).
+    options: CompilerOptions,
 }
 
 impl ExprTypeResolver<'_> {
@@ -238,6 +246,18 @@ impl ExprTypeResolver<'_> {
             ExprKind::Const(constant) => self.resolve_const_type(constant),
             ExprKind::Variable(var) => self.resolve_variable_type(var),
             ExprKind::BinaryOp(op) => {
+                let left = op.left.resolved_type.as_ref();
+                let right = op.right.resolved_type.as_ref();
+                // The type of the overload that applies (see
+                // `intermediates::arithmetic_overload`). Where none is
+                // judged or none applies, the left operand's type, so later
+                // passes still see a type and the operator rule reports it.
+                match resolve_arithmetic_overload(&op.op, left, right, &self.options) {
+                    Some(Overload::Numeric { result } | Overload::Typed { result, .. }) => {
+                        return Some(result);
+                    }
+                    Some(Overload::Unchecked { .. }) | None => {}
+                }
                 match (&op.left.resolved_type, &op.right.resolved_type) {
                     // If left is generic and right is concrete, use the concrete type.
                     (Some(l), Some(r)) if is_generic_type(l) && !is_generic_type(r) => {
@@ -269,6 +289,9 @@ impl ExprTypeResolver<'_> {
                 _ => Some(TypeName::from("BOOL")),
             },
             ExprKind::Function(f) => {
+                if let Some(result) = self.resolve_overloaded_call(f) {
+                    return Some(result);
+                }
                 let sig = self.function_environment.get(&f.name)?;
                 let return_type = sig.return_type.as_ref()?.to_type_name();
                 if is_generic_type(&return_type) {
@@ -324,6 +347,38 @@ impl ExprTypeResolver<'_> {
         }
     }
 
+    /// Returns the result type of a call to `ADD`, `SUB`, `MUL` or `DIV`, the
+    /// arithmetic functions with typed overloads, from the overload that
+    /// applies to its inputs folded from the left: `SUB(d1, d2)` on `DATE`
+    /// is `TIME`, and `ADD(i, d)` on `INT` and `DINT` is `DINT`.
+    ///
+    /// Returns `None` for any other function, for a call with a named input
+    /// left (one the named-argument pass diagnosed), or when no overload is
+    /// judged or applies; the caller then types the call from its signature.
+    fn resolve_overloaded_call(&self, f: &Function) -> Option<TypeName> {
+        let form = operator_function_form(&f.name.to_string())?;
+        let FormOf::Arithmetic(op) = &form.operator else {
+            return None;
+        };
+        if form.typed_overloads().is_empty() {
+            return None;
+        }
+        let inputs: Vec<Option<&TypeName>> = f
+            .param_assignment
+            .iter()
+            .map(|p| match p {
+                ParamAssignmentKind::PositionalInput(input) => {
+                    Some(input.expr.resolved_type.as_ref())
+                }
+                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
+            })
+            .collect::<Option<_>>()?;
+        match resolve_arithmetic_fold(op, &inputs, &self.options) {
+            Ok(Overload::Numeric { result } | Overload::Typed { result, .. }) => Some(result),
+            Ok(Overload::Unchecked { .. }) | Err(_) => None,
+        }
+    }
+
     fn resolve_const_type(&self, constant: &ConstantKind) -> Option<TypeName> {
         match constant {
             ConstantKind::IntegerLiteral(lit) => Some(
@@ -356,10 +411,14 @@ impl ExprTypeResolver<'_> {
             // `w := "abc"` a P4035 and `f("abc")` a P4026 -- the analyzer
             // never learned what the quotes already said.
             ConstantKind::CharacterString(lit) => Some(TypeName::from(lit.width.keyword())),
-            ConstantKind::Duration(_) => Some(TypeName::from("TIME")),
-            ConstantKind::TimeOfDay(_) => Some(TypeName::from("TIME_OF_DAY")),
-            ConstantKind::Date(_) => Some(TypeName::from("DATE")),
-            ConstantKind::DateAndTime(_) => Some(TypeName::from("DATE_AND_TIME")),
+            // The prefix is the type, as the delimiter is for a string:
+            // `LDATE#2024-01-01` is an LDATE and `DATE#2024-01-01` a DATE.
+            // Typing every temporal literal as the 32-bit member held a
+            // 64-bit literal to a 32-bit range (issue #1560).
+            ConstantKind::Duration(lit) => Some(TypeName::from_id(&lit.type_name().into())),
+            ConstantKind::TimeOfDay(lit) => Some(TypeName::from_id(&lit.type_name().into())),
+            ConstantKind::Date(lit) => Some(TypeName::from_id(&lit.type_name().into())),
+            ConstantKind::DateAndTime(lit) => Some(TypeName::from_id(&lit.type_name().into())),
         }
     }
 

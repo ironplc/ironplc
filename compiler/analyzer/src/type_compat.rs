@@ -15,6 +15,7 @@
 //! cross-family widening (ADR-0031).
 
 use ironplc_dsl::common::*;
+use ironplc_dsl::time::TemporalWidth;
 use ironplc_parser::options::CompilerOptions;
 
 /// Returns true if `actual` is type-compatible with `expected`.
@@ -94,10 +95,13 @@ pub(crate) fn are_types_compatible(
                 return true;
             }
             // Temporal types come in a short and long form (TIME/LTIME,
-            // DATE/LDATE, etc.). Duration and date literals always resolve to
-            // the canonical short name regardless of the written form, so treat
-            // the two widths of a temporal family as interchangeable here.
-            if same_temporal_family(&actual_elem, &expected_elem) {
+            // DATE/LDATE, etc.), and the long one holds the same unit in a
+            // wider count (the ADR-0025 amendment), so the short widens into
+            // the long exactly as INT widens into DINT. Narrowing does not:
+            // `t : TIME := LTIME#30d` asks for a duration the storage cannot
+            // hold, and silently keeping its low bits is what this change
+            // exists to stop.
+            if widens_within_temporal_family(&actual_elem, &expected_elem) {
                 return true;
             }
         }
@@ -105,20 +109,61 @@ pub(crate) fn are_types_compatible(
     false
 }
 
-/// Returns true if both types belong to the same temporal family (the short and
-/// long widths of TIME, DATE, TIME_OF_DAY, or DATE_AND_TIME).
-pub(crate) fn same_temporal_family(a: &ElementaryTypeName, b: &ElementaryTypeName) -> bool {
+/// The temporal family a type belongs to, and which of its two widths it is.
+///
+/// `None` for a type that is not temporal.
+fn temporal_family(t: &ElementaryTypeName) -> Option<(u8, TemporalWidth)> {
     use ElementaryTypeName::*;
-    fn family(t: &ElementaryTypeName) -> Option<u8> {
-        match t {
-            TIME | LTIME => Some(0),
-            DATE | LDATE => Some(1),
-            TimeOfDay | LTimeOfDay => Some(2),
-            DateAndTime | LDateAndTime => Some(3),
-            _ => None,
-        }
+    use TemporalWidth::{Long, Short};
+    match t {
+        TIME => Some((0, Short)),
+        LTIME => Some((0, Long)),
+        DATE => Some((1, Short)),
+        LDATE => Some((1, Long)),
+        TimeOfDay => Some((2, Short)),
+        LTimeOfDay => Some((2, Long)),
+        DateAndTime => Some((3, Short)),
+        LDateAndTime => Some((3, Long)),
+        _ => None,
     }
-    matches!((family(a), family(b)), (Some(x), Some(y)) if x == y)
+}
+
+/// Returns true if both types belong to the same temporal family, at either
+/// width.
+///
+/// This is the question *overload resolution* asks — a typed `ADD_TIME`
+/// overload declares a `TIME` parameter and an `LTIME` operand selects it just
+/// the same, because the overload names the operation rather than the storage.
+/// Assignment compatibility asks the directional question below instead: what
+/// may be *stored* where.
+pub(crate) fn same_temporal_family(a: &ElementaryTypeName, b: &ElementaryTypeName) -> bool {
+    matches!(
+        (temporal_family(a), temporal_family(b)),
+        (Some((x, _)), Some((y, _))) if x == y
+    )
+}
+
+/// Returns true if `actual` is the same temporal type as `expected` or the
+/// narrower member of the same family.
+///
+/// `TIME` into `LTIME` widens a count into more bits of the same unit, which
+/// loses nothing. `LTIME` into `TIME` narrows, and the whole point of the long
+/// member is to hold values the short one cannot, so the compiler says so
+/// rather than keeping the low bits.
+///
+/// This is deliberately unlike `STRING` and `WSTRING`, which are mutually
+/// unconvertible (ADR-0034) because their *encodings* differ rather than their
+/// widths.
+fn widens_within_temporal_family(
+    actual: &ElementaryTypeName,
+    expected: &ElementaryTypeName,
+) -> bool {
+    match (temporal_family(actual), temporal_family(expected)) {
+        (Some((from, from_width)), Some((to, to_width))) => {
+            from == to && (from_width == to_width || from_width == TemporalWidth::Short)
+        }
+        _ => false,
+    }
 }
 
 /// Returns true if `actual` is acceptable where a generic parameter type

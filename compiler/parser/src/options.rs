@@ -434,6 +434,11 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_int_literal_to_bit_string,
 
+    "Allow arithmetic on bit-string operands (BYTE + 1), treating a bit string as the unsigned integer of its width",
+    "--allow-bit-string-arithmetic",
+    [Rusty, Codesys, TwinCat],
+    allow_bit_string_arithmetic,
+
     "Allow IEC 61131-3:2013 partial-access bit syntax (.%Xn) as an alias for .n",
     "--allow-partial-access-syntax",
     [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
