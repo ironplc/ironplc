@@ -73,9 +73,9 @@ which applies because `LTIME` is a legal variable name in Edition 2. The Edition
 
 **REQ-TL-020** An interval may be a single scalar: an integer or fixed-point number followed by a unit (e.g., `T#1.5s`, `T#500ms`, `T#2D`).
 
-**REQ-TL-021** An interval may be a compound sequence of parts whose units appear in strictly descending magnitude order (`d` > `h` > `m` > `s` > `ms`). All leading parts are integers; the trailing part may be fixed-point. Example: `T#1d2h30m15s500ms`. *(Specified but not currently implemented — see Future Work.)*
+**REQ-TL-021** An interval may be a compound sequence of parts whose units appear in strictly descending magnitude order (`d` > `h` > `m` > `s` > `ms`). All leading parts are integers; the trailing part may be fixed-point. Example: `T#1d2h30m15s500ms`.
 
-**REQ-TL-022** A compound interval may include `_` between adjacent parts as a visual separator. The separator is optional and has no semantic effect. Example: `T#1d_2h_30m` equals `T#1d2h30m`. *(Specified but not currently implemented — see Future Work.)*
+**REQ-TL-022** A compound interval may include `_` between adjacent parts as a visual separator. The separator is optional and has no semantic effect. Example: `T#1d_2h_30m` equals `T#1d2h30m`.
 
 **REQ-TL-023** An optional `-` sign between `#` and the first part negates the interval. Example: `T#-5s` represents negative five seconds.
 
@@ -103,8 +103,8 @@ Parser tests link to requirements via the existing `{area}_spec_req_{id}_{descri
 | REQ-TL-011 | `duration_spec_req_tl_011_unit_suffix_uppercase_accepted` |
 | REQ-TL-011 | `duration_spec_req_tl_011_unit_suffix_mixed_case_accepted` |
 | REQ-TL-012 | `duration_spec_req_tl_012_ms_matched_before_m` |
-| REQ-TL-021 | `duration_spec_req_tl_021_compound_interval` (ignored — see Future Work) |
-| REQ-TL-022 | `duration_spec_req_tl_022_compound_with_underscore` (ignored — see Future Work) |
+| REQ-TL-021 | `duration_spec_req_tl_021_compound_interval`, `parse_when_compound_duration_then_sum_of_parts`, `parse_when_compound_duration_malformed_then_error` |
+| REQ-TL-022 | `duration_spec_req_tl_022_compound_with_underscore` |
 | REQ-TL-023 | `duration_spec_req_tl_023_negative_duration` |
 
 REQ-TL-001 and REQ-TL-020 are covered by existing parser tests for basic duration literals and fixed-point durations (e.g., `parse_program_when_fixed_point_duration_then_ok` in `compiler/parser/src/tests/`). REQ-TL-003 is covered by the keyword-demotion tests in `compiler/parser/src/xform_demote_keywords.rs`, which gate `LTIME` on `allow_long_time_types` per [ADR-0022](../adrs/0022-edition-3-compiler-flag.md). REQ-TL-030 is an invariant verified in codegen and DSL tests rather than parser tests.
@@ -120,8 +120,11 @@ rule dt_sep(val: &str) -> &'input Token =
 
 The prefix productions `T` / `t` / `D` / `d` previously listed as explicit alternatives collapse to a single `dt_sep("T")` and `dt_sep("D")` respectively, since `dt_sep` is now case-insensitive.
 
+An interval is one rule, `interval()`: one or more `number unit` parts with an optional `_` between them. `combine_interval_parts` checks the order of the units (strictly descending, which also rules out a repeated unit) and that only the last part is fractional; a violation fails the literal with a syntax error.
+
+The lexer alone cannot deliver those parts: an identifier may contain digits and `_`, so `T#1m30s` lexes as `1` and the identifier `m30s`. The token transform `xform_split_duration_units` runs before parsing and, inside a duration literal only (a `T`, `TIME` or `LTIME` prefix, `#`, an optional `-`, then the adjacent tokens), splits such an identifier into its letter, digit and `_` runs, and joins `1`, `.`, `5` back into the fixed-point `1.5` when a fractional part follows a unit (`T#1m1.5s`).
+
 ## 9. Future Work
 
-- **Compound intervals (REQ-TL-021, REQ-TL-022).** The grammar at `compiler/parser/src/parser.rs` defines compound intervals via rules like `days() = fixed_point d | integer d [_] hours()`, but pom's ordered-choice semantics always commit to the first alternative (`fixed_point d`) before reaching the compound branch, making compound intervals unreachable today. Fixing this requires restructuring the grammar (for example, adding a dedicated compound production before the scalar alternatives, or using `pom`'s longest-match combinator). Tests for REQ-TL-021 and REQ-TL-022 exist but are marked `#[ignore]` pending that grammar fix.
 - **Build-time REQ-TL enforcement.** The `#[spec_test(REQ_XX_NNN)]` macro infrastructure in `compiler/container/build.rs` currently scans only `bytecode-container-format.md` and `bytecode-instruction-set.md`. Extending it (or adding analogous machinery to `compiler/parser/`) to scan `time-literals.md` would turn the Test Mapping table into a compile-time check. Today humans verify the mapping by reading this document.
 - **Warning for sub-millisecond literals in TIME.** ADR-0021 notes that sub-millisecond durations truncate to zero for 32-bit TIME; a future analyzer pass could emit a diagnostic.

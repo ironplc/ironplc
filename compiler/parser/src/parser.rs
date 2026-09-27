@@ -246,6 +246,50 @@ fn unquote(text: &str) -> Vec<char> {
     chars.collect()
 }
 
+/// A unit of a duration literal part, smallest first so that the derived
+/// order is the order of magnitude.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum DurationUnit {
+    Milliseconds,
+    Seconds,
+    Minutes,
+    Hours,
+    Days,
+}
+
+/// Sums the parts of a duration literal (REQ-TL-021): the units must be in
+/// strictly descending magnitude, which also rules out a repeated unit, and
+/// only the last part may have a fractional value.
+fn combine_interval_parts(
+    first: (FixedPoint, DurationUnit),
+    rest: Vec<(FixedPoint, DurationUnit)>,
+) -> Result<DurationLiteral, &'static str> {
+    let last = rest.len();
+    let mut total: Option<DurationLiteral> = None;
+    let mut previous: Option<DurationUnit> = None;
+    for (index, (value, unit)) in std::iter::once(first).chain(rest).enumerate() {
+        if previous.is_some_and(|p| unit >= p) {
+            return Err("duration units in descending order");
+        }
+        if index < last && value.femptos != 0 {
+            return Err("an integer before the last duration unit");
+        }
+        previous = Some(unit);
+        let part = match unit {
+            DurationUnit::Days => DurationLiteral::days(value),
+            DurationUnit::Hours => DurationLiteral::hours(value),
+            DurationUnit::Minutes => DurationLiteral::minutes(value),
+            DurationUnit::Seconds => DurationLiteral::seconds(value),
+            DurationUnit::Milliseconds => DurationLiteral::milliseconds(value),
+        };
+        total = Some(match total {
+            None => part,
+            Some(sum) => sum.plus(part),
+        });
+    }
+    total.ok_or("a duration")
+}
+
 /// The default implementation of the parsing traits for `[T]` expects `T` to be
 /// `Copy`, as in the `[u8]` or simple enum cases. This wrapper exposes the
 /// elements by `&T` reference, which is `Copy`.
@@ -506,13 +550,21 @@ parser! {
     // TIME. `dt_sep("T")` matches a bare identifier, so it comes last and
     // cannot shadow the keyword forms.
     rule duration_prefix() -> TemporalWidth = tok(TokenType::Time) { TemporalWidth::Short } / tok(TokenType::Ltime) { TemporalWidth::Long } / dt_sep("T") { TemporalWidth::Short }
-    // milliseconds must come first because the "m" in "ms" would match the minutes rule
-    rule interval() -> DurationLiteral = ms:milliseconds() { ms }
-      / d:days() { d }
-      / h:hours() { h }
-      / m:minutes() { m }
-      / s:seconds() { s }
-    rule days() -> DurationLiteral = days:fixed_point() dt_sep("d") { DurationLiteral::days(days) } / days:integer() dt_sep("d") dt_sep("_")? hours:hours() { hours.plus(DurationLiteral::days(days.into())) }
+    // One or more `number unit` parts, with an optional `_` between parts
+    // (REQ-TL-020 to 022); `combine_interval_parts` checks their order. The
+    // token transform `xform_split_duration_units` has already split a unit
+    // from the digits the lexer glued to it (`m30s`).
+    rule interval() -> DurationLiteral = first:interval_part() rest:(dt_sep("_")? p:interval_part() { p })* {?
+      combine_interval_parts(first, rest)
+    }
+    rule interval_part() -> (FixedPoint, DurationUnit) = n:fixed_point() u:duration_unit() { (n, u) }
+    // `ms` must come before `m`, or `100ms` would read as minutes.
+    rule duration_unit() -> DurationUnit =
+      dt_sep("ms") { DurationUnit::Milliseconds }
+      / dt_sep("d") { DurationUnit::Days }
+      / dt_sep("h") { DurationUnit::Hours }
+      / dt_sep("m") { DurationUnit::Minutes }
+      / dt_sep("s") { DurationUnit::Seconds }
     rule fixed_point() -> FixedPoint =
       fp:tok(TokenType::FixedPoint) {?
         FixedPoint::parse(fp.text.as_str())
@@ -520,10 +572,6 @@ parser! {
       / i:integer() {?
         Ok(i.into())
     }
-    rule hours() -> DurationLiteral = hours:fixed_point() dt_sep("h") { DurationLiteral::hours(hours) } / hours:integer() dt_sep("h") dt_sep("_")? min:minutes() { min.plus(DurationLiteral::hours(hours.into())) }
-    rule minutes() -> DurationLiteral = min:fixed_point() dt_sep("m") { DurationLiteral::minutes(min) } / mins:integer() dt_sep("m") dt_sep("_")? sec:seconds() { sec.plus(DurationLiteral::minutes(mins.into())) }
-    rule seconds() -> DurationLiteral = secs:fixed_point() dt_sep("s") { DurationLiteral::seconds(secs) } / sec:integer() dt_sep("s") dt_sep("_")? ms:milliseconds() { ms.plus(DurationLiteral::seconds(sec.into())) }
-    rule milliseconds() -> DurationLiteral = ms:fixed_point() dt_sep("ms") { DurationLiteral::milliseconds(ms) }
 
     // 1.2.3.2 Time of day and date
     rule time_of_day() -> TimeOfDayLiteral = width:time_of_day_prefix() tok(TokenType::Hash) d:daytime() { TimeOfDayLiteral::new(d).with_width(width) }
