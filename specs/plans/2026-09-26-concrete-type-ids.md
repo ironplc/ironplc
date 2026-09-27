@@ -168,10 +168,12 @@ Three reshapes, each behaviour-preserving, before any new behaviour:
 | 1 | Prefactor | Prefactor 1 (one declaration → type routine) |
 | 2 | Prefactor | Prefactor 2 (explicit enumeration fallback) |
 | 3 | Prefactor | Prefactor 3 (`TypeId` table, debug tag from ID) + ADR |
-| 4 | Core | `Expr` carries `ExprType`; anonymous types and named aliases get IDs; inline arrays keep their dimensions; late-bound resolution keeps alias names; argument, assignment and bit-access checks compare IDs and reject aggregates/enumerations where a scalar is expected. Fixes #1761, enum → integer assignment, and bit access on a whole array |
-| 5 | Core | Codegen selects opcodes from `TypeId` via the table; remove `resolved_type: Option<TypeName>`, `resolve_type_name` and the string-matching helpers |
+| 4 | Core (annotation) | `VarDecl::type_id` and `Expr::expr_type` (`ExprType`); anonymous types entered in the environment by `xform_resolve_decl_types`; late-bound resolution keeps named array types' names. Nothing reads them yet: no behaviour change |
+| 5 | Core | Argument, assignment and bit-access checks read `ExprType` and reject aggregates/enumerations where a scalar is expected; inline arrays keep their dimensions. Fixes #1761, enum → integer assignment, `ABS` of a named subrange, and bit access on a whole array |
+| 6 | Core | Codegen selects opcodes from `TypeId` via the table; remove `resolved_type: Option<TypeName>`, `resolve_type_name` and the string-matching helpers |
 
-A tracking issue records PRs 1–5 before the first core PR.
+PR 4 was split into annotation (4) and checks (5) so each is reviewable on
+its own; the tracking issue is ironplc/ironplc#1842.
 
 ## File map
 
@@ -194,10 +196,11 @@ A tracking issue records PRs 1–5 before the first core PR.
 
 ## Tasks
 
-- [ ] Open tracking issue for PRs 1–5 and a follow-up issue for the debug-section type table
+- [x] Open tracking issue (ironplc/ironplc#1842); the debug-section type table is listed there as a follow-up
 - [x] PR 1: one `Declarations` table for the resolver and the argument/assignment rule (tests unchanged): ironplc/ironplc#1802
 - [x] PR 2: codegen takes a named type's operand type from the type environment: ironplc/ironplc#1810
 - [x] PR 3: `TypeId` table in `TypeEnvironment`; elementary IDs = `iec_type_tag`; `name_of`; debug tag from ID; ADR-0055: ironplc/ironplc#1825
-- [ ] PR 4: `ExprType` on `Expr`; IDs for anonymous types and aliases; checks reject aggregates/enums where a scalar is expected; tests for every row of the table above
-- [ ] PR 5: codegen on `TypeId`; remove string-based type resolution; update design doc
+- [x] PR 4: `VarDecl::type_id`, `Expr::expr_type`, anonymous types, named arrays keep their name (annotation only): ironplc/ironplc#1845
+- [ ] PR 5: checks read `ExprType` and reject aggregates/enums where a scalar is expected; inline dimensions; tests for every row of the table above; P4026/P4035 docs
+- [ ] PR 6: codegen on `TypeId`; remove string-based type resolution; update design doc
 - [ ] Close #1761 and the tracking issue
