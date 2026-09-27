@@ -3034,6 +3034,10 @@ pub struct FunctionBlockDeclaration {
     /// nesting under `FunctionBlockOop` (a plain FB can declare methods
     /// without using `EXTENDS`/`IMPLEMENTS`/`ABSTRACT`). See ADR-0041.
     pub methods: Vec<MethodDeclaration>,
+    /// `PROPERTY` declarations (OOP extension), kept apart from `methods`:
+    /// their accessors are methods, but they are reached through the
+    /// property, not by a method call. See [`PropertyDeclaration`].
+    pub properties: Vec<PropertyDeclaration>,
 }
 
 impl HasVariables for FunctionBlockDeclaration {

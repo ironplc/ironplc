@@ -64,6 +64,108 @@ impl FunctionBlockDeclaration {
     }
 }
 
+/// `PROPERTY name : type ... END_PROPERTY` (OOP extension).
+///
+/// Declared on a `FunctionBlockDeclaration`, with a `GET` accessor, a `SET`
+/// accessor, or both. Each accessor is represented as the method it
+/// behaves as, named after the property:
+///
+/// - `GET` is a method whose return type is the property type, so inside
+///   it the property name is the result variable, as in any method.
+/// - `SET` is a method with no return type and one implicit `VAR_INPUT`
+///   named after the property and of the property type, which holds the
+///   value being assigned. The input is always the first of its
+///   `variables`; [`PropertyDeclaration::set_declared_variables`] gives
+///   the ones written in the source.
+///
+/// Every scope-aware pass therefore handles an accessor body as a method
+/// body, with no property-specific case. See ADR-0041 Phase 1.
+#[derive(Clone, Debug, PartialEq, Recurse, Located)]
+pub struct PropertyDeclaration {
+    pub name: Id,
+    pub property_type: FunctionReturnType,
+    pub get: Option<MethodDeclaration>,
+    pub set: Option<MethodDeclaration>,
+    #[located(position)]
+    pub span: SourceSpan,
+}
+
+impl PropertyDeclaration {
+    /// Builds the `GET` accessor of property `name`.
+    pub fn get_accessor(
+        name: &Id,
+        property_type: &FunctionReturnType,
+        variables: Vec<VarDecl>,
+        edge_variables: Vec<EdgeVarDecl>,
+        body: Vec<StmtKind>,
+        span: SourceSpan,
+    ) -> MethodDeclaration {
+        MethodDeclaration {
+            qualifiers: MemberQualifiers::default(),
+            name: name.clone(),
+            return_type: Some(property_type.clone()),
+            variables,
+            edge_variables,
+            body,
+            span,
+        }
+    }
+
+    /// Builds the `SET` accessor of property `name`, with the implicit
+    /// input that holds the assigned value in front of `variables`.
+    pub fn set_accessor(
+        name: &Id,
+        property_type: &FunctionReturnType,
+        variables: Vec<VarDecl>,
+        edge_variables: Vec<EdgeVarDecl>,
+        body: Vec<StmtKind>,
+        span: SourceSpan,
+    ) -> MethodDeclaration {
+        let initializer = match property_type {
+            FunctionReturnType::Named(type_name) => InitialValueAssignmentKind::LateResolvedType(
+                LateResolvedInitializer::bare(type_name.clone()),
+            ),
+            FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
+                InitialValueAssignmentKind::String(StringInitializer {
+                    length: spec.length.clone(),
+                    width: spec.width.clone(),
+                    initial_value: None,
+                    keyword_span: spec.keyword_span.clone(),
+                })
+            }
+        };
+        let value = VarDecl {
+            identifier: VariableIdentifier::Symbol(name.clone()),
+            var_type: VariableType::Input,
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer,
+            block: next_block_id(),
+            type_id: None,
+        };
+        let mut all_variables = Vec::with_capacity(variables.len() + 1);
+        all_variables.push(value);
+        all_variables.extend(variables);
+        MethodDeclaration {
+            qualifiers: MemberQualifiers::default(),
+            name: name.clone(),
+            return_type: None,
+            variables: all_variables,
+            edge_variables,
+            body,
+            span,
+        }
+    }
+
+    /// The `SET` accessor's variables as written in the source, without the
+    /// implicit input that [`PropertyDeclaration::set_accessor`] adds.
+    pub fn set_declared_variables(&self) -> &[VarDecl] {
+        match &self.set {
+            Some(set) => &set.variables[1..],
+            None => &[],
+        }
+    }
+}
+
 /// The object-oriented facet of a function block: the
 /// `EXTENDS`/`IMPLEMENTS` clauses and the qualifiers (`ABSTRACT`, `FINAL`,
 /// access specifiers). Present only when the function block uses any of

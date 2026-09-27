@@ -743,7 +743,8 @@ pub(crate) fn compile_variable_read(
                                 Diagnostic::not_implemented(Label::span(
                                     structured.field.span(),
                                     format!(
-                                        "Unknown field '{}' on function block '{}'",
+                                        "Unknown field '{}' on function block '{}' \
+                                         (reading a PROPERTY is not supported yet)",
                                         structured.field, named.name
                                     ),
                                 ))

@@ -25,6 +25,7 @@ mod methods;
 mod partial_access;
 mod pointer_to;
 mod pragmas;
+mod property;
 mod reference_to;
 mod set_reset_bind;
 mod sfc;

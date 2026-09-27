@@ -12,7 +12,10 @@
 //! A function block's methods are split out the same way, each into its own
 //! `<Method>` element with the same `<Declaration>`/`<Implementation>` pair.
 //! They are reconstructed as `METHOD ... END_METHOD` and appended after the
-//! function block body, where the grammar expects them.
+//! function block body, where the grammar expects them. Properties follow the
+//! same path: a `<Property>` holds its own `<Declaration>` and a `<Get>` and/or
+//! `<Set>` element, each shaped like a method, and is reconstructed as
+//! `PROPERTY ... GET ... END_GET SET ... END_SET END_PROPERTY`.
 //!
 //! Since the ST parser produces byte positions relative to the concatenated
 //! text, this module adjusts all positions to point to the correct locations
@@ -213,10 +216,11 @@ fn parse_pou(
         None => builder.push_synthetic(&impl_text),
     }
 
-    // Methods follow the function block body and precede END_FUNCTION_BLOCK,
-    // which is where `function_block_declaration` expects them.
+    // Methods and properties follow the function block body and precede
+    // END_FUNCTION_BLOCK, which is where `function_block_declaration` expects
+    // them.
     if closing == "END_FUNCTION_BLOCK" {
-        append_methods(&mut builder, object, file_id)?;
+        append_members(&mut builder, object, file_id)?;
     }
 
     builder.push_synthetic("\n");
@@ -385,32 +389,62 @@ fn skip_leading_trivia(text: &str) -> &str {
     }
 }
 
-/// Append every `<Method>` child of a POU to the combined text as an inline
-/// `METHOD ... END_METHOD` declaration.
+/// Append every `<Method>` and `<Property>` child of a POU to the combined
+/// text, in document order, as inline `METHOD ... END_METHOD` and
+/// `PROPERTY ... END_PROPERTY` declarations.
 ///
-/// TwinCAT stores each method as a sibling `<Method>` element rather than
+/// TwinCAT stores each method and property as a sibling element rather than
 /// inline in the POU's own `<Declaration>`. A method element has the same
 /// shape as the POU itself: a `<Declaration>` (which already begins with the
 /// `METHOD` keyword and holds the signature and VAR blocks) and an optional
 /// `<Implementation><ST>` with the body. Only the closing `END_METHOD` is
 /// implicit in the XML structure and has to be reconstructed.
 ///
-/// Only function block methods are appended. `method_declaration` is
-/// reachable only from `function_block_declaration`, so a method on a
-/// `PROGRAM`, a `FUNCTION`, or an interface has nowhere to go in the grammar
-/// and is still dropped.
-fn append_methods(
+/// Only function block members are appended. `method_declaration` and
+/// `property_declaration` are reachable only from
+/// `function_block_declaration`, so a member of a `PROGRAM`, a `FUNCTION`, or
+/// an interface has nowhere to go in the grammar and is still dropped.
+fn append_members(
     builder: &mut CombinedText,
     pou: &roxmltree::Node,
     file_id: &FileId,
 ) -> Result<(), Diagnostic> {
-    for method in pou
-        .children()
-        .filter(|n| n.is_element() && n.tag_name().name() == "Method")
-    {
-        append_declared_block(builder, &method, "Method", "END_METHOD", file_id)?;
+    for member in pou.children().filter(|n| n.is_element()) {
+        match member.tag_name().name() {
+            "Method" => append_declared_block(builder, &member, "Method", "END_METHOD", file_id)?,
+            "Property" => append_property(builder, &member, file_id)?,
+            _ => {}
+        }
     }
 
+    Ok(())
+}
+
+/// Append one `<Property>` element.
+///
+/// Its `<Declaration>` holds only the `PROPERTY name : type` header. Each
+/// accessor is a `<Get>` or `<Set>` child shaped like a method, whose
+/// `<Declaration>` holds only its VAR blocks, so the opening `GET`/`SET`
+/// keyword is implicit as well as the closing one.
+fn append_property(
+    builder: &mut CombinedText,
+    property: &roxmltree::Node,
+    file_id: &FileId,
+) -> Result<(), Diagnostic> {
+    let declaration = required_declaration(property, "Property", file_id)?;
+    let (declaration_text, declaration_byte_offset) = cdata_text_with_offset(&declaration);
+    builder.push_synthetic("\n");
+    builder.push_cdata(&declaration_text, declaration_byte_offset);
+
+    for (tag, opening, closing) in [("Get", "GET", "END_GET"), ("Set", "SET", "END_SET")] {
+        if let Some(accessor) = find_child_element(property, tag) {
+            builder.push_synthetic("\n");
+            builder.push_synthetic(opening);
+            append_declared_block(builder, &accessor, tag, closing, file_id)?;
+        }
+    }
+
+    builder.push_synthetic("\nEND_PROPERTY");
     Ok(())
 }
 
@@ -427,22 +461,7 @@ fn append_declared_block(
     closing: &str,
     file_id: &FileId,
 ) -> Result<(), Diagnostic> {
-    let declaration = match find_child_element(element, "Declaration") {
-        Some(elem) => elem,
-        None => {
-            return Err(Diagnostic::problem(
-                Problem::TwinCatMalformed,
-                Label::file(
-                    file_id.clone(),
-                    format!(
-                        "{kind} '{}' is missing required 'Declaration' element",
-                        element.attribute("Name").unwrap_or("<unnamed>")
-                    ),
-                ),
-            ));
-        }
-    };
-
+    let declaration = required_declaration(element, kind, file_id)?;
     let (declaration_text, declaration_byte_offset) = cdata_text_with_offset(&declaration);
     let (impl_text, impl_byte_offset) = extract_implementation(element, file_id)?;
 
@@ -458,6 +477,27 @@ fn append_declared_block(
     builder.push_synthetic(closing);
 
     Ok(())
+}
+
+/// The `<Declaration>` child of `element`, which TwinCAT always writes.
+/// `kind` names the element in the diagnostic when it is missing.
+fn required_declaration<'a>(
+    element: &'a roxmltree::Node,
+    kind: &str,
+    file_id: &FileId,
+) -> Result<roxmltree::Node<'a, 'a>, Diagnostic> {
+    find_child_element(element, "Declaration").ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::TwinCatMalformed,
+            Label::file(
+                file_id.clone(),
+                format!(
+                    "{kind} '{}' is missing required 'Declaration' element",
+                    element.attribute("Name").unwrap_or("<unnamed>")
+                ),
+            ),
+        )
+    })
 }
 
 /// Extract the ST implementation text and its byte offset from an element
@@ -533,3 +573,6 @@ fn cdata_text_with_offset(node: &roxmltree::Node) -> (String, usize) {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod property_tests;
