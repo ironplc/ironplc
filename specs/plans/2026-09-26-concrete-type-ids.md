@@ -202,5 +202,6 @@ its own; the tracking issue is ironplc/ironplc#1842.
 - [x] PR 3: `TypeId` table in `TypeEnvironment`; elementary IDs = `iec_type_tag`; `name_of`; debug tag from ID; ADR-0055: ironplc/ironplc#1825
 - [x] PR 4: `VarDecl::type_id`, `Expr::expr_type`, anonymous types, named arrays keep their name (annotation only): ironplc/ironplc#1845
 - [x] PR 5: argument/result/assignment checks read `ExprType` (`value_type`); composites rejected where a scalar is expected; subranges compare as their base type; P4026/P4035 docs: ironplc/ironplc#1852. Bit access and inline dimensions moved to ironplc/ironplc#1851
-- [ ] PR 6: codegen on `TypeId`; remove string-based type resolution; update design doc
+- [x] PR 6: codegen's expression helpers read `expr_type` via a `TypeId` → type table; references operate as 64-bit addresses: ironplc/ironplc#1874. Inline-enumeration codegen split out to ironplc/ironplc#1873
+- [ ] PR 7: arithmetic overloads and declaration-side codegen off type names; analyzer rules off `resolved_type`; remove `resolved_type`; update design doc
 - [ ] Close #1761 and the tracking issue
