@@ -153,7 +153,7 @@ fn compile_operand(
     op_type: OpType,
     operand: &Expr,
 ) -> Result<(), Diagnostic> {
-    let natural = op_type_from_expr(operand);
+    let natural = op_type_from_expr(ctx, operand);
     if op_type.0 == OpWidth::W64 && natural == Some((OpWidth::W32, Signedness::Unsigned)) {
         compile_expr(emitter, ctx, operand, (OpWidth::W32, Signedness::Unsigned))?;
         emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
@@ -246,7 +246,7 @@ fn compile_mul_div_time(
 ) -> Result<(), Diagnostic> {
     let time_op = (OpWidth::W32, Signedness::Signed);
 
-    let in2_op = op_type_from_expr(in2).unwrap_or(time_op);
+    let in2_op = op_type_from_expr(ctx, in2).unwrap_or(time_op);
 
     match in2_op.0 {
         OpWidth::W32 => {
@@ -301,7 +301,7 @@ fn compile_mul_div_ltime(
     emit_fn: fn(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
     let ltime_op = (OpWidth::W64, Signedness::Signed);
-    let in2_op = op_type_from_expr(in2).unwrap_or(ltime_op);
+    let in2_op = op_type_from_expr(ctx, in2).unwrap_or(ltime_op);
 
     compile_left(emitter, ctx, ltime_op, in1)?;
     match in2_op.0 {
