@@ -78,12 +78,6 @@ parameter's type (:doc:`P4059 </reference/compiler/problems/P4059>`) that
 the compiler can prove is writable: not ``CONSTANT``, and not a ``VAR_INPUT``
 of the calling POU (:doc:`P4060 </reference/compiler/problems/P4060>`).
 
-IronPLC supports ``VAR_IN_OUT`` parameters of elementary types (integers,
-reals, bit strings, ``BOOL``, and time and date types) bound to a named
-variable. Strings, arrays, structures, references, and function block
-instances as ``VAR_IN_OUT`` parameters, and array elements or structure
-fields as arguments, are not yet supported.
-
 Calling a Function
 ------------------
 
