@@ -136,7 +136,19 @@ pub(crate) fn compile_expr(
 ) -> Result<(), Diagnostic> {
     match &expr.kind {
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
-        ExprKind::Variable(variable) => compile_variable_read(emitter, ctx, variable, op_type),
+        // A variable read at a different width is read at its own and
+        // converted: loading an INT's slot as a REAL would reinterpret its
+        // bits, and loading a UDINT's as a LINT would sign-extend it.
+        ExprKind::Variable(variable) => {
+            match crate::compile_arith::numeric_op_type(expr.resolved_type.as_ref()) {
+                Some(own) if own.0 != op_type.0 => {
+                    compile_variable_read(emitter, ctx, variable, own)?;
+                    crate::compile_arith::convert(emitter, own, op_type);
+                    Ok(())
+                }
+                _ => compile_variable_read(emitter, ctx, variable, op_type),
+            }
+        }
         ExprKind::BinaryOp(binary) => {
             compile_binary_arith(emitter, ctx, binary, expr.resolved_type.as_ref(), op_type)
         }
