@@ -21,8 +21,9 @@ Signature
      END_VAR
    END_FUNCTION
 
-The return type matches the input type. ``ABS`` accepts ``SINT``,
-``INT``, ``DINT``, ``LINT``, ``REAL``, ``LREAL``.
+The return type matches the input type. ``ABS`` accepts every numeric
+type: ``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``,
+``ULINT``, ``REAL`` and ``LREAL``.
 
 .. rubric:: Inputs
 
@@ -55,9 +56,10 @@ The return type matches the input type. ``ABS`` accepts ``SINT``,
 Description
 -----------
 
-Returns the absolute value of *IN*. For signed integer types, the result
-of ``ABS`` applied to the most negative value is undefined because
-the positive value cannot be represented.
+Returns the absolute value of *IN*. For unsigned integer types, the result
+is *IN* itself. For signed integer types, the result of ``ABS`` applied to
+the most negative value is undefined because the positive value cannot be
+represented.
 
 Example
 -------

@@ -88,6 +88,7 @@ mod xform_insert_implicit_deref;
 mod xform_int_to_bool_initializer;
 mod xform_mark_unwritten_constants;
 mod xform_named_to_positional_args;
+mod xform_remove_unsigned_abs;
 mod xform_resolve_adr;
 mod xform_resolve_constant_expressions;
 mod xform_resolve_decl_types;
