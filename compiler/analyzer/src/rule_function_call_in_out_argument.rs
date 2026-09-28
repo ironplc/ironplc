@@ -188,6 +188,41 @@ impl RuleFunctionCallInOutArgument<'_> {
         }
     }
 
+    /// Names the type of `arg`'s value, resolved by its type id: the
+    /// elementary type for an elementary type or an alias of one, and the
+    /// type's own name otherwise. A reference is `REF_TO`, never the type it
+    /// references, so it cannot pass for that type. `None` when the analyzer
+    /// resolved no type.
+    fn argument_type(&self, arg: &Expr) -> Option<TypeName> {
+        // A variable declared REF_TO is a reference whatever type id its
+        // reads carry.
+        let name = match &arg.kind {
+            ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
+                Some(&named.name)
+            }
+            ExprKind::LateBound(late_bound) => Some(&late_bound.value),
+            _ => None,
+        };
+        if let Some(Declared::Variable { init, .. }) =
+            name.and_then(|name| self.declarations.find(name))
+        {
+            if matches!(**init, InitialValueAssignmentKind::Reference(_)) {
+                return Some(TypeName::from("REF_TO"));
+            }
+        }
+        let Some(ExprType::Concrete(id)) = &arg.expr_type else {
+            return None;
+        };
+        let types = self.context.types();
+        let representation = &types.get_by_id(*id)?.representation;
+        if representation.is_reference() {
+            return Some(TypeName::from("REF_TO"));
+        }
+        types
+            .elementary_type_name_for(representation)
+            .or_else(|| types.name_of(*id).cloned())
+    }
+
     /// Resolves a type name through aliases and subranges to its
     /// elementary type, or `None` when it is not an elementary type.
     fn elementary(&self, type_name: &TypeName) -> Option<TypeName> {
@@ -288,17 +323,12 @@ impl Visitor<Infallible> for RuleFunctionCallInOutArgument<'_> {
                 if param.is_reference {
                     continue;
                 }
-                let Some(arg_type) = &arg.resolved_type else {
-                    continue;
-                };
                 let Some(expected) = self.elementary(&param.param_type) else {
                     continue;
                 };
-                // An argument of any other type, elementary or not (an
-                // enumeration, a reference, a structure), is a mismatch.
-                let actual = self
-                    .elementary(arg_type)
-                    .unwrap_or_else(|| arg_type.clone());
+                let Some(actual) = self.argument_type(arg) else {
+                    continue;
+                };
                 if expected != actual {
                     self.diagnostics.push(
                         Diagnostic::problem(
@@ -491,6 +521,30 @@ END_CONFIGURATION",
                 .iter()
                 .any(|e| e.code == Problem::InOutArgNotWritable.code()),
             "{errors:?}"
+        );
+    }
+
+    // A reference is not the type it references: binding it would let the
+    // function write a DINT over the reference.
+    #[test]
+    fn apply_when_in_out_argument_is_reference_then_type_mismatch() {
+        let options =
+            CompilerOptions::from_dialect(ironplc_parser::options::Dialect::Iec61131_3Ed3);
+        let program = format!(
+            "{INC}
+PROGRAM main
+VAR x : DINT; p : REF_TO DINT; r : DINT; END_VAR
+    p := REF(x);
+    r := INC(1, p);
+END_PROGRAM"
+        );
+        let (library, context) =
+            crate::test_helpers::parse_and_resolve_types_with_options(&program, &options);
+        let errors = apply(&library, &context, &options).unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(
+            errors[0].code,
+            Problem::FunctionCallInOutArgTypeMismatch.code()
         );
     }
 
