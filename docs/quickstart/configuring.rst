@@ -131,18 +131,20 @@ Now that the timer and configuration are in place, run the updated program:
       ---
         Button : BOOL = FALSE
         Buzzer : BOOL = TRUE
-        PulseTimer.IN : BOOL = TRUE
-        PulseTimer.PT : TIME = T#500ms
-        PulseTimer.Q : BOOL = TRUE
-        PulseTimer.ET : TIME = T#1000ms
+        PulseTimer : TON = <TON>
+
+   ``Buzzer`` is ``TRUE`` because the timer's output ``Q`` turned on once
+   ``Button`` had been ``FALSE`` for 500 ms. The panel lists the program's
+   variables; the timer instance appears as its type, and its members
+   (``Q``, ``ET``) are not listed.
 
 #. Click :guilabel:`Stop` above the ``PROGRAM`` line to end execution.
 
 .. figure:: /images/screenshots/quickstart-timer-output.png
-   :alt: VS Code IronPLC Run panel showing timer variables including PulseTimer.Q and PulseTimer.ET
+   :alt: VS Code IronPLC Run panel showing the program variables Button, Buzzer and PulseTimer
    :width: 600px
 
-   The IronPLC Run panel showing timer variable values after the TON fires.
+   The IronPLC Run panel showing the program variables after the TON fires.
 
 .. figure:: /images/screenshots/quickstart-animation.png
    :alt: Animation showing the timer program running — file open, Run Program clicked, timer variables updating across scan cycles
