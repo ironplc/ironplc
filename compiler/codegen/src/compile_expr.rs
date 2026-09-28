@@ -22,6 +22,7 @@ use super::compile::{
 };
 use super::compile_arith::compile_binary_arith;
 use super::compile_call::compile_function_call;
+use super::compile_method::compile_method_call_expression;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
 use super::compile_string::compile_string_compare;
 use super::type_info::{expr_operand_name, expr_representation, expr_type_info};
@@ -136,7 +137,19 @@ pub(crate) fn compile_expr(
 ) -> Result<(), Diagnostic> {
     match &expr.kind {
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
-        ExprKind::Variable(variable) => compile_variable_read(emitter, ctx, variable, op_type),
+        // A variable read at a different width is read at its own and
+        // converted: loading an INT's slot as a REAL would reinterpret its
+        // bits, and loading a UDINT's as a LINT would sign-extend it.
+        ExprKind::Variable(variable) => {
+            match crate::compile_arith::numeric_op_type(expr_operand_name(ctx, expr).as_ref()) {
+                Some(own) if own.0 != op_type.0 => {
+                    compile_variable_read(emitter, ctx, variable, own)?;
+                    crate::compile_arith::convert(emitter, own, op_type);
+                    Ok(())
+                }
+                _ => compile_variable_read(emitter, ctx, variable, op_type),
+            }
+        }
         ExprKind::BinaryOp(binary) => {
             let result = expr_operand_name(ctx, expr);
             compile_binary_arith(emitter, ctx, binary, result.as_ref(), op_type)
@@ -167,6 +180,7 @@ pub(crate) fn compile_expr(
             Ok(())
         }
         ExprKind::Function(func) => compile_function_call(emitter, ctx, func, op_type),
+        ExprKind::MethodCall(call) => compile_method_call_expression(emitter, ctx, call),
         ExprKind::Ref(variable) => {
             // REF(var) → push the variable's table index as a u64 constant.
             let var_index = resolve_variable(ctx, variable)?;

@@ -157,6 +157,7 @@ impl RuleRefTo<'_> {
             | ExprKind::Const(_)
             | ExprKind::EnumeratedValue(_)
             | ExprKind::Function(_)
+            | ExprKind::MethodCall(_)
             | ExprKind::LateBound(_)
             | ExprKind::Deref(_) => matches!(
                 self.type_environment.representation_of_expr(expr),

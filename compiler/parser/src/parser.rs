@@ -236,14 +236,58 @@ fn span_of_tokens(tokens: &[Token], start: usize, end: usize) -> SourceSpan {
     }
 }
 
-/// Returns the characters of a character-string token without its two
-/// delimiting quotes. The token text is the source as written: `$` escapes
-/// are not decoded.
-fn unquote(text: &str) -> Vec<char> {
-    let mut chars = text.chars();
-    chars.next();
-    chars.next_back();
-    chars.collect()
+/// Returns the characters a character-string token denotes: the text
+/// between its two delimiting quotes with its `$` escapes decoded. An
+/// invalid escape is kept as written; `rule_token_string_escape` reports it.
+fn unquote(text: &str, width: &StringType) -> Vec<char> {
+    let inner = text
+        .get(1..text.len().saturating_sub(1))
+        .unwrap_or_default();
+    dsl::string_escape::decode(inner, width).chars
+}
+
+/// A unit of a duration literal part, smallest first so that the derived
+/// order is the order of magnitude.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum DurationUnit {
+    Milliseconds,
+    Seconds,
+    Minutes,
+    Hours,
+    Days,
+}
+
+/// Sums the parts of a duration literal (REQ-TL-021): the units must be in
+/// strictly descending magnitude, which also rules out a repeated unit, and
+/// only the last part may have a fractional value.
+fn combine_interval_parts(
+    first: (FixedPoint, DurationUnit),
+    rest: Vec<(FixedPoint, DurationUnit)>,
+) -> Result<DurationLiteral, &'static str> {
+    let last = rest.len();
+    let mut total: Option<DurationLiteral> = None;
+    let mut previous: Option<DurationUnit> = None;
+    for (index, (value, unit)) in std::iter::once(first).chain(rest).enumerate() {
+        if previous.is_some_and(|p| unit >= p) {
+            return Err("duration units in descending order");
+        }
+        if index < last && value.femptos != 0 {
+            return Err("an integer before the last duration unit");
+        }
+        previous = Some(unit);
+        let part = match unit {
+            DurationUnit::Days => DurationLiteral::days(value),
+            DurationUnit::Hours => DurationLiteral::hours(value),
+            DurationUnit::Minutes => DurationLiteral::minutes(value),
+            DurationUnit::Seconds => DurationLiteral::seconds(value),
+            DurationUnit::Milliseconds => DurationLiteral::milliseconds(value),
+        };
+        total = Some(match total {
+            None => part,
+            Some(sum) => sum.plus(part),
+        });
+    }
+    total.ok_or("a duration")
 }
 
 /// The default implementation of the parsing traits for `[T]` expects `T` to be
@@ -469,14 +513,14 @@ parser! {
     rule character_string_literal() -> CharacterStringLiteral = single_byte_character_string() / double_byte_character_string()
     rule single_byte_character_string() -> CharacterStringLiteral = start:position!() (tok(TokenType::String) tok(TokenType::Hash))? t:tok(TokenType::SingleByteString) end:position!() {
       CharacterStringLiteral {
-        value: unquote(&t.text),
+        value: unquote(&t.text, &StringType::String),
         width: StringType::String,
         span: span_of_tokens(tokens, start, end),
       }
     }
     rule double_byte_character_string() -> CharacterStringLiteral = start:position!() (tok(TokenType::WString) tok(TokenType::Hash))? t:tok(TokenType::DoubleByteString) end:position!() {
       CharacterStringLiteral {
-        value: unquote(&t.text),
+        value: unquote(&t.text, &StringType::WString),
         width: StringType::WString,
         span: span_of_tokens(tokens, start, end),
       }
@@ -506,13 +550,21 @@ parser! {
     // TIME. `dt_sep("T")` matches a bare identifier, so it comes last and
     // cannot shadow the keyword forms.
     rule duration_prefix() -> TemporalWidth = tok(TokenType::Time) { TemporalWidth::Short } / tok(TokenType::Ltime) { TemporalWidth::Long } / dt_sep("T") { TemporalWidth::Short }
-    // milliseconds must come first because the "m" in "ms" would match the minutes rule
-    rule interval() -> DurationLiteral = ms:milliseconds() { ms }
-      / d:days() { d }
-      / h:hours() { h }
-      / m:minutes() { m }
-      / s:seconds() { s }
-    rule days() -> DurationLiteral = days:fixed_point() dt_sep("d") { DurationLiteral::days(days) } / days:integer() dt_sep("d") dt_sep("_")? hours:hours() { hours.plus(DurationLiteral::days(days.into())) }
+    // One or more `number unit` parts, with an optional `_` between parts
+    // (REQ-TL-020 to 022); `combine_interval_parts` checks their order. The
+    // token transform `xform_split_duration_units` has already split a unit
+    // from the digits the lexer glued to it (`m30s`).
+    rule interval() -> DurationLiteral = first:interval_part() rest:(dt_sep("_")? p:interval_part() { p })* {?
+      combine_interval_parts(first, rest)
+    }
+    rule interval_part() -> (FixedPoint, DurationUnit) = n:fixed_point() u:duration_unit() { (n, u) }
+    // `ms` must come before `m`, or `100ms` would read as minutes.
+    rule duration_unit() -> DurationUnit =
+      dt_sep("ms") { DurationUnit::Milliseconds }
+      / dt_sep("d") { DurationUnit::Days }
+      / dt_sep("h") { DurationUnit::Hours }
+      / dt_sep("m") { DurationUnit::Minutes }
+      / dt_sep("s") { DurationUnit::Seconds }
     rule fixed_point() -> FixedPoint =
       fp:tok(TokenType::FixedPoint) {?
         FixedPoint::parse(fp.text.as_str())
@@ -520,10 +572,6 @@ parser! {
       / i:integer() {?
         Ok(i.into())
     }
-    rule hours() -> DurationLiteral = hours:fixed_point() dt_sep("h") { DurationLiteral::hours(hours) } / hours:integer() dt_sep("h") dt_sep("_")? min:minutes() { min.plus(DurationLiteral::hours(hours.into())) }
-    rule minutes() -> DurationLiteral = min:fixed_point() dt_sep("m") { DurationLiteral::minutes(min) } / mins:integer() dt_sep("m") dt_sep("_")? sec:seconds() { sec.plus(DurationLiteral::minutes(mins.into())) }
-    rule seconds() -> DurationLiteral = secs:fixed_point() dt_sep("s") { DurationLiteral::seconds(secs) } / sec:integer() dt_sep("s") dt_sep("_")? ms:milliseconds() { ms.plus(DurationLiteral::seconds(sec.into())) }
-    rule milliseconds() -> DurationLiteral = ms:fixed_point() dt_sep("ms") { DurationLiteral::milliseconds(ms) }
 
     // 1.2.3.2 Time of day and date
     rule time_of_day() -> TimeOfDayLiteral = width:time_of_day_prefix() tok(TokenType::Hash) d:daytime() { TimeOfDayLiteral::new(d).with_width(width) }
@@ -602,6 +650,10 @@ parser! {
           syntax,
         })
       }
+      // A simple type without an initializer whose base is an elementary
+      // type. The base is a keyword, so unlike `identifier : identifier`
+      // below this is not ambiguous.
+      / simple:simple_type_declaration__without_value() { DataTypeDeclarationKind::Simple(simple) }
       // The remaining are structure, enumerated and simple without an initializer
       // These all have the general form of
       //    `identifier : identifier`
@@ -620,6 +672,15 @@ parser! {
       SimpleDeclaration {
         type_name,
         spec_and_init,
+      }
+    }
+    rule simple_type_declaration__without_value() -> SimpleDeclaration = type_name:simple_type_name() _ tok(TokenType::Colon) _ base:elementary_type_name() {
+      SimpleDeclaration {
+        type_name,
+        spec_and_init: InitialValueAssignmentKind::Simple(SimpleInitializer {
+          type_name: base.into(),
+          initial_value: None,
+        }),
       }
     }
     rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {
@@ -1915,6 +1976,12 @@ parser! {
       / function:function_expression() {
           function
         }
+      // Before `variable()`: `m.GetSpeed` is also a valid structured
+      // variable, so the call has to be tried first.
+      / call:method_call() {
+          let span = call.span();
+          Expr::new(ExprKind::MethodCall(call)).with_span(span)
+        }
       / id:identifier() _ !(tok(TokenType::LeftParen) / tok(TokenType::LeftBracket) / tok(TokenType::Period) / tok(TokenType::Caret)) {
         Expr::new(ExprKind::LateBound(LateBound{ value: id }))
       }
@@ -2023,15 +2090,19 @@ parser! {
     rule method_receiver() -> MethodReceiver =
       s:self_ref() { MethodReceiver::SelfRef(s) }
       / id:identifier() { MethodReceiver::Instance(id) }
-    rule method_invocation() -> StmtKind = receiver:method_receiver() _ period() _ method:identifier() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
+    // `receiver.Method(args)`, shared by the statement form below and the
+    // expression form in `primary_expression`, so the receiver grammar is
+    // in one place.
+    rule method_call() -> MethodCall = receiver:method_receiver() _ period() _ method:identifier() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
       let span = SourceSpan::join(&receiver.span(), &end.span);
-      StmtKind::MethodCall(MethodCall {
+      MethodCall {
         receiver,
         method,
         params,
         position: span,
-      })
+      }
     }
+    rule method_invocation() -> StmtKind = call:method_call() { StmtKind::MethodCall(call) }
     // TODO this needs much more
     rule param_assignment() -> ParamAssignmentKind = not:(tok(TokenType::Not) {})? _ src:variable_name() _ tok(TokenType::RightArrow) _ tgt:variable() {
       ParamAssignmentKind::Output (

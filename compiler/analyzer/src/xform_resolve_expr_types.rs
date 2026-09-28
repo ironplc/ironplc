@@ -14,6 +14,7 @@ use ironplc_dsl::textual::*;
 use ironplc_dsl::type_id::TypeId;
 use std::collections::HashMap;
 
+use crate::callee_resolution::FunctionBlocks;
 use crate::function_environment::FunctionEnvironment;
 use crate::intermediate_type::IntermediateType;
 use crate::intermediates::arithmetic_overload::{
@@ -34,9 +35,11 @@ pub fn apply(
     options: &CompilerOptions,
 ) -> Result<Library, Vec<Diagnostic>> {
     let inherited_fields = collect_inherited_fields(&lib);
+    let method_return_types = collect_method_return_types(&lib);
     let mut resolver = ExprTypeResolver {
         declarations: Declarations::new(),
         inherited_fields,
+        method_return_types,
         type_environment,
         function_environment,
         options: *options,
@@ -54,6 +57,45 @@ pub fn apply(
     }
 
     resolver.fold_library(lib).map_err(|e| vec![e])
+}
+
+/// The return type of every method callable on every function block, by
+/// function block type and method name: the block's own methods, then those
+/// it inherits through `EXTENDS` (ADR-0041 Phase 1 static dispatch). `None`
+/// for a method without a return type.
+///
+/// Built before the fold, which consumes the library, so the resolver can
+/// type a method call without holding a reference into it.
+fn collect_method_return_types(lib: &Library) -> HashMap<TypeName, HashMap<Id, Option<TypeName>>> {
+    let function_blocks = FunctionBlocks::from_library(lib);
+    let method_names: Vec<&Id> = lib
+        .elements
+        .iter()
+        .filter_map(|element| match element {
+            LibraryElementKind::FunctionBlockDeclaration(fb) => Some(fb),
+            _ => None,
+        })
+        .flat_map(|fb| fb.methods.iter().map(|m| &m.name))
+        .collect();
+
+    let mut result = HashMap::new();
+    for element in &lib.elements {
+        let LibraryElementKind::FunctionBlockDeclaration(fb) = element else {
+            continue;
+        };
+        let callable: HashMap<Id, Option<TypeName>> = method_names
+            .iter()
+            .filter_map(|name| {
+                let (_, method) = function_blocks.resolve_method(&fb.name, name)?;
+                Some((
+                    method.name.clone(),
+                    method.return_type.as_ref().map(|rt| rt.to_type_name()),
+                ))
+            })
+            .collect();
+        result.insert(fb.name.clone(), callable);
+    }
+    result
 }
 
 /// Returns true if the type name is an IEC 61131-3 generic type category.
@@ -133,6 +175,8 @@ struct ExprTypeResolver<'a> {
     /// function block's own fields so unqualified references to a base
     /// class's fields type-check correctly.
     inherited_fields: HashMap<TypeName, Vec<VarDecl>>,
+    /// See [`collect_method_return_types`].
+    method_return_types: HashMap<TypeName, HashMap<Id, Option<TypeName>>>,
     type_environment: &'a mut TypeEnvironment,
     function_environment: &'a FunctionEnvironment,
     /// The compiler options, which decide whether a bit-string operand of
@@ -336,6 +380,21 @@ impl ExprTypeResolver<'_> {
                     }
                     ParamAssignmentKind::Output(_) => None,
                 })
+            }
+            // The method's return type. A call on `THIS^`/`SUPER^`, or to a
+            // method without a return type, has no type here; the method
+            // call rule reports both.
+            ExprKind::MethodCall(call) => {
+                let MethodReceiver::Instance(instance) = &call.receiver else {
+                    return None;
+                };
+                let fb_type = self.declared_type_name(instance)?;
+                let return_type = self
+                    .method_return_types
+                    .get(&fb_type)?
+                    .get(&call.method)?
+                    .clone()?;
+                self.expr_type_named(return_type)
             }
             ExprKind::EnumeratedValue(ev) => self.expr_type_named(ev.type_name.clone()?),
             ExprKind::Expression(inner) => inner.expr_type.clone(),

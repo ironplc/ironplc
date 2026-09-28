@@ -10,6 +10,7 @@ P0008,SfcMissingInitialStep,SFC body does not have an initial step
 P0009,TwinCatMalformed,TwinCAT XML file has invalid structure
 P0010,Std2013Feature,Feature requires IEC 61131-3:2013 (use --dialect iec61131-3-ed3)
 P0011,EmptyVarBlock,Empty variable block requires choosing a dialect or --allow-empty-var-blocks flag
+P0012,InvalidStringEscape,Character string literal contains an escape that is not defined
 P2001,StructureDuplicatedElement,Structure has more than one element with name
 P2002,SubrangeMinStrictlyLessMax,Subrange declaration minimum value is not less than the maximum
 P2003,EnumTypeDeclDuplicateItem,Enumeration type declaration has duplicated value
@@ -121,6 +122,7 @@ P4053,CaseSelectorTypeInvalid,CASE selector is not an integer or enumeration typ
 P4054,FunctionBlockInFunction,Function declares or invokes a function block instance
 P4055,EnumExplicitValueNotAllowed,Explicit enumeration member value requires choosing a dialect or --allow-enum-explicit-values flag
 P4056,EnumBaseTypeNotAllowed,Enumeration base-type suffix requires choosing a dialect or --allow-enum-base-type flag
+P4057,MethodCallWithoutReturnValue,Method has no return value and cannot be used in an expression
 P2038,DateLiteralOutOfRange,Date literal is outside the range the date type can represent
 P2039,DurationLiteralOutOfRange,Duration literal is outside the range the duration type can represent
 P2040,RealLiteralOutOfRange,Real literal is outside the range the real type can represent

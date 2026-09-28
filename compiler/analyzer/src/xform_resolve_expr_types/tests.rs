@@ -633,3 +633,59 @@ END_FUNCTION_BLOCK";
         "the function block body must not see the method's local"
     );
 }
+
+#[test]
+fn apply_when_method_call_in_expression_then_resolves_return_type() {
+    let program = "
+FUNCTION_BLOCK FB_Motor
+METHOD GetSpeed : REAL
+    GetSpeed := 1.0;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    m : FB_Motor;
+    v : REAL;
+END_VAR
+v := m.GetSpeed();
+END_PROGRAM";
+
+    let result = run_pass_with_options(program, &opts_with_fb_inheritance());
+    let types = collect_assignment_types(&result);
+
+    assert_eq!(
+        types.last().unwrap().as_ref().map(|t| t.to_string()),
+        Some("real".into())
+    );
+}
+
+/// Resolution follows the `EXTENDS` chain, as for a statement call.
+#[test]
+fn apply_when_inherited_method_call_in_expression_then_resolves_base_return_type() {
+    let program = "
+FUNCTION_BLOCK FB_Base
+METHOD Level : INT
+    Level := 1;
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    m : FB_Derived;
+    n : INT;
+END_VAR
+n := m.Level();
+END_PROGRAM";
+
+    let result = run_pass_with_options(program, &opts_with_fb_inheritance());
+    let types = collect_assignment_types(&result);
+
+    assert_eq!(
+        types.last().unwrap().as_ref().map(|t| t.to_string()),
+        Some("int".into())
+    );
+}

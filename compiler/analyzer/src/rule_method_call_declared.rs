@@ -74,6 +74,10 @@ struct RuleMethodCallDeclared<'a> {
     /// The instances declared in the unit being walked.
     instances: InstanceTypes,
 
+    /// Whether the method call being visited is in expression position,
+    /// where its value is used and the method must have a return type.
+    in_expression: bool,
+
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -82,6 +86,7 @@ impl<'a> RuleMethodCallDeclared<'a> {
         Self {
             function_blocks,
             instances: InstanceTypes::default(),
+            in_expression: false,
             diagnostics: Vec::new(),
         }
     }
@@ -158,7 +163,24 @@ impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
         Ok(())
     }
 
+    fn visit_expr_kind(&mut self, node: &ExprKind) -> Result<Self::Value, Infallible> {
+        if let ExprKind::MethodCall(call) = node {
+            self.in_expression = true;
+            return self.visit_method_call(call);
+        }
+        node.recurse_visit(self)
+    }
+
     fn visit_method_call(&mut self, call: &MethodCall) -> Result<Self::Value, Infallible> {
+        let in_expression = std::mem::replace(&mut self.in_expression, false);
+        self.check_call(call, in_expression);
+        // The arguments may hold method calls of their own.
+        call.recurse_visit(self)
+    }
+}
+
+impl RuleMethodCallDeclared<'_> {
+    fn check_call(&mut self, call: &MethodCall, in_expression: bool) {
         // `THIS^.M()` / `SUPER^.M()` resolve against the enclosing function
         // block (and, for SUPER^, its base) rather than a variable's declared
         // type. That resolution is not implemented yet, so say so rather than
@@ -175,7 +197,7 @@ impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
                             self_ref.kind.spelling()
                         ),
                     )));
-                return Ok(());
+                return;
             }
         };
 
@@ -184,12 +206,12 @@ impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
         let fb_type = self.instances.type_of(instance).cloned();
         let Some(fb_type) = fb_type else {
             self.diagnostics.push(Self::not_in_scope(call, instance));
-            return Ok(());
+            return;
         };
 
         if !self.function_blocks.contains(&fb_type) {
             self.diagnostics.push(Self::not_in_scope(call, instance));
-            return Ok(());
+            return;
         }
 
         match self.function_blocks.resolve_method(&fb_type, &call.method) {
@@ -203,12 +225,19 @@ impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
             ),
             Some((owning_fb, method)) => {
                 let owner_label = format!("{}.{}", owning_fb.name, method.name);
+                if in_expression && method.return_type.is_none() {
+                    self.diagnostics.push(
+                        Diagnostic::problem(
+                            Problem::MethodCallWithoutReturnValue,
+                            Label::span(call.span(), "Method invocation in an expression"),
+                        )
+                        .with_context_id("method", &method.name),
+                    );
+                }
                 let diagnostics = Self::check_assignments(&owner_label, method, call);
                 self.diagnostics.extend(diagnostics);
             }
         }
-
-        Ok(())
     }
 }
 
@@ -348,6 +377,120 @@ m.NopeOne();
 m.NopeTwo();
 END_PROGRAM",
         2,
+        Problem::MethodNotFound
+    );
+
+    // ---------------------------------------------------------------------
+    // Method calls in expression position.
+    // ---------------------------------------------------------------------
+
+    rule_ok_with!(
+        apply_when_method_with_return_type_called_in_expression_then_ok,
+        opts_with_fb_inheritance(),
+        "
+FUNCTION_BLOCK FB_Motor
+METHOD IsRunning : BOOL
+    IsRunning := TRUE;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    m : FB_Motor;
+    b : BOOL;
+END_VAR
+b := m.IsRunning();
+END_PROGRAM"
+    );
+
+    rule_ok_with!(
+        /// The value is discarded, as in CODESYS and TwinCAT.
+        apply_when_method_with_return_type_called_as_statement_then_ok,
+        opts_with_fb_inheritance(),
+        "
+FUNCTION_BLOCK FB_Motor
+METHOD IsRunning : BOOL
+    IsRunning := TRUE;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    m : FB_Motor;
+END_VAR
+m.IsRunning();
+END_PROGRAM"
+    );
+
+    rule_err1_with!(
+        apply_when_method_without_return_type_called_in_expression_then_error,
+        opts_with_fb_inheritance(),
+        "
+FUNCTION_BLOCK FB_Motor
+METHOD Start
+    ;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    m : FB_Motor;
+    b : BOOL;
+END_VAR
+b := m.Start();
+END_PROGRAM",
+        Problem::MethodCallWithoutReturnValue
+    );
+
+    rule_err1_with!(
+        /// A method called in an argument of a statement call is in expression
+        /// position, even though the outer call is not.
+        apply_when_void_method_is_argument_of_statement_call_then_error,
+        opts_with_fb_inheritance(),
+        "
+FUNCTION_BLOCK FB_Motor
+METHOD Start
+    ;
+END_METHOD
+METHOD SetRunning
+VAR_INPUT
+    b : BOOL;
+END_VAR
+    ;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    m : FB_Motor;
+END_VAR
+m.SetRunning(m.Start());
+END_PROGRAM",
+        Problem::MethodCallWithoutReturnValue
+    );
+
+    rule_err1_with!(
+        /// Arguments are checked like any other call: before method calls could
+        /// appear in expressions, this rule never looked inside them.
+        apply_when_undeclared_method_is_argument_then_error,
+        opts_with_fb_inheritance(),
+        "
+FUNCTION_BLOCK FB_Motor
+METHOD Scaled : REAL
+VAR_INPUT
+    factor : REAL;
+END_VAR
+    Scaled := factor;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    m : FB_Motor;
+    v : REAL;
+END_VAR
+v := m.Scaled(m.Nope());
+END_PROGRAM",
         Problem::MethodNotFound
     );
 }

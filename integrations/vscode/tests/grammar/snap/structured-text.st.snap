@@ -59,6 +59,30 @@
 #                        ^ source.61131-3-st
 #                         ^^^^^^^ source.61131-3-st string.quoted.single.st punctuation.definition.string.st
 #                                ^ source.61131-3-st punctuation.separator.st
+>    escaped : STRING := 'it$'s';
+#^^^^ source.61131-3-st
+#    ^^^^^^^ source.61131-3-st variable.other.st
+#           ^ source.61131-3-st
+#            ^ source.61131-3-st punctuation.separator.st
+#             ^ source.61131-3-st
+#              ^^^^^^ source.61131-3-st storage.type.primitive.string.st
+#                    ^ source.61131-3-st
+#                     ^^ source.61131-3-st keyword.operator.assignment.st
+#                       ^ source.61131-3-st
+#                        ^^^^^^^ source.61131-3-st string.quoted.single.st punctuation.definition.string.st
+#                               ^ source.61131-3-st punctuation.separator.st
+>    wideEscaped : WSTRING := "say $"hi$"";
+#^^^^ source.61131-3-st
+#    ^^^^^^^^^^^ source.61131-3-st variable.other.st
+#               ^ source.61131-3-st
+#                ^ source.61131-3-st punctuation.separator.st
+#                 ^ source.61131-3-st
+#                  ^^^^^^^ source.61131-3-st storage.type.primitive.string.st
+#                         ^ source.61131-3-st
+#                          ^^ source.61131-3-st keyword.operator.assignment.st
+#                            ^ source.61131-3-st
+#                             ^^^^^^^^^^^^ source.61131-3-st string.quoted.double.st punctuation.definition.string.st
+#                                         ^ source.61131-3-st punctuation.separator.st
 >    myArray : ARRAY[0..9] OF DINT;
 #^^^^ source.61131-3-st
 #    ^^^^^^^ source.61131-3-st variable.other.st

@@ -18,11 +18,10 @@
 //! grammar accepts either delimiter and the parser records the declared
 //! width on the literal.
 //!
-//! The parser does not decode `$` escapes, so a literal's characters are the
-//! source text as written. An escape is spelled in ASCII, and decodes to a
-//! character the type can hold (`$XX` at most U+00FF, `$XXXX` at most
-//! U+FFFF), so checking the characters as written is right both before and
-//! after decoding.
+//! The parser decodes `$` escapes, so a literal's characters are the ones
+//! it denotes. An escape always decodes to a character the type can hold
+//! (`$XX` at most U+00FF, `$XXXX` at most U+FFFF), so only a character
+//! written as itself can be out of range.
 //!
 //! ## Fails
 //!

@@ -274,7 +274,7 @@ fn compile_at(
 
 /// Emits the conversion of the value on the stack from `from` to `to`, or
 /// nothing when the two share an operation width.
-fn convert(emitter: &mut Emitter, from: OpType, to: OpType) {
+pub(crate) fn convert(emitter: &mut Emitter, from: OpType, to: OpType) {
     let info = |(op_width, signedness): OpType| VarTypeInfo {
         op_width,
         signedness,
@@ -287,7 +287,7 @@ fn convert(emitter: &mut Emitter, from: OpType, to: OpType) {
 /// elementary numeric or bit-string type, the types the numeric overload
 /// computes at, and `None` for anything else: a literal's category, a
 /// subrange, an enumeration, a temporal type, or no type.
-fn numeric_op_type(type_name: Option<&TypeName>) -> Option<OpType> {
+pub(crate) fn numeric_op_type(type_name: Option<&TypeName>) -> Option<OpType> {
     let type_name = type_name?;
     let elementary = ElementaryTypeName::try_from(&type_name.name).ok()?;
     let numeric = GenericTypeName::AnyNum.is_compatible_with(&elementary)
