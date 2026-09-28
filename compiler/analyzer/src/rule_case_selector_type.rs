@@ -63,10 +63,10 @@
 //! END_PROGRAM
 //! ```
 use ironplc_dsl::{
-    common::{Library, TypeName},
+    common::Library,
     core::Located,
     diagnostic::{Diagnostic, Label},
-    textual::{Case, Expr},
+    textual::{Case, Expr, ExprType},
     visitor::Visitor,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -79,6 +79,7 @@ use crate::{
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
     type_environment::TypeEnvironment,
+    value_type,
 };
 
 pub fn apply(
@@ -119,14 +120,17 @@ impl DiagnosticVisitor for RuleCaseSelectorType<'_> {
 }
 
 impl RuleCaseSelectorType<'_> {
-    /// The resolved type of `selector` when a `CASE` cannot select on it, or
-    /// `None` when it can or when the type is not known.
-    fn unselectable_type<'e>(&self, selector: &'e Expr) -> Option<&'e TypeName> {
+    /// The type of `selector`, as a diagnostic shows it, when a `CASE`
+    /// cannot select on it; `None` when it can or when the type is not known.
+    fn unselectable_type(&self, selector: &Expr) -> Option<String> {
         let representation = self.type_environment.representation_of_expr(selector)?;
         if is_selectable(representation) {
             return None;
         }
-        selector.resolved_type.as_ref()
+        match selector.expr_type.as_ref()? {
+            ExprType::Concrete(id) => Some(value_type::describe(self.type_environment, *id)),
+            ExprType::Literal(_) | ExprType::Null => None,
+        }
     }
 }
 

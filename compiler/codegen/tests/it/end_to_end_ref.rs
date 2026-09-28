@@ -374,7 +374,7 @@ END_PROGRAM
 }
 
 // Verifies that pt^[i] used in a comparison context works end-to-end.
-// This exercises the resolved_type on deref+array subscript expressions,
+// This exercises the expression type of deref+array subscript expressions,
 // which is needed for op_type() in comparison codegen.
 // b (var[1]) should be 42; found (var[2]) should be TRUE (42 > 0)
 e2e_i32_with!(

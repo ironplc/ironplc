@@ -96,13 +96,13 @@ impl DiagnosticVisitor for RuleBitAndPartialAccessRange<'_> {
 
 impl RuleBitAndPartialAccessRange<'_> {
     fn check_partial_access(&mut self, node: &PartialAccessVariable) {
-        let resolved_type =
+        let accessed_type =
             match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
                 Some(t) => t,
                 None => return,
             };
 
-        let base_bytes = match resolved_type.size_in_bytes() {
+        let base_bytes = match accessed_type.size_in_bytes() {
             Some(bytes) => bytes as u128,
             None => return,
         };
@@ -156,13 +156,13 @@ impl RuleBitAndPartialAccessRange<'_> {
 
     fn check_bit_access(&mut self, node: &BitAccessVariable) {
         // Resolve the type of the variable being bit-accessed
-        let resolved_type =
+        let accessed_type =
             match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
                 Some(t) => t,
                 None => return,
             };
 
-        let bit_width = match resolved_type.size_in_bytes() {
+        let bit_width = match accessed_type.size_in_bytes() {
             Some(bytes) => bytes as u128 * 8,
             None => return,
         };

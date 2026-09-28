@@ -8,7 +8,8 @@
 
 use std::collections::HashMap;
 
-use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName};
+use ironplc_analyzer::value_type::operand_type_name;
+use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName, VarDecl};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{Expr, ExprType};
 use ironplc_dsl::type_id::TypeId;
@@ -28,6 +29,29 @@ pub(crate) fn type_representations(types: &TypeEnvironment) -> HashMap<TypeId, I
         .collect()
 }
 
+/// The name the analyzer's name-based relations (the arithmetic overloads)
+/// know a value of each type by, by id: `value_type::operand_type_name`,
+/// computed once so codegen derives it the same way the analyzer does.
+pub(crate) fn operand_names(types: &TypeEnvironment) -> HashMap<TypeId, TypeName> {
+    types
+        .iter_ids()
+        .filter_map(|(id, _)| {
+            let name = operand_type_name(types, &ExprType::Concrete(id))?;
+            Some((id, name))
+        })
+        .collect()
+}
+
+/// The name the arithmetic overloads know an expression's value by, from
+/// its `expr_type` (see [`operand_names`]).
+pub(crate) fn expr_operand_name(ctx: &CompileContext, expr: &Expr) -> Option<TypeName> {
+    match expr.expr_type.as_ref()? {
+        ExprType::Concrete(id) => ctx.operand_names.get(id).cloned(),
+        ExprType::Literal(generic) => Some(generic.clone().into()),
+        ExprType::Null => None,
+    }
+}
+
 /// The `VarTypeInfo` of an expression's value, from its `expr_type`.
 ///
 /// `None` when the analyzer resolved no type for the expression, or when its
@@ -37,7 +61,16 @@ pub(crate) fn expr_type_info(ctx: &CompileContext, expr: &Expr) -> Option<VarTyp
     match expr.expr_type.as_ref()? {
         ExprType::Concrete(id) => operand_type_info(ctx.types.get(id)?),
         ExprType::Literal(generic) => literal_type_info(generic),
+        // NULL is compared and stored as the reference it stands in for.
+        ExprType::Null => Some(reference_type_info()),
     }
+}
+
+/// The `VarTypeInfo` of the type a declaration declares, from its
+/// `type_id`. `None` when the analyzer resolved no type for it, or when the
+/// type is not one this backend operates on arithmetically.
+pub(crate) fn decl_type_info(ctx: &CompileContext, decl: &VarDecl) -> Option<VarTypeInfo> {
+    operand_type_info(ctx.types.get(&decl.type_id?)?)
 }
 
 /// What an expression's value is, from its `expr_type`, when it has a
@@ -48,7 +81,7 @@ pub(crate) fn expr_representation<'a>(
 ) -> Option<&'a IntermediateType> {
     match expr.expr_type.as_ref()? {
         ExprType::Concrete(id) => ctx.types.get(id),
-        ExprType::Literal(_) => None,
+        ExprType::Literal(_) | ExprType::Null => None,
     }
 }
 
@@ -60,11 +93,7 @@ fn operand_type_info(representation: &IntermediateType) -> Option<VarTypeInfo> {
     match representation {
         IntermediateType::Enumeration { .. } => Some(crate::compile_enum::enum_var_type_info()),
         IntermediateType::Subrange { base_type, .. } => var_type_info(base_type),
-        IntermediateType::Reference { .. } => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
+        IntermediateType::Reference { .. } => Some(reference_type_info()),
         IntermediateType::Bool
         | IntermediateType::Int { .. }
         | IntermediateType::UInt { .. }
@@ -81,6 +110,15 @@ fn operand_type_info(representation: &IntermediateType) -> Option<VarTypeInfo> {
         | IntermediateType::Array { .. }
         | IntermediateType::FunctionBlock { .. }
         | IntermediateType::Function { .. } => None,
+    }
+}
+
+/// The `VarTypeInfo` of a reference: a 64-bit address.
+fn reference_type_info() -> VarTypeInfo {
+    VarTypeInfo {
+        op_width: OpWidth::W64,
+        signedness: Signedness::Unsigned,
+        storage_bits: 64,
     }
 }
 

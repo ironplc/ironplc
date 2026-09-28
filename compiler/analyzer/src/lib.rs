@@ -80,7 +80,7 @@ mod type_environment;
 pub mod type_id;
 mod type_table;
 pub mod value_range;
-mod value_type;
+pub mod value_type;
 mod variable_type;
 mod xform_fold_constant_expressions;
 mod xform_fold_initializer_expressions;

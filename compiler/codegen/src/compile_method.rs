@@ -25,7 +25,7 @@ use super::compile::{
 use super::compile_expr::{compile_expr, emit_load_var};
 use super::compile_setup::emit_function_local_prologue;
 use super::compile_stmt::compile_statements;
-use super::type_info::resolve_type_name;
+use super::type_info::{decl_type_info, resolve_type_name};
 use crate::emit::Emitter;
 
 /// Compiles every `METHOD` declared on `fb_decl`, in declaration order.
@@ -129,8 +129,8 @@ fn compile_user_method(
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
-            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-                if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+            if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
+                if let Some(type_info) = decl_type_info(ctx, decl) {
                     ctx.var_types.insert(id.clone(), type_info);
                 }
             }
@@ -146,8 +146,8 @@ fn compile_user_method(
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
-            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-                if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+            if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
+                if let Some(type_info) = decl_type_info(ctx, decl) {
                     ctx.var_types.insert(id.clone(), type_info);
                 }
             }

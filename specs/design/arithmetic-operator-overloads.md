@@ -44,7 +44,7 @@ against its single row.
   the analyzer derives the signature and codegen the dispatch. This design
   gives the arithmetic rows their Table 30 overloads.
 - **[Expression Type Resolution](expression-type-resolution.md)** — every
-  `Expr` carries a `resolved_type`; this design changes how an arithmetic
+  `Expr` carries an `expr_type`; this design changes how an arithmetic
   binary expression's type is chosen, and makes codegen use it.
 - **[ADR-0001](../adrs/0001-bytecode-integer-arithmetic-type-strategy.md)** —
   two operation widths, operands promoted on load, results narrowed on store.

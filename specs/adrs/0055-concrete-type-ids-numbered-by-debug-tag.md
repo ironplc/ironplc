@@ -78,7 +78,10 @@ an elementary type, and `OTHER` otherwise. The container format does not
 change.
 
 An anonymous type gets an id of its own, with no name, for every
-declaration that spells it out (`a : ARRAY[1..2] OF DINT`). Each declaration
+declaration that spells it out (`a : ARRAY[1..2] OF DINT`). A reference type
+is the exception: `REF_TO T` is one type however often it is spelled, and
+`REF(x)` of a `T` is that type too, so a reference and the value assigned to
+it compare equal (`TypeEnvironment::reference_to`). Each declaration
 records its type's id in `VarDecl::type_id`, and each expression the id of
 its value's type in `Expr::expr_type` (see the amendment to ADR-0013).
 

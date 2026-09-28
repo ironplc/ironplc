@@ -514,11 +514,23 @@ fn assigned_values(source: &str, options: &CompilerOptions) -> Vec<Expr> {
     values.0
 }
 
-/// The resolved type of the single assignment's value in `source`.
+/// The type of the single assignment's value in `source`, by the name the
+/// overloads know it by (see `value_type::operand_type_name`).
 fn assigned_type(source: &str, options: &CompilerOptions) -> Option<TypeName> {
-    let values = assigned_values(source, options);
-    assert_eq!(values.len(), 1);
-    values[0].resolved_type.clone()
+    let library = parse_program(source, &FileId::default(), options).unwrap();
+    let (library, context) = resolve_types(&[&library], options).unwrap();
+    struct Values(Vec<Expr>);
+    impl Visitor<Infallible> for Values {
+        type Value = ();
+        fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
+            self.0.push(node.value.clone());
+            node.recurse_visit(self)
+        }
+    }
+    let mut values = Values(vec![]);
+    let _ = values.walk(&library);
+    assert_eq!(values.0.len(), 1);
+    crate::value_type::operand_type_name(context.types(), values.0[0].expr_type.as_ref()?)
 }
 
 /// Analyzes `source` and returns its diagnostics.
@@ -595,11 +607,11 @@ fn analyzer_spec_req_ao_022_unresolved_expression_keeps_left_type(
 ) {
     let values = assigned_values(&program(vars, result_type, expr), &edition_3());
     let left = match &values[0].kind {
-        ExprKind::BinaryOp(binary) => binary.left.resolved_type.clone(),
+        ExprKind::BinaryOp(binary) => binary.left.expr_type.clone(),
         _ => None,
     };
     assert!(left.is_some(), "{expr} has no typed left operand");
-    assert_eq!(values[0].resolved_type, left, "{expr}");
+    assert_eq!(values[0].expr_type, left, "{expr}");
 }
 
 /// REQ-AO-analyzer-023: resolution does not rewrite the tree: an operator

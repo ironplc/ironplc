@@ -72,7 +72,6 @@ use crate::emit::Emitter;
 use super::compile_fn::{compile_user_function, compile_user_function_block};
 use super::compile_setup::{assign_variables, emit_initial_values};
 use super::compile_stmt::compile_body;
-use super::type_info::resolve_type_name;
 
 /// The native operation width used for arithmetic and comparisons.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -727,6 +726,7 @@ fn compile_program_with_functions(
     let mut ctx = CompileContext::new();
     ctx.enum_map = enum_map;
     ctx.types = crate::type_info::type_representations(types);
+    ctx.operand_names = crate::type_info::operand_names(types);
     ctx.string_to_num = string_to_num;
     ctx.compiler_options = compiler_options;
     let mut builder = ContainerBuilder::new();
@@ -783,8 +783,8 @@ fn compile_program_with_functions(
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
                 field_indices.insert(name.clone(), i as u8);
-                if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-                    if let Some(vti) = resolve_type_name(&simple.type_name.name) {
+                if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
+                    if let Some(vti) = crate::type_info::decl_type_info(&ctx, decl) {
                         field_op_types.insert(name, (vti.op_width, vti.signedness));
                     } else {
                         field_op_types.insert(name, DEFAULT_OP_TYPE);
@@ -833,9 +833,8 @@ fn compile_program_with_functions(
                 if let Some(id) = decl.identifier.symbolic_id() {
                     param_names_in_order.push(id.to_string().to_lowercase());
                 }
-                let op_type = if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer
-                {
-                    resolve_type_name(&simple.type_name.name)
+                let op_type = if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
+                    crate::type_info::decl_type_info(&ctx, decl)
                         .map_or(DEFAULT_OP_TYPE, |vti| (vti.op_width, vti.signedness))
                 } else {
                     DEFAULT_OP_TYPE
@@ -1354,6 +1353,9 @@ pub(crate) struct CompileContext {
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, IntermediateType>,
+    /// The name the arithmetic overloads know a value of each type by.
+    /// See [`crate::type_info::expr_operand_name`].
+    pub(crate) operand_names: HashMap<ironplc_dsl::type_id::TypeId, ironplc_dsl::common::TypeName>,
     /// The behavior policies `STRING_TO_<numeric>` calls select their
     /// builtin by (ADR-0049).
     pub(crate) string_to_num: StringToNumPolicies,
@@ -1440,6 +1442,7 @@ impl CompileContext {
             next_user_fb_type_id: 0x1000,
             enum_map: crate::compile_enum::EnumOrdinalMap::default(),
             types: HashMap::new(),
+            operand_names: HashMap::new(),
             string_to_num: StringToNumPolicies::default(),
             compiler_options: CompilerOptions::default(),
             current_function_return: None,
@@ -1592,7 +1595,7 @@ mod tests {
 
     /// Helper to parse and analyze an IEC 61131-3 program string into a Library.
     ///
-    /// Runs the analyzer's type resolution pass so that `Expr.resolved_type` is
+    /// Runs the analyzer's type resolution pass so that `Expr.expr_type` is
     /// populated, which codegen requires for control flow and bitwise operations.
     fn parse(source: &str) -> (Library, SemanticContext) {
         let library =

@@ -5,7 +5,7 @@
 //! the expression node with a single constant. Similarly, unary negation of
 //! a constant literal is folded into the negated constant.
 //!
-//! This runs after `xform_resolve_expr_types` so that `resolved_type` is
+//! This runs after `xform_resolve_expr_types` so that `expr_type` is
 //! available on every `Expr` node.
 //!
 //! ## Before
