@@ -24,12 +24,17 @@ use crate::{
     scoped_table::{ScopedTable, Value},
     type_environment::TypeEnvironment,
 };
+use ironplc_dsl::type_id::TypeId;
 
 /// A variable's declared type, as spelled where the name is bound.
 #[derive(Debug)]
 pub(crate) enum Declared {
-    /// A variable declaration, with its initializer as written.
-    Variable(Box<InitialValueAssignmentKind>),
+    /// A variable declaration: its initializer as written, and the id of
+    /// the type it declares once the analyzer has resolved it.
+    Variable {
+        init: Box<InitialValueAssignmentKind>,
+        type_id: Option<TypeId>,
+    },
     /// A name bound to a type without a declaration of its own: a
     /// function's or method's result variable, or an implicit system
     /// global.
@@ -38,16 +43,27 @@ pub(crate) enum Declared {
 impl Value for Declared {}
 
 impl Declared {
+    /// The id of the declared type, when the analyzer has resolved one.
+    pub(crate) fn type_id(&self, type_env: &TypeEnvironment) -> Option<TypeId> {
+        match self {
+            Declared::Variable { type_id, .. } => *type_id,
+            Declared::Typed(type_name) => type_env.id_of(type_name),
+        }
+    }
+
     /// The declaration of `node`.
     pub(crate) fn of(node: &VarDecl) -> Self {
-        Declared::Variable(Box::new(node.initializer.clone()))
+        Declared::Variable {
+            init: Box::new(node.initializer.clone()),
+            type_id: node.type_id,
+        }
     }
 
     /// The type named where the name is bound, or
     /// [`TypeReference::Inline`] for a type spelled out in place.
     pub(crate) fn type_reference(&self) -> TypeReference {
         match self {
-            Declared::Variable(init) => init.type_reference(),
+            Declared::Variable { init, .. } => init.type_reference(),
             Declared::Typed(type_name) => TypeReference::Named(type_name.clone()),
         }
     }
@@ -115,7 +131,7 @@ pub(crate) fn of(
 ) -> Option<IntermediateType> {
     match kind {
         SymbolicVariableKind::Named(named) => match declarations.find(&named.name)? {
-            Declared::Variable(init) => resolve_initializer(init, type_env),
+            Declared::Variable { init, .. } => resolve_initializer(init, type_env),
             Declared::Typed(type_name) => Some(type_env.get(type_name)?.representation.clone()),
         },
         SymbolicVariableKind::Structured(structured) => {

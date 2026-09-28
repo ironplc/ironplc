@@ -20,6 +20,7 @@ mod spec_requirements {
 
 mod codegen_max_call_depth;
 mod compile_arith_identity;
+mod compile_arithmetic_width;
 mod compile_array;
 mod compile_bool;
 mod compile_case;

@@ -10,6 +10,10 @@ widening between integer types and lossless integer-to-real conversion (for exam
 assigning an ``INT`` expression to a ``REAL`` variable), but rejects other type
 mismatches such as real-to-integer, boolean-to-numeric, or narrowing conversions.
 
+A whole array, a structure or an enumeration is never assignable to a variable of an
+elementary type, so assigning one is this error too. An enumeration's values are not
+integers.
+
 For the full set of allowed implicit conversions, see
 :doc:`/explanation/type-conversions`.
 
@@ -43,3 +47,21 @@ type conversion:
    END_VAR
        flag := value > 0.0;  (* comparison yields BOOL *)
    END_PROGRAM
+
+Assigning a whole array to a single variable is the same error:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       readings : ARRAY[1..2] OF DINT;
+       latest   : DINT;
+   END_VAR
+       latest := readings;  (* Error: ARRAY[1..2] OF DINT assigned to DINT *)
+   END_PROGRAM
+
+To fix this error, assign one element of the array:
+
+.. code-block::
+
+   latest := readings[2];

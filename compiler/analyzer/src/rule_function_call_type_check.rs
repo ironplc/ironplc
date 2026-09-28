@@ -61,7 +61,8 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    type_compat::{are_types_compatible, is_checkable_type},
+    type_compat::is_checkable_type,
+    value_type::{self, ValueType},
     variable_type::{Declarations, Declared},
 };
 use ironplc_parser::options::CompilerOptions;
@@ -129,18 +130,17 @@ impl RuleFunctionCallTypeCheck<'_> {
         let Some(target_type) = self.declared_type_name(&nv.name) else {
             return;
         };
-        let Some(ref return_type) = value.resolved_type else {
-            return;
-        };
 
-        if !are_types_compatible(&target_type, return_type, self.options) {
+        if let Err(mismatch) =
+            value_type::check(self.context.types(), &target_type, value, self.options)
+        {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::FunctionCallReturnTypeMismatch,
                     Label::span(func_call.name.span(), "Function call return type"),
                 )
                 .with_context("function", &func_call.name.original().to_string())
-                .with_context("return_type", &return_type.to_string())
+                .with_context("return_type", &mismatch.actual)
                 .with_context("target_type", &target_type.to_string()),
             );
         }
@@ -179,14 +179,20 @@ impl RuleFunctionCallTypeCheck<'_> {
             return;
         }
 
-        let Some(value_type) = &value.resolved_type else {
-            return;
+        // A scalar value the compatibility relation cannot judge (a
+        // reference, a sized string) is skipped; a composite one is never
+        // assignable to an elementary target.
+        let types = self.context.types();
+        let checkable = match value_type::of(types, value) {
+            None => false,
+            Some(ValueType::Scalar(value_type)) => is_checkable_type(&value_type),
+            Some(ValueType::Composite(_)) => true,
         };
-        if !is_checkable_type(value_type) {
+        if !checkable {
             return;
         }
 
-        if !are_types_compatible(&target_type, value_type, self.options) {
+        if let Err(mismatch) = value_type::check(types, &target_type, value, self.options) {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::AssignmentTypeMismatch,
@@ -194,7 +200,7 @@ impl RuleFunctionCallTypeCheck<'_> {
                 )
                 .with_context("target", &nv.name.original().to_string())
                 .with_context("target_type", &target_type.to_string())
-                .with_context("value_type", &value_type.to_string()),
+                .with_context("value_type", &mismatch.actual),
             );
         }
     }
@@ -296,19 +302,22 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                 if param.is_inout {
                     continue;
                 }
-                if let Some(ref arg_type) = arg_expr.resolved_type {
-                    if !are_types_compatible(&param.param_type, arg_type, self.options) {
-                        self.diagnostics.push(
-                            Diagnostic::problem(
-                                Problem::FunctionCallArgTypeMismatch,
-                                Label::span(node.name.span(), "Function call"),
-                            )
-                            .with_context("function", &node.name.original().to_string())
-                            .with_context("parameter", &param.name.original().to_string())
-                            .with_context("expected", &param.param_type.to_string())
-                            .with_context("actual", &arg_type.to_string()),
-                        );
-                    }
+                if let Err(mismatch) = value_type::check(
+                    self.context.types(),
+                    &param.param_type,
+                    arg_expr,
+                    self.options,
+                ) {
+                    self.diagnostics.push(
+                        Diagnostic::problem(
+                            Problem::FunctionCallArgTypeMismatch,
+                            Label::span(node.name.span(), "Function call"),
+                        )
+                        .with_context("function", &node.name.original().to_string())
+                        .with_context("parameter", &param.name.original().to_string())
+                        .with_context("expected", &param.param_type.to_string())
+                        .with_context("actual", &mismatch.actual),
+                    );
                 }
             }
         }
@@ -316,6 +325,9 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
         node.recurse_visit(self)
     }
 }
+
+#[cfg(test)]
+mod composite_tests;
 
 #[cfg(test)]
 mod tests {

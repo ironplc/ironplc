@@ -93,6 +93,7 @@ impl From<IncomplVarDecl> for VarDecl {
             qualifier: val.qualifier,
             initializer: init,
             block: next_block_id(),
+            type_id: None,
         }
     }
 }
@@ -117,6 +118,7 @@ impl UntypedVarDecl {
             // shared id for the whole block once all its declarations are
             // collected together.
             block: next_block_id(),
+            type_id: None,
         }
     }
 }

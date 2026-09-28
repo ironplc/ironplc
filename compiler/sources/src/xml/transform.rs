@@ -623,6 +623,7 @@ fn transform_variable(
         qualifier,
         initializer,
         block: next_block_id(),
+        type_id: None,
     })
 }
 

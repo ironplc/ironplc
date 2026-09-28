@@ -2,10 +2,11 @@
 //!
 //! See section 3.
 use crate::common::{
-    AddressAssignment, BitStringLiteral, ConstantKind, EnumeratedValue, Integer, IntegerLiteral,
-    SignedInteger, Subrange, TypeName,
+    AddressAssignment, BitStringLiteral, ConstantKind, EnumeratedValue, GenericTypeName, Integer,
+    IntegerLiteral, SignedInteger, Subrange, TypeName,
 };
 use crate::core::{Id, Located, SourceSpan};
+use crate::type_id::TypeId;
 use std::fmt;
 
 use crate::fold::Fold;
@@ -461,17 +462,38 @@ impl fmt::Display for LateBound {
     }
 }
 
+/// The type of an expression's value, as the analyzer resolved it.
+#[derive(Debug, PartialEq, Clone)]
+pub enum ExprType {
+    /// A value of exactly this type.
+    Concrete(TypeId),
+    /// An untyped literal, or a generic function applied only to untyped
+    /// literals: its type is fixed by where it is used, within this
+    /// category. ADR-0028 and ADR-0031 say which types it may take.
+    Literal(GenericTypeName),
+}
+
 /// Wrapper around `ExprKind` that carries what is true of an expression but
 /// not of the operation it performs: its resolved type, and where it was
 /// written.
 ///
-/// The `resolved_type` field is populated by a later analysis pass. During
-/// parsing and initial construction, it is always `None`.
-#[derive(Debug, PartialEq, Clone, Recurse, Located)]
+/// The `resolved_type` and `expr_type` fields are populated by a later
+/// analysis pass. During parsing and initial construction, they are always
+/// `None`.
+///
+/// `expr_type` is left out of equality (see the manual `PartialEq` below):
+/// it is derived from `resolved_type` and the declarations in scope, and a
+/// test that builds an expected expression by hand compares the type it
+/// resolved through `resolved_type`.
+#[derive(Debug, Clone, Recurse, Located)]
 pub struct Expr {
     pub kind: ExprKind,
     #[recurse(ignore)]
     pub resolved_type: Option<TypeName>,
+    /// The type of the expression's value, by identity. `None` where the
+    /// analyzer could not resolve one.
+    #[recurse(ignore)]
+    pub expr_type: Option<ExprType>,
     /// Where the expression was written, as written.
     ///
     /// The parser records the span of every token it matched, including the
@@ -486,6 +508,14 @@ pub struct Expr {
     pub span: SourceSpan,
 }
 
+impl PartialEq for Expr {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.resolved_type == other.resolved_type
+            && self.span == other.span
+    }
+}
+
 impl Expr {
     /// Creates a new `Expr` with no resolved type, spanning whatever its
     /// `kind` spans.
@@ -494,6 +524,7 @@ impl Expr {
             span: kind.span(),
             kind,
             resolved_type: None,
+            expr_type: None,
         }
     }
 

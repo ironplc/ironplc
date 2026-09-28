@@ -14,6 +14,13 @@ signed argument for an unsigned parameter.
 For the full set of allowed implicit conversions, see
 :doc:`/explanation/type-conversions`.
 
+A whole array, a structure, an enumeration or a function block instance is only ever
+its own type, and no conversion applies to it. Passing one for a parameter of any other
+type, including a generic category such as ``ANY_NUM`` or ``ANY_STRING``, is this error.
+An array or structure *is* accepted for a parameter whose type has the same shape, such
+as an inline ``ARRAY[1..2] OF DINT`` for a parameter declared with a named array type of
+two ``DINT`` elements.
+
 The arithmetic functions ``ADD``, ``SUB``, ``MUL`` and ``DIV`` are the exception: they
 accept the numeric types and the time and date types, so a mismatch in their inputs is
 reported as :doc:`P4049` instead, as it is for the operators ``+``, ``-``, ``*`` and ``/``.
@@ -53,3 +60,21 @@ To fix this error, use an explicit type conversion:
 
 Widening to ``LREAL`` is the other way out: every integer type converts implicitly to
 ``LREAL``, so a parameter declared ``LREAL`` accepts ``x`` as written.
+
+Passing a whole array where a single value is expected is the same error:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       names : ARRAY[1..2] OF STRING[8];
+       n : DINT;
+   END_VAR
+       n := LEN(names);  (* Error: ARRAY[1..2] OF STRING[8] for an ANY_STRING parameter *)
+   END_PROGRAM
+
+To fix this error, pass one element of the array:
+
+.. code-block::
+
+   n := LEN(names[1]);
