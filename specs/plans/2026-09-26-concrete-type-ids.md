@@ -246,12 +246,12 @@ Steps 1-2 come first because until they land, `REF(x)` and `NULL` have no
 - [x] PR 4: `VarDecl::type_id`, `Expr::expr_type`, anonymous types, named arrays keep their name (annotation only): ironplc/ironplc#1845
 - [x] PR 5: argument/result/assignment checks read `ExprType` (`value_type`); composites rejected where a scalar is expected; subranges compare as their base type; P4026/P4035 docs: ironplc/ironplc#1852. Bit access and inline dimensions moved to ironplc/ironplc#1851
 - [x] PR 6: codegen's expression helpers read `expr_type` via a `TypeId` → type table; references operate as 64-bit addresses: ironplc/ironplc#1874. Inline-enumeration codegen split out to ironplc/ironplc#1873
-- [ ] PR 7: remove `resolved_type` (checklist in *Removing `resolved_type`*)
-  - [ ] `REF(x)` typed as an anonymous reference
-  - [ ] `NULL` typed
-  - [ ] analyzer readers moved to `expr_type`
-  - [ ] arithmetic overloads by id
-  - [ ] codegen declarations by `VarDecl::type_id`
-  - [ ] `Expr::resolved_type` deleted; tests assert `expr_type`
-  - [ ] design doc and ADR-0013 updated
+- [x] PR 7: remove `resolved_type` (checklist in *Removing `resolved_type`*): ironplc/ironplc#1881
+  - [x] `REF(x)` typed as the interned reference to `x`'s type (`TypeEnvironment::reference_to`)
+  - [x] `NULL` typed (`ExprType::Null`)
+  - [x] analyzer readers moved to `expr_type`
+  - [x] arithmetic overloads fed names derived from ids (`value_type::operand_type_name`)
+  - [x] codegen declarations by `VarDecl::type_id`
+  - [x] `Expr::resolved_type` deleted; tests compare `operand_type_name`
+  - [x] design doc, ADR-0013 and ADR-0055 updated
 - [ ] Close #1761 and the tracking issue
