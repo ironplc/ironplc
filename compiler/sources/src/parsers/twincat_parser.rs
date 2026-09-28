@@ -336,22 +336,27 @@ impl Fold<Diagnostic> for PositionAdjuster<'_> {
     }
 }
 
+/// The keywords that open a POU declaration, each with its closing keyword.
+/// `FUNCTION_BLOCK` comes before `FUNCTION` since `FUNCTION` is a prefix.
+const POU_KEYWORDS: [(&str, &str); 4] = [
+    ("FUNCTION_BLOCK", "END_FUNCTION_BLOCK"),
+    ("FUNCTION", "END_FUNCTION"),
+    ("PROGRAM", "END_PROGRAM"),
+    ("INTERFACE", "END_INTERFACE"),
+];
+
 /// Detect the POU type from the declaration text and return the closing keyword.
 fn closing_keyword(declaration: &str) -> &'static str {
-    let trimmed = declaration.trim_start();
-    // Check FUNCTION_BLOCK before FUNCTION since FUNCTION is a prefix
-    if trimmed.len() >= 14 && trimmed[..14].eq_ignore_ascii_case("FUNCTION_BLOCK") {
-        "END_FUNCTION_BLOCK"
-    } else if trimmed.len() >= 8 && trimmed[..8].eq_ignore_ascii_case("FUNCTION") {
-        "END_FUNCTION"
-    } else if trimmed.len() >= 7 && trimmed[..7].eq_ignore_ascii_case("PROGRAM") {
-        "END_PROGRAM"
-    } else if trimmed.len() >= 9 && trimmed[..9].eq_ignore_ascii_case("INTERFACE") {
-        "END_INTERFACE"
-    } else {
+    let header = declaration.trim_start();
+    POU_KEYWORDS
+        .iter()
+        .find(|(open, _)| {
+            header
+                .get(..open.len())
+                .is_some_and(|start| start.eq_ignore_ascii_case(open))
+        })
         // Fallback — the ST parser will report a more specific error
-        ""
-    }
+        .map_or("", |(_, close)| close)
 }
 
 /// Append every `<Method>` child of a POU to the combined text as an inline
