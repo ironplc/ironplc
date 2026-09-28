@@ -236,14 +236,14 @@ fn span_of_tokens(tokens: &[Token], start: usize, end: usize) -> SourceSpan {
     }
 }
 
-/// Returns the characters of a character-string token without its two
-/// delimiting quotes. The token text is the source as written: `$` escapes
-/// are not decoded.
-fn unquote(text: &str) -> Vec<char> {
-    let mut chars = text.chars();
-    chars.next();
-    chars.next_back();
-    chars.collect()
+/// Returns the characters a character-string token denotes: the text
+/// between its two delimiting quotes with its `$` escapes decoded. An
+/// invalid escape is kept as written; `rule_token_string_escape` reports it.
+fn unquote(text: &str, width: &StringType) -> Vec<char> {
+    let inner = text
+        .get(1..text.len().saturating_sub(1))
+        .unwrap_or_default();
+    dsl::string_escape::decode(inner, width).chars
 }
 
 /// A unit of a duration literal part, smallest first so that the derived
@@ -513,14 +513,14 @@ parser! {
     rule character_string_literal() -> CharacterStringLiteral = single_byte_character_string() / double_byte_character_string()
     rule single_byte_character_string() -> CharacterStringLiteral = start:position!() (tok(TokenType::String) tok(TokenType::Hash))? t:tok(TokenType::SingleByteString) end:position!() {
       CharacterStringLiteral {
-        value: unquote(&t.text),
+        value: unquote(&t.text, &StringType::String),
         width: StringType::String,
         span: span_of_tokens(tokens, start, end),
       }
     }
     rule double_byte_character_string() -> CharacterStringLiteral = start:position!() (tok(TokenType::WString) tok(TokenType::Hash))? t:tok(TokenType::DoubleByteString) end:position!() {
       CharacterStringLiteral {
-        value: unquote(&t.text),
+        value: unquote(&t.text, &StringType::WString),
         width: StringType::WString,
         span: span_of_tokens(tokens, start, end),
       }

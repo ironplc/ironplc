@@ -24,6 +24,9 @@ Literals
    'Hello, world!'
    'It$'s escaped'
    STRING#'typed literal'
+   '$41$42 costs $$5'
+
+.. include:: ../../../../includes/string-escapes.rst
 
 The maximum length can be specified in the declaration:
 

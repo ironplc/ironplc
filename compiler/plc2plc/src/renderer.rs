@@ -58,13 +58,12 @@ struct LibraryRenderer {
     indents: usize,
 }
 
-/// The spelling of a character string: its characters as written, inside
-/// the delimiter `width` selects. The characters are not re-encoded; see
-/// `visit_character_string_literal` for why.
+/// The spelling of a character string: its characters, `$`-escaped where
+/// they cannot appear as themselves, inside the delimiter `width` selects.
 fn character_string_text(width: &StringType, value: &[char]) -> String {
     let delimiter = width.delimiter();
     let mut val = String::from(delimiter);
-    val.extend(value.iter());
+    val.push_str(&ironplc_dsl::string_escape::encode(value, width));
     val.push(delimiter);
     val
 }
@@ -238,25 +237,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &CharacterStringLiteral,
     ) -> Result<Self::Value, Diagnostic> {
         // Single quotes delimit a STRING, double quotes a WSTRING, per
-        // IEC 61131-3 section 2.2.2.
-        //
-        // The value is written out exactly as it was read in, because
-        // `node.value` holds the source characters *as written* -- the parser
-        // does not decode `$` escapes on the way in. Every re-encoding here is
-        // therefore a corruption:
-        //
-        //   - `$` is already an escape introducer, so escaping it turned the
-        //     one line feed `$L` into the two characters `$` and `L`, and
-        //     compounded on each pass (`$L`, `$$L`, `$$$$L`).
-        //   - a raw tab, which the lexer does admit inside a literal, has no
-        //     `$T` in the source to correspond to, so emitting one turned that
-        //     one tab into the two characters `$` and `T`.
-        //
-        // Both directions changed the value; a raw control character passed
-        // through verbatim merely looks unusual, and re-parses as itself.
-        // Escaping can only become correct once the parser decodes escapes and
-        // `value` holds decoded characters -- see the character-string arm of
-        // the round-trip tests.
+        // IEC 61131-3 section 2.2.2. `node.value` holds the decoded
+        // characters, so they are escaped on the way out.
         self.write_ws(&character_string_text(&node.width, &node.value));
         Ok(())
     }
