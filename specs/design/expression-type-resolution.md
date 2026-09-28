@@ -1,175 +1,107 @@
 # Design: Expression Type Resolution
 
+status: implemented
+date: 2026-09-28
+
 ## Overview
 
-Add resolved type information to every expression in the AST so that codegen can select correct opcodes without re-deriving types from raw strings, and the analyzer can validate type compatibility at expression level.
+Every expression in the AST carries the type of its value, by identity:
+`Expr::expr_type`. The analyzer's rules and codegen read an expression's type
+from it and from nowhere else, so an expression cannot have two types that
+disagree.
 
 ### Building On
 
-- **[ADR-0013: Expression Type Annotation via Wrapper Struct](../adrs/0013-expression-type-annotation-via-wrapper-struct.md)** — the decision to use an `Expr` wrapper with `Option<TypeName>`
-- **[ADR-0001: Bytecode Integer Arithmetic Type Strategy](../adrs/0001-bytecode-integer-arithmetic-type-strategy.md)** — the promote-operate-truncate model that codegen implements
+- **[ADR-0013](../adrs/0013-expression-type-annotation-via-wrapper-struct.md)**:
+  the `Expr` wrapper carries the annotation.
+- **[ADR-0055](../adrs/0055-concrete-type-ids-numbered-by-debug-tag.md)**:
+  types are identified by a numeric `TypeId`, and an elementary type's id is
+  its debug type tag.
+- **[ADR-0001](../adrs/0001-bytecode-integer-arithmetic-type-strategy.md)**:
+  the promote-operate-truncate model codegen implements from the type.
 
-## Problem
-
-Codegen determines operation widths by walking expression trees to find variable references and string-matching their declared type names (`infer_op_type`, `infer_storage_bits` in compile.rs). This fails for type aliases because the string `"MyByte"` doesn't match the hardcoded list of elementary types. The analyzer already resolves aliases via `TypeEnvironment`, but this information is discarded before reaching codegen.
-
-## Architecture
-
-```
-Source text
-    |
-    v
-Parser ──> Library (AST with Expr { kind, resolved_type: None })
-    |
-    v
-Analyzer
-    ├── resolve_types() ──> TypeEnvironment
-    ├── xform_resolve_late_bound() ──> resolves LateBound variants
-    ├── xform_resolve_expr_types() ──> fills in resolved_type   <── NEW
-    └── semantic validation rules
-    |
-    v
-Library (AST with Expr { kind, resolved_type: Some(...) })
-    |
-    v
-Codegen ──> reads expr.resolved_type ──> selects opcodes
-```
-
-## The Expr Struct
+## The annotation
 
 ```rust
 // compiler/dsl/src/textual.rs
-#[derive(Debug, PartialEq, Clone, Recurse)]
+pub enum ExprType {
+    Concrete(TypeId),         // a value of exactly this type
+    Literal(GenericTypeName), // an untyped literal, typed by where it is used
+    Null,                     // NULL, of whichever reference type it is used as
+}
+
 pub struct Expr {
     pub kind: ExprKind,
-    #[recurse(ignore)]
-    pub resolved_type: Option<TypeName>,
+    pub expr_type: Option<ExprType>, // None until resolved, or when unresolvable
+    pub span: SourceSpan,
 }
 ```
 
-- `resolved_type` is `#[recurse(ignore)]` because it is metadata, not a child node to visit/fold
-- `Option` because the parser produces `None`; the Fold pass fills it in
-- `TypeName` (not `IntermediateType`) to keep the DSL crate independent of analyzer types
+A declaration carries the id of the type it declares in
+`VarDecl::type_id`, filled in by `xform_resolve_decl_types`:
 
-### Constructor helpers
+- a named type takes its name's id;
+- a type spelled out in place (an inline array, enumeration or subrange) is
+  entered in the `TypeEnvironment` as an anonymous type with no name, one
+  per declaration;
+- a reference type is the one type `TypeEnvironment::reference_to(target)`
+  interns, so `REF_TO INT` is the same type wherever it is spelled.
 
-```rust
-impl Expr {
-    pub fn new(kind: ExprKind) -> Self {
-        Self { kind, resolved_type: None }
-    }
+`expr_type` is left out of `Expr`'s equality: its ids are allocated per
+compilation, so an expected expression built by hand cannot know them.
 
-    pub fn with_type(kind: ExprKind, resolved_type: TypeName) -> Self {
-        Self { kind, resolved_type: Some(resolved_type) }
-    }
-}
-```
+## Resolution
 
-## Type Resolution Fold Pass
+`xform_resolve_expr_types` folds the library bottom-up and sets `expr_type`
+on each expression from its operands' types:
 
-A new Fold pass in the analyzer (`xform_resolve_expr_types.rs`) walks the AST after late-bound resolution and fills in `resolved_type` for each expression.
-
-### Resolution rules
-
-| ExprKind variant | Resolution strategy |
+| Expression | Type |
 |---|---|
-| `Const(Integer(_))` | `ANY_INT` or inferred from context |
-| `Const(RealLiteral(_))` | `REAL` or `LREAL` based on literal |
-| `Const(BitStringLiteral(_))` | Type from the literal prefix (e.g., `BYTE#...` → `BYTE`) |
-| `Const(Boolean(_))` | `BOOL` |
-| `Variable(v)` | Look up variable's declared type in scope, resolve alias via `TypeEnvironment` |
-| `BinaryOp(op)` | Result type from operand types (both operands should have same type after resolution) |
-| `UnaryOp(op)` | Same type as operand |
-| `Compare(cmp)` | `BOOL` (comparisons always produce BOOL) |
-| `Function(f)` | Return type from `FunctionEnvironment` signature, specialized to match argument type |
-| `EnumeratedValue(e)` | The enumeration type name |
-| `LateBound(_)` | Should not exist after late-bound resolution; error if encountered |
+| Untyped literal (`5`, `1.5`) | `Literal(ANY_INT)`, `Literal(ANY_REAL)` |
+| Typed literal, string, time, boolean | the elementary type |
+| Variable | its declaration's `type_id`; an element or field, the element's or field's type |
+| Arithmetic operator | the result of the overload that applies (see [Arithmetic Operator Overloads](arithmetic-operator-overloads.md)), else the concrete operand's type |
+| Unary operator, parenthesised expression | the operand's type |
+| `AND`, `OR`, `XOR`, `AND_THEN`, `OR_ELSE` | the concrete operand's type |
+| Comparison | `BOOL` |
+| Function call | the overload's result, else the declared return type, else for a generic return type the argument bound to it |
+| Enumerated value | its enumeration, when qualified |
+| `REF(x)` | `reference_to(x's type)` |
+| Dereference | the referenced type (`TypeEnvironment::referenced_type`) |
+| `NULL` | `Null` |
 
-### Alias resolution
+## Relations that compare by name
 
-When a variable is declared as `x : MyByte` where `TYPE MyByte : BYTE; END_TYPE`:
+The compatibility relation (`type_compat::are_types_compatible`) and the
+arithmetic overloads compare elementary types and generic categories by
+name. They take their operand's name from `value_type::operand_type_name`,
+derived from the `ExprType` each time it is asked for, so it cannot disagree
+with it:
 
-1. The Fold pass looks up `x` in the symbol scope to get declared type `MyByte`
-2. It queries `TypeEnvironment` to resolve `MyByte` → `BYTE`
-3. It sets `resolved_type = Some(TypeName::from("BYTE"))`
+- an untyped literal is its generic category;
+- an elementary type, or an alias of one, is the elementary name;
+- a string is `STRING` or `WSTRING`;
+- a reference is known by the type it references;
+- a subrange is its own name, or its base type's when anonymous;
+- any other type is its own name, and has none when anonymous.
 
-Codegen then sees `"BYTE"` and correctly maps it to 8-bit width.
+`value_type::check` decides whether a value is accepted where a type is
+required. A whole array, structure, enumeration or function block instance
+is accepted only for its own type, or an array or structure of identical
+shape; a subrange compares as its base type.
 
-## Codegen Changes (PR 4)
+## Codegen
 
-After the Fold pass populates `resolved_type`, codegen can read it directly:
+`CompileContext::types` holds every type's representation by id.
+`type_info::expr_type_info` projects an expression's `expr_type` onto the
+operation width and signedness codegen needs:
 
-```rust
-// Before (infer_op_type walks expression trees):
-let op_type = infer_op_type(ctx, expr);
+- an enumeration operates as a `DINT`;
+- a subrange operates as its base type;
+- a reference, and `NULL`, operate as a 64-bit address;
+- an untyped literal defaults to `DINT` or `REAL`.
 
-// After (read resolved type directly):
-let op_type = match &expr.resolved_type {
-    Some(type_name) => resolve_type_name(type_name),
-    None => DEFAULT_OP_TYPE,
-};
-```
-
-This eliminates `infer_op_type`, `infer_storage_bits`, and the redundant `resolve_type_name` string matching for aliased types.
-
-## Implementation Plan
-
-### PR 2: Introduce Expr wrapper
-
-Mechanical migration — no behavior change.
-
-**Files changed:**
-
-| File | Change |
-|---|---|
-| `compiler/dsl/src/textual.rs` | Add `Expr` struct, update `ExprKind` usage in other structs (e.g., `BinaryExpr.left`/`.right` become `Expr`) |
-| `compiler/dsl/src/fold.rs` | Add `fold_expr` method, update `fold_expr_kind` callers |
-| `compiler/dsl/src/visitor.rs` | Add `visit_expr` method |
-| `compiler/parser/src/parser.rs` | Wrap every `ExprKind` construction in `Expr::new(...)` |
-| `compiler/parser/src/tests/` | Update test assertions |
-| `compiler/codegen/src/compile.rs` | Access `.kind` when matching, pass `Expr` through |
-| `compiler/analyzer/src/xform_resolve_late_bound_expr_kind.rs` | Update Fold to handle `Expr` wrapper |
-| `compiler/plc2plc/src/renderer.rs` | Access `.kind` when rendering |
-| `compiler/sources/src/xml/transform.rs` | Wrap constructions in `Expr::new(...)` |
-| `compiler/dsl/src/sfc.rs` | Update `ExprKind` references |
-
-### PR 3: Type resolution Fold pass
-
-**New file:** `compiler/analyzer/src/xform_resolve_expr_types.rs`
-
-- Implements `Fold` trait
-- Maintains scope context (current POU's variable declarations)
-- Receives `&TypeEnvironment` for alias resolution
-- Called from `stages.rs` after late-bound resolution, before semantic validation
-
-**Modified:** `compiler/analyzer/src/stages.rs` — add the new Fold pass to the pipeline
-
-### PR 4: Update codegen
-
-**Modified:** `compiler/codegen/src/compile.rs`
-
-- Replace `infer_op_type` calls with `expr.resolved_type` reads
-- Replace `infer_storage_bits` calls with `expr.resolved_type` reads
-- Remove `infer_op_type` and `infer_storage_bits` functions
-- Simplify `resolve_type_name` since aliases are pre-resolved
-
-## Testing
-
-### PR 2 tests
-
-All existing tests pass unchanged (behavior is identical; `resolved_type` is `None` everywhere).
-
-### PR 3 tests
-
-- Unit tests in `xform_resolve_expr_types.rs`:
-  - Variable reference resolves to declared type
-  - Type alias resolves to base type
-  - Binary operation inherits operand type
-  - Comparison resolves to BOOL
-  - Function call resolves to return type
-  - Nested expressions resolve correctly
-
-### PR 4 tests
-
-- Existing codegen end-to-end tests pass (same opcodes produced)
-- New test: program with type alias produces correct opcodes
+`type_info::decl_type_info` does the same for a declaration from its
+`type_id`. `resolve_type_name` remains only for types written as names
+with no declaration behind them: function return types, parameter types
+from a signature, array element type names, and conversion function names.

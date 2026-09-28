@@ -2,7 +2,7 @@
 
 status: accepted
 date: 2026-03-02
-amended: 2026-09-27 (expressions also carry `expr_type`, a `TypeId`; see ADR-0055)
+amended: 2026-09-28 (`resolved_type` replaced by `expr_type`, a `TypeId`; see ADR-0055)
 
 ## Context and Problem Statement
 
@@ -121,6 +121,17 @@ The late-bound expression resolution pass (`xform_resolve_late_bound_expr_kind`)
 identity (ADR-0055): `Concrete(TypeId)` for a value of one type, or
 `Literal(GenericTypeName)` for an untyped literal. Unlike `resolved_type` it
 is set for a type without a name, such as a whole `ARRAY[1..2] OF DINT`
-variable. `resolved_type` stays until its readers move to `expr_type`.
+variable.
 `expr_type` is left out of `Expr`'s equality because it is derived from
 `resolved_type` and the declarations in scope.
+
+### Amendment: `resolved_type` removed (2026-09-28)
+
+`Expr::resolved_type` is gone, and `expr_type` is the only type an
+expression carries. While both existed, they disagreed on every `REF_TO`
+variable (the name recorded the referenced type), and nothing but review
+kept a reader on the right one. `ExprType` gained `Null` for `NULL`.
+
+A relation that still compares types by name derives the name from the id
+through `value_type::operand_type_name` each time, so the name cannot
+disagree with the id. See [Expression Type Resolution](../design/expression-type-resolution.md).

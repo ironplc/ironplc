@@ -51,9 +51,9 @@ User-defined function calls use the `CALL` opcode (0x84), already specified in t
 
 Validates function calls in two ways:
 
-1. **Argument type matching** — For each positional argument, compares the expression's `resolved_type` (set by `xform_resolve_expr_types`) against the corresponding parameter's declared type from `FunctionSignature`. Exact match required. Skips stdlib functions (which use `ANY_*` types).
+1. **Argument type matching** — For each positional argument, checks the expression's `expr_type` (set by `xform_resolve_expr_types`) against the corresponding parameter's declared type from `FunctionSignature` with `value_type::check`: the types must match, up to the implicit conversions `type_compat` allows. Standard-library functions, whose parameters use `ANY_*` categories, are checked the same way.
 
-2. **Return type matching** — The function call expression's `resolved_type` is already set to the function's return type by `xform_resolve_expr_types`. Assignment compatibility is verified by comparing this against the destination variable's type.
+2. **Return type matching** — The function call expression's `expr_type` is already set to the function's return type by `xform_resolve_expr_types`. Assignment compatibility is verified by comparing this against the destination variable's type.
 
 New problem codes: `FunctionCallArgTypeMismatch`, `FunctionCallReturnTypeMismatch`.
 
@@ -126,7 +126,7 @@ END_PROGRAM
 
 **Analysis:**
 1. `FunctionEnvironment` registers `ADD_INTS`: return type `INT`, params `[A: INT, B: INT]`
-2. `xform_resolve_expr_types` sets `resolved_type = INT` on `ADD_INTS(3, 7)`
+2. `xform_resolve_expr_types` sets `expr_type` to `INT` on `ADD_INTS(3, 7)`
 3. `rule_function_call_declared` validates arg count (2 == 2)
 4. `rule_function_call_type_check` validates: arg 0 `INT` == param A `INT`, arg 1 `INT` == param B `INT`, return `INT` == destination `result` `INT`
 
