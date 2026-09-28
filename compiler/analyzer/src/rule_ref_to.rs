@@ -149,7 +149,16 @@ impl RuleRefTo<'_> {
             ExprKind::Ref(_) => true,
             ExprKind::Null(_) => true,
             ExprKind::Variable(var) => self.is_variable_reference(var),
-            _ => matches!(
+            // Any other expression is a reference when its value's type is.
+            ExprKind::Compare(_)
+            | ExprKind::BinaryOp(_)
+            | ExprKind::UnaryOp(_)
+            | ExprKind::Expression(_)
+            | ExprKind::Const(_)
+            | ExprKind::EnumeratedValue(_)
+            | ExprKind::Function(_)
+            | ExprKind::LateBound(_)
+            | ExprKind::Deref(_) => matches!(
                 self.type_environment.representation_of_expr(expr),
                 Some(crate::intermediate_type::IntermediateType::Reference { .. })
             ),
