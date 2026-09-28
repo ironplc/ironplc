@@ -24,7 +24,7 @@ use super::compile_arith::compile_binary_arith;
 use super::compile_call::compile_function_call;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
 use super::compile_string::compile_string_compare;
-use super::type_info::{expr_representation, expr_type_info};
+use super::type_info::{expr_operand_name, expr_representation, expr_type_info};
 use crate::emit::Emitter;
 
 /// Returns the operation type of an expression's value, from its
@@ -86,7 +86,7 @@ pub(crate) fn storage_bits(ctx: &CompileContext, expr: &Expr) -> Result<u8, Diag
 /// Builds the P9999 for an expression whose type the analyzer did not resolve
 /// to one codegen knows, pointing at the expression.
 ///
-/// The analyzer leaves `resolved_type` empty for constructs it does not type
+/// The analyzer leaves `expr_type` empty for constructs it does not type
 /// yet (a direct address such as `%QX0.0`, for example), so this is a gap in
 /// the compiler rather than an invalid program.
 #[track_caller]
@@ -138,7 +138,8 @@ pub(crate) fn compile_expr(
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
         ExprKind::Variable(variable) => compile_variable_read(emitter, ctx, variable, op_type),
         ExprKind::BinaryOp(binary) => {
-            compile_binary_arith(emitter, ctx, binary, expr.resolved_type.as_ref(), op_type)
+            let result = expr_operand_name(ctx, expr);
+            compile_binary_arith(emitter, ctx, binary, result.as_ref(), op_type)
         }
         ExprKind::UnaryOp(unary) => match unary.op {
             UnaryOp::Neg => {

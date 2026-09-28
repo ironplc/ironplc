@@ -3,7 +3,7 @@
 //! See section 3.
 use crate::common::{
     AddressAssignment, BitStringLiteral, ConstantKind, EnumeratedValue, GenericTypeName, Integer,
-    IntegerLiteral, SignedInteger, Subrange, TypeName,
+    IntegerLiteral, SignedInteger, Subrange,
 };
 use crate::core::{Id, Located, SourceSpan};
 use crate::type_id::TypeId;
@@ -477,22 +477,19 @@ pub enum ExprType {
 }
 
 /// Wrapper around `ExprKind` that carries what is true of an expression but
-/// not of the operation it performs: its resolved type, and where it was
+/// not of the operation it performs: the type of its value, and where it was
 /// written.
 ///
-/// The `resolved_type` and `expr_type` fields are populated by a later
-/// analysis pass. During parsing and initial construction, they are always
-/// `None`.
+/// The `expr_type` field is populated by a later analysis pass. During
+/// parsing and initial construction, it is always `None`.
 ///
 /// `expr_type` is left out of equality (see the manual `PartialEq` below):
-/// it is derived from `resolved_type` and the declarations in scope, and a
-/// test that builds an expected expression by hand compares the type it
-/// resolved through `resolved_type`.
+/// the ids it holds are allocated per compilation, so an expected
+/// expression built by hand cannot know them. A test asserts an
+/// expression's type through the environment that allocated it.
 #[derive(Debug, Clone, Recurse, Located)]
 pub struct Expr {
     pub kind: ExprKind,
-    #[recurse(ignore)]
-    pub resolved_type: Option<TypeName>,
     /// The type of the expression's value, by identity. `None` where the
     /// analyzer could not resolve one.
     #[recurse(ignore)]
@@ -513,9 +510,7 @@ pub struct Expr {
 
 impl PartialEq for Expr {
     fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind
-            && self.resolved_type == other.resolved_type
-            && self.span == other.span
+        self.kind == other.kind && self.span == other.span
     }
 }
 
@@ -526,16 +521,7 @@ impl Expr {
         Expr {
             span: kind.span(),
             kind,
-            resolved_type: None,
             expr_type: None,
-        }
-    }
-
-    /// Creates a new `Expr` with a resolved type.
-    pub fn with_type(kind: ExprKind, type_name: TypeName) -> Expr {
-        Expr {
-            resolved_type: Some(type_name),
-            ..Expr::new(kind)
         }
     }
 

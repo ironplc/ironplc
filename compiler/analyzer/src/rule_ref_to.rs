@@ -149,13 +149,10 @@ impl RuleRefTo<'_> {
             ExprKind::Ref(_) => true,
             ExprKind::Null(_) => true,
             ExprKind::Variable(var) => self.is_variable_reference(var),
-            _ => {
-                if let Some(ref resolved) = expr.resolved_type {
-                    self.is_reference_type(resolved)
-                } else {
-                    false
-                }
-            }
+            _ => matches!(
+                self.type_environment.representation_of_expr(expr),
+                Some(crate::intermediate_type::IntermediateType::Reference { .. })
+            ),
         }
     }
 

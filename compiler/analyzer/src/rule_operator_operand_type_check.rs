@@ -74,14 +74,17 @@ use crate::result::SemanticResult;
 use crate::rule_support::{run_rule, DiagnosticVisitor};
 use crate::semantic_context::SemanticContext;
 use crate::type_compat::{are_types_compatible, is_checkable_type};
+use crate::type_environment::TypeEnvironment;
+use crate::value_type::operand_type_name;
 
 pub fn apply(
     lib: &Library,
-    _context: &SemanticContext,
+    context: &SemanticContext,
     options: &CompilerOptions,
 ) -> SemanticResult {
     run_rule(
         RuleOperatorOperandTypeCheck {
+            types: context.types(),
             options,
             diagnostics: vec![],
         },
@@ -139,6 +142,7 @@ fn checked_unary_form(op: &UnaryOp) -> Option<&'static OperatorFunctionForm> {
 }
 
 struct RuleOperatorOperandTypeCheck<'a> {
+    types: &'a TypeEnvironment,
     options: &'a CompilerOptions,
     diagnostics: Vec<Diagnostic>,
 }
@@ -150,11 +154,18 @@ impl DiagnosticVisitor for RuleOperatorOperandTypeCheck<'_> {
 }
 
 impl RuleOperatorOperandTypeCheck<'_> {
+    /// The name the overloads and the compatibility relation know `expr`'s
+    /// value by (see `value_type::operand_type_name`).
+    fn operand_name(&self, expr: &Expr) -> Option<TypeName> {
+        operand_type_name(self.types, expr.expr_type.as_ref()?)
+    }
+
     /// Reports P4049 when no overload of the arithmetic operator applies to
     /// the operand types of `binary`, labelled at the whole expression.
     fn check_arithmetic_operator(&mut self, expr: &Expr, binary: &BinaryExpr) {
-        let left = binary.left.resolved_type.as_ref();
-        let right = binary.right.resolved_type.as_ref();
+        let left = self.operand_name(&binary.left);
+        let right = self.operand_name(&binary.right);
+        let (left, right) = (left.as_ref(), right.as_ref());
         if resolve_arithmetic_overload(&binary.op, left, right, self.options).is_some() {
             return;
         }
@@ -186,21 +197,20 @@ impl RuleOperatorOperandTypeCheck<'_> {
         if form.typed_overloads().is_empty() {
             return;
         }
-        let inputs: Option<Vec<Option<&TypeName>>> = function
+        let names: Option<Vec<Option<TypeName>>> = function
             .param_assignment
             .iter()
             .map(|p| match p {
-                ParamAssignmentKind::PositionalInput(input) => {
-                    Some(input.expr.resolved_type.as_ref())
-                }
+                ParamAssignmentKind::PositionalInput(input) => Some(self.operand_name(&input.expr)),
                 ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
             })
             .collect();
         // A named input is left only on a call the named-argument pass has
         // already diagnosed.
-        let Some(inputs) = inputs else {
+        let Some(names) = names else {
             return;
         };
+        let inputs: Vec<Option<&TypeName>> = names.iter().map(Option::as_ref).collect();
         if let Err(FoldFailure { left, right }) = resolve_arithmetic_fold(op, &inputs, self.options)
         {
             self.report_arithmetic(
@@ -251,13 +261,13 @@ impl RuleOperatorOperandTypeCheck<'_> {
     /// Reports P4049 when `operand`'s resolved type is one the predicate can
     /// judge and it is not acceptable where `expected` is required.
     fn check_operand(&mut self, form: &OperatorFunctionForm, expected: &TypeName, operand: &Expr) {
-        let Some(actual) = operand.resolved_type.as_ref() else {
+        let Some(actual) = self.operand_name(operand) else {
             return;
         };
-        if !is_checkable_type(actual) {
+        if !is_checkable_type(&actual) {
             return;
         }
-        if !are_types_compatible(expected, actual, self.options) {
+        if !are_types_compatible(expected, &actual, self.options) {
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::OperatorOperandTypeMismatch,

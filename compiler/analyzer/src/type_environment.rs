@@ -8,7 +8,7 @@ use ironplc_dsl::{
     common::{ElementaryTypeName, ReferenceTarget, SpecificationKind, TypeName},
     core::{Located, SourceSpan},
     diagnostic::{Diagnostic, Label},
-    textual::Expr,
+    textual::{Expr, ExprType},
 };
 use ironplc_problems::Problem;
 
@@ -537,15 +537,16 @@ impl TypeEnvironment {
         }
     }
 
-    /// The representation of the type an expression resolved to, when the
-    /// analyzer gave it one that is in the environment.
+    /// The representation of the type of an expression's value, when the
+    /// analyzer gave it a concrete one.
     ///
-    /// A bare literal resolves to a generic category (`ANY_INT`), which is
-    /// not in the environment, so it answers `None` rather than a
-    /// representation of its own.
+    /// An untyped literal is of a generic category (`ANY_INT`) and `NULL` of
+    /// no one type, so both answer `None` rather than a representation.
     pub fn representation_of_expr(&self, expr: &Expr) -> Option<&IntermediateType> {
-        let resolved = expr.resolved_type.as_ref()?;
-        Some(&self.get(resolved)?.representation)
+        match expr.expr_type.as_ref()? {
+            ExprType::Concrete(id) => Some(&self.get_by_id(*id)?.representation),
+            ExprType::Literal(_) | ExprType::Null => None,
+        }
     }
 
     /// Returns if the type is an enumeration.
