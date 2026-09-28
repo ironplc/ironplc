@@ -1976,6 +1976,12 @@ parser! {
       / function:function_expression() {
           function
         }
+      // Before `variable()`: `m.GetSpeed` is also a valid structured
+      // variable, so the call has to be tried first.
+      / call:method_call() {
+          let span = call.span();
+          Expr::new(ExprKind::MethodCall(call)).with_span(span)
+        }
       / id:identifier() _ !(tok(TokenType::LeftParen) / tok(TokenType::LeftBracket) / tok(TokenType::Period) / tok(TokenType::Caret)) {
         Expr::new(ExprKind::LateBound(LateBound{ value: id }))
       }
@@ -2084,15 +2090,19 @@ parser! {
     rule method_receiver() -> MethodReceiver =
       s:self_ref() { MethodReceiver::SelfRef(s) }
       / id:identifier() { MethodReceiver::Instance(id) }
-    rule method_invocation() -> StmtKind = receiver:method_receiver() _ period() _ method:identifier() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
+    // `receiver.Method(args)`, shared by the statement form below and the
+    // expression form in `primary_expression`, so the receiver grammar is
+    // in one place.
+    rule method_call() -> MethodCall = receiver:method_receiver() _ period() _ method:identifier() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
       let span = SourceSpan::join(&receiver.span(), &end.span);
-      StmtKind::MethodCall(MethodCall {
+      MethodCall {
         receiver,
         method,
         params,
         position: span,
-      })
+      }
     }
+    rule method_invocation() -> StmtKind = call:method_call() { StmtKind::MethodCall(call) }
     // TODO this needs much more
     rule param_assignment() -> ParamAssignmentKind = not:(tok(TokenType::Not) {})? _ src:variable_name() _ tok(TokenType::RightArrow) _ tgt:variable() {
       ParamAssignmentKind::Output (

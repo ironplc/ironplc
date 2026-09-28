@@ -22,6 +22,7 @@ use super::compile::{
 };
 use super::compile_arith::compile_binary_arith;
 use super::compile_call::compile_function_call;
+use super::compile_method::compile_method_call_expression;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
 use super::compile_string::compile_string_compare;
 use super::type_info::{expr_representation, expr_type_info};
@@ -178,6 +179,7 @@ pub(crate) fn compile_expr(
             Ok(())
         }
         ExprKind::Function(func) => compile_function_call(emitter, ctx, func, op_type),
+        ExprKind::MethodCall(call) => compile_method_call_expression(emitter, ctx, call),
         ExprKind::Ref(variable) => {
             // REF(var) → push the variable's table index as a u64 constant.
             let var_index = resolve_variable(ctx, variable)?;

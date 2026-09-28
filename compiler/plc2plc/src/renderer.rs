@@ -1422,10 +1422,25 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("(");
         visit_comma_separated!(self, node.params.iter(), ParamAssignmentKind);
         self.write_ws(")");
-        self.write_ws(";");
-        self.newline();
 
         Ok(())
+    }
+
+    // A method call is rendered by `visit_method_call` in both positions;
+    // only the statement form ends with `;`.
+    fn visit_stmt_kind(
+        &mut self,
+        node: &dsl::textual::StmtKind,
+    ) -> Result<Self::Value, Diagnostic> {
+        match node {
+            dsl::textual::StmtKind::MethodCall(call) => {
+                self.visit_method_call(call)?;
+                self.write_ws(";");
+                self.newline();
+                Ok(())
+            }
+            _ => node.recurse_visit(self),
+        }
     }
 
     // 3.3.2.1

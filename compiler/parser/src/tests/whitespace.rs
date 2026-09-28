@@ -264,6 +264,11 @@ END_CONFIGURATION"
 // already permitted -- `self_ref_chain` below covers the rest of the same
 // construct.
 #[case::self_ref_caret("THIS·^.count := 1;", in_method, opts_with_fb_inheritance)]
+#[case::method_call_expression(
+    "count := THIS^·.·Get·(·1·,·2·)·;",
+    in_method,
+    opts_with_fb_inheritance
+)]
 // ---------------------------------------------------------------------
 // Gaps issue #1437 reported as rejected. Each row is a spelling that
 // returned P0002 before the grammar was widened.
