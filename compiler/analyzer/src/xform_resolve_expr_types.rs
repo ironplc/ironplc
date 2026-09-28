@@ -716,6 +716,13 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
                     self.insert_result_variable(&node.name, return_type);
                 }
             }
+            // A prototype's parameters are declared so their types are
+            // checked like any other; with no body there is no result
+            // variable. An interface declares nothing itself.
+            ScopeNode::MethodPrototype(node) => {
+                node.variables.iter().for_each(|v| self.insert(v));
+            }
+            ScopeNode::Interface(_) => {}
         }
 
         Ok(())

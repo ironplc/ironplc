@@ -41,6 +41,13 @@ enum FunctionBlockMember {
     Method(Box<MethodDeclaration>),
     Property(Box<PropertyDeclaration>),
 }
+
+/// One member prototype declared in an interface. As with
+/// [`FunctionBlockMember`], methods and properties interleave.
+enum InterfaceMember {
+    Method(Box<MethodPrototype>),
+    Property(Box<PropertyPrototype>),
+}
 use ironplc_dsl::textual::*;
 use ironplc_dsl::time::*;
 
@@ -1679,14 +1686,56 @@ parser! {
       }
     }
 
-    // OOP extension: INTERFACE ... END_INTERFACE. Only the
-    // header (name + optional EXTENDS list) is parsed — method/property
-    // signatures are not yet supported (see
-    // specs/design/beckhoff-twincat-dialect.md §1.3).
-    rule interface_declaration() -> InterfaceDeclaration = tok(TokenType::Interface) _ name:identifier() _ extends:(tok(TokenType::Extends) _ names:type_name_list() {names})? _ tok(TokenType::EndInterface) {
+    // OOP extension: a method signature inside an INTERFACE (Ed. 3 calls it
+    // a method prototype). Only input, output and in-out blocks are
+    // allowed, and there is no body.
+    rule method_prototype() -> MethodPrototype = header:method_header() decls:(_ io:io_var_declarations() { io }) ** _ _ end:tok(TokenType::EndMethod) {
+      let decls = VarDeclarations::flatten(decls);
+      let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
+      let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
+      let (start, _qualifiers, name, return_type) = header;
+      MethodPrototype {
+        name,
+        return_type,
+        variables,
+        edge_variables,
+        span: SourceSpan::join(&start.span, &end.span),
+      }
+    }
+
+    // OOP extension: a property signature inside an INTERFACE. Each
+    // accessor that is present is an empty `GET END_GET` or `SET END_SET`.
+    rule property_prototype() -> PropertyPrototype = header:property_header() get:(_ g:contextual_keyword("GET") _ e:tok(TokenType::EndGet) { SourceSpan::join(&g.span, &e.span) })? set:(_ s:contextual_keyword("SET") _ e:tok(TokenType::EndSet) { SourceSpan::join(&s.span, &e.span) })? _ end:tok(TokenType::EndProperty) {
+      let (start, name, property_type) = header;
+      PropertyPrototype {
+        name,
+        property_type,
+        get,
+        set,
+        span: SourceSpan::join(&start.span, &end.span),
+      }
+    }
+
+    rule interface_member() -> InterfaceMember = m:method_prototype() { InterfaceMember::Method(Box::new(m)) } / p:property_prototype() { InterfaceMember::Property(Box::new(p)) }
+
+    // OOP extension: INTERFACE ... END_INTERFACE, with the method and
+    // property prototypes it declares, in any order. TwinCAT's `.TcIO` form
+    // stores each member as a `<Method>`/`<Property>` element;
+    // `ironplc-sources` rebuilds this textual form from them.
+    rule interface_declaration() -> InterfaceDeclaration = tok(TokenType::Interface) _ name:identifier() _ extends:(tok(TokenType::Extends) _ names:type_name_list() {names})? members:(_ m:interface_member() {m}) ** _ _ tok(TokenType::EndInterface) {
+      let mut methods = Vec::new();
+      let mut properties = Vec::new();
+      for member in members {
+        match member {
+          InterfaceMember::Method(m) => methods.push(*m),
+          InterfaceMember::Property(p) => properties.push(*p),
+        }
+      }
       InterfaceDeclaration {
         name,
         extends: extends.unwrap_or_default(),
+        methods,
+        properties,
       }
     }
 
