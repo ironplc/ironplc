@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: "compiler/sources/resources/compat-libraries/**"
+fileMatchPattern: "compiler/sources/resources/libs/**"
 ---
 
 # Compatibility Library Authoring Policy
