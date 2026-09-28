@@ -113,9 +113,14 @@ pub enum TokenType {
 
     // Separate the single byte and double byte representations
     // because those have different valid prefixes.
-    #[regex(r"'[^']*'")]
+    //
+    // A `$` always takes the character after it (B.1.2.2), so `$'` and `$"`
+    // are the delimiter inside the literal, and `$$` before the closing
+    // delimiter is an escaped dollar. The escape is only recognised here;
+    // its value is not decoded.
+    #[regex(r"'([^'$]|\$[^\n])*'")]
     SingleByteString,
-    #[regex("\"[^\"]*\"")]
+    #[regex(r#""([^"$]|\$[^\n])*""#)]
     DoubleByteString,
 
     // B.1.1 Letters, digits and identifier
@@ -532,8 +537,8 @@ impl TokenType {
             TokenType::Period => "'.'",
             TokenType::Range => "'..' (range)",
             TokenType::Hash => "'#'",
-            TokenType::SingleByteString => "\\'[^\\']*\\' (single byte string)",
-            TokenType::DoubleByteString => "\"[^\"]*\" (double byte string)",
+            TokenType::SingleByteString => "'...' (single byte string)",
+            TokenType::DoubleByteString => "\"...\" (double byte string)",
             TokenType::Identifier => "(identifier)",
             TokenType::HexDigits => "16#[0-9A-F][0-9A-F_]* (hexadecimal bit string)",
             TokenType::OctDigits => "8#[0-7][0-7]* (octal bit string)",

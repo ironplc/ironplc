@@ -76,7 +76,7 @@
       "patterns": [
         {
           "name": "string.quoted.single.st",
-          "match": "'[^']*'",
+          "match": "'(?:[^'$]|\\$.)*'",
           "captures": {
             "0": {
               "name": "punctuation.definition.string.st"
@@ -85,7 +85,7 @@
         },
         {
           "name": "string.quoted.double.st",
-          "match": "\"[^\"]*\"",
+          "match": "\"(?:[^\"$]|\\$.)*\"",
           "captures": {
             "0": {
               "name": "punctuation.definition.string.st"

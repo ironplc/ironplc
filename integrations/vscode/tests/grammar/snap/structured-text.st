@@ -7,6 +7,8 @@ VAR
     myInt : INT := 42;
     myReal : REAL := 3.14;
     myString : STRING := 'Hello';
+    escaped : STRING := 'it$'s';
+    wideEscaped : WSTRING := "say $"hi$"";
     myArray : ARRAY[0..9] OF DINT;
     address1 : BOOL AT %IX0.0;
     address2 : WORD AT %QW10;
