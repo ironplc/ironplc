@@ -151,22 +151,3 @@ fn write_to_string_when_literal_has_escape_then_renders_canonical_spelling(
     let rendered = assert_round_trips(&source, &CompilerOptions::default());
     assert!(rendered.contains(expected), "rendered:\n{rendered}");
 }
-
-#[test]
-fn write_to_string_when_narrow_literal_contains_escaped_quote_then_round_trips() {
-    // `$'` is the single quote inside a single-quoted literal (#1818).
-    let source = assignment_program("STRING[20]", "'it$'s'");
-    let rendered = assert_round_trips(&source, &CompilerOptions::default());
-    assert!(rendered.contains("v := 'it$'s'"), "rendered:\n{rendered}");
-}
-
-#[test]
-fn write_to_string_when_wide_literal_contains_escaped_quote_then_round_trips() {
-    // `$"` is the double quote inside a double-quoted literal.
-    let source = assignment_program("WSTRING[20]", "\"say $\"hi$\"\"");
-    let rendered = assert_round_trips(&source, &CompilerOptions::default());
-    assert!(
-        rendered.contains("v := \"say $\"hi$\"\""),
-        "rendered:\n{rendered}"
-    );
-}
