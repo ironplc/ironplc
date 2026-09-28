@@ -65,9 +65,9 @@ syntax errors.
 2. **plc2plc renderer:** extract the rendering of a method signature (keyword,
    name, return type, var blocks) and of a property header from the
    declaration renderers, so the prototype renderers reuse them.
-3. **TwinCAT parser:** replace `if closing == "END_FUNCTION_BLOCK"` in
-   `parse_pou` with a `match` on the closing keyword, so the interface case is a
-   new arm instead of a second string comparison.
+The `if closing == "END_FUNCTION_BLOCK"` in `parse_pou` becomes a `match`
+with the interface arm, in the feature commit. On its own, a one-arm `match`
+fails clippy (`single_match`), so it can't be a separate prefactor.
 
 No prefactor for the `ScopeNode` arms. They are the exhaustiveness check
 working as designed (see Architecture).
@@ -104,9 +104,8 @@ working as designed (see Architecture).
 
 ## Tasks
 
-- [ ] Prefactor: parser header rules (1). Existing tests unchanged. Commit.
-- [ ] Prefactor: renderer signature helpers (2). Existing tests unchanged. Commit.
-- [ ] Prefactor: `match` on the closing keyword in `parse_pou` (3). Commit.
+- [x] Prefactor: parser header rules (1). Existing tests unchanged. Commit.
+- [x] Prefactor: renderer signature helpers (2). Existing tests unchanged. Commit.
 - [ ] AST types, `ScopeNode` variant, visitor/fold dispatch, analyzer arms.
 - [ ] Grammar: `method_prototype`, `property_prototype`, members in
       `interface_declaration`. Parser tests: methods with/without return type
