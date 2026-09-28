@@ -1313,17 +1313,18 @@ pub(crate) struct FbInstanceInfo {
     pub(crate) field_indices: HashMap<String, u8>,
 }
 
-/// Refuses a PROGRAM `VAR_TEMP` array with no initial values: re-running its
-/// initialization at the start of a scan sets only the elements an initial
-/// value names, and relies on a zeroed data region for the others, so the
-/// array would silently keep the previous scan's values.
+/// Guards the scan's re-initialization of a PROGRAM `VAR_TEMP` array, which
+/// sets only the elements an initial value names and relies on a zeroed data
+/// region for the others. `rule_program_var_temp_array` refuses such an array
+/// without initial values during analysis, so reaching one here is a
+/// compiler bug.
 fn reject_unresettable_temp_arrays(temp_vars: &[VarDecl]) -> Result<(), Diagnostic> {
     for decl in temp_vars {
         if let InitialValueAssignmentKind::Array(array) = &decl.initializer {
             if array.initial_values.is_empty() {
-                return Err(Diagnostic::not_supported(Label::span(
+                return Err(Diagnostic::internal_error_at(Label::span(
                     decl.identifier.span(),
-                    "VAR_TEMP array in a PROGRAM without initial values",
+                    "VAR_TEMP array without initial values reached code generation",
                 )));
             }
         }

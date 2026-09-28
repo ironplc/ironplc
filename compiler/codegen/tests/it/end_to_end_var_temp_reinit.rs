@@ -82,24 +82,3 @@ END_PROGRAM
         assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 12);
     });
 }
-
-#[test]
-fn compile_when_program_var_temp_array_without_initial_values_then_not_supported() {
-    // Its elements could not be reset between scans.
-    let source = "
-PROGRAM main
-  VAR q : INT; END_VAR
-  VAR_TEMP a : ARRAY[1..3] OF INT; END_VAR
-  a[1] := a[1] + 1;
-  q := a[1];
-END_PROGRAM
-";
-    let (library, context) = crate::common::parse(source, &CompilerOptions::default());
-    let result = ironplc_codegen::compile(
-        &library,
-        &context,
-        &ironplc_codegen::CodegenOptions::from(&CompilerOptions::default()),
-        &ironplc_codegen::EmptyLookup,
-    );
-    assert_eq!(result.err().map(|d| d.code), Some("P9997".to_string()));
-}
