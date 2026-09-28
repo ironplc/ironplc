@@ -330,7 +330,7 @@ END_FUNCTION_BLOCK",
 )]
 // Regression for the `compile_expr.rs#L32` TODO that fired when
 // `struct.field[i, j]` was used in a STRING comparison: the analyzer
-// previously left `resolved_type` unset for array subscripts whose
+// previously left array subscripts untyped when their
 // base was a struct field.
 #[case::struct_field_2d_string_array_subscript(
     "

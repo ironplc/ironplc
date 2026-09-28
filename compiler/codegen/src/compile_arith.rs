@@ -31,7 +31,7 @@ use super::compile::{CompileContext, OpType, VarTypeInfo};
 use super::compile_call::{collect_positional_args, compile_left_fold, emit_conversion_opcode};
 use super::compile_expr::{compile_expr, emit_arithmetic_op};
 use super::compile_time_arith::{compile_time_arith, time_arith_for, Operand};
-use super::type_info::resolve_type_name;
+use super::type_info::{expr_operand_name, resolve_type_name};
 use crate::emit::Emitter;
 
 /// Compiles the arithmetic operator expression `binary`, leaving the result
@@ -49,8 +49,8 @@ pub(crate) fn compile_binary_arith(
     result: Option<&TypeName>,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    if let Some(left) = &binary.left.resolved_type {
-        if let Some((name, _)) = typed_step(&binary.op, left, &binary.right) {
+    if let Some(left) = expr_operand_name(ctx, &binary.left) {
+        if let Some((name, _)) = typed_step(ctx, &binary.op, &left, &binary.right) {
             let span = binary.left.span();
             return compile_typed(
                 emitter,
@@ -98,8 +98,8 @@ pub(crate) fn compile_arith_fold(
 ) -> Result<(), Diagnostic> {
     let args = collect_positional_args(func);
     if let [first, second, rest @ ..] = args.as_slice() {
-        if let Some(left) = &first.resolved_type {
-            if let Some((name, result)) = typed_step(op, left, second) {
+        if let Some(left) = expr_operand_name(ctx, first) {
+            if let Some((name, result)) = typed_step(ctx, op, &left, second) {
                 let span = func.name.span();
                 compile_typed(
                     emitter,
@@ -134,7 +134,7 @@ fn compile_typed_rest(
     for arg in rest {
         // The analyzer resolves every step of a fold; a step without a
         // typed overload after one with it is a pair it rejected.
-        let Some((name, result)) = typed_step(op, &accumulated, arg) else {
+        let Some((name, result)) = typed_step(ctx, op, &accumulated, arg) else {
             return Err(Diagnostic::todo_with_span(span));
         };
         let Some(natural) = resolve_type_name(&accumulated.name) else {
@@ -149,8 +149,13 @@ fn compile_typed_rest(
 
 /// Returns the typed overload of `op` on `left` and the operand `right`, as
 /// the typed name and its result type, or `None` when the pair has none.
-fn typed_step(op: &Operator, left: &TypeName, right: &Expr) -> Option<(&'static str, TypeName)> {
-    match typed_overload(op, left, right.resolved_type.as_ref()?)? {
+fn typed_step(
+    ctx: &CompileContext,
+    op: &Operator,
+    left: &TypeName,
+    right: &Expr,
+) -> Option<(&'static str, TypeName)> {
+    match typed_overload(op, left, &expr_operand_name(ctx, right)?)? {
         Overload::Typed { name, result } => Some((name, result)),
         Overload::Unchecked { .. } | Overload::Numeric { .. } => None,
     }
@@ -186,13 +191,13 @@ fn numeric_steps(ctx: &CompileContext, op: &Operator, args: &[&Expr]) -> Option<
     if rest.is_empty() {
         return None;
     }
-    let mut accumulated = first.resolved_type.clone();
+    let mut accumulated = expr_operand_name(ctx, first);
     let mut steps = Vec::with_capacity(rest.len());
     for arg in rest {
         let overload = resolve_arithmetic_overload(
             op,
             accumulated.as_ref(),
-            arg.resolved_type.as_ref(),
+            expr_operand_name(ctx, arg).as_ref(),
             &ctx.compiler_options,
         )?;
         let Overload::Numeric { result } = overload else {
@@ -257,7 +262,7 @@ fn compile_at(
     operand: &Expr,
     target: OpType,
 ) -> Result<(), Diagnostic> {
-    match numeric_op_type(operand.resolved_type.as_ref()) {
+    match numeric_op_type(expr_operand_name(ctx, operand).as_ref()) {
         Some(own) if own.0 != target.0 => {
             compile_expr(emitter, ctx, operand, own)?;
             convert(emitter, own, target);

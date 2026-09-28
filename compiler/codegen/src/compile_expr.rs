@@ -25,7 +25,7 @@ use super::compile_call::compile_function_call;
 use super::compile_method::compile_method_call_expression;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
 use super::compile_string::compile_string_compare;
-use super::type_info::{expr_representation, expr_type_info};
+use super::type_info::{expr_operand_name, expr_representation, expr_type_info};
 use crate::emit::Emitter;
 
 /// Returns the operation type of an expression's value, from its
@@ -87,7 +87,7 @@ pub(crate) fn storage_bits(ctx: &CompileContext, expr: &Expr) -> Result<u8, Diag
 /// Builds the P9999 for an expression whose type the analyzer did not resolve
 /// to one codegen knows, pointing at the expression.
 ///
-/// The analyzer leaves `resolved_type` empty for constructs it does not type
+/// The analyzer leaves `expr_type` empty for constructs it does not type
 /// yet (a direct address such as `%QX0.0`, for example), so this is a gap in
 /// the compiler rather than an invalid program.
 #[track_caller]
@@ -141,7 +141,7 @@ pub(crate) fn compile_expr(
         // converted: loading an INT's slot as a REAL would reinterpret its
         // bits, and loading a UDINT's as a LINT would sign-extend it.
         ExprKind::Variable(variable) => {
-            match crate::compile_arith::numeric_op_type(expr.resolved_type.as_ref()) {
+            match crate::compile_arith::numeric_op_type(expr_operand_name(ctx, expr).as_ref()) {
                 Some(own) if own.0 != op_type.0 => {
                     compile_variable_read(emitter, ctx, variable, own)?;
                     crate::compile_arith::convert(emitter, own, op_type);
@@ -151,7 +151,8 @@ pub(crate) fn compile_expr(
             }
         }
         ExprKind::BinaryOp(binary) => {
-            compile_binary_arith(emitter, ctx, binary, expr.resolved_type.as_ref(), op_type)
+            let result = expr_operand_name(ctx, expr);
+            compile_binary_arith(emitter, ctx, binary, result.as_ref(), op_type)
         }
         ExprKind::UnaryOp(unary) => match unary.op {
             UnaryOp::Neg => {

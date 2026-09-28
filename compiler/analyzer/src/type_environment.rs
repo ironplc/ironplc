@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use ironplc_container::CharWidth;
 use ironplc_dsl::{
     common::{ElementaryTypeName, ReferenceTarget, SpecificationKind, TypeName},
-    core::Located,
+    core::{Located, SourceSpan},
     diagnostic::{Diagnostic, Label},
-    textual::Expr,
+    textual::{Expr, ExprType},
 };
 use ironplc_problems::Problem;
 
@@ -290,6 +290,11 @@ pub struct TypeEnvironment {
     names: HashMap<TypeName, TypeId>,
     /// The id the next type that is not elementary gets.
     next_id: u32,
+    /// The reference type to each type, by the id of the type referenced:
+    /// every `REF_TO T` without a name of its own is this one type.
+    references: HashMap<TypeId, TypeId>,
+    /// The type each reference type in `references` references.
+    referenced: HashMap<TypeId, TypeId>,
     /// The repeated declarations met while populating, until the transform
     /// that populates the environment drains them with
     /// [`Self::take_duplicates`]. Recorded rather than returned so that a
@@ -305,6 +310,8 @@ impl TypeEnvironment {
             entries: HashMap::new(),
             names: HashMap::new(),
             next_id: type_id::FIRST_ALLOCATED,
+            references: HashMap::new(),
+            referenced: HashMap::new(),
             duplicates: Vec::new(),
         }
     }
@@ -361,6 +368,44 @@ impl TypeEnvironment {
             },
         );
         id
+    }
+
+    /// The reference type to the type `target` identifies: `REF_TO T` for
+    /// every `REF_TO T` spelled out in place and every `REF(x)` of a `T`,
+    /// entered the first time it is asked for. Unlike other anonymous types a
+    /// reference type is one type however often it is spelled, so that
+    /// `r := REF(x)` compares two values of the same type. `None` for an id
+    /// this environment did not allocate.
+    pub fn reference_to(&mut self, target: TypeId) -> Option<TypeId> {
+        if let Some(reference) = self.references.get(&target) {
+            return Some(*reference);
+        }
+        let target_type = self.get_by_id(target)?.representation.clone();
+        let reference = self.insert_anonymous(crate::type_attributes::TypeAttributes::new(
+            SourceSpan::default(),
+            IntermediateType::Reference {
+                target_type: Box::new(target_type),
+            },
+        ));
+        self.references.insert(target, reference);
+        self.referenced.insert(reference, target);
+        Some(reference)
+    }
+
+    /// The type a reference type references, when `reference` is one.
+    ///
+    /// A reference type from [`Self::reference_to`] knows its target's id. A
+    /// named reference type (`TYPE R : REF_TO INT`) knows only its target's
+    /// representation, which answers for an elementary target.
+    pub fn referenced_type(&self, reference: TypeId) -> Option<TypeId> {
+        if let Some(target) = self.referenced.get(&reference) {
+            return Some(*target);
+        }
+        let target = self
+            .get_by_id(reference)?
+            .representation
+            .referenced_type()?;
+        self.id_of(&self.elementary_type_name_for(target)?)
     }
 
     /// Adds an elementary type under one of its spellings. The first
@@ -492,15 +537,16 @@ impl TypeEnvironment {
         }
     }
 
-    /// The representation of the type an expression resolved to, when the
-    /// analyzer gave it one that is in the environment.
+    /// The representation of the type of an expression's value, when the
+    /// analyzer gave it a concrete one.
     ///
-    /// A bare literal resolves to a generic category (`ANY_INT`), which is
-    /// not in the environment, so it answers `None` rather than a
-    /// representation of its own.
+    /// An untyped literal is of a generic category (`ANY_INT`) and `NULL` of
+    /// no one type, so both answer `None` rather than a representation.
     pub fn representation_of_expr(&self, expr: &Expr) -> Option<&IntermediateType> {
-        let resolved = expr.resolved_type.as_ref()?;
-        Some(&self.get(resolved)?.representation)
+        match expr.expr_type.as_ref()? {
+            ExprType::Concrete(id) => Some(&self.get_by_id(*id)?.representation),
+            ExprType::Literal(_) | ExprType::Null => None,
+        }
     }
 
     /// Returns if the type is an enumeration.

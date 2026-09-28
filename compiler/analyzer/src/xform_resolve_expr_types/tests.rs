@@ -18,13 +18,20 @@ use rstest::rstest;
 mod expr_type;
 mod single_assignment;
 
+/// A library after the expression type resolution pass, with the type
+/// environment its expression types are ids into.
+struct Resolved {
+    library: Library,
+    types: crate::type_environment::TypeEnvironment,
+}
+
 /// Runs the prerequisite passes and then the expression type resolution pass.
-fn run_pass(program: &str) -> Library {
+fn run_pass(program: &str) -> Resolved {
     run_pass_with_options(program, &CompilerOptions::default())
 }
 
 /// Like [`run_pass`] but with explicit compiler options (needed for REF_TO tests).
-fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Library {
+fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Resolved {
     let library = ironplc_parser::parse_program(program, &FileId::default(), options).unwrap();
     let mut type_environment = TypeEnvironmentBuilder::new()
         .with_elementary_types()
@@ -47,62 +54,72 @@ fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Library {
         &mut function_environment,
     )
     .unwrap();
-    apply(
+    let library = crate::xform_resolve_decl_types::apply(library, &mut type_environment).unwrap();
+    let library = apply(
         library,
         &mut type_environment,
         &function_environment,
         options,
     )
-    .unwrap()
+    .unwrap();
+    Resolved {
+        library,
+        types: type_environment,
+    }
+}
+
+/// The name the name-based relations know `expr`'s value by -- what these
+/// tests compare against (see `value_type::operand_type_name`).
+fn operand_name(
+    types: &crate::type_environment::TypeEnvironment,
+    expr: &Expr,
+) -> Option<ironplc_dsl::common::TypeName> {
+    crate::value_type::operand_type_name(types, expr.expr_type.as_ref()?)
 }
 
 /// Helper visitor to collect resolved types from assignment RHS expressions.
-struct ResolvedTypeCollector {
-    types: Vec<Option<ironplc_dsl::common::TypeName>>,
+struct ResolvedTypeCollector<'a> {
+    types: &'a crate::type_environment::TypeEnvironment,
+    names: Vec<Option<ironplc_dsl::common::TypeName>>,
 }
 
-impl ResolvedTypeCollector {
-    fn new() -> Self {
-        Self { types: vec![] }
-    }
-}
-
-impl Fold<()> for ResolvedTypeCollector {
+impl Fold<()> for ResolvedTypeCollector<'_> {
     fn fold_assignment(&mut self, node: Assignment) -> Result<Assignment, ()> {
-        self.types.push(node.value.resolved_type.clone());
+        self.names.push(operand_name(self.types, &node.value));
         node.recurse_fold(self)
     }
 }
 
-/// Collects the resolved_type from the top-level assignment expressions.
-fn collect_assignment_types(library: &Library) -> Vec<Option<ironplc_dsl::common::TypeName>> {
-    let mut collector = ResolvedTypeCollector::new();
-    let _ = collector.fold_library(library.clone());
-    collector.types
+/// Collects the type of each top-level assignment value.
+fn collect_assignment_types(resolved: &Resolved) -> Vec<Option<ironplc_dsl::common::TypeName>> {
+    let mut collector = ResolvedTypeCollector {
+        types: &resolved.types,
+        names: vec![],
+    };
+    let _ = collector.fold_library(resolved.library.clone());
+    collector.names
 }
 
-/// Collects resolved_type from every Expr node in the tree.
-struct AllExprTypeCollector {
-    types: Vec<Option<ironplc_dsl::common::TypeName>>,
+/// Collects the type of every Expr node in the tree.
+struct AllExprTypeCollector<'a> {
+    types: &'a crate::type_environment::TypeEnvironment,
+    names: Vec<Option<ironplc_dsl::common::TypeName>>,
 }
 
-impl AllExprTypeCollector {
-    fn new() -> Self {
-        Self { types: vec![] }
-    }
-}
-
-impl Fold<()> for AllExprTypeCollector {
+impl Fold<()> for AllExprTypeCollector<'_> {
     fn fold_expr(&mut self, node: Expr) -> Result<Expr, ()> {
-        self.types.push(node.resolved_type.clone());
+        self.names.push(operand_name(self.types, &node));
         node.recurse_fold(self)
     }
 }
 
-fn collect_all_expr_types(library: &Library) -> Vec<Option<ironplc_dsl::common::TypeName>> {
-    let mut collector = AllExprTypeCollector::new();
-    let _ = collector.fold_library(library.clone());
-    collector.types
+fn collect_all_expr_types(resolved: &Resolved) -> Vec<Option<ironplc_dsl::common::TypeName>> {
+    let mut collector = AllExprTypeCollector {
+        types: &resolved.types,
+        names: vec![],
+    };
+    let _ = collector.fold_library(resolved.library.clone());
+    collector.names
 }
 
 /// Returns the resolved type name as an uppercase &str for comparison.
@@ -397,7 +414,7 @@ END_FUNCTION_BLOCK";
 #[test]
 fn apply_when_function_block_output_in_condition_then_resolves_type() {
     // An IF condition has no assignment target to borrow a type from, so
-    // codegen reads the condition's own resolved_type. Leaving it unset
+    // codegen reads the condition's own expr_type. Leaving it unset
     // for `timer.Q` produced P9999 (issue #1375).
     let program = "
 FUNCTION_BLOCK FB_TEST

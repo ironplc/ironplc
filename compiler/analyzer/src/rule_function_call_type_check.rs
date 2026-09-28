@@ -116,7 +116,7 @@ impl RuleFunctionCallTypeCheck<'_> {
     /// Standard-library calls are checked like any other. Their declared
     /// return type may be a generic category, but `xform_resolve_expr_types`
     /// has already narrowed it to the concrete type of the argument the
-    /// category binds to; where it could not, `resolved_type` is `None` and
+    /// category binds to; where it could not, `expr_type` is `None` and
     /// the call is skipped below. A call naming a function the environment
     /// does not hold resolves to `None` the same way, so the signature
     /// itself is never needed here.
