@@ -30,7 +30,9 @@ use ironplc_dsl::common::*;
 use ironplc_dsl::configuration::*;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::core::Located;
-use ironplc_dsl::member_qualifier::{MemberQualifier, MemberQualifierKind, MemberQualifiers};
+use ironplc_dsl::member_qualifier::{
+    AccessSpecifier, MemberQualifier, MemberQualifierKind, MemberQualifiers,
+};
 use ironplc_dsl::sfc::*;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::time::*;
@@ -1518,11 +1520,39 @@ parser! {
     // element and appends it after the function block body, so the XML form
     // reaches `MethodDeclaration` through this rule as well. See ADR-0041
     // Phase 1.
-    rule method_declaration() -> MethodDeclaration = start:tok(TokenType::Method) _ name:identifier() _ rt:(tok(TokenType::Colon) _ rt:function_return_type() {rt})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body() _ end:tok(TokenType::EndMethod) {
+    // A qualifier between `METHOD`/`FUNCTION_BLOCK` and the name. Except
+    // for `ABSTRACT`, the words are contextual keywords, so they stay
+    // ordinary identifiers everywhere else.
+    rule member_qualifier() -> MemberQualifier =
+      t:tok(TokenType::Abstract) { MemberQualifier { kind: MemberQualifierKind::Abstract, span: t.span.clone() } }
+      / t:contextual_keyword("PUBLIC") { MemberQualifier { kind: MemberQualifierKind::Access(AccessSpecifier::Public), span: t.span.clone() } }
+      / t:contextual_keyword("PRIVATE") { MemberQualifier { kind: MemberQualifierKind::Access(AccessSpecifier::Private), span: t.span.clone() } }
+      / t:contextual_keyword("PROTECTED") { MemberQualifier { kind: MemberQualifierKind::Access(AccessSpecifier::Protected), span: t.span.clone() } }
+      / t:contextual_keyword("INTERNAL") { MemberQualifier { kind: MemberQualifierKind::Access(AccessSpecifier::Internal), span: t.span.clone() } }
+      / t:contextual_keyword("FINAL") { MemberQualifier { kind: MemberQualifierKind::Final, span: t.span.clone() } }
+      / t:contextual_keyword("OVERRIDE") { MemberQualifier { kind: MemberQualifierKind::Override, span: t.span.clone() } }
+    // Qualifiers in source order; their order and combination are checked
+    // after parsing. A word is only a qualifier when the declaration's name
+    // still follows it, so `METHOD Override : BOOL` is a method named
+    // `Override`. The name must not be the start of a statement either:
+    // in `METHOD Override x := 1;` the method has no header and `x := 1;`
+    // is its body.
+    rule member_qualifiers() -> MemberQualifiers = qs:(q:member_qualifier() &(_ (member_qualifier() / identifier() !(_ statement_continuation()))) { q }) ** _ {
+      MemberQualifiers::new(qs)
+    }
+    // The token after the first identifier of a statement: `x := `,
+    // `x(`, `x.`, `x[`, `x^`, or `x REF=`/`x S=`/`x R=`.
+    rule statement_continuation() =
+      tok(TokenType::Assignment) / tok(TokenType::LeftParen) / tok(TokenType::Period)
+      / tok(TokenType::LeftBracket) / tok(TokenType::Caret)
+      / ref_bind_op() / set_bind_op() / reset_bind_op()
+
+    rule method_declaration() -> MethodDeclaration = start:tok(TokenType::Method) _ qualifiers:member_qualifiers() _ name:identifier() _ rt:(tok(TokenType::Colon) _ rt:function_return_type() {rt})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body() _ end:tok(TokenType::EndMethod) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
       MethodDeclaration {
+        qualifiers,
         name,
         return_type: rt,
         variables,

@@ -3051,6 +3051,10 @@ pub struct FunctionBlockDeclaration {
 #[derive(Clone, Debug, PartialEq, Recurse, Located)]
 #[recurse(scope)]
 pub struct MethodDeclaration {
+    /// Qualifiers between `METHOD` and the name, in source order, such as
+    /// `PRIVATE` or `PUBLIC FINAL`. Metadata only (ADR-0041).
+    #[recurse(ignore)]
+    pub qualifiers: MemberQualifiers,
     pub name: Id,
     pub return_type: Option<FunctionReturnType>,
     pub variables: Vec<VarDecl>,

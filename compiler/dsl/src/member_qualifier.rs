@@ -1,14 +1,44 @@
-//! Member qualifiers on function blocks (OOP extension), such as the
-//! `ABSTRACT` in `FUNCTION_BLOCK ABSTRACT FB_Base`.
+//! Member qualifiers on methods and function blocks (OOP extension), such
+//! as the `PRIVATE` in `METHOD PRIVATE Reset` or the `ABSTRACT` in
+//! `FUNCTION_BLOCK ABSTRACT FB_Base`.
+//!
+//! Qualifiers are metadata only: access is not enforced (ADR-0041).
 //!
 //! See `specs/design/beckhoff-twincat-dialect.md` §1.5.
 
 use crate::core::SourceSpan;
 
+/// Who may call a method or use a function block.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccessSpecifier {
+    Public,
+    Private,
+    Protected,
+    Internal,
+}
+
 /// The kind of a single qualifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MemberQualifierKind {
+    Access(AccessSpecifier),
     Abstract,
+    Final,
+    Override,
+}
+
+impl MemberQualifierKind {
+    /// The keyword as written in source, in upper case.
+    pub fn keyword(&self) -> &'static str {
+        match self {
+            MemberQualifierKind::Access(AccessSpecifier::Public) => "PUBLIC",
+            MemberQualifierKind::Access(AccessSpecifier::Private) => "PRIVATE",
+            MemberQualifierKind::Access(AccessSpecifier::Protected) => "PROTECTED",
+            MemberQualifierKind::Access(AccessSpecifier::Internal) => "INTERNAL",
+            MemberQualifierKind::Abstract => "ABSTRACT",
+            MemberQualifierKind::Final => "FINAL",
+            MemberQualifierKind::Override => "OVERRIDE",
+        }
+    }
 }
 
 /// One qualifier as written in the source.
@@ -31,8 +61,28 @@ impl MemberQualifiers {
         Self(qualifiers)
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = &MemberQualifier> {
+        self.0.iter()
+    }
+
+    /// The first access specifier, if any.
+    pub fn access(&self) -> Option<AccessSpecifier> {
+        self.0.iter().find_map(|q| match q.kind {
+            MemberQualifierKind::Access(access) => Some(access),
+            _ => None,
+        })
+    }
+
     pub fn is_abstract(&self) -> bool {
         self.has(MemberQualifierKind::Abstract)
+    }
+
+    pub fn is_final(&self) -> bool {
+        self.has(MemberQualifierKind::Final)
+    }
+
+    pub fn is_override(&self) -> bool {
+        self.has(MemberQualifierKind::Override)
     }
 
     fn has(&self, kind: MemberQualifierKind) -> bool {
@@ -44,11 +94,16 @@ impl MemberQualifiers {
 mod tests {
     use super::*;
 
-    fn qualifier(kind: MemberQualifierKind) -> MemberQualifier {
-        MemberQualifier {
-            kind,
-            span: SourceSpan::default(),
-        }
+    fn qualifiers(kinds: &[MemberQualifierKind]) -> MemberQualifiers {
+        MemberQualifiers::new(
+            kinds
+                .iter()
+                .map(|kind| MemberQualifier {
+                    kind: *kind,
+                    span: SourceSpan::default(),
+                })
+                .collect(),
+        )
     }
 
     #[test]
@@ -58,7 +113,36 @@ mod tests {
 
     #[test]
     fn is_abstract_when_abstract_present_then_true() {
-        let qualifiers = MemberQualifiers::new(vec![qualifier(MemberQualifierKind::Abstract)]);
-        assert!(qualifiers.is_abstract());
+        assert!(qualifiers(&[MemberQualifierKind::Abstract]).is_abstract());
+    }
+
+    #[test]
+    fn access_when_no_access_specifier_then_none() {
+        assert_eq!(qualifiers(&[MemberQualifierKind::Final]).access(), None);
+    }
+
+    #[test]
+    fn access_when_access_specifier_after_final_then_found() {
+        let q = qualifiers(&[
+            MemberQualifierKind::Final,
+            MemberQualifierKind::Access(AccessSpecifier::Private),
+        ]);
+        assert_eq!(q.access(), Some(AccessSpecifier::Private));
+    }
+
+    #[test]
+    fn is_final_and_is_override_when_present_then_true() {
+        let q = qualifiers(&[MemberQualifierKind::Final, MemberQualifierKind::Override]);
+        assert!(q.is_final());
+        assert!(q.is_override());
+        assert!(!q.is_abstract());
+    }
+
+    #[test]
+    fn keyword_when_access_specifier_then_upper_case_word() {
+        assert_eq!(
+            MemberQualifierKind::Access(AccessSpecifier::Protected).keyword(),
+            "PROTECTED"
+        );
     }
 }

@@ -86,18 +86,25 @@ break valid TwinCAT code. Contextual matching is still the better choice:
 `ABSTRACT` is already a token (demoted with the OOP group) and stays one.
 The qualifier slot accepts it next to the contextual words.
 
-A word is only taken as a qualifier when another qualifier or an
-identifier follows it:
+A word is only taken as a qualifier when another qualifier, or an
+identifier that does not start a statement, follows it:
 
 ```
 rule member_qualifiers() -> MemberQualifiers =
-    qs:(q:member_qualifier() &(member_qualifier() / identifier()) { q })*
+    qs:(q:member_qualifier() &(_ (member_qualifier() / identifier() !(_ statement_continuation()))) { q }) ** _
 ```
 
+`statement_continuation` is the token after a statement's first
+identifier: `:=`, `(`, `.`, `[`, `^`, `REF=`, `S=`, `R=`.
+
 So `METHOD Override : BOOL` is a method named `Override`, and
-`FUNCTION_BLOCK Internal VAR ...` is a function block named `Internal`. The
-only inputs that change meaning are two identifiers in a row after
-`METHOD`/`FUNCTION_BLOCK`, which were syntax errors before.
+`FUNCTION_BLOCK Internal VAR ...` is a function block named `Internal`.
+The statement check matters because a method without a header is
+followed directly by its body: in `METHOD Override x := 1;` the name is
+`Override` and `x := 1;` the body. The simpler "followed by an identifier"
+lookahead would have taken `Override` as a qualifier there, and that
+shape is common in `.TcPOU` files, where the body comes from a separate
+`<Implementation>` element.
 
 ### Any order in the grammar, order checked afterwards
 
@@ -221,10 +228,10 @@ corpus into errors.
 
 ## Tasks
 
-- [ ] Commit this plan
-- [ ] Prefactor 1: `MemberQualifiers` on `FunctionBlockOop`, `is_abstract()` helper (own commit)
-- [ ] Prefactor 2: `contextual_keyword` rule (own commit)
-- [ ] Methods: grammar, `MethodDeclaration.qualifiers`, renderer, parser tests incl. identifier regressions (`METHOD Override`, `x := Private;`), round-trip, `.TcPOU` test
+- [x] Commit this plan
+- [x] Prefactor 1: `MemberQualifiers` on `FunctionBlockOop`, `is_abstract()` helper (own commit)
+- [x] Prefactor 2: `contextual_keyword` rule (own commit)
+- [x] Methods: grammar, `MethodDeclaration.qualifiers`, renderer, parser tests incl. identifier regressions (`METHOD Override`, `x := Private;`), round-trip, `.TcPOU` test
 - [ ] Function blocks: `FINAL`/access in the FB slot, flag-gate rule + problem code
 - [ ] Validation: `MemberQualifierInvalid` rule + problem code, one test per case in the XAE table
 - [ ] Update design doc §1.5 and §3.5
