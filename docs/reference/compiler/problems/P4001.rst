@@ -4,7 +4,7 @@ P4001
 
 .. problem-summary:: P4001
 
-This error occurs when a function block invocation mixes named (formal) and positional (non-formal) input arguments.
+This error occurs when a function call or a function block invocation mixes named (formal) and positional (non-formal) input arguments. A call is either formal, naming every argument, or non-formal, giving the arguments in declaration order.
 
 Example
 -------
@@ -47,3 +47,23 @@ To fix this error, use either all named or all positional arguments:
    FbInstance(Input1 := TRUE, Input2 := FALSE);  (* Correct: All named arguments *)
    END_FUNCTION_BLOCK
 
+The same applies to a function call:
+
+.. code-block::
+
+   FUNCTION Diff : INT
+   VAR_INPUT
+       A : INT;
+       B : INT;
+   END_VAR
+       Diff := A - B;
+   END_FUNCTION
+
+   PROGRAM main
+   VAR
+       x : INT;
+   END_VAR
+       x := Diff(1, B := 2);      (* Error: Mixed formal and non-formal arguments *)
+       x := Diff(A := 1, B := 2); (* Correct: All named arguments *)
+       x := Diff(1, 2);           (* Correct: All positional arguments *)
+   END_PROGRAM
