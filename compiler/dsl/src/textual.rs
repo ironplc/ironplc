@@ -363,11 +363,6 @@ pub struct FbCall {
     pub position: SourceSpan,
 }
 
-/// Method invocation, statement position only: `instance.MethodName(args);`
-/// (OOP extension, ADR-0041 Phase 1). Any return value is discarded, same
-/// restriction as `FbCall` for a plain FB invocation. Method calls in
-/// expression position (e.g. `IF fb.IsMoving() THEN`) are a follow-up
-/// slice.
 /// The instance a [`MethodCall`] is invoked on.
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum MethodReceiver {
@@ -395,6 +390,11 @@ impl Located for MethodReceiver {
     }
 }
 
+/// Method invocation: `instance.MethodName(args)` (OOP extension, ADR-0041
+/// Phase 1). The same node appears in both positions: as a statement
+/// ([`StmtKind::MethodCall`]), where any return value is discarded, and in
+/// an expression ([`ExprKind::MethodCall`]), where the method must declare
+/// a return type and the call's value is that return value.
 #[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct MethodCall {
     /// The function block instance the method is called on.
@@ -587,6 +587,7 @@ impl Located for ExprKind {
             ExprKind::EnumeratedValue(value) => value.span(),
             ExprKind::Variable(var) => var.span(),
             ExprKind::Function(func) => func.name.span(),
+            ExprKind::MethodCall(call) => call.span(),
             ExprKind::LateBound(late) => late.value.span(),
             ExprKind::Ref(var) => var.span(),
             ExprKind::Deref(expr) => expr.span(),
@@ -606,6 +607,7 @@ pub enum ExprKind {
     EnumeratedValue(EnumeratedValue),
     Variable(Variable),
     Function(Function),
+    MethodCall(MethodCall),
     LateBound(LateBound),
     Ref(Box<Variable>),
     Deref(Box<Expr>),
@@ -662,6 +664,16 @@ impl fmt::Display for ExprKind {
             ExprKind::Function(func) => {
                 write!(f, "{}(", func.name)?;
                 for (i, param) in func.param_assignment.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{param}")?;
+                }
+                write!(f, ")")
+            }
+            ExprKind::MethodCall(call) => {
+                write!(f, "{}.{}(", call.receiver, call.method)?;
+                for (i, param) in call.params.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }

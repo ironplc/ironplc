@@ -25,7 +25,11 @@ Literals
 
    "Hello, world!"
    "Double-byte string"
+   "Say $"hi$""
    WSTRING#"typed literal"
+   "$20AC$L"
+
+.. include:: ../../../../includes/string-escapes.rst
 
 The maximum length can be specified in the declaration:
 

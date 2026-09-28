@@ -4,14 +4,13 @@
 //! and typed opcode emission helpers. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
+use ironplc_analyzer::IntermediateType;
 use ironplc_container::{opcode, VarIndex};
-use ironplc_dsl::common::{
-    Boolean, ConstantKind, ElementaryTypeName, GenericTypeName, SignedInteger,
-};
+use ironplc_dsl::common::{Boolean, ConstantKind, SignedInteger};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    ArrayVariable, BitAccessVariable, CompareExpr, CompareOp, Expr, ExprKind, Operator,
+    ArrayVariable, BitAccessVariable, CompareExpr, CompareOp, Expr, ExprKind, ExprType, Operator,
     PartialAccessVariable, StructuredVariable, SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
@@ -23,80 +22,65 @@ use super::compile::{
 };
 use super::compile_arith::compile_binary_arith;
 use super::compile_call::compile_function_call;
+use super::compile_method::compile_method_call_expression;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
 use super::compile_string::compile_string_compare;
-use super::type_info::resolve_type_name;
+use super::type_info::{expr_representation, expr_type_info};
 use crate::emit::Emitter;
 
-/// Returns the operation type from an expression's resolved type annotation.
+/// Returns the operation type of an expression's value, from its
+/// `expr_type`.
 ///
-/// The analyzer must have populated `expr.resolved_type` with an elementary
-/// type or a user-defined type in `ctx.named_types`. Anything else -- an
-/// array or a structure, say -- is a compiler bug.
+/// The analyzer must have given the expression a type this backend operates
+/// on. Anything else -- an array or a structure, say -- is a compiler bug.
 pub(crate) fn op_type(ctx: &CompileContext, expr: &Expr) -> Result<OpType, Diagnostic> {
-    let resolved = expr
-        .resolved_type
-        .as_ref()
-        .ok_or_else(|| unresolved_expr_type(expr))?;
-    let info = resolve_type_name(&resolved.name)
-        .or_else(|| ctx.named_types.get(resolved).copied())
-        .ok_or_else(|| unresolved_expr_type(expr))?;
+    let info = expr_type_info(ctx, expr).ok_or_else(|| unresolved_expr_type(expr))?;
     Ok((info.op_width, info.signedness))
 }
 
-/// Returns the operation type from an expression's resolved type, if available.
+/// Returns the operation type of an expression's value, if it has one.
 ///
 /// Unlike [`op_type`] this returns `None` instead of an error when the
-/// resolved type is missing or unrecognized, making it safe to use as a
-/// best-effort fallback.
-pub(crate) fn op_type_from_expr(expr: &Expr) -> Option<OpType> {
-    let resolved = expr.resolved_type.as_ref()?;
-    let info = resolve_type_name(&resolved.name)?;
+/// type is missing or not one this backend operates on, making it safe to
+/// use as a best-effort fallback.
+pub(crate) fn op_type_from_expr(ctx: &CompileContext, expr: &Expr) -> Option<OpType> {
+    let info = expr_type_info(ctx, expr)?;
     Some((info.op_width, info.signedness))
 }
 
-/// Returns the operation type only when the expression has a concrete
-/// (non-generic) resolved type.
+/// Returns the operation type only when the expression has a concrete type,
+/// not an untyped literal's generic category.
 ///
 /// Generic types like `ANY_INT` map to a signed default (`DINT`) which is
 /// wrong when the other operand is unsigned (e.g. `DWORD`). Returning
 /// `None` for generic types lets callers prefer a concrete type from
 /// another operand.
-pub(crate) fn concrete_op_type_from_expr(expr: &Expr) -> Option<OpType> {
-    let resolved = expr.resolved_type.as_ref()?;
-    if GenericTypeName::try_from(&resolved.name).is_ok() {
+pub(crate) fn concrete_op_type_from_expr(ctx: &CompileContext, expr: &Expr) -> Option<OpType> {
+    if !matches!(expr.expr_type, Some(ExprType::Concrete(_))) {
         return None;
     }
-    let info = resolve_type_name(&resolved.name)?;
-    Some((info.op_width, info.signedness))
+    op_type_from_expr(ctx, expr)
 }
 
-/// Returns `true` if the expression's resolved type is BOOL.
-pub(crate) fn expr_is_bool(expr: &Expr) -> bool {
-    expr.resolved_type
-        .as_ref()
-        .and_then(|t| ElementaryTypeName::try_from(&t.name).ok())
-        .is_some_and(|e| matches!(e, ElementaryTypeName::BOOL))
+/// Returns `true` if the expression's value is a BOOL.
+pub(crate) fn expr_is_bool(ctx: &CompileContext, expr: &Expr) -> bool {
+    matches!(expr_representation(ctx, expr), Some(IntermediateType::Bool))
 }
 
-/// Returns `true` if the expression's resolved type is STRING.
-pub(crate) fn expr_is_string(expr: &Expr) -> bool {
-    expr.resolved_type
-        .as_ref()
-        .and_then(|t| ElementaryTypeName::try_from(&t.name).ok())
-        .is_some_and(|e| matches!(e, ElementaryTypeName::STRING | ElementaryTypeName::WSTRING))
+/// Returns `true` if the expression's value is a STRING or WSTRING.
+pub(crate) fn expr_is_string(ctx: &CompileContext, expr: &Expr) -> bool {
+    matches!(
+        expr_representation(ctx, expr),
+        Some(IntermediateType::String { .. })
+    )
 }
 
-/// Returns the storage bit width from an expression's resolved type annotation.
+/// Returns the storage bit width of an expression's value.
 ///
-/// The analyzer must have populated `expr.resolved_type`. A missing or
-/// unrecognized resolved type is a compiler bug.
-pub(crate) fn storage_bits(expr: &Expr) -> Result<u8, Diagnostic> {
-    let resolved = expr
-        .resolved_type
-        .as_ref()
-        .ok_or_else(|| unresolved_expr_type(expr))?;
-    let info = resolve_type_name(&resolved.name).ok_or_else(|| unresolved_expr_type(expr))?;
+/// The analyzer must have given the expression a type this backend operates
+/// on. Anything else is a compiler bug.
+pub(crate) fn storage_bits(ctx: &CompileContext, expr: &Expr) -> Result<u8, Diagnostic> {
+    let info = expr_type_info(ctx, expr).ok_or_else(|| unresolved_expr_type(expr))?;
     Ok(info.storage_bits)
 }
 
@@ -130,7 +114,7 @@ pub(crate) fn condition_op_type(ctx: &CompileContext, expr: &Expr) -> Result<OpT
             _ => {
                 // String comparisons take a dedicated path in compile_expr
                 // that emits an i32 boolean; the operand op_type is unused.
-                if expr_is_string(&compare.left) {
+                if expr_is_string(ctx, &compare.left) {
                     return Ok(DEFAULT_OP_TYPE);
                 }
                 op_type(ctx, &compare.left)
@@ -153,7 +137,19 @@ pub(crate) fn compile_expr(
 ) -> Result<(), Diagnostic> {
     match &expr.kind {
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
-        ExprKind::Variable(variable) => compile_variable_read(emitter, ctx, variable, op_type),
+        // A variable read at a different width is read at its own and
+        // converted: loading an INT's slot as a REAL would reinterpret its
+        // bits, and loading a UDINT's as a LINT would sign-extend it.
+        ExprKind::Variable(variable) => {
+            match crate::compile_arith::numeric_op_type(expr.resolved_type.as_ref()) {
+                Some(own) if own.0 != op_type.0 => {
+                    compile_variable_read(emitter, ctx, variable, own)?;
+                    crate::compile_arith::convert(emitter, own, op_type);
+                    Ok(())
+                }
+                _ => compile_variable_read(emitter, ctx, variable, op_type),
+            }
+        }
         ExprKind::BinaryOp(binary) => {
             compile_binary_arith(emitter, ctx, binary, expr.resolved_type.as_ref(), op_type)
         }
@@ -165,7 +161,7 @@ pub(crate) fn compile_expr(
             }
             UnaryOp::Not => {
                 compile_expr(emitter, ctx, &unary.term, op_type)?;
-                emit_not(emitter, op_type, &unary.term)
+                emit_not(emitter, ctx, op_type, &unary.term)
             }
         },
         ExprKind::LateBound(late_bound) => {
@@ -187,6 +183,7 @@ pub(crate) fn compile_expr(
             Ok(())
         }
         ExprKind::Function(func) => compile_function_call(emitter, ctx, func, op_type),
+        ExprKind::MethodCall(call) => compile_method_call_expression(emitter, ctx, call),
         ExprKind::Ref(variable) => {
             // REF(param) of a VAR_IN_OUT parameter is the reference its slot
             // already holds: the caller's variable.
@@ -231,13 +228,13 @@ fn compile_compare(
     // AND_THEN and OR_ELSE must not evaluate their right operand when the
     // left one already decides the answer, so they branch instead of
     // evaluating both operands into an eager bitwise op.
-    if let Some(short_circuit) = ShortCircuitOp::for_expr(compare) {
+    if let Some(short_circuit) = ShortCircuitOp::for_expr(ctx, compare) {
         return compile_short_circuit(emitter, ctx, compare, short_circuit);
     }
 
     // String comparisons need a completely different code path because
     // strings live in the data region, not on the operand stack.
-    if expr_is_string(&compare.left) {
+    if expr_is_string(ctx, &compare.left) {
         return compile_string_compare(emitter, ctx, compare);
     }
 
@@ -248,9 +245,9 @@ fn compile_compare(
     // is a typed variable (e.g. DWORD), we use the concrete type to ensure
     // correct signedness. This also applies to AND/OR/XOR which can be
     // either boolean (BOOL operands) or bitwise (e.g. DWORD operands).
-    let operand_op_type = concrete_op_type_from_expr(&compare.left)
-        .or_else(|| concrete_op_type_from_expr(&compare.right))
-        .or_else(|| op_type_from_expr(&compare.left))
+    let operand_op_type = concrete_op_type_from_expr(ctx, &compare.left)
+        .or_else(|| concrete_op_type_from_expr(ctx, &compare.right))
+        .or_else(|| op_type_from_expr(ctx, &compare.left))
         .unwrap_or(op_type);
     compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
     compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
@@ -1993,13 +1990,14 @@ pub(crate) fn emit_compare_op(emitter: &mut Emitter, op: &CompareOp, op_type: Op
 /// come through here, so the two spellings cannot emit differently.
 pub(crate) fn emit_not(
     emitter: &mut Emitter,
+    ctx: &CompileContext,
     op_type: OpType,
     term: &Expr,
 ) -> Result<(), Diagnostic> {
     match op_type {
         (OpWidth::W32, Signedness::Unsigned) => {
             emitter.emit_bit_not_32();
-            match storage_bits(term)? {
+            match storage_bits(ctx, term)? {
                 8 => emitter.emit_trunc_u8(),
                 16 => emitter.emit_trunc_u16(),
                 _ => {}

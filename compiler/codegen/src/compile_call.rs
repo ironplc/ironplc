@@ -21,7 +21,7 @@ use super::compile::{
 use super::compile_arith::compile_arith_fold;
 use super::compile_expr::{
     compile_expr, emit_compare_op, emit_mod, emit_mul, emit_not, emit_sub, emit_truncation,
-    op_type, storage_bits, unresolved_expr_type,
+    op_type, op_type_from_expr, storage_bits,
 };
 use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
@@ -306,7 +306,7 @@ fn compile_user_function_call(
 /// When the argument is itself a `VAR_IN_OUT` parameter of the function
 /// being compiled, its slot already holds a reference to the caller's
 /// variable, and that reference is passed on. The analyzer has checked the
-/// argument is a variable of the parameter's type (P4057, P4058); only a
+/// argument is a variable of the parameter's type (P4058, P4059); only a
 /// named elementary variable, which occupies one slot, is supported.
 fn compile_reference_arg(
     emitter: &mut Emitter,
@@ -357,11 +357,7 @@ fn compile_value_arg(
     arg: &Expr,
     param_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let arg_natural = arg
-        .resolved_type
-        .as_ref()
-        .and_then(|t| resolve_type_name(&t.name))
-        .map(|info| (info.op_width, info.signedness));
+    let arg_natural = op_type_from_expr(ctx, arg);
 
     match arg_natural {
         Some(arg_op) if arg_op.0 != param_op_type.0 => {
@@ -451,7 +447,7 @@ fn compile_operator_form(
                 return Err(Diagnostic::todo_with_span(func.name.span()));
             };
             compile_expr(emitter, ctx, term, op_type)?;
-            emit_not(emitter, op_type, term)
+            emit_not(emitter, ctx, op_type, term)
         }
     }
 }
@@ -643,10 +639,10 @@ fn compile_sizeof(
                 let elem_bytes = array_info.element_var_type_info.storage_bits as u32 / 8;
                 array_info.total_elements * elem_bytes
             } else {
-                sizeof_from_resolved_type(args[0])?
+                sizeof_from_expr_type(ctx, args[0])?
             }
         } else {
-            sizeof_from_resolved_type(args[0])?
+            sizeof_from_expr_type(ctx, args[0])?
         };
 
     let pool_index = ctx.add_i32_constant(size as i32);
@@ -654,15 +650,11 @@ fn compile_sizeof(
     Ok(())
 }
 
-/// Returns the size in bytes from an expression's resolved type annotation.
-fn sizeof_from_resolved_type(expr: &Expr) -> Result<u32, Diagnostic> {
-    let resolved = expr
-        .resolved_type
-        .as_ref()
-        .ok_or_else(|| unresolved_expr_type(expr))?;
-    let info = resolve_type_name(&resolved.name).ok_or_else(|| unresolved_expr_type(expr))?;
+/// Returns the size in bytes of an expression's value, from its `expr_type`.
+fn sizeof_from_expr_type(ctx: &CompileContext, expr: &Expr) -> Result<u32, Diagnostic> {
+    let bits = storage_bits(ctx, expr)?;
     // Ceiling division: types like BOOL (1 bit) still occupy 1 byte.
-    Ok((info.storage_bits as u32).div_ceil(8))
+    Ok((bits as u32).div_ceil(8))
 }
 
 /// Compiles BCD_TO_INT(IN) — converts a BCD-encoded bit string to an integer.
@@ -682,7 +674,7 @@ fn compile_bcd_to_int(
     }
 
     let arg_op_type = op_type(ctx, args[0])?;
-    let bits = storage_bits(args[0])?;
+    let bits = storage_bits(ctx, args[0])?;
     compile_expr(emitter, ctx, args[0], arg_op_type)?;
 
     let func_id = match bits {
@@ -713,7 +705,7 @@ fn compile_int_to_bcd(
     }
 
     let arg_op_type = op_type(ctx, args[0])?;
-    let bits = storage_bits(args[0])?;
+    let bits = storage_bits(ctx, args[0])?;
     compile_expr(emitter, ctx, args[0], arg_op_type)?;
 
     let func_id = match (arg_op_type.0, bits) {
@@ -922,7 +914,7 @@ fn compile_shift_rotate(
     compile_expr(emitter, ctx, args[1], n_op_type)?;
 
     // Determine storage bits for narrow-type ROL/ROR selection
-    let bits = storage_bits(args[0])?;
+    let bits = storage_bits(ctx, args[0])?;
 
     let func_id = match (name, op_type.0) {
         ("shl", OpWidth::W64) => opcode::builtin::SHL_I64,

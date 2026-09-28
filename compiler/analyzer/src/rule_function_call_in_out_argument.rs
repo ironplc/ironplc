@@ -3,7 +3,7 @@
 //!
 //! A `VAR_IN_OUT` parameter is passed by reference: the function reads and
 //! writes the caller's variable. So the argument must be a variable
-//! (P4057), and its type must be the parameter's type exactly (P4058). An
+//! (P4058), and its type must be the parameter's type exactly (P4059). An
 //! implicit conversion that is fine for a `VAR_INPUT` is not fine here: the
 //! function writes values of the parameter's type into the caller's
 //! variable, so a `DINT` parameter bound to an `INT` variable could store a
@@ -183,7 +183,7 @@ impl RuleFunctionCallInOutArgument<'_> {
             // A reference may target a variable whose origin is constant,
             // and THIS^/SUPER^ are not variables of the caller.
             SymbolicVariableKind::Deref(_) | SymbolicVariableKind::SelfRef(_) => false,
-            // Not a variable a reference can name; reported as P4057.
+            // Not a variable a reference can name; reported as P4058.
             SymbolicVariableKind::BitAccess(_) | SymbolicVariableKind::PartialAccess(_) => false,
         }
     }

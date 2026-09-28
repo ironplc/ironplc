@@ -4,11 +4,10 @@ P4057
 
 .. problem-summary:: P4057
 
-This error occurs when a function call passes something other than a variable
-to a ``VAR_IN_OUT`` parameter. A ``VAR_IN_OUT`` parameter is passed by
-reference: the function reads and writes the caller's variable, so the
-argument must be a variable. A literal or an expression has no storage the
-function could write to.
+This error occurs when a method that has no return type is called in an
+expression, for example on the right side of an assignment or in an ``IF``
+condition. Such a method produces no value, so there is nothing for the
+expression to use. This is part of IEC 61131-3 Edition 3's OOP extension.
 
 Example
 -------
@@ -17,38 +16,42 @@ The following code will generate error P4057:
 
 .. code-block::
 
-   FUNCTION Increment : DINT
-       VAR_IN_OUT
-           counter : DINT;
-       END_VAR
-       counter := counter + 1;
-       Increment := counter;
-   END_FUNCTION
+   FUNCTION_BLOCK FB_Motor
+   VAR
+       bRunning : BOOL;
+   END_VAR
+   METHOD Start
+       bRunning := TRUE;
+   END_METHOD
+   END_FUNCTION_BLOCK
 
    PROGRAM main
-       VAR
-           total : DINT;
-           result : DINT;
-       END_VAR
-       result := Increment(total + 1);   (* Error: not a variable *)
+   VAR
+       m : FB_Motor;
+       started : BOOL;
+   END_VAR
+   started := m.Start();
    END_PROGRAM
 
-To fix this error, pass a variable:
+To fix this error, either call the method as a statement, or give the method
+a return type and assign it in the method body:
 
 .. code-block::
 
-   result := Increment(total);
+   FUNCTION_BLOCK FB_Motor
+   VAR
+       bRunning : BOOL;
+   END_VAR
+   METHOD Start : BOOL
+       bRunning := TRUE;
+       Start := bRunning;
+   END_METHOD
+   END_FUNCTION_BLOCK
 
-If the function should not change the caller's value, declare the parameter
-in ``VAR_INPUT`` instead, which accepts any expression.
-
-See Also
---------
-
-- :doc:`/reference/language/pous/function` — ``FUNCTION`` declaration syntax
-- :doc:`P4058` — a ``VAR_IN_OUT`` argument of the wrong type
-
-References
-----------
-
-* IEC 61131-3 §2.5.1.1 (Edition 2), §6.6.1.2 (Edition 3)
+   PROGRAM main
+   VAR
+       m : FB_Motor;
+       started : BOOL;
+   END_VAR
+   started := m.Start();
+   END_PROGRAM

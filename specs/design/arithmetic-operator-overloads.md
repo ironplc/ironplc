@@ -273,15 +273,15 @@ still see a type and the operator rule can report the operands.
 `rule_operator_operand_type_check` checks every arithmetic operator, not only
 `MOD`, and also every call to one of the four overloaded names, by asking the
 resolver; `checked_form` goes away. It reports P4049 when the answer is
-`None`. Both spellings of an operator get the same diagnostic, so `t * r` and
-`MUL(t, r)` are reported the same way. P4049 changes its context from an
+`None`. Both spellings of an operator get the same diagnostic, so `t1 * t2` and
+`MUL(t1, t2)` are reported the same way. P4049 changes its context from an
 `expected` category to the two operand types, because an operator with
 overloads has no single expected type, and its message changes from "the
 operand type" to "the operand types":
 
 ```
 error[P4049]: Operator is not defined for the operand types
-              (operator=*, left=TIME, right=REAL)
+              (operator=*, left=TIME, right=TIME)
 ```
 
 An arithmetic expression is reported once, labelled at the whole expression,
@@ -464,7 +464,7 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 
 **REQ-AO-analyzer-030** An arithmetic operator whose operands do not resolve is reported as P4049 naming the operator and both operand types.
 
-**REQ-AO-analyzer-031** Every arithmetic operator (`+`, `-`, `*`, `/`, `MOD`) is checked, so `r MOD 2.0`, `t1 * 1.5`, `s1 + s2` and `x * x` on `BOOL` are each reported as P4049.
+**REQ-AO-analyzer-031** Every arithmetic operator (`+`, `-`, `*`, `/`, `MOD`) is checked, so `r MOD 2.0`, `t1 * t2`, `s1 + s2` and `x * x` on `BOOL` are each reported as P4049.
 
 **REQ-AO-analyzer-032** A call to an overloaded name whose inputs do not resolve is reported as P4049 naming the function and the two operand types of the failing step, and not as P4026.
 

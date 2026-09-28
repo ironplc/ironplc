@@ -324,6 +324,9 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
             ExprKind::Function(node) => {
                 node.recurse_fold(self).map(|v| Ok(ExprKind::Function(v)))?
             }
+            ExprKind::MethodCall(node) => node
+                .recurse_fold(self)
+                .map(|v| Ok(ExprKind::MethodCall(v)))?,
             ExprKind::Ref(node) => node
                 .recurse_fold(self)
                 .map(|v| Ok(ExprKind::Ref(Box::new(v))))?,

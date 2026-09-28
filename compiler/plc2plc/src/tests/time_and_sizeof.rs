@@ -48,3 +48,14 @@ fn write_to_string_when_temporal_literal_then_keeps_its_own_prefix(
         "expected {expected_prefix} in the rendering:\n{rendered}"
     );
 }
+
+#[rstest::rstest]
+#[case::two_units("T#1m30s")]
+#[case::underscore("T#1h_30m")]
+#[case::fractional_last("T#1m1.5s")]
+fn write_to_string_when_compound_duration_then_round_trips(#[case] literal: &str) {
+    // A compound duration renders as its total in milliseconds, which
+    // re-parses to the same interval.
+    let source = format!("PROGRAM main\nVAR\n    t : TIME := {literal};\nEND_VAR\nEND_PROGRAM\n");
+    assert_round_trips(&source, &CompilerOptions::default());
+}

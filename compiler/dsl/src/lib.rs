@@ -9,6 +9,7 @@ pub mod extension;
 pub mod fold;
 pub mod scope;
 pub mod sfc;
+pub mod string_escape;
 pub mod textual;
 pub mod time;
 pub mod type_id;

@@ -119,7 +119,9 @@ impl fmt::Display for ConstantKind {
             ConstantKind::RealLiteral(lit) => write!(f, "{}", lit.value),
             ConstantKind::Boolean(lit) => write!(f, "{}", lit.value),
             ConstantKind::CharacterString(lit) => {
-                write!(f, "'{}'", lit.value.iter().collect::<String>())
+                let delimiter = lit.width.delimiter();
+                let text = crate::string_escape::encode(&lit.value, &lit.width);
+                write!(f, "{delimiter}{text}{delimiter}")
             }
             ConstantKind::Duration(lit) => write!(f, "{:?}", lit),
             ConstantKind::TimeOfDay(lit) => write!(f, "{:?}", lit),

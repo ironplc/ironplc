@@ -70,7 +70,6 @@ fn duration_spec_req_tl_012_ms_matched_before_m() {
 }
 
 #[test]
-#[ignore = "compound interval grammar is unreachable; see specs/design/time-literals.md Future Work"]
 fn duration_spec_req_tl_021_compound_interval() {
     // REQ-TL-021: compound interval with parts in descending magnitude.
     let source = duration_program("T#1d2h30m15s500ms");
@@ -86,7 +85,6 @@ fn duration_spec_req_tl_021_compound_interval() {
 #[rstest]
 #[case::lower("T#1d_2h_30m_5s_100ms")]
 #[case::upper("T#1D_2H_30M_5S_100MS")]
-#[ignore = "compound interval grammar is unreachable; see specs/design/time-literals.md Future Work"]
 fn duration_spec_req_tl_022_compound_with_underscore(#[case] literal: &str) {
     // REQ-TL-022: optional `_` separator in compound intervals.
     let source = duration_program(literal);
@@ -121,4 +119,41 @@ fn date_prefix_case_insensitive(#[case] literal: &str) {
         "parse failed for {literal}: {:?}",
         result.err()
     );
+}
+
+// The literals of #1814, and the forms the compound grammar allows: skipped
+// units, a fixed-point last part, and `_` between parts.
+#[rstest]
+#[case::minutes_seconds("T#1m30s", Duration::minutes(1) + Duration::seconds(30))]
+#[case::hours_minutes("T#2h3m", Duration::hours(2) + Duration::minutes(3))]
+#[case::seconds_millis("T#4s5ms", Duration::seconds(4) + Duration::milliseconds(5))]
+#[case::days_hours("T#1d2h", Duration::days(1) + Duration::hours(2))]
+#[case::four_parts(
+    "T#1h2m3s4ms",
+    Duration::hours(1) + Duration::minutes(2) + Duration::seconds(3) + Duration::milliseconds(4)
+)]
+#[case::underscore("T#1h_30m", Duration::hours(1) + Duration::minutes(30))]
+#[case::structured_text_basics("T#1h30m", Duration::hours(1) + Duration::minutes(30))]
+#[case::skipped_units("T#1d30m", Duration::days(1) + Duration::minutes(30))]
+#[case::fixed_point_last("T#1m1.5s", Duration::minutes(1) + Duration::milliseconds(1500))]
+#[case::long_prefix("TIME#1m30s", Duration::minutes(1) + Duration::seconds(30))]
+#[case::negative("T#-1m30s", -(Duration::minutes(1) + Duration::seconds(30)))]
+fn parse_when_compound_duration_then_sum_of_parts(
+    #[case] literal: &str,
+    #[case] expected: Duration,
+) {
+    let source = duration_program(literal);
+    let library = parse_program(&source, &FileId::default(), &CompilerOptions::default());
+    assert!(library.is_ok(), "{literal}: {:?}", library.err());
+    assert_eq!(extract_duration(&library.unwrap()).interval, expected);
+}
+
+#[rstest]
+#[case::ascending_units("T#30m1h")]
+#[case::repeated_unit("T#1m1m")]
+#[case::fixed_point_before_last("T#1.5h30m")]
+fn parse_when_compound_duration_malformed_then_error(#[case] literal: &str) {
+    let source = duration_program(literal);
+    let result = parse_program(&source, &FileId::default(), &CompilerOptions::default());
+    assert!(result.is_err(), "{literal} parsed");
 }

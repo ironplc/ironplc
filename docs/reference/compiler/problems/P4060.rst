@@ -1,0 +1,77 @@
+=====
+P4060
+=====
+
+.. problem-summary:: P4060
+
+This error occurs when a function call passes a variable to a ``VAR_IN_OUT``
+parameter and the compiler cannot prove the variable is writable.
+
+A ``VAR_IN_OUT`` parameter is passed by reference, so the function can write
+to the argument. The argument therefore must not be a constant, and the
+compiler must be able to tell that from the calling POU's own declarations.
+Where it cannot, the argument is rejected, even if the value never actually
+came from a constant.
+
+An argument is rejected when its variable:
+
+- is declared ``CONSTANT``, in any section, including ``VAR_EXTERNAL CONSTANT``
+- is a ``VAR_INPUT`` of the calling POU: its value came from that POU's
+  caller, which may have passed a constant
+- is an output or local of a function block instance, such as ``fb.Q``: only
+  an instance's inputs can be assigned from outside it
+- is reached through a dereference, such as ``p^``: a reference can point at a
+  variable whose value came from a constant
+- is a direct input address, such as ``%IX0.0``: process inputs are written by
+  the I/O image, not by the program
+
+A ``VAR_IN_OUT`` parameter of the calling POU is writable, because the call
+that bound it proved its own argument writable.
+
+Example
+-------
+
+The following code will generate error P4060:
+
+.. code-block::
+
+   FUNCTION Increment : DINT
+       VAR_IN_OUT
+           counter : DINT;
+       END_VAR
+       counter := counter + 1;
+       Increment := counter;
+   END_FUNCTION
+
+   FUNCTION_BLOCK Counter
+       VAR_INPUT
+           start : DINT;
+       END_VAR
+       VAR
+           next : DINT;
+       END_VAR
+       next := Increment(start);   (* Error: start is a VAR_INPUT *)
+   END_FUNCTION_BLOCK
+
+To fix this error, copy the value into a local variable and pass that:
+
+.. code-block::
+
+   FUNCTION_BLOCK Counter
+       VAR_INPUT
+           start : DINT;
+       END_VAR
+       VAR
+           current : DINT;
+           next : DINT;
+       END_VAR
+       current := start;
+       next := Increment(current);
+   END_FUNCTION_BLOCK
+
+See Also
+--------
+
+- :doc:`/reference/language/pous/function` — ``FUNCTION`` declaration syntax
+- :doc:`P4058` — a ``VAR_IN_OUT`` argument that is not a variable
+- :doc:`P4059` — a ``VAR_IN_OUT`` argument of the wrong type

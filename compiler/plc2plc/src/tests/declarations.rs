@@ -156,3 +156,21 @@ END_TYPE";
     let rendered = assert_round_trips(source, &CompilerOptions::default());
     assert!(rendered.contains(":='abc'"), "{rendered}");
 }
+
+#[test]
+fn write_to_string_when_type_alias_of_elementary_without_initializer_then_round_trips() {
+    // `MY_ALIAS : INT;` did not parse at all (#1416).
+    let source = "TYPE\n   MY_ALIAS : INT;\nEND_TYPE\n";
+    assert_round_trips(source, &CompilerOptions::default());
+}
+
+#[test]
+fn write_to_string_when_simple_type_declaration_with_initializer_then_keeps_colon() {
+    // The renderer wrote `MY_INT INT := 5`, which does not re-parse.
+    let source = "TYPE\n   MY_INT : INT := 5;\nEND_TYPE\n";
+    let rendered = assert_round_trips(source, &CompilerOptions::default());
+    assert!(
+        rendered.contains("MY_INT : INT := 5"),
+        "rendered:\n{rendered}"
+    );
+}

@@ -64,3 +64,19 @@ END_PROGRAM
 ",
     &[(0, -25536)],
 );
+
+// An alias with no initializer takes the base type's default, 0 (#1416).
+e2e_i32!(
+    end_to_end_when_type_alias_without_initializer_then_uses_base_type,
+    "
+TYPE MyInt : INT; END_TYPE
+PROGRAM main
+  VAR
+    x : MyInt;
+    y : MyInt;
+  END_VAR
+  y := x - 3;
+END_PROGRAM
+",
+    &[(0, 0), (1, -3)],
+);

@@ -42,7 +42,7 @@ impl ShortCircuitOp {
     /// `2#1010 AND_THEN 2#0110` would produce `2#0110`, where the bitwise
     /// answer is `2#0010`. So a non-`BOOL` operand falls back to the eager
     /// path, which emits exactly what `AND`/`OR` emit.
-    pub(crate) fn for_expr(compare: &CompareExpr) -> Option<Self> {
+    pub(crate) fn for_expr(ctx: &CompileContext, compare: &CompareExpr) -> Option<Self> {
         let op = match compare.op {
             CompareOp::AndThen => Self::AndThen,
             CompareOp::OrElse => Self::OrElse,
@@ -56,7 +56,7 @@ impl ShortCircuitOp {
             | CompareOp::LtEq
             | CompareOp::GtEq => return None,
         };
-        (expr_is_bool(&compare.left) && expr_is_bool(&compare.right)).then_some(op)
+        (expr_is_bool(ctx, &compare.left) && expr_is_bool(ctx, &compare.right)).then_some(op)
     }
 }
 

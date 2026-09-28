@@ -7,6 +7,8 @@ fn main() {
         "adr-and-pointer-to.md",
         // The function forms of operators (`REQ-KF-codegen-*`).
         "keyword-function-forms.md",
+        // Arithmetic operator overloads (`REQ-AO-codegen-*`).
+        "arithmetic-operator-overloads.md",
         // Partial-access syntax (`REQ-PAB-codegen-*`): execution semantics.
         "partial-access-bit-syntax.md",
         // Behavior policies (`REQ-BP-codegen-*`): func_id selection.

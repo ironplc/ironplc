@@ -1,0 +1,65 @@
+=====
+P0012
+=====
+
+.. problem-summary:: P0012
+
+This error occurs when a character string literal contains a ``$`` escape
+that IEC 61131-3 does not define. The ``$`` character starts an escape, so
+a literal dollar sign is written ``$$``.
+
+The compiler stores the characters a literal denotes, not the text of the
+literal: ``'$41'`` is the one character ``A``. An escape the standard does not
+define has no character to store, so rather than guess, the compiler reports
+it.
+
+The defined escapes are ``$$``, ``$L``, ``$N``, ``$P``, ``$R`` and ``$T`` (in
+either case), ``$'`` and ``$"``, and a character code: ``$`` and two hex
+digits in a ``STRING`` literal, ``$`` and four hex digits in a ``WSTRING``
+literal.
+
+Example
+-------
+
+The following code will generate error P0012:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       price : STRING;
+   END_VAR
+       price := 'costs $5';  (* Error: $5 is not an escape *)
+   END_PROGRAM
+
+To fix this error, escape the dollar sign:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       price : STRING;
+   END_VAR
+       price := 'costs $$5';
+   END_PROGRAM
+
+A character code has two hex digits in a ``STRING`` literal and four in a
+``WSTRING`` literal, so the following is also an error:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       euro : WSTRING;
+   END_VAR
+       euro := "$AC";  (* Error: a WSTRING code needs four hex digits *)
+   END_PROGRAM
+
+Write ``"$20AC"`` instead.
+
+See Also
+--------
+
+- :doc:`/reference/language/data-types/elementary/string`
+- :doc:`/reference/language/data-types/elementary/wstring`
+- :doc:`P4052` (a character the string type cannot hold)

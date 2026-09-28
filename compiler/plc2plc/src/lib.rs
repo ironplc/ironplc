@@ -19,6 +19,8 @@ mod spec_requirements {
 mod spec_conformance;
 #[cfg(test)]
 mod spec_conformance_pointer_to;
+#[cfg(test)]
+mod spec_conformance_string_literals;
 
 pub fn write_to_string(lib: &Library) -> Result<String, Vec<Diagnostic>> {
     apply(lib)
