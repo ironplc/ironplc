@@ -143,3 +143,91 @@ END_METHOD",
     assert_eq!(method.variables.len(), 6);
     assert_eq!(method.body.len(), 2);
 }
+
+/// Parses `header` as the first line of a function block and returns it.
+fn parse_fb(header: &str, options: &CompilerOptions) -> FunctionBlockDeclaration {
+    let source = format!(
+        "
+{header}
+VAR
+    x : INT;
+END_VAR
+    x := 0;
+END_FUNCTION_BLOCK"
+    );
+    let library = parse_program(&source, &FileId::default(), options)
+        .unwrap_or_else(|e| panic!("Source did not parse: {e:?}\n{source}"));
+    extract_fb(&library).clone()
+}
+
+fn fb_kinds(fb: &FunctionBlockDeclaration) -> Vec<MemberQualifierKind> {
+    fb.oop
+        .as_ref()
+        .map(|oop| oop.qualifiers.iter().map(|q| q.kind).collect())
+        .unwrap_or_default()
+}
+
+#[rstest]
+#[case::public("FUNCTION_BLOCK PUBLIC FB_Motor", vec![PUBLIC])]
+#[case::internal("FUNCTION_BLOCK INTERNAL FB_Motor", vec![INTERNAL])]
+#[case::final_only("FUNCTION_BLOCK FINAL FB_Motor", vec![MemberQualifierKind::Final])]
+#[case::public_final(
+    "FUNCTION_BLOCK PUBLIC FINAL FB_Motor",
+    vec![PUBLIC, MemberQualifierKind::Final]
+)]
+#[case::public_abstract(
+    "FUNCTION_BLOCK PUBLIC ABSTRACT FB_Motor",
+    vec![PUBLIC, MemberQualifierKind::Abstract]
+)]
+#[case::with_extends(
+    "FUNCTION_BLOCK FINAL FB_Motor EXTENDS FB_Base",
+    vec![MemberQualifierKind::Final]
+)]
+fn parse_when_fb_has_qualifiers_then_kept_in_source_order(
+    #[case] header: &str,
+    #[case] expected: Vec<MemberQualifierKind>,
+) {
+    let fb = parse_fb(header, &opts_with_fb_inheritance());
+    assert_eq!(fb.name, TypeName::from("FB_Motor"));
+    assert_eq!(fb_kinds(&fb), expected);
+}
+
+/// The contextual words parse without the flag. `rule_member_qualifier_allowed`
+/// reports them afterwards (ADR-0040 rule 3).
+#[test]
+fn parse_when_fb_has_qualifier_and_default_options_then_ok() {
+    let fb = parse_fb(
+        "FUNCTION_BLOCK PUBLIC FB_Motor",
+        &CompilerOptions::default(),
+    );
+    assert_eq!(fb_kinds(&fb), vec![PUBLIC]);
+}
+
+#[test]
+fn parse_when_fb_has_no_qualifiers_then_no_oop_facet() {
+    let fb = parse_fb("FUNCTION_BLOCK FB_Motor", &opts_with_fb_inheritance());
+    assert!(fb.oop.is_none());
+}
+
+#[rstest]
+#[case::default_options(CompilerOptions::default())]
+#[case::fb_inheritance(opts_with_fb_inheritance())]
+fn parse_when_fb_named_like_qualifier_then_not_a_qualifier(#[case] options: CompilerOptions) {
+    let fb = parse_fb("FUNCTION_BLOCK Internal", &options);
+    assert_eq!(fb.name, TypeName::from("Internal"));
+    assert!(fb.oop.is_none());
+}
+
+/// A function block without `VAR` blocks goes straight to its body, so the
+/// word after the name can start a statement.
+#[test]
+fn parse_when_fb_named_like_qualifier_and_body_follows_name_then_not_a_qualifier() {
+    let source = "
+FUNCTION_BLOCK Final
+    x := 0;
+END_FUNCTION_BLOCK";
+    let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
+    let fb = extract_fb(&library);
+    assert_eq!(fb.name, TypeName::from("Final"));
+    assert!(fb.oop.is_none());
+}

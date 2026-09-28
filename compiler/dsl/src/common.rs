@@ -3022,8 +3022,8 @@ pub struct FunctionBlockDeclaration {
     /// `None` for an ordinary function block — the common case — so OOP is
     /// unrepresentable on a plain FB rather than "present but empty."
     /// `Some` only when the source actually uses `EXTENDS`, `IMPLEMENTS`,
-    /// or `ABSTRACT`. See `FunctionBlockOop` for why the facet is its own
-    /// struct and why `base` is an `Option` where
+    /// or a qualifier such as `ABSTRACT`. See `FunctionBlockOop` for why
+    /// the facet is its own struct and why `base` is an `Option` where
     /// `InterfaceDeclaration::extends` is a `Vec`, and the
     /// `LanguageExtension` impl on it for why only the facet, and not the
     /// whole declaration, is an extension.
@@ -3093,11 +3093,12 @@ impl HasVariables for FunctionBlockDeclaration {
 }
 
 /// The object-oriented facet of a function block: the
-/// `EXTENDS`/`IMPLEMENTS`/`ABSTRACT` header. Present only when the function
-/// block participates in OOP, so an ordinary function block cannot carry
-/// any of this data. Single home for OOP metadata and the natural hook for
-/// ADR-0041 Phase 2: "does this FB participate in polymorphism" is
-/// `oop.is_some()`, not a scan of individual fields.
+/// `EXTENDS`/`IMPLEMENTS` clauses and the qualifiers (`ABSTRACT`, `FINAL`,
+/// access specifiers). Present only when the function block uses any of
+/// them, so an ordinary function block cannot carry any of this data.
+/// Single home for OOP metadata. Note that `oop.is_some()` does not mean
+/// the function block takes part in polymorphism: `FUNCTION_BLOCK PUBLIC`
+/// alone also creates the facet.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct FunctionBlockOop {
     /// `EXTENDS base` — the single base function block, if any.

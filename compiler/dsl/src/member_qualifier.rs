@@ -61,6 +61,10 @@ impl MemberQualifiers {
         Self(qualifiers)
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &MemberQualifier> {
         self.0.iter()
     }

@@ -150,8 +150,9 @@ impl MemberQualifiers {
 
 ### Diagnostics
 
-Two new problem codes (next free numbers at implementation time; P4057 is
-taken by #1860):
+Two new problem codes, P4062 and P4063. P4057 is on `main` (#1872), and
+the open PRs #1860 and #1848 claim P4057 to P4059 between them, so they
+will renumber into P4058 to P4061:
 
 - **MemberQualifierNotAllowed**: a qualifier on a function block without
   `--allow-fb-inheritance` (or a dialect that enables it).
@@ -232,7 +233,7 @@ corpus into errors.
 - [x] Prefactor 1: `MemberQualifiers` on `FunctionBlockOop`, `is_abstract()` helper (own commit)
 - [x] Prefactor 2: `contextual_keyword` rule (own commit)
 - [x] Methods: grammar, `MethodDeclaration.qualifiers`, renderer, parser tests incl. identifier regressions (`METHOD Override`, `x := Private;`), round-trip, `.TcPOU` test
-- [ ] Function blocks: `FINAL`/access in the FB slot, flag-gate rule + problem code
+- [x] Function blocks: `FINAL`/access in the FB slot, flag-gate rule + problem code
 - [ ] Validation: `MemberQualifierInvalid` rule + problem code, one test per case in the XAE table
 - [ ] Update design doc §1.5 and §3.5
 - [ ] Measure corpus pass rate before/after (`--dialect twincat`, method in #1199)

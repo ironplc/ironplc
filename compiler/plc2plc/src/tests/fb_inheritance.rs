@@ -66,3 +66,24 @@ END_INTERFACE
         &inheritance_options(),
     );
 }
+
+#[test]
+fn write_to_string_when_fb_has_access_specifier_and_final_then_round_trips() {
+    let rendered = assert_round_trips(
+        "
+FUNCTION_BLOCK PUBLIC FINAL FB_Motor EXTENDS FB_Base
+VAR
+    bRunning : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Base
+VAR
+    bEnabled : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+",
+        &inheritance_options(),
+    );
+    assert!(rendered.contains("FUNCTION_BLOCK PUBLIC FINAL FB_Motor EXTENDS FB_Base"));
+}

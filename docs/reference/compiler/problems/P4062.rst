@@ -1,0 +1,45 @@
+=====
+P4062
+=====
+
+.. problem-summary:: P4062
+
+This error occurs when a function block declaration carries a qualifier
+(``PUBLIC``, ``PRIVATE``, ``PROTECTED``, ``INTERNAL``, ``FINAL``,
+``OVERRIDE`` or ``ABSTRACT``) between ``FUNCTION_BLOCK`` and the name,
+without the ``--allow-fb-inheritance`` compiler flag.
+
+The qualifiers are part of the object-oriented extension that IEC
+61131-3:2013 (Edition 3), CODESYS and TwinCAT add to function blocks. The
+Edition 2 grammar has no qualifiers on a function block.
+
+Example
+-------
+
+The following code will generate error P4062:
+
+.. code-block::
+
+   FUNCTION_BLOCK PUBLIC FINAL FB_Motor
+   VAR
+       speed : INT;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+To fix this error, remove the qualifiers:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor
+   VAR
+       speed : INT;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+IronPLC does not enforce access specifiers or ``FINAL``, so removing them
+does not change what the program does.
+
+Or enable the extension:
+
+.. |flag| replace:: ``--allow-fb-inheritance``
+.. include:: /includes/enabled-by-flag.rst

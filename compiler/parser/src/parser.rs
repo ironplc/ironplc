@@ -1562,19 +1562,15 @@ parser! {
       }
     }
 
-    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ is_abstract:(t:tok(TokenType::Abstract) {t})? _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ methods:(_ m:method_declaration() {m}) ** _ _ end:tok(TokenType::EndFunctionBlock) {
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ qualifiers:member_qualifiers() _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ methods:(_ m:method_declaration() {m}) ** _ _ end:tok(TokenType::EndFunctionBlock) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
 
       let base = extends.as_ref().map(|(_, t)| t.clone());
       let implements_list = implements.as_ref().map(|(_, names)| names.clone()).unwrap_or_default();
-      let is_abstract_present = is_abstract.is_some();
-      let oop = if is_abstract_present || base.is_some() || !implements_list.is_empty() {
-        let mut oop_spans: Vec<SourceSpan> = Vec::new();
-        if let Some(t) = &is_abstract {
-          oop_spans.push(t.span.clone());
-        }
+      let oop = if !qualifiers.is_empty() || base.is_some() || !implements_list.is_empty() {
+        let mut oop_spans: Vec<SourceSpan> = qualifiers.iter().map(|q| q.span.clone()).collect();
         if let Some((e, t)) = &extends {
           oop_spans.push(e.span.clone());
           oop_spans.push(t.span());
@@ -1592,12 +1588,7 @@ parser! {
         Some(FunctionBlockOop {
           base,
           implements: implements_list,
-          qualifiers: MemberQualifiers::new(
-            is_abstract
-              .iter()
-              .map(|t| MemberQualifier { kind: MemberQualifierKind::Abstract, span: t.span.clone() })
-              .collect(),
-          ),
+          qualifiers,
           span: oop_span,
         })
       } else {
