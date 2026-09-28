@@ -333,15 +333,6 @@ fn compile_generic_builtin(
 ) -> Result<(), Diagnostic> {
     let func_name = func.name.original().to_uppercase();
 
-    // ABS of an unsigned value is the value itself: IEC 61131-3 declares
-    // ABS on ANY_NUM, and the signed opcodes would read a large unsigned
-    // value as negative.
-    if func_name == "ABS" && op_type.1 == Signedness::Unsigned {
-        if let [arg] = collect_positional_args(func).as_slice() {
-            return compile_expr(emitter, ctx, arg, op_type);
-        }
-    }
-
     let func_id = lookup_builtin(&func_name, op_type.0, op_type.1)
         .ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))?;
 
@@ -1129,8 +1120,8 @@ mod tests {
     #[test]
     fn lookup_builtin_when_all_width_numeric_then_selects_by_width() {
         // EXPT/ABS/SEL are defined for every op width, independent of sign.
-        // An unsigned ABS never reaches the lookup: it is the identity, and
-        // `compile_generic_builtin` compiles only its argument.
+        // An unsigned ABS never reaches code generation: the analyzer
+        // removes it (`xform_remove_unsigned_abs`).
         assert_eq!(
             lookup_builtin("ABS", OpWidth::W32, Signedness::Signed),
             Some(opcode::builtin::ABS_I32)
