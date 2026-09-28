@@ -170,9 +170,9 @@ least one statement (the `.TcPOU` reader stood in a synthetic `;`). The
 method body is now optional, in its own commit before the validation
 rule, and the synthetic `;` is gone.
 
-P9004 is unchanged. An `ABSTRACT` method can only be valid inside an
+P9999 is unchanged. An `ABSTRACT` method can only be valid inside an
 `ABSTRACT` function block, which already raises it. Access specifiers,
-`FINAL` and `OVERRIDE` do not raise P9004: they are metadata-only by design
+`FINAL` and `OVERRIDE` do not raise P9999: they are metadata-only by design
 (ADR-0041), and raising it would turn all 293 `METHOD PRIVATE` in the
 corpus into errors.
 
@@ -196,7 +196,7 @@ corpus into errors.
 1. Replace `FunctionBlockOop::is_abstract: bool` with
    `qualifiers: MemberQualifiers` (only `Abstract` exists at this point),
    and add `FunctionBlockDeclaration::is_abstract()`. The three readers
-   (P4045, P9004, renderer) call the helper instead of reaching into `oop`.
+   (P4045, P9999, renderer) call the helper instead of reaching into `oop`.
    No behaviour change. This is where the new qualifier kinds drop in.
 2. Add the `contextual_keyword(text)` parser rule and use it for the
    existing inline `[t if t.token_type == Identifier && t.text.eq_ignore_ascii_case(..)]`
@@ -241,7 +241,7 @@ corpus into errors.
 - [x] Methods: grammar, `MethodDeclaration.qualifiers`, renderer, parser tests incl. identifier regressions (`METHOD Override`, `x := Private;`), round-trip, `.TcPOU` test
 - [x] Function blocks: `FINAL`/access in the FB slot, flag-gate rule + problem code
 - [x] Validation: `MemberQualifierInvalid` rule + problem code, one test per case in the XAE table
-- [ ] Update design doc §1.5 and §3.5
+- [x] Update design doc §1.5 and §3.5
 - [ ] Measure corpus pass rate before/after (`--dialect twincat`, method in #1199)
 - [ ] Open issues: `FINAL` enforcement (extending a `FINAL` FB, redeclaring a `FINAL` method); `PROPERTY` qualifiers once #1871 lands
 - [ ] `git rm` this plan
