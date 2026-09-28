@@ -1547,7 +1547,9 @@ parser! {
       / tok(TokenType::LeftBracket) / tok(TokenType::Caret)
       / ref_bind_op() / set_bind_op() / reset_bind_op()
 
-    rule method_declaration() -> MethodDeclaration = start:tok(TokenType::Method) _ qualifiers:member_qualifiers() _ name:identifier() _ rt:(tok(TokenType::Colon) _ rt:function_return_type() {rt})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body() _ end:tok(TokenType::EndMethod) {
+    // Unlike a function, a method may have an empty body: an `ABSTRACT`
+    // method has none, and TwinCAT writes a do-nothing method that way.
+    rule method_declaration() -> MethodDeclaration = start:tok(TokenType::Method) _ qualifiers:member_qualifiers() _ name:identifier() _ rt:(tok(TokenType::Colon) _ rt:function_return_type() {rt})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body()? _ end:tok(TokenType::EndMethod) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
@@ -1557,7 +1559,7 @@ parser! {
         return_type: rt,
         variables,
         edge_variables,
-        body,
+        body: body.unwrap_or_default(),
         span: SourceSpan::join(&start.span, &end.span),
       }
     }

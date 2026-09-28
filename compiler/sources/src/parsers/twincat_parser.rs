@@ -404,15 +404,6 @@ fn append_methods(
             None => builder.push_synthetic(&impl_text),
         }
 
-        // A method body must hold at least one statement, unlike a function
-        // block body which may be empty. TwinCAT writes a do-nothing method
-        // as a `<Method>` with no `<Implementation>` at all, so stand in an
-        // empty statement; the parser discards it and the method keeps the
-        // empty body it declares.
-        if impl_text.trim().is_empty() {
-            builder.push_synthetic(";");
-        }
-
         builder.push_synthetic("\nEND_METHOD");
     }
 

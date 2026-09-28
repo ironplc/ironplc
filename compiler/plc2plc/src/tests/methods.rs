@@ -117,6 +117,17 @@ END_METHOD
 END_FUNCTION_BLOCK
 "
 )]
+#[case::method_empty_body(
+    "
+FUNCTION_BLOCK ABSTRACT FB_Motor
+VAR
+    bRunning : BOOL;
+END_VAR
+METHOD Start : BOOL
+END_METHOD
+END_FUNCTION_BLOCK
+"
+)]
 fn write_to_string_when_method_source_then_round_trips(#[case] source: &'static str) {
     let options = CompilerOptions {
         allow_fb_inheritance: true,
