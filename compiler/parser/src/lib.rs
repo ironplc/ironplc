@@ -15,6 +15,7 @@ mod vars;
 mod xform_assign_file_id;
 mod xform_collapse_pragmas;
 mod xform_demote_keywords;
+mod xform_split_duration_units;
 mod xform_tokens;
 
 use crate::parser::{parse_library, parse_statements};
@@ -66,6 +67,7 @@ pub fn tokenize_program(
     let (tokens, mut errors) = tokenize(&source, file_id, line_offset, col_offset);
 
     let tokens = xform_collapse_pragmas::apply(tokens, options);
+    let tokens = xform_split_duration_units::apply(tokens);
     let mut tokens = insert_keyword_statement_terminators(tokens, file_id, options);
     xform_demote_keywords::apply(&mut tokens, options);
     let result = check_tokens(&tokens, options);
