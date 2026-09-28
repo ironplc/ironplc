@@ -347,7 +347,7 @@ const POU_KEYWORDS: [(&str, &str); 4] = [
 
 /// Detect the POU type from the declaration text and return the closing keyword.
 fn closing_keyword(declaration: &str) -> &'static str {
-    let header = declaration.trim_start();
+    let header = skip_leading_trivia(declaration);
     POU_KEYWORDS
         .iter()
         .find(|(open, _)| {
@@ -357,6 +357,32 @@ fn closing_keyword(declaration: &str) -> &'static str {
         })
         // Fallback — the ST parser will report a more specific error
         .map_or("", |(_, close)| close)
+}
+
+/// Skip the whitespace, comments and pragmas before the POU keyword, such as
+/// a header comment or `{attribute 'hide'}`.
+///
+/// The comment forms are those of the lexer's `Comment` token, none of which
+/// nest. An unterminated comment or pragma stops the skipping, so no keyword
+/// is found and the ST parser reports the problem.
+fn skip_leading_trivia(text: &str) -> &str {
+    const DELIMITED: [(&str, &str); 3] = [("(*", "*)"), ("/*", "*/"), ("{", "}")];
+
+    let mut rest = text.trim_start();
+    loop {
+        let after = if let Some(comment) = rest.strip_prefix("//") {
+            Some(comment.find('\n').map_or("", |end| &comment[end..]))
+        } else {
+            DELIMITED.iter().find_map(|(open, close)| {
+                let body = rest.strip_prefix(open)?;
+                body.find(close).map(|end| &body[end + close.len()..])
+            })
+        };
+        match after {
+            Some(after) => rest = after.trim_start(),
+            None => return rest,
+        }
+    }
 }
 
 /// Append every `<Method>` child of a POU to the combined text as an inline

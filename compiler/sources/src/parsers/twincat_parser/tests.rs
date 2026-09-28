@@ -6,6 +6,7 @@
 use super::*;
 use ironplc_dsl::common::{FunctionBlockDeclaration, LibraryElementKind, TypeName};
 use ironplc_dsl::core::{FileId, Id};
+use ironplc_parser::options::Dialect;
 
 fn test_file_id() -> FileId {
     FileId::from_string("test.TcPOU")
@@ -285,6 +286,71 @@ fn closing_keyword_when_leading_whitespace_then_still_detects() {
         closing_keyword("  PROGRAM MAIN\nVAR\nEND_VAR"),
         "END_PROGRAM"
     );
+}
+
+#[test]
+fn closing_keyword_when_leading_line_comment_then_still_detects() {
+    assert_eq!(
+        closing_keyword("// header\n//\nFUNCTION_BLOCK FB_Test\nVAR\nEND_VAR"),
+        "END_FUNCTION_BLOCK"
+    );
+}
+
+#[test]
+fn closing_keyword_when_leading_block_comments_then_still_detects() {
+    assert_eq!(
+        closing_keyword("(* header\n  *)\n/* more */ FUNCTION MyFunc : INT"),
+        "END_FUNCTION"
+    );
+}
+
+#[test]
+fn closing_keyword_when_leading_pragma_then_still_detects() {
+    assert_eq!(
+        closing_keyword("{attribute 'hide'}\n// comment\nPROGRAM MAIN"),
+        "END_PROGRAM"
+    );
+}
+
+#[test]
+fn closing_keyword_when_comment_contains_keyword_then_detects_keyword_after_it() {
+    assert_eq!(
+        closing_keyword("(* FUNCTION_BLOCK *) INTERFACE I_Drivable"),
+        "END_INTERFACE"
+    );
+}
+
+#[test]
+fn closing_keyword_when_unterminated_comment_then_returns_empty() {
+    assert_eq!(closing_keyword("(* never closed FUNCTION_BLOCK FB"), "");
+}
+
+#[test]
+fn closing_keyword_when_only_line_comment_then_returns_empty() {
+    assert_eq!(closing_keyword("// FUNCTION_BLOCK FB"), "");
+}
+
+#[test]
+fn parse_when_pou_declaration_starts_with_comment_then_succeeds() {
+    let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Test" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[// header comment
+(* block comment *)
+FUNCTION_BLOCK FB_Test
+VAR
+    x : INT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[x := 1;]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>"#;
+
+    let options = CompilerOptions::from_dialect(Dialect::TwinCat);
+    let result = parse(xml, &test_file_id(), &options);
+    assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+    assert_eq!(result.unwrap().elements.len(), 1);
 }
 
 #[test]
