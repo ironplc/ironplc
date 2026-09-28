@@ -14,6 +14,7 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::*;
+use ironplc_dsl::type_id::TypeId;
 use std::collections::HashMap;
 
 use crate::function_environment::FunctionEnvironment;
@@ -121,7 +122,7 @@ struct ExprTypeResolver<'a> {
     /// function block's own fields so unqualified references to a base
     /// class's fields type-check correctly.
     inherited_fields: HashMap<TypeName, Vec<VarDecl>>,
-    type_environment: &'a TypeEnvironment,
+    type_environment: &'a mut TypeEnvironment,
     function_environment: &'a FunctionEnvironment,
     /// The compiler options, which decide whether a bit-string operand of
     /// an arithmetic operator is judged as an unsigned integer (ADR-0053).
@@ -387,22 +388,31 @@ impl ExprTypeResolver<'_> {
     /// alias (`x : MyByte` is a `MyByte`, where `resolved_type` says
     /// `BYTE`). Anything else takes the type its `resolved_type` names, or
     /// is a literal of the generic category it names.
-    fn resolve_expr_type(&self, expr: &Expr) -> Option<ExprType> {
+    fn resolve_expr_type(&mut self, expr: &Expr) -> Option<ExprType> {
         match &expr.kind {
             ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(nv))) => {
-                let declared = self
-                    .declarations
-                    .find(&nv.name)
-                    .and_then(|declared| declared.type_id(self.type_environment));
-                if let Some(id) = declared {
+                if let Some(id) = self.declared_type_id(&nv.name) {
                     return Some(ExprType::Concrete(id));
                 }
             }
             ExprKind::Expression(inner) => return inner.expr_type.clone(),
-            // `resolved_type` records the referenced variable's type for
-            // `REF(x)` and a placeholder for `NULL`; neither is the type of
-            // the value.
-            ExprKind::Ref(_) | ExprKind::Null(_) => return None,
+            // `REF(x)` is a reference to `x`'s type.
+            ExprKind::Ref(var) => {
+                let target = self.variable_type_id(var)?;
+                return self
+                    .type_environment
+                    .reference_to(target)
+                    .map(ExprType::Concrete);
+            }
+            ExprKind::Null(_) => return Some(ExprType::Null),
+            // Dereferencing a reference gives the type it references.
+            ExprKind::Deref(inner) => {
+                if let Some(ExprType::Concrete(reference)) = &inner.expr_type {
+                    if let Some(target) = self.type_environment.referenced_type(*reference) {
+                        return Some(ExprType::Concrete(target));
+                    }
+                }
+            }
             _ => {}
         }
         let type_name = expr.resolved_type.as_ref()?;
@@ -412,6 +422,24 @@ impl ExprTypeResolver<'_> {
         self.type_environment
             .id_of(type_name)
             .map(ExprType::Concrete)
+    }
+
+    /// The id of the type the variable `name` in scope was declared with.
+    fn declared_type_id(&self, name: &Id) -> Option<TypeId> {
+        self.declarations
+            .find(name)
+            .and_then(|declared| declared.type_id(self.type_environment))
+    }
+
+    /// The id of the type of the value `var` names.
+    fn variable_type_id(&self, var: &Variable) -> Option<TypeId> {
+        if let Variable::Symbolic(SymbolicVariableKind::Named(nv)) = var {
+            if let Some(id) = self.declared_type_id(&nv.name) {
+                return Some(id);
+            }
+        }
+        self.type_environment
+            .id_of(&self.resolve_variable_type(var)?)
     }
 
     fn resolve_const_type(&self, constant: &ConstantKind) -> Option<TypeName> {

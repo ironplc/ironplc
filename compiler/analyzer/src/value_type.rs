@@ -49,8 +49,12 @@ pub(crate) struct Mismatch {
 /// type for it.
 pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
     let by_name = || expr.resolved_type.clone().map(ValueType::Scalar);
-    let Some(ExprType::Concrete(id)) = &expr.expr_type else {
-        return by_name();
+    let id = match &expr.expr_type {
+        Some(ExprType::Concrete(id)) => id,
+        // `NULL` is accepted for any reference, so there is nothing to
+        // compare it with.
+        Some(ExprType::Null) => return None,
+        Some(ExprType::Literal(_)) | None => return by_name(),
     };
     let Some(attributes) = types.get_by_id(*id) else {
         return by_name();

@@ -471,6 +471,9 @@ pub enum ExprType {
     /// literals: its type is fixed by where it is used, within this
     /// category. ADR-0028 and ADR-0031 say which types it may take.
     Literal(GenericTypeName),
+    /// `NULL`: a reference to no variable, of whichever reference type it
+    /// is used as.
+    Null,
 }
 
 /// Wrapper around `ExprKind` that carries what is true of an expression but

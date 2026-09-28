@@ -21,14 +21,11 @@
 //! A declaration whose type cannot be resolved keeps `type_id: None`. The
 //! rules that check declarations report why; this pass stays silent.
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::type_id::TypeId;
 
-use crate::intermediate_type::IntermediateType;
 use crate::intermediates::{array, enumeration, subrange};
-use crate::type_attributes::TypeAttributes;
 use crate::type_environment::TypeEnvironment;
 
 pub fn apply(
@@ -82,14 +79,22 @@ impl DeclTypeResolver<'_> {
                     array::IntermediateResult::Alias(alias) => return env.id_of(&alias),
                 }
             }
+            // A reference type is one type however often it is spelled
+            // (see `TypeEnvironment::reference_to`).
             InitialValueAssignmentKind::Reference(r) => {
-                let target_type = env.resolve_reference_target(name, &r.target).ok()?;
-                TypeAttributes::new(
-                    name.span(),
-                    IntermediateType::Reference {
-                        target_type: Box::new(target_type),
-                    },
-                )
+                let target = match &r.target {
+                    ReferenceTarget::Named(target) => env.id_of(target)?,
+                    ReferenceTarget::Array(subranges) => {
+                        let spec = SpecificationKind::Inline(subranges.clone());
+                        match array::try_from(name, &spec, env).ok()? {
+                            array::IntermediateResult::Type(attributes) => {
+                                self.type_environment.insert_anonymous(attributes)
+                            }
+                            array::IntermediateResult::Alias(alias) => env.id_of(&alias)?,
+                        }
+                    }
+                };
+                return self.type_environment.reference_to(target);
             }
         };
         Some(self.type_environment.insert_anonymous(anonymous))
@@ -110,6 +115,7 @@ impl Fold<Diagnostic> for DeclTypeResolver<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::intermediate_type::IntermediateType;
     use crate::semantic_context::SemanticContext;
     use crate::test_helpers::parse_and_resolve_types_with_options;
     use ironplc_dsl::visitor::Visitor;

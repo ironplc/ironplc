@@ -37,6 +37,8 @@ pub(crate) fn expr_type_info(ctx: &CompileContext, expr: &Expr) -> Option<VarTyp
     match expr.expr_type.as_ref()? {
         ExprType::Concrete(id) => operand_type_info(ctx.types.get(id)?),
         ExprType::Literal(generic) => literal_type_info(generic),
+        // NULL is compared and stored as the reference it stands in for.
+        ExprType::Null => Some(reference_type_info()),
     }
 }
 
@@ -48,7 +50,7 @@ pub(crate) fn expr_representation<'a>(
 ) -> Option<&'a IntermediateType> {
     match expr.expr_type.as_ref()? {
         ExprType::Concrete(id) => ctx.types.get(id),
-        ExprType::Literal(_) => None,
+        ExprType::Literal(_) | ExprType::Null => None,
     }
 }
 
@@ -60,11 +62,7 @@ fn operand_type_info(representation: &IntermediateType) -> Option<VarTypeInfo> {
     match representation {
         IntermediateType::Enumeration { .. } => Some(crate::compile_enum::enum_var_type_info()),
         IntermediateType::Subrange { base_type, .. } => var_type_info(base_type),
-        IntermediateType::Reference { .. } => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
+        IntermediateType::Reference { .. } => Some(reference_type_info()),
         IntermediateType::Bool
         | IntermediateType::Int { .. }
         | IntermediateType::UInt { .. }
@@ -81,6 +79,15 @@ fn operand_type_info(representation: &IntermediateType) -> Option<VarTypeInfo> {
         | IntermediateType::Array { .. }
         | IntermediateType::FunctionBlock { .. }
         | IntermediateType::Function { .. } => None,
+    }
+}
+
+/// The `VarTypeInfo` of a reference: a 64-bit address.
+fn reference_type_info() -> VarTypeInfo {
+    VarTypeInfo {
+        op_width: OpWidth::W64,
+        signedness: Signedness::Unsigned,
+        storage_bits: 64,
     }
 }
 
