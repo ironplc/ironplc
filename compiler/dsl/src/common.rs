@@ -13,6 +13,7 @@ use crate::configuration::{ConfigurationDeclaration, Direction};
 use crate::core::{Id, Located, SourceSpan};
 use crate::extension::LanguageExtension;
 use crate::fold::Fold;
+use crate::member_qualifier::MemberQualifiers;
 use crate::scope::ScopeBearing;
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
@@ -3072,6 +3073,15 @@ impl HasVariables for MethodDeclaration {
     }
 }
 
+impl FunctionBlockDeclaration {
+    /// Whether the function block is declared `ABSTRACT`.
+    pub fn is_abstract(&self) -> bool {
+        self.oop
+            .as_ref()
+            .is_some_and(|oop| oop.qualifiers.is_abstract())
+    }
+}
+
 impl HasVariables for FunctionBlockDeclaration {
     fn variables(&self) -> &Vec<VarDecl> {
         &self.variables
@@ -3098,11 +3108,11 @@ pub struct FunctionBlockOop {
     /// implements. Multiple allowed; empty `Vec` when the clause is
     /// absent.
     pub implements: Vec<TypeName>,
-    /// `ABSTRACT` modifier. An abstract function block cannot be
-    /// instantiated directly (enforced by `rule_abstract_not_instantiated`,
-    /// P4045).
+    /// Qualifiers between `FUNCTION_BLOCK` and the name, in source order.
+    /// An `ABSTRACT` function block cannot be instantiated directly
+    /// (enforced by `rule_abstract_not_instantiated`, P4045).
     #[recurse(ignore)]
-    pub is_abstract: bool,
+    pub qualifiers: MemberQualifiers,
     /// Span of the OOP-related tokens, so diagnostics can point at the
     /// clause rather than the whole function block.
     pub span: SourceSpan,

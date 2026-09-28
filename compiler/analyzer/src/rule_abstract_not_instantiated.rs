@@ -66,9 +66,7 @@ pub fn apply(
         .elements
         .iter()
         .filter_map(|e| match e {
-            LibraryElementKind::FunctionBlockDeclaration(fb)
-                if fb.oop.as_ref().is_some_and(|oop| oop.is_abstract) =>
-            {
+            LibraryElementKind::FunctionBlockDeclaration(fb) if fb.is_abstract() => {
                 Some(fb.name.clone())
             }
             _ => None,

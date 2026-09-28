@@ -30,6 +30,7 @@ use ironplc_dsl::common::*;
 use ironplc_dsl::configuration::*;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::core::Located;
+use ironplc_dsl::member_qualifier::{MemberQualifier, MemberQualifierKind, MemberQualifiers};
 use ironplc_dsl::sfc::*;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::time::*;
@@ -1552,7 +1553,12 @@ parser! {
         Some(FunctionBlockOop {
           base,
           implements: implements_list,
-          is_abstract: is_abstract_present,
+          qualifiers: MemberQualifiers::new(
+            is_abstract
+              .iter()
+              .map(|t| MemberQualifier { kind: MemberQualifierKind::Abstract, span: t.span.clone() })
+              .collect(),
+          ),
           span: oop_span,
         })
       } else {

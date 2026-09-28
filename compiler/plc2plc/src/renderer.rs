@@ -983,7 +983,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("FUNCTION_BLOCK");
-        if node.oop.as_ref().is_some_and(|oop| oop.is_abstract) {
+        if node.is_abstract() {
             self.write_ws("ABSTRACT");
         }
         self.visit_id(&node.name.name)?;
