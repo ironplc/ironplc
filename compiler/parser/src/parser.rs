@@ -355,6 +355,16 @@ parser! {
       Err(val)
     }
 
+    // An identifier spelled `val`, in any case. For a word that is a
+    // keyword only in one position, such as a duration unit or the `S` in
+    // `S=`, and an ordinary name everywhere else.
+    rule contextual_keyword(val: &'static str) -> &'input Token = token:[t] {?
+      if token.token_type == TokenType::Identifier && token.text.eq_ignore_ascii_case(val) {
+        return Ok(token)
+      }
+      Err(val)
+    }
+
     /// Helper rule to match an Identifier with the specified text
     rule id_eq(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.as_str() == val]
 
@@ -531,10 +541,9 @@ parser! {
     // Omitted and subsumed into constant.
 
     // B.1.2.3.1 Duration
-    // dt_sep defines case insensitive separators between parts of duration.
+    // Duration separators and units are case insensitive, so they are
+    // matched with contextual_keyword.
     // See specs/design/time-literals.md — REQ-TL-011.
-    rule dt_sep(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case(val)]
-
     pub rule duration() -> DurationLiteral = start:position!() width:duration_prefix() tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() end:position!() {
       let span = span_of_tokens(tokens, start, end);
       let interval = match s {
@@ -548,24 +557,24 @@ parser! {
       }
     }
     // The prefix names the type: `LTIME#` is an LTIME, `TIME#` and `T#` a
-    // TIME. `dt_sep("T")` matches a bare identifier, so it comes last and
-    // cannot shadow the keyword forms.
-    rule duration_prefix() -> TemporalWidth = tok(TokenType::Time) { TemporalWidth::Short } / tok(TokenType::Ltime) { TemporalWidth::Long } / dt_sep("T") { TemporalWidth::Short }
+    // TIME. `contextual_keyword("T")` matches a bare identifier, so it comes
+    // last and cannot shadow the keyword forms.
+    rule duration_prefix() -> TemporalWidth = tok(TokenType::Time) { TemporalWidth::Short } / tok(TokenType::Ltime) { TemporalWidth::Long } / contextual_keyword("T") { TemporalWidth::Short }
     // One or more `number unit` parts, with an optional `_` between parts
     // (REQ-TL-020 to 022); `combine_interval_parts` checks their order. The
     // token transform `xform_split_duration_units` has already split a unit
     // from the digits the lexer glued to it (`m30s`).
-    rule interval() -> DurationLiteral = first:interval_part() rest:(dt_sep("_")? p:interval_part() { p })* {?
+    rule interval() -> DurationLiteral = first:interval_part() rest:(contextual_keyword("_")? p:interval_part() { p })* {?
       combine_interval_parts(first, rest)
     }
     rule interval_part() -> (FixedPoint, DurationUnit) = n:fixed_point() u:duration_unit() { (n, u) }
     // `ms` must come before `m`, or `100ms` would read as minutes.
     rule duration_unit() -> DurationUnit =
-      dt_sep("ms") { DurationUnit::Milliseconds }
-      / dt_sep("d") { DurationUnit::Days }
-      / dt_sep("h") { DurationUnit::Hours }
-      / dt_sep("m") { DurationUnit::Minutes }
-      / dt_sep("s") { DurationUnit::Seconds }
+      contextual_keyword("ms") { DurationUnit::Milliseconds }
+      / contextual_keyword("d") { DurationUnit::Days }
+      / contextual_keyword("h") { DurationUnit::Hours }
+      / contextual_keyword("m") { DurationUnit::Minutes }
+      / contextual_keyword("s") { DurationUnit::Seconds }
     rule fixed_point() -> FixedPoint =
       fp:tok(TokenType::FixedPoint) {?
         FixedPoint::parse(fp.text.as_str())
@@ -584,7 +593,7 @@ parser! {
     rule day_minute() -> Integer = integer()
     rule day_second() -> FixedPoint = fixed_point()
     rule date() -> DateLiteral = width:date_prefix() tok(TokenType::Hash) d:date_literal() { DateLiteral::new(d).with_width(width) }
-    rule date_prefix() -> TemporalWidth = tok(TokenType::Date) { TemporalWidth::Short } / tok(TokenType::Ldate) { TemporalWidth::Long } / dt_sep("D") { TemporalWidth::Short }
+    rule date_prefix() -> TemporalWidth = tok(TokenType::Date) { TemporalWidth::Short } / tok(TokenType::Ldate) { TemporalWidth::Long } / contextual_keyword("D") { TemporalWidth::Short }
     rule date_literal() -> Date = y:year() tok(TokenType::Minus) m:month() tok(TokenType::Minus) d:day() {?
       let y = y.value;
       let m = Month::try_from(<dsl::common::Integer as TryInto<u8>>::try_into(m).map_err(|e| "month")?).map_err(|e| "month")?;
@@ -1236,7 +1245,7 @@ parser! {
     // 61131-3 (a case-insensitive language) treats every other keyword.
     rule ref_bind_op() -> &'input Token =
       tok(TokenType::Ref) eq:tok(TokenType::Equal) { eq }
-      / [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("REF")] eq:tok(TokenType::Equal) { eq }
+      / contextual_keyword("REF") eq:tok(TokenType::Equal) { eq }
     // Matches the TwinCAT/CODESYS `S=` (set) and `R=` (reset) assignment
     // operators, same technique as `ref_bind_op()`: the letter and `=` must
     // be adjacent (no `_`), so `S = x` is not the operator. `S`/`R` are
@@ -1244,9 +1253,9 @@ parser! {
     // token for them) -- deliberately not a demoted keyword, since `S` and
     // `R` are common variable names and this would demote every occurrence.
     rule set_bind_op() -> &'input Token =
-      [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("S")] eq:tok(TokenType::Equal) { eq }
+      contextual_keyword("S") eq:tok(TokenType::Equal) { eq }
     rule reset_bind_op() -> &'input Token =
-      [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("R")] eq:tok(TokenType::Equal) { eq }
+      contextual_keyword("R") eq:tok(TokenType::Equal) { eq }
     rule ref_initial_value() -> ReferenceInitialValue =
       t:tok(TokenType::Null) { ReferenceInitialValue::Null(t.span.clone()) }
       / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) { ReferenceInitialValue::Ref(v) }
