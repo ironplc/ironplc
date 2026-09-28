@@ -8,6 +8,7 @@
 
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
+use spec_test_macro::spec_test;
 
 use crate::common::{
     assert_run_f32, assert_run_f64, assert_run_i32, assert_run_i32_with, assert_run_i64,
@@ -17,6 +18,7 @@ use crate::common::{
 /// REQ-AO-codegen-002: `dt + t` (here `stamp + t`) converts the duration from milliseconds to
 /// seconds, as `ADD_DT_TIME` does. 2000-01-01-00:00:00 is 946684800 seconds
 /// since the epoch.
+#[spec_test(REQ_AO_codegen_002)]
 #[rstest]
 #[case::operator("stamp + t")]
 #[case::typed_call("ADD_DT_TIME(stamp, t)")]
@@ -37,6 +39,7 @@ END_PROGRAM"
 
 /// REQ-AO-codegen-003: `t * r` with a `REAL` factor promotes to floating
 /// point, as `MUL_TIME` does.
+#[spec_test(REQ_AO_codegen_003)]
 #[rstest]
 #[case::operator("t * r")]
 #[case::typed_call("MUL_TIME(t, r)")]
@@ -56,6 +59,7 @@ END_PROGRAM"
 }
 
 /// REQ-AO-codegen-004: `d1 - d2` on `DATE` is a `TIME` in milliseconds.
+#[spec_test(REQ_AO_codegen_004)]
 #[rstest]
 #[case::operator("d1 - d2")]
 #[case::typed_call("SUB_DATE_DATE(d1, d2)")]
@@ -76,6 +80,7 @@ END_PROGRAM"
 
 /// REQ-AO-codegen-005: the long forms compute at 64 bits, and a short
 /// operand is widened by its signedness.
+#[spec_test(REQ_AO_codegen_005)]
 #[rstest]
 // 60 days in milliseconds does not fit in 32 bits.
 #[case::beyond_32_bits("LTIME", "lt30d + lt30d", 5_184_000_000)]
@@ -114,6 +119,7 @@ END_PROGRAM"
 
 /// REQ-AO-codegen-009: an extensible call folds through the typed routine,
 /// computing what the operator expression folded from the left computes.
+#[spec_test(REQ_AO_codegen_009)]
 #[rstest]
 #[case::add_times("TIME", "ADD(t1, t2, t3)", 6000)]
 #[case::add_times_operator("TIME", "t1 + t2 + t3", 6000)]
@@ -144,7 +150,7 @@ END_PROGRAM"
 
 /// REQ-AO-codegen-007: operands of different widths compute at the result
 /// type, the narrower one converted first.
-#[test]
+#[spec_test(REQ_AO_codegen_007)]
 fn end_to_end_req_ao_007_when_int_plus_real_then_adds_as_real() {
     assert_run_f32(
         "
@@ -162,7 +168,7 @@ END_PROGRAM",
 
 /// REQ-AO-codegen-007: a `UDINT` operand of a `LINT` operation is
 /// zero-extended before the 64-bit add.
-#[test]
+#[spec_test(REQ_AO_codegen_007)]
 fn end_to_end_req_ao_007_when_udint_plus_lint_then_adds_at_64_bits() {
     assert_run_i64(
         "
@@ -181,7 +187,7 @@ END_PROGRAM",
 /// REQ-AO-codegen-008: a `DINT * DINT` product assigned to a `LINT` is
 /// computed at 32 bits, as its operands' type, and widened: 100000 squared
 /// wraps to 1410065408.
-#[test]
+#[spec_test(REQ_AO_codegen_008)]
 fn end_to_end_req_ao_008_when_dint_product_assigned_to_lint_then_wraps_at_32_bits() {
     assert_run_i64(
         "
@@ -199,7 +205,7 @@ END_PROGRAM",
 
 /// REQ-AO-codegen-010: `UDINT / UDINT` divides unsigned whatever the
 /// target's signedness.
-#[test]
+#[spec_test(REQ_AO_codegen_010)]
 fn end_to_end_req_ao_010_when_udint_quotient_assigned_to_dint_then_divides_unsigned() {
     assert_run_i32(
         "
@@ -217,6 +223,7 @@ END_PROGRAM",
 
 /// REQ-AO-codegen-011: the function form computes each fold step as the
 /// operator expression does.
+#[spec_test(REQ_AO_codegen_011)]
 #[rstest]
 #[case::operator("i + r")]
 #[case::function_form("ADD(i, r)")]
@@ -237,7 +244,7 @@ END_PROGRAM"
 
 /// REQ-AO-codegen-011: an extensible call widens step by step: INT + REAL is
 /// REAL, and REAL + LREAL is LREAL.
-#[test]
+#[spec_test(REQ_AO_codegen_011)]
 fn end_to_end_req_ao_011_when_add_call_widens_per_step_then_computes_at_widest() {
     assert_run_f64(
         "

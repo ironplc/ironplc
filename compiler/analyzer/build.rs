@@ -9,6 +9,8 @@ fn main() {
         "adr-and-pointer-to.md",
         // The function forms of operators (`REQ-KF-analyzer-*`).
         "keyword-function-forms.md",
+        // Arithmetic operator overloads (`REQ-AO-analyzer-*`).
+        "arithmetic-operator-overloads.md",
         // Partial-access syntax (`REQ-PAB-analyzer-*`): slice range checks.
         "partial-access-bit-syntax.md",
         // Constant variable inference (`REQ-CVI-analyzer-*`): which

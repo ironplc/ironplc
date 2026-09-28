@@ -5,6 +5,7 @@
 use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
+use spec_test_macro::spec_test;
 
 use crate::common::{bc, parse_and_compile};
 
@@ -62,6 +63,7 @@ const F64: Width = Width {
 /// REQ-AO-codegen-006: where the operands and the target share an operation
 /// width and signedness, the expression compiles as it always has: two loads,
 /// the operator at that width, a store. No conversion is added.
+#[spec_test(REQ_AO_codegen_006)]
 #[rstest]
 #[case::dint_add("DINT", "+", I32, opcode::ADD_I32)]
 #[case::dint_mul("DINT", "*", I32, opcode::MUL_I32)]
@@ -94,7 +96,7 @@ fn compile_when_operands_and_target_share_width_then_unchanged(
 /// REQ-AO-codegen-012: an expression whose result type is not a concrete
 /// elementary numeric type (here a subrange of `LINT`) compiles at the
 /// enclosing operation type, as before.
-#[test]
+#[spec_test(REQ_AO_codegen_012)]
 fn compile_when_subrange_expression_then_compiles_at_enclosing_type() {
     let bytecode = scan_bytecode(
         "

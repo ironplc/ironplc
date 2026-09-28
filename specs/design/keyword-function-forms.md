@@ -50,15 +50,19 @@ analysis to fail in codegen, which has no floating-point remainder opcode
 defines `MOD` over `ANY_INT` only.
 
 The operator spelling of `MOD` is held to the same row. The rule
-`rule_operator_operand_type_check` looks the row up by operator and checks each
-operand of `a MOD b` with the same type-compatibility predicate the
-function-call check applies to `MOD(a, b)`, so the two spellings agree by
-construction. It is the only operator checked this way: the operator spellings
-of `+`, `-`, `*` and `/` also compile for `TIME` and bit-string operands, and
-holding them to their rows is a separate decision
-([#1621](https://github.com/ironplc/ironplc/issues/1621)).
+`rule_operator_operand_type_check` checks `a MOD b` against the `ANY_INT`
+category the function-call check applies to `MOD(a, b)`, so the two spellings
+agree by construction.
 
-**REQ-KF-analyzer-001** `ADD`, `SUB`, `MUL` and `DIV` accept two `ANY_NUM` operands and return the operand type.
+`ADD`, `SUB`, `MUL` and `DIV` also have typed overloads on the time and date
+types (IEC 61131-3 Table 30), so their rows carry the names of those
+overloads beside the numeric category, and one resolver decides which
+overload applies to both spellings. The operator rule checks their operands,
+in either spelling, and reports a mismatch as P4049; the function-call rule
+checks only their arity. See
+[Arithmetic Operator Overloads](arithmetic-operator-overloads.md).
+
+**REQ-KF-analyzer-001** `ADD`, `SUB`, `MUL` and `DIV` accept two `ANY_NUM` operands and return the operand type, or a pair of one of their typed overloads of [Arithmetic Operator Overloads](arithmetic-operator-overloads.md) and return its result type.
 
 **REQ-KF-analyzer-002** `GT`, `GE`, `EQ`, `LE`, `LT` and `NE` accept two `ANY_ELEMENTARY` operands and return `BOOL`.
 
@@ -66,7 +70,7 @@ holding them to their rows is a separate decision
 
 **REQ-KF-analyzer-004** `NOT` accepts one `ANY_BIT` operand and returns the operand type.
 
-**REQ-KF-analyzer-005** An argument outside the category of the function form's operands is reported as P4026.
+**REQ-KF-analyzer-005** For a function form without typed overloads, an argument outside the category of its operands is reported as P4026.
 
 **REQ-KF-analyzer-006** `MOD` accepts two `ANY_INT` operands and returns the operand type.
 
@@ -95,7 +99,7 @@ only for the five above).
 
 **REQ-KF-analyzer-009** Every other function form of an operator accepts exactly the inputs it declares; a call with more is reported as P4018.
 
-**REQ-KF-analyzer-010** Every input of an extensible call is checked against the operand category, so an input beyond the second outside it is reported as P4026.
+**REQ-KF-analyzer-010** Every input of an extensible call without typed overloads (`AND`, `OR`, `XOR`) is checked against the operand category, so an input beyond the second outside it is reported as P4026.
 
 **REQ-KF-analyzer-011** The named inputs of an extensible call bind by number, `IN3` after `IN2`, so a call may name inputs beyond the declared ones and in any order.
 
