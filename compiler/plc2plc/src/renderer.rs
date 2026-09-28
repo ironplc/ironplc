@@ -363,6 +363,17 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_type_name(&node.base_type_name)
     }
 
+    fn visit_simple_declaration(
+        &mut self,
+        node: &SimpleDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)?;
+
+        self.write_ws(":");
+
+        self.visit_initial_value_assignment_kind(&node.spec_and_init)
+    }
+
     fn visit_enumeration_declaration(
         &mut self,
         node: &EnumerationDeclaration,

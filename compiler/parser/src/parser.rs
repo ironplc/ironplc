@@ -650,6 +650,10 @@ parser! {
           syntax,
         })
       }
+      // A simple type without an initializer whose base is an elementary
+      // type. The base is a keyword, so unlike `identifier : identifier`
+      // below this is not ambiguous.
+      / simple:simple_type_declaration__without_value() { DataTypeDeclarationKind::Simple(simple) }
       // The remaining are structure, enumerated and simple without an initializer
       // These all have the general form of
       //    `identifier : identifier`
@@ -668,6 +672,15 @@ parser! {
       SimpleDeclaration {
         type_name,
         spec_and_init,
+      }
+    }
+    rule simple_type_declaration__without_value() -> SimpleDeclaration = type_name:simple_type_name() _ tok(TokenType::Colon) _ base:elementary_type_name() {
+      SimpleDeclaration {
+        type_name,
+        spec_and_init: InitialValueAssignmentKind::Simple(SimpleInitializer {
+          type_name: base.into(),
+          initial_value: None,
+        }),
       }
     }
     rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {
