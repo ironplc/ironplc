@@ -44,6 +44,7 @@ mod rule_function_call_declared;
 mod rule_function_call_in_out_argument;
 mod rule_function_call_type_check;
 mod rule_member_qualifier_allowed;
+mod rule_member_qualifier_invalid;
 mod rule_method_call_declared;
 mod rule_mixed_located_var_declarations;
 mod rule_no_top_level_var_global;

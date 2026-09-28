@@ -165,6 +165,11 @@ will renumber into P4058 to P4061:
   - `ABSTRACT` method in a function block that is not `ABSTRACT`
   - `ABSTRACT` method with a non-empty body
 
+An `ABSTRACT` method has no body, but `method_declaration` required at
+least one statement (the `.TcPOU` reader stood in a synthetic `;`). The
+method body is now optional, in its own commit before the validation
+rule, and the synthetic `;` is gone.
+
 P9004 is unchanged. An `ABSTRACT` method can only be valid inside an
 `ABSTRACT` function block, which already raises it. Access specifiers,
 `FINAL` and `OVERRIDE` do not raise P9004: they are metadata-only by design
@@ -224,6 +229,7 @@ corpus into errors.
 | `compiler/sources/src/parsers/twincat_parser/tests.rs` | `.TcPOU` with `METHOD PRIVATE` |
 | `compiler/sources/src/xml/transform.rs`, other `MethodDeclaration`/`FunctionBlockOop` construction sites | New fields, mechanical |
 | `compiler/problems/resources/problem-codes.csv` | Two new codes |
+| `docs/reference/language/object-orientation/member-qualifiers.rst`, `docs/includes/member-qualifier-rules.rst` | New reference page; rule list shared with P4063 |
 | `docs/compiler/problems/P40xx.rst` | Two new pages |
 | `specs/design/beckhoff-twincat-dialect.md` | §1.5: suffix form, access-first order, contextual matching, metadata-only, no `VAR` access specifiers. §3.5: `OVERRIDE` not TwinCAT 4024 syntax |
 
@@ -234,7 +240,7 @@ corpus into errors.
 - [x] Prefactor 2: `contextual_keyword` rule (own commit)
 - [x] Methods: grammar, `MethodDeclaration.qualifiers`, renderer, parser tests incl. identifier regressions (`METHOD Override`, `x := Private;`), round-trip, `.TcPOU` test
 - [x] Function blocks: `FINAL`/access in the FB slot, flag-gate rule + problem code
-- [ ] Validation: `MemberQualifierInvalid` rule + problem code, one test per case in the XAE table
+- [x] Validation: `MemberQualifierInvalid` rule + problem code, one test per case in the XAE table
 - [ ] Update design doc §1.5 and §3.5
 - [ ] Measure corpus pass rate before/after (`--dialect twincat`, method in #1199)
 - [ ] Open issues: `FINAL` enforcement (extending a `FINAL` FB, redeclaring a `FINAL` method); `PROPERTY` qualifiers once #1871 lands
