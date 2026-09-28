@@ -36,6 +36,7 @@ mod rule_decl_struct_element_unique_names;
 mod rule_enum_base_type_allowed;
 mod rule_enum_explicit_value_allowed;
 mod rule_enumeration_values_unique;
+mod rule_exit_inside_loop;
 mod rule_extends_field_duplicated;
 mod rule_function_block_call_unsupported;
 mod rule_function_block_invocation;
