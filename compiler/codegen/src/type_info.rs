@@ -65,7 +65,22 @@ fn operand_type_info(representation: &IntermediateType) -> Option<VarTypeInfo> {
             signedness: Signedness::Unsigned,
             storage_bits: 64,
         }),
-        _ => var_type_info(representation),
+        IntermediateType::Bool
+        | IntermediateType::Int { .. }
+        | IntermediateType::UInt { .. }
+        | IntermediateType::Real { .. }
+        | IntermediateType::Bytes { .. }
+        | IntermediateType::Time { .. }
+        | IntermediateType::Date { .. }
+        | IntermediateType::TimeOfDay { .. }
+        | IntermediateType::DateAndTime { .. } => var_type_info(representation),
+        // Not operated on as a single value: a string lives in the data
+        // region, and an aggregate or a POU is never an operand.
+        IntermediateType::String { .. }
+        | IntermediateType::Structure { .. }
+        | IntermediateType::Array { .. }
+        | IntermediateType::FunctionBlock { .. }
+        | IntermediateType::Function { .. } => None,
     }
 }
 
@@ -79,7 +94,14 @@ fn literal_type_info(generic: &GenericTypeName) -> Option<VarTypeInfo> {
             ElementaryTypeName::DINT
         }
         GenericTypeName::AnyReal => ElementaryTypeName::REAL,
-        _ => return None,
+        // No untyped literal has one of these categories, so none has a
+        // default to operate at.
+        GenericTypeName::Any
+        | GenericTypeName::AnyDerived
+        | GenericTypeName::AnyElementary
+        | GenericTypeName::AnyBit
+        | GenericTypeName::AnyString
+        | GenericTypeName::AnyDate => return None,
     };
     var_type_info(ironplc_analyzer::elementary_type(&elementary.into())?)
 }
@@ -140,7 +162,16 @@ fn var_type_info(representation: &IntermediateType) -> Option<VarTypeInfo> {
         | IntermediateType::Date { .. }
         | IntermediateType::TimeOfDay { .. }
         | IntermediateType::DateAndTime { .. } => Signedness::Unsigned,
-        _ => return None,
+        // BOOL is handled above; the rest are not elementary.
+        IntermediateType::Bool
+        | IntermediateType::String { .. }
+        | IntermediateType::Enumeration { .. }
+        | IntermediateType::Structure { .. }
+        | IntermediateType::Array { .. }
+        | IntermediateType::Subrange { .. }
+        | IntermediateType::FunctionBlock { .. }
+        | IntermediateType::Function { .. }
+        | IntermediateType::Reference { .. } => return None,
     };
 
     let storage_bits = u8::try_from(representation.size_in_bytes()? * 8).ok()?;
