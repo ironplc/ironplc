@@ -223,6 +223,38 @@ impl LibraryRenderer {
         self.outdent();
         Ok(())
     }
+
+    /// Renders `METHOD qualifiers name (: return_type)?` and ends the line.
+    fn render_method_header(
+        &mut self,
+        qualifiers: &MemberQualifiers,
+        name: &Id,
+        return_type: &Option<FunctionReturnType>,
+    ) -> Result<(), Diagnostic> {
+        self.write_ws("METHOD");
+        self.write_qualifiers(qualifiers);
+        self.visit_id(name)?;
+        if let Some(return_type) = return_type {
+            self.write_ws(":");
+            self.visit_function_return_type(return_type)?;
+        }
+        self.newline();
+        Ok(())
+    }
+
+    /// Renders `PROPERTY name : type` and ends the line.
+    fn render_property_header(
+        &mut self,
+        name: &Id,
+        property_type: &FunctionReturnType,
+    ) -> Result<(), Diagnostic> {
+        self.write_ws("PROPERTY");
+        self.visit_id(name)?;
+        self.write_ws(":");
+        self.visit_function_return_type(property_type)?;
+        self.newline();
+        Ok(())
+    }
 }
 
 impl Visitor<Diagnostic> for LibraryRenderer {
@@ -1075,15 +1107,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &MethodDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_ws("METHOD");
-        self.write_qualifiers(&node.qualifiers);
-        self.visit_id(&node.name)?;
-        if let Some(return_type) = &node.return_type {
-            self.write_ws(":");
-            self.visit_function_return_type(return_type)?;
-        }
-        self.newline();
-
+        self.render_method_header(&node.qualifiers, &node.name, &node.return_type)?;
         self.render_callable_body(&node.variables, &node.edge_variables, &node.body)?;
 
         self.write_ws("END_METHOD");
@@ -1100,11 +1124,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &PropertyDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_ws("PROPERTY");
-        self.visit_id(&node.name)?;
-        self.write_ws(":");
-        self.visit_function_return_type(&node.property_type)?;
-        self.newline();
+        self.render_property_header(&node.name, &node.property_type)?;
 
         if let Some(get) = &node.get {
             self.write_ws("GET");
