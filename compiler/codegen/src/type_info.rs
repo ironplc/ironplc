@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use ironplc_analyzer::value_type::operand_type_name;
-use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
+use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName, VarDecl};
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{Expr, ExprType};
 use ironplc_dsl::type_id::TypeId;
@@ -64,6 +64,13 @@ pub(crate) fn expr_type_info(ctx: &CompileContext, expr: &Expr) -> Option<VarTyp
         // NULL is compared and stored as the reference it stands in for.
         ExprType::Null => Some(reference_type_info()),
     }
+}
+
+/// The `VarTypeInfo` of the type a declaration declares, from its
+/// `type_id`. `None` when the analyzer resolved no type for it, or when the
+/// type is not one this backend operates on arithmetically.
+pub(crate) fn decl_type_info(ctx: &CompileContext, decl: &VarDecl) -> Option<VarTypeInfo> {
+    operand_type_info(ctx.types.get(&decl.type_id?)?)
 }
 
 /// What an expression's value is, from its `expr_type`, when it has a

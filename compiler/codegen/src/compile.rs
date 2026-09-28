@@ -72,7 +72,6 @@ use crate::emit::Emitter;
 use super::compile_fn::{compile_user_function, compile_user_function_block};
 use super::compile_setup::{assign_variables, emit_initial_values};
 use super::compile_stmt::compile_body;
-use super::type_info::resolve_type_name;
 
 /// The native operation width used for arithmetic and comparisons.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -784,8 +783,8 @@ fn compile_program_with_functions(
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
                 field_indices.insert(name.clone(), i as u8);
-                if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-                    if let Some(vti) = resolve_type_name(&simple.type_name.name) {
+                if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
+                    if let Some(vti) = crate::type_info::decl_type_info(&ctx, decl) {
                         field_op_types.insert(name, (vti.op_width, vti.signedness));
                     } else {
                         field_op_types.insert(name, DEFAULT_OP_TYPE);
@@ -834,9 +833,8 @@ fn compile_program_with_functions(
                 if let Some(id) = decl.identifier.symbolic_id() {
                     param_names_in_order.push(id.to_string().to_lowercase());
                 }
-                let op_type = if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer
-                {
-                    resolve_type_name(&simple.type_name.name)
+                let op_type = if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
+                    crate::type_info::decl_type_info(&ctx, decl)
                         .map_or(DEFAULT_OP_TYPE, |vti| (vti.op_width, vti.signedness))
                 } else {
                     DEFAULT_OP_TYPE
