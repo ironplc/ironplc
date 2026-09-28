@@ -8,37 +8,80 @@
 
 use std::collections::HashMap;
 
-use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
+use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName};
 use ironplc_dsl::core::Id;
+use ironplc_dsl::textual::{Expr, ExprType};
+use ironplc_dsl::type_id::TypeId;
 
 use ironplc_analyzer::intermediate_type::IntermediateType;
 use ironplc_analyzer::TypeEnvironment;
 
-use super::compile::{OpWidth, Signedness, VarTypeInfo};
+use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
 
-/// Maps each user-defined type an expression's resolved type can name to the
-/// `VarTypeInfo` its operands use.
-///
-/// The analyzer resolves an alias of an elementary type to the elementary
-/// name, but keeps the declared name of an enumeration or a subrange. Every
-/// enumeration operates as a `DINT` (REQ-EN-codegen-003); a subrange operates
-/// as its base type. No other user-defined type is an operand, so none is
-/// listed: an expression that names one reaches codegen only through a
-/// compiler defect.
-pub(crate) fn named_type_infos(types: &TypeEnvironment) -> HashMap<TypeName, VarTypeInfo> {
+/// What every type in the environment is, by id, so codegen can ask what an
+/// expression's type is from its `expr_type` alone. Anonymous types are
+/// included: they have no name to look up.
+pub(crate) fn type_representations(types: &TypeEnvironment) -> HashMap<TypeId, IntermediateType> {
     types
-        .iter_user_defined()
-        .filter_map(|(name, attrs)| {
-            let info = match &attrs.representation {
-                IntermediateType::Enumeration { .. } => crate::compile_enum::enum_var_type_info(),
-                subrange @ IntermediateType::Subrange { .. } => {
-                    crate::compile_struct::var_type_info_for_field(subrange)?
-                }
-                _ => return None,
-            };
-            Some((name.clone(), info))
-        })
+        .iter_ids()
+        .map(|(id, attributes)| (id, attributes.representation.clone()))
         .collect()
+}
+
+/// The `VarTypeInfo` of an expression's value, from its `expr_type`.
+///
+/// `None` when the analyzer resolved no type for the expression, or when its
+/// type is not one this backend operates on arithmetically (a string, or a
+/// composite type).
+pub(crate) fn expr_type_info(ctx: &CompileContext, expr: &Expr) -> Option<VarTypeInfo> {
+    match expr.expr_type.as_ref()? {
+        ExprType::Concrete(id) => operand_type_info(ctx.types.get(id)?),
+        ExprType::Literal(generic) => literal_type_info(generic),
+    }
+}
+
+/// What an expression's value is, from its `expr_type`, when it has a
+/// concrete type.
+pub(crate) fn expr_representation<'a>(
+    ctx: &'a CompileContext,
+    expr: &Expr,
+) -> Option<&'a IntermediateType> {
+    match expr.expr_type.as_ref()? {
+        ExprType::Concrete(id) => ctx.types.get(id),
+        ExprType::Literal(_) => None,
+    }
+}
+
+/// The `VarTypeInfo` a value of a type operates with. Every enumeration
+/// operates as a `DINT` (REQ-EN-codegen-003); a subrange operates as its base
+/// type; a reference is a 64-bit address, as a reference field is (see
+/// `compile_struct::var_type_info_for_field`).
+fn operand_type_info(representation: &IntermediateType) -> Option<VarTypeInfo> {
+    match representation {
+        IntermediateType::Enumeration { .. } => Some(crate::compile_enum::enum_var_type_info()),
+        IntermediateType::Subrange { base_type, .. } => var_type_info(base_type),
+        IntermediateType::Reference { .. } => Some(VarTypeInfo {
+            op_width: OpWidth::W64,
+            signedness: Signedness::Unsigned,
+            storage_bits: 64,
+        }),
+        _ => var_type_info(representation),
+    }
+}
+
+/// The `VarTypeInfo` an untyped literal of a generic category operates with
+/// when nothing narrows it: an integer literal as a `DINT`, a real literal as
+/// a `REAL`. Generic types reach codegen for expressions like `5 + 5` where no
+/// concrete type context was available during type resolution.
+fn literal_type_info(generic: &GenericTypeName) -> Option<VarTypeInfo> {
+    let elementary = match generic {
+        GenericTypeName::AnyInt | GenericTypeName::AnyNum | GenericTypeName::AnyMagnitude => {
+            ElementaryTypeName::DINT
+        }
+        GenericTypeName::AnyReal => ElementaryTypeName::REAL,
+        _ => return None,
+    };
+    var_type_info(ironplc_analyzer::elementary_type(&elementary.into())?)
 }
 
 /// Maps an IEC 61131-3 type name to its `VarTypeInfo`.
@@ -46,21 +89,12 @@ pub(crate) fn named_type_infos(types: &TypeEnvironment) -> HashMap<TypeName, Var
 /// Returns `None` for unrecognized type names (e.g., user-defined types)
 /// and for STRING/WSTRING which are handled separately.
 pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
-    // Try as elementary type first (the common case), then fall back to
-    // generic types mapped to their default concrete representation.
-    // Generic types may reach codegen for expressions like `5 + 5` where
-    // no concrete type context was available during type resolution.
-    let elem = ElementaryTypeName::try_from(name)
-        .or_else(|_| match GenericTypeName::try_from(name)? {
-            GenericTypeName::AnyInt | GenericTypeName::AnyNum | GenericTypeName::AnyMagnitude => {
-                Ok(ElementaryTypeName::DINT)
-            }
-            GenericTypeName::AnyReal => Ok(ElementaryTypeName::REAL),
-            _ => Err(()),
-        })
-        .ok()?;
-    let elem_name: TypeName = elem.into();
-    var_type_info(ironplc_analyzer::elementary_type(&elem_name)?)
+    // Try as elementary type first (the common case), then as a generic
+    // type naming an untyped literal.
+    match ElementaryTypeName::try_from(name) {
+        Ok(elementary) => var_type_info(ironplc_analyzer::elementary_type(&elementary.into())?),
+        Err(()) => literal_type_info(&GenericTypeName::try_from(name).ok()?),
+    }
 }
 
 /// Projects what a type *is* onto how this backend operates on it.
@@ -203,14 +237,16 @@ mod tests {
         assert_eq!(info.storage_bits, storage_bits);
     }
 
-    /// The named type table built from `source`'s type environment.
-    fn named_type_infos_of(source: &str) -> HashMap<TypeName, VarTypeInfo> {
+    /// The operand type of the type `type_name` names in `source`.
+    fn operand_type_info_of(source: &str, type_name: &str) -> Option<VarTypeInfo> {
         let options = ironplc_parser::options::CompilerOptions::default();
         let library =
             ironplc_parser::parse_program(source, &ironplc_dsl::core::FileId::default(), &options)
                 .unwrap();
         let (_, context) = ironplc_analyzer::stages::resolve_types(&[&library], &options).unwrap();
-        named_type_infos(context.types())
+        let types = context.types();
+        let id = types.id_of(&ironplc_dsl::common::TypeName::from(type_name))?;
+        operand_type_info(&type_representations(types)[&id])
     }
 
     const NAMED_TYPES: &str = "
@@ -227,28 +263,36 @@ END_PROGRAM
     #[rstest]
     #[case::enumeration("COLOR")]
     #[case::enumeration_alias("SHADE")]
-    fn named_type_infos_when_enumeration_then_operates_as_dint(#[case] type_name: &str) {
-        let infos = named_type_infos_of(NAMED_TYPES);
+    fn operand_type_info_when_enumeration_then_operates_as_dint(#[case] type_name: &str) {
+        let info = operand_type_info_of(NAMED_TYPES, type_name).unwrap();
 
-        let info = infos.get(&TypeName::from(type_name)).unwrap();
         assert_eq!(info.op_width, OpWidth::W32);
         assert_eq!(info.signedness, Signedness::Signed);
     }
 
     #[test]
-    fn named_type_infos_when_subrange_then_operates_as_base_type() {
-        let infos = named_type_infos_of(NAMED_TYPES);
+    fn operand_type_info_when_subrange_then_operates_as_base_type() {
+        let info = operand_type_info_of(NAMED_TYPES, "BIG_RANGE").unwrap();
 
-        let info = infos.get(&TypeName::from("BIG_RANGE")).unwrap();
         assert_eq!(info.op_width, OpWidth::W64);
         assert_eq!(info.signedness, Signedness::Unsigned);
         assert_eq!(info.storage_bits, 64);
     }
 
     #[test]
-    fn named_type_infos_when_structure_then_absent() {
-        let infos = named_type_infos_of(NAMED_TYPES);
+    fn operand_type_info_when_structure_then_none() {
+        assert!(operand_type_info_of(NAMED_TYPES, "POINT").is_none());
+    }
 
-        assert!(!infos.contains_key(&TypeName::from("POINT")));
+    #[test]
+    fn operand_type_info_when_reference_then_64_bit_address() {
+        let info = operand_type_info(&IntermediateType::Reference {
+            target_type: Box::new(IntermediateType::Bool),
+        })
+        .unwrap();
+
+        assert_eq!(info.op_width, OpWidth::W64);
+        assert_eq!(info.signedness, Signedness::Unsigned);
+        assert_eq!(info.storage_bits, 64);
     }
 }

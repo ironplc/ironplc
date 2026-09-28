@@ -596,6 +596,16 @@ impl TypeEnvironment {
             .filter_map(|(name, id)| Some((name, self.get_by_id(*id)?)))
     }
 
+    /// Every type in the environment by id, anonymous types included, in no
+    /// particular order.
+    pub fn iter_ids(
+        &self,
+    ) -> impl Iterator<Item = (TypeId, &crate::type_attributes::TypeAttributes)> {
+        self.entries
+            .iter()
+            .map(|(id, entry)| (*id, &entry.attributes))
+    }
+
     /// Returns an iterator over user-defined types, excluding elementary types,
     /// function block types, and function types.
     pub fn iter_user_defined(
