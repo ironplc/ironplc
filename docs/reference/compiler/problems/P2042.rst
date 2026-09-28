@@ -1,0 +1,40 @@
+=====
+P2042
+=====
+
+.. problem-summary:: P2042
+
+This error occurs when a function or method declares a return type that has not been declared.
+
+Example
+-------
+
+The following code will generate error P2042:
+
+.. code-block::
+
+   FUNCTION GetMode : E_Mode  (* Error: E_Mode is not declared *)
+       GetMode := 0;
+   END_FUNCTION
+
+The function ``GetMode`` returns ``E_Mode``, but no type with that name has been declared.
+
+To fix this error, declare the type:
+
+.. code-block::
+
+   TYPE
+       E_Mode : (Idle, Running);
+   END_TYPE
+
+   FUNCTION GetMode : E_Mode  (* Correct: E_Mode is declared *)
+       GetMode := Idle;
+   END_FUNCTION
+
+Alternatively, return a built-in type:
+
+.. code-block::
+
+   FUNCTION GetMode : INT  (* Correct: INT is a built-in type *)
+       GetMode := 0;
+   END_FUNCTION
