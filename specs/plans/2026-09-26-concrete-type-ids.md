@@ -170,10 +170,53 @@ Three reshapes, each behaviour-preserving, before any new behaviour:
 | 3 | Prefactor | Prefactor 3 (`TypeId` table, debug tag from ID) + ADR |
 | 4 | Core (annotation) | `VarDecl::type_id` and `Expr::expr_type` (`ExprType`); anonymous types entered in the environment by `xform_resolve_decl_types`; late-bound resolution keeps named array types' names. Nothing reads them yet: no behaviour change |
 | 5 | Core | Argument, assignment and bit-access checks read `ExprType` and reject aggregates/enumerations where a scalar is expected; inline arrays keep their dimensions. Fixes #1761, enum → integer assignment, `ABS` of a named subrange, and bit access on a whole array |
-| 6 | Core | Codegen selects opcodes from `TypeId` via the table; remove `resolved_type: Option<TypeName>`, `resolve_type_name` and the string-matching helpers |
+| 6 | Core | Codegen's expression helpers read `expr_type` through a `TypeId` → type table; references operate as 64-bit addresses |
+| 7 | Core | Remove `resolved_type`, so `expr_type` is the only source of an expression's type (see *Removing `resolved_type`*) |
 
 PR 4 was split into annotation (4) and checks (5) so each is reviewable on
-its own; the tracking issue is ironplc/ironplc#1842.
+its own; the tracking issue is ironplc/ironplc#1842. The removal of
+`resolved_type` moved out of PR 6 into PR 7 for the same reason.
+
+## Removing `resolved_type`
+
+While both fields exist, nothing but review stops a reader from using the
+wrong one or the two from disagreeing. Removing `resolved_type` makes the
+compiler enforce that every reader of an expression's type uses `expr_type`.
+
+A check of every expression the workspace test suite analyses (comparing the
+two fields wherever either is set) found 206 differences, all explained:
+
+| Difference | Count | Cause |
+|---|---|---|
+| Disagree | 73 | `REF_TO` variables: `resolved_type` records the referenced type (`INT`), `expr_type` the reference. `expr_type` is right. |
+| `resolved_type` only | 96 | `REF(x)` and `NULL`, which `expr_type` leaves `None` because `resolved_type` holds the referenced type and a `BOOL` placeholder for them. |
+| `expr_type` only | 37 | Variables of anonymous types (inline arrays, enumerations, references): the #1761 case, as intended. |
+
+No disagreement involves an elementary or named type.
+
+Checklist, in order:
+
+1. `REF(x)` gets a type: an anonymous reference to `x`'s type.
+2. `NULL` gets a type of its own. It is not one concrete type, so it needs a
+   case of its own in `ExprType`, as untyped literals have.
+3. The analyzer readers of `resolved_type` move to `expr_type`:
+   - `rule_operator_operand_type_check`, `rule_bit_and_partial_access_range`,
+     `rule_case_selector_type`, `rule_ref_to`, `value_type`;
+   - `TypeEnvironment::representation_of_expr`;
+   - the dereference resolution that relies on `resolved_type` meaning "the
+     referenced type".
+4. The arithmetic overloads move from type names to ids: the analyzer's
+   `typed_overload` and codegen's `compile_arith`.
+5. Codegen's declaration side uses `VarDecl::type_id` in place of
+   `resolve_type_name(&simple.type_name)` (17 call sites). This is not a
+   reader of `resolved_type`, but without it codegen still derives types from
+   type-name strings.
+6. Delete `Expr::resolved_type`. Tests that build expected expressions with
+   `Expr::with_type` assert `expr_type` instead.
+7. Update `specs/design/expression-type-resolution.md` and amend ADR-0013.
+
+Steps 1-2 come first because until they land, `REF(x)` and `NULL` have no
+`expr_type`. Removing the field before then would leave them untyped.
 
 ## File map
 
@@ -203,5 +246,12 @@ its own; the tracking issue is ironplc/ironplc#1842.
 - [x] PR 4: `VarDecl::type_id`, `Expr::expr_type`, anonymous types, named arrays keep their name (annotation only): ironplc/ironplc#1845
 - [x] PR 5: argument/result/assignment checks read `ExprType` (`value_type`); composites rejected where a scalar is expected; subranges compare as their base type; P4026/P4035 docs: ironplc/ironplc#1852. Bit access and inline dimensions moved to ironplc/ironplc#1851
 - [x] PR 6: codegen's expression helpers read `expr_type` via a `TypeId` → type table; references operate as 64-bit addresses: ironplc/ironplc#1874. Inline-enumeration codegen split out to ironplc/ironplc#1873
-- [ ] PR 7: arithmetic overloads and declaration-side codegen off type names; analyzer rules off `resolved_type`; remove `resolved_type`; update design doc
+- [ ] PR 7: remove `resolved_type` (checklist in *Removing `resolved_type`*)
+  - [ ] `REF(x)` typed as an anonymous reference
+  - [ ] `NULL` typed
+  - [ ] analyzer readers moved to `expr_type`
+  - [ ] arithmetic overloads by id
+  - [ ] codegen declarations by `VarDecl::type_id`
+  - [ ] `Expr::resolved_type` deleted; tests assert `expr_type`
+  - [ ] design doc and ADR-0013 updated
 - [ ] Close #1761 and the tracking issue
