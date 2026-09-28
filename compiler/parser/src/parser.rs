@@ -1564,16 +1564,24 @@ parser! {
       / tok(TokenType::LeftBracket) / tok(TokenType::Caret)
       / ref_bind_op() / set_bind_op() / reset_bind_op()
 
+    // `method_header` is `METHOD qualifiers name (: return_type)?`, shared
+    // with an interface's method prototype. It returns the `METHOD` token
+    // for the span.
+    rule method_header() -> (&'input Token, MemberQualifiers, Id, Option<FunctionReturnType>) = start:tok(TokenType::Method) _ qualifiers:member_qualifiers() _ name:identifier() rt:(_ tok(TokenType::Colon) _ rt:function_return_type() {rt})? {
+      (start, qualifiers, name, rt)
+    }
+
     // Unlike a function, a method may have an empty body: an `ABSTRACT`
     // method has none, and TwinCAT writes a do-nothing method that way.
-    rule method_declaration() -> MethodDeclaration = start:tok(TokenType::Method) _ qualifiers:member_qualifiers() _ name:identifier() _ rt:(tok(TokenType::Colon) _ rt:function_return_type() {rt})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body()? _ end:tok(TokenType::EndMethod) {
+    rule method_declaration() -> MethodDeclaration = header:method_header() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body()? _ end:tok(TokenType::EndMethod) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
+      let (start, qualifiers, name, return_type) = header;
       MethodDeclaration {
         qualifiers,
         name,
-        return_type: rt,
+        return_type,
         variables,
         edge_variables,
         body: body.unwrap_or_default(),
@@ -1593,7 +1601,13 @@ parser! {
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
       (variables, edge_variables, body.unwrap_or_default())
     }
-    rule property_declaration() -> PropertyDeclaration = start:tok(TokenType::Property) _ name:identifier() _ tok(TokenType::Colon) _ property_type:function_return_type() _ get:(g:contextual_keyword("GET") _ parts:property_accessor_parts() _ e:tok(TokenType::EndGet) { (g, parts, e) })? _ set:(s:contextual_keyword("SET") _ parts:property_accessor_parts() _ e:tok(TokenType::EndSet) { (s, parts, e) })? _ end:tok(TokenType::EndProperty) {
+    // `property_header` is `PROPERTY name : type`, shared with an interface's
+    // property prototype. It returns the `PROPERTY` token for the span.
+    rule property_header() -> (&'input Token, Id, FunctionReturnType) = start:tok(TokenType::Property) _ name:identifier() _ tok(TokenType::Colon) _ property_type:function_return_type() {
+      (start, name, property_type)
+    }
+    rule property_declaration() -> PropertyDeclaration = header:property_header() _ get:(g:contextual_keyword("GET") _ parts:property_accessor_parts() _ e:tok(TokenType::EndGet) { (g, parts, e) })? _ set:(s:contextual_keyword("SET") _ parts:property_accessor_parts() _ e:tok(TokenType::EndSet) { (s, parts, e) })? _ end:tok(TokenType::EndProperty) {
+      let (start, name, property_type) = header;
       let get = get.map(|(g, (variables, edge_variables, body), e)| {
         PropertyDeclaration::get_accessor(&name, &property_type, variables, edge_variables, body, SourceSpan::join(&g.span, &e.span))
       });
