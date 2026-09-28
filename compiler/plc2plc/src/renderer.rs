@@ -1147,9 +1147,43 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    // OOP extension: INTERFACE ... END_INTERFACE. Only the
-    // header renders — method/property signatures are not yet parsed (see
-    // specs/design/beckhoff-twincat-dialect.md §1.3).
+    // OOP extension: a method signature inside an INTERFACE.
+    fn visit_method_prototype(
+        &mut self,
+        node: &MethodPrototype,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.render_method_header(&MemberQualifiers::default(), &node.name, &node.return_type)?;
+        self.render_callable_body(&node.variables, &node.edge_variables, &[])?;
+        self.write_ws("END_METHOD");
+        self.newline();
+        Ok(())
+    }
+
+    // OOP extension: a property signature inside an INTERFACE, with an empty
+    // accessor for each one it declares.
+    fn visit_property_prototype(
+        &mut self,
+        node: &PropertyPrototype,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.render_property_header(&node.name, &node.property_type)?;
+        if node.get.is_some() {
+            self.write_ws("GET");
+            self.write_ws("END_GET");
+            self.newline();
+        }
+        if node.set.is_some() {
+            self.write_ws("SET");
+            self.write_ws("END_SET");
+            self.newline();
+        }
+        self.write_ws("END_PROPERTY");
+        self.newline();
+        Ok(())
+    }
+
+    // OOP extension: INTERFACE ... END_INTERFACE. Methods render before
+    // properties, as in a function block; the source order between the two
+    // kinds is not kept.
     fn visit_interface_declaration(
         &mut self,
         node: &InterfaceDeclaration,
@@ -1166,6 +1200,13 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             }
         }
         self.newline();
+
+        for method in node.methods.iter() {
+            self.visit_method_prototype(method)?;
+        }
+        for property in node.properties.iter() {
+            self.visit_property_prototype(property)?;
+        }
 
         self.write_ws("END_INTERFACE");
         self.newline();

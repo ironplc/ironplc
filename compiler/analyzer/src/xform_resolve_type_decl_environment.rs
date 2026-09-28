@@ -457,8 +457,9 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // resolve instead of failing with "type not declared."
         //
         // Modeled as an empty structure: interfaces have no fields in
-        // IronPLC's model today (method/property signatures are not yet
-        // parsed — see specs/design/beckhoff-twincat-dialect.md §1.3).
+        // IronPLC's model today (their method and property prototypes are
+        // parsed but not represented as a type — see
+        // specs/design/beckhoff-twincat-dialect.md §1.3).
         // This is intentionally a placeholder representation, not a claim
         // that interface field/method access works. Any real use beyond
         // "declare a variable of this type" is unreachable: the
