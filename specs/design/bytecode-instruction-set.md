@@ -474,7 +474,7 @@ A reference is a variable-table index carried in an I64 slot, with `u64::MAX` re
 - `r^ := e` compiles to the value, the reference, then `STORE_INDIRECT`.
 - Element access through a reference to an array uses `LOAD_ARRAY_DEREF` / `STORE_ARRAY_DEREF`, which resolve the reference and bounds-check in one instruction.
 
-Every indirect access null-checks first (`V4004 NullDereference`) and scope-checks the resolved index (`V9005 InvalidVariableIndex`). Codegen initializes every reference variable to the NULL sentinel during program setup, because a zeroed slot would otherwise be a *valid* index to variable 0. See `specs/design/ref-to.md` for the full safety rules (no `REF` of array elements, no `REF` of function-local temporaries, `=`/`<>` comparison only).
+Every indirect access null-checks first (`V4004 NullDereference`) and scope-checks the resolved index (`V9005 InvalidVariableIndex`) against the program instance's scope rather than the current frame's, since a reference names a variable in a caller's frame. Codegen initializes every reference variable to the NULL sentinel during program setup, because a zeroed slot would otherwise be a *valid* index to variable 0. See `specs/design/ref-to.md` for the full safety rules (no `REF` of array elements, no `REF` of function-local temporaries, `=`/`<>` comparison only).
 
 #### Example
 

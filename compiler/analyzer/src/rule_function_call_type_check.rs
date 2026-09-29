@@ -284,7 +284,9 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
             // generic ANY_* categories (or concrete types for the conversion
             // functions), all handled by `are_types_compatible`. The parameter
             // list continues past the declared ones for an extensible
-            // function, so every input of `AND(a, b, c)` is checked.
+            // function, so every input of `AND(a, b, c)` is checked. A
+            // VAR_IN_OUT argument must match exactly, not just be compatible;
+            // `rule_function_call_in_out_argument` checks it.
             //
             // `ADD`, `SUB`, `MUL` and `DIV` are the exception. Their inputs
             // are checked against every overload (the numeric one and the
@@ -297,6 +299,9 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                 .bind_inputs(&node.param_assignment)
                 .filter(|_| !overloaded);
             for (param, arg_expr) in inputs {
+                if param.is_inout {
+                    continue;
+                }
                 if let Err(mismatch) = value_type::check(
                     self.context.types(),
                     &param.param_type,
@@ -537,6 +542,37 @@ END_VAR
 END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
+
+    // A VAR_IN_OUT declared before a VAR_INPUT takes the first positional
+    // argument, so a mismatch on the second names the VAR_INPUT (#1658).
+    #[test]
+    fn apply_when_in_out_before_input_mismatch_then_names_input_parameter() {
+        let program = "
+FUNCTION Scale : INT
+VAR_IN_OUT acc : INT; END_VAR
+VAR_INPUT factor : INT; END_VAR
+    acc := acc * factor;
+    Scale := acc;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    total : INT;
+    s : STRING;
+    result : INT;
+END_VAR
+    result := Scale(total, s);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let errors = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].code, Problem::FunctionCallArgTypeMismatch.code());
+        assert!(
+            errors[0].described.contains(&"parameter=factor".to_owned()),
+            "{:?}",
+            errors[0].described
+        );
+    }
 
     // NOT(x) parses as the unary operator; the named-argument spelling is the
     // one that reaches the function signature.

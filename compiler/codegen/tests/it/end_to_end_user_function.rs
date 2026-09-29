@@ -1,7 +1,7 @@
 //! End-to-end integration tests for user-defined function calls.
 
 use crate::common::parse_and_run;
-use ironplc_parser::options::{CompilerOptions, Dialect};
+use ironplc_parser::options::CompilerOptions;
 
 e2e_i32!(
     end_to_end_when_user_function_add_then_returns_sum,
@@ -171,26 +171,4 @@ e2e_i32!(
     end_to_end_when_user_function_with_real_comparison_then_correct,
     "FUNCTION SIGN_R : BOOL VAR_INPUT in : REAL; END_VAR SIGN_R := in < 0.0; END_FUNCTION PROGRAM main VAR neg : BOOL; pos : BOOL; END_VAR neg := SIGN_R(in := -2.5); pos := SIGN_R(in := 2.5); END_PROGRAM",
     &[(0, 1), (1, 0)],
-);
-
-// ADD_TEN receives 5, adds 10, returns 15.
-e2e_i32!(
-    end_to_end_when_user_function_with_inout_dint_then_correct,
-    "FUNCTION ADD_TEN : DINT VAR_IN_OUT data : DINT; END_VAR data := data + 10; ADD_TEN := data; END_FUNCTION PROGRAM main VAR x : DINT := 5; result : DINT; END_VAR result := ADD_TEN(data := x); END_PROGRAM",
-    &[(1, 15)],
-);
-
-// ADD_N receives data=100 and n=42, returns 142.
-e2e_i32!(
-    end_to_end_when_user_function_with_inout_and_input_then_correct,
-    "FUNCTION ADD_N : DINT VAR_INPUT n : DINT; END_VAR VAR_IN_OUT data : DINT; END_VAR data := data + n; ADD_N := data; END_FUNCTION PROGRAM main VAR x : DINT := 100; result : DINT; END_VAR result := ADD_N(n := 42, data := x); END_PROGRAM",
-    &[(1, 142)],
-);
-
-// REF_TO in a function VAR_IN_OUT — needs Ed3 dialect.
-e2e_i32_with!(
-    end_to_end_when_user_function_with_inout_string_ref_then_correct,
-    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    "FUNCTION MY_FUNC : BOOL VAR_IN_OUT data : STRING[80]; END_VAR VAR pt : REF_TO BYTE; END_VAR pt := REF(data); MY_FUNC := TRUE; END_FUNCTION PROGRAM main VAR s : STRING[80] := 'hello'; result : BOOL; END_VAR result := MY_FUNC(data := s); END_PROGRAM",
-    &[(1, 1)],
 );

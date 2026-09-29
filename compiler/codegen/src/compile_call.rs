@@ -15,8 +15,8 @@ use ironplc_dsl::textual::{
 };
 
 use super::compile::{
-    CompileContext, OpType, OpWidth, Signedness, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
-    NARROW_CHAR_WIDTH,
+    CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo, VarTypeInfo,
+    DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
 use super::compile_arith::compile_arith_fold;
 use super::compile_expr::{
@@ -249,56 +249,35 @@ fn compile_user_function_call(
     // STRING parameters are copied into the function's data region before CALL;
     // a dummy zero is pushed for the stack pop count.
     for (i, arg) in args.iter().enumerate() {
-        if let Some(Some(str_info)) = func_info.param_string_info.get(i) {
-            // Copy the string argument into the function's parameter space.
-            // Initialize the destination header, then copy the string data.
-            emitter.emit_str_init(
-                str_info.data_offset,
-                str_info.max_length,
-                str_info.char_width,
-            );
-            // The parameter slot was just initialized at its declared
-            // encoding, and the copy below has to agree with it.
-            let src_offset =
-                resolve_string_arg(emitter, ctx, arg, &func.name.span(), str_info.char_width)?;
-            emitter.emit_str_load_var(src_offset);
-            emitter.emit_str_store_var(str_info.data_offset);
+        let passing = func_info
+            .params
+            .get(i)
+            .cloned()
+            .unwrap_or(ParamPassing::Value(DEFAULT_OP_TYPE));
+        match passing {
+            ParamPassing::String(str_info) => {
+                // Copy the string argument into the function's parameter space.
+                // Initialize the destination header, then copy the string data.
+                emitter.emit_str_init(
+                    str_info.data_offset,
+                    str_info.max_length,
+                    str_info.char_width,
+                );
+                // The parameter slot was just initialized at its declared
+                // encoding, and the copy below has to agree with it.
+                let src_offset =
+                    resolve_string_arg(emitter, ctx, arg, &func.name.span(), str_info.char_width)?;
+                emitter.emit_str_load_var(src_offset);
+                emitter.emit_str_store_var(str_info.data_offset);
 
-            // Push a dummy value for the CALL stack pop.
-            let zero_idx = ctx.add_i32_constant(0);
-            emitter.emit_load_const_i32(zero_idx);
-        } else {
-            let param_op_type = func_info
-                .param_op_types
-                .get(i)
-                .copied()
-                .unwrap_or(DEFAULT_OP_TYPE);
-
-            // When implicit integer widening crosses OpWidth boundaries
-            // (e.g. INT [W32] -> LINT [W64]), compile the argument at its
-            // natural width and then emit a conversion opcode.
-            let arg_natural = op_type_from_expr(ctx, arg);
-
-            if let Some(arg_op) = arg_natural {
-                if arg_op.0 != param_op_type.0 {
-                    compile_expr(emitter, ctx, arg, arg_op)?;
-                    let source = VarTypeInfo {
-                        op_width: arg_op.0,
-                        signedness: arg_op.1,
-                        storage_bits: 0,
-                    };
-                    let target = VarTypeInfo {
-                        op_width: param_op_type.0,
-                        signedness: param_op_type.1,
-                        storage_bits: 0,
-                    };
-                    emit_conversion_opcode(emitter, &source, &target);
-                } else {
-                    compile_expr(emitter, ctx, arg, param_op_type)?;
-                }
-            } else {
-                compile_expr(emitter, ctx, arg, param_op_type)?;
+                // Push a dummy value for the CALL stack pop.
+                let zero_idx = ctx.add_i32_constant(0);
+                emitter.emit_load_const_i32(zero_idx);
             }
+            ParamPassing::Value(param_op_type) => {
+                compile_value_arg(emitter, ctx, arg, param_op_type)?;
+            }
+            ParamPassing::Reference => compile_reference_arg(emitter, ctx, arg)?,
         }
     }
 
@@ -319,6 +298,85 @@ fn compile_user_function_call(
     // (from emit_str_load_var in the function epilogue). The caller's
     // assignment path will consume it via emit_str_store_var.
     Ok(())
+}
+
+/// Compiles an argument passed to a `VAR_IN_OUT` parameter: pushes a
+/// reference to the argument variable, as `REF(x)` does.
+///
+/// When the argument is itself a `VAR_IN_OUT` parameter of the function
+/// being compiled, its slot already holds a reference to the caller's
+/// variable, and that reference is passed on. The analyzer has checked the
+/// argument is a variable of the parameter's type (P4058, P4059); only a
+/// named elementary variable, which occupies one slot, is supported.
+fn compile_reference_arg(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    arg: &Expr,
+) -> Result<(), Diagnostic> {
+    let name = match &arg.kind {
+        ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
+            Some(&named.name)
+        }
+        ExprKind::LateBound(late_bound) => Some(&late_bound.value),
+        _ => None,
+    };
+    // An elementary variable has type info and lives in its own slot; a
+    // string, array, structure or instance lives in the data region.
+    let single_slot = |name: &&Id| {
+        ctx.var_type_info(name).is_some()
+            && !ctx.string_vars.contains_key(*name)
+            && !ctx.array_vars.contains_key(*name)
+            && !ctx.struct_vars.contains_key(*name)
+            && !ctx.struct_array_vars.contains_key(*name)
+            && !ctx.fb_instances.contains_key(*name)
+    };
+    let Some(name) = name.filter(single_slot) else {
+        return Err(Diagnostic::not_implemented(Label::span(
+            arg.span(),
+            "VAR_IN_OUT argument that is not a named variable of an elementary type",
+        )));
+    };
+    if let Some(ref_slot) = ctx.in_out_ref_slot(name) {
+        emitter.emit_load_var_i64(ref_slot);
+    } else {
+        let var_index = ctx.var_index(name)?;
+        let pool_index = ctx.add_i64_constant(var_index.into());
+        emitter.emit_load_const_i64(pool_index);
+    }
+    Ok(())
+}
+
+/// Compiles an argument passed by value to a parameter of `param_op_type`.
+///
+/// When implicit integer widening crosses OpWidth boundaries (e.g. INT [W32]
+/// -> LINT [W64]), compiles the argument at its natural width and then emits
+/// a conversion opcode.
+fn compile_value_arg(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    arg: &Expr,
+    param_op_type: OpType,
+) -> Result<(), Diagnostic> {
+    let arg_natural = op_type_from_expr(ctx, arg);
+
+    match arg_natural {
+        Some(arg_op) if arg_op.0 != param_op_type.0 => {
+            compile_expr(emitter, ctx, arg, arg_op)?;
+            let source = VarTypeInfo {
+                op_width: arg_op.0,
+                signedness: arg_op.1,
+                storage_bits: 0,
+            };
+            let target = VarTypeInfo {
+                op_width: param_op_type.0,
+                signedness: param_op_type.1,
+                storage_bits: 0,
+            };
+            emit_conversion_opcode(emitter, &source, &target);
+            Ok(())
+        }
+        _ => compile_expr(emitter, ctx, arg, param_op_type),
+    }
 }
 
 /// Compiles a generic builtin function call via `lookup_builtin`.

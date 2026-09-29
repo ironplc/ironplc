@@ -106,9 +106,13 @@ impl FunctionSignature {
         self.span.is_builtin()
     }
 
-    /// Returns the number of input parameters.
+    /// Returns the number of declared parameters a call passes an argument
+    /// to: `VAR_INPUT` and `VAR_IN_OUT`.
     pub fn input_parameter_count(&self) -> usize {
-        self.parameters.iter().filter(|p| p.is_input).count()
+        self.parameters
+            .iter()
+            .filter(|p| p.is_input_compatible())
+            .count()
     }
 
     /// Pairs each positional input argument of a call with the parameter it
@@ -135,6 +139,11 @@ impl FunctionSignature {
     /// Returns the input parameters in argument order, continuing past the
     /// declared ones for an extensible signature.
     ///
+    /// An input parameter is one a call passes an argument to: a `VAR_INPUT`
+    /// or a `VAR_IN_OUT`, in declaration order. This is the same list
+    /// `xform_named_to_positional_args` orders named arguments by, so a
+    /// positional argument binds to the parameter the caller wrote it for.
+    ///
     /// IEC 61131-3 names the inputs of an extensible function `IN1`, `IN2`,
     /// ..., `INn`, so the parameters beyond the declared list are the last
     /// declared input with its number counted on: `IN1`, `IN2` continue as
@@ -143,7 +152,7 @@ impl FunctionSignature {
     /// never when there is none, so a caller with no argument list to zip
     /// against must bound what it takes.
     pub fn input_parameters(&self) -> impl Iterator<Item = IntermediateFunctionParameter> + '_ {
-        let declared = self.parameters.iter().filter(|p| p.is_input);
+        let declared = self.parameters.iter().filter(|p| p.is_input_compatible());
         let extension = self
             .is_extensible
             .then(|| declared.clone().next_back())
@@ -410,6 +419,35 @@ mod tests {
             is_inout: false,
             is_reference: false,
         }
+    }
+
+    fn in_out(name: &str, type_name: &str) -> IntermediateFunctionParameter {
+        IntermediateFunctionParameter {
+            is_input: false,
+            is_inout: true,
+            ..input(name, type_name)
+        }
+    }
+
+    fn user_function(params: Vec<IntermediateFunctionParameter>) -> FunctionSignature {
+        FunctionSignature::new(
+            Id::from("MY_FUNC"),
+            Some(FunctionReturnType::Named(TypeName::from("BOOL"))),
+            params,
+            SourceSpan::default(),
+        )
+    }
+
+    #[test]
+    fn function_signature_input_parameter_count_when_in_out_then_counts_in_out() {
+        let sig = user_function(vec![input("N", "DINT"), in_out("DATA", "DINT")]);
+        assert_eq!(sig.input_parameter_count(), 2);
+    }
+
+    #[test]
+    fn function_signature_input_parameters_when_in_out_first_then_declaration_order() {
+        let sig = user_function(vec![in_out("ACC", "INT"), input("FACTOR", "STRING")]);
+        assert_eq!(names(sig.input_parameters()), vec!["ACC", "FACTOR"]);
     }
 
     fn names(params: impl Iterator<Item = IntermediateFunctionParameter>) -> Vec<String> {
