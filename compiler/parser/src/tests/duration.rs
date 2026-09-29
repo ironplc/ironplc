@@ -136,6 +136,11 @@ fn date_prefix_case_insensitive(#[case] literal: &str) {
 #[case::structured_text_basics("T#1h30m", Duration::hours(1) + Duration::minutes(30))]
 #[case::skipped_units("T#1d30m", Duration::days(1) + Duration::minutes(30))]
 #[case::fixed_point_last("T#1m1.5s", Duration::minutes(1) + Duration::milliseconds(1500))]
+#[case::underscore_in_later_number("T#1m1_000ms", Duration::minutes(1) + Duration::seconds(1))]
+#[case::integer_before_fixed_point_last(
+    "T#1h1_0.5m",
+    Duration::hours(1) + Duration::seconds(630)
+)]
 #[case::long_prefix("TIME#1m30s", Duration::minutes(1) + Duration::seconds(30))]
 #[case::negative("T#-1m30s", -(Duration::minutes(1) + Duration::seconds(30)))]
 fn parse_when_compound_duration_then_sum_of_parts(
@@ -152,6 +157,7 @@ fn parse_when_compound_duration_then_sum_of_parts(
 #[case::ascending_units("T#30m1h")]
 #[case::repeated_unit("T#1m1m")]
 #[case::fixed_point_before_last("T#1.5h30m")]
+#[case::whole_fixed_point_before_last("T#1.0h30m")]
 fn parse_when_compound_duration_malformed_then_error(#[case] literal: &str) {
     let source = duration_program(literal);
     let result = parse_program(&source, &FileId::default(), &CompilerOptions::default());

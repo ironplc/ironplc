@@ -66,6 +66,7 @@ mod end_to_end_bool;
 mod end_to_end_case;
 mod end_to_end_cmp;
 mod end_to_end_compiler_intrinsics;
+mod end_to_end_compound_duration;
 mod end_to_end_concat;
 mod end_to_end_const_trunc;
 mod end_to_end_constant_initializer_expressions;
