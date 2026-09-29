@@ -27,7 +27,10 @@ Signature
 
 The return type matches the input type. ``ADD`` accepts ``SINT``,
 ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``,
-``REAL``, ``LREAL``. All inputs must share the same type.
+``REAL``, ``LREAL``. Inputs of different numeric types widen to the
+wider one, which is also the return type; see
+:doc:`/explanation/type-conversions`. The time and date types are
+covered by the overloads below.
 
 .. rubric:: Inputs
 
@@ -68,6 +71,45 @@ the ``+`` operator: ``a + b``. Both forms are equivalent, and
 ``ADD(a, b, c)`` is ``a + b + c``.
 
 For integer types, overflow behavior wraps around (modular arithmetic).
+
+Time and date overloads
+-----------------------
+
+``ADD`` and the ``+`` operator are also defined on the following time
+and date operands (IEC 61131-3 Table 30). Each combination is the typed
+function in the last column and computes what it computes.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 25 25
+   :align: left
+
+   * - IN1
+     - IN2
+     - Return value
+     - Same as
+   * - ``TIME``
+     - ``TIME``
+     - ``TIME``
+     - :doc:`ADD_TIME <add_time>`
+   * - ``TIME_OF_DAY``
+     - ``TIME``
+     - ``TIME_OF_DAY``
+     - :doc:`ADD_TOD_TIME <add_tod_time>`
+   * - ``DATE_AND_TIME``
+     - ``TIME``
+     - ``DATE_AND_TIME``
+     - :doc:`ADD_DT_TIME <add_dt_time>`
+
+Folding applies here too: ``ADD(t1, t2, t3)`` is ``t1 + t2 + t3``, two ``ADD_TIME`` steps.
+
+Each typed function has a long form over ``LTIME``, ``LDATE``,
+``LTIME_OF_DAY`` and ``LDATE_AND_TIME`` (:doc:`ADD_LTIME <add_ltime>`,
+:doc:`ADD_LTOD_LTIME <add_ltod_ltime>`, :doc:`ADD_LDT_LTIME
+<add_ldt_ltime>`), which applies when either operand is of a long type.
+
+Any other combination of types is an error
+(:doc:`P4049 </reference/compiler/problems/P4049>`).
 
 Example
 -------

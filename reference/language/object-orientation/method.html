@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.246.0">
+<meta name="ironplc-version" content="0.247.0">
 </head>
   <body>
     
@@ -415,6 +415,17 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_dt_dt.html">SUB_DT_DT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_date_date.html">SUB_DATE_DATE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_tod_tod.html">SUB_TOD_TOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add_ltime.html">ADD_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_ltime.html">SUB_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mul_ltime.html">MUL_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/div_ltime.html">DIV_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add_ldt_ltime.html">ADD_LDT_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add_ltod_ltime.html">ADD_LTOD_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_ldt_ltime.html">SUB_LDT_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_ltod_ltime.html">SUB_LTOD_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_ldt_ldt.html">SUB_LDT_LDT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_ldate_ldate.html">SUB_LDATE_LDATE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_ltod_ltod.html">SUB_LTOD_LTOD</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/concat_date_tod.html">CONCAT_DATE_TOD</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/dt_to_date.html">DT_TO_DATE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/dt_to_tod.html">DT_TO_TOD</a></li>
@@ -480,6 +491,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0009.html">P0009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0010.html">P0010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0011.html">P0011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0012.html">P0012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2001.html">P2001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2002.html">P2002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2003.html">P2003</a></li>
@@ -516,6 +528,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2035.html">P2035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2036.html">P2036</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2037.html">P2037</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2038.html">P2038</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2039.html">P2039</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2040.html">P2040</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2041.html">P2041</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4003.html">P4003</a></li>
@@ -570,6 +586,9 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4053.html">P4053</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4054.html">P4054</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4055.html">P4055</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4056.html">P4056</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4057.html">P4057</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -745,9 +764,7 @@ the instance’s own type: a declaration is checked, and a call is
 resolved against the declared type of the instance, walking the
 <code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code> chain to find the method. A call that the chain
 resolves to an inherited method is accepted by analysis but not
-yet compiled, and a method body sets its return value by assigning
-the method’s own name without that value being consumable at the
-call site (see <a class="reference internal" href="#method-limitations"><span class="std std-ref">Current limitations</span></a>). Enable with
+yet compiled (see <a class="reference internal" href="#method-limitations"><span class="std std-ref">Current limitations</span></a>). Enable with
 <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>; see
 <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a>.</p></td>
 </tr>
@@ -770,12 +787,17 @@ END_METHOD
 <a class="reference internal" href="../pous/function.html"><span class="doc">function</span></a>, with <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code>,
 <code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code>, and <code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code> blocks; <code class="docutils literal notranslate"><span class="pre">VAR</span></code> declares locals of the
 method itself.</p>
-<p>A method is called on an instance, as a statement, using the same dot
-notation as a structure member. Arguments are written positionally or by
-name, exactly as for a function block invocation:</p>
+<p>A method is called on an instance using the same dot notation as a
+structure member. Arguments are written positionally or by name, exactly as
+for a function block invocation. The call can be a statement, which discards
+any return value, or part of an expression, where it evaluates to the
+method’s return value:</p>
 <div class="highlight-bnf notranslate"><div class="highlight"><pre><span></span>instance_name.method_name(argument_list);
+variable := instance_name.method_name(argument_list);
 </pre></div>
 </div>
+<p>A method without a return type has no value to use, so calling it in an
+expression reports <a class="reference internal" href="../../compiler/problems/P4057.html"><span class="doc">P4057</span></a>.</p>
 <p>The method to call is chosen from the <em>declared</em> type of the instance: the
 type’s own methods first, then those of its <code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code> base, and so on up
 the chain.</p>
@@ -797,30 +819,32 @@ the chain.</p>
     <span class="n">METHOD</span> <span class="n">Stop</span>
         <span class="n">speed</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span>
     <span class="n">END_METHOD</span>
+
+    <span class="n">METHOD</span> <span class="n">IsRunning</span> <span class="p">:</span> <span class="n">BOOL</span>
+        <span class="n">IsRunning</span> <span class="o">:=</span> <span class="n">speed</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="n">END_METHOD</span>
 <span class="n">END_FUNCTION_BLOCK</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">SetSpeed</span></code> takes one parameter; <code class="docutils literal notranslate"><span class="pre">Stop</span></code> takes none. Both act on the
-<code class="docutils literal notranslate"><span class="pre">speed</span></code> variable of the instance they are called on:</p>
+<code class="docutils literal notranslate"><span class="pre">speed</span></code> variable of the instance they are called on. <code class="docutils literal notranslate"><span class="pre">IsRunning</span></code> returns
+a value, so it can be used in a condition:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">Main</span>
     <span class="n">VAR</span>
         <span class="n">motor</span> <span class="p">:</span> <span class="n">FB_Motor</span><span class="p">;</span>
     <span class="n">END_VAR</span>
     <span class="n">motor</span><span class="o">.</span><span class="n">SetSpeed</span><span class="p">(</span><span class="n">newSpeed</span> <span class="o">:=</span> <span class="mi">1200</span><span class="p">);</span>
-    <span class="n">motor</span><span class="o">.</span><span class="n">Stop</span><span class="p">();</span>
+    <span class="n">IF</span> <span class="n">motor</span><span class="o">.</span><span class="n">IsRunning</span><span class="p">()</span> <span class="n">THEN</span>
+        <span class="n">motor</span><span class="o">.</span><span class="n">Stop</span><span class="p">();</span>
+    <span class="n">END_IF</span><span class="p">;</span>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
 </section>
 <section id="current-limitations">
 <span id="method-limitations"></span><h2>Current limitations<a class="headerlink" href="#current-limitations" title="Link to this heading">¶</a></h2>
-<p>A method body sets its return value by assigning the method’s own name,
-the same way a <a class="reference internal" href="../pous/function.html"><span class="doc">function</span></a> body
-does. What is missing is the other half: a call is a statement, not an
-expression, so <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">:=</span> <span class="pre">instance.Method()</span></code> is a syntax error and the
-return value is discarded at the call site. Until that is supported, a
-method with a return type is useful only for what its body does — write
-the result to a field of the function block and read that field.</p>
+<p>A method with a <code class="docutils literal notranslate"><span class="pre">STRING</span></code> or <code class="docutils literal notranslate"><span class="pre">WSTRING</span></code> return type reports
+<a class="reference internal" href="../../compiler/problems/P9999.html"><span class="doc">P9999</span></a> when compiled.</p>
 <p>A call to a method the instance’s type inherits through
 <a class="reference internal" href="extends.html"><span class="doc">EXTENDS</span></a> passes analysis but reports
 <a class="reference internal" href="../../compiler/problems/P9999.html"><span class="doc">P9999</span></a> when compiled. Code

@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.246.0">
+<meta name="ironplc-version" content="0.247.0">
 </head>
   <body>
     
@@ -415,6 +415,17 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_dt_dt.html">SUB_DT_DT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_date_date.html">SUB_DATE_DATE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_tod_tod.html">SUB_TOD_TOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add_ltime.html">ADD_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_ltime.html">SUB_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mul_ltime.html">MUL_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/div_ltime.html">DIV_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add_ldt_ltime.html">ADD_LDT_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add_ltod_ltime.html">ADD_LTOD_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_ldt_ltime.html">SUB_LDT_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_ltod_ltime.html">SUB_LTOD_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_ldt_ldt.html">SUB_LDT_LDT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_ldate_ldate.html">SUB_LDATE_LDATE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_ltod_ltod.html">SUB_LTOD_LTOD</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/concat_date_tod.html">CONCAT_DATE_TOD</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/dt_to_date.html">DT_TO_DATE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/dt_to_tod.html">DT_TO_TOD</a></li>
@@ -480,6 +491,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P0009.html">P0009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P0010.html">P0010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P0011.html">P0011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P0012.html">P0012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2001.html">P2001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2002.html">P2002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2003.html">P2003</a></li>
@@ -516,6 +528,10 @@
 <li class="toctree-l4"><a class="reference internal" href="P2035.html">P2035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2036.html">P2036</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2037.html">P2037</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P2038.html">P2038</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P2039.html">P2039</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P2040.html">P2040</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P2041.html">P2041</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4003.html">P4003</a></li>
@@ -570,6 +586,9 @@
 <li class="toctree-l4"><a class="reference internal" href="P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4053.html">P4053</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4054.html">P4054</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4055.html">P4055</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4056.html">P4056</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4057.html">P4057</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -714,11 +733,22 @@
 </dd>
 </dl>
 <p>This error occurs when a function call passes an argument whose type does not match the
-declared parameter type. IronPLC allows implicit widening between integer types (for example,
-<code class="docutils literal notranslate"><span class="pre">INT</span></code> to <code class="docutils literal notranslate"><span class="pre">DINT</span></code>), but rejects other type mismatches such as integer to real or narrowing
-conversions.</p>
+declared parameter type. IronPLC converts the argument implicitly where the conversion is
+lossless — between integer types, from a narrow integer to a real, from <code class="docutils literal notranslate"><span class="pre">REAL</span></code> to
+<code class="docutils literal notranslate"><span class="pre">LREAL</span></code>, and within the bit-string types — and reports this error for every other
+mismatch, such as a narrowing conversion, a real argument for an integer parameter, or a
+signed argument for an unsigned parameter.</p>
 <p>For the full set of allowed implicit conversions, see
 <a class="reference internal" href="../../../explanation/type-conversions.html"><span class="doc">Type Conversions</span></a>.</p>
+<p>A whole array, a structure, an enumeration or a function block instance is only ever
+its own type, and no conversion applies to it. Passing one for a parameter of any other
+type, including a generic category such as <code class="docutils literal notranslate"><span class="pre">ANY_NUM</span></code> or <code class="docutils literal notranslate"><span class="pre">ANY_STRING</span></code>, is this error.
+An array or structure <em>is</em> accepted for a parameter whose type has the same shape, such
+as an inline <code class="docutils literal notranslate"><span class="pre">ARRAY[1..2]</span> <span class="pre">OF</span> <span class="pre">DINT</span></code> for a parameter declared with a named array type of
+two <code class="docutils literal notranslate"><span class="pre">DINT</span></code> elements.</p>
+<p>The arithmetic functions <code class="docutils literal notranslate"><span class="pre">ADD</span></code>, <code class="docutils literal notranslate"><span class="pre">SUB</span></code>, <code class="docutils literal notranslate"><span class="pre">MUL</span></code> and <code class="docutils literal notranslate"><span class="pre">DIV</span></code> are the exception: they
+accept the numeric types and the time and date types, so a mismatch in their inputs is
+reported as <a class="reference internal" href="P4049.html"><span class="doc">P4049</span></a> instead, as it is for the operators <code class="docutils literal notranslate"><span class="pre">+</span></code>, <code class="docutils literal notranslate"><span class="pre">-</span></code>, <code class="docutils literal notranslate"><span class="pre">*</span></code> and <code class="docutils literal notranslate"><span class="pre">/</span></code>.</p>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <p>The following code will generate error P4026:</p>
@@ -732,15 +762,34 @@ conversions.</p>
 <span class="n">PROGRAM</span> <span class="n">main</span>
 <span class="n">VAR</span>
     <span class="n">result</span> <span class="p">:</span> <span class="n">REAL</span><span class="p">;</span>
-    <span class="n">x</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">x</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
 <span class="n">END_VAR</span>
-    <span class="n">result</span> <span class="o">:=</span> <span class="n">DOUBLE_REAL</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">INT</span> <span class="n">argument</span> <span class="k">for</span> <span class="n">REAL</span> <span class="n">parameter</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">:=</span> <span class="n">DOUBLE_REAL</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">DINT</span> <span class="n">argument</span> <span class="k">for</span> <span class="n">REAL</span> <span class="n">parameter</span> <span class="o">*</span><span class="p">)</span>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>
-<p>The variable <code class="docutils literal notranslate"><span class="pre">x</span></code> is <code class="docutils literal notranslate"><span class="pre">INT</span></code>, but parameter <code class="docutils literal notranslate"><span class="pre">A</span></code> expects <code class="docutils literal notranslate"><span class="pre">REAL</span></code>.</p>
+<p>The variable <code class="docutils literal notranslate"><span class="pre">x</span></code> is <code class="docutils literal notranslate"><span class="pre">DINT</span></code>, but parameter <code class="docutils literal notranslate"><span class="pre">A</span></code> expects <code class="docutils literal notranslate"><span class="pre">REAL</span></code>. A 32-bit integer
+does not fit exactly in <code class="docutils literal notranslate"><span class="pre">REAL</span></code>’s 23-bit mantissa, so the conversion is not implicit.
+An <code class="docutils literal notranslate"><span class="pre">INT</span></code> argument in the same position <em>is</em> accepted, because every 16-bit integer is
+exactly representable in <code class="docutils literal notranslate"><span class="pre">REAL</span></code>.</p>
 <p>To fix this error, use an explicit type conversion:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">:=</span> <span class="n">DOUBLE_REAL</span><span class="p">(</span><span class="n">INT_TO_REAL</span><span class="p">(</span><span class="n">x</span><span class="p">));</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">:=</span> <span class="n">DOUBLE_REAL</span><span class="p">(</span><span class="n">DINT_TO_REAL</span><span class="p">(</span><span class="n">x</span><span class="p">));</span>
+</pre></div>
+</div>
+<p>Widening to <code class="docutils literal notranslate"><span class="pre">LREAL</span></code> is the other way out: every integer type converts implicitly to
+<code class="docutils literal notranslate"><span class="pre">LREAL</span></code>, so a parameter declared <code class="docutils literal notranslate"><span class="pre">LREAL</span></code> accepts <code class="docutils literal notranslate"><span class="pre">x</span></code> as written.</p>
+<p>Passing a whole array where a single value is expected is the same error:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+<span class="n">VAR</span>
+    <span class="n">names</span> <span class="p">:</span> <span class="n">ARRAY</span><span class="p">[</span><span class="mf">1..2</span><span class="p">]</span> <span class="n">OF</span> <span class="n">STRING</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span>
+    <span class="n">n</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+<span class="n">END_VAR</span>
+    <span class="n">n</span> <span class="o">:=</span> <span class="n">LEN</span><span class="p">(</span><span class="n">names</span><span class="p">);</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">ARRAY</span><span class="p">[</span><span class="mf">1..2</span><span class="p">]</span> <span class="n">OF</span> <span class="n">STRING</span><span class="p">[</span><span class="mi">8</span><span class="p">]</span> <span class="k">for</span> <span class="n">an</span> <span class="n">ANY_STRING</span> <span class="n">parameter</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>To fix this error, pass one element of the array:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">n</span> <span class="o">:=</span> <span class="n">LEN</span><span class="p">(</span><span class="n">names</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
 </pre></div>
 </div>
 <div class="tip admonition">

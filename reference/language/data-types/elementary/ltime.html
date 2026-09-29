@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/language/data-types/elementary/ltime.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="64-bit duration value representing an interval of time.,, Size, 64 bits (millisecond resolution),, Default, LTIME#0s,, IEC 61131-3, Section 2.3.1 (Edition 3),, Support, Supported ( Edition 3),,,, E..." />
-<meta name="description" content="64-bit duration value representing an interval of time.,, Size, 64 bits (millisecond resolution),, Default, LTIME#0s,, IEC 61131-3, Section 2.3.1 (Edition 3),, Support, Supported ( Edition 3),,,, E..." />
+<meta property="og:description" content="64-bit duration value representing an interval of time.,, Size, 64 bits (millisecond resolution),, Range, about ±292 million years,, Default, LTIME#0s,, IEC 61131-3, Section 2.3.1 (Edition 3),, Sup..." />
+<meta name="description" content="64-bit duration value representing an interval of time.,, Size, 64 bits (millisecond resolution),, Range, about ±292 million years,, Default, LTIME#0s,, IEC 61131-3, Section 2.3.1 (Edition 3),, Sup..." />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="DATE" href="date.html"><link rel="prev" title="TIME" href="time.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/data-types/elementary/ltime.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.246.0">
+<meta name="ironplc-version" content="0.247.0">
 </head>
   <body>
     
@@ -415,6 +415,17 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/sub_dt_dt.html">SUB_DT_DT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/sub_date_date.html">SUB_DATE_DATE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/sub_tod_tod.html">SUB_TOD_TOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/add_ltime.html">ADD_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/sub_ltime.html">SUB_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/mul_ltime.html">MUL_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/div_ltime.html">DIV_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/add_ldt_ltime.html">ADD_LDT_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/add_ltod_ltime.html">ADD_LTOD_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/sub_ldt_ltime.html">SUB_LDT_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/sub_ltod_ltime.html">SUB_LTOD_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/sub_ldt_ldt.html">SUB_LDT_LDT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/sub_ldate_ldate.html">SUB_LDATE_LDATE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/sub_ltod_ltod.html">SUB_LTOD_LTOD</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/concat_date_tod.html">CONCAT_DATE_TOD</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/dt_to_date.html">DT_TO_DATE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../standard-library/functions/dt_to_tod.html">DT_TO_TOD</a></li>
@@ -480,6 +491,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P0009.html">P0009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P0010.html">P0010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P0011.html">P0011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P0012.html">P0012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2001.html">P2001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2002.html">P2002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2003.html">P2003</a></li>
@@ -516,6 +528,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2035.html">P2035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2036.html">P2036</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2037.html">P2037</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2038.html">P2038</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2039.html">P2039</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2040.html">P2040</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2041.html">P2041</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4003.html">P4003</a></li>
@@ -570,6 +586,9 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4053.html">P4053</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4054.html">P4054</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4055.html">P4055</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4056.html">P4056</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4057.html">P4057</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6003.html">P6003</a></li>
@@ -724,13 +743,16 @@
 <tr class="row-odd"><td><p><strong>Size</strong></p></td>
 <td><p>64 bits (millisecond resolution)</p></td>
 </tr>
-<tr class="row-even"><td><p><strong>Default</strong></p></td>
+<tr class="row-even"><td><p><strong>Range</strong></p></td>
+<td><p>about ±292 million years</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Default</strong></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">LTIME#0s</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p><strong>IEC 61131-3</strong></p></td>
+<tr class="row-even"><td><p><strong>IEC 61131-3</strong></p></td>
 <td><p>Section 2.3.1 (Edition 3)</p></td>
 </tr>
-<tr class="row-even"><td><p><strong>Support</strong></p></td>
+<tr class="row-odd"><td><p><strong>Support</strong></p></td>
 <td><p>Supported (<a class="reference internal" href="../../edition-support.html"><span class="doc">Edition 3</span></a>)</p></td>
 </tr>
 </tbody>
@@ -749,6 +771,11 @@
 </div>
 </div>
 </div>
+<p>A duration is stored as a signed count of milliseconds. <code class="docutils literal notranslate"><span class="pre">LTIME</span></code> counts them
+in 64 bits, so it reaches far past the ±24.8 days a 32-bit <a class="reference internal" href="time.html"><span class="doc">TIME</span></a> holds.</p>
+<p>An <code class="docutils literal notranslate"><span class="pre">LTIME</span></code> accepts a <code class="docutils literal notranslate"><span class="pre">T#</span></code> literal, which widens, but a <code class="docutils literal notranslate"><span class="pre">TIME</span></code> does not
+accept an <code class="docutils literal notranslate"><span class="pre">LTIME#</span></code> one — that narrows, and is reported as
+<a class="reference internal" href="../../../compiler/problems/P4022.html"><span class="doc">P4022</span></a>.</p>
 </section>
 <section id="literals">
 <h2>Literals<a class="headerlink" href="#literals" title="Link to this heading">¶</a></h2>

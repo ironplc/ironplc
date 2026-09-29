@@ -211,6 +211,28 @@ Time and Date Functions
      - Difference between two dates
    * - :doc:`SUB_TOD_TOD <sub_tod_tod>`
      - Difference between two times-of-day
+   * - :doc:`ADD_LTIME <add_ltime>`
+     - Add two long durations
+   * - :doc:`SUB_LTIME <sub_ltime>`
+     - Subtract long durations
+   * - :doc:`MUL_LTIME <mul_ltime>`
+     - Scale long duration by number
+   * - :doc:`DIV_LTIME <div_ltime>`
+     - Divide long duration by number
+   * - :doc:`ADD_LDT_LTIME <add_ldt_ltime>`
+     - Add long duration to long date-and-time
+   * - :doc:`ADD_LTOD_LTIME <add_ltod_ltime>`
+     - Add long duration to long time-of-day
+   * - :doc:`SUB_LDT_LTIME <sub_ldt_ltime>`
+     - Subtract long duration from long date-and-time
+   * - :doc:`SUB_LTOD_LTIME <sub_ltod_ltime>`
+     - Subtract long duration from long time-of-day
+   * - :doc:`SUB_LDT_LDT <sub_ldt_ldt>`
+     - Difference between two long datetimes
+   * - :doc:`SUB_LDATE_LDATE <sub_ldate_ldate>`
+     - Difference between two long dates
+   * - :doc:`SUB_LTOD_LTOD <sub_ltod_ltod>`
+     - Difference between two long times-of-day
    * - :doc:`CONCAT_DATE_TOD <concat_date_tod>`
      - Combine date and time-of-day
    * - :doc:`DT_TO_DATE <dt_to_date>`
@@ -293,6 +315,17 @@ Type Conversion Functions
    sub_dt_dt
    sub_date_date
    sub_tod_tod
+   add_ltime
+   sub_ltime
+   mul_ltime
+   div_ltime
+   add_ldt_ltime
+   add_ltod_ltime
+   sub_ldt_ltime
+   sub_ltod_ltime
+   sub_ldt_ldt
+   sub_ldate_ldate
+   sub_ltod_ltod
    concat_date_tod
    dt_to_date
    dt_to_tod

@@ -38,6 +38,18 @@ produces error P9997:
 Each ``Item`` occupies 2 slots, so the array needs 80000 slots — more than
 twice the limit.
 
+The limit is a property of the data region rather than of structures, so an
+array of a primitive type reaches it the same way. This declaration produces
+the same error, because 40000 ``DINT`` elements take one slot each:
+
+.. code-block::
+
+   PROGRAM main
+     VAR
+       readings : ARRAY[1..40000] OF DINT;
+     END_VAR
+   END_PROGRAM
+
 To fix this error, reduce the amount of data the variable holds. Splitting the
 data across several variables works because the limit applies to each variable
 separately:

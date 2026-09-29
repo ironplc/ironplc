@@ -67,11 +67,10 @@ program is well-formed.
 
 .. note::
 
-   The IronPLC compiler does not yet support compiling programs with
-   directly represented variables to bytecode. You can check these
-   programs for correctness, but compiling and running them requires a
-   future release. For now, remove the :code:`AT` addresses to compile
-   and run in the virtual machine.
+   Programs with directly represented variables compile and run in the
+   virtual machine like any other program. The virtual machine does not
+   connect the addresses to hardware yet, so an input keeps its initial
+   value unless the program writes it.
 
 --------------------------------------
 What You Have Learned

@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.246.0">
+<meta name="ironplc-version" content="0.247.0">
 </head>
   <body>
     
@@ -415,6 +415,17 @@
 <li class="toctree-l4"><a class="reference internal" href="sub_dt_dt.html">SUB_DT_DT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="sub_date_date.html">SUB_DATE_DATE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="sub_tod_tod.html">SUB_TOD_TOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="add_ltime.html">ADD_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sub_ltime.html">SUB_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="mul_ltime.html">MUL_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="div_ltime.html">DIV_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="add_ldt_ltime.html">ADD_LDT_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="add_ltod_ltime.html">ADD_LTOD_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sub_ldt_ltime.html">SUB_LDT_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sub_ltod_ltime.html">SUB_LTOD_LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sub_ldt_ldt.html">SUB_LDT_LDT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sub_ldate_ldate.html">SUB_LDATE_LDATE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sub_ltod_ltod.html">SUB_LTOD_LTOD</a></li>
 <li class="toctree-l4"><a class="reference internal" href="concat_date_tod.html">CONCAT_DATE_TOD</a></li>
 <li class="toctree-l4"><a class="reference internal" href="dt_to_date.html">DT_TO_DATE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="dt_to_tod.html">DT_TO_TOD</a></li>
@@ -480,6 +491,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0009.html">P0009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0010.html">P0010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0011.html">P0011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0012.html">P0012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2001.html">P2001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2002.html">P2002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2003.html">P2003</a></li>
@@ -516,6 +528,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2035.html">P2035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2036.html">P2036</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2037.html">P2037</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2038.html">P2038</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2039.html">P2039</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2040.html">P2040</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2041.html">P2041</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4003.html">P4003</a></li>
@@ -570,6 +586,9 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4052.html">P4052</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4053.html">P4053</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4054.html">P4054</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4055.html">P4055</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4056.html">P4056</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4057.html">P4057</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -1042,13 +1061,46 @@ output for the same inputs every time.</p>
 <tr class="row-even"><td><p><a class="reference internal" href="sub_tod_tod.html"><span class="doc">SUB_TOD_TOD</span></a></p></td>
 <td><p>Difference between two times-of-day</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="concat_date_tod.html"><span class="doc">CONCAT_DATE_TOD</span></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="add_ltime.html"><span class="doc">ADD_LTIME</span></a></p></td>
+<td><p>Add two long durations</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="sub_ltime.html"><span class="doc">SUB_LTIME</span></a></p></td>
+<td><p>Subtract long durations</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="mul_ltime.html"><span class="doc">MUL_LTIME</span></a></p></td>
+<td><p>Scale long duration by number</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="div_ltime.html"><span class="doc">DIV_LTIME</span></a></p></td>
+<td><p>Divide long duration by number</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="add_ldt_ltime.html"><span class="doc">ADD_LDT_LTIME</span></a></p></td>
+<td><p>Add long duration to long date-and-time</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="add_ltod_ltime.html"><span class="doc">ADD_LTOD_LTIME</span></a></p></td>
+<td><p>Add long duration to long time-of-day</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="sub_ldt_ltime.html"><span class="doc">SUB_LDT_LTIME</span></a></p></td>
+<td><p>Subtract long duration from long date-and-time</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="sub_ltod_ltime.html"><span class="doc">SUB_LTOD_LTIME</span></a></p></td>
+<td><p>Subtract long duration from long time-of-day</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="sub_ldt_ldt.html"><span class="doc">SUB_LDT_LDT</span></a></p></td>
+<td><p>Difference between two long datetimes</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="sub_ldate_ldate.html"><span class="doc">SUB_LDATE_LDATE</span></a></p></td>
+<td><p>Difference between two long dates</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="sub_ltod_ltod.html"><span class="doc">SUB_LTOD_LTOD</span></a></p></td>
+<td><p>Difference between two long times-of-day</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="concat_date_tod.html"><span class="doc">CONCAT_DATE_TOD</span></a></p></td>
 <td><p>Combine date and time-of-day</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="dt_to_date.html"><span class="doc">DT_TO_DATE</span></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="dt_to_date.html"><span class="doc">DT_TO_DATE</span></a></p></td>
 <td><p>Extract date from datetime</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="dt_to_tod.html"><span class="doc">DT_TO_TOD</span></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="dt_to_tod.html"><span class="doc">DT_TO_TOD</span></a></p></td>
 <td><p>Extract time-of-day from datetime</p></td>
 </tr>
 </tbody>
