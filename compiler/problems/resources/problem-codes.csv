@@ -128,6 +128,7 @@ P4059,FunctionCallInOutArgTypeMismatch,Function call VAR_IN_OUT argument type is
 P4060,InOutArgNotWritable,VAR_IN_OUT argument cannot be proved writable
 P4062,MemberQualifierNotAllowed,Function block qualifier requires choosing a dialect or --allow-fb-inheritance flag
 P4063,MemberQualifierInvalid,Member qualifiers are repeated or conflict or are out of order or not allowed here
+P4064,ConstantVariableWritten,Variable declared CONSTANT is written
 P4065,ContinueOutsideLoop,CONTINUE statement is not inside a loop
 P4072,ConditionTypeInvalid,Condition of IF or ELSIF or WHILE or REPEAT is not BOOL
 P2038,DateLiteralOutOfRange,Date literal is outside the range the date type can represent

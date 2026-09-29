@@ -45,6 +45,7 @@ pub(crate) fn collect(
         scope: Vec::new(),
         instances: InstanceTypes::default(),
         written: Writes::default(),
+        kind: WriteKind::Other,
         globals: HashMap::new(),
     };
     let Ok(()) = collector.walk(lib);
@@ -74,6 +75,38 @@ pub(crate) fn unit_scope(name: &Id) -> ScopeKind {
     ScopeKind::Named(ScopePath::from(name.clone()))
 }
 
+/// How a statement or declaration writes a variable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WriteKind {
+    /// The target of `v := e`.
+    Assignment,
+    /// The control variable of a `FOR` loop.
+    ForControl,
+    /// The target of an output binding `q => v`.
+    OutputBinding,
+    /// An argument bound to a `VAR_IN_OUT` parameter.
+    InOutArgument,
+    /// An argument the collector cannot bind to a parameter: an unknown
+    /// callee, an unknown name, or more arguments than parameters.
+    UnboundArgument,
+    /// The operand of `REF` or `ADR`, whose address is taken.
+    AddressTaken,
+    /// A function-block instance being invoked, or the receiver of a method.
+    Invocation,
+    /// Anything else: an initializer, an access path, an action association.
+    Other,
+}
+
+/// One write the collector resolved to exactly one declaration.
+#[derive(Clone, Debug)]
+pub(crate) struct WriteSite {
+    /// The scope that declares the written variable.
+    pub(crate) scope: ScopeKind,
+    /// The written name, as it appears at the write; its span is the write.
+    pub(crate) name: Id,
+    pub(crate) kind: WriteKind,
+}
+
 /// The declarations the program writes.
 #[derive(Default)]
 pub(crate) struct Writes {
@@ -83,6 +116,8 @@ pub(crate) struct Writes {
     /// Names written through a path that does not resolve to one
     /// declaration; every declaration of the name counts as written.
     pub(crate) any_scope: HashSet<Id>,
+    /// Every write in `resolved`, where it is and how it writes.
+    pub(crate) sites: Vec<WriteSite>,
 }
 
 impl Writes {
@@ -103,6 +138,8 @@ struct WriteCollector<'a> {
     /// The function-block instances of the unit being walked.
     instances: InstanceTypes,
     written: Writes,
+    /// How the write being marked writes.
+    kind: WriteKind,
     /// `VAR_GLOBAL` names, with whether every declaration of that name
     /// qualifies to be marked.
     globals: HashMap<Id, bool>,
@@ -142,8 +179,24 @@ impl WriteCollector<'_> {
         }
     }
 
+    /// Runs `mark` with every write it records taken to be of `kind`.
+    fn marking_as(&mut self, kind: WriteKind, mark: impl FnOnce(&mut Self)) {
+        let outer = std::mem::replace(&mut self.kind, kind);
+        mark(self);
+        self.kind = outer;
+    }
+
     fn mark(&mut self, name: &Id) {
         let scope = self.declaring_scope(name);
+        self.mark_resolved(scope, name);
+    }
+
+    fn mark_resolved(&mut self, scope: ScopeKind, name: &Id) {
+        self.written.sites.push(WriteSite {
+            scope: scope.clone(),
+            name: name.clone(),
+            kind: self.kind,
+        });
         self.written.resolved.insert((scope, name.clone()));
     }
 
@@ -156,9 +209,7 @@ impl WriteCollector<'_> {
     /// block is not a declaration and needs no mark.
     fn mark_member(&mut self, fb_type: &TypeName, field: &Id) {
         if let Some(block) = self.function_blocks.declaring_block(fb_type, field) {
-            self.written
-                .resolved
-                .insert((unit_scope(&block.name.name), field.clone()));
+            self.mark_resolved(unit_scope(&block.name.name), field);
         }
     }
 
@@ -240,9 +291,12 @@ impl WriteCollector<'_> {
     /// written: with no declaration to consult, nothing rules a write out.
     fn mark_bound_arguments(&mut self, owner: &dyn HasVariables, params: &[ParamAssignmentKind]) {
         for (param, declared) in bind_inputs(owner, params) {
-            let in_out = declared.is_none_or(|decl| decl.var_type == VariableType::InOut);
-            if in_out {
-                self.mark_argument(param);
+            match declared {
+                None => self.marking_as(WriteKind::UnboundArgument, |c| c.mark_argument(param)),
+                Some(decl) if decl.var_type == VariableType::InOut => {
+                    self.marking_as(WriteKind::InOutArgument, |c| c.mark_argument(param))
+                }
+                Some(_) => {}
             }
         }
     }
@@ -251,7 +305,7 @@ impl WriteCollector<'_> {
     /// resolved: any of them may be written.
     fn mark_all_arguments(&mut self, params: &[ParamAssignmentKind]) {
         for param in params {
-            self.mark_argument(param);
+            self.marking_as(WriteKind::UnboundArgument, |c| c.mark_argument(param));
         }
     }
 
@@ -313,23 +367,23 @@ impl Visitor<Infallible> for WriteCollector<'_> {
     }
 
     fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
-        self.mark_variable(&node.target);
+        self.marking_as(WriteKind::Assignment, |c| c.mark_variable(&node.target));
         node.recurse_visit(self)
     }
 
     fn visit_for(&mut self, node: &For) -> Result<(), Infallible> {
-        self.mark(&node.control);
+        self.marking_as(WriteKind::ForControl, |c| c.mark(&node.control));
         node.recurse_visit(self)
     }
 
     fn visit_output(&mut self, node: &Output) -> Result<(), Infallible> {
-        self.mark_variable(&node.tgt);
+        self.marking_as(WriteKind::OutputBinding, |c| c.mark_variable(&node.tgt));
         node.recurse_visit(self)
     }
 
     fn visit_expr_kind(&mut self, node: &ExprKind) -> Result<(), Infallible> {
         if let ExprKind::Ref(variable) = node {
-            self.mark_variable(variable);
+            self.marking_as(WriteKind::AddressTaken, |c| c.mark_variable(variable));
         }
         node.recurse_visit(self)
     }
@@ -350,23 +404,23 @@ impl Visitor<Infallible> for WriteCollector<'_> {
         for param in &node.param_assignment {
             let written = match param {
                 ParamAssignmentKind::PositionalInput(_) => match declared.next() {
-                    Some(declared) => declared.is_inout,
+                    Some(declared) => declared.is_inout.then_some(WriteKind::InOutArgument),
                     // Past the declared parameters an extensible function
                     // takes further inputs; anything else is unbound.
-                    None => !signature.is_extensible,
+                    None => (!signature.is_extensible).then_some(WriteKind::UnboundArgument),
                 },
-                ParamAssignmentKind::NamedInput(_) => true,
-                ParamAssignmentKind::Output(_) => false,
+                ParamAssignmentKind::NamedInput(_) => Some(WriteKind::UnboundArgument),
+                ParamAssignmentKind::Output(_) => None,
             };
-            if written {
-                self.mark_argument(param);
+            if let Some(kind) = written {
+                self.marking_as(kind, |c| c.mark_argument(param));
             }
         }
         node.recurse_visit(self)
     }
 
     fn visit_fb_call(&mut self, node: &FbCall) -> Result<(), Infallible> {
-        self.mark(&node.var_name);
+        self.marking_as(WriteKind::Invocation, |c| c.mark(&node.var_name));
         let fb_type = self.instances.type_of(&node.var_name).cloned();
         match fb_type {
             Some(fb_type) => match self.function_blocks.get(&fb_type) {
@@ -384,7 +438,7 @@ impl Visitor<Infallible> for WriteCollector<'_> {
     fn visit_method_call(&mut self, node: &MethodCall) -> Result<(), Infallible> {
         let method = match &node.receiver {
             MethodReceiver::Instance(instance) => {
-                self.mark(instance);
+                self.marking_as(WriteKind::Invocation, |c| c.mark(instance));
                 self.instances
                     .type_of(instance)
                     .and_then(|fb_type| self.function_blocks.resolve_method(fb_type, &node.method))
@@ -454,9 +508,7 @@ impl Visitor<Infallible> for WriteCollector<'_> {
         node: &ProgramConnectionSink,
     ) -> Result<(), Infallible> {
         if let ProgramConnectionSinkKind::GlobalVarReference(global) = &node.dst {
-            self.written
-                .resolved
-                .insert((ScopeKind::Global, global.global_var_name.clone()));
+            self.mark_resolved(ScopeKind::Global, &global.global_var_name);
         }
         node.recurse_visit(self)
     }
