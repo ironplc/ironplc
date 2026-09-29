@@ -41,19 +41,38 @@ Today every one of them is P4017 ("Function is not declared") with
 ## Architecture
 
 The four names are IEC 61131-3 surface, so by ADR-0042 (rule 3) the compiler
-seeds them. Their bodies are integer arithmetic, so no builtin opcode, no VM
-change and no container format change are needed: the code generator emits
-the instruction sequence inline, as `compile_time_arith.rs` does for
+seeds them. What `CONCAT_DATE`, `CONCAT_TOD` and `CONCAT_DT` do with
+components that do not form a value of their result type is left to the
+implementer and differs between targets, so it is a behavior policy
+(ADR-0049, decision 1 below): each of the three compiles to `BUILTIN` with a
+func_id that encodes the selected alternative, as `STRING_TO_<numeric>` does
+(`specs/design/behavior-policies.md`). `DAY_OF_WEEK` has a `DATE` input,
+which is always valid, so it has no policy; its body is integer arithmetic
+that the code generator emits inline, as `compile_time_arith.rs` does for
 `ADD_DT_TIME` and `SUB_DT_DT`.
 
 - **Analyzer.** The four signatures join `other_time_functions`
   (`compiler/analyzer/src/intermediates/stdlib_time_function.rs`), with
   `ANY_INT` inputs as `MUX` declares its selector
-  (`compiler/analyzer/src/intermediates/stdlib_function.rs:519`).
+  (`compiler/analyzer/src/intermediates/stdlib_function.rs:519`). A new rule
+  rejects a call whose components are all constants and do not form a
+  value, whatever the policy, as P2039 does for date literals.
+- **Options.** A policy `policy_calendar_invalid` (`--policy-calendar-invalid`)
+  with the alternatives `trap` (the default) and `zero`, declared in
+  `compiler/container/src/policy.rs` and `define_compiler_options!`, and
+  selected by the dialect presets (decision 1).
+- **Container.** A func_id block per function: `CONCAT_DATE` and `CONCAT_TOD`
+  take two func_ids each (`trap`, `zero`), `CONCAT_DT` two more. The
+  components are widened to `i64` by the code generator, so one func_id per
+  alternative serves every `ANY_INT` input type.
+- **VM.** One handler per function, validating the components before
+  computing the value; under `trap`, a new `V4xxx` trap naming the function
+  and the components; under `zero`, the result type's zero.
 - **Code generation.** A new module `compiler/codegen/src/compile_calendar.rs`
-  with one routine per function, dispatched from `compile_function_call`
-  (`compiler/codegen/src/compile_call.rs`) by one line beside the existing
-  `time_arith_for` dispatch.
+  that widens the arguments, emits the `BUILTIN` with the func_id for the
+  selected policy, and emits `DAY_OF_WEEK` inline; dispatched from
+  `compile_function_call` (`compiler/codegen/src/compile_call.rs`) by one
+  line beside the existing `time_arith_for` dispatch.
 - **Representation** (ADR-0025): `DATE` and `DATE_AND_TIME` in `u32` seconds
   since 1970-01-01, `TIME_OF_DAY` in `u32` milliseconds since midnight.
   - `CONCAT_DATE`: the number of days since 1970-01-01 of the proleptic
@@ -73,17 +92,32 @@ the instruction sequence inline, as `compile_time_arith.rs` does for
 These are recorded in `specs/design/calendar-functions.md` with requirement
 IDs, and need the maintainer's agreement before the implementation PR:
 
-1. **Invalid components** (month 13, 30 February, hour 25, a year before
-   1970 or after 2106). Options: (a) normalise, as the arithmetic does by
-   itself (`CONCAT_DATE(2023, 2, 30)` is 2 March 2023); (b) trap with a new
-   runtime error; (c) saturate. Recommendation (a judgement, to discuss): (a),
-   documented, because it needs no new runtime error code; and, as a
-   separate check, the analyzer could report a call whose components are
-   all constants and invalid, as it already reports date literals outside
-   their storage (P2039). No public source gives the standard's rule for
-   invalid components; implementations differ: RuSTy returns 0 for
-   components that do not form a date (`CONCAT_DATE(2024, 13, 45)`) and
-   clamps to the `DATE` range (its test `concat_invalid_inputs.st`).
+1. **Invalid components** (month 13, 30 February, hour 25) **and valid
+   dates outside the `u32` seconds range** (before 1970, after
+   2106-02-07 06:28:15): a behavior policy, `policy_calendar_invalid`, with
+   `trap` (default) and `zero`. The standard gives no rule for invalid
+   components and the surveyed targets disagree, so by ADR-0049 rule 4 the
+   default traps:
+   - RuSTy's tests document that `CONCAT_DATE` and `CONCAT_TOD` "yield 0 for
+     unrepresentable inputs and clamp to the DATE range"
+     (`tests/lit/single/stdlib_overflow/README.md`);
+   - CODESYS `CAA_DTUtil` documents `DT#1970-01-01-00:00` (`TOD#00:00`) for
+     invalid inputs of `DTU.DTConcat` (`DTU.TODConcat`), with an error
+     output;
+   - Fernhill documents the valid ranges but not the result outside them;
+   - OSCAT's `SET_DATE` documents that days roll over (30 February is
+     1 or 2 March) and that a month outside 1..12 is January;
+   - TwinCAT, Siemens S7-1200/1500 and matiec have none of the three.
+
+   Normalisation is therefore not offered: no surveyed target documents it
+   as a whole (ADR-0049 rule 5). The `rusty` dialect selects `zero`; so does
+   `codesys` if the maintainer wants its preset to follow `CAA_DTUtil`
+   (`twincat` has no such function to follow). As for `STRING_TO_*`, the
+   failure policy is one choice, not one per cause: under `zero` a valid
+   date outside the range is 0 too, where RuSTy clamps; the docs of the
+   preset state the divergence. A non-trapping validity check (a library
+   function, as the ADR's companion rule asks) is a follow-up, recorded in
+   an issue.
 
 Settled by the table:
 
@@ -102,49 +136,78 @@ registered in every dialect (ADR-0042: flags gate syntax, not names).
 
 ## Prefactoring
 
-None needed, and why: the change adds four signatures to an existing table
-and one dispatch line; the routines go into a new module, so no existing
-function grows. `compile_call.rs` is already above the 1000-line limit
-(1212 lines); this change adds one line to it and does not make the split
-of that module part of this work — it is a separate, larger prefactor that
-this plan should not hide.
+`compiler/container/src/builtin.rs` is 980 lines on `main`, and the three
+func_id blocks with their `declare_builtins!` rows and tests would take it
+past the 1000-line limit. The prefactor, in its own commit before any new
+func_id: move the `str_to_num` block module (lines 572-672) and its tests
+into `compiler/container/src/builtin/str_to_num.rs`, re-exported under the
+same path, so no caller changes. The calendar blocks then go into
+`compiler/container/src/builtin/calendar.rs` beside it.
+
+`compile_call.rs` is already above the limit (1212 lines); this change adds
+one line to it and does not make the split of that module part of this
+work: it is a separate, larger prefactor that this plan should not hide.
 
 ## Design doc reference
 
 `specs/design/calendar-functions.md` (new), requirement IDs
 `REQ-CAL-analyzer-NNN` (signatures, constant checks) and
 `REQ-CAL-codegen-NNN` (values, including 29 February, century years, the
-limits of the `u32` range, and the day of the week of 1970-01-01).
+limits of the `u32` range, and the day of the week of 1970-01-01),
+`REQ-CAL-container-NNN` (the func_id blocks) and `REQ-CAL-vm-NNN` (each
+alternative of the policy). `specs/design/behavior-policies.md` gains the
+policy's row in its table of policies and its presets.
 
 ## File map
 
-- `specs/design/calendar-functions.md` — new, with the decisions above
-- `compiler/analyzer/build.rs`, `compiler/codegen/build.rs` — list the design
+- `specs/design/calendar-functions.md` — new, with the decisions above;
+  `specs/design/behavior-policies.md` — the policy and its presets
+- `compiler/analyzer/build.rs`, `compiler/codegen/build.rs`,
+  `compiler/container/build.rs`, `compiler/vm/build.rs` — list the design
 - `compiler/analyzer/src/intermediates/stdlib_time_function.rs` — signatures
+- `compiler/analyzer/src/rule_calendar_constant_components.rs` — new, the
+  constant check, and its problem code in
+  `compiler/problems/resources/problem-codes.csv` and
+  `docs/reference/compiler/problems/P####.rst`
+- `compiler/container/src/policy.rs` — `CalendarInvalid`
+- `compiler/container/src/builtin/str_to_num.rs` — moved (prefactor);
+  `compiler/container/src/builtin/calendar.rs` — new, the func_id blocks
+- `compiler/parser/src/options.rs` — the policy row and the presets
+- `compiler/vm/src/calendar.rs` — new, the handlers; `compiler/vm/src/builtin.rs`
+  — dispatch; `compiler/vm/src/error.rs` — the new trap and its `V4xxx`
 - `compiler/codegen/src/compile_calendar.rs` — new
 - `compiler/codegen/src/compile_call.rs` — one dispatch line
 - `compiler/codegen/src/lib.rs` — module
 - `compiler/codegen/tests/it/end_to_end_calendar.rs` — new, and
   `compiler/codegen/tests/it/main.rs`
-- `compiler/codegen/src/spec_conformance_*.rs` / analyzer conformance tests
+- `compiler/codegen/src/spec_conformance_*.rs` / analyzer, container and VM
+  conformance tests
 - `docs/reference/standard-library/functions/{concat_date,concat_tod,concat_dt,day_of_week}.rst`
-  — new pages in the format of `concat_date_tod.rst`, with playground examples
+  — new pages in the format of `concat_date_tod.rst`, with playground
+  examples and the result under each alternative of the policy
 - `docs/reference/standard-library/functions/index.rst` — the four entries
+- `docs/reference/runtime/problems/V4xxx.rst` — the new trap
 
 ## Tasks
 
 - [x] Rows, parameter names, result types and day numbering from Table 36
 - [ ] Open the issue for `SPLIT_DATE`, `SPLIT_TOD`, `SPLIT_DT` (blocked by
       function outputs)
-- [ ] Design document with the decisions and requirement IDs; agreement of
-      the maintainer on decision 1
+- [ ] Agreement of the maintainer on decision 1 (the policy, its default and
+      which presets select `zero`)
+- [ ] Open the issue for the non-trapping validity check
+- [ ] Prefactor: move `builtin::str_to_num` into its own file
+- [ ] Design document with the decisions and requirement IDs
 - [ ] Tests first: the examples of the table (`CONCAT_DATE(2010, 3, 12)`,
       `CONCAT_TOD(16, 33, 12, 0)`, `CONCAT_DT(2010, 3, Day, 12, 33, 12, 0)`
       with `Day : USINT`, `DAY_OF_WEEK(DATE#2010-03-10)` into a `USINT`,
       which is 3); a `SINT` year rejected; end-to-end tests of known dates (1970-01-01, 2000-02-29,
       2024-02-29, 2100-03-01, 2106-02-07), times (00:00:00.000,
-      23:59:59.999), days of the week, and normalised components
+      23:59:59.999), days of the week, invalid components and dates outside
+      the range under `trap` (the `V4xxx`, through `execute()`) and `zero`,
+      and the rejected constant call
 - [ ] Analyzer signatures and their conformance tests
+- [ ] The policy, the func_id blocks and the VM handlers
 - [ ] `compile_calendar.rs` and the dispatch line
 - [ ] Documentation pages
 - [ ] `cd compiler && just`; docs build without warnings
