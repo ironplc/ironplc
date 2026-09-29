@@ -6,7 +6,7 @@
 use ironplc_dsl::common::ConstantKind;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, ExprKind, UnaryOp};
+use ironplc_dsl::textual::{Expr, ExprKind, StmtKind, UnaryOp};
 
 use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
 use super::compile_expr::{
@@ -15,8 +15,48 @@ use super::compile_expr::{
     ClassifiedCmp,
 };
 use super::compile_stmt::compile_stmts;
-use crate::emit::Emitter;
+use crate::emit::{self, Emitter};
 use ironplc_container::opcode;
+
+/// The labels of a loop that its body can jump to.
+#[derive(Clone, Copy)]
+pub(crate) struct LoopLabels {
+    /// Where `EXIT` goes: the first instruction after the loop.
+    pub(crate) exit: emit::Label,
+    /// Where `CONTINUE` goes: where the loop goes on with its next iteration.
+    pub(crate) next: emit::Label,
+    /// Whether a `CONTINUE` jumps to `next`. The loop binds `next` only
+    /// then, because binding a label ends the peephole window.
+    pub(crate) next_used: bool,
+}
+
+/// Compiles the body of a loop whose `EXIT` goes to `exit`, and returns the
+/// label `CONTINUE` goes to when the body has a `CONTINUE`, for the caller to
+/// bind where the next iteration starts.
+fn compile_loop_body(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    body: &[StmtKind],
+    exit: emit::Label,
+) -> Result<Option<emit::Label>, Diagnostic> {
+    ctx.loop_labels.push(LoopLabels {
+        exit,
+        next: emitter.create_label(),
+        next_used: false,
+    });
+    let result = compile_stmts(emitter, ctx, body);
+    let labels = ctx.loop_labels.pop().expect("pushed above");
+    result?;
+    Ok(labels.next_used.then_some(labels.next))
+}
+
+/// Binds the label `CONTINUE` goes to, when the body has a `CONTINUE`. The
+/// `NEXT` label of the loop diagrams below is bound only then.
+fn bind_next(emitter: &mut Emitter, next: Option<emit::Label>) {
+    if let Some(label) = next {
+        emitter.bind_label(label);
+    }
+}
 
 /// Compiles a WHILE statement.
 ///
@@ -25,6 +65,7 @@ use ironplc_container::opcode;
 ///   compile(condition)
 ///   JMP_IF_NOT → END
 ///   compile(body)
+/// NEXT:                                    // CONTINUE jumps here
 ///   JMP → LOOP
 /// END:
 /// ```
@@ -41,6 +82,7 @@ pub(crate) fn compile_while(
     //   CMP_BR_<t>  NEG(cmp), var, k, END     ; zero-trip: exit if !cond
     // BODY:
     //   ...body...
+    // NEXT:                                   ; CONTINUE jumps here
     //   CMP_BR_<t>  cmp,      var, k, BODY    ; back-edge: continue if cond
     // END:
     // ```
@@ -49,9 +91,8 @@ pub(crate) fn compile_while(
         let end_label = emitter.create_label();
         emit_classified_cmp_br(emitter, classified, false, end_label);
         emitter.bind_label(body_label);
-        ctx.loop_exit_labels.push(end_label);
-        compile_stmts(emitter, ctx, &while_stmt.body)?;
-        ctx.loop_exit_labels.pop();
+        let next = compile_loop_body(emitter, ctx, &while_stmt.body, end_label)?;
+        bind_next(emitter, next);
         emit_classified_cmp_br(emitter, classified, true, body_label);
         emitter.bind_label(end_label);
         return Ok(());
@@ -65,9 +106,8 @@ pub(crate) fn compile_while(
     let cond_type = condition_op_type(ctx, &while_stmt.condition)?;
     compile_expr(emitter, ctx, &while_stmt.condition, cond_type)?;
     emitter.emit_jmp_if_not(end_label);
-    ctx.loop_exit_labels.push(end_label);
-    compile_stmts(emitter, ctx, &while_stmt.body)?;
-    ctx.loop_exit_labels.pop();
+    let next = compile_loop_body(emitter, ctx, &while_stmt.body, end_label)?;
+    bind_next(emitter, next);
     emitter.emit_jmp(loop_label);
     emitter.bind_label(end_label);
 
@@ -79,6 +119,7 @@ pub(crate) fn compile_while(
 /// ```text
 /// LOOP:
 ///   compile(body)
+/// NEXT:                                    // CONTINUE jumps here
 ///   compile(condition)
 ///   JMP_IF_NOT → LOOP
 /// ```
@@ -96,9 +137,8 @@ pub(crate) fn compile_repeat(
     let classified_until = try_classify_cmp(ctx, &repeat_stmt.until);
 
     emitter.bind_label(loop_label);
-    ctx.loop_exit_labels.push(end_label);
-    compile_stmts(emitter, ctx, &repeat_stmt.body)?;
-    ctx.loop_exit_labels.pop();
+    let next = compile_loop_body(emitter, ctx, &repeat_stmt.body, end_label)?;
+    bind_next(emitter, next);
     if let Some(classified) = classified_until {
         emit_classified_cmp_br(emitter, classified, false, loop_label);
     } else {
@@ -277,6 +317,7 @@ fn try_classify_for_head(
 ///   LE_I32 (or GE_I32 for negative step)  // continuation predicate
 ///   JMP_IF_NOT → END                       // exit when continuation fails
 ///   compile(body)
+/// NEXT:                                    // CONTINUE jumps here
 ///   LOAD_VAR control
 ///   compile(step)  // default: LOAD_CONST 1
 ///   ADD_I32
@@ -354,9 +395,10 @@ pub(crate) fn compile_for(
     }
 
     // BODY:
-    ctx.loop_exit_labels.push(end_label);
-    compile_stmts(emitter, ctx, &for_stmt.body)?;
-    ctx.loop_exit_labels.pop();
+    let next = compile_loop_body(emitter, ctx, &for_stmt.body, end_label)?;
+
+    // NEXT: the target of CONTINUE.
+    bind_next(emitter, next);
 
     // Increment: LOAD_VAR control, compile(step), ADD, truncate, STORE_VAR control
     emit_load_var(emitter, var_index, op_type);

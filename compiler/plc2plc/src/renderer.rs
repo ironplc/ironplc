@@ -1435,7 +1435,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     }
 
     // A method call is rendered by `visit_method_call` in both positions;
-    // only the statement form ends with `;`. `RETURN` and `EXIT` have no
+    // only the statement form ends with `;`. `RETURN`, `EXIT` and `CONTINUE` have no
     // node to visit, so they are written here.
     fn visit_stmt_kind(
         &mut self,
@@ -1450,6 +1450,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             }
             dsl::textual::StmtKind::Return => self.write_keyword_statement("RETURN"),
             dsl::textual::StmtKind::Exit(_) => self.write_keyword_statement("EXIT"),
+            dsl::textual::StmtKind::Continue(_) => self.write_keyword_statement("CONTINUE"),
             _ => node.recurse_visit(self),
         }
     }

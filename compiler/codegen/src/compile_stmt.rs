@@ -456,6 +456,19 @@ fn compile_statement(
             emitter.emit_jmp(label);
             Ok(())
         }
+        StmtKind::Continue(span) => {
+            let label = ctx.current_loop_next().ok_or_else(|| {
+                Diagnostic::problem(
+                    Problem::ContinueOutsideLoop,
+                    Label::span(
+                        span.clone(),
+                        "CONTINUE must be inside a FOR, WHILE, or REPEAT loop",
+                    ),
+                )
+            })?;
+            emitter.emit_jmp(label);
+            Ok(())
+        }
     }
 }
 

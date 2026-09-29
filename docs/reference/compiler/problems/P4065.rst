@@ -1,0 +1,45 @@
+=====
+P4065
+=====
+
+.. problem-summary:: P4065
+
+This error occurs when a CONTINUE statement appears outside of a loop.
+CONTINUE is only valid inside FOR, WHILE, or REPEAT loops, where it goes on
+with the next iteration of the innermost enclosing loop.
+
+Example
+-------
+
+The following code will generate error P4065:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       x : INT;
+   END_VAR
+       x := 1;
+       CONTINUE;  (* Error: not inside a loop *)
+   END_PROGRAM
+
+The CONTINUE statement is in the program body but not inside any loop.
+
+To fix this error, move the CONTINUE statement inside a loop or remove it:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       x : INT;
+       odd : INT;
+   END_VAR
+       FOR x := 1 TO 10 BY 1 DO
+           IF x MOD 2 = 0 THEN
+               CONTINUE;  (* Valid: inside a FOR loop *)
+           END_IF;
+           odd := odd + 1;
+       END_FOR;
+   END_PROGRAM
+
+See :doc:`/reference/language/structured-text/continue`.

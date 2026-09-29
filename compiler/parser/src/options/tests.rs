@@ -41,8 +41,9 @@ fn ed2_dialect_enables_no_flags() {
 /// IEC 61131-3 Ed. 3 is a preset assembled from the descriptors tagged with
 /// `Iec61131_3Ed3`: the long-time-type keywords, the `REF_TO`/`REF`/`NULL`
 /// reference keywords, partial-access syntax, explicit enumeration member
-/// values, and the object-oriented syntax (`allow_fb_inheritance`) that is
-/// the headline addition of the 2013 edition.
+/// values, the `CONTINUE` statement, and the object-oriented syntax
+/// (`allow_fb_inheritance`) that is the headline addition of the 2013
+/// edition.
 #[test]
 fn ed3_dialect_enables_edition3_descriptors() {
     assert_enabled_flags(
@@ -53,6 +54,7 @@ fn ed3_dialect_enables_edition3_descriptors() {
             "allow_partial_access_syntax",
             "allow_fb_inheritance",
             "allow_enum_explicit_values",
+            "allow_continue",
         ],
     );
 }
@@ -93,6 +95,7 @@ fn rusty_dialect_enables_exactly_these_flags() {
             "allow_fb_inheritance",
             "allow_enum_explicit_values",
             "allow_enum_base_type",
+            "allow_continue",
         ],
     );
 }
@@ -141,6 +144,7 @@ fn codesys_dialect_enables_exactly_these_flags() {
             "allow_fb_inheritance",
             "allow_enum_explicit_values",
             "allow_enum_base_type",
+            "allow_continue",
         ],
     );
 }
@@ -189,6 +193,7 @@ fn twincat_dialect_enables_exactly_these_flags() {
             "allow_fb_inheritance",
             "allow_enum_explicit_values",
             "allow_enum_base_type",
+            "allow_continue",
         ],
     );
 }

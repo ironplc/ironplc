@@ -879,6 +879,9 @@ pub enum StmtKind {
     // Exit statement.
     #[recurse(ignore)]
     Exit(SourceSpan),
+    // Continue statement.
+    #[recurse(ignore)]
+    Continue(SourceSpan),
 }
 
 impl Located for StmtKind {
@@ -894,6 +897,7 @@ impl Located for StmtKind {
             StmtKind::Repeat(r) => r.span(),
             StmtKind::Return => SourceSpan::default(),
             StmtKind::Exit(s) => s.clone(),
+            StmtKind::Continue(s) => s.clone(),
         }
     }
 }

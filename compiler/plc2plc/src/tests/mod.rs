@@ -8,6 +8,7 @@ mod common;
 mod adr;
 mod case;
 mod constant_initializers;
+mod continue_statement;
 mod corpus;
 mod declarations;
 mod enums;

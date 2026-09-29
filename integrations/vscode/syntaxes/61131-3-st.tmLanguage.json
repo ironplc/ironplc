@@ -130,7 +130,7 @@
         },
         {
           "name": "keyword.control.flow.st",
-          "match": "(?i)\\b(?:EXIT|RETURN)\\b"
+          "match": "(?i)\\b(?:EXIT|CONTINUE|RETURN)\\b"
         },
         {
           "match": "(?i)\\b(PROGRAM|FUNCTION_BLOCK|FUNCTION)\\s+([A-Za-z_][A-Za-z0-9_]*)",

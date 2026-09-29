@@ -106,6 +106,7 @@ pub fn insert_keyword_statement_terminators(
             | TokenType::Repeat
             | TokenType::Return
             | TokenType::Exit
+            | TokenType::Continue
                 if awaiting_case_branch_statement =>
             {
                 // Unambiguous start of a real statement.

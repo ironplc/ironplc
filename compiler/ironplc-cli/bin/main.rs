@@ -287,6 +287,12 @@ struct FileArgs {
     #[arg(long)]
     allow_enum_base_type: bool,
 
+    /// Allow the CONTINUE statement, which goes on with the next iteration
+    /// of the innermost loop. Standardized in IEC 61131-3:2013, so not part
+    /// of Edition 2.
+    #[arg(long)]
+    allow_continue: bool,
+
     /// What STRING_TO_<numeric> treats as convertible when the string has
     /// non-numeric characters. A behavior policy: the dialect selects an
     /// alternative and this flag replaces it.
@@ -346,6 +352,7 @@ impl FileArgs {
         options.allow_fb_inheritance |= self.allow_fb_inheritance;
         options.allow_enum_explicit_values |= self.allow_enum_explicit_values;
         options.allow_enum_base_type |= self.allow_enum_base_type;
+        options.allow_continue |= self.allow_continue;
         options
     }
 }

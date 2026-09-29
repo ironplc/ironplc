@@ -37,6 +37,8 @@ Statements
      - Post-tested loop
    * - :doc:`exit`
      - Break from innermost loop
+   * - :doc:`continue`
+     - Next iteration of innermost loop
    * - :doc:`return`
      - Early exit from POU
 
@@ -126,6 +128,7 @@ Operators are listed from highest to lowest precedence.
    while
    repeat
    exit
+   continue
    return
    arithmetic-operators
    comparison-operators

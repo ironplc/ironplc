@@ -41,6 +41,8 @@ use crate::{
 ///   `allow_short_circuit_operators`.
 /// * **`PERSISTENT`** — demoted unless `allow_persistent_var`
 ///   (Beckhoff TwinCAT/CODESYS extension).
+/// * **`CONTINUE`** — demoted unless `allow_continue` (standardized in
+///   IEC 61131-3:2013).
 ///
 /// The context-sensitive `TIME` keyword is handled by [`apply_time`].
 pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
@@ -52,6 +54,7 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     let demote_oop = !options.allow_fb_inheritance;
     let demote_short_circuit = !options.allow_short_circuit_operators;
     let demote_persistent = !options.allow_persistent_var;
+    let demote_continue = !options.allow_continue;
 
     for tok in tokens.iter_mut() {
         let demote = match tok.token_type {
@@ -72,6 +75,7 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
             | TokenType::Super => demote_oop,
             TokenType::AndThen | TokenType::OrElse => demote_short_circuit,
             TokenType::Persistent => demote_persistent,
+            TokenType::Continue => demote_continue,
             _ => false,
         };
         if demote {
