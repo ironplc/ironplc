@@ -335,7 +335,7 @@ A narrow store of a *computed* value (`total := total + i` where
 `total : INT`) still executes a `TRUNC_*`, because proving it unnecessary
 needs range tracking across arbitrary expressions rather than a single
 instruction pair. `for_loop_trunc_can_be_elided`
-(`codegen/src/compile_stmt.rs`) covers one further case — a `FOR` loop whose
+(`codegen/src/compile_loop.rs`) covers one further case — a `FOR` loop whose
 constant bounds provably keep the control variable inside its declared range
 — for the loop's own init and increment only.
 
