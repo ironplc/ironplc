@@ -248,7 +248,11 @@ impl Visitor<Infallible> for RuleFunctionCallInOutArgument<'_> {
                 .return_type
                 .as_ref()
                 .map(|return_type| (&node.name, return_type.to_type_name())),
-            ScopeNode::FunctionBlock(_) | ScopeNode::Program(_) => None,
+            // No result variable: a prototype and an interface have no body.
+            ScopeNode::FunctionBlock(_)
+            | ScopeNode::Program(_)
+            | ScopeNode::MethodPrototype(_)
+            | ScopeNode::Interface(_) => None,
         };
         if let Some((name, type_name)) = result {
             self.declarations.add(name, Declared::Typed(type_name));
