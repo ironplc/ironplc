@@ -11,6 +11,7 @@ mod constant_initializers;
 mod corpus;
 mod declarations;
 mod enums;
+mod exit_return;
 mod fb_inheritance;
 mod method_call_expression;
 mod methods;
