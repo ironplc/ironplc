@@ -540,12 +540,13 @@ impl TypeEnvironment {
     /// The representation of the type of an expression's value, when the
     /// analyzer gave it a concrete one.
     ///
-    /// An untyped literal is of a generic category (`ANY_INT`) and `NULL` of
-    /// no one type, so both answer `None` rather than a representation.
+    /// An untyped literal is of a generic category (`ANY_INT`), `NULL` of
+    /// no one type and the error type of none, so each answers `None`
+    /// rather than a representation.
     pub fn representation_of_expr(&self, expr: &Expr) -> Option<&IntermediateType> {
         match expr.expr_type.as_ref()? {
             ExprType::Concrete(id) => Some(&self.get_by_id(*id)?.representation),
-            ExprType::Literal(_) | ExprType::Null => None,
+            ExprType::Literal(_) | ExprType::Null | ExprType::Error => None,
         }
     }
 

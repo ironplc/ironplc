@@ -412,6 +412,7 @@ impl ExprTypeResolver<'_> {
                     .type_environment
                     .referenced_type(*reference)
                     .map(ExprType::Concrete),
+                Some(ExprType::Error) => Some(ExprType::Error),
                 Some(ExprType::Literal(_) | ExprType::Null) | None => None,
             },
             ExprKind::Null(_) => Some(ExprType::Null),

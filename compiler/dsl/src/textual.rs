@@ -474,6 +474,12 @@ pub enum ExprType {
     /// `NULL`: a reference to no variable, of whichever reference type it
     /// is used as.
     Null,
+    /// No valid type: the analyzer reported the expression, or one of the
+    /// operands its type is computed from, as ill-typed. A check that
+    /// judges a value's type skips this one, so the problem is reported
+    /// once rather than again at every expression that encloses it. See
+    /// `specs/design/arithmetic-operator-overloads.md`.
+    Error,
 }
 
 /// Wrapper around `ExprKind` that carries what is true of an expression but

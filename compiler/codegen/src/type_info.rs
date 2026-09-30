@@ -48,7 +48,7 @@ pub(crate) fn expr_operand_name(ctx: &CompileContext, expr: &Expr) -> Option<Typ
     match expr.expr_type.as_ref()? {
         ExprType::Concrete(id) => ctx.operand_names.get(id).cloned(),
         ExprType::Literal(generic) => Some(generic.clone().into()),
-        ExprType::Null => None,
+        ExprType::Null | ExprType::Error => None,
     }
 }
 
@@ -63,6 +63,7 @@ pub(crate) fn expr_type_info(ctx: &CompileContext, expr: &Expr) -> Option<VarTyp
         ExprType::Literal(generic) => literal_type_info(generic),
         // NULL is compared and stored as the reference it stands in for.
         ExprType::Null => Some(reference_type_info()),
+        ExprType::Error => None,
     }
 }
 
@@ -81,7 +82,7 @@ pub(crate) fn expr_representation<'a>(
 ) -> Option<&'a IntermediateType> {
     match expr.expr_type.as_ref()? {
         ExprType::Concrete(id) => ctx.types.get(id),
-        ExprType::Literal(_) | ExprType::Null => None,
+        ExprType::Literal(_) | ExprType::Null | ExprType::Error => None,
     }
 }
 
