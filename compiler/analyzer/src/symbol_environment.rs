@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use ironplc_dsl::common::{TypeName, VariableType};
+use ironplc_dsl::common::{DeclarationQualifier, TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_problems::Problem;
@@ -98,6 +98,10 @@ pub struct SymbolInfo {
     pub struct_type: Option<TypeName>,
     /// The variable type qualifier (VAR, VAR_INPUT, VAR_OUTPUT, etc.)
     pub variable_type: Option<VariableType>,
+    /// The qualifier the declaration was written with (CONSTANT, RETAIN,
+    /// etc.). Recorded before the compiler infers constants, so a variable
+    /// that is never written but not declared `CONSTANT` is not constant here.
+    pub qualifier: Option<DeclarationQualifier>,
     /// Formatted hardware address (e.g. "%IX0.0") for direct variables
     pub address: Option<String>,
     /// Source location information
@@ -119,6 +123,7 @@ impl SymbolInfo {
             enum_type: None,
             struct_type: None,
             variable_type: None,
+            qualifier: None,
             address: None,
             span,
             compiler_provided: false,
@@ -155,6 +160,16 @@ impl SymbolInfo {
     pub fn with_address(mut self, addr: String) -> Self {
         self.address = Some(addr);
         self
+    }
+
+    pub fn with_qualifier(mut self, qualifier: DeclarationQualifier) -> Self {
+        self.qualifier = Some(qualifier);
+        self
+    }
+
+    /// Whether the variable was declared `CONSTANT`.
+    pub fn is_constant(&self) -> bool {
+        self.qualifier == Some(DeclarationQualifier::Constant)
     }
 }
 
@@ -294,7 +309,8 @@ impl SymbolEnvironment {
         )
     }
 
-    /// Insert a variable with direction and optional hardware address.
+    /// Insert a variable with direction, declaration qualifier and optional
+    /// hardware address.
     ///
     /// A name already declared in the scope is returned as `P4014`, as for
     /// [`Self::insert`].
@@ -304,10 +320,12 @@ impl SymbolEnvironment {
         kind: SymbolKind,
         scope: &ScopeKind,
         variable_type: VariableType,
+        qualifier: DeclarationQualifier,
         address: Option<String>,
     ) -> Result<(), Diagnostic> {
         let mut symbol_info = SymbolInfo::new(kind, scope.clone(), name.span())
-            .with_variable_type(variable_type.clone());
+            .with_variable_type(variable_type.clone())
+            .with_qualifier(qualifier);
         if let Some(addr) = address {
             symbol_info = symbol_info.with_address(addr);
         }
@@ -319,6 +337,9 @@ impl SymbolEnvironment {
 
     /// The one insertion path: checks the scope for a repeated name, then
     /// records the symbol in that scope.
+    ///
+    /// The global scope has its own map; [`Self::symbols_in`] is the read
+    /// side of this choice.
     fn insert_symbol(&mut self, name: &Id, info: SymbolInfo) -> Result<(), Diagnostic> {
         let symbols = match &info.scope {
             ScopeKind::Global => &mut self.global_symbols,
@@ -485,10 +506,23 @@ impl SymbolEnvironment {
             .collect()
     }
 
+    /// The symbols declared directly in `scope`, or `None` when nothing is.
+    ///
+    /// The global scope lives in its own map, as [`Self::insert_symbol`]
+    /// stores it; every other scope is keyed in `scoped_symbols`.
+    fn symbols_in(&self, scope: &ScopeKind) -> Option<&IndexMap<Id, SymbolInfo>> {
+        match scope {
+            ScopeKind::Global => Some(&self.global_symbols),
+            ScopeKind::Named(_) => self.scoped_symbols.get(scope),
+        }
+    }
+
     /// Returns all variable-like symbols in the given scope (variables,
-    /// parameters, output parameters, and in-out parameters).
+    /// parameters, output parameters, and in-out parameters). For
+    /// [`ScopeKind::Global`] these are the global variables, including the
+    /// ones the compiler provides.
     pub fn get_variables_in_scope(&self, scope: &ScopeKind) -> Vec<(&Id, &SymbolInfo)> {
-        let Some(scope_symbols) = self.scoped_symbols.get(scope) else {
+        let Some(scope_symbols) = self.symbols_in(scope) else {
             return vec![];
         };
         scope_symbols

@@ -151,6 +151,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
                     symbol_kind,
                     &self.current_scope(),
                     node.var_type.clone(),
+                    node.qualifier.clone(),
                     None,
                 );
                 self.record(result);
@@ -163,6 +164,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
                         symbol_kind,
                         &self.current_scope(),
                         node.var_type.clone(),
+                        node.qualifier.clone(),
                         Some(address),
                     );
                     self.record(result);

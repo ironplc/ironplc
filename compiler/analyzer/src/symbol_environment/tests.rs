@@ -1,4 +1,5 @@
 use super::*;
+use ironplc_dsl::common::DeclarationQualifier;
 use ironplc_dsl::core::Id;
 
 #[test]
@@ -338,6 +339,7 @@ fn insert_variable_when_name_repeated_in_scope_then_p4014_and_first_kept() {
         SymbolKind::Parameter,
         &scope,
         VariableType::Input,
+        DeclarationQualifier::Unspecified,
         None,
     )
     .unwrap();
@@ -348,6 +350,7 @@ fn insert_variable_when_name_repeated_in_scope_then_p4014_and_first_kept() {
             SymbolKind::Variable,
             &scope,
             VariableType::Var,
+            DeclarationQualifier::Unspecified,
             None,
         )
         .unwrap_err();
@@ -365,6 +368,7 @@ fn insert_variable_when_same_name_in_two_scopes_then_ok() {
         SymbolKind::Variable,
         &ScopeKind::Global,
         VariableType::Global,
+        DeclarationQualifier::Unspecified,
         None,
     )
     .unwrap();
@@ -375,6 +379,7 @@ fn insert_variable_when_same_name_in_two_scopes_then_ok() {
             SymbolKind::Variable,
             &ScopeKind::Named(Id::from("Unit").into()),
             VariableType::Var,
+            DeclarationQualifier::Unspecified,
             None,
         )
         .is_ok());
@@ -396,6 +401,7 @@ fn insert_variable_when_name_is_compiler_provided_then_reserved() {
             SymbolKind::Variable,
             &ScopeKind::Global,
             VariableType::Global,
+            DeclarationQualifier::Unspecified,
             None,
         )
         .unwrap_err();
@@ -418,6 +424,7 @@ fn insert_variable_when_name_matches_type_then_ok() {
             SymbolKind::Variable,
             &ScopeKind::Global,
             VariableType::Global,
+            DeclarationQualifier::Unspecified,
             None,
         )
         .is_ok());
@@ -510,8 +517,15 @@ fn get_variables_in_scope_when_several_declared_then_returns_declaration_order()
     let scope = ScopeKind::Named(Id::from("main").into());
     let variables = names("var");
     for name in &variables {
-        env.insert_variable(name, SymbolKind::Variable, &scope, VariableType::Var, None)
-            .unwrap();
+        env.insert_variable(
+            name,
+            SymbolKind::Variable,
+            &scope,
+            VariableType::Var,
+            DeclarationQualifier::Unspecified,
+            None,
+        )
+        .unwrap();
     }
 
     let actual: Vec<&Id> = env
@@ -554,4 +568,61 @@ fn insert_when_symbol_redefined_then_keeps_first_declared_position() {
 
     let actual: Vec<&Id> = env.get_programs().into_iter().map(|(id, _)| id).collect();
     assert_eq!(actual, vec![&first, &second]);
+}
+
+#[test]
+fn get_variables_in_scope_when_global_scope_then_returns_global_variables_only() {
+    let mut env = SymbolEnvironment::new();
+    global(&mut env, "Main", SymbolKind::Program).unwrap();
+    global(&mut env, "Speed", SymbolKind::Type).unwrap();
+    env.insert_variable(
+        &Id::from("shared"),
+        SymbolKind::Variable,
+        &ScopeKind::Global,
+        VariableType::Global,
+        DeclarationQualifier::Unspecified,
+        None,
+    )
+    .unwrap();
+
+    let actual: Vec<&Id> = env
+        .get_variables_in_scope(&ScopeKind::Global)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+    assert_eq!(actual, vec![&Id::from("shared")]);
+}
+
+#[test]
+fn insert_variable_when_constant_qualifier_then_symbol_is_constant() {
+    let mut env = SymbolEnvironment::new();
+    env.insert_variable(
+        &Id::from("limit"),
+        SymbolKind::Variable,
+        &ScopeKind::Global,
+        VariableType::Global,
+        DeclarationQualifier::Constant,
+        None,
+    )
+    .unwrap();
+
+    let symbol = env.find(&Id::from("limit"), &ScopeKind::Global).unwrap();
+    assert!(symbol.is_constant());
+}
+
+#[test]
+fn insert_variable_when_retain_qualifier_then_symbol_is_not_constant() {
+    let mut env = SymbolEnvironment::new();
+    env.insert_variable(
+        &Id::from("count"),
+        SymbolKind::Variable,
+        &ScopeKind::Global,
+        VariableType::Global,
+        DeclarationQualifier::Retain,
+        None,
+    )
+    .unwrap();
+
+    let symbol = env.find(&Id::from("count"), &ScopeKind::Global).unwrap();
+    assert!(!symbol.is_constant());
 }
