@@ -28,6 +28,10 @@
 //! assignment check skips such targets: `p MOD 2` on a subrange of `INT`
 //! compiles and this rule leaves that alone.
 //!
+//! An operand of the error type is skipped too: it is an expression this
+//! rule has already reported, or one computed from such an expression, so
+//! `(s1 + s2) * 2` is reported once, at `s1 + s2`.
+//!
 //! ## Passes
 //!
 //! ```ignore

@@ -593,19 +593,27 @@ fn analyzer_spec_req_ao_021_overloaded_call_has_overload_result_type(
     );
 }
 
-/// REQ-AO-analyzer-022: an expression that is unchecked or does not resolve
-/// keeps the left operand's type.
+/// REQ-AO-analyzer-022: an expression that resolves as unchecked keeps the
+/// left operand's type.
 #[spec_test(REQ_AO_analyzer_022)]
 #[rstest]
-#[case("s1 : STRING; s2 : STRING;", "STRING", "s1 + s2")]
-#[case("d : DINT; r : REAL;", "DINT", "d + r")]
-#[case("b : BOOL;", "BOOL", "b * b")]
-fn analyzer_spec_req_ao_022_unresolved_expression_keeps_left_type(
-    #[case] vars: &str,
-    #[case] result_type: &str,
-    #[case] expr: &str,
-) {
-    let values = assigned_values(&program(vars, result_type, expr), &edition_3());
+#[case("p + 1")]
+#[case("p * i")]
+fn analyzer_spec_req_ao_022_unchecked_expression_keeps_left_type(#[case] expr: &str) {
+    let source = format!(
+        "TYPE
+    SMALL : INT(0..100);
+END_TYPE
+PROGRAM main
+VAR
+    result : INT;
+    p : SMALL;
+    i : INT;
+END_VAR
+    result := {expr};
+END_PROGRAM"
+    );
+    let values = assigned_values(&source, &CompilerOptions::default());
     let left = match &values[0].kind {
         ExprKind::BinaryOp(binary) => binary.left.expr_type.clone(),
         _ => None,
@@ -805,3 +813,5 @@ fn analyzer_spec_req_ao_036_arithmetic_once_bit_string_family_per_operand() {
         .iter()
         .all(|d| d.described.contains(&"expected=ANY_BIT".to_owned())));
 }
+
+mod error_type;
