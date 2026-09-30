@@ -6,6 +6,12 @@ P2042
 
 This error occurs when a function or method declares a return type that has not been declared.
 
+The return type decides how much storage the result needs and which
+operations a caller may apply to it. Without a declaration, the compiler
+cannot know either, so it reports the name here rather than letting every
+call site fail with a less specific error. A misspelled type name, or a type
+that lives in a file that is not part of the project, are the usual causes.
+
 Example
 -------
 
@@ -38,3 +44,11 @@ Alternatively, return a built-in type:
    FUNCTION GetMode : INT  (* Correct: INT is a built-in type *)
        GetMode := 0;
    END_FUNCTION
+
+See Also
+--------
+
+- :doc:`/reference/language/pous/function` — ``FUNCTION``
+- :doc:`/reference/language/object-orientation/method` — ``METHOD``
+- :doc:`P2008` — Cannot determine kind of type identifier
+- :doc:`P2013` — Array element type is not declared
