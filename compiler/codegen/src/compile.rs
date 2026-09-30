@@ -247,7 +247,8 @@ pub fn compile(
     if let Some(config) = config {
         check_single_program_instance(config)?;
     }
-    let global_vars = &crate::program_globals::program_globals(library, config, options);
+    let global_vars =
+        &crate::program_globals::program_globals(library, config, &program.name, options);
 
     let reachable = context.reachable();
 
