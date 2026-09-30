@@ -13,6 +13,7 @@ use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, Par
 use super::compile::{string_region_size, CompileContext, DEFAULT_OP_TYPE};
 use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
+use crate::string_constant::constant_string_length;
 use crate::string_width::{
     compile_string_value, encoding_mismatch, resolve_operand_char_width, string_operand_capacity,
 };
@@ -25,6 +26,12 @@ use crate::string_width::{
 /// the string's data region header. The argument is resolved by
 /// [`resolve_string_arg`], so a variable, a literal and a nested string
 /// function call are all accepted.
+///
+/// An argument whose length is known at compile time -- a literal, a
+/// `CONCAT` of such arguments, a `CONSTANT` string -- compiles to that
+/// length as an integer constant instead (see [`crate::string_constant`]).
+/// It is pushed as the same `i32` `LEN_STR` would leave, so the call's
+/// result type is unchanged.
 pub(crate) fn compile_len(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -34,6 +41,14 @@ pub(crate) fn compile_len(
 
     if args.len() != 1 {
         return Err(Diagnostic::todo_with_span(func.name.span()));
+    }
+
+    // A string that cannot change has a length known now: load it, and
+    // allocate nothing to hold the operand.
+    if let Some(length) = constant_string_length(ctx, args[0]) {
+        let pool_index = ctx.add_i32_constant(i32::from(length));
+        emitter.emit_load_const_i32(pool_index);
+        return Ok(());
     }
 
     let span = func.name.span();

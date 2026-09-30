@@ -162,10 +162,47 @@ that the rules see the same library code generation will, and so that
 REQ-CVI-analyzer-041 is checked by the rules themselves rather than
 assumed. The transform is infallible; there is no fallback to revert to.
 
+## Folding in code generation
+
+Code generation relies on the contract above to fold `LEN` of a string
+that cannot change into an integer constant
+([#1612](https://github.com/ironplc/ironplc/issues/1612)). The operand is
+then neither materialized in a data-region slot nor carried there through a
+temp buffer, and its length is not read back with `LEN_STR`. The constant is
+the length in code units `LEN_STR` would have read, pushed as the same
+`i32`, so the result type of the call is unchanged.
+
+The fold is made in code generation and not by the analyzer's
+`xform_fold_constant_expressions`: that pass runs before the semantic
+rules, and replacing the call there would hide the literal and the call
+from the rules that check them. The length to fold is also a code
+generation fact: the one left once the operand has been stored into a slot
+of its capacity.
+
+**REQ-CVI-codegen-060** `LEN` of a character string literal compiles to
+one `LOAD_CONST_I32` of the literal's length in code units, and reserves no
+data-region bytes and no temp buffer for the literal.
+
+**REQ-CVI-codegen-061** `LEN` of `CONCAT(IN1, IN2)` whose operands both
+have a constant length and share an encoding compiles to the sum of the
+two lengths.
+
+**REQ-CVI-codegen-062** `LEN` of a string variable declared `CONSTANT` in
+a `VAR`, `VAR_TEMP` or `VAR_GLOBAL` section with an initial value, by the
+source or by this transform, compiles to the length of the initial value,
+capped at the declared capacity.
+
+**REQ-CVI-codegen-063** `LEN` of a string variable the program writes
+compiles to `LEN_STR`, which reads the length at run time.
+
+Any other operand -- an array element, a structure field, a call other
+than `CONCAT`, `CONCAT` operands of different encodings -- is compiled as
+before, so every diagnostic it would raise is still reported.
+
 ## Out of scope
 
-- Folding reads of constant variables in code generation (the `LEN` fold
-  of #1612 and any other). This document only establishes the qualifier.
+- Folding other reads of constant variables in code generation. `LEN` is
+  the only fold so far.
 - Resolving a member reached through an array element or a nested field
   to its declaration (see REQ-CVI-analyzer-021); such a write blocks every
   declaration of the name.

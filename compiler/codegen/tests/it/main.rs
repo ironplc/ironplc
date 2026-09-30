@@ -31,6 +31,7 @@ mod compile_exit_return;
 mod compile_extends_inheritance;
 mod compile_func_forms;
 mod compile_if;
+mod compile_len;
 mod compile_loops;
 mod compile_mux;
 mod compile_not_implemented_location;

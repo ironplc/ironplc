@@ -25,6 +25,7 @@ use super::compile::{
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
 use super::compile_stmt::resolve_string_max_length;
+use super::string_constant::declared_constant_length;
 use crate::emit::Emitter;
 
 /// Assigns variable table indices and type info for all variable declarations.
@@ -83,7 +84,8 @@ pub(crate) fn assign_variables(
                         data_offset,
                         max_length,
                         char_width,
-                    } = register_string_variable(ctx, id, string_init)?;
+                        ..
+                    } = register_string_variable(ctx, decl, id, string_init)?;
                     ctx.debug_string_layouts.push(StringLayoutEntry {
                         var_index: index,
                         data_offset,
@@ -277,6 +279,7 @@ pub(crate) fn assign_variables(
 /// in one place.
 pub(crate) fn register_string_variable(
     ctx: &mut CompileContext,
+    decl: &VarDecl,
     id: &Id,
     string_init: &StringInitializer,
 ) -> Result<StringVarInfo, Diagnostic> {
@@ -294,6 +297,7 @@ pub(crate) fn register_string_variable(
         data_offset,
         max_length,
         char_width,
+        constant_length: declared_constant_length(decl, string_init, max_length),
     };
     ctx.string_vars.insert(id.clone(), info.clone());
     Ok(info)

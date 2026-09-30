@@ -178,6 +178,8 @@ END_PROGRAM
 
 /// A literal is loaded into a pool slot before it reaches its temporary, so
 /// its own length has to size the slot when nothing declared is as long.
+/// (`LEN` of a literal would not do: it folds to a constant and loads
+/// nothing.)
 #[test]
 fn compile_when_literal_longer_than_declared_strings_then_pool_slot_holds_it() {
     let literal = "a".repeat(300);
@@ -185,7 +187,7 @@ fn compile_when_literal_longer_than_declared_strings_then_pool_slot_holds_it() {
         "
 PROGRAM main
   VAR s : STRING[10]; n : INT; END_VAR
-  n := LEN('{literal}');
+  n := FIND(s, '{literal}');
 END_PROGRAM
 "
     );

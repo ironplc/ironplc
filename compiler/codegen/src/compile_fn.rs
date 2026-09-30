@@ -180,7 +180,7 @@ pub(crate) fn compile_user_function(
                     }
                 }
                 InitialValueAssignmentKind::String(string_init) => {
-                    register_string_variable(ctx, id, string_init)?;
+                    register_string_variable(ctx, decl, id, string_init)?;
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
                     crate::compile_reference::register_reference_variable(
@@ -214,7 +214,7 @@ pub(crate) fn compile_user_function(
                     }
                 }
                 InitialValueAssignmentKind::String(string_init) => {
-                    register_string_variable(ctx, id, string_init)?;
+                    register_string_variable(ctx, decl, id, string_init)?;
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
                     crate::compile_reference::register_reference_variable(
@@ -273,6 +273,7 @@ pub(crate) fn compile_user_function(
                     data_offset,
                     max_length,
                     char_width,
+                    constant_length: None,
                 },
             );
             Some(StringReturnInfo {
@@ -559,7 +560,7 @@ pub(crate) fn compile_user_function_block(
                     )?;
                 }
                 InitialValueAssignmentKind::String(string_init) => {
-                    register_string_variable(ctx, id, string_init)?;
+                    register_string_variable(ctx, decl, id, string_init)?;
                 }
                 _ => {}
             }

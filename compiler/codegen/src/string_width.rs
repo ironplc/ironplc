@@ -304,7 +304,7 @@ fn bound_or_default(shape: StringShape) -> u16 {
 /// is the most any string can be materialized as. A bound above that is not
 /// an error in the program -- each operand is within range on its own -- and
 /// it is capped rather than wrapped so that it stays an over-approximation.
-fn saturate_length(length: usize) -> u16 {
+pub(crate) fn saturate_length(length: usize) -> u16 {
     u16::try_from(length).unwrap_or(u16::MAX)
 }
 
@@ -499,6 +499,7 @@ mod tests {
                 data_offset: 0,
                 max_length,
                 char_width: CharWidth::Narrow,
+                constant_length: None,
             },
         );
         ctx

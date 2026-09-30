@@ -18,5 +18,8 @@ fn main() {
         "bytecode-container-format.md",
         // The post-emission peephole optimizer (`REQ-PEEP-codegen-*`).
         "bytecode-peephole-optimizer.md",
+        // Folding `LEN` of a string that cannot change (`REQ-CVI-codegen-*`).
+        // The analyzer owns the rest of that doc.
+        "constant-variable-inference.md",
     ]);
 }
