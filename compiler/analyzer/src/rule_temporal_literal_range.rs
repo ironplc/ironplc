@@ -145,12 +145,10 @@ impl Visitor<Infallible> for RuleTemporalLiteralRange {
     }
 
     fn visit_time_of_day_literal(&mut self, node: &TimeOfDayLiteral) -> Result<(), Infallible> {
-        let stored = node.stored_count();
-        let (hour, minute, second, _micro) = node.hmsm();
         self.check(
-            stored,
+            node.stored_count(),
             node.type_name(),
-            format!("{hour:02}:{minute:02}:{second:02}"),
+            node.daytime_text(),
             Problem::DurationLiteralOutOfRange,
             &node.span,
         );
@@ -171,11 +169,10 @@ impl Visitor<Infallible> for RuleTemporalLiteralRange {
 
     fn visit_date_and_time_literal(&mut self, node: &DateAndTimeLiteral) -> Result<(), Infallible> {
         let (year, month, day) = node.ymd();
-        let (hour, minute, second, _micro) = node.hmsm();
         self.check(
             node.stored_count(),
             node.type_name(),
-            format!("{year}-{month:02}-{day:02}-{hour:02}:{minute:02}:{second:02}"),
+            format!("{year}-{month:02}-{day:02}-{}", node.daytime_text()),
             Problem::DateLiteralOutOfRange,
             &node.span,
         );
@@ -263,6 +260,18 @@ END_VAR
 END_PROGRAM",
         Problem::DateLiteralOutOfRange,
         "DT#2106-02-07-06:28:16"
+    );
+
+    // The fraction is below the one-second unit and is truncated, so the
+    // stored count is that of the last representable second.
+    rule_ok!(
+        apply_when_date_and_time_is_last_representable_with_fraction_then_ok,
+        "
+PROGRAM main
+VAR
+    d : DT := DT#2106-02-07-06:28:15.999;
+END_VAR
+END_PROGRAM"
     );
 
     // --- A duration is signed, so both ends are 32-bit two's complement ---

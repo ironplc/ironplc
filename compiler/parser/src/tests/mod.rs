@@ -11,6 +11,7 @@ mod comments_and_errors;
 mod constant_initializers;
 mod continue_statement;
 mod corpus;
+mod daytime_fraction;
 mod dialect_flags;
 mod duration;
 mod enums;

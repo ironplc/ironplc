@@ -588,8 +588,17 @@ parser! {
     // 1.2.3.2 Time of day and date
     rule time_of_day() -> TimeOfDayLiteral = width:time_of_day_prefix() tok(TokenType::Hash) d:daytime() { TimeOfDayLiteral::new(d).with_width(width) }
     rule time_of_day_prefix() -> TemporalWidth = tok(TokenType::TimeOfDay) { TemporalWidth::Short } / tok(TokenType::Ltod) { TemporalWidth::Long }
+    // The seconds are fixed point, and their fraction is part of the value:
+    // `TOD#10:00:00.250` is 250 ms past ten. `Time` holds nanoseconds, so a
+    // fraction finer than that is truncated; the stored count truncates
+    // further, to the type's own unit (ADR-0025).
     rule daytime() -> Time = h:day_hour() tok(TokenType::Colon) m:day_minute() tok(TokenType::Colon) s:day_second() {?
-      Time::from_hms(h.try_into().map_err(|e| "hour")?, m.try_into().map_err(|e| "min")?, s.whole as u8).map_err(|e| "time")
+      Time::from_hms_nano(
+        h.try_into().map_err(|e| "hour")?,
+        m.try_into().map_err(|e| "min")?,
+        u8::try_from(s.whole).map_err(|e| "second")?,
+        s.nanoseconds(),
+      ).map_err(|e| "time")
     }
     rule day_hour() -> Integer = integer()
     rule day_minute() -> Integer = integer()
