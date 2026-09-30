@@ -64,12 +64,16 @@ Syntax
 
 .. code-block:: bnf
 
-   variable_name AT %prefix.address : type_name ;
+   variable_name AT %address_prefix[size_prefix]integer{.integer} : type_name ;
+
+The address is one or more unsigned integers separated by periods, each of
+any number of digits: ``%IX0.0``, ``%MW10``, ``%QD100`` and ``%IX1.2.3``
+are all direct addresses.
 
 Example
 -------
 
-.. code-block::
+.. playground::
 
    PROGRAM main
        VAR

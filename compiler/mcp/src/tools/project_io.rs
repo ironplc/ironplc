@@ -246,6 +246,17 @@ mod tests {
     }
 
     #[test]
+    fn build_response_when_address_has_multi_digit_fields_then_address_spelled_in_full() {
+        let resp = build("PROGRAM p\nVAR level AT %QW12 : WORD; END_VAR\nEND_PROGRAM");
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        let entry = resp
+            .outputs
+            .iter()
+            .find(|e| e.address.as_deref() == Some("%QW12"));
+        assert!(entry.is_some(), "outputs: {:?}", resp.outputs);
+    }
+
+    #[test]
     fn build_response_when_variable_has_memory_address_then_in_neither() {
         // REQ-TOL-mcp-211: %M* variables are neither inputs nor outputs.
         let resp = build("PROGRAM p\nVAR counter AT %MX0.0 : BOOL; END_VAR\nEND_PROGRAM");
