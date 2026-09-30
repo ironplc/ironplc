@@ -126,10 +126,8 @@ an argument to an input of an interface type, is
 
 .. note::
 
-   IronPLC does not yet check that a function block provides the methods
-   and properties of the interfaces it implements. Calling a method through
-   an interface variable (``drive.Start(10)``) needs dynamic dispatch and
-   is reported as not yet supported.
+   Calling a method through an interface variable (``drive.Start(10)``)
+   needs dynamic dispatch and is reported as not yet supported.
 
 See Also
 --------

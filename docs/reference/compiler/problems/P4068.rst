@@ -1,0 +1,58 @@
+=====
+P4068
+=====
+
+.. problem-summary:: P4068
+
+This error occurs when a function block type implements an interface and
+declares one of the interface's members, but with a different signature.
+
+A method must have the same return type as the interface's method, and the
+same input, output and in-out variables: the same names, the same kinds and
+the same types, in the same order. Local variables are not compared. A
+property must have the same type, and every accessor (``GET``, ``SET``) that
+the interface declares. An extra accessor is allowed.
+
+Example
+-------
+
+The following code will generate error P4068:
+
+.. code-block::
+
+   INTERFACE I_Comm
+       METHOD Send : BOOL
+           VAR_INPUT
+               data : INT;
+           END_VAR
+       END_METHOD
+   END_INTERFACE
+
+   FUNCTION_BLOCK FB_Serial IMPLEMENTS I_Comm
+       METHOD Send : BOOL
+           VAR_INPUT
+               data : DINT;  (* Error: the interface declares INT *)
+           END_VAR
+           Send := TRUE;
+       END_METHOD
+   END_FUNCTION_BLOCK
+
+To fix this error, declare the member exactly as the interface does:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Serial IMPLEMENTS I_Comm
+       METHOD Send : BOOL
+           VAR_INPUT
+               data : INT;
+           END_VAR
+           Send := TRUE;
+       END_METHOD
+   END_FUNCTION_BLOCK
+
+See Also
+--------
+
+- :doc:`/reference/language/object-orientation/implements` — ``IMPLEMENTS``
+- :doc:`/reference/language/object-orientation/interface` — ``INTERFACE``
+- :doc:`P4067` — Function block does not provide a member of an interface it implements
