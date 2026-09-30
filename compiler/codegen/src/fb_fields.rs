@@ -3,9 +3,14 @@
 //! an instance occupies.
 //!
 //! A user-defined block's layout is built from its declaration by
-//! `compile::compile_program_with_functions`; a standard-library block's comes from
-//! [`resolve_fb_type`], and must agree with the field order its VM intrinsic
-//! reads.
+//! `compile::compile_program_with_functions`; a standard-library block's
+//! comes from [`resolve_fb_type`], and must agree with the field order its VM
+//! intrinsic reads.
+//!
+//! The layout also keeps the block's `VAR_INPUT` fields in declaration
+//! order: a non-formal call, `inst(1, 2)`, binds its arguments to them by
+//! position (IEC 61131-3 non-formal call). The analyzer binds and counts the
+//! same list (`call_assignment_check::bind_inputs`, P4003).
 
 use std::collections::HashMap;
 
@@ -18,6 +23,8 @@ use ironplc_container::opcode;
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FbFields {
     indices: HashMap<String, u8>,
+    /// The `VAR_INPUT` fields, name and index, in declaration order.
+    inputs: Vec<(String, u8)>,
 }
 
 impl FbFields {
@@ -26,7 +33,13 @@ impl FbFields {
     /// intrinsic keeps after the outputs has no name and is not listed.
     fn declared(inputs: &[&str], outputs: &[&str]) -> Self {
         let mut fields = FbFields::default();
-        for (index, name) in (0_u8..).zip(inputs.iter().chain(outputs)) {
+        // The names lead each `zip`: it stops on the first iterator that
+        // runs out, so an index taken past the last input would be lost.
+        let mut indices = 0_u8..;
+        for (name, index) in inputs.iter().zip(indices.by_ref()) {
+            fields.insert_input(name.to_string(), index);
+        }
+        for (name, index) in outputs.iter().zip(indices) {
             fields.insert(name.to_string(), index);
         }
         fields
@@ -35,6 +48,22 @@ impl FbFields {
     /// Records that the field `name` (lowercase) is at `index`.
     pub(crate) fn insert(&mut self, name: String, index: u8) {
         self.indices.insert(name, index);
+    }
+
+    /// Records that the `VAR_INPUT` field `name` (lowercase) is at `index`.
+    /// Inputs are recorded in declaration order: the next one recorded is
+    /// the next position of a non-formal call.
+    pub(crate) fn insert_input(&mut self, name: String, index: u8) {
+        self.inputs.push((name.clone(), index));
+        self.insert(name, index);
+    }
+
+    /// The `VAR_INPUT` fields, name and index, in declaration order: the
+    /// fields the arguments of a non-formal call bind to, one by one.
+    pub(crate) fn inputs(&self) -> impl Iterator<Item = (&str, u8)> {
+        self.inputs
+            .iter()
+            .map(|(name, index)| (name.as_str(), *index))
     }
 
     /// The index of the field `name` (lowercase), if the block has one.
@@ -118,6 +147,20 @@ mod tests {
         assert_eq!(fields.index_of("pv"), Some(4));
         assert_eq!(fields.index_of("qu"), Some(5));
         assert_eq!(fields.index_of("cv"), Some(7));
+    }
+
+    #[test]
+    fn resolve_fb_type_when_sr_then_output_follows_last_input() {
+        let (_, _, fields) = resolve_fb_type("SR").unwrap();
+        assert_eq!(fields.index_of("r"), Some(1));
+        assert_eq!(fields.index_of("q1"), Some(2));
+    }
+
+    #[test]
+    fn inputs_when_ctu_then_lists_inputs_in_declaration_order() {
+        let (_, _, fields) = resolve_fb_type("CTU").unwrap();
+        let inputs: Vec<(&str, u8)> = fields.inputs().collect();
+        assert_eq!(vec![("cu", 0), ("r", 1), ("pv", 2)], inputs);
     }
 
     #[test]

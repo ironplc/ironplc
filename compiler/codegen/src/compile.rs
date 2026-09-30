@@ -784,7 +784,11 @@ fn compile_program_with_functions(
         for (i, decl) in field_decls_tmp.iter().enumerate() {
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
-                fields.insert(name.clone(), i as u8);
+                if decl.var_type == VariableType::Input {
+                    fields.insert_input(name.clone(), i as u8);
+                } else {
+                    fields.insert(name.clone(), i as u8);
+                }
                 if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
                     if let Some(vti) = crate::type_info::decl_type_info(&ctx, decl) {
                         field_op_types.insert(name, (vti.op_width, vti.signedness));
