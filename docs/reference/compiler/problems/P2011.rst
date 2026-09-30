@@ -4,7 +4,10 @@ P2011
 
 .. problem-summary:: P2011
 
-This error occurs when a type alias references a parent type that has not been declared.
+This error occurs when a type alias references a parent type that has not been declared,
+or when a reference type (``REF_TO``, ``REFERENCE TO`` or ``POINTER TO``) references a
+type that has not been declared. The reference type can be declared in a ``TYPE``
+block or written directly in a variable declaration.
 
 Example
 -------
@@ -28,3 +31,33 @@ To fix this error, declare the parent type before creating the alias:
        MyAlias : BaseType;  (* Correct: BaseType is now declared *)
    END_TYPE
 
+The following code will also generate error P2011, because the referenced type
+``E_Missing`` has not been declared:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       mode : REF_TO E_Missing;  (* Error: E_Missing is not declared *)
+   END_VAR
+   END_PROGRAM
+
+To fix this error, declare the referenced type:
+
+.. code-block::
+
+   TYPE
+       E_Missing : (Idle, Running);
+   END_TYPE
+
+   PROGRAM main
+   VAR
+       mode : REF_TO E_Missing;  (* Correct: E_Missing is declared *)
+   END_VAR
+   END_PROGRAM
+
+See Also
+--------
+
+- :doc:`/reference/language/data-types/derived/reference-types` — Reference types
+- :doc:`P2013` — Array element type is not declared
