@@ -5,6 +5,8 @@ P2013
 .. problem-summary:: P2013
 
 This error occurs when an array declaration references an element type that has not been declared.
+The array can be declared in a ``TYPE`` block or written directly in a variable
+declaration, including as the target of a reference such as ``REF_TO ARRAY[1..10] OF``.
 
 Example
 -------
@@ -36,3 +38,18 @@ Alternatively, use a built-in type:
        DataArray : ARRAY[1..10] OF INT;  (* Correct: INT is a built-in type *)
    END_TYPE
 
+The same applies to an array written directly in a variable declaration:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       data : ARRAY[1..10] OF UndeclaredElementType;  (* Error: Element type not declared *)
+   END_VAR
+   END_PROGRAM
+
+See Also
+--------
+
+- :doc:`/reference/language/data-types/derived/array-types` — Array types
+- :doc:`P2011` — Parent type is not declared
