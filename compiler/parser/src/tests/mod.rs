@@ -9,6 +9,7 @@ mod arrays;
 mod case;
 mod comments_and_errors;
 mod constant_initializers;
+mod constant_name_initializers;
 mod continue_statement;
 mod corpus;
 mod dialect_flags;
