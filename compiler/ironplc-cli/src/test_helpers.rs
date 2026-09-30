@@ -31,11 +31,23 @@ pub fn resolve_lsp_tokens<'a>(
             col = t.delta_start;
         }
         let row = lines.get(line as usize).copied().unwrap_or("");
-        let start = col as usize;
-        let end = (col + t.length) as usize;
-        // Operate on bytes — the test inputs are ASCII-only.
-        let slice = &row[start.min(row.len())..end.min(row.len())];
-        out.push((line, col, slice, t.token_type));
+        // Columns and lengths count UTF-16 code units.
+        let start = utf16_to_byte_offset(row, col);
+        let end = utf16_to_byte_offset(row, col + t.length);
+        out.push((line, col, &row[start..end], t.token_type));
     }
     out
+}
+
+/// The byte offset in `row` of the character that starts `units` UTF-16 code
+/// units in, or the length of `row` when it is shorter.
+fn utf16_to_byte_offset(row: &str, units: u32) -> usize {
+    let mut seen: u32 = 0;
+    for (offset, c) in row.char_indices() {
+        if seen >= units {
+            return offset;
+        }
+        seen += c.len_utf16() as u32;
+    }
+    row.len()
 }
