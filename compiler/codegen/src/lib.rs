@@ -39,6 +39,7 @@ mod compile_enum;
 mod compile_expr;
 mod compile_fb_init;
 mod compile_fn;
+mod compile_loop;
 mod compile_method;
 mod compile_reference;
 mod compile_setup;

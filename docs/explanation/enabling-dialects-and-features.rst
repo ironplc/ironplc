@@ -38,7 +38,8 @@ Supported Dialects
 
    **Enables:** ``--allow-long-time-types``, ``--allow-ref-to`` (the
    Edition 3 keywords), ``--allow-partial-access-syntax``,
-   ``--allow-fb-inheritance``, and ``--allow-enum-explicit-values``.
+   ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``, and
+   ``--allow-continue``.
 
    **Selects:** the default of every behavior policy
    (``--policy-string-to-num-non-numeric reject``,
@@ -64,8 +65,8 @@ Supported Dialects
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``,
-   ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``, and
-   ``--allow-enum-base-type``.
+   ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
+   ``--allow-enum-base-type``, and ``--allow-continue``.
 
    **Selects:** ``--policy-string-to-num-non-numeric reject`` and
    ``--policy-string-to-num-failure zero`` — RuSTy rejects a string with
@@ -99,8 +100,8 @@ Supported Dialects
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``,
-   ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``, and
-   ``--allow-enum-base-type``.
+   ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
+   ``--allow-enum-base-type``, and ``--allow-continue``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero`` — CODESYS stops parsing at the
@@ -142,8 +143,8 @@ Supported Dialects
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``,
-   ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``, and
-   ``--allow-enum-base-type``.
+   ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
+   ``--allow-enum-base-type``, and ``--allow-continue``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero``, as ``codesys``.
@@ -487,6 +488,13 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    Without this flag it produces
    :doc:`P4056 </reference/compiler/problems/P4056>`, and the compiler sizes
    the type from the members instead.
+
+``--allow-continue``
+   Allow the :doc:`CONTINUE </reference/language/structured-text/continue>`
+   statement, which goes on with the next iteration of the innermost loop.
+   ``CONTINUE`` was added in Edition 3. Without this flag, ``CONTINUE`` is an
+   ordinary identifier, so a ``CONTINUE;`` statement is a syntax error and a
+   variable may be named ``continue``.
 
 Pass the flag when running :program:`ironplcc`:
 

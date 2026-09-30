@@ -1348,9 +1348,10 @@ pub(crate) struct CompileContext {
     pub(crate) var_types: HashMap<Id, VarTypeInfo>,
     /// Ordered list of constants added to the constant pool.
     pub(crate) constants: Vec<PoolConstant>,
-    /// Stack of loop exit labels for EXIT statement compilation.
-    /// Each enclosing loop pushes its end label; EXIT jumps to the top.
-    pub(crate) loop_exit_labels: Vec<crate::emit::Label>,
+    /// Stack of the labels of the enclosing loops, for EXIT and CONTINUE
+    /// statement compilation. Each loop pushes its labels; EXIT and CONTINUE
+    /// jump to those of the top.
+    pub(crate) loop_labels: Vec<crate::compile_loop::LoopLabels>,
     /// Maps STRING variable identifiers to their data region metadata.
     pub(crate) string_vars: HashMap<Id, StringVarInfo>,
     /// Maps FB instance variable identifiers to their metadata.
@@ -1447,7 +1448,7 @@ impl CompileContext {
             variables: HashMap::new(),
             var_types: HashMap::new(),
             constants: Vec::new(),
-            loop_exit_labels: Vec::new(),
+            loop_labels: Vec::new(),
             string_vars: HashMap::new(),
             fb_instances: HashMap::new(),
             array_vars: HashMap::new(),
@@ -1476,7 +1477,16 @@ impl CompileContext {
 
     /// Returns the exit label for the innermost enclosing loop, if any.
     pub(crate) fn current_loop_exit(&self) -> Option<crate::emit::Label> {
-        self.loop_exit_labels.last().copied()
+        self.loop_labels.last().map(|labels| labels.exit)
+    }
+
+    /// Returns the label where the innermost enclosing loop goes on with its
+    /// next iteration, if any, and records that it is used.
+    pub(crate) fn current_loop_next(&mut self) -> Option<crate::emit::Label> {
+        self.loop_labels.last_mut().map(|labels| {
+            labels.next_used = true;
+            labels.next
+        })
     }
 
     /// Records a static call-graph edge from the function whose body is

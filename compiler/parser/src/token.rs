@@ -184,6 +184,9 @@ pub enum TokenType {
     #[token("EXIT", ignore(case))]
     Exit,
 
+    #[token("CONTINUE", ignore(case))]
+    Continue,
+
     #[token("FALSE", ignore(case))]
     False,
 
@@ -560,6 +563,7 @@ impl TokenType {
             TokenType::En => "'EN'",
             TokenType::Eno => "'ENO'",
             TokenType::Exit => "'EXIT'",
+            TokenType::Continue => "'CONTINUE'",
             TokenType::False => "'FALSE'",
             TokenType::FEdge => "'F_EDGE'",
             TokenType::For => "'FOR'",
@@ -788,6 +792,7 @@ mod tests {
             (En, "EN"),
             (Eno, "ENO"),
             (Exit, "EXIT"),
+            (Continue, "CONTINUE"),
             (False, "FALSE"),
             (FEdge, "F_EDGE"),
             (For, "FOR"),

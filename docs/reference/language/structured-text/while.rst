@@ -53,3 +53,4 @@ See Also
 - :doc:`for` — counted loop
 - :doc:`repeat` — post-tested loop
 - :doc:`exit` — break from innermost loop
+- :doc:`continue` — next iteration of innermost loop

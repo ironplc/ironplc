@@ -121,6 +121,14 @@ impl LibraryRenderer {
         self.indents += 1;
     }
 
+    /// Writes a statement that is a keyword alone, such as `RETURN;`.
+    fn write_keyword_statement(&mut self, keyword: &str) -> Result<(), Diagnostic> {
+        self.write_ws(keyword);
+        self.write_ws(";");
+        self.newline();
+        Ok(())
+    }
+
     fn outdent(&mut self) {
         self.indents -= 1;
     }
@@ -1435,7 +1443,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     }
 
     // A method call is rendered by `visit_method_call` in both positions;
-    // only the statement form ends with `;`.
+    // only the statement form ends with `;`. `RETURN`, `EXIT` and `CONTINUE` have no
+    // node to visit, so they are written here.
     fn visit_stmt_kind(
         &mut self,
         node: &dsl::textual::StmtKind,
@@ -1447,6 +1456,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
                 self.newline();
                 Ok(())
             }
+            dsl::textual::StmtKind::Return => self.write_keyword_statement("RETURN"),
+            dsl::textual::StmtKind::Exit(_) => self.write_keyword_statement("EXIT"),
+            dsl::textual::StmtKind::Continue(_) => self.write_keyword_statement("CONTINUE"),
             _ => node.recurse_visit(self),
         }
     }

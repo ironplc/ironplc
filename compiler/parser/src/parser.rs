@@ -2202,7 +2202,7 @@ parser! {
     }
 
     // B.3.2.4 Iteration statements
-    rule iteration_statement() -> StmtKind = f:for_statement() {StmtKind::For(f)} / w:while_statement() {StmtKind::While(w)} / r:repeat_statement() {StmtKind::Repeat(r)} / exit_statement()
+    rule iteration_statement() -> StmtKind = f:for_statement() {StmtKind::For(f)} / w:while_statement() {StmtKind::While(w)} / r:repeat_statement() {StmtKind::Repeat(r)} / exit_statement() / continue_statement()
     rule for_statement() -> For = start:tok(TokenType::For) _ control:control_variable() _ tok(TokenType::Assignment) _ range:for_list() _ tok(TokenType::Do) _ body:statement_list() _ end:tok(TokenType::EndFor) {
       For {
         control,
@@ -2230,5 +2230,6 @@ parser! {
       }
     }
     rule exit_statement() -> StmtKind = t:tok(TokenType::Exit) { StmtKind::Exit(t.span.clone()) }
+    rule continue_statement() -> StmtKind = t:tok(TokenType::Continue) { StmtKind::Continue(t.span.clone()) }
   }
 }
