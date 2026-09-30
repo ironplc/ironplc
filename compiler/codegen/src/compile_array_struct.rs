@@ -193,10 +193,10 @@ fn locate_array_of_struct<'ctx, 'ast>(
                 dimensions,
             } = field_type
             else {
-                return Err(Diagnostic::not_implemented(Label::span(
-                    base.field.span(),
-                    format!("Field '{}' is not an array type", base.field),
-                )));
+                return Err(crate::compile_array::subscripted_field_not_array(
+                    &base.field,
+                    &field_type,
+                ));
             };
 
             let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
@@ -352,10 +352,9 @@ fn struct_array_element_field<'ctx, 'ast>(
             dimensions: inner_dims,
         } = &leaf_type
         else {
-            return Err(Diagnostic::not_implemented(Label::span(
-                field.span(),
-                format!("Field '{}' is not an array type", field),
-            )));
+            return Err(crate::compile_array::subscripted_field_not_array(
+                field, &leaf_type,
+            ));
         };
         dimensions.extend(dimensions_from_intermediate(inner_dims));
         subscripts.extend(field_subscripts);

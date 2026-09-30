@@ -1,0 +1,69 @@
+=====
+P4070
+=====
+
+.. problem-summary:: P4070
+
+This error occurs when a subscript (``x[1]``) is applied to a variable that
+is not an array. Only an array has elements to select by index. The types
+this rejects include:
+
+- elementary types such as ``DINT``, ``REAL`` or ``BOOL``
+- ``STRING`` and ``WSTRING``: a string has no elements to subscript
+- structures and function block instances, and their fields when the field
+  is not itself an array
+- a reference to a type that is not an array, with or without the ``^``
+- one element of an array, subscripted again: ``values[1][2]`` on a
+  one-dimensional array
+
+The error names the variable and its type.
+
+Example
+-------
+
+The following code will generate error P4070:
+
+.. playground::
+
+   TYPE
+       Reading : STRUCT
+           level : DINT;
+       END_STRUCT;
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           count  : DINT;
+           sensor : Reading;
+       END_VAR
+
+       count[1] := 5;             (* Error: count is a DINT *)
+       count := sensor.level[1];  (* Error: the field level is a DINT *)
+   END_PROGRAM
+
+``count`` and the field ``level`` each hold one value, so there is no
+element for a subscript to select.
+
+To fix this error, declare the variable or the field as an array, or remove
+the subscript:
+
+.. playground::
+
+   TYPE
+       Reading : STRUCT
+           level : ARRAY[1..4] OF DINT;
+       END_STRUCT;
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           counts : ARRAY[1..4] OF DINT;
+           sensor : Reading;
+       END_VAR
+
+       counts[1] := 5;
+       counts[2] := sensor.level[1];
+   END_PROGRAM
+
+See :doc:`/reference/language/data-types/derived/array-types` for how to
+subscript an array.

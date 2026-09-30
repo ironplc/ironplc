@@ -60,6 +60,7 @@ mod rule_string_encoding_compat;
 mod rule_string_length_range;
 mod rule_string_literal_char_range;
 mod rule_struct_initializer_expression_allowed;
+mod rule_subscript_operand_array;
 mod rule_support;
 mod rule_task_names_unique;
 mod rule_temporal_literal_range;

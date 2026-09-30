@@ -43,6 +43,19 @@ Example
 Multi-dimensional arrays use comma-separated ranges in the index
 specification.
 
+Subscripts
+----------
+
+A subscript selects one element, and an array takes one subscript per
+dimension: ``values[5]``, ``matrix[1, 2]``. IronPLC also accepts the
+subscripts of a multi-dimensional array one bracket at a time, so
+``matrix[1][2]`` selects the same element as ``matrix[1, 2]``.
+
+A subscript on a variable or field that is not an array raises
+:doc:`P4070 </reference/compiler/problems/P4070>`, and a number of
+subscripts that does not match the array's dimensions raises
+:doc:`P4071 </reference/compiler/problems/P4071>`.
+
 Constant Bounds (Language Extension)
 ------------------------------------
 
@@ -78,3 +91,5 @@ See Also
 --------
 
 - :doc:`structure-types` — record with named fields
+- :doc:`/reference/compiler/problems/P4070` — subscript on a variable that is not an array
+- :doc:`/reference/compiler/problems/P4071` — wrong number of subscripts
