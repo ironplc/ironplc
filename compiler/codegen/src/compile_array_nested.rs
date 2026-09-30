@@ -35,9 +35,21 @@ pub(crate) fn flatten<'t>(
     (leaf, all)
 }
 
+/// The innermost element type of `array`, through every nested array
+/// element type, or `None` when `array` is not an array.
+pub(crate) fn innermost_element(array: &IntermediateType) -> Option<&IntermediateType> {
+    match array {
+        IntermediateType::Array {
+            element_type,
+            dimensions,
+        } => Some(flatten(element_type, dimensions).0),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::flatten;
+    use super::{flatten, innermost_element};
     use ironplc_analyzer::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
 
     fn dim(lower: i32, upper: i32) -> ArrayDimension {
@@ -48,6 +60,23 @@ mod tests {
         IntermediateType::Int {
             size: ByteSized::B32,
         }
+    }
+
+    #[test]
+    fn innermost_element_when_not_array_then_none() {
+        assert_eq!(innermost_element(&dint()), None);
+    }
+
+    #[test]
+    fn innermost_element_when_array_of_arrays_then_leaf() {
+        let array = IntermediateType::Array {
+            element_type: Box::new(IntermediateType::Array {
+                element_type: Box::new(dint()),
+                dimensions: vec![dim(1, 3)],
+            }),
+            dimensions: vec![dim(1, 2)],
+        };
+        assert_eq!(innermost_element(&array), Some(&dint()));
     }
 
     #[test]
