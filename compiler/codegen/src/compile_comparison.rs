@@ -53,10 +53,10 @@ pub(crate) fn compile_comparison(
 ///
 /// It is the operation type of the analyzer's operand type for the pair. A
 /// pair without one -- an operand the analyzer does not judge (a subrange,
-/// an enumeration, a reference), or two types neither of which widens to the
-/// other -- computes at the concrete left operand's type, else the concrete
-/// right operand's, as every comparison did before the operand type was
-/// resolved.
+/// an enumeration, a reference); a pair of types it judges and neither of
+/// which widens to the other is reported as P4049 before codegen -- computes
+/// at the concrete left operand's type, else the concrete right operand's,
+/// as every comparison did before the operand type was resolved.
 fn comparison_op_type(ctx: &CompileContext, left: &Expr, right: &Expr, op_type: OpType) -> OpType {
     comparison_operand_type(
         expr_operand_name(ctx, left).as_ref(),

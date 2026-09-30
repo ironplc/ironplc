@@ -39,6 +39,42 @@ expression on the same pair agree. The analyzer exposes the answer as
 
 **REQ-CMP-analyzer-006** A comparison of two types neither of which widens to the other, such as `DINT` and `UDINT`, has no operand type.
 
+## Operand check
+
+IEC 61131-3 declares the comparison functions over `ANY_ELEMENTARY` with
+every input of the same type. The implicit conversions above relax "the same
+type" to "one widens to the other", as they do for the arithmetic operators,
+so a comparison with no operand type has no type that holds both operands
+and the analyzer reports it (`rule_comparison_operand_type`). It reports
+P4049, the code `d + r` reports for the same pair, so an arithmetic operator
+and a comparison accept the same operand pairs.
+
+Dialect leniency comes through the relation, not through the rule: the flags
+that make a pair acceptable to an assignment or an arithmetic operator
+(`--allow-cross-family-widening`, `--allow-cross-family-conversion`,
+`--allow-int-literal-to-bit-string`, on in the CODESYS and TwinCAT dialects)
+make it acceptable to a comparison. CODESYS goes further and accepts a
+`DINT` and a `REAL`, or a `DINT` and a `UDINT`, with an implicit conversion
+(and a warning); no dialect of this project does that for an arithmetic
+operator either, so none does it for a comparison.
+
+An operand whose resolved type the relation cannot judge (a subrange, an
+enumeration, a structure, `NULL`) is left alone, as the other operand rules
+leave it. Two string operands are left to the string encoding
+check (P4034).
+
+**REQ-CMP-analyzer-007** The analyzer reports P4049 for a comparison of two types neither of which widens to the other, naming the operator and both types: `DINT < UDINT`, `DINT = REAL`, `TIME > DATE`, `WORD <= INT`.
+
+**REQ-CMP-analyzer-008** The analyzer reports P4049 for a call to `EQ`, `NE`, `LT`, `LE`, `GT` or `GE` on two inputs whose types neither widens to the other, as for the operator.
+
+**REQ-CMP-analyzer-009** The analyzer accepts a comparison of two types one of which widens to the other: `DINT < LINT`, `INT > REAL`, `BYTE <> LWORD`, `DATE_AND_TIME < LDATE_AND_TIME`.
+
+**REQ-CMP-analyzer-010** The analyzer accepts a comparison of an untyped literal with an operand whose category holds it, the literal taking the operand's type: `UDINT > 3`, `REAL < 1`, `LREAL >= 1.5`.
+
+**REQ-CMP-analyzer-011** The analyzer reports P4049 for a comparison of an untyped literal with an operand whose category does not hold it, as for an assignment: `DINT < 1.5`, `TIME > 0`, and `WORD <> 0` unless `--allow-int-literal-to-bit-string`.
+
+**REQ-CMP-analyzer-012** A flag that makes one type acceptable as another (`--allow-cross-family-widening`, `--allow-cross-family-conversion`, `--allow-int-literal-to-bit-string`) makes a comparison of the two acceptable: `UDINT = DWORD`, `BYTE < INT` and `WORD <> 0` are accepted in the CODESYS dialect and reported in the default one.
+
 ## Codegen
 
 Each operand is compiled at its own type and converted to the operand type,
@@ -50,9 +86,9 @@ converted to a real. An operand whose own type codegen cannot place, a
 literal's category or a subrange, is compiled at the operand type directly.
 
 A comparison with no operand type is compiled as it was before this design:
-at the concrete left operand's type, else the concrete right operand's. The
-analyzer does not check the operand pair of a comparison, so such a pair
-reaches codegen (see Out of scope).
+at the concrete left operand's type, else the concrete right operand's. Only
+a pair the operand check leaves alone (a subrange, an enumeration) reaches
+codegen that way; a pair of types it can judge has been reported.
 
 The operator and the function form compile through the same routine, so the
 two spellings cannot diverge. The function form used to fold its inputs at the
@@ -71,10 +107,8 @@ integers on the stack rather than through the string comparison.
 
 ## Out of scope
 
-- The analyzer accepts a comparison of any two elementary operands, including
-  a pair with no operand type (`DINT` and `UDINT`, `DINT` and `REAL`), which
-  compiles at the left operand's type. Checking the pair is a separate change
-  ([#1931](https://github.com/ironplc/ironplc/issues/1931)).
+- Converting a pair with no operand type to a type that holds both (`LREAL`
+  for `DINT` and `REAL`, `LINT` for `DINT` and `UDINT`), as CODESYS does.
 - The ordered comparison functions are binary; the extensible monotonic form
   `GT(a, b, c)` is not implemented (see
   [Keyword Function Forms](keyword-function-forms.md)).
