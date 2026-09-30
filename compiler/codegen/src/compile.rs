@@ -748,16 +748,16 @@ fn compile_program_with_functions(
         register_pou_source_file(&mut ctx, &fb.name.name.span.file_id, sources);
     }
 
+    // Register the user-defined FB types (field layout, type IDs, methods)
+    // before assign_variables runs on any instance of them, global
+    // instances included. The FB bodies are compiled after program-local
+    // variables are assigned, once var_offsets are known.
+    let mut compiled_fb_bodies: Vec<CompiledFunction> = Vec::new();
+    crate::compile_fb_types::register_user_fb_types(&mut ctx, fb_decls, func_decls.len());
+
     // Assign global variable indices first (indices 0..G).
     assign_variables(&mut ctx, &mut builder, global_vars, types)?;
     let num_globals = ctx.variables.len() as u16;
-
-    // Register the user-defined FB types (field layout, type IDs, methods)
-    // before assign_variables runs on any instance of them. The FB bodies
-    // are compiled after program-local variables are assigned, once
-    // var_offsets are known.
-    let mut compiled_fb_bodies: Vec<CompiledFunction> = Vec::new();
-    crate::compile_fb_types::register_user_fb_types(&mut ctx, fb_decls, func_decls.len());
 
     // Collect program-local variables, skipping VAR_EXTERNAL declarations
     // since they alias the corresponding global variables.
@@ -1176,6 +1176,7 @@ pub(crate) struct SavedFbScope {
 
 /// Tracks state during compilation of a single program.
 /// Metadata for a function block instance variable.
+#[derive(Clone)]
 pub(crate) struct FbInstanceInfo {
     /// Variable table index holding the data region offset.
     pub(crate) var_index: VarIndex,

@@ -530,6 +530,8 @@ pub(crate) fn compile_user_function_block(
     ctx.string_vars = global_entries(&saved_string_vars, &saved_variables, num_globals);
     ctx.struct_vars = global_entries(&saved_struct_vars, &saved_variables, num_globals);
     ctx.struct_array_vars = global_entries(&saved_struct_array_vars, &saved_variables, num_globals);
+    // A global instance, which the body may call through VAR_EXTERNAL.
+    ctx.fb_instances = global_entries(&saved_fb_instances, &saved_variables, num_globals);
 
     // Assign variable slots for all FB fields, in the same order as field_decls.
     let mut current_index = VarIndex::new(var_offset);

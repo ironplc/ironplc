@@ -891,3 +891,58 @@ END_PROGRAM";
         context.diagnostics()
     );
 }
+
+#[test]
+fn apply_when_function_block_only_instantiated_by_configuration_global_then_reachable() {
+    let program = "
+        FUNCTION_BLOCK Nested
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Counter
+        VAR inner : Nested; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Unused
+        END_FUNCTION_BLOCK
+
+        PROGRAM main
+        VAR_EXTERNAL c : Counter; END_VAR
+            c();
+        END_PROGRAM
+
+        CONFIGURATION config
+        VAR_GLOBAL c : Counter; END_VAR
+        RESOURCE res ON PLC
+            PROGRAM p : main;
+        END_RESOURCE
+        END_CONFIGURATION";
+
+    let library = parse_only(program);
+    let (_library, reachable) = apply(library).unwrap();
+
+    assert!(reachable.contains(&Id::from("Counter")));
+    assert!(reachable.contains(&Id::from("Nested")));
+    assert!(!reachable.contains(&Id::from("Unused")));
+}
+
+#[test]
+fn apply_when_function_block_only_instantiated_by_top_level_global_then_reachable() {
+    let program = "
+        FUNCTION_BLOCK Counter
+        END_FUNCTION_BLOCK
+
+        VAR_GLOBAL c : Counter; END_VAR
+
+        PROGRAM main
+            c();
+        END_PROGRAM";
+
+    let options = CompilerOptions {
+        allow_top_level_var_global: true,
+        ..CompilerOptions::default()
+    };
+    let library = parse_program(program, &FileId::default(), &options).unwrap();
+    let (_library, reachable) = apply(library).unwrap();
+
+    assert!(reachable.contains(&Id::from("Counter")));
+}

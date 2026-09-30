@@ -65,11 +65,12 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
 
     debug!("Sorted identifiers {sorted_ids:?}");
 
-    // Compute the set of declarations reachable from PROGRAM roots.
-    // This allows downstream passes (e.g. codegen) to skip unused functions.
+    // Compute the set of declarations reachable from the roots: the
+    // programs and the global declarations. This allows downstream passes
+    // (e.g. codegen) to skip unused functions.
     let reachable = data_type_visitor
         .declarations
-        .reachable_from(&data_type_visitor.program_nodes);
+        .reachable_from(&data_type_visitor.root_nodes);
 
     // Split based on the type so that we put all of the data type declarations
     // at the beginning. Every declaration is kept, a repeated name included:
@@ -263,16 +264,17 @@ struct RuleGraphReferenceableElements {
     // Represents the context while visiting. Tracks the name of the current
     // POU.
     current_from: Option<Id>,
-    // Graph node indices for PROGRAM declarations, used as roots for
-    // reachability analysis.
-    program_nodes: Vec<NodeIndex>,
+    // Graph node indices of the roots for reachability analysis: the
+    // PROGRAM declarations, and what the global declarations instantiate --
+    // each CONFIGURATION, and the type of each top-level VAR_GLOBAL.
+    root_nodes: Vec<NodeIndex>,
 }
 impl RuleGraphReferenceableElements {
     fn new() -> Self {
         Self {
             declarations: DeclarationsGraph::new(),
             current_from: None,
-            program_nodes: Vec::new(),
+            root_nodes: Vec::new(),
         }
     }
 }
@@ -295,11 +297,21 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
     ) -> Result<Self::Value, Diagnostic> {
         match node {
             // Global variable declarations are not POUs or types and don't
-            // participate in the dependency graph. They are unconditionally
-            // placed first in the output so that their constants are available
-            // for subsequent passes. Skip recursion to avoid hitting visitor
-            // methods that require current_from context.
-            LibraryElementKind::GlobalVarDeclarations(_) => Ok(()),
+            // participate in the ordering. They are unconditionally placed
+            // first in the output so that their constants are available for
+            // subsequent passes. Skip recursion to avoid hitting visitor
+            // methods that require current_from context. The type of each is
+            // a root: a function block instance declared here exists, called
+            // or not, so its type is compiled.
+            LibraryElementKind::GlobalVarDeclarations(decls) => {
+                for decl in decls {
+                    if let TypeReference::Named(type_name) = decl.initializer.type_reference() {
+                        let idx = self.declarations.add_node(&type_name.name);
+                        self.root_nodes.push(idx);
+                    }
+                }
+                Ok(())
+            }
             _ => node.recurse_visit(self),
         }
     }
@@ -468,7 +480,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.clone());
         let idx = self.declarations.add_node(&node.name);
-        self.program_nodes.push(idx);
+        self.root_nodes.push(idx);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -493,8 +505,11 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         node: &ironplc_dsl::configuration::ConfigurationDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
+        // A root, as a program is: the instances its VAR_GLOBAL declares
+        // exist whether or not a program calls them.
         self.current_from = Some(node.name.clone());
-        self.declarations.add_node(&node.name);
+        let idx = self.declarations.add_node(&node.name);
+        self.root_nodes.push(idx);
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -557,7 +572,16 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
             Some(from) => {
                 match node {
                     InitialValueAssignmentKind::None(_) => {}
-                    InitialValueAssignmentKind::Simple(_) => {}
+                    InitialValueAssignmentKind::Simple(simple) => {
+                        // A VAR_GLOBAL or VAR_EXTERNAL of a function block
+                        // type is `Simple` until type resolution, so the
+                        // named type may be a function block the declaring
+                        // POU needs. An elementary type name adds a node
+                        // that orders and reaches nothing.
+                        let from = self.declarations.add_node(from);
+                        let to = self.declarations.add_node(&simple.type_name.name);
+                        self.declarations.graph.add_edge(to, from, ());
+                    }
                     InitialValueAssignmentKind::String(_) => {}
                     InitialValueAssignmentKind::EnumeratedValues(_) => {}
                     InitialValueAssignmentKind::EnumeratedType(enum_init) => {
