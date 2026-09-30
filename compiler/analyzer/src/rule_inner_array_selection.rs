@@ -6,7 +6,8 @@
 //! or passing it is valid IEC 61131-3, but code generation lays an array of
 //! arrays out as one multi-dimensional array and only addresses its
 //! innermost elements (`rows[1][2]`), so it cannot copy a whole inner array
-//! yet. This rule reports the selection so that `check` rejects it too.
+//! yet (issue #1953). This rule reports the selection so that `check`
+//! rejects it too.
 //!
 //! A selection that gives only some of the subscripts of a multi-dimensional
 //! array (`m[1]` on an `ARRAY[1..2, 1..3]`) selects no element; this rule
