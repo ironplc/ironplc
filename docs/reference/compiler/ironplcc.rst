@@ -242,7 +242,8 @@ Options
 
 ``--allow-constant-initializer-expressions``
    Allow a ``VAR`` initializer to be a constant expression (e.g.
-   ``scaled : LREAL := SCALE*4.0;``) rather than only a bare literal.
+   ``scaled : LREAL := SCALE*4.0;``), including the name of a constant
+   alone (``limit : DINT := MAX_LIMIT;``), rather than only a bare literal.
    Folded to a literal at compile time; produces
    :doc:`P4037 </reference/compiler/problems/P4037>` when used without this
    flag, or :doc:`P4038 </reference/compiler/problems/P4038>` if the

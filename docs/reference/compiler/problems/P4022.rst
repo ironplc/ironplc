@@ -32,3 +32,23 @@ To fix this error, use a literal that matches the declared type:
        dummy : INT := 10;
    END_VAR
    END_PROGRAM
+
+The same error occurs when the initializer is the name of a constant
+(enabled by ``--allow-constant-initializer-expressions``) whose type cannot
+be assigned to the variable's type:
+
+.. playground::
+   :allows: constant-initializer-expressions
+
+   PROGRAM main
+   VAR CONSTANT
+       LIMIT : UDINT := 7;
+   END_VAR
+   VAR
+       dummy : INT := LIMIT;  (* Error: a UDINT cannot be assigned to an INT *)
+   END_VAR
+   END_PROGRAM
+
+A ``UDINT`` holds values an ``INT`` cannot, even when this constant's value
+fits. To fix this error, declare the constant with a type the variable
+accepts, or the variable with the constant's type.

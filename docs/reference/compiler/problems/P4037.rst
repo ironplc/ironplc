@@ -6,7 +6,8 @@ P4037
 
 This error occurs when a ``VAR`` initializer uses a constant expression
 (arithmetic between literals and/or references to declared ``CONSTANT``
-variables) instead of a bare literal, without the
+variables, or the name of a constant alone) instead of a bare literal,
+without the
 ``--allow-constant-initializer-expressions`` compiler flag. The IEC 61131-3
 standard's initializer grammar only permits a single literal in this
 position. Constant expressions are an extension.
