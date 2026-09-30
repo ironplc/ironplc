@@ -1261,10 +1261,7 @@ fn resolve_struct_field_array_element_op_type(
         let (_root, _slot, field_type) =
             crate::compile_struct::walk_struct_chain(ctx, &structured.record, &structured.field, 0)
                 .ok()?;
-        if let ironplc_analyzer::intermediate_type::IntermediateType::Array {
-            element_type, ..
-        } = &field_type
-        {
+        if let Some(element_type) = crate::compile_array_nested::innermost_element(&field_type) {
             return crate::compile_struct::resolve_field_op_type(element_type);
         }
     }

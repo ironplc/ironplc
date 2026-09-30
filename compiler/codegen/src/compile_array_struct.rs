@@ -191,13 +191,15 @@ fn locate_array_of_struct<'ctx, 'ast>(
             let IntermediateType::Array {
                 element_type,
                 dimensions,
-            } = field_type
+            } = &field_type
             else {
                 return Err(Diagnostic::not_implemented(Label::span(
                     base.field.span(),
                     format!("Field '{}' is not an array type", base.field),
                 )));
             };
+            let (element_type, dimensions) =
+                crate::compile_array_nested::flatten(element_type, dimensions);
 
             let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
                 Diagnostic::not_implemented(Label::span(
@@ -214,7 +216,7 @@ fn locate_array_of_struct<'ctx, 'ast>(
                     element_strings: &struct_info.element_strings,
                 },
                 base_slot_offset: field_slot_offset.raw(),
-                element_type: *element_type,
+                element_type: element_type.clone(),
                 dimensions,
                 subscripts,
                 span: base.field.span(),
@@ -357,9 +359,11 @@ fn struct_array_element_field<'ctx, 'ast>(
                 format!("Field '{}' is not an array type", field),
             )));
         };
-        dimensions.extend(dimensions_from_intermediate(inner_dims));
+        let (leaf, inner_dims) =
+            crate::compile_array_nested::flatten(inner_element_type, inner_dims);
+        dimensions.extend(dimensions_from_intermediate(&inner_dims));
         subscripts.extend(field_subscripts);
-        inner_element_type.as_ref().clone()
+        leaf.clone()
     };
 
     // `a[i].names[j]` -- an array of STRING inside the element. Its elements
@@ -477,11 +481,14 @@ pub(crate) fn register_struct_element_strings(
                 element_type,
                 dimensions,
             } => {
+                // An array of arrays of structures is laid out as one array.
+                let (element_type, dimensions) =
+                    crate::compile_array_nested::flatten(element_type, dimensions);
                 register_array_element_strings(
                     ctx,
                     builder,
                     element_type,
-                    dimensions,
+                    &dimensions,
                     slot,
                     span,
                     out,
@@ -581,15 +588,29 @@ pub(crate) fn struct_array_declaration(
                 return Ok(None);
             }
             let element_name = subranges.type_name.to_type_name();
-            let Some(element_type) = types.resolve_struct_type(&element_name) else {
-                return Ok(None);
+            // An element of a named array type makes this an array of
+            // arrays, which is an array of structures when the innermost
+            // element is one (see `compile_array_nested`).
+            let (element_type, inner_dimensions) = match types.resolve_array_type(&element_name) {
+                Some(IntermediateType::Array {
+                    element_type,
+                    dimensions,
+                }) => crate::compile_array_nested::flatten(element_type, dimensions),
+                _ => match types.resolve_struct_type(&element_name) {
+                    Some(element_type) => (element_type, Vec::new()),
+                    None => return Ok(None),
+                },
             };
+            if !matches!(element_type, IntermediateType::Structure { .. }) {
+                return Ok(None);
+            }
             // Reuse the inline bounds parsing rather than repeating it.
             let array_spec = super::compile_array::array_spec_from_inline(subranges, span)?;
             let dimensions = array_spec
                 .dimensions
                 .iter()
                 .map(|&(lower, upper)| ArrayDimension { lower, upper })
+                .chain(inner_dimensions)
                 .collect();
             Ok(Some((
                 element_type.clone(),
@@ -605,7 +626,9 @@ pub(crate) fn struct_array_declaration(
             else {
                 return Ok(None);
             };
-            if !matches!(element_type.as_ref(), IntermediateType::Structure { .. }) {
+            let (element_type, dimensions) =
+                crate::compile_array_nested::flatten(element_type, dimensions);
+            if !matches!(element_type, IntermediateType::Structure { .. }) {
                 return Ok(None);
             }
             // Named array specifications are expanded to inline ones before
@@ -613,9 +636,9 @@ pub(crate) fn struct_array_declaration(
             // `IntermediateType::Structure` is structural and carries no
             // declared name, so the debug entry falls back to the array type's.
             Ok(Some((
-                element_type.as_ref().clone(),
+                element_type.clone(),
                 type_name.to_string().to_uppercase(),
-                dimensions.clone(),
+                dimensions,
             )))
         }
     }

@@ -449,13 +449,16 @@ pub(crate) fn allocate_struct_variable(
     for f in &fields_vec {
         if let IntermediateType::Array {
             element_type,
-            dimensions: array_dims,
+            dimensions,
         } = &f.field_type
         {
+            // An array of arrays of STRING is laid out as one array.
+            let (element_type, array_dims) =
+                crate::compile_array_nested::flatten(element_type, dimensions);
             if let IntermediateType::String {
                 max_len,
                 char_width,
-            } = element_type.as_ref()
+            } = element_type
             {
                 let max_str_len = max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16;
                 let total_elements = array_dims

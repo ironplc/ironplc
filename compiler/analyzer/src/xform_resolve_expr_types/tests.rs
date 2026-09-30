@@ -17,6 +17,7 @@ use rstest::rstest;
 
 mod expr_type;
 mod single_assignment;
+mod subscript;
 
 /// A library after the expression type resolution pass, with the type
 /// environment its expression types are ids into.

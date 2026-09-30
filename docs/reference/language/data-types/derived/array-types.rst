@@ -74,6 +74,34 @@ flag. The constant must be declared in a
      END_VAR
    END_PROGRAM
 
+Arrays of Arrays
+----------------
+
+The element type of an array can be a named array type. Each bracket
+selects from one array, so an element of the inner array takes one bracket
+per array:
+
+.. playground::
+
+   TYPE
+       Row : ARRAY [1..3] OF DINT;
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           rows : ARRAY [1..2] OF Row;
+           total : DINT;
+       END_VAR
+
+       rows[2][3] := 7;
+       total := rows[2][3] + rows[1][1];
+   END_PROGRAM
+
+``rows[2]`` is a whole ``Row``. Reading, writing or passing a whole inner
+array is not implemented yet and raises
+:doc:`P9004 </reference/compiler/problems/P9004>`; access its elements
+instead.
+
 See Also
 --------
 

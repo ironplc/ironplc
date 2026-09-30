@@ -16,12 +16,12 @@ use std::collections::HashMap;
 
 use crate::callee_resolution::FunctionBlocks;
 use crate::function_environment::FunctionEnvironment;
-use crate::intermediate_type::IntermediateType;
 use crate::intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, Overload,
 };
 use crate::intermediates::inherited_fields::collect_inherited_fields;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
+use crate::selection_type::{ArrayDeclarations, Selections};
 use crate::system_globals::SYSTEM_UPTIME_GLOBALS;
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
@@ -36,8 +36,10 @@ pub fn apply(
 ) -> Result<Library, Vec<Diagnostic>> {
     let inherited_fields = collect_inherited_fields(&lib);
     let method_return_types = collect_method_return_types(&lib);
+    let arrays = ArrayDeclarations::from_library(&lib);
     let mut resolver = ExprTypeResolver {
         declarations: Declarations::new(),
+        arrays,
         inherited_fields,
         method_return_types,
         type_environment,
@@ -127,40 +129,6 @@ fn prefer_concrete(left: &Option<ExprType>, right: &Option<ExprType>) -> Option<
     }
 }
 
-/// Maps an [`IntermediateType`] to its canonical elementary [`TypeName`].
-///
-/// Delegates to [`TypeEnvironment::elementary_type_name_for`] for the simple
-/// cases. That helper does a strict equality lookup against the elementary
-/// types table, which only contains `String { max_len: None }`. A struct
-/// field declared `STRING[n]` resolves to `String { max_len: Some(n) }` and
-/// would otherwise return `None`, so we handle strings explicitly.
-fn intermediate_to_elementary_type_name(
-    env: &TypeEnvironment,
-    it: &IntermediateType,
-) -> Option<TypeName> {
-    if let Some(tn) = env.elementary_type_name_for(it) {
-        return Some(tn);
-    }
-    match it {
-        IntermediateType::String { .. } => Some(TypeName::from("STRING")),
-        _ => None,
-    }
-}
-
-/// Walks a nested [`SymbolicVariableKind`] chain to find the root named variable.
-///
-/// For example, `pt^[i]` is `Array { Deref { Named("pt") } }` — this returns `"pt"`.
-fn find_base_variable_name(var: &SymbolicVariableKind) -> Option<&Id> {
-    match var {
-        SymbolicVariableKind::Named(nv) => Some(&nv.name),
-        SymbolicVariableKind::Deref(dv) => find_base_variable_name(&dv.variable),
-        SymbolicVariableKind::Array(av) => find_base_variable_name(&av.subscripted_variable),
-        SymbolicVariableKind::BitAccess(ba) => find_base_variable_name(&ba.variable),
-        SymbolicVariableKind::PartialAccess(pa) => find_base_variable_name(&pa.variable),
-        _ => None,
-    }
-}
-
 struct ExprTypeResolver<'a> {
     /// Declared type of every variable in scope.
     ///
@@ -170,6 +138,9 @@ struct ExprTypeResolver<'a> {
     /// body sees the instance's fields and a method local shadows a
     /// field of the same name.
     declarations: Declarations<'static>,
+    /// The array type declarations of the library, which name the element
+    /// type of a named array type.
+    arrays: ArrayDeclarations,
     /// Fields inherited via `EXTENDS`, per function block -- see
     /// `intermediates::inherited_fields`. Seeded into `var_types` before a
     /// function block's own fields so unqualified references to a base
@@ -233,66 +204,6 @@ impl ExprTypeResolver<'_> {
                 ..
             }) => Some(tn.clone()),
             InitialValueAssignmentKind::SimpleExpr(se) => Some(se.type_name.clone()),
-        }
-    }
-
-    /// Returns the element type name of a variable in scope declared as an
-    /// array or a reference to one, so that `arr[i]` and `pt^[i]` resolve
-    /// to the element type.
-    ///
-    /// For `arr : ARRAY[0..10] OF INT` this is `"int"`; for
-    /// `pt : REF_TO ARRAY[1..255] OF BYTE` it is `"byte"`.
-    fn declared_element_type_name(&self, id: &Id) -> Option<TypeName> {
-        let Declared::Variable { init, .. } = self.declarations.find(id)? else {
-            // A result variable or system global is never subscripted.
-            return None;
-        };
-        match init.as_ref() {
-            // ARRAY[...] OF T (inline spec)
-            InitialValueAssignmentKind::Array(a) => match &a.spec {
-                SpecificationKind::Inline(inline) => {
-                    Some(self.resolve_element_type_name(&inline.type_name))
-                }
-                SpecificationKind::Named(tn) => self.element_type_from_named_array(tn),
-            },
-            // REF_TO ARRAY[...] OF T or REF_TO <named_array_type>
-            InitialValueAssignmentKind::Reference(ref_init) => match &ref_init.target {
-                ReferenceTarget::Array(subranges) => {
-                    Some(self.resolve_element_type_name(&subranges.type_name))
-                }
-                ReferenceTarget::Named(tn) => self.element_type_from_named_array(tn),
-            },
-            // Named type that may be an array alias (e.g., `arr : MyArr`
-            // where `TYPE MyArr : ARRAY[0..10] OF INT; END_TYPE`)
-            InitialValueAssignmentKind::Simple(si) => {
-                self.element_type_from_named_array(&si.type_name)
-            }
-            // Late-resolved type that may be an array alias
-            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
-                type_name: tn,
-                ..
-            }) => self.element_type_from_named_array(tn),
-            _ => None,
-        }
-    }
-
-    /// Resolves an [`ArrayElementType`] to a canonical elementary type name.
-    fn resolve_element_type_name(&self, elem: &ArrayElementType) -> TypeName {
-        let tn = elem.to_type_name();
-        self.type_environment
-            .resolve_elementary_type_name(&tn)
-            .unwrap_or(tn)
-    }
-
-    /// Looks up a named type in the type environment; if it is an array,
-    /// returns the element type name.
-    fn element_type_from_named_array(&self, type_name: &TypeName) -> Option<TypeName> {
-        let attrs = self.type_environment.get(type_name)?;
-        match &attrs.representation {
-            IntermediateType::Array { element_type, .. } => {
-                self.type_environment.elementary_type_name_for(element_type)
-            }
-            _ => None,
         }
     }
 
@@ -526,70 +437,6 @@ impl ExprTypeResolver<'_> {
         }
     }
 
-    /// Resolves the type of a member access expression (e.g., `setup.FLAG` or
-    /// `timer.Q`).
-    ///
-    /// Walks the member chain to find the root variable, looks up its type
-    /// definition, then finds the leaf member's type.
-    fn resolve_structured_variable_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
-        let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        let field = parent_type
-            .member_fields()?
-            .iter()
-            .find(|f| f.name == sv.field)?;
-        self.type_environment
-            .elementary_type_name_for(&field.field_type)
-    }
-
-    /// Resolves a `SymbolicVariableKind` to the `IntermediateType` whose
-    /// members it exposes.
-    ///
-    /// For `Named`, looks up the variable's declared type and resolves it as a
-    /// structure or function block instance. For `Structured`, recursively
-    /// resolves the parent and finds the nested member type.
-    fn resolve_parent_struct_type<'b>(
-        &'b self,
-        kind: &SymbolicVariableKind,
-    ) -> Option<&'b IntermediateType> {
-        match kind {
-            SymbolicVariableKind::Named(nv) => {
-                let var_type = self.declared_type_name(&nv.name)?;
-                self.type_environment.resolve_member_access_type(&var_type)
-            }
-            SymbolicVariableKind::Structured(sv) => {
-                let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-                let field = parent_type
-                    .member_fields()?
-                    .iter()
-                    .find(|f| f.name == sv.field)?;
-                if field.field_type.has_members() {
-                    Some(&field.field_type)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
-
-    /// Resolves the element type of an array that lives inside a struct field.
-    ///
-    /// For an expression like `DATA.DIRS[i, j]`, `sv` is the `DATA.DIRS`
-    /// struct field access. Walks the struct chain to find `DIRS`'s
-    /// `IntermediateType::Array`, then returns the element type's
-    /// canonical `TypeName`.
-    fn resolve_struct_field_array_element_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
-        let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        let field = parent_type
-            .member_fields()?
-            .iter()
-            .find(|f| f.name == sv.field)?;
-        let IntermediateType::Array { element_type, .. } = &field.field_type else {
-            return None;
-        };
-        intermediate_to_elementary_type_name(self.type_environment, element_type)
-    }
-
     fn resolve_variable_type(&self, var: &Variable) -> Option<TypeName> {
         match var {
             Variable::Symbolic(SymbolicVariableKind::Named(nv)) => {
@@ -602,54 +449,15 @@ impl ExprTypeResolver<'_> {
                         .unwrap_or(declared),
                 )
             }
-            Variable::Symbolic(SymbolicVariableKind::Array(arr_var)) => {
-                // Array subscript on a struct field (e.g. `DATA.DIRS[i, j]`).
-                // The base variable is a struct, not the array itself, so we
-                // resolve the field's type through the struct chain.
-                if let SymbolicVariableKind::Structured(sv) = arr_var.subscripted_variable.as_ref()
-                {
-                    return self.resolve_struct_field_array_element_type(sv);
-                }
-
-                // Array subscript: walk to base variable, return element type.
-                let base_name = find_base_variable_name(&arr_var.subscripted_variable)?;
-                let elem_type = self.declared_element_type_name(base_name)?;
-                Some(
-                    self.type_environment
-                        .resolve_elementary_type_name(&elem_type)
-                        .unwrap_or(elem_type),
-                )
-            }
-            Variable::Symbolic(SymbolicVariableKind::Structured(sv)) => {
-                self.resolve_structured_variable_type(sv)
-            }
-            Variable::Symbolic(SymbolicVariableKind::BitAccess(_)) => Some(TypeName::from("BOOL")),
-            Variable::Symbolic(SymbolicVariableKind::PartialAccess(pa)) => {
-                let type_name = match pa.size {
-                    PartialAccessSize::Byte => "BYTE",
-                    PartialAccessSize::Word => "WORD",
-                    PartialAccessSize::DWord => "DWORD",
-                    PartialAccessSize::LWord => "LWORD",
+            // A subscript, field or dereference names the type its
+            // selection walks to (see `selection_type`).
+            Variable::Symbolic(kind) => {
+                let selections = Selections {
+                    declarations: &self.declarations,
+                    types: self.type_environment,
+                    arrays: &self.arrays,
                 };
-                Some(TypeName::from(type_name))
-            }
-            Variable::Symbolic(SymbolicVariableKind::Deref(deref_var)) => {
-                // Dereference: resolve the target type of the reference.
-                let base_name = find_base_variable_name(&deref_var.variable)?;
-                let declared = self.declared_type_name(base_name)?;
-                let attrs = self.type_environment.get(&declared)?;
-                if let Some(target) = attrs.representation.referenced_type() {
-                    self.type_environment.elementary_type_name_for(target)
-                } else {
-                    None
-                }
-            }
-            Variable::Symbolic(SymbolicVariableKind::SelfRef(_)) => {
-                // THIS^/SUPER^ has no resolvable type until function-block
-                // member resolution exists. Unreachable in practice:
-                // `fold_self_ref_variable` rejects the construct before any
-                // type resolution runs. See issue #1406.
-                None
+                selections.type_name(&selections.view_of(kind)?)
             }
             Variable::Direct(_) => None,
         }

@@ -311,6 +311,8 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
             format!("Field '{}' is not an array type", structured.field),
         )));
     };
+    let (element_type, array_dims) = crate::compile_array_nested::flatten(element_type, array_dims);
+    let array_dims = array_dims.as_slice();
 
     let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
         Diagnostic::not_implemented(Label::span(
@@ -321,7 +323,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
 
     // STRING array fields use dedicated STR_LOAD/STORE_ARRAY_ELEM opcodes
     // with a scratch variable and a STRING-specific array descriptor.
-    if let IntermediateType::String { char_width, .. } = element_type.as_ref() {
+    if let IntermediateType::String { char_width, .. } = element_type {
         let field_name = structured.field.to_string().to_lowercase();
         let &(str_desc_index, _, _) =
             struct_info
@@ -372,7 +374,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         dimensions,
         subscripts,
         element_op_type,
-        element_type: element_type.as_ref().clone(),
+        element_type: element_type.clone(),
     })
 }
 
@@ -458,7 +460,28 @@ pub(crate) fn array_spec_for_declaration(
 ) -> Result<ArraySpec, Diagnostic> {
     match spec {
         ironplc_dsl::common::SpecificationKind::Inline(subranges) => {
-            array_spec_from_inline(subranges, span)
+            // An element of a named array type makes this an array of
+            // arrays, laid out with the element's dimensions appended.
+            let element_array = match subranges.ref_to {
+                Some(_) => None,
+                None => types.resolve_array_type(&subranges.type_name.to_type_name()),
+            };
+            let Some(IntermediateType::Array {
+                element_type,
+                dimensions,
+            }) = element_array
+            else {
+                return array_spec_from_inline(subranges, span);
+            };
+            let outer = array_spec_from_inline(subranges, span)?;
+            let outer: Vec<ArrayDimension> = outer
+                .dimensions
+                .iter()
+                .map(|&(lower, upper)| ArrayDimension { lower, upper })
+                .chain(dimensions.iter().cloned())
+                .collect();
+            let (leaf, all) = crate::compile_array_nested::flatten(element_type, &outer);
+            array_spec_from_named(leaf, &all, span)
         }
         ironplc_dsl::common::SpecificationKind::Named(type_name) => {
             // The caller reaches this arm only for a declaration the type
@@ -482,7 +505,8 @@ pub(crate) fn array_spec_for_declaration(
                     "Array type resolved to a non-array representation",
                 )));
             };
-            array_spec_from_named(element_type, dimensions, span)
+            let (leaf, all) = crate::compile_array_nested::flatten(element_type, dimensions);
+            array_spec_from_named(leaf, &all, span)
         }
     }
 }
