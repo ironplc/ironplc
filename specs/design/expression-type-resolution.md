@@ -59,7 +59,7 @@ on each expression from its operands' types:
 |---|---|
 | Untyped literal (`5`, `1.5`) | `Literal(ANY_INT)`, `Literal(ANY_REAL)` |
 | Typed literal, string, time, boolean | the elementary type |
-| Variable | its declaration's `type_id`; an element or field, the element's or field's type |
+| Variable | its declaration's `type_id`; an element or field, the element's or field's type (see below) |
 | Arithmetic operator | the result of the overload that applies (see [Arithmetic Operator Overloads](arithmetic-operator-overloads.md)), else the concrete operand's type |
 | Unary operator, parenthesised expression | the operand's type |
 | `AND`, `OR`, `XOR`, `AND_THEN`, `OR_ELSE` | the concrete operand's type |
@@ -69,6 +69,22 @@ on each expression from its operands' types:
 | `REF(x)` | `reference_to(x's type)` |
 | Dereference | the referenced type (`TypeEnvironment::referenced_type`) |
 | `NULL` | `Null` |
+
+A subscript, field or dereference is typed by walking the selection from
+its variable outwards (`selection_type`):
+
+- a bracket takes subscripts from the array it is in, and the selection
+  reaches the element type once every dimension has one, so `m[1][2]` and
+  `m[1, 2]` on an `ARRAY[1..2, 1..3]` are both an element, and on
+  `rows : ARRAY[1..2] OF Row`, `rows[1]` is a `Row` and `rows[1][2]` an
+  element of a `Row`;
+- a bracket does not reach past its array: `rows[1, 2]`, and a selection
+  that stops part way through a multi-dimensional array, have no type;
+- a type keeps the name it was declared with while that name is known,
+  including an element type named in an array type declaration; a field is
+  known by its representation, so it is typed only when elementary;
+- a reference to an array is subscripted as the array, and a reference to a
+  structure selects the structure's fields.
 
 ## Relations that compare by name
 
