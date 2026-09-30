@@ -73,6 +73,8 @@ POP                               -- discard fb_ref
 
 **Field index mapping**: Standard FB field layouts come from analyzer type definitions in `stdlib_function_block.rs`. TON: IN=0, PT=1, Q=2, ET=3.
 
+**Positional arguments**: a non-formal call, `myTimer(start, T#5s)`, emits the same sequence. The `n`th argument is stored to the `n`th `VAR_INPUT` field in declaration order, which `FbFields` (`codegen/src/fb_fields.rs`) records beside the field indices for standard and user-defined blocks alike. The analyzer binds and counts the same list (`call_assignment_check::bind_inputs`), refusing a count other than the number of inputs (P4003); codegen treats reaching one as an internal error.
+
 ### VM
 
 **Data region**: Flat byte array of `data_region_bytes` size, zero-filled at init.

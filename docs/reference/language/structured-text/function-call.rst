@@ -52,7 +52,7 @@ using the ``:=`` notation:
 
 Positional and named arguments must not be mixed in a single call.
 
-**Function block calls** use named arguments for inputs. After the call,
+**Function block calls** pass inputs the same two ways. After the call,
 outputs are read from the instance:
 
 .. code-block::
@@ -60,6 +60,18 @@ outputs are read from the instance:
    my_timer(IN := start_signal, PT := T#5s);
    elapsed := my_timer.ET;
    done := my_timer.Q;
+
+A positional function block call gives one argument for each ``VAR_INPUT``
+of the block, in declaration order. ``TON`` declares ``IN`` then ``PT``, so
+this call is the same as the named call above:
+
+.. code-block::
+
+   my_timer(start_signal, T#5s);
+
+Output assignments (``=>``) may follow the positional arguments. The compiler
+does not yet accept a positional call to a function block that declares
+``VAR_IN_OUT``; name the arguments instead.
 
 Example
 -------
@@ -92,7 +104,7 @@ Related Problem Codes
 
 - :doc:`/reference/compiler/problems/P4001` — Mixed named and positional arguments
 - :doc:`/reference/compiler/problems/P4002` — Missing required input parameter
-- :doc:`/reference/compiler/problems/P4003` — Invocation requires formal (named) arguments
+- :doc:`/reference/compiler/problems/P4003` — Wrong number of positional arguments to a function block
 - :doc:`/reference/compiler/problems/P4004` — Undefined output on function invocation
 - :doc:`/reference/compiler/problems/P4017` — Undeclared function call
 - :doc:`/reference/compiler/problems/P4018` — Wrong argument count
