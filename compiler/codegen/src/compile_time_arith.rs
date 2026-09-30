@@ -121,7 +121,7 @@ pub(crate) enum Operand<'a> {
 
 /// Leaves the left operand on the stack at `op_type`: compiles it when it is
 /// an expression, and widens it in place when it is already on the stack,
-/// as [`compile_operand`] widens an expression.
+/// as [`compile_expr`] widens an expression.
 fn compile_left(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -129,7 +129,7 @@ fn compile_left(
     left: Operand<'_>,
 ) -> Result<(), Diagnostic> {
     match left {
-        Operand::Expr(expr) => compile_operand(emitter, ctx, op_type, expr),
+        Operand::Expr(expr) => compile_expr(emitter, ctx, expr, op_type),
         Operand::Stack(natural) => {
             if op_type.0 == OpWidth::W64 && natural == (OpWidth::W32, Signedness::Unsigned) {
                 emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
@@ -137,29 +137,6 @@ fn compile_left(
             Ok(())
         }
     }
-}
-
-/// Compiles an operand of a typed time or date function at `op_type`.
-///
-/// A `DATE`, `TIME_OF_DAY` or `DATE_AND_TIME` operand of a long form is
-/// narrower than the operation and unsigned (ADR-0025), so it compiles at
-/// its own width and is zero-extended; loading it at 64 bits directly would
-/// sign-extend a date after 2038. Every other operand compiles at `op_type`,
-/// which sign-extends a narrower `TIME` as ADR-0001 loads any narrower
-/// integer.
-fn compile_operand(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    op_type: OpType,
-    operand: &Expr,
-) -> Result<(), Diagnostic> {
-    let natural = op_type_from_expr(ctx, operand);
-    if op_type.0 == OpWidth::W64 && natural == Some((OpWidth::W32, Signedness::Unsigned)) {
-        compile_expr(emitter, ctx, operand, (OpWidth::W32, Signedness::Unsigned))?;
-        emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
-        return Ok(());
-    }
-    compile_expr(emitter, ctx, operand, op_type)
 }
 
 /// Pushes the milliseconds in a second, 1000, at the width of `op_type`.
@@ -186,7 +163,7 @@ fn compile_same_unit(
     emit_fn: fn(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
     compile_left(emitter, ctx, op_type, in1)?;
-    compile_operand(emitter, ctx, op_type, in2)?;
+    compile_expr(emitter, ctx, in2, op_type)?;
     emit_fn(emitter, op_type);
     Ok(())
 }
@@ -205,7 +182,7 @@ fn compile_dt_time_add_sub(
     emit_fn: fn(&mut Emitter, OpType),
 ) -> Result<(), Diagnostic> {
     compile_left(emitter, ctx, op_type, in1)?;
-    compile_operand(emitter, ctx, op_type, in2)?;
+    compile_expr(emitter, ctx, in2, op_type)?;
     load_millis_per_second(emitter, ctx, op_type);
     emit_div(emitter, op_type);
     emit_fn(emitter, op_type);
@@ -224,7 +201,7 @@ fn compile_sub_to_time(
     in2: &Expr,
 ) -> Result<(), Diagnostic> {
     compile_left(emitter, ctx, op_type, in1)?;
-    compile_operand(emitter, ctx, op_type, in2)?;
+    compile_expr(emitter, ctx, in2, op_type)?;
     emit_sub(emitter, op_type);
     load_millis_per_second(emitter, ctx, op_type);
     emit_mul(emitter, op_type);
@@ -306,7 +283,7 @@ fn compile_mul_div_ltime(
     compile_left(emitter, ctx, ltime_op, in1)?;
     match in2_op.0 {
         OpWidth::W32 | OpWidth::W64 => {
-            compile_operand(emitter, ctx, (OpWidth::W64, in2_op.1), in2)?;
+            compile_expr(emitter, ctx, in2, (OpWidth::W64, in2_op.1))?;
             emit_fn(emitter, ltime_op);
         }
         OpWidth::F32 | OpWidth::F64 => {
