@@ -11,6 +11,8 @@ fn main() {
         "keyword-function-forms.md",
         // Arithmetic operator overloads (`REQ-AO-analyzer-*`).
         "arithmetic-operator-overloads.md",
+        // Comparison operand type (`REQ-CMP-analyzer-*`).
+        "comparison-operand-type.md",
         // Partial-access syntax (`REQ-PAB-analyzer-*`): slice range checks.
         "partial-access-bit-syntax.md",
         // Constant variable inference (`REQ-CVI-analyzer-*`): which
