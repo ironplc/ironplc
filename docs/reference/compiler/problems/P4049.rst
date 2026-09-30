@@ -174,6 +174,48 @@ width:
        counter := counter + 1;
    END_PROGRAM
 
+Comparisons
+-----------
+
+The comparison operators ``=``, ``<>``, ``<``, ``<=``, ``>`` and ``>=``, and
+their function forms ``EQ``, ``NE``, ``LT``, ``LE``, ``GT`` and ``GE``, are
+defined for two operands where one widens to the other, the same pairs as the
+arithmetic operators. The comparison is computed at the wider type.
+
+The following code will generate error P4049:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       offset : DINT := -1;
+       limit : UDINT := 4000000000;
+       below : BOOL;
+   END_VAR
+       below := offset < limit;
+   END_PROGRAM
+
+Neither ``DINT`` nor ``UDINT`` holds every value of the other, so there is no
+type to compare them at: comparing at ``DINT`` reads ``limit`` as a negative
+number, and comparing at ``UDINT`` reads ``offset`` as a large positive one.
+An untyped literal takes the type of the other operand when that type's
+category holds it (``limit > 3``), and is reported when it does not
+(``offset < 1.5``).
+
+To fix this error, convert one operand to a type that holds both, here
+``LINT``, which ``UDINT`` widens to:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       offset : DINT := -1;
+       limit : UDINT := 4000000000;
+       below : BOOL;
+   END_VAR
+       below := DINT_TO_LINT(offset) < limit;   (* TRUE *)
+   END_PROGRAM
+
 Bit-string operators
 --------------------
 

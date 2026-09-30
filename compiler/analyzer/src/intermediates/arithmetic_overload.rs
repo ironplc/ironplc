@@ -16,10 +16,11 @@
 //!
 //! See `specs/design/arithmetic-operator-overloads.md`.
 
-use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
+use ironplc_dsl::common::{ElementaryTypeName, TypeName};
 use ironplc_dsl::textual::Operator;
 use ironplc_parser::options::CompilerOptions;
 
+use super::common_operand::{common_operand, Side};
 use super::operator_function_form::{form_of_operator, FormOf, OperatorFunctionForm};
 use super::stdlib_time_function::short_overload;
 use crate::type_compat::{are_types_compatible, is_checkable_type, same_temporal_family};
@@ -193,25 +194,12 @@ fn numeric_overload(
     {
         return None;
     }
-    // The result is the operand the other is acceptable as: the wider one,
-    // or the concrete one when the other is an untyped literal. A literal's
-    // category accepts any concrete type in it, so the concrete operand is
-    // tried as the expected type first: `1 + d` is `DINT`, not `ANY_INT`.
-    // The result is the operand as written, so a bit string judged as its
-    // unsigned integer stays a bit string: `b + 1` on `BYTE` is `BYTE`.
-    let left = (left, judged_left);
-    let right = (right, judged_right);
-    let (first, second) = if is_generic(&left.1) && !is_generic(&right.1) {
-        (right, left)
-    } else {
-        (left, right)
-    };
-    let result = if are_types_compatible(&first.1, &second.1, options) {
-        first.0
-    } else if are_types_compatible(&second.1, &first.1, options) {
-        second.0
-    } else {
-        return None;
+    // The result is the operand the other is acceptable as, as written, so a
+    // bit string judged as its unsigned integer stays a bit string: `b + 1`
+    // on `BYTE` is `BYTE`.
+    let result = match common_operand(&judged_left, &judged_right, options)? {
+        Side::Left => left,
+        Side::Right => right,
     };
     Some(Overload::Numeric {
         result: result.clone(),
@@ -275,12 +263,6 @@ fn parameter_accepts(param: &str, operand: &OperandType<'_>) -> bool {
         // default options answer the same as any others.
         (Err(_), _) => are_types_compatible(&param, operand.type_name, &CompilerOptions::default()),
     }
-}
-
-/// Returns true if `type_name` is a generic category, the type of an untyped
-/// literal (`ANY_INT`, `ANY_REAL`).
-fn is_generic(type_name: &TypeName) -> bool {
-    GenericTypeName::try_from(&type_name.name).is_ok()
 }
 
 /// Returns true for the long-width temporal types.

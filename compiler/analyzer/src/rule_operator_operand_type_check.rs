@@ -103,8 +103,8 @@ pub fn apply(
 /// the row is what makes the operator spelling agree with the functional
 /// one, which issue #1567 already fixed in the other direction.
 ///
-/// The relational operators are declared `ANY_ELEMENTARY` in the table.
-/// Holding them to that is a separate decision from this rule.
+/// The comparisons are declared `ANY_ELEMENTARY` in the table; their
+/// operand pair is checked by `rule_comparison_operand_type`.
 fn checked_compare_form(op: &CompareOp) -> Option<&'static OperatorFunctionForm> {
     match op {
         CompareOp::And | CompareOp::Or | CompareOp::Xor => {
