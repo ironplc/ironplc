@@ -471,9 +471,9 @@ parser! {
     rule integer__string() -> &'input str = n:tok(TokenType::Digits) { n.text.as_str() }
     rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
     rule integer() -> Integer = n:tok(TokenType::Digits) {? Integer::new(n.text.as_str(), n.span.clone()) }
-    rule binary_integer() -> Integer =  n:tok(TokenType::BinDigits) {? Integer::try_binary(n.text.as_str()) }
-    rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()) }
-    rule hex_integer() -> Integer = n:tok(TokenType::HexDigits) {? Integer::try_hex(n.text.as_str()) }
+    rule binary_integer() -> Integer =  n:tok(TokenType::BinDigits) {? Integer::try_binary(n.text.as_str()).map(|i| Integer { span: n.span.clone(), value: i.value }) }
+    rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()).map(|i| Integer { span: n.span.clone(), value: i.value }) }
+    rule hex_integer() -> Integer = n:tok(TokenType::HexDigits) {? Integer::try_hex(n.text.as_str()).map(|i| Integer { span: n.span.clone(), value: i.value }) }
     // real_literal_type is used specifically for real literals (returns RealTypeName)
     rule real_literal_type() -> (RealTypeName, &'input Token) =
       t:tok(TokenType::Real) { (RealTypeName::REAL, t) }
