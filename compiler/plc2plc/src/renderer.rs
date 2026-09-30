@@ -177,6 +177,30 @@ impl LibraryRenderer {
         Ok(())
     }
 
+    /// Writes the single `VAR_GLOBAL` block that a `CONFIGURATION` or a
+    /// `RESOURCE` may hold. The grammar allows only one block there, so the
+    /// declarations share it, and it carries the block qualifier that the
+    /// parser copied onto every declaration. Writes nothing when empty.
+    fn write_global_var_block(&mut self, vars: &[VarDecl]) -> Result<(), Diagnostic> {
+        let Some(first) = vars.first() else {
+            return Ok(());
+        };
+
+        self.write_ws("VAR_GLOBAL");
+        self.write_declaration_qualifier(&first.qualifier);
+        self.newline();
+
+        self.indent();
+        for var in vars {
+            self.write_var_decl_line(var)?;
+        }
+        self.outdent();
+
+        self.write_ws("END_VAR");
+        self.newline();
+        Ok(())
+    }
+
     fn render_data_source_kind(
         &mut self,
         source: &dsl::configuration::DataSourceKind,
@@ -1224,16 +1248,16 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.newline();
 
         self.indent();
+        // The grammar puts the resource's globals before its tasks and
+        // programs.
+        self.write_global_var_block(&node.global_vars)?;
+
         for task in node.tasks.iter() {
             self.visit_task_configuration(task)?;
         }
 
         for program in node.programs.iter() {
             self.visit_program_configuration(program)?;
-        }
-
-        for var in node.global_vars.iter() {
-            self.visit_var_decl(var)?;
         }
 
         self.outdent();
@@ -1290,6 +1314,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.newline();
 
         self.indent();
+        // The grammar puts the configuration's globals before its resources.
+        self.write_global_var_block(&node.global_var)?;
+
         for res in node.resource_decl.iter() {
             self.visit_resource_declaration(res)?;
         }
