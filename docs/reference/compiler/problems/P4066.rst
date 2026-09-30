@@ -17,6 +17,7 @@ the value is:
 - an instance whose type implements an interface that extends the required
   one
 - a variable of the same interface, or of an interface that extends it
+- the literal ``0``, which makes the variable refer to nothing
 
 The check applies to an assignment to a variable of an interface type, and
 to an argument passed to an input of an interface type when calling a
