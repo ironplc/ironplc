@@ -3,6 +3,9 @@
 //! The grammar allows at most one `VAR_GLOBAL` block in each, and only at a
 //! fixed position: before the resources of a configuration, and before the
 //! tasks and programs of a resource.
+//!
+//! Located globals (`x AT %QX0.0 : BOOL`) are left out: the parser rejects
+//! them in these blocks (#1913).
 
 use super::common::*;
 
