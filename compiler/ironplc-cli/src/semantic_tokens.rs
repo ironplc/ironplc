@@ -315,7 +315,7 @@ FUNCTION_BLOCK ABSTRACT Counter IMPLEMENTS ICounter
     Tick : TIME_OF_DAY; Tock : TOD; LTick : LTIME_OF_DAY; LTock : LTOD;
     Stamp : DATE_AND_TIME; Stamp2 : DT; LStamp : LDATE_AND_TIME; LStamp2 : LDT;
     Ptr : REF_TO INT := NULL; Alias : REFERENCE TO INT; Raw : POINTER TO INT;
-    Io AT %IX0.0 : BOOL; Partial AT %Q* : BOOL;
+    Io AT %IX12.7 : BOOL; Partial AT %Q* : BOOL;
   END_VAR
   METHOD Reset
     THIS^.Count := 0;
@@ -421,7 +421,7 @@ END_CONFIGURATION"#;
     ("NULL", KEYWORD), ("Alias", VARIABLE), ("REFERENCE", KEYWORD), ("TO", KEYWORD),
     ("INT", KEYWORD), ("Raw", VARIABLE), ("POINTER", KEYWORD), ("TO", KEYWORD),
     ("INT", KEYWORD),
-    ("Io", VARIABLE), ("AT", KEYWORD), ("%IX0.0", OPERATOR), ("BOOL", KEYWORD),
+    ("Io", VARIABLE), ("AT", KEYWORD), ("%IX12.7", OPERATOR), ("BOOL", KEYWORD),
     ("Partial", VARIABLE), ("AT", KEYWORD), ("%Q*", OPERATOR), ("BOOL", KEYWORD),
     ("END_VAR", KEYWORD),
     ("METHOD", KEYWORD), ("Reset", VARIABLE),

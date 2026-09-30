@@ -11,6 +11,7 @@ mod constant_initializers;
 mod continue_statement;
 mod corpus;
 mod declarations;
+mod direct_address;
 mod enums;
 mod exit_return;
 mod fb_inheritance;
