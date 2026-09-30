@@ -27,8 +27,8 @@ use crate::{
     rule_program_var_hides_global, rule_range_limits, rule_real_literal_range, rule_ref_to,
     rule_stdlib_type_redefinition, rule_string_encoding_compat, rule_string_length_range,
     rule_string_literal_char_range, rule_struct_initializer_expression_allowed,
-    rule_task_names_unique, rule_temporal_literal_range, rule_unsupported_extension,
-    rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
+    rule_subscript_operand_array, rule_task_names_unique, rule_temporal_literal_range,
+    rule_unsupported_extension, rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
     rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
     semantic_context::SemanticContext,
@@ -389,6 +389,7 @@ pub(crate) fn semantic(
         rule_case_selector_type::apply,
         rule_constant_range::apply,
         rule_ref_to::apply,
+        rule_subscript_operand_array::apply,
     ];
 
     let mut all_diagnostics = vec![];

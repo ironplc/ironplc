@@ -1,0 +1,49 @@
+=====
+P4071
+=====
+
+.. problem-summary:: P4071
+
+This error occurs when an array is given a different number of subscripts
+than it has dimensions. An ``ARRAY[1..3] OF DINT`` takes one subscript and
+an ``ARRAY[1..2, 1..3] OF DINT`` takes two; more selects past the element,
+and fewer stops before reaching one.
+
+The error names the array, its number of dimensions and the number of
+subscripts it was given.
+
+Example
+-------
+
+The following code will generate error P4071:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           values : ARRAY[1..3] OF DINT;
+           matrix : ARRAY[1..2, 1..3] OF DINT;
+           result : DINT;
+       END_VAR
+
+       result := values[1, 2];     (* Error: values has one dimension *)
+       result := matrix[1, 2, 3];  (* Error: matrix has two dimensions *)
+   END_PROGRAM
+
+To fix this error, give one subscript for each dimension of the array:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           values : ARRAY[1..3] OF DINT;
+           matrix : ARRAY[1..2, 1..3] OF DINT;
+           result : DINT;
+       END_VAR
+
+       result := values[2];
+       result := matrix[1, 2];
+   END_PROGRAM
+
+See :doc:`/reference/language/data-types/derived/array-types` for how to
+subscript an array.
