@@ -1,4 +1,3 @@
-
 use crate::type_environment::TypeEnvironment;
 
 use super::apply;
@@ -565,4 +564,71 @@ END_INTERFACE
 
     assert_eq!(1, diagnostics.len());
     assert_eq!(Problem::UndeclaredUnknownType.code(), diagnostics[0].code);
+}
+
+fn only_function_block_variable(library: &Library, name: &str) -> VarDecl {
+    library
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            LibraryElementKind::FunctionBlockDeclaration(fb) => Some(fb),
+            _ => None,
+        })
+        .unwrap()
+        .variables
+        .iter()
+        .find(|v| v.identifier.symbolic_id() == Some(&Id::from(name)))
+        .unwrap()
+        .clone()
+}
+
+#[test]
+fn apply_when_variable_has_interface_type_then_resolves_to_interface() {
+    let program = "
+INTERFACE I_Comm
+END_INTERFACE
+
+FUNCTION_BLOCK FB_Device
+VAR
+    comm : I_Comm;
+END_VAR
+END_FUNCTION_BLOCK
+        ";
+    let input =
+        ironplc_parser::parse_program(program, &FileId::default(), &interface_options()).unwrap();
+    let mut type_environment = TypeEnvironment::new();
+    let (result, diagnostics) = apply(input, &mut type_environment).unwrap();
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    assert_eq!(
+        InitialValueAssignmentKind::Interface(InterfaceInitializer {
+            type_name: TypeName::from("I_Comm"),
+        }),
+        only_function_block_variable(&result, "comm").initializer
+    );
+}
+
+#[test]
+fn apply_when_interface_variable_has_initial_value_then_p9999_and_interface_kept() {
+    let program = "
+INTERFACE I_Comm
+END_INTERFACE
+
+FUNCTION_BLOCK FB_Device
+VAR
+    comm : I_Comm := serial;
+END_VAR
+END_FUNCTION_BLOCK
+        ";
+    let input =
+        ironplc_parser::parse_program(program, &FileId::default(), &interface_options()).unwrap();
+    let mut type_environment = TypeEnvironment::new();
+    let (result, diagnostics) = apply(input, &mut type_environment).unwrap();
+
+    assert_eq!(1, diagnostics.len(), "{diagnostics:?}");
+    assert_eq!("P9999", diagnostics[0].code);
+    assert!(matches!(
+        only_function_block_variable(&result, "comm").initializer,
+        InitialValueAssignmentKind::Interface(_)
+    ));
 }

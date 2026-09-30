@@ -2583,6 +2583,9 @@ pub enum InitialValueAssignmentKind {
     /// `init` sets the instance's own member values -- see
     /// [`FunctionBlockCallInitializer`].
     FunctionBlockCall(FunctionBlockCallInitializer),
+    /// A variable of an interface type (OOP extension), see
+    /// [`InterfaceInitializer`].
+    Interface(InterfaceInitializer),
     Subrange(SubrangeSpecificationKind),
     Structure(StructureInitializationDeclaration),
     Array(ArrayInitialValueAssignment),
@@ -2657,6 +2660,9 @@ impl InitialValueAssignmentKind {
             InitialValueAssignmentKind::FunctionBlockCall(function_block_call_initializer) => {
                 TypeReference::Named(function_block_call_initializer.type_name.clone())
             }
+            InitialValueAssignmentKind::Interface(interface_initializer) => {
+                TypeReference::Named(interface_initializer.type_name.clone())
+            }
             InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
                 match subrange_specification_kind {
                     SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
@@ -2699,6 +2705,7 @@ impl InitialValueAssignmentKind {
             InitialValueAssignmentKind::None(_)
             | InitialValueAssignmentKind::FunctionBlock(_)
             | InitialValueAssignmentKind::FunctionBlockCall(_)
+            | InitialValueAssignmentKind::Interface(_)
             | InitialValueAssignmentKind::Subrange(_)
             | InitialValueAssignmentKind::LateResolvedType(_)
             | InitialValueAssignmentKind::SimpleExpr(_) => false,
@@ -2870,6 +2877,18 @@ impl HasEnumeratedValues for EnumeratedValuesInitializer {
     fn values_span(&self) -> SourceSpan {
         self.span()
     }
+}
+
+/// `x : I_X`, a variable of an interface type (OOP extension).
+///
+/// The value refers to a function block instance that implements the
+/// interface. The parser cannot tell an interface name from other type
+/// names, so this only comes from the type resolver (ADR-0050). An
+/// interface variable has no initializer: it starts out referring to
+/// nothing.
+#[derive(Clone, PartialEq, Debug, Recurse)]
+pub struct InterfaceInitializer {
+    pub type_name: TypeName,
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]

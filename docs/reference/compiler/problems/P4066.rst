@@ -1,0 +1,84 @@
+=====
+P4066
+=====
+
+.. problem-summary:: P4066
+
+This error occurs when a value is used where an interface is required, but
+the value's type does not implement that interface.
+
+A variable of an interface type refers to an instance of a function block
+type that implements the interface. The compiler accepts a value for it when
+the value is:
+
+- an instance of a function block type that lists the interface in
+  ``IMPLEMENTS``, or inherits it through ``EXTENDS`` from a base type that
+  does
+- an instance whose type implements an interface that extends the required
+  one
+- a variable of the same interface, or of an interface that extends it
+
+The check applies to an assignment to a variable of an interface type, and
+to an argument passed to an input of an interface type when calling a
+function block or method.
+
+Example
+-------
+
+The following code will generate error P4066:
+
+.. code-block::
+
+   INTERFACE I_Comm
+   END_INTERFACE
+
+   FUNCTION_BLOCK FB_Serial
+   END_FUNCTION_BLOCK
+
+   PROGRAM main
+   VAR
+       comm   : I_Comm;
+       serial : FB_Serial;
+   END_VAR
+       comm := serial;  (* Error: FB_Serial does not implement I_Comm *)
+   END_PROGRAM
+
+``FB_Serial`` does not list ``I_Comm`` in ``IMPLEMENTS``, so an instance of it
+cannot be used as an ``I_Comm``.
+
+To fix this error, declare that the function block type implements the
+interface:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Serial IMPLEMENTS I_Comm
+   END_FUNCTION_BLOCK
+
+An interface does not convert to an interface it is extended by. The
+following code will also generate error P4066, because not every ``I_Base``
+is an ``I_Comm``:
+
+.. code-block::
+
+   INTERFACE I_Base
+   END_INTERFACE
+
+   INTERFACE I_Comm EXTENDS I_Base
+   END_INTERFACE
+
+   PROGRAM main
+   VAR
+       base : I_Base;
+       comm : I_Comm;
+   END_VAR
+       comm := base;  (* Error: I_Base does not implement I_Comm *)
+   END_PROGRAM
+
+The assignment in the other direction, ``base := comm``, is allowed.
+
+See Also
+--------
+
+- :doc:`/reference/language/object-orientation/interface` — ``INTERFACE``
+- :doc:`/reference/language/object-orientation/implements` — ``IMPLEMENTS``
+- :doc:`P4035` — Assignment value type does not match assignment target type

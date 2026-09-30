@@ -280,7 +280,7 @@ fn render_type(ty: &SemanticType) -> String {
             format!("ARRAY OF {}", render_type(element_type))
         }
         SemanticType::Subrange { base_type, .. } => render_type(base_type),
-        SemanticType::FunctionBlock { name, .. } => name.clone(),
+        SemanticType::FunctionBlock { name, .. } | SemanticType::Interface { name } => name.clone(),
         SemanticType::Function { .. } => "FUNCTION".into(),
         SemanticType::Reference { target_type } => {
             format!("REF_TO {}", render_type(target_type))
