@@ -330,9 +330,7 @@ impl InitializerFolder<'_> {
             }
         }
     }
-}
 
-impl InitializerFolder<'_> {
     /// Checks an initializer that is exactly one named constant against the
     /// type it initializes, as assigning the constant would be checked
     /// (`type_compat::are_types_compatible`). Returns the P4022 to report,
