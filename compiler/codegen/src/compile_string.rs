@@ -8,7 +8,7 @@ use ironplc_container::opcode;
 use ironplc_container::CharWidth;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
+use ironplc_dsl::textual::{CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
 
 use super::compile::{string_region_size, CompileContext, DEFAULT_OP_TYPE};
 use super::compile_expr::{compile_expr, resolve_variable_name};
@@ -44,21 +44,23 @@ pub(crate) fn compile_len(
     Ok(())
 }
 
-/// Compiles a string comparison expression.
+/// Compiles the comparison `op` of the strings `left` and `right`.
 ///
 /// Emits a `CMP_STR` builtin call (three-way comparison returning -1/0/+1),
 /// followed by an integer comparison against zero to produce the boolean result.
 pub(crate) fn compile_string_compare(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    compare: &CompareExpr,
+    op: &CompareOp,
+    left: &Expr,
+    right: &Expr,
 ) -> Result<(), Diagnostic> {
-    let span = compare.left.span();
+    let span = left.span();
     // CMP_STR compares two data-region slots and requires them to agree on an
     // encoding, so the pair resolves one width and both are produced at it.
-    let char_width = resolve_operand_char_width(ctx, &[&compare.left, &compare.right], &span)?;
-    let left_offset = resolve_string_arg(emitter, ctx, &compare.left, &span, char_width)?;
-    let right_offset = resolve_string_arg(emitter, ctx, &compare.right, &span, char_width)?;
+    let char_width = resolve_operand_char_width(ctx, &[left, right], &span)?;
+    let left_offset = resolve_string_arg(emitter, ctx, left, &span, char_width)?;
+    let right_offset = resolve_string_arg(emitter, ctx, right, &span, char_width)?;
 
     // Push data_offsets as stack values.
     let left_pool = ctx.add_i32_constant(left_offset as i32);
@@ -71,7 +73,7 @@ pub(crate) fn compile_string_compare(
     let zero_idx = ctx.add_i32_constant(0);
     emitter.emit_load_const_i32(zero_idx);
 
-    match compare.op {
+    match op {
         CompareOp::Eq => emitter.emit_eq_i32(),
         CompareOp::Ne => emitter.emit_ne_i32(),
         CompareOp::Lt => emitter.emit_lt_i32(),

@@ -19,6 +19,7 @@ use super::compile::{
     DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
 use super::compile_arith::compile_arith_fold;
+use super::compile_comparison::{compile_comparison, is_comparison};
 use super::compile_expr::{
     compile_expr, emit_compare_op, emit_mod, emit_mul, emit_not, emit_sub, emit_truncation,
     op_type, op_type_from_expr, storage_bits,
@@ -437,6 +438,12 @@ fn compile_operator_form(
 ) -> Result<(), Diagnostic> {
     match operator {
         FormOf::Arithmetic(op) => compile_arith_fold(emitter, ctx, func, op, op_type),
+        // A comparison computes at the type of its operands, not at the
+        // enclosing `op_type`, which is the type of the BOOL it yields.
+        FormOf::Compare(op) if is_comparison(op) => {
+            let (left, right) = extract_two_positional_args(func)?;
+            compile_comparison(emitter, ctx, op, left, right, op_type)
+        }
         FormOf::Compare(op) => {
             compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {
                 emit_compare_op(emitter, op, op_type)
