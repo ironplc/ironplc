@@ -143,6 +143,7 @@ END_PROGRAM
 #[case::subrange_end("DINT", "0..4294967295")]
 #[case::hex_64("LINT", "16#FFFFFFFFFFFFFFFF")]
 #[case::negative_unsigned_64("ULINT", "-1")]
+#[case::beyond_every_type("DINT", "16#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")]
 fn compile_when_case_label_does_not_fit_selector_width_then_constant_overflow(
     #[case] selector_type: &str,
     #[case] label: &str,
