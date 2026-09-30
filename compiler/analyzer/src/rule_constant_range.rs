@@ -83,6 +83,8 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
+    call_assignment_check::bind_inputs,
+    callee_resolution::FunctionBlocks,
     function_environment::FunctionEnvironment,
     intermediate_type::{ByteSized, FunctionBlockVarType, IntermediateType},
     result::SemanticResult,
@@ -99,10 +101,12 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
+    let function_blocks = FunctionBlocks::from_library(lib);
     run_rule(
         RuleConstantRange {
             type_environment: context.types(),
             function_environment: context.functions(),
+            function_blocks: &function_blocks,
             // `Declarations::new` opens the base scope, where declarations
             // made outside any POU land. Opening another here would leave the
             // stack unbalanced when the table drops.
@@ -117,6 +121,9 @@ struct RuleConstantRange<'a> {
     type_environment: &'a TypeEnvironment,
     /// The signature of every function, which states its parameters' types.
     function_environment: &'a FunctionEnvironment,
+    /// The declaration of every user-defined function block, which states
+    /// the order of its inputs.
+    function_blocks: &'a FunctionBlocks<'a>,
     /// The declared type of every variable in scope.
     declarations: Declarations<'a>,
     diagnostics: Vec<Diagnostic>,
@@ -466,6 +473,22 @@ impl RuleConstantRange<'_> {
             return;
         };
 
+        // A user-defined block binds its arguments by its declaration, which
+        // lists every input: the type's fields leave out those whose type
+        // they do not resolve (a STRING input), which would shift every
+        // positional argument after one.
+        if let Some(fb) = self.function_blocks.get(&type_name) {
+            for (param, declared) in bind_inputs(fb, &node.params) {
+                let name = declared.and_then(|decl| decl.identifier.symbolic_id());
+                let field = name.and_then(|name| fields.iter().find(|field| field.name == *name));
+                if let (Some(field), Some(arg)) = (field, param.input_expr()) {
+                    self.check_expr(arg, &field.field_type);
+                }
+            }
+            return;
+        }
+
+        // A standard-library block's type lists all of its inputs.
         let mut positional = fields
             .iter()
             .filter(|field| field.var_type == Some(FunctionBlockVarType::Input));

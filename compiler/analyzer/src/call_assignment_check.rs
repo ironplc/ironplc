@@ -106,6 +106,54 @@ pub(crate) struct AssignmentCheckLabels<'a> {
     pub(crate) decl_label: &'a str,
 }
 
+/// Refuses a call that mixes named and positional inputs (P4001).
+///
+/// A call is either formal, naming every input, or non-formal, listing
+/// them in declaration order; output assignments (`=>`) take no part.
+pub(crate) fn check_not_mixed(
+    call_span: &SourceSpan,
+    params: &[ParamAssignmentKind],
+    labels: &AssignmentCheckLabels,
+) -> Option<Diagnostic> {
+    let named = params
+        .iter()
+        .any(|p| matches!(p, ParamAssignmentKind::NamedInput(_)));
+    let positional = params
+        .iter()
+        .any(|p| matches!(p, ParamAssignmentKind::PositionalInput(_)));
+    (named && positional).then(|| {
+        Diagnostic::problem(
+            Problem::FunctionCallMixedArgTypes,
+            Label::span(call_span.clone(), labels.call_label),
+        )
+        .with_context(labels.context_key, &labels.owner_name.to_string())
+    })
+}
+
+/// Refuses a non-formal call whose number of positional inputs is not
+/// `required_inputs`, the number of inputs the callee declares (P4003). A
+/// call without positional inputs is formal and is not checked here.
+pub(crate) fn check_positional_count(
+    required_inputs: usize,
+    call_span: &SourceSpan,
+    params: &[ParamAssignmentKind],
+    labels: &AssignmentCheckLabels,
+) -> Option<Diagnostic> {
+    let actual = params
+        .iter()
+        .filter(|p| matches!(p, ParamAssignmentKind::PositionalInput(_)))
+        .count();
+    (actual != 0 && actual != required_inputs).then(|| {
+        Diagnostic::problem(
+            Problem::FunctionInvocationRequiresFormal,
+            Label::span(call_span.clone(), labels.call_label),
+        )
+        .with_context(labels.context_key, &labels.owner_name.to_string())
+        .with_context("required", &format!("{required_inputs}"))
+        .with_context("actual", &format!("{actual}"))
+    })
+}
+
 /// Validates a call's parameter assignments against `owner`'s declared
 /// `VAR_INPUT`/`VAR_IN_OUT`/`VAR_OUTPUT` variables:
 ///
@@ -129,69 +177,44 @@ pub(crate) fn check_assignments(
     params: &[ParamAssignmentKind],
     labels: &AssignmentCheckLabels,
 ) -> Vec<Diagnostic> {
-    // Sort the inputs as either named, positional, and outputs
-    let mut formal = Vec::new();
-    let mut non_formal = Vec::new();
-    let mut outputs = Vec::new();
-    for param in params {
-        match param {
-            ParamAssignmentKind::NamedInput(n) => formal.push(n),
-            ParamAssignmentKind::PositionalInput(p) => non_formal.push(p),
-            // Don't care outputs here
-            ParamAssignmentKind::Output(o) => outputs.push(o),
-        }
-    }
-
-    // Don't allow a mixture so assert that either named is empty or
-    // positional is empty
-    if !formal.is_empty() && !non_formal.is_empty() {
-        return vec![Diagnostic::problem(
-            Problem::FunctionCallMixedArgTypes,
-            Label::span(call_span.clone(), labels.call_label),
-        )
-        .with_context(labels.context_key, &labels.owner_name.to_string())];
+    if let Some(mixed) = check_not_mixed(&call_span, params, labels) {
+        return vec![mixed];
     }
 
     let mut diagnostics = Vec::new();
 
     // Check that the names and types match. Unassigned values are
     // permitted so we use the assignments as the set to iterate
-    if !formal.is_empty() {
-        // TODO check the types.
-        for (param, declared) in bind_inputs(owner, params) {
-            if let (ParamAssignmentKind::NamedInput(name), None) = (param, declared) {
-                diagnostics.push(
-                    Diagnostic::problem(
-                        Problem::FunctionInvocationMissingInput,
-                        Label::span(call_span.clone(), labels.call_label),
-                    )
-                    .with_context(labels.context_key, &labels.owner_name.to_string())
-                    .with_context_id("undefined input", &name.name)
-                    .with_secondary(Label::span(owner_span.clone(), labels.decl_label)),
-                );
-            }
-        }
-    }
-
-    // Check that the number of variables matches exactly the number
-    // of expected inputs and the types match.
-    if !non_formal.is_empty() {
-        let num_required_inputs = count_input_type(owner);
-        if non_formal.len() != num_required_inputs {
+    // TODO check the types.
+    for (param, declared) in bind_inputs(owner, params) {
+        if let (ParamAssignmentKind::NamedInput(name), None) = (param, declared) {
             diagnostics.push(
                 Diagnostic::problem(
-                    Problem::FunctionInvocationRequiresFormal,
+                    Problem::FunctionInvocationMissingInput,
                     Label::span(call_span.clone(), labels.call_label),
                 )
                 .with_context(labels.context_key, &labels.owner_name.to_string())
-                .with_context("required", &format!("{num_required_inputs}"))
-                .with_context("actual", &format!("{}", non_formal.len())),
+                .with_context_id("undefined input", &name.name)
+                .with_secondary(Label::span(owner_span.clone(), labels.decl_label)),
             );
         }
     }
 
+    // Check that the number of variables matches exactly the number
+    // of expected inputs.
+    diagnostics.extend(check_positional_count(
+        count_input_type(owner),
+        &call_span,
+        params,
+        labels,
+    ));
+
     // Check that the assigned output parameter names match the actual
     // output parameter names
+    let outputs = params.iter().filter_map(|param| match param {
+        ParamAssignmentKind::Output(output) => Some(output),
+        _ => None,
+    });
     for output in outputs {
         if find_output_type(owner, &output.src).is_none() {
             diagnostics.push(

@@ -453,6 +453,26 @@ fn apply_when_call_argument_out_of_range_then_err(
     );
 }
 
+/// A non-formal call binds by position among the block's declared inputs. A
+/// STRING input has no field in the block's type, yet still takes its place.
+#[rstest]
+#[case::positional("l('abc', 300);\n", 1)]
+#[case::named("l(s := 'abc', i := 300);\n", 1)]
+#[case::in_range("l('abc', 255);\n", 0)]
+fn apply_when_fb_call_has_string_input_then_later_input_checked(
+    #[case] body: &str,
+    #[case] expected: usize,
+) {
+    let program = format!(
+        "FUNCTION_BLOCK LABELLED
+VAR_INPUT s : STRING; i : USINT; END_VAR
+END_FUNCTION_BLOCK
+{}",
+        program_with("l : LABELLED;\n", body)
+    );
+    assert_eq!(out_of_range_count(&program), expected);
+}
+
 /// A generic parameter states no range, so a standard function's `ANY_NUM`
 /// argument is not checked; a concrete parameter of a conversion function is.
 #[rstest]

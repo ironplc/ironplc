@@ -32,6 +32,7 @@ use super::compile_fb_init::{compile_fb_field_store, resolve_fb_field_op_type};
 use super::compile_loop::{compile_for, compile_repeat, compile_while};
 use super::compile_method::compile_method_call_statement;
 use crate::emit::Emitter;
+use crate::fb_fields::FbFields;
 use crate::string_width::compile_string_value;
 
 /// Compiles a function block body.
@@ -483,23 +484,17 @@ fn compile_fb_call(
         .get(&fb_call.var_name)
         .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span()))?;
     let type_id = fb_info.type_id;
-    let field_indices = fb_info.field_indices.clone();
+    let fields = fb_info.fields.clone();
     let var_index = fb_info.var_index;
 
     // Push FB instance reference.
     emitter.emit_fb_load_instance(var_index);
 
-    // Store input parameters.
-    for param in &fb_call.params {
-        if let ParamAssignmentKind::NamedInput(input) = param {
-            let field_name = input.name.to_string().to_lowercase();
-            let field_idx = field_indices
-                .get(&field_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(input.name.span()))?;
-            let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
-            compile_expr(emitter, ctx, &input.expr, op_type)?;
-            emitter.emit_fb_store_param(*field_idx);
-        }
+    // Store input parameters, in the order the call lists them.
+    for (field_name, field_idx, expr) in bind_fb_inputs(fb_call, &fields)? {
+        let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
+        compile_expr(emitter, ctx, expr, op_type)?;
+        emitter.emit_fb_store_param(field_idx);
     }
 
     // Call the function block. Record a call-graph edge for user-defined
@@ -518,10 +513,10 @@ fn compile_fb_call(
     for param in &fb_call.params {
         if let ParamAssignmentKind::Output(output) = param {
             let field_name = output.src.to_string().to_lowercase();
-            let field_idx = field_indices
-                .get(&field_name)
+            let field_idx = fields
+                .index_of(&field_name)
                 .ok_or_else(|| Diagnostic::todo_with_span(output.src.span()))?;
-            emitter.emit_fb_load_param(*field_idx);
+            emitter.emit_fb_load_param(field_idx);
             let target_index = resolve_variable(ctx, &output.tgt)?;
             let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
             emit_store_var(emitter, target_index, op_type);
@@ -531,6 +526,61 @@ fn compile_fb_call(
     // Discard fb_ref.
     emitter.emit_pop();
     Ok(())
+}
+
+/// Pairs each input argument of a function block call with the field it is
+/// stored to: a named input (`IN := x`) by name, a non-formal (positional)
+/// input by position among the block's `VAR_INPUT` fields, in declaration
+/// order. Output assignments (`=>`) are not inputs and are not returned.
+///
+/// The analyzer refuses a non-formal call whose argument count is not the
+/// number of inputs (P4003), so reaching one here is a compiler defect. It
+/// is reported as one rather than binding some inputs and dropping the rest.
+fn bind_fb_inputs<'a>(
+    fb_call: &'a FbCall,
+    fields: &FbFields,
+) -> Result<Vec<(String, u8, &'a Expr)>, Diagnostic> {
+    let mut inputs = fields.inputs();
+    let mut positional = 0_usize;
+    let mut bound = Vec::with_capacity(fb_call.params.len());
+    for param in &fb_call.params {
+        match param {
+            ParamAssignmentKind::NamedInput(input) => {
+                let field_name = input.name.to_string().to_lowercase();
+                let field_idx = fields
+                    .index_of(&field_name)
+                    .ok_or_else(|| Diagnostic::todo_with_span(input.name.span()))?;
+                bound.push((field_name, field_idx, &input.expr));
+            }
+            ParamAssignmentKind::PositionalInput(input) => {
+                positional += 1;
+                let (field_name, field_idx) = inputs
+                    .next()
+                    .ok_or_else(|| nonformal_count_mismatch(fb_call, fields))?;
+                bound.push((field_name.to_owned(), field_idx, &input.expr));
+            }
+            ParamAssignmentKind::Output(_) => {}
+        }
+    }
+    if positional > 0 && inputs.next().is_some() {
+        return Err(nonformal_count_mismatch(fb_call, fields));
+    }
+    Ok(bound)
+}
+
+/// Builds the internal error for a non-formal function block call whose
+/// argument count is not the block's number of inputs.
+#[track_caller]
+fn nonformal_count_mismatch(fb_call: &FbCall, fields: &FbFields) -> Diagnostic {
+    Diagnostic::internal_error_at(Label::span(
+        fb_call.span(),
+        format!(
+            "Non-formal call of '{}' does not give one argument for each of its {} inputs, \
+             and the analyzer did not reject it",
+            fb_call.var_name,
+            fields.inputs().count()
+        ),
+    ))
 }
 
 /// Compiles a slice of statements.

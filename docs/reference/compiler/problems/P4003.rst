@@ -28,6 +28,8 @@ The following code will generate error P4003:
    END_FUNCTION_BLOCK
 
 The function block invocation provides only one positional argument but the function block requires two inputs.
+A positional invocation gives one argument for each ``VAR_INPUT``, in declaration order. The same rule applies to a
+standard function block: ``TON`` declares ``IN`` and ``PT``, so ``MyTimer(TRUE)`` generates this error.
 
 To fix this error, provide the correct number of positional arguments:
 

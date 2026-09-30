@@ -64,7 +64,9 @@ Function blocks must be instantiated as variables before use:
        value := my_counter.count;
    END_PROGRAM
 
-Outputs are accessed using dot notation on the instance.
+Outputs are accessed using dot notation on the instance. A call may also
+pass its inputs by position, ``my_counter(FALSE)``; see
+:doc:`/reference/language/structured-text/function-call`.
 
 See Also
 --------

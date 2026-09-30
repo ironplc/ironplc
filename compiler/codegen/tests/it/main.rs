@@ -95,6 +95,7 @@ mod end_to_end_fb_ctd;
 mod end_to_end_fb_ctu;
 mod end_to_end_fb_ctud;
 mod end_to_end_fb_f_trig;
+mod end_to_end_fb_positional_args;
 mod end_to_end_fb_r_trig;
 mod end_to_end_fb_rs;
 mod end_to_end_fb_sr;

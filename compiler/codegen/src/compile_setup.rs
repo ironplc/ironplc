@@ -22,10 +22,10 @@ use super::compile::{
     char_width_for_string_type, emit_string_literal_load, string_region_size, CompileContext,
     FbInstanceInfo, OpType, OpWidth, StringVarInfo, DEFAULT_OP_TYPE,
 };
-use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
 use super::compile_stmt::resolve_string_max_length;
 use crate::emit::Emitter;
+use crate::fb_fields::resolve_fb_type;
 
 /// Assigns variable table indices and type info for all variable declarations.
 pub(crate) fn assign_variables(
@@ -132,16 +132,12 @@ pub(crate) fn assign_variables(
                                 var_index: index,
                                 type_id,
                                 data_offset,
-                                field_indices: field_map,
+                                fields: field_map,
                             },
                         );
-                    } else if let Some((num_fields, type_id, field_indices)) =
+                    } else if let Some((num_fields, type_id, fields)) =
                         ctx.user_fb_types.get(&fb_name).map(|user_fb| {
-                            (
-                                user_fb.num_fields,
-                                user_fb.type_id,
-                                user_fb.field_indices.clone(),
-                            )
+                            (user_fb.num_fields, user_fb.type_id, user_fb.fields.clone())
                         })
                     {
                         // User-defined function block.
@@ -158,7 +154,7 @@ pub(crate) fn assign_variables(
                                 var_index: index,
                                 type_id,
                                 data_offset,
-                                field_indices,
+                                fields,
                             },
                         );
                     }
