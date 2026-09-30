@@ -1,5 +1,6 @@
 pub mod arithmetic_overload;
 pub mod array;
+pub mod common_operand;
 pub mod enumeration;
 pub mod inherited_fields;
 pub mod operator_function_form;
