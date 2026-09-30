@@ -632,6 +632,23 @@ pub fn parse_and_run(source: &str, options: &CompilerOptions) -> (Container, VmB
     (container, bufs)
 }
 
+/// Asserts the full semantic analysis accepts `source`, then runs one scan.
+///
+/// [`parse`] runs type resolution but not the semantic rules, so a program
+/// the checker refuses would otherwise still compile and run here. Use this
+/// where a test must also show that `check` accepts the program.
+pub fn check_and_run(source: &str, options: &CompilerOptions) -> VmBuffers {
+    let library = parse_program(source, &FileId::default(), options).unwrap();
+    let (_, context) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
+    assert!(
+        !context.has_diagnostics(),
+        "check refused the program: {:?}",
+        context.diagnostics()
+    );
+    let (_container, bufs) = parse_and_run(source, options);
+    bufs
+}
+
 /// Parses, analyzes, compiles, and runs one scan cycle, returning `Err` on VM trap.
 /// Use this to test that certain programs produce runtime traps.
 pub fn parse_and_try_run(

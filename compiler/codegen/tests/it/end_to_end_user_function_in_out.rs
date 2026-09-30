@@ -6,23 +6,8 @@
 //! every program here is also run through the full analysis first: a program
 //! the checker refuses must not pass an end-to-end test.
 
-use crate::common::{parse_and_run, try_parse_and_compile, VmBuffers};
-use ironplc_dsl::core::FileId;
+use crate::common::{check_and_run, try_parse_and_compile};
 use ironplc_parser::options::{CompilerOptions, Dialect};
-use ironplc_parser::parse_program;
-
-/// Asserts the full semantic analysis accepts `source`, then runs one scan.
-fn check_and_run(source: &str, options: &CompilerOptions) -> VmBuffers {
-    let library = parse_program(source, &FileId::default(), options).unwrap();
-    let (_, context) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
-    assert!(
-        !context.has_diagnostics(),
-        "check refused the program: {:?}",
-        context.diagnostics()
-    );
-    let (_container, bufs) = parse_and_run(source, options);
-    bufs
-}
 
 fn assert_i32(source: &str, asserts: &[(usize, i32)]) {
     assert_i32_with(source, &CompilerOptions::default(), asserts);
