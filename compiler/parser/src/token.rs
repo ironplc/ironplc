@@ -17,7 +17,8 @@ pub struct Token {
     /// This is public only in the crate for the purpose of nice error messages.
     pub line: usize,
 
-    /// The column in the source text where the token begins.
+    /// The column in the source text where the token begins, counted in
+    /// UTF-16 code units (the language server protocol's default unit).
     /// This is public only in the crate for the purpose of nice error messages.
     pub col: usize,
 
