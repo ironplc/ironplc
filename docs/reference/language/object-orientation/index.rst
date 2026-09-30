@@ -36,7 +36,7 @@ Keywords
        is not yet compiled. Interface: parsed and analyzed
    * - :doc:`implements`
      - Declare that a function block type provides one or more interfaces
-     - Parsed and analyzed; the members are not yet checked
+     - Parsed and analyzed
    * - :doc:`abstract`
      - Mark a function block type as not directly instantiable
      - Parsed only

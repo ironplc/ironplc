@@ -1,0 +1,46 @@
+=====
+P4067
+=====
+
+.. problem-summary:: P4067
+
+This error occurs when a function block type lists an interface in
+``IMPLEMENTS`` but does not provide one of the interface's methods or
+properties.
+
+A function block that implements an interface promises a body for every
+member the interface declares, including the members of the interfaces it
+extends. A member inherited from a base type through ``EXTENDS`` counts. An
+``ABSTRACT`` function block must provide the members too.
+
+Example
+-------
+
+The following code will generate error P4067:
+
+.. code-block::
+
+   INTERFACE I_Comm
+       METHOD Send : BOOL
+       END_METHOD
+   END_INTERFACE
+
+   FUNCTION_BLOCK FB_Serial IMPLEMENTS I_Comm  (* Error: Send is missing *)
+   END_FUNCTION_BLOCK
+
+To fix this error, declare the member on the function block type:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Serial IMPLEMENTS I_Comm
+       METHOD Send : BOOL
+           Send := TRUE;
+       END_METHOD
+   END_FUNCTION_BLOCK
+
+See Also
+--------
+
+- :doc:`/reference/language/object-orientation/implements` — ``IMPLEMENTS``
+- :doc:`/reference/language/object-orientation/interface` — ``INTERFACE``
+- :doc:`P4068` — Function block member differs from the interface member it implements
