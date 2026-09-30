@@ -1262,9 +1262,11 @@ fn resolve_struct_field_array_element_op_type(
             crate::compile_struct::walk_struct_chain(ctx, &structured.record, &structured.field, 0)
                 .ok()?;
         if let ironplc_analyzer::intermediate_type::IntermediateType::Array {
-            element_type, ..
+            element_type,
+            dimensions,
         } = &field_type
         {
+            let (element_type, _) = crate::compile_array_nested::flatten(element_type, dimensions);
             return crate::compile_struct::resolve_field_op_type(element_type);
         }
     }

@@ -302,13 +302,16 @@ pub(crate) fn initialize_struct_fields(
             }
         } else if let IntermediateType::Array {
             element_type,
-            dimensions: array_dims,
+            dimensions,
         } = &field_info.field_type
         {
+            // An array of arrays of STRING is laid out as one array.
+            let (element_type, array_dims) =
+                crate::compile_array_nested::flatten(element_type, dimensions);
             if let IntermediateType::String {
                 max_len,
                 char_width,
-            } = element_type.as_ref()
+            } = element_type
             {
                 // STRING/WSTRING array field — initialize headers for each string element.
                 let max_length = max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16;
