@@ -12,6 +12,7 @@ mod constant_initializers;
 mod continue_statement;
 mod corpus;
 mod dialect_flags;
+mod direct_address;
 mod duration;
 mod enums;
 mod expression_spans;

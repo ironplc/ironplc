@@ -445,7 +445,10 @@ pub enum TokenType {
 
     #[regex(r"%[IQM]\*", ignore(case))]
     DirectAddressIncomplete,
-    #[regex(r"%[IQM]([XBWDL])?(\d(\.\d)*)", ignore(case))]
+    /// Direct address: `%` location prefix, optional size prefix, then one or
+    /// more `.`-separated integers of any number of digits, each allowing a
+    /// single `_` between digits (IEC 61131-3 B.1.4.1 `direct_variable`).
+    #[regex(r"%[IQM][XBWDL]?\d(_?\d)*(\.\d(_?\d)*)*", ignore(case))]
     DirectAddress,
     /// Partial-access bit selector: `%X<digits>` (case-insensitive), used as
     /// `var.%Xn` to access bit `n` of an integer variable. IEC 61131-3:2013
@@ -670,7 +673,7 @@ impl TokenType {
             TokenType::AnyString => "'ANY_STRING'",
             TokenType::AnyDate => "'ANY_DATE'",
             TokenType::DirectAddressIncomplete => "'%I*' | '%Q*' | '%M*' (incomplete address)",
-            TokenType::DirectAddress => "%[IQM]([XBWDL])?(\\d(\\.\\d)*) (direct address)",
+            TokenType::DirectAddress => "'%IX0.0' | '%MW10' | ... (direct address)",
             TokenType::PartialAccessBit => "'%X<n>' (partial-access bit selector)",
             TokenType::PartialAccessByte => "'%B<n>' (partial-access byte selector)",
             TokenType::PartialAccessWord => "'%W<n>' (partial-access word selector)",

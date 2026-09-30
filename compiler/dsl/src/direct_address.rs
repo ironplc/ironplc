@@ -3,8 +3,6 @@
 //!
 //! See section 2.4.1.1 and 2.4.3.1.
 
-use lazy_static::lazy_static;
-use regex::Regex;
 use std::fmt;
 
 use dsl_macro_derive::Recurse;
@@ -122,43 +120,72 @@ impl AddressAssignment {
     }
 }
 
-lazy_static! {
-    static ref DIRECT_ADDRESS_UNASSIGNED: Regex = Regex::new(r"%([IQM])\*").unwrap();
-    static ref DIRECT_ADDRESS: Regex = Regex::new(r"%([IQM])([XBWDL])?(\d(\.\d)*)").unwrap();
-}
+/// The error for text that is not a direct address.
+const NOT_A_DIRECT_ADDRESS: &str = "Value not convertible to direct variable";
 
+/// Parses a direct address following IEC 61131-3 (B.1.4.1):
+///
+/// ```text
+/// direct_variable ::= '%' location_prefix size_prefix integer {'.' integer}
+/// integer         ::= digit {['_'] digit}
+/// incompl_location ::= '%' ('I' | 'Q' | 'M') '*'
+/// ```
+///
+/// The size prefix is optional and letters are case-insensitive, as the
+/// lexer accepts them. A field that does not fit in a `u32` is an error.
 impl TryFrom<&str> for AddressAssignment {
     type Error = &'static str;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        if let Some(cap) = DIRECT_ADDRESS_UNASSIGNED.captures(value) {
-            let location_prefix = LocationPrefix::try_from(&cap[1])?;
+        let rest = value.strip_prefix('%').ok_or(NOT_A_DIRECT_ADDRESS)?;
+        let mut chars = rest.chars();
+        let location = LocationPrefix::try_from(chars.next().map(|c| c.to_ascii_uppercase()))?;
+        let rest = chars.as_str();
+
+        if rest == "*" {
             return Ok(AddressAssignment {
-                location: location_prefix,
+                location,
                 size: SizePrefix::Unspecified,
                 address: vec![],
                 position: SourceSpan::default(),
             });
         }
 
-        if let Some(cap) = DIRECT_ADDRESS.captures(value) {
-            let location_prefix = LocationPrefix::try_from(&cap[1])?;
-            let size_prefix = SizePrefix::try_from(&cap[2])?;
-            let pos: Vec<u32> = cap[3]
-                .split('.')
-                .map(|v| v.parse::<u32>().unwrap())
-                .collect();
+        let (size, fields) = match rest.chars().next() {
+            Some(c) if c.is_ascii_alphabetic() => (
+                SizePrefix::try_from(Some(c.to_ascii_uppercase()))?,
+                &rest[c.len_utf8()..],
+            ),
+            _ => (SizePrefix::Nil, rest),
+        };
 
-            return Ok(AddressAssignment {
-                location: location_prefix,
-                size: size_prefix,
-                address: pos,
-                position: SourceSpan::default(),
-            });
-        }
+        let address = fields
+            .split('.')
+            .map(parse_field)
+            .collect::<Result<Vec<u32>, _>>()?;
 
-        Err("Value not convertible to direct variable")
+        Ok(AddressAssignment {
+            location,
+            size,
+            address,
+            position: SourceSpan::default(),
+        })
     }
+}
+
+/// Parses one field of a direct address: `digit {['_'] digit}`.
+fn parse_field(field: &str) -> Result<u32, &'static str> {
+    let well_formed = field.starts_with(|c: char| c.is_ascii_digit())
+        && field.ends_with(|c: char| c.is_ascii_digit())
+        && !field.contains("__")
+        && field.chars().all(|c| c.is_ascii_digit() || c == '_');
+    if !well_formed {
+        return Err(NOT_A_DIRECT_ADDRESS);
+    }
+    field
+        .replace('_', "")
+        .parse::<u32>()
+        .map_err(|_| "Direct address field does not fit in 32 bits")
 }
 
 impl fmt::Debug for AddressAssignment {
@@ -211,6 +238,45 @@ mod tests {
             address: fields.to_vec(),
             position: SourceSpan::default(),
         }
+    }
+
+    #[rstest]
+    #[case("%MW10", LocationPrefix::M, SizePrefix::W, &[10])]
+    #[case("%IX12.7", LocationPrefix::I, SizePrefix::X, &[12, 7])]
+    #[case("%QD100", LocationPrefix::Q, SizePrefix::D, &[100])]
+    #[case("%IX1.2.3.4", LocationPrefix::I, SizePrefix::X, &[1, 2, 3, 4])]
+    #[case("%QL4294967295", LocationPrefix::Q, SizePrefix::L, &[u32::MAX])]
+    #[case("%I0", LocationPrefix::I, SizePrefix::Nil, &[0])]
+    #[case("%Q10.2", LocationPrefix::Q, SizePrefix::Nil, &[10, 2])]
+    #[case("%mb3", LocationPrefix::M, SizePrefix::B, &[3])]
+    #[case("%MW1_000", LocationPrefix::M, SizePrefix::W, &[1000])]
+    #[case("%I*", LocationPrefix::I, SizePrefix::Unspecified, &[])]
+    #[case("%m*", LocationPrefix::M, SizePrefix::Unspecified, &[])]
+    fn try_from_when_valid_address_then_fields(
+        #[case] text: &str,
+        #[case] location: LocationPrefix,
+        #[case] size: SizePrefix,
+        #[case] fields: &[u32],
+    ) {
+        assert_eq!(
+            AddressAssignment::try_from(text),
+            Ok(address(location, size, fields))
+        );
+    }
+
+    #[rstest]
+    #[case::no_percent("MW10")]
+    #[case::no_location("%W10")]
+    #[case::no_field("%MW")]
+    #[case::empty_field("%IX1..2")]
+    #[case::trailing_period("%IX1.")]
+    #[case::leading_underscore("%MW_1")]
+    #[case::trailing_underscore("%MW1_")]
+    #[case::double_underscore("%MW1__0")]
+    #[case::overflow("%MW4294967296")]
+    #[case::size_after_star("%IX*")]
+    fn try_from_when_invalid_address_then_error(#[case] text: &str) {
+        assert!(AddressAssignment::try_from(text).is_err());
     }
 
     #[rstest]
