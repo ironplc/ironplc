@@ -301,7 +301,7 @@ pub fn resolve_types(
     });
 
     library = run_reverting_on_error(library, &mut diagnostics, |lib| {
-        xform_resolve_type_aliases::apply(lib, &type_environment, &mut symbol_environment)
+        xform_resolve_type_aliases::apply(lib, &mut symbol_environment)
     });
 
     // Mark every variable the program never writes as CONSTANT, so the

@@ -1,54 +1,27 @@
-//! Transformation rule that resolves enumeration type aliases by
-//! duplicating the enumeration values of the base type to the alias type.
+//! Transformation rule that records each enumeration alias, so that the
+//! alias has the values of the enumeration it names.
 //!
-//! This phase runs after both type and symbol environments are built.
+//! An alias is what its declaration says it is: `TYPE B : A; END_TYPE` where
+//! `A` is an enumeration. It is never inferred from two types having an equal
+//! representation, because every enumeration with the same underlying type
+//! has an equal representation whatever its values (issue #1945).
 
 use crate::symbol_environment::SymbolEnvironment;
-use crate::type_environment::TypeEnvironment;
 use ironplc_dsl::common::*;
 use ironplc_dsl::diagnostic::Diagnostic;
 
 pub fn apply(
-    _lib: Library,
-    type_environment: &TypeEnvironment,
+    lib: Library,
     symbol_environment: &mut SymbolEnvironment,
 ) -> Result<Library, Vec<Diagnostic>> {
-    let mut errors = Vec::new();
-
-    // Find all enumeration aliases and duplicate their values
-    for (type_name, _) in type_environment.iter() {
-        if let Some(base_type) = find_base_type_for_alias(type_name, type_environment) {
-            if !type_environment.is_enumeration(type_name) {
-                continue;
-            }
-            if let Err(diagnostic) =
-                symbol_environment.duplicate_enumeration_values_for_alias(&base_type, type_name)
-            {
-                errors.push(diagnostic);
+    for element in &lib.elements {
+        if let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(decl)) =
+            element
+        {
+            if let SpecificationKind::Named(base) = &decl.spec_init.spec {
+                symbol_environment.insert_enumeration_alias(&decl.type_name, base);
             }
         }
     }
-
-    if errors.is_empty() {
-        Ok(_lib)
-    } else {
-        Err(errors)
-    }
-}
-
-/// Find the base type for an alias by looking for types with the same representation
-fn find_base_type_for_alias(
-    alias_type: &TypeName,
-    type_environment: &TypeEnvironment,
-) -> Option<TypeName> {
-    if let Some(alias_attrs) = type_environment.get(alias_type) {
-        // Find the first type that has the same representation (the base type)
-        for (other_name, other_attrs) in type_environment.iter() {
-            if other_name != alias_type && other_attrs.representation == alias_attrs.representation
-            {
-                return Some(other_name.clone());
-            }
-        }
-    }
-    None
+    Ok(lib)
 }

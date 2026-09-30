@@ -1,3 +1,4 @@
+use crate::enumeration_values::EnumerationValues;
 use indexmap::IndexMap;
 use ironplc_dsl::common::{DeclarationQualifier, TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
@@ -255,6 +256,9 @@ pub struct SymbolEnvironment {
     global_symbols: IndexMap<Id, SymbolInfo>,
     /// Scoped symbols (variables within functions, function blocks, etc.)
     scoped_symbols: IndexMap<ScopeKind, IndexMap<Id, SymbolInfo>>,
+    /// The values of each enumeration type, which the name-keyed tables
+    /// above cannot hold when two enumerations share a value name.
+    enumerations: EnumerationValues,
 }
 
 impl SymbolEnvironment {
@@ -262,6 +266,7 @@ impl SymbolEnvironment {
         Self {
             global_symbols: IndexMap::new(),
             scoped_symbols: IndexMap::new(),
+            enumerations: EnumerationValues::default(),
         }
     }
 
@@ -355,6 +360,7 @@ impl SymbolEnvironment {
         enum_type: &TypeName,
         scope: &ScopeKind,
     ) -> Result<(), Diagnostic> {
+        self.enumerations.insert(enum_type, name);
         let symbol_info = SymbolInfo::new(SymbolKind::EnumerationValue, scope.clone(), name.span())
             .with_enum_type(enum_type.clone());
 
@@ -372,25 +378,10 @@ impl SymbolEnvironment {
         Ok(())
     }
 
-    /// Duplicate enumeration values from one type to another (for aliases)
-    pub fn duplicate_enumeration_values_for_alias(
-        &mut self,
-        source_type: &TypeName,
-        alias_type: &TypeName,
-    ) -> Result<(), Diagnostic> {
-        // Find all enumeration values for the source type and collect them
-        let source_values: Vec<Id> = self
-            .get_enumeration_values_for_type(source_type)
-            .iter()
-            .map(|id| (*id).clone())
-            .collect();
-
-        // Duplicate each value with the alias type
-        for value_name in source_values {
-            self.insert_enumeration_value(&value_name, alias_type, &ScopeKind::Global)?;
-        }
-
-        Ok(())
+    /// Records that the enumeration `alias` is declared as an alias of
+    /// `base`, so it has the values of `base`.
+    pub fn insert_enumeration_alias(&mut self, alias: &TypeName, base: &TypeName) {
+        self.enumerations.insert_alias(alias, base);
     }
 
     /// Finds a symbol visible from the given scope.
@@ -474,24 +465,18 @@ impl SymbolEnvironment {
 
     /// Iterate over every symbol in the environment: the global symbols
     /// first, followed by every scoped symbol across all named scopes.
-    ///
-    /// This is the shared traversal used by the read-only lookups that need
-    /// to consider both global and scoped declarations.
+    #[cfg(test)]
     fn all_symbols(&self) -> impl Iterator<Item = (&Id, &SymbolInfo)> {
         self.global_symbols
             .iter()
             .chain(self.scoped_symbols.values().flat_map(|scope| scope.iter()))
     }
 
-    /// Get all enumeration values for a specific enumeration type
+    /// Get all enumeration values for a specific enumeration type, in
+    /// declaration order; for an alias, the values of the enumeration it
+    /// names.
     pub fn get_enumeration_values_for_type(&self, enum_type: &TypeName) -> Vec<&Id> {
-        self.all_symbols()
-            .filter(|(_, symbol)| {
-                matches!(symbol.kind, SymbolKind::EnumerationValue)
-                    && symbol.enum_type.as_ref() == Some(enum_type)
-            })
-            .map(|(name, _)| name)
-            .collect()
+        self.enumerations.values_of(enum_type)
     }
 }
 
@@ -506,6 +491,7 @@ impl std::fmt::Debug for SymbolEnvironment {
         f.debug_struct("SymbolEnvironment")
             .field("global_symbols", &self.global_symbols)
             .field("scoped_symbols", &self.scoped_symbols)
+            .field("enumerations", &self.enumerations)
             .finish()
     }
 }
