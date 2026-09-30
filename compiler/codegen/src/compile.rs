@@ -1064,8 +1064,12 @@ fn compile_program_with_functions(
         builder = add_line_map_entries(builder, compiled.function_id, &compiled.line_map);
     }
 
-    // Add user FB type descriptors to the container.
-    for fb_info in ctx.user_fb_types.values() {
+    // Add user FB type descriptors to the container, by type id: the map
+    // iterates in an order that differs between runs, and the same source
+    // must compile to the same bytes.
+    let mut user_fb_types: Vec<&UserFbTypeInfo> = ctx.user_fb_types.values().collect();
+    user_fb_types.sort_by_key(|fb_info| fb_info.type_id);
+    for fb_info in user_fb_types {
         builder = builder.add_user_fb_type(UserFbDescriptor {
             type_id: FbTypeId::new(fb_info.type_id),
             function_id: fb_info.function_id,
@@ -1161,7 +1165,10 @@ fn compile_program_with_functions(
     for entry in ctx.debug_string_layouts {
         builder = builder.add_string_layout(entry);
     }
-    for (type_name, values) in &ctx.enum_map.definitions {
+    // By type name, for the same reason as the user FB type descriptors.
+    let mut enum_defs: Vec<_> = ctx.enum_map.definitions.iter().collect();
+    enum_defs.sort_by_key(|(type_name, _)| *type_name);
+    for (type_name, values) in enum_defs {
         builder = builder.add_enum_def(EnumDefEntry {
             type_name: type_name.clone(),
             values: values.clone(),
