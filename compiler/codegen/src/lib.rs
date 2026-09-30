@@ -48,6 +48,7 @@ mod compile_fb_call;
 mod compile_fb_init;
 mod compile_fn;
 mod compile_initial_value;
+mod compile_interface;
 mod compile_loop;
 mod compile_method;
 mod compile_partial_access;

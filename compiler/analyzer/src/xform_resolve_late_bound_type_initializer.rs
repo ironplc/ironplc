@@ -31,6 +31,7 @@ enum TypeDefinitionKind {
     StructureInitialization,
     String(StringType, IntegerRef),
     FunctionBlock,
+    Interface,
     Reference(ReferenceTarget),
 }
 
@@ -126,6 +127,17 @@ impl Visitor<Diagnostic> for ScopedTable<'_, TypeName, TypeDefinitionKind> {
         // actually an identifier, so treat identifier and type as equivalent in this context.
         self.add_if_new(&node.name, TypeDefinitionKind::FunctionBlock)
     }
+
+    fn visit_interface_declaration(
+        &mut self,
+        node: &InterfaceDeclaration,
+    ) -> Result<(), Diagnostic> {
+        // As for a function block, the interface's name is its type name.
+        self.add_if_new(
+            &TypeName::from_id(&node.name),
+            TypeDefinitionKind::Interface,
+        )
+    }
 }
 
 struct TypeResolver<'a> {
@@ -140,6 +152,7 @@ enum ResolvedKind {
     FunctionBlock,
     Structure,
     Enumeration,
+    Interface,
     /// Any other declared type: an alias, a subrange, a string, an array.
     Other,
 }
@@ -154,6 +167,7 @@ impl TypeResolver<'_> {
                 SemanticType::FunctionBlock { .. } => ResolvedKind::FunctionBlock,
                 SemanticType::Structure { .. } => ResolvedKind::Structure,
                 SemanticType::Enumeration { .. } => ResolvedKind::Enumeration,
+                SemanticType::Interface { .. } => ResolvedKind::Interface,
                 _ => ResolvedKind::Other,
             });
         }
@@ -163,6 +177,7 @@ impl TypeResolver<'_> {
                 ResolvedKind::Structure
             }
             TypeDefinitionKind::Enumeration => ResolvedKind::Enumeration,
+            TypeDefinitionKind::Interface => ResolvedKind::Interface,
             _ => ResolvedKind::Other,
         })
     }
@@ -194,6 +209,17 @@ impl TypeResolver<'_> {
             ));
         };
         Ok(match (initial_value, kind) {
+            // An interface variable starts out referring to nothing. Giving
+            // it an initial value is not supported yet; keep the declaration
+            // so the rest of the library still resolves.
+            (_, ResolvedKind::Interface) => {
+                self.diagnostics
+                    .push(Diagnostic::not_implemented(Label::span(
+                        name.span(),
+                        "An initial value for a variable of an interface type is not yet supported by IronPLC",
+                    )));
+                InitialValueAssignmentKind::Interface(InterfaceInitializer { type_name: name })
+            }
             (LateResolvedInitialValue::Members(elements), ResolvedKind::FunctionBlock) => {
                 InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment {
                     type_name: name,
@@ -265,6 +291,11 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                             },
                         ));
                     }
+                    if ty.representation.is_interface() {
+                        return Ok(InitialValueAssignmentKind::Interface(
+                            InterfaceInitializer { type_name: name },
+                        ));
+                    }
                     // Subrange types (e.g., MY_RANGE : INT (1..100))
                     if ty.representation.is_subrange() {
                         return Ok(InitialValueAssignmentKind::Subrange(
@@ -293,6 +324,9 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                                 },
                             ))
                         }
+                        TypeDefinitionKind::Interface => Ok(InitialValueAssignmentKind::Interface(
+                            InterfaceInitializer { type_name: name },
+                        )),
                         TypeDefinitionKind::Structure => Ok(InitialValueAssignmentKind::Structure(
                             StructureInitializationDeclaration {
                                 type_name: name,

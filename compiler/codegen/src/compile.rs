@@ -272,6 +272,7 @@ pub fn compile_with_route_counts(
         .map_err(|_| Diagnostic::internal_error())?;
     let library = analysis.library();
     let context = analysis.context();
+    crate::compile_interface::reject_interface_variables(library)?;
     let runnable = crate::execution::runnable(&analysis)?;
 
     let reachable = context.reachable();
