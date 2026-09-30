@@ -1155,7 +1155,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &MethodPrototype,
     ) -> Result<Self::Value, Diagnostic> {
-        self.render_method_header(&MemberQualifiers::default(), &node.name, &node.return_type)?;
+        self.render_method_header(&node.qualifiers, &node.name, &node.return_type)?;
         self.render_callable_body(&node.variables, &node.edge_variables, &[])?;
         self.write_ws("END_METHOD");
         self.newline();
