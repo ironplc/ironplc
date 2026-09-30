@@ -17,10 +17,7 @@
 //! diagnostics are collected rather than aborting the walk.
 
 use ironplc_dsl::{
-    common::{
-        AddressAssignment, InitialValueAssignmentKind, Library, LocationPrefix, SizePrefix,
-        TypeReference, VariableType,
-    },
+    common::{InitialValueAssignmentKind, Library, TypeReference, VariableType},
     core::{Id, Located},
     diagnostic::Diagnostic,
     scope::ScopeNode,
@@ -157,7 +154,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
             }
             ironplc_dsl::common::VariableIdentifier::Direct(direct) => {
                 if let Some(name) = &direct.name {
-                    let address = format_address(&direct.address_assignment);
+                    let address = direct.address_assignment.to_string();
                     let result = self.symbol_env.insert_variable(
                         name,
                         symbol_kind,
@@ -383,24 +380,6 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
     }
 
     // TODO should this handle parameters?
-}
-
-fn format_address(addr: &AddressAssignment) -> String {
-    let loc = match addr.location {
-        LocationPrefix::I => "I",
-        LocationPrefix::Q => "Q",
-        LocationPrefix::M => "M",
-    };
-    let size = match addr.size {
-        SizePrefix::X => "X",
-        SizePrefix::B => "B",
-        SizePrefix::W => "W",
-        SizePrefix::D => "D",
-        SizePrefix::L => "L",
-        SizePrefix::Nil | SizePrefix::Unspecified => "",
-    };
-    let parts: Vec<String> = addr.address.iter().map(|a| a.to_string()).collect();
-    format!("%{loc}{size}{}", parts.join("."))
 }
 
 #[cfg(test)]

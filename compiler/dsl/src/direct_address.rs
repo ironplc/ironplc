@@ -170,11 +170,58 @@ impl fmt::Debug for AddressAssignment {
     }
 }
 
+/// Spells the address as IEC 61131-3 source text, such as `%IX0.0`,
+/// `%MW10` or the incomplete `%I*`.
 impl fmt::Display for AddressAssignment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AddressAssignment")
-            .field("location", &self.location)
-            .field("size", &self.size)
-            .finish()
+        let location = match self.location {
+            LocationPrefix::I => 'I',
+            LocationPrefix::Q => 'Q',
+            LocationPrefix::M => 'M',
+        };
+        let size = match self.size {
+            SizePrefix::Unspecified => "*",
+            SizePrefix::Nil => "",
+            SizePrefix::X => "X",
+            SizePrefix::B => "B",
+            SizePrefix::W => "W",
+            SizePrefix::D => "D",
+            SizePrefix::L => "L",
+        };
+        write!(f, "%{location}{size}")?;
+        for (index, field) in self.address.iter().enumerate() {
+            if index > 0 {
+                f.write_str(".")?;
+            }
+            write!(f, "{field}")?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    fn address(location: LocationPrefix, size: SizePrefix, fields: &[u32]) -> AddressAssignment {
+        AddressAssignment {
+            location,
+            size,
+            address: fields.to_vec(),
+            position: SourceSpan::default(),
+        }
+    }
+
+    #[rstest]
+    #[case(address(LocationPrefix::I, SizePrefix::X, &[0, 0]), "%IX0.0")]
+    #[case(address(LocationPrefix::M, SizePrefix::W, &[10]), "%MW10")]
+    #[case(address(LocationPrefix::Q, SizePrefix::Nil, &[1, 2, 3]), "%Q1.2.3")]
+    #[case(address(LocationPrefix::I, SizePrefix::Unspecified, &[]), "%I*")]
+    fn display_when_address_then_iec_spelling(
+        #[case] address: AddressAssignment,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(address.to_string(), expected);
     }
 }
