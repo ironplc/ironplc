@@ -208,7 +208,18 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                                     ),
                                 ))
                             } else {
-                                Diagnostic::todo_with_span(named.name.span())
+                                // The analyzer rejects a subscript on a
+                                // variable that is not an array (P4070), so
+                                // this is an array code generation has not
+                                // laid out, such as a CONFIGURATION global
+                                // declared with a named array type.
+                                Diagnostic::not_implemented(Label::span(
+                                    named.name.span(),
+                                    format!(
+                                        "Subscript of the array '{}', which has no storage layout here",
+                                        named.name
+                                    ),
+                                ))
                             }
                         })?;
                         return Ok(ResolvedAccess::ArrayElement {
@@ -287,6 +298,26 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
     }
 }
 
+/// The error for a subscripted structure field whose type is not an array.
+///
+/// The analyzer rejects a subscript on a field that is neither an array nor a
+/// reference to one (P4070), so any other type reaching here is a compiler
+/// bug. A reference to an array is valid, but a subscript through a
+/// reference field is not compiled yet.
+#[track_caller]
+pub(crate) fn subscripted_field_not_array(field: &Id, field_type: &IntermediateType) -> Diagnostic {
+    if matches!(field_type, IntermediateType::Reference { .. }) {
+        return Diagnostic::not_implemented(Label::span(
+            field.span(),
+            format!("Subscript through the reference field '{field}'"),
+        ));
+    }
+    Diagnostic::internal_error_at(Label::span(
+        field.span(),
+        format!("Field '{field}' is not an array type"),
+    ))
+}
+
 /// Resolves an array subscript whose base is a struct field.
 ///
 /// For `math.FACTS[x]`, the struct field `FACTS` is an array. We resolve the
@@ -306,10 +337,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         dimensions: array_dims,
     } = &field_type
     else {
-        return Err(Diagnostic::not_implemented(Label::span(
-            structured.field.span(),
-            format!("Field '{}' is not an array type", structured.field),
-        )));
+        return Err(subscripted_field_not_array(&structured.field, &field_type));
     };
 
     let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {

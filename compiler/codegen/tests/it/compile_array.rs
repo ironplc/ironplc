@@ -643,3 +643,35 @@ END_PROGRAM
         "P9997",
     );
 }
+
+// The analyzer rejects a subscript on a structure field that is not an array
+// (P4070). These run without the semantic rules, so they reach the codegen
+// sites that guard that invariant, which report a compiler bug.
+#[rstest::rstest]
+#[case::structure_field("r := s.n[1];")]
+#[case::field_of_array_of_structures_element("r := ss[1].n[2];")]
+#[case::field_holding_array_of_structures("r := o.inner[1].n;")]
+fn compile_when_subscripted_field_not_array_then_internal_error(#[case] statement: &str) {
+    let source = format!(
+        "
+TYPE
+  Inner : STRUCT
+    n : DINT;
+  END_STRUCT;
+  Outer : STRUCT
+    inner : Inner;
+  END_STRUCT;
+END_TYPE
+PROGRAM main
+  VAR
+    s : Inner;
+    ss : ARRAY[1..2] OF Inner;
+    o : Outer;
+    r : DINT;
+  END_VAR
+  {statement}
+END_PROGRAM
+"
+    );
+    assert_codegen_rejects_with(&source, statement, "P9998");
+}
