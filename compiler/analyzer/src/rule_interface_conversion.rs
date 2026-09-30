@@ -100,6 +100,11 @@ impl RuleInterfaceConversion<'_> {
     /// Reports `value` when it does not convert to `interface`. `target`
     /// names what receives the value, for the diagnostic.
     fn check(&mut self, interface: &TypeName, value: &Expr, target: &str) {
+        // `0` makes an interface variable refer to nothing (TwinCAT
+        // 3.1.4024 accepts `itf := 0;`).
+        if is_zero(value) {
+            return;
+        }
         if let Err(mismatch) =
             value_type::check(self.context.types(), interface, value, self.options)
         {
@@ -142,6 +147,14 @@ impl RuleInterfaceConversion<'_> {
         self.instances.clear();
         result
     }
+}
+
+/// Whether `value` is the integer literal `0`.
+fn is_zero(value: &Expr) -> bool {
+    matches!(
+        &value.kind,
+        ExprKind::Const(ConstantKind::IntegerLiteral(literal)) if literal.value.value.value == 0
+    )
 }
 
 impl Visitor<Infallible> for RuleInterfaceConversion<'_> {

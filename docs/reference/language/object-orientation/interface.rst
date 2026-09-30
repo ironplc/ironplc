@@ -106,7 +106,9 @@ A variable can have an interface type. It refers to an instance of a
 function block type that implements the interface, directly, through a base
 type it :doc:`extends <extends>`, or through an interface that extends the
 one required. A variable of an interface type starts out referring to
-nothing and cannot have an initial value.
+nothing and cannot have an initial value. Assigning ``0`` makes it refer to
+nothing again, and comparing it with ``0`` tells whether it refers to an
+instance.
 
 .. code-block::
 
