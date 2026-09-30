@@ -155,6 +155,7 @@ mod end_to_end_sel_float;
 mod end_to_end_sel_lint;
 mod end_to_end_shift;
 mod end_to_end_short_circuit;
+mod end_to_end_short_temporal_widening;
 mod end_to_end_sizeof;
 mod end_to_end_sqrt;
 mod end_to_end_string;

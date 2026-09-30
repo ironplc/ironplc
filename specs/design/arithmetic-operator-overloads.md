@@ -320,6 +320,10 @@ than an expression, so a routine's left operand is either one. A short-width
 operand of a long form is loaded at 32 bits and widened by its signedness, as
 ADR-0001 loads any narrower integer: a `TIME` is sign-extended and a date
 type is zero-extended.
+The typed routine leaves its result at its own width. `compile_expr` widens
+it to the enclosing width by the result's signedness, as it widens every
+expression, so a `DATE_AND_TIME` result stored into an `LDATE_AND_TIME` is
+zero-extended and a `TIME` result stored into an `LTIME` is sign-extended.
 
 **Numeric width.** A numeric binary expression compiles at the width of its
 resolved type, not at the width of the variable it is assigned to. An operand
@@ -501,6 +505,8 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 **REQ-AO-codegen-011** A call to the function form of a numeric operator computes each fold step as the operator expression does, so `ADD(i, r)` gives 4.5 for `INT` 3 and `REAL` 1.5.
 
 **REQ-AO-codegen-012** An arithmetic expression whose resolved type is not a concrete elementary numeric or bit-string type, such as a subrange, compiles at the enclosing operation type as before this design.
+
+**REQ-AO-codegen-013** The result of an operator expression or a typed call on short-width operands, stored into a long target, is widened by its signedness: a `DATE_AND_TIME` or `TIME_OF_DAY` result is zero-extended, so `dt + t` after 2038 assigned to an `LDATE_AND_TIME` stays positive, and a `TIME` result is sign-extended.
 
 ## Out of scope
 
