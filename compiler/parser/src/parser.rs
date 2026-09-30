@@ -1769,11 +1769,9 @@ parser! {
     // B.1.7 Configuration elements
     rule configuration_name() -> Id = identifier()
     rule resource_type_name() -> Id = identifier()
-    // TODO this is missing some
-    pub rule configuration_declaration() -> ConfigurationDeclaration = tok(TokenType::Configuration) _ n:configuration_name() _ g:global_var_declarations()? _ r:resource_declaration() _ i:instance_specific_initializations()? _ tok(TokenType::EndConfiguration) {
+    // TODO this is missing single_resource_declaration and access_declarations
+    pub rule configuration_declaration() -> ConfigurationDeclaration = tok(TokenType::Configuration) _ n:configuration_name() _ g:global_var_declarations()? _ r:(resource_declaration() ++ _) _ i:instance_specific_initializations()? _ tok(TokenType::EndConfiguration) {
       let g = g.unwrap_or_default();
-      // TODO this should really be multiple items
-      let r = vec![r];
 
       let mut fb_inits: Vec<FunctionBlockInit> = Vec::new();
       let mut located_var_inits: Vec<LocatedVarInit> = Vec::new();
@@ -1805,7 +1803,6 @@ parser! {
         programs: resource.1,
       }
     }
-    // TODO need to have more than one
     rule single_resource_declaration() -> (Vec<TaskConfiguration>, Vec<ProgramConfiguration>) = t:semisep(<task_configuration()>)? _ p:semisep_oneplus(<program_configuration()>) { (t.unwrap_or_default(), p) }
     rule resource_name() -> Id = identifier()
     rule access_declarations() -> VarDeclarations = tok(TokenType::VarAccess) _ decls:semisep_oneplus(<access_declaration()>) _ tok(TokenType::EndVar) { VarDeclarations::ConfigAccess(decls) }
