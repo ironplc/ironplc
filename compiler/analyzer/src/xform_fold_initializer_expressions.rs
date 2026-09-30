@@ -34,6 +34,15 @@
 //! error. So `bad : INT := 10/ZERO` reports P4037 alone there, where the
 //! enabled arm reports P4039.
 //!
+//! An initializer that is exactly one named constant (`x : UDINT := C;`)
+//! is also a constant expression. Substituting the constant's value leaves
+//! only a literal, which the later literal checks would accept for any
+//! type of the same family (`C : UDINT` initializing an `INT`). So the
+//! enabled arm first checks the constant's declared type against the
+//! variable's, with the relation an assignment uses, and reports P4022 on
+//! a mismatch; the initializer is then normalized to an uninitialized
+//! `Simple`, as for an expression that does not reduce.
+//!
 //! ## Before
 //!
 //! ```ignore
@@ -61,15 +70,27 @@ use ironplc_problems::Problem;
 
 use crate::constant_folding::{fold_error_to_diagnostic, try_fold_binary, try_fold_unary};
 use crate::scoped_table::{ScopedTable, Value};
+use crate::type_compat::are_types_compatible;
+use crate::type_environment::TypeEnvironment;
 
-impl Value for ConstantKind {}
+/// A `CONSTANT` declaration whose value is known: the value, and the type
+/// it was declared with.
+#[derive(Clone, Debug)]
+struct NamedConstant {
+    value: ConstantKind,
+    type_name: TypeName,
+}
+
+impl Value for NamedConstant {}
 
 pub fn apply(
     lib: Library,
+    types: &TypeEnvironment,
     options: &CompilerOptions,
 ) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
     let mut folder = InitializerFolder {
         constants: collect_constants(&lib),
+        types,
         options,
         diagnostics: Vec::new(),
     };
@@ -91,7 +112,7 @@ pub fn apply(
 }
 
 /// Scan the library for top-level (`VAR_GLOBAL`) constant declarations with
-/// literal values.
+/// known values.
 ///
 /// Deliberately narrowed to true globals only -- `CONFIGURATION`/`RESOURCE`
 /// global vars are scoped to their own configuration or resource (not
@@ -99,7 +120,7 @@ pub fn apply(
 /// does not yet model. Handling those "half global" vars correctly is
 /// left for a follow-up rather than treating them as unconditionally
 /// global here.
-fn collect_constants(lib: &Library) -> ScopedTable<'static, Id, ConstantKind> {
+fn collect_constants(lib: &Library) -> ScopedTable<'static, Id, NamedConstant> {
     let mut constants = ScopedTable::new();
 
     for element in &lib.elements {
@@ -111,14 +132,17 @@ fn collect_constants(lib: &Library) -> ScopedTable<'static, Id, ConstantKind> {
     constants
 }
 
-/// Registers each `CONSTANT`-qualified, literal-valued declaration in
-/// `decls` into the current (innermost) scope of `constants`. A name
+/// Registers each `CONSTANT`-qualified declaration in `decls` whose value is
+/// known into the current (innermost) scope of `constants`: a literal, or a
+/// constant expression that folds against the constants registered before
+/// it (`D : UDINT := C;` after `C`). An expression that does not fold is
+/// left out; its own declaration reports why. A name
 /// already present *in that same scope* keeps its first value: the repeat
 /// is the symbol environment's to report (P4014), so it is not diagnosed a
 /// second time from this table. Shadowing an outer scope's constant (e.g.
 /// a function-local constant with the same name as a global) is unaffected,
 /// since that lives in a different scope entirely.
-fn register_constants(constants: &mut ScopedTable<Id, ConstantKind>, decls: &[VarDecl]) {
+fn register_constants(constants: &mut ScopedTable<Id, NamedConstant>, decls: &[VarDecl]) {
     for decl in decls {
         if decl.qualifier != DeclarationQualifier::Constant {
             continue;
@@ -132,10 +156,30 @@ fn register_constants(constants: &mut ScopedTable<Id, ConstantKind>, decls: &[Va
             },
         };
 
-        if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-            if let Some(value) = &simple.initial_value {
-                constants.try_add(&name, value.clone());
+        let (type_name, value) = match &decl.initializer {
+            InitialValueAssignmentKind::Simple(simple) => {
+                (&simple.type_name, simple.initial_value.clone())
             }
+            InitialValueAssignmentKind::SimpleExpr(se) => (
+                &se.type_name,
+                substitute_and_fold(se.initial_value.clone(), constants)
+                    .ok()
+                    .and_then(|folded| match folded.kind {
+                        ExprKind::Const(c) => Some(c),
+                        _ => None,
+                    }),
+            ),
+            _ => continue,
+        };
+
+        if let Some(value) = value {
+            constants.try_add(
+                &name,
+                NamedConstant {
+                    value,
+                    type_name: type_name.clone(),
+                },
+            );
         }
     }
 }
@@ -149,6 +193,9 @@ fn register_constants(constants: &mut ScopedTable<Id, ConstantKind>, decls: &[Va
 /// referencing another name, so a substituted value is always terminal --
 /// there is nothing left to look up again.
 ///
+/// A substituted value takes the span of the reference it replaces, so that
+/// a problem with it is reported where the constant is used.
+///
 /// Returns `Err` if a sub-expression is a genuine constant expression
 /// (both operands known) whose operation has no defined result (division
 /// by zero, overflow) -- distinct from simply not folding, which leaves
@@ -156,7 +203,7 @@ fn register_constants(constants: &mut ScopedTable<Id, ConstantKind>, decls: &[Va
 /// as "not a constant expression".
 fn substitute_and_fold(
     expr: Expr,
-    constants: &mut ScopedTable<Id, ConstantKind>,
+    constants: &mut ScopedTable<Id, NamedConstant>,
 ) -> Result<Expr, Diagnostic> {
     let span = expr.span();
     let kind = match expr.kind {
@@ -185,7 +232,7 @@ fn substitute_and_fold(
         }
         ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
             match constants.find(&named.name) {
-                Some(value) => ExprKind::Const(value.clone()),
+                Some(constant) => ExprKind::Const(constant.value.clone().with_span(span)),
                 None => ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))),
             }
         }
@@ -194,7 +241,7 @@ fn substitute_and_fold(
         // in the normal pipeline), but handled here too so this pass does
         // not depend on that ordering.
         ExprKind::LateBound(late_bound) => match constants.find(&late_bound.value) {
-            Some(value) => ExprKind::Const(value.clone()),
+            Some(constant) => ExprKind::Const(constant.value.clone().with_span(span)),
             None => ExprKind::LateBound(late_bound),
         },
         other => other,
@@ -208,7 +255,8 @@ fn substitute_and_fold(
 }
 
 struct InitializerFolder<'a> {
-    constants: ScopedTable<'static, Id, ConstantKind>,
+    constants: ScopedTable<'static, Id, NamedConstant>,
+    types: &'a TypeEnvironment,
     options: &'a CompilerOptions,
     diagnostics: Vec<Diagnostic>,
 }
@@ -246,6 +294,13 @@ impl InitializerFolder<'_> {
         }
 
         let type_name = se.type_name;
+        if let Some(mismatch) = self.named_constant_mismatch(&type_name, &se.initial_value) {
+            self.diagnostics.push(mismatch);
+            return InitialValueAssignmentKind::Simple(SimpleInitializer {
+                type_name,
+                initial_value: None,
+            });
+        }
         match substitute_and_fold(se.initial_value, &mut self.constants) {
             Ok(folded) => match folded.kind {
                 ExprKind::Const(c) => InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -274,6 +329,41 @@ impl InitializerFolder<'_> {
                 })
             }
         }
+    }
+}
+
+impl InitializerFolder<'_> {
+    /// Checks an initializer that is exactly one named constant against the
+    /// type it initializes, as assigning the constant would be checked
+    /// (`type_compat::are_types_compatible`). Returns the P4022 to report,
+    /// or `None` when the types agree, when the initializer is anything
+    /// else, or when either type is not elementary (a subrange, say), which
+    /// leaves the value to the literal checks.
+    fn named_constant_mismatch(&self, type_name: &TypeName, expr: &Expr) -> Option<Diagnostic> {
+        let name = match &expr.kind {
+            ExprKind::LateBound(late_bound) => &late_bound.value,
+            ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
+                &named.name
+            }
+            _ => return None,
+        };
+        let constant = self.constants.find(name)?;
+        let expected = self.types.resolve_elementary_type_name(type_name)?;
+        let actual = self
+            .types
+            .resolve_elementary_type_name(&constant.type_name)?;
+        if are_types_compatible(&expected, &actual, self.options) {
+            return None;
+        }
+        Some(
+            Diagnostic::problem(
+                Problem::InitializerTypeMismatch,
+                Label::span(expr.span(), "Named constant"),
+            )
+            .with_context_id("constant", name)
+            .with_context_type("constant type", &constant.type_name)
+            .with_context_type("type", type_name),
+        )
     }
 }
 
