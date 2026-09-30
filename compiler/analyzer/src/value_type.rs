@@ -215,7 +215,12 @@ pub(crate) fn describe(types: &TypeEnvironment, id: TypeId) -> String {
     }
 }
 
-fn describe_representation(types: &TypeEnvironment, representation: &IntermediateType) -> String {
+/// A type as a diagnostic shows it, when all there is to go on is its
+/// representation: the elementary name, or the shape of a composite.
+pub(crate) fn describe_representation(
+    types: &TypeEnvironment,
+    representation: &IntermediateType,
+) -> String {
     if let Some(name) = types.elementary_type_name_for(representation) {
         return name.to_string().to_uppercase();
     }
