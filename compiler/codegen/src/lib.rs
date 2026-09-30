@@ -51,6 +51,7 @@ mod compile_struct_init;
 mod compile_time_arith;
 mod data_region;
 mod emit;
+mod fb_fields;
 mod optimize;
 mod source_lookup;
 mod stack_balance;

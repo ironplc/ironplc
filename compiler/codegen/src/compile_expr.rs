@@ -734,20 +734,15 @@ pub(crate) fn compile_variable_read(
             if let SymbolicVariableKind::Named(named) = structured.record.as_ref() {
                 if let Some(fb_info) = ctx.fb_instances.get(&named.name) {
                     let field_name = structured.field.to_string().to_lowercase();
-                    let field_idx =
-                        fb_info
-                            .field_indices
-                            .get(&field_name)
-                            .copied()
-                            .ok_or_else(|| {
-                                Diagnostic::not_implemented(Label::span(
-                                    structured.field.span(),
-                                    format!(
-                                        "Unknown field '{}' on function block '{}'",
-                                        structured.field, named.name
-                                    ),
-                                ))
-                            })?;
+                    let field_idx = fb_info.fields.index_of(&field_name).ok_or_else(|| {
+                        Diagnostic::not_implemented(Label::span(
+                            structured.field.span(),
+                            format!(
+                                "Unknown field '{}' on function block '{}'",
+                                structured.field, named.name
+                            ),
+                        ))
+                    })?;
                     let var_index = fb_info.var_index;
                     emitter.emit_fb_load_instance(var_index);
                     emitter.emit_fb_load_param(field_idx);

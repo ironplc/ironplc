@@ -64,16 +64,12 @@ pub(crate) fn compile_fb_field_store(
     let field_name = field.to_string().to_lowercase();
     let (field_idx, var_index, type_id) = match ctx.fb_instances.get(instance_name) {
         Some(fb_info) => {
-            let field_idx = fb_info
-                .field_indices
-                .get(&field_name)
-                .copied()
-                .ok_or_else(|| {
-                    Diagnostic::not_implemented(Label::span(
-                        field.span(),
-                        format!("Unknown field '{field}' on function block '{instance_name}'"),
-                    ))
-                })?;
+            let field_idx = fb_info.fields.index_of(&field_name).ok_or_else(|| {
+                Diagnostic::not_implemented(Label::span(
+                    field.span(),
+                    format!("Unknown field '{field}' on function block '{instance_name}'"),
+                ))
+            })?;
             (field_idx, fb_info.var_index, fb_info.type_id)
         }
         None => return Ok(false),

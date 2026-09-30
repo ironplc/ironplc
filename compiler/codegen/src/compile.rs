@@ -69,6 +69,7 @@ use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 use ironplc_analyzer::{FunctionEnvironment, IntermediateType, SemanticContext, TypeEnvironment};
 
 use crate::emit::Emitter;
+use crate::fb_fields::FbFields;
 
 use super::compile_fn::{compile_user_function, compile_user_function_block};
 use super::compile_setup::{assign_variables, emit_initial_values};
@@ -761,7 +762,7 @@ fn compile_program_with_functions(
 
     for (next_function_id, fb_decl) in (2_u16..).zip(fb_decls.iter()) {
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
-        let mut field_indices: HashMap<String, u8> = HashMap::new();
+        let mut fields = FbFields::default();
         let mut field_op_types: HashMap<String, OpType> = HashMap::new();
         let mut field_decls_tmp: Vec<&VarDecl> = Vec::new();
 
@@ -783,7 +784,7 @@ fn compile_program_with_functions(
         for (i, decl) in field_decls_tmp.iter().enumerate() {
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
-                field_indices.insert(name.clone(), i as u8);
+                fields.insert(name.clone(), i as u8);
                 if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
                     if let Some(vti) = crate::type_info::decl_type_info(&ctx, decl) {
                         field_op_types.insert(name, (vti.op_width, vti.signedness));
@@ -803,7 +804,7 @@ fn compile_program_with_functions(
             UserFbTypeInfo {
                 type_id,
                 num_fields: field_decls_tmp.len(),
-                field_indices,
+                fields,
                 function_id: FunctionId::new(next_function_id),
                 var_offset: 0, // updated after program vars are assigned
                 field_op_types,
@@ -1287,8 +1288,8 @@ pub(crate) struct FbInstanceInfo {
     pub(crate) type_id: u16,
     /// Data region byte offset where this instance's fields start.
     pub(crate) data_offset: u32,
-    /// Maps field name (lowercase) to field index.
-    pub(crate) field_indices: HashMap<String, u8>,
+    /// The data-region field of each input, output and variable.
+    pub(crate) fields: FbFields,
 }
 
 /// Metadata for a compiled user-defined function block type.
@@ -1297,8 +1298,8 @@ pub(crate) struct UserFbTypeInfo {
     pub(crate) type_id: u16,
     /// Number of data-region fields in each instance.
     pub(crate) num_fields: usize,
-    /// Maps field name (lowercase) to field index (ordinal position).
-    pub(crate) field_indices: HashMap<String, u8>,
+    /// The data-region field of each input, output and variable.
+    pub(crate) fields: FbFields,
     /// Function ID of the compiled FB body in the container.
     pub(crate) function_id: FunctionId,
     /// Variable table offset where the FB body's slots start.
