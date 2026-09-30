@@ -140,6 +140,41 @@ END_CONFIGURATION
 }
 
 #[test]
+fn compile_when_instances_in_two_resources_then_p9999_on_second_instance() {
+    let source = "
+PROGRAM main
+VAR x : DINT; END_VAR
+  x := x + 1;
+END_PROGRAM
+
+CONFIGURATION config
+  RESOURCE r1 ON PLC
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM first WITH t1 : main;
+  END_RESOURCE
+  RESOURCE r2 ON PLC
+    TASK t2(INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM second WITH t2 : main;
+  END_RESOURCE
+END_CONFIGURATION
+";
+
+    let diagnostic = compile_err(source);
+
+    assert_eq!(diagnostic.code, "P9999");
+    assert_eq!(
+        diagnostic.primary.location.start,
+        offset_of(source, "PROGRAM second")
+    );
+    assert!(diagnostic.primary.message.contains("2nd program instance"));
+    assert_eq!(diagnostic.secondary.len(), 1);
+    assert_eq!(
+        diagnostic.secondary[0].location.start,
+        offset_of(source, "PROGRAM first")
+    );
+}
+
+#[test]
 fn compile_when_one_program_and_one_instance_then_ok() {
     let source = programs(&["prog_a"]);
 
