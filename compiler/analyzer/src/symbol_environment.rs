@@ -94,8 +94,6 @@ pub struct SymbolInfo {
     /// so that we can distinguish between the actual place of the declaration
     /// and a reference to the declaration.
     pub enum_type: Option<TypeName>,
-    /// For structure fields, the type name of the structure
-    pub struct_type: Option<TypeName>,
     /// The variable type qualifier (VAR, VAR_INPUT, VAR_OUTPUT, etc.)
     pub variable_type: Option<VariableType>,
     /// The qualifier the declaration was written with (CONSTANT, RETAIN,
@@ -121,7 +119,6 @@ impl SymbolInfo {
             is_external: false,
             data_type: None,
             enum_type: None,
-            struct_type: None,
             variable_type: None,
             qualifier: None,
             address: None,
@@ -143,12 +140,6 @@ impl SymbolInfo {
     /// Set the enumeration type for enumeration value symbols
     pub fn with_enum_type(mut self, enum_type: TypeName) -> Self {
         self.enum_type = Some(enum_type);
-        self
-    }
-
-    /// Set the structure type for structure field symbols
-    pub fn with_struct_type(mut self, struct_type: TypeName) -> Self {
-        self.struct_type = Some(struct_type);
         self
     }
 
@@ -381,30 +372,6 @@ impl SymbolEnvironment {
         Ok(())
     }
 
-    /// Insert a structure field with its type information
-    pub fn insert_structure_field(
-        &mut self,
-        name: &Id,
-        struct_type: &TypeName,
-        scope: &ScopeKind,
-    ) -> Result<(), Diagnostic> {
-        let symbol_info = SymbolInfo::new(SymbolKind::StructureElement, scope.clone(), name.span())
-            .with_struct_type(struct_type.clone());
-
-        match scope {
-            ScopeKind::Global => {
-                self.global_symbols.insert(name.clone(), symbol_info);
-            }
-            ScopeKind::Named(_) => {
-                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
-
-                scope_symbols.insert(name.clone(), symbol_info);
-            }
-        }
-
-        Ok(())
-    }
-
     /// Duplicate enumeration values from one type to another (for aliases)
     pub fn duplicate_enumeration_values_for_alias(
         &mut self,
@@ -423,40 +390,6 @@ impl SymbolEnvironment {
             self.insert_enumeration_value(&value_name, alias_type, &ScopeKind::Global)?;
         }
 
-        Ok(())
-    }
-
-    /// Duplicate structure field symbols from one type to another (for aliases)
-    pub fn duplicate_structure_fields_for_alias(
-        &mut self,
-        source_type: &TypeName,
-        alias_type: &TypeName,
-    ) -> Result<(), Diagnostic> {
-        // Find all structure field symbols for the source type and collect them
-        let source_fields: Vec<Id> = self
-            .get_structure_fields_for_type(source_type)
-            .iter()
-            .map(|id| (*id).clone())
-            .collect();
-
-        // Duplicate each field with the alias type
-        for field_name in source_fields {
-            self.insert_structure_field(&field_name, alias_type, &ScopeKind::Global)?;
-        }
-
-        Ok(())
-    }
-
-    /// Duplicate array element type information from one type to another (for aliases)
-    pub fn duplicate_array_elements_for_alias(
-        &mut self,
-        _source_type: &TypeName,
-        _alias_type: &TypeName,
-    ) -> Result<(), Diagnostic> {
-        // For arrays, we don't need to duplicate symbols like we do for enumerations
-        // and structures, since arrays don't have named elements that need to be
-        // accessible through the alias. The array type itself is what gets aliased.
-        // Array elements are accessed by index, not by name.
         Ok(())
     }
 
@@ -556,17 +489,6 @@ impl SymbolEnvironment {
             .filter(|(_, symbol)| {
                 matches!(symbol.kind, SymbolKind::EnumerationValue)
                     && symbol.enum_type.as_ref() == Some(enum_type)
-            })
-            .map(|(name, _)| name)
-            .collect()
-    }
-
-    /// Get all structure fields for a specific structure type
-    pub fn get_structure_fields_for_type(&self, struct_type: &TypeName) -> Vec<&Id> {
-        self.all_symbols()
-            .filter(|(_, symbol)| {
-                matches!(symbol.kind, SymbolKind::StructureElement)
-                    && symbol.struct_type.as_ref() == Some(struct_type)
             })
             .map(|(name, _)| name)
             .collect()
