@@ -212,7 +212,7 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                                 // variable that is not an array (P4070), so
                                 // this is an array code generation has not
                                 // laid out, such as a CONFIGURATION global
-                                // declared with a named array type.
+                                // declared with a named array type (#1924).
                                 Diagnostic::not_implemented(Label::span(
                                     named.name.span(),
                                     format!(
