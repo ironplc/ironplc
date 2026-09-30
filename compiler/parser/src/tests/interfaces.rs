@@ -82,6 +82,35 @@ END_INTERFACE",
 }
 
 #[test]
+fn parse_when_method_prototype_has_qualifiers_then_qualifiers_kept() {
+    let itf = parse_interface(
+        "
+INTERFACE I_Telescope
+METHOD PUBLIC ABSTRACT Park : BOOL
+END_METHOD
+END_INTERFACE",
+    );
+    let method = &itf.methods[0];
+    assert_eq!(method.name, Id::from("Park"));
+    assert_eq!(method.qualifiers.iter().count(), 2);
+    assert!(method.qualifiers.is_abstract());
+}
+
+#[test]
+fn parse_when_method_prototype_named_like_qualifier_then_name_kept() {
+    let itf = parse_interface(
+        "
+INTERFACE I_Brake
+METHOD Final : BOOL
+END_METHOD
+END_INTERFACE",
+    );
+    let method = &itf.methods[0];
+    assert_eq!(method.name, Id::from("Final"));
+    assert!(method.qualifiers.is_empty());
+}
+
+#[test]
 fn parse_when_property_prototypes_then_accessors_recorded() {
     let itf = parse_interface(
         "

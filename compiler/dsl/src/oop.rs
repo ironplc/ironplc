@@ -234,6 +234,10 @@ impl LanguageExtension for FunctionBlockOop {
 #[derive(Clone, Debug, PartialEq, Recurse, Located)]
 #[recurse(scope)]
 pub struct MethodPrototype {
+    /// Qualifiers between `METHOD` and the name, in source order, such as
+    /// `ABSTRACT` or `PUBLIC`, as on [`MethodDeclaration::qualifiers`].
+    #[recurse(ignore)]
+    pub qualifiers: MemberQualifiers,
     pub name: Id,
     pub return_type: Option<FunctionReturnType>,
     pub variables: Vec<VarDecl>,

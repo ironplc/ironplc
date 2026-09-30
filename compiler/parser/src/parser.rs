@@ -1717,8 +1717,9 @@ parser! {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
-      let (start, _qualifiers, name, return_type) = header;
+      let (start, qualifiers, name, return_type) = header;
       MethodPrototype {
+        qualifiers,
         name,
         return_type,
         variables,

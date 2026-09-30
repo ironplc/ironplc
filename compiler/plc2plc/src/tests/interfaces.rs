@@ -30,6 +30,14 @@ END_METHOD
 END_INTERFACE
 "
 )]
+#[case::method_prototype_qualifiers(
+    "
+INTERFACE I_Telescope
+METHOD PUBLIC ABSTRACT Park : BOOL
+END_METHOD
+END_INTERFACE
+"
+)]
 #[case::property_prototypes(
     "
 INTERFACE I_Axis
