@@ -106,3 +106,28 @@ END_TYPE";
         Some("RED".to_string())
     );
 }
+
+#[test]
+fn parse_when_inline_enum_explicit_values_without_initial_value_then_values_keep_explicit_values() {
+    let source = "
+PROGRAM main
+VAR
+    e : (X := 1, Y := 5);
+END_VAR
+END_PROGRAM";
+    let library = parse_text(source);
+
+    let program = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
+    let init = cast!(
+        &program.variables[0].initializer,
+        InitialValueAssignmentKind::EnumeratedValues
+    );
+    assert_eq!(
+        init.values
+            .iter()
+            .map(|v| v.explicit_value.as_ref().map(|si| si.to_i64()))
+            .collect::<Vec<_>>(),
+        vec![Some(1), Some(5)]
+    );
+    assert!(init.initial_value.is_none());
+}
