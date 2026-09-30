@@ -72,6 +72,8 @@ END_PROGRAM"
 #[case::same_interface("comm := comm;")]
 #[case::named_argument("device(comm := serial);")]
 #[case::method_argument("device.Attach(serial);")]
+#[case::zero("comm := 0;")]
+#[case::zero_argument("device(comm := 0);")]
 fn apply_when_value_converts_then_ok(#[case] body: &str) {
     assert_eq!(Ok(()), check(body));
 }
@@ -80,6 +82,7 @@ fn apply_when_value_converts_then_ok(#[case] body: &str) {
 #[case::instance_not_implementing("comm := other;")]
 #[case::base_interface_to_derived("comm := base;")]
 #[case::elementary_value("comm := count;")]
+#[case::nonzero_literal("comm := 1;")]
 #[case::named_argument("device(comm := other);")]
 #[case::method_argument("device.Attach(other);")]
 fn apply_when_value_does_not_convert_then_error(#[case] body: &str) {
