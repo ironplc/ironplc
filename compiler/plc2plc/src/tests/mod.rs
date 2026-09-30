@@ -14,6 +14,7 @@ mod declarations;
 mod enums;
 mod exit_return;
 mod fb_inheritance;
+mod located_globals;
 mod method_call_expression;
 mod methods;
 mod mixed_vars;

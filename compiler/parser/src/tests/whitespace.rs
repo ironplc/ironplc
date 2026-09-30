@@ -313,6 +313,16 @@ END_CONFIGURATION"
     in_sfc,
     CompilerOptions::default
 )]
+// ---------------------------------------------------------------------
+// Issue #1913: a located `VAR_GLOBAL` declaration was a syntax error. The
+// gap between the name and `AT` is required, not optional, so it is not a
+// row; the gaps after it are.
+// ---------------------------------------------------------------------
+#[case::global_var_located(
+    "CONFIGURATION config VAR_GLOBAL lamp AT·%QX0.0·:·BOOL·:=·TRUE·; END_VAR RESOURCE r1 ON PLC PROGRAM a : p; END_RESOURCE END_CONFIGURATION",
+    verbatim,
+    CompilerOptions::default
+)]
 fn parse_when_gap_filled_then_same_ast(
     #[case] template: &'static str,
     #[case] wrap: fn(&str) -> String,

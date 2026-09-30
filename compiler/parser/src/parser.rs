@@ -1369,9 +1369,19 @@ parser! {
         declaration
       }).collect()
     }
+    // IEC 61131-3 B.1.4.3 spells this as one rule,
+    //   global_var_spec ':' [ located_var_spec_init | function_block_type_name ]
+    //   global_var_spec ::= global_var_list | [global_var_name] location
+    // but a PEG choice inside global_var_spec cannot backtrack once
+    // global_var_list has consumed the name of `name AT %IX0.0 : BOOL`. So the
+    // located form is its own alternative, tried first. It is exactly the
+    // located_var_decl of a VAR block, declared as a global.
+    rule global_var_decl() -> (Vec<VarDecl>) = d:located_var_decl() {
+      vec![VarDecl { var_type: VariableType::Global, ..d }]
+    } / symbolic_global_var_decl()
     // TODO this doesn't pass all information. I suspect the rule from the description is not right
-    rule global_var_decl() -> (Vec<VarDecl>) = vs:global_var_spec() _ tok:tok(TokenType::Colon) _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f, init: vec![] })})? {
-      vs.0.into_iter().map(|name| {
+    rule symbolic_global_var_decl() -> (Vec<VarDecl>) = names:global_var_list() _ tok:tok(TokenType::Colon) _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f, init: vec![] })})? {
+      names.into_iter().map(|name| {
         let init = initializer.clone().unwrap_or(InitialValueAssignmentKind::None(SourceSpan::join(&tok.span, &tok.span)));
         VarDecl {
           identifier: VariableIdentifier::Symbol(name),
@@ -1384,12 +1394,6 @@ parser! {
         }
       }).collect()
      }
-    rule global_var_spec() -> (Vec<Id>, Option<AddressAssignment>) = names:global_var_list() {
-      (names, None)
-    } / global_var_name()? location() {
-      // TODO this is clearly wrong, but it feel like the spec is wrong here
-      (vec![Id::from("")], None)
-    }
     // TODO this is completely fabricated - it isn't correct.
     rule located_var_spec_init() -> InitialValueAssignmentKind = arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) } / simple:simple_spec_init() { simple }
     rule location() -> AddressAssignment = tok(TokenType::At) _ v:direct_variable() { v }

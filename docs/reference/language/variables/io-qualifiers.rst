@@ -81,6 +81,37 @@ Example
        motor_output := start_button;
    END_PROGRAM
 
+Located Global Variables
+------------------------
+
+A :code:`VAR_GLOBAL` block of a :code:`CONFIGURATION` can locate its
+variables the same way. Programs reach them through :code:`VAR_EXTERNAL`,
+which names the variable without its address:
+
+.. playground::
+
+   CONFIGURATION config
+     VAR_GLOBAL
+       start_button AT %IX0.0 : BOOL;
+       motor_output AT %QX0.0 : BOOL;
+       scan_count AT %MW2 : INT;
+     END_VAR
+     RESOURCE resource1 ON PLC
+       TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+       PROGRAM plc_task_instance WITH plc_task : main;
+     END_RESOURCE
+   END_CONFIGURATION
+
+   PROGRAM main
+     VAR_EXTERNAL
+       start_button : BOOL;
+       motor_output : BOOL;
+       scan_count : INT;
+     END_VAR
+     motor_output := start_button;
+     scan_count := scan_count + 1;
+   END_PROGRAM
+
 See Also
 --------
 
