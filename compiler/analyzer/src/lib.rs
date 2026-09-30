@@ -42,6 +42,7 @@ mod rule_function_block_invocation;
 mod rule_function_call_declared;
 mod rule_function_call_in_out_argument;
 mod rule_function_call_type_check;
+mod rule_inner_array_selection;
 mod rule_loop_control_inside_loop;
 mod rule_member_qualifier_allowed;
 mod rule_member_qualifier_invalid;

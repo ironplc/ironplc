@@ -168,6 +168,11 @@ impl Selections<'_, '_> {
         }
     }
 
+    /// Whether `view` is a whole array, with no subscript given yet.
+    pub(crate) fn is_whole_array(&self, view: View) -> bool {
+        matches!(self.expand(view), Some(View::Array { given: 0, .. }))
+    }
+
     /// The view of a declared variable.
     fn declared_view(&self, declared: &Declared) -> Option<View> {
         let init = match declared {

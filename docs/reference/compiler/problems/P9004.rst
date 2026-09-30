@@ -1,0 +1,51 @@
+=====
+P9004
+=====
+
+.. problem-summary:: P9004
+
+This error occurs when a subscript selects a whole inner array of an array
+of arrays: an element of an array whose element type is itself an array.
+Reading, writing or passing such an element is valid IEC 61131-3, but
+IronPLC only accesses the elements of the inner arrays so far.
+
+Example
+-------
+
+The following code will generate error P9004:
+
+.. code-block::
+
+   TYPE
+       Row : ARRAY[1..3] OF DINT;
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           rows : ARRAY[1..2] OF Row;
+           row  : Row;
+       END_VAR
+       rows[1] := row;
+   END_PROGRAM
+
+``rows[1]`` is a whole ``Row``, so the assignment copies three elements at
+once.
+
+To fix this error, access the elements of the inner array one at a time:
+
+.. code-block::
+
+   TYPE
+       Row : ARRAY[1..3] OF DINT;
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           rows : ARRAY[1..2] OF Row;
+           row  : Row;
+           i    : DINT;
+       END_VAR
+       FOR i := 1 TO 3 DO
+           rows[1][i] := row[i];
+       END_FOR;
+   END_PROGRAM
