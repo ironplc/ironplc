@@ -95,15 +95,16 @@ impl DiagnosticVisitor for RuleBitAndPartialAccessRange<'_> {
 }
 
 impl RuleBitAndPartialAccessRange<'_> {
-    fn check_partial_access(&mut self, node: &PartialAccessVariable) {
-        let accessed_type =
-            match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
-                Some(t) => t,
-                None => return,
-            };
+    /// The number of bits a bit or partial access can select from
+    /// `variable`, or `None` when the rule cannot tell.
+    fn selectable_bits(&self, variable: &SymbolicVariableKind) -> Option<u128> {
+        let accessed_type = variable_type::of(variable, &self.declarations, self.type_environment)?;
+        accessed_type.size_in_bytes().map(|bytes| bytes as u128 * 8)
+    }
 
-        let base_bytes = match accessed_type.size_in_bytes() {
-            Some(bytes) => bytes as u128,
+    fn check_partial_access(&mut self, node: &PartialAccessVariable) {
+        let base_bytes = match self.selectable_bits(&node.variable) {
+            Some(bits) => bits / 8,
             None => return,
         };
 
@@ -155,15 +156,8 @@ impl RuleBitAndPartialAccessRange<'_> {
     }
 
     fn check_bit_access(&mut self, node: &BitAccessVariable) {
-        // Resolve the type of the variable being bit-accessed
-        let accessed_type =
-            match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
-                Some(t) => t,
-                None => return,
-            };
-
-        let bit_width = match accessed_type.size_in_bytes() {
-            Some(bytes) => bytes as u128 * 8,
+        let bit_width = match self.selectable_bits(&node.variable) {
+            Some(bits) => bits,
             None => return,
         };
 
