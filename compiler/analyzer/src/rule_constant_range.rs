@@ -128,17 +128,14 @@ impl DiagnosticVisitor for RuleConstantRange<'_> {
     }
 }
 
-/// The value of an integer literal, or `None` when it is too large to be one.
+/// The value a sign and a magnitude spell, or `None` when it is too large to
+/// be one.
 ///
 /// A literal beyond `i128` cannot be stored in any IEC 61131-3 type, so the
 /// caller reports it against whatever range it was checked against.
-fn literal_value(literal: &IntegerLiteral) -> Option<i128> {
-    let magnitude = i128::try_from(literal.value.value.value).ok()?;
-    Some(if literal.value.is_neg {
-        -magnitude
-    } else {
-        magnitude
-    })
+fn signed_value(is_neg: bool, magnitude: u128) -> Option<i128> {
+    let magnitude = i128::try_from(magnitude).ok()?;
+    Some(if is_neg { -magnitude } else { magnitude })
 }
 
 impl RuleConstantRange<'_> {
@@ -212,19 +209,33 @@ impl RuleConstantRange<'_> {
 
     /// Reports `literal` when its value is outside `range`.
     fn check_literal(&mut self, literal: &IntegerLiteral, range: (i128, i128)) {
+        self.check_magnitude(
+            literal.value.value.span(),
+            literal.value.is_neg,
+            literal.value.value.value,
+            range,
+        );
+    }
+
+    /// Reports the value that `is_neg` and `magnitude` spell at `span` when
+    /// it is outside `range`.
+    fn check_magnitude(
+        &mut self,
+        span: SourceSpan,
+        is_neg: bool,
+        magnitude: u128,
+        range: (i128, i128),
+    ) {
         let (minimum, maximum) = range;
-        let value = literal_value(literal);
+        let value = signed_value(is_neg, magnitude);
         if value.is_some_and(|value| value >= minimum && value <= maximum) {
             return;
         }
 
         // A literal too large for `i128` has no printable value of its own,
         // so it is reported by the magnitude the source spelled.
-        let reported = value.map_or_else(
-            || format!("-{}", literal.value.value.value),
-            |value| value.to_string(),
-        );
-        self.report_out_of_range(literal.value.value.span(), &reported, range);
+        let reported = value.map_or_else(|| format!("-{magnitude}"), |value| value.to_string());
+        self.report_out_of_range(span, &reported, range);
     }
 
     /// Reports the value spelled `reported` as outside `range`.
