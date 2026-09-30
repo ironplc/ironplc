@@ -191,9 +191,9 @@ follows is the starting point for that future ADR, not a settled design.
   underlying instance's data reference and its runtime type tag (a
   "fat" reference), reusing the same tag/table mechanism as
   `EXTENDS`-based dispatch -- interface method resolution is "does
-  this concrete type provide a compatible member," already checked
-  statically for shape (name + return type) by the existing
-  `IMPLEMENTS` conformance rule.
+  this concrete type provide a compatible member," which an
+  `IMPLEMENTS` conformance rule is to check statically for shape
+  (name + return type). That rule does not exist yet (issue #1891).
 - The exact table layout and opcode encoding are intentionally **not**
   fixed by this ADR -- they are deferred to Phase 2's own
   implementation plan, once real polymorphic call-site patterns from

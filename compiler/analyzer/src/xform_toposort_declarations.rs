@@ -593,6 +593,13 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         let to = self.declarations.add_node(&fbc.type_name.name);
                         self.declarations.graph.add_edge(to, from, ());
                     }
+                    InitialValueAssignmentKind::Interface(itf) => {
+                        // The interface must come before the POU that
+                        // declares a variable of it.
+                        let from = self.declarations.add_node(from);
+                        let to = self.declarations.add_node(&itf.type_name.name);
+                        self.declarations.graph.add_edge(to, from, ());
+                    }
                     InitialValueAssignmentKind::Subrange(_) => {}
                     InitialValueAssignmentKind::Structure(struct_init) => {
                         // Track dependency on the nested structure type

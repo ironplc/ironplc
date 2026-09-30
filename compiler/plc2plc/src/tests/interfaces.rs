@@ -30,6 +30,22 @@ END_METHOD
 END_INTERFACE
 "
 )]
+#[case::interface_typed_variables(
+    "
+INTERFACE I_Comm
+END_INTERFACE
+
+FUNCTION_BLOCK FB_Device
+VAR_INPUT
+    comm : I_Comm;
+END_VAR
+VAR
+    backup : I_Comm;
+END_VAR
+    backup := comm;
+END_FUNCTION_BLOCK
+"
+)]
 #[case::method_prototype_qualifiers(
     "
 INTERFACE I_Telescope

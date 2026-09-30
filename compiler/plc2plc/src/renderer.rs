@@ -937,6 +937,14 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_type_name(&node.type_name)
     }
 
+    // A variable of an interface type (OOP extension) has no initializer.
+    fn visit_interface_initializer(
+        &mut self,
+        node: &InterfaceInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)
+    }
+
     // CODESYS/TwinCAT call-style FB instance initializer:
     // `name : FB_Type(args)`. Render the type name followed by the
     // parenthesized constructor argument list.
