@@ -1,0 +1,46 @@
+=====
+P4063
+=====
+
+.. problem-summary:: P4063
+
+This error occurs when the :doc:`member qualifiers
+</reference/language/object-orientation/member-qualifiers>` on a function
+block or method break one of these rules:
+
+.. include:: /includes/member-qualifier-rules.rst
+
+The message names the rule that is broken. The rules follow what TwinCAT
+3.1.4024 accepts.
+
+Example
+-------
+
+The following code will generate error P4063, because the access specifier
+comes after ``FINAL``:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor
+       VAR
+           speed : INT;
+       END_VAR
+
+       METHOD FINAL PUBLIC Stop
+           speed := 0;
+       END_METHOD
+   END_FUNCTION_BLOCK
+
+To fix this error, put the access specifier first:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor
+       VAR
+           speed : INT;
+       END_VAR
+
+       METHOD PUBLIC FINAL Stop
+           speed := 0;
+       END_METHOD
+   END_FUNCTION_BLOCK

@@ -6,6 +6,7 @@
 use super::*;
 use ironplc_dsl::common::{FunctionBlockDeclaration, LibraryElementKind, TypeName};
 use ironplc_dsl::core::{FileId, Id, Located};
+use ironplc_dsl::member_qualifier::AccessSpecifier;
 use ironplc_parser::options::Dialect;
 
 fn test_file_id() -> FileId {
@@ -858,6 +859,40 @@ END_VAR]]></Declaration>
     let function_block = only_function_block(result.unwrap());
     assert_eq!(function_block.methods.len(), 1);
     assert!(function_block.methods[0].return_type.is_some());
+}
+
+#[test]
+fn parse_when_method_declaration_has_access_specifier_then_qualifier_is_kept() {
+    // The most common qualifier in the TwinCAT corpus (#1199). The
+    // implementation starts with an assignment, so the qualifier must not
+    // swallow the method name.
+    let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Motor" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Motor
+VAR
+    speed : REAL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[speed := 0.0;]]></ST>
+    </Implementation>
+    <Method Name="Reset" Id="{00000000-0000-0000-0000-000000000001}">
+      <Declaration><![CDATA[METHOD PRIVATE Reset]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[speed := 0.0;]]></ST>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>"#;
+
+    let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
+    assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+
+    let function_block = only_function_block(result.unwrap());
+    let method = &function_block.methods[0];
+    assert_eq!(method.name, Id::from("Reset"));
+    assert_eq!(method.qualifiers.access(), Some(AccessSpecifier::Private));
+    assert_eq!(method.body.len(), 1);
 }
 
 #[test]

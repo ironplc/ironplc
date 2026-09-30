@@ -44,6 +44,10 @@ combined with :doc:`EXTENDS <extends>` and :doc:`IMPLEMENTS <implements>`:
        statement_list
    END_FUNCTION_BLOCK
 
+A method of an ``ABSTRACT`` function block can itself be ``ABSTRACT``:
+it has no body, and a derived type provides it. See
+:doc:`member-qualifiers`.
+
 Example
 -------
 
@@ -92,6 +96,7 @@ See Also
 - :doc:`extends` — derive from a base type
 - :doc:`implements` — provide the methods declared by an interface
 - :doc:`interface` — declare an interface
+- :doc:`member-qualifiers` — ``ABSTRACT`` methods and the other qualifiers
 - :doc:`/explanation/object-orientation` — inheritance, interfaces, and
   abstract types explained
 - :doc:`/reference/language/pous/function-block` — the ``FUNCTION_BLOCK`` unit

@@ -7,6 +7,7 @@
 use dsl::configuration::LocatedVarInit;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Id;
+use ironplc_dsl::member_qualifier::MemberQualifiers;
 use ironplc_dsl::time::*;
 use ironplc_dsl::{diagnostic::Diagnostic, visitor::Visitor};
 use paste::paste;
@@ -78,6 +79,12 @@ impl LibraryRenderer {
 
     fn write(&mut self, val: &str) {
         self.buffer.push_str(val);
+    }
+
+    fn write_qualifiers(&mut self, qualifiers: &MemberQualifiers) {
+        for qualifier in qualifiers.iter() {
+            self.write_ws(qualifier.kind.keyword());
+        }
     }
 
     fn write_ws(&mut self, val: &str) {
@@ -991,8 +998,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("FUNCTION_BLOCK");
-        if node.oop.as_ref().is_some_and(|oop| oop.is_abstract) {
-            self.write_ws("ABSTRACT");
+        if let Some(oop) = &node.oop {
+            self.write_qualifiers(&oop.qualifiers);
         }
         self.visit_id(&node.name.name)?;
         if let Some(oop) = &node.oop {
@@ -1038,6 +1045,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &MethodDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("METHOD");
+        self.write_qualifiers(&node.qualifiers);
         self.visit_id(&node.name)?;
         if let Some(return_type) = &node.return_type {
             self.write_ws(":");

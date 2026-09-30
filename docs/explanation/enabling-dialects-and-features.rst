@@ -452,9 +452,10 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
 ``--allow-fb-inheritance``
    Allow the IEC 61131-3:2013 :doc:`object-oriented syntax
    </reference/language/object-orientation/index>`:
-   ``EXTENDS``/``IMPLEMENTS``/``ABSTRACT`` on ``FUNCTION_BLOCK``
-   declarations, ``INTERFACE`` declarations, ``METHOD`` declarations, and
-   ``THIS``/``SUPER``. Support beyond parsing varies by keyword — see
+   ``EXTENDS``/``IMPLEMENTS`` and qualifiers (``ABSTRACT``, ``FINAL``,
+   ``PUBLIC``, ...) on ``FUNCTION_BLOCK`` declarations, ``INTERFACE``
+   declarations, ``METHOD`` declarations, and ``THIS``/``SUPER``. Support
+   beyond parsing varies by keyword — see
    :doc:`/reference/language/object-orientation/index` for what each one
    analyzes and executes today; the parts that are parsed but not yet
    analyzed produce problem

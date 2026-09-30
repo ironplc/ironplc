@@ -13,6 +13,7 @@ use crate::configuration::{ConfigurationDeclaration, Direction};
 use crate::core::{Id, Located, SourceSpan};
 use crate::extension::LanguageExtension;
 use crate::fold::Fold;
+use crate::member_qualifier::MemberQualifiers;
 use crate::scope::ScopeBearing;
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
@@ -3021,8 +3022,8 @@ pub struct FunctionBlockDeclaration {
     /// `None` for an ordinary function block — the common case — so OOP is
     /// unrepresentable on a plain FB rather than "present but empty."
     /// `Some` only when the source actually uses `EXTENDS`, `IMPLEMENTS`,
-    /// or `ABSTRACT`. See `FunctionBlockOop` for why the facet is its own
-    /// struct and why `base` is an `Option` where
+    /// or a qualifier such as `ABSTRACT`. See `FunctionBlockOop` for why
+    /// the facet is its own struct and why `base` is an `Option` where
     /// `InterfaceDeclaration::extends` is a `Vec`, and the
     /// `LanguageExtension` impl on it for why only the facet, and not the
     /// whole declaration, is an extension.
@@ -3050,6 +3051,10 @@ pub struct FunctionBlockDeclaration {
 #[derive(Clone, Debug, PartialEq, Recurse, Located)]
 #[recurse(scope)]
 pub struct MethodDeclaration {
+    /// Qualifiers between `METHOD` and the name, in source order, such as
+    /// `PRIVATE` or `PUBLIC FINAL`. Metadata only (ADR-0041).
+    #[recurse(ignore)]
+    pub qualifiers: MemberQualifiers,
     pub name: Id,
     pub return_type: Option<FunctionReturnType>,
     pub variables: Vec<VarDecl>,
@@ -3072,6 +3077,15 @@ impl HasVariables for MethodDeclaration {
     }
 }
 
+impl FunctionBlockDeclaration {
+    /// Whether the function block is declared `ABSTRACT`.
+    pub fn is_abstract(&self) -> bool {
+        self.oop
+            .as_ref()
+            .is_some_and(|oop| oop.qualifiers.is_abstract())
+    }
+}
+
 impl HasVariables for FunctionBlockDeclaration {
     fn variables(&self) -> &Vec<VarDecl> {
         &self.variables
@@ -3079,11 +3093,12 @@ impl HasVariables for FunctionBlockDeclaration {
 }
 
 /// The object-oriented facet of a function block: the
-/// `EXTENDS`/`IMPLEMENTS`/`ABSTRACT` header. Present only when the function
-/// block participates in OOP, so an ordinary function block cannot carry
-/// any of this data. Single home for OOP metadata and the natural hook for
-/// ADR-0041 Phase 2: "does this FB participate in polymorphism" is
-/// `oop.is_some()`, not a scan of individual fields.
+/// `EXTENDS`/`IMPLEMENTS` clauses and the qualifiers (`ABSTRACT`, `FINAL`,
+/// access specifiers). Present only when the function block uses any of
+/// them, so an ordinary function block cannot carry any of this data.
+/// Single home for OOP metadata. Note that `oop.is_some()` does not mean
+/// the function block takes part in polymorphism: `FUNCTION_BLOCK PUBLIC`
+/// alone also creates the facet.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct FunctionBlockOop {
     /// `EXTENDS base` — the single base function block, if any.
@@ -3098,11 +3113,11 @@ pub struct FunctionBlockOop {
     /// implements. Multiple allowed; empty `Vec` when the clause is
     /// absent.
     pub implements: Vec<TypeName>,
-    /// `ABSTRACT` modifier. An abstract function block cannot be
-    /// instantiated directly (enforced by `rule_abstract_not_instantiated`,
-    /// P4045).
+    /// Qualifiers between `FUNCTION_BLOCK` and the name, in source order.
+    /// An `ABSTRACT` function block cannot be instantiated directly
+    /// (enforced by `rule_abstract_not_instantiated`, P4045).
     #[recurse(ignore)]
-    pub is_abstract: bool,
+    pub qualifiers: MemberQualifiers,
     /// Span of the OOP-related tokens, so diagnostics can point at the
     /// clause rather than the whole function block.
     pub span: SourceSpan,

@@ -111,14 +111,18 @@ REQ-TL-001 and REQ-TL-020 are covered by existing parser tests for basic duratio
 
 ## 8. Implementation
 
-The duration literal grammar lives in `compiler/parser/src/parser.rs`, section marked `// B.1.2.3.1 Duration`. A single PEG helper rule `dt_sep` matches identifier tokens whose text equals a given unit name (case-insensitively, per REQ-TL-011):
+The duration literal grammar lives in `compiler/parser/src/parser.rs`, section marked `// B.1.2.3.1 Duration`. Duration units and the `T`/`D` prefixes are identifier tokens, matched by the general helper rule `contextual_keyword`, which compares the identifier text case-insensitively (REQ-TL-011):
 
 ```rust
-rule dt_sep(val: &str) -> &'input Token =
-    [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case(val)]
+rule contextual_keyword(val: &'static str) -> &'input Token = token:[t] {?
+  if token.token_type == TokenType::Identifier && token.text.eq_ignore_ascii_case(val) {
+    return Ok(token)
+  }
+  Err(val)
+}
 ```
 
-The prefix productions `T` / `t` / `D` / `d` previously listed as explicit alternatives collapse to a single `dt_sep("T")` and `dt_sep("D")` respectively, since `dt_sep` is now case-insensitive.
+The prefix productions `T` / `t` / `D` / `d` are therefore a single `contextual_keyword("T")` and `contextual_keyword("D")`.
 
 An interval is one rule, `interval()`: one or more `number unit` parts with an optional `_` between them. `combine_interval_parts` checks the order of the units (strictly descending, which also rules out a repeated unit) and that only the last part is fractional; a violation fails the literal with a syntax error.
 

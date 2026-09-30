@@ -19,6 +19,7 @@ mod fb_inheritance;
 mod function_calls;
 mod late_resolved_initializers;
 mod literals;
+mod member_qualifiers;
 mod method_call_expression;
 mod methods;
 mod partial_access;

@@ -146,3 +146,26 @@ END_FUNCTION_BLOCK";
     );
     assert_eq!(fb.methods.len(), 1);
 }
+
+#[test]
+fn parse_when_method_has_empty_body_then_ok_and_body_empty() {
+    let source = "
+FUNCTION_BLOCK FB_Motor
+VAR
+    bRunning : BOOL;
+END_VAR
+METHOD Start : BOOL
+VAR_INPUT
+    rSpeed : REAL;
+END_VAR
+END_METHOD
+METHOD Stop
+END_METHOD
+END_FUNCTION_BLOCK";
+    let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
+    let fb = extract_fb(&library);
+    assert_eq!(fb.methods.len(), 2);
+    assert!(fb.methods[0].body.is_empty());
+    assert_eq!(fb.methods[0].variables.len(), 1);
+    assert!(fb.methods[1].body.is_empty());
+}

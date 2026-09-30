@@ -48,6 +48,11 @@ Keywords
      - Parsed, analyzed, compiled and executed for a method declared on
        the instance's own type; a method reached through ``EXTENDS`` is
        not yet compiled
+   * - :doc:`member-qualifiers`
+     - Restrict who may use a function block or method (``PUBLIC``,
+       ``PRIVATE``, ...), or how a derived type may treat it (``FINAL``,
+       ``OVERRIDE``)
+     - Parsed and checked; not enforced
    * - :doc:`this-and-super`
      - Refer to the instance a method is running on, or to its base type
      - Parsed only
@@ -66,4 +71,5 @@ page states exactly what it supports today.
    abstract
    interface
    method
+   member-qualifiers
    this-and-super

@@ -30,6 +30,9 @@ use ironplc_dsl::common::*;
 use ironplc_dsl::configuration::*;
 use ironplc_dsl::core::Id;
 use ironplc_dsl::core::Located;
+use ironplc_dsl::member_qualifier::{
+    AccessSpecifier, MemberQualifier, MemberQualifierKind, MemberQualifiers,
+};
 use ironplc_dsl::sfc::*;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::time::*;
@@ -354,6 +357,16 @@ parser! {
       Err(val)
     }
 
+    // An identifier spelled `val`, in any case. For a word that is a
+    // keyword only in one position, such as a duration unit or the `S` in
+    // `S=`, and an ordinary name everywhere else.
+    rule contextual_keyword(val: &'static str) -> &'input Token = token:[t] {?
+      if token.token_type == TokenType::Identifier && token.text.eq_ignore_ascii_case(val) {
+        return Ok(token)
+      }
+      Err(val)
+    }
+
     /// Helper rule to match an Identifier with the specified text
     rule id_eq(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.as_str() == val]
 
@@ -530,10 +543,9 @@ parser! {
     // Omitted and subsumed into constant.
 
     // B.1.2.3.1 Duration
-    // dt_sep defines case insensitive separators between parts of duration.
+    // Duration separators and units are case insensitive, so they are
+    // matched with contextual_keyword.
     // See specs/design/time-literals.md — REQ-TL-011.
-    rule dt_sep(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case(val)]
-
     pub rule duration() -> DurationLiteral = start:position!() width:duration_prefix() tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() end:position!() {
       let span = span_of_tokens(tokens, start, end);
       let interval = match s {
@@ -547,24 +559,24 @@ parser! {
       }
     }
     // The prefix names the type: `LTIME#` is an LTIME, `TIME#` and `T#` a
-    // TIME. `dt_sep("T")` matches a bare identifier, so it comes last and
-    // cannot shadow the keyword forms.
-    rule duration_prefix() -> TemporalWidth = tok(TokenType::Time) { TemporalWidth::Short } / tok(TokenType::Ltime) { TemporalWidth::Long } / dt_sep("T") { TemporalWidth::Short }
+    // TIME. `contextual_keyword("T")` matches a bare identifier, so it comes
+    // last and cannot shadow the keyword forms.
+    rule duration_prefix() -> TemporalWidth = tok(TokenType::Time) { TemporalWidth::Short } / tok(TokenType::Ltime) { TemporalWidth::Long } / contextual_keyword("T") { TemporalWidth::Short }
     // One or more `number unit` parts, with an optional `_` between parts
     // (REQ-TL-020 to 022); `combine_interval_parts` checks their order. The
     // token transform `xform_split_duration_units` has already split a unit
     // from the digits the lexer glued to it (`m30s`).
-    rule interval() -> DurationLiteral = first:interval_part() rest:(dt_sep("_")? p:interval_part() { p })* {?
+    rule interval() -> DurationLiteral = first:interval_part() rest:(contextual_keyword("_")? p:interval_part() { p })* {?
       combine_interval_parts(first, rest)
     }
     rule interval_part() -> (FixedPoint, DurationUnit) = n:fixed_point() u:duration_unit() { (n, u) }
     // `ms` must come before `m`, or `100ms` would read as minutes.
     rule duration_unit() -> DurationUnit =
-      dt_sep("ms") { DurationUnit::Milliseconds }
-      / dt_sep("d") { DurationUnit::Days }
-      / dt_sep("h") { DurationUnit::Hours }
-      / dt_sep("m") { DurationUnit::Minutes }
-      / dt_sep("s") { DurationUnit::Seconds }
+      contextual_keyword("ms") { DurationUnit::Milliseconds }
+      / contextual_keyword("d") { DurationUnit::Days }
+      / contextual_keyword("h") { DurationUnit::Hours }
+      / contextual_keyword("m") { DurationUnit::Minutes }
+      / contextual_keyword("s") { DurationUnit::Seconds }
     rule fixed_point() -> FixedPoint =
       fp:tok(TokenType::FixedPoint) {?
         FixedPoint::parse(fp.text.as_str())
@@ -583,7 +595,7 @@ parser! {
     rule day_minute() -> Integer = integer()
     rule day_second() -> FixedPoint = fixed_point()
     rule date() -> DateLiteral = width:date_prefix() tok(TokenType::Hash) d:date_literal() { DateLiteral::new(d).with_width(width) }
-    rule date_prefix() -> TemporalWidth = tok(TokenType::Date) { TemporalWidth::Short } / tok(TokenType::Ldate) { TemporalWidth::Long } / dt_sep("D") { TemporalWidth::Short }
+    rule date_prefix() -> TemporalWidth = tok(TokenType::Date) { TemporalWidth::Short } / tok(TokenType::Ldate) { TemporalWidth::Long } / contextual_keyword("D") { TemporalWidth::Short }
     rule date_literal() -> Date = y:year() tok(TokenType::Minus) m:month() tok(TokenType::Minus) d:day() {?
       let y = y.value;
       let m = Month::try_from(<dsl::common::Integer as TryInto<u8>>::try_into(m).map_err(|e| "month")?).map_err(|e| "month")?;
@@ -1235,7 +1247,7 @@ parser! {
     // 61131-3 (a case-insensitive language) treats every other keyword.
     rule ref_bind_op() -> &'input Token =
       tok(TokenType::Ref) eq:tok(TokenType::Equal) { eq }
-      / [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("REF")] eq:tok(TokenType::Equal) { eq }
+      / contextual_keyword("REF") eq:tok(TokenType::Equal) { eq }
     // Matches the TwinCAT/CODESYS `S=` (set) and `R=` (reset) assignment
     // operators, same technique as `ref_bind_op()`: the letter and `=` must
     // be adjacent (no `_`), so `S = x` is not the operator. `S`/`R` are
@@ -1243,9 +1255,9 @@ parser! {
     // token for them) -- deliberately not a demoted keyword, since `S` and
     // `R` are common variable names and this would demote every occurrence.
     rule set_bind_op() -> &'input Token =
-      [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("S")] eq:tok(TokenType::Equal) { eq }
+      contextual_keyword("S") eq:tok(TokenType::Equal) { eq }
     rule reset_bind_op() -> &'input Token =
-      [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("R")] eq:tok(TokenType::Equal) { eq }
+      contextual_keyword("R") eq:tok(TokenType::Equal) { eq }
     rule ref_initial_value() -> ReferenceInitialValue =
       t:tok(TokenType::Null) { ReferenceInitialValue::Null(t.span.clone()) }
       / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) { ReferenceInitialValue::Ref(v) }
@@ -1508,33 +1520,59 @@ parser! {
     // element and appends it after the function block body, so the XML form
     // reaches `MethodDeclaration` through this rule as well. See ADR-0041
     // Phase 1.
-    rule method_declaration() -> MethodDeclaration = start:tok(TokenType::Method) _ name:identifier() _ rt:(tok(TokenType::Colon) _ rt:function_return_type() {rt})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body() _ end:tok(TokenType::EndMethod) {
+    // A qualifier between `METHOD`/`FUNCTION_BLOCK` and the name. Except
+    // for `ABSTRACT`, the words are contextual keywords, so they stay
+    // ordinary identifiers everywhere else.
+    rule member_qualifier() -> MemberQualifier =
+      t:tok(TokenType::Abstract) { MemberQualifier { kind: MemberQualifierKind::Abstract, span: t.span.clone() } }
+      / t:contextual_keyword("PUBLIC") { MemberQualifier { kind: MemberQualifierKind::Access(AccessSpecifier::Public), span: t.span.clone() } }
+      / t:contextual_keyword("PRIVATE") { MemberQualifier { kind: MemberQualifierKind::Access(AccessSpecifier::Private), span: t.span.clone() } }
+      / t:contextual_keyword("PROTECTED") { MemberQualifier { kind: MemberQualifierKind::Access(AccessSpecifier::Protected), span: t.span.clone() } }
+      / t:contextual_keyword("INTERNAL") { MemberQualifier { kind: MemberQualifierKind::Access(AccessSpecifier::Internal), span: t.span.clone() } }
+      / t:contextual_keyword("FINAL") { MemberQualifier { kind: MemberQualifierKind::Final, span: t.span.clone() } }
+      / t:contextual_keyword("OVERRIDE") { MemberQualifier { kind: MemberQualifierKind::Override, span: t.span.clone() } }
+    // Qualifiers in source order; their order and combination are checked
+    // after parsing. A word is only a qualifier when the declaration's name
+    // still follows it, so `METHOD Override : BOOL` is a method named
+    // `Override`. The name must not be the start of a statement either:
+    // in `METHOD Override x := 1;` the method has no header and `x := 1;`
+    // is its body.
+    rule member_qualifiers() -> MemberQualifiers = qs:(q:member_qualifier() &(_ (member_qualifier() / identifier() !(_ statement_continuation()))) { q }) ** _ {
+      MemberQualifiers::new(qs)
+    }
+    // The token after the first identifier of a statement: `x := `,
+    // `x(`, `x.`, `x[`, `x^`, or `x REF=`/`x S=`/`x R=`.
+    rule statement_continuation() =
+      tok(TokenType::Assignment) / tok(TokenType::LeftParen) / tok(TokenType::Period)
+      / tok(TokenType::LeftBracket) / tok(TokenType::Caret)
+      / ref_bind_op() / set_bind_op() / reset_bind_op()
+
+    // Unlike a function, a method may have an empty body: an `ABSTRACT`
+    // method has none, and TwinCAT writes a do-nothing method that way.
+    rule method_declaration() -> MethodDeclaration = start:tok(TokenType::Method) _ qualifiers:member_qualifiers() _ name:identifier() _ rt:(tok(TokenType::Colon) _ rt:function_return_type() {rt})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body()? _ end:tok(TokenType::EndMethod) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
       MethodDeclaration {
+        qualifiers,
         name,
         return_type: rt,
         variables,
         edge_variables,
-        body,
+        body: body.unwrap_or_default(),
         span: SourceSpan::join(&start.span, &end.span),
       }
     }
 
-    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ is_abstract:(t:tok(TokenType::Abstract) {t})? _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ methods:(_ m:method_declaration() {m}) ** _ _ end:tok(TokenType::EndFunctionBlock) {
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ qualifiers:member_qualifiers() _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ methods:(_ m:method_declaration() {m}) ** _ _ end:tok(TokenType::EndFunctionBlock) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
 
       let base = extends.as_ref().map(|(_, t)| t.clone());
       let implements_list = implements.as_ref().map(|(_, names)| names.clone()).unwrap_or_default();
-      let is_abstract_present = is_abstract.is_some();
-      let oop = if is_abstract_present || base.is_some() || !implements_list.is_empty() {
-        let mut oop_spans: Vec<SourceSpan> = Vec::new();
-        if let Some(t) = &is_abstract {
-          oop_spans.push(t.span.clone());
-        }
+      let oop = if !qualifiers.is_empty() || base.is_some() || !implements_list.is_empty() {
+        let mut oop_spans: Vec<SourceSpan> = qualifiers.iter().map(|q| q.span.clone()).collect();
         if let Some((e, t)) = &extends {
           oop_spans.push(e.span.clone());
           oop_spans.push(t.span());
@@ -1552,7 +1590,7 @@ parser! {
         Some(FunctionBlockOop {
           base,
           implements: implements_list,
-          is_abstract: is_abstract_present,
+          qualifiers,
           span: oop_span,
         })
       } else {
