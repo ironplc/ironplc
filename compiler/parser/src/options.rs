@@ -489,6 +489,11 @@ define_compiler_options! {
     [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
     allow_enum_explicit_values,
 
+    "Allow the CONTINUE statement, which goes on with the next iteration of the innermost loop (standardized in IEC 61131-3:2013)",
+    "--allow-continue",
+    [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
+    allow_continue,
+
     "Allow the base-type suffix on an enumeration declaration, e.g. (A, B) WORD, naming the elementary type the members are stored in",
     "--allow-enum-base-type",
     [Rusty, Codesys, TwinCat],

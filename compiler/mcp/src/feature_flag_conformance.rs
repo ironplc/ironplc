@@ -299,6 +299,13 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &["allow_top_level_var_global"],
         source: "VAR_GLOBAL PERSISTENT\nnCounter : DINT;\nEND_VAR",
     },
+    // The Edition 3 CONTINUE statement. With the flag off, CONTINUE demotes
+    // to a plain identifier, and an identifier alone is not a statement.
+    FlagFixture {
+        key: "allow_continue",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR i : INT; END_VAR\nFOR i := 1 TO 3 DO\nCONTINUE;\nEND_FOR;\nEND_PROGRAM",
+    },
 ];
 
 /// Builds an ed2 options object with the given flags enabled.

@@ -1,11 +1,13 @@
-//! Semantic rule that an `EXIT` statement is inside a loop.
+//! Semantic rule that the loop control statements, `EXIT` and `CONTINUE`,
+//! are inside a loop.
 //!
 //! `EXIT` terminates the innermost enclosing `FOR`, `WHILE`, or `REPEAT`
-//! loop, so outside of one it has nothing to terminate.
+//! loop and `CONTINUE` goes on with its next iteration, so outside of one
+//! they have nothing to act on.
 //!
-//! Code generation checks the same thing, because it needs the loop's exit
-//! label to emit the jump. That check is not reached by `check`, which stops
-//! after semantic analysis, so the editor never showed this error.
+//! Code generation checks the same thing, because it needs the loop's
+//! labels to emit the jump. That check is not reached by `check`, which
+//! stops after semantic analysis, so the editor never showed this error.
 //!
 //! ## Passes
 //!
@@ -48,17 +50,17 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    run_rule(RuleExitInsideLoop::default(), lib)
+    run_rule(RuleLoopControlInsideLoop::default(), lib)
 }
 
 #[derive(Default)]
-struct RuleExitInsideLoop {
+struct RuleLoopControlInsideLoop {
     /// Number of loops enclosing the statement being visited.
     loop_depth: usize,
     diagnostics: Vec<Diagnostic>,
 }
 
-impl RuleExitInsideLoop {
+impl RuleLoopControlInsideLoop {
     fn visit_loop_body<T>(
         &mut self,
         node: &T,
@@ -71,7 +73,7 @@ impl RuleExitInsideLoop {
     }
 }
 
-impl Visitor<Infallible> for RuleExitInsideLoop {
+impl Visitor<Infallible> for RuleLoopControlInsideLoop {
     type Value = ();
 
     fn visit_for(&mut self, node: &For) -> Result<(), Infallible> {
@@ -87,14 +89,24 @@ impl Visitor<Infallible> for RuleExitInsideLoop {
     }
 
     fn visit_stmt_kind(&mut self, node: &StmtKind) -> Result<(), Infallible> {
-        if let StmtKind::Exit(span) = node {
-            if self.loop_depth == 0 {
-                self.diagnostics.push(Diagnostic::problem(
+        if self.loop_depth == 0 {
+            let outside_loop = match node {
+                StmtKind::Exit(span) => Some((
                     Problem::ExitOutsideLoop,
-                    Label::span(
-                        span.clone(),
-                        "EXIT must be inside a FOR, WHILE, or REPEAT loop",
-                    ),
+                    span,
+                    "EXIT must be inside a FOR, WHILE, or REPEAT loop",
+                )),
+                StmtKind::Continue(span) => Some((
+                    Problem::ContinueOutsideLoop,
+                    span,
+                    "CONTINUE must be inside a FOR, WHILE, or REPEAT loop",
+                )),
+                _ => None,
+            };
+            if let Some((problem, span, message)) = outside_loop {
+                self.diagnostics.push(Diagnostic::problem(
+                    problem,
+                    Label::span(span.clone(), message),
                 ));
             }
         }
@@ -102,7 +114,7 @@ impl Visitor<Infallible> for RuleExitInsideLoop {
     }
 }
 
-impl DiagnosticVisitor for RuleExitInsideLoop {
+impl DiagnosticVisitor for RuleLoopControlInsideLoop {
     fn into_diagnostics(self) -> Vec<Diagnostic> {
         self.diagnostics
     }
@@ -110,6 +122,7 @@ impl DiagnosticVisitor for RuleExitInsideLoop {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_parser::options::{CompilerOptions, Dialect};
     use ironplc_problems::Problem;
 
     rule_err_code!(
@@ -193,6 +206,53 @@ mod tests {
                     EXIT;
                 END_WHILE;
                 EXIT;
+            END_FOR;
+        END_PROGRAM"
+    );
+
+    fn edition_3() -> CompilerOptions {
+        CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
+    }
+
+    rule_err_code_with!(
+        apply_when_continue_in_program_body_then_p4065,
+        edition_3(),
+        "
+        PROGRAM main
+            CONTINUE;
+        END_PROGRAM",
+        Problem::ContinueOutsideLoop
+    );
+
+    rule_err_code_with!(
+        apply_when_continue_in_if_outside_loop_then_p4065,
+        edition_3(),
+        "
+        FUNCTION f : INT
+        VAR x : BOOL; END_VAR
+            IF x THEN
+                CONTINUE;
+            END_IF;
+            f := 0;
+        END_FUNCTION",
+        Problem::ContinueOutsideLoop
+    );
+
+    rule_ok_with!(
+        apply_when_continue_in_each_loop_then_ok,
+        edition_3(),
+        "
+        PROGRAM main
+        VAR x : INT; y : BOOL; END_VAR
+            FOR x := 1 TO 10 DO
+                WHILE y DO
+                    CONTINUE;
+                END_WHILE;
+                REPEAT
+                    CONTINUE;
+                UNTIL y
+                END_REPEAT;
+                CONTINUE;
             END_FOR;
         END_PROGRAM"
     );

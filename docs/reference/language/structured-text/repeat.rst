@@ -56,3 +56,4 @@ See Also
 - :doc:`while` — pre-tested loop
 - :doc:`for` — counted loop
 - :doc:`exit` — break from innermost loop
+- :doc:`continue` — next iteration of innermost loop

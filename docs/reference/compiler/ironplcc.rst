@@ -305,6 +305,12 @@ Options
    :doc:`P4056 </reference/compiler/problems/P4056>` when used without this
    flag.
 
+``--allow-continue``
+   Allow the ``CONTINUE`` statement, which goes on with the next iteration of
+   the innermost ``FOR``, ``WHILE``, or ``REPEAT`` loop. ``CONTINUE`` was added
+   in IEC 61131-3:2013 (Edition 3); without this flag it is an ordinary
+   identifier.
+
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
    Select what ``STRING_TO_<numeric>`` treats as convertible when the string
    has non-numeric characters: ``reject`` (the whole string must be a

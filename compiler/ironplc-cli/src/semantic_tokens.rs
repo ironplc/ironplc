@@ -179,6 +179,7 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::Until => Some(KEYWORD_INDEX),
             TokenType::EndRepeat => Some(KEYWORD_INDEX),
             TokenType::Exit => Some(KEYWORD_INDEX),
+            TokenType::Continue => Some(KEYWORD_INDEX),
             TokenType::Action => Some(KEYWORD_INDEX),
             TokenType::EndAction => Some(KEYWORD_INDEX),
             TokenType::En => Some(KEYWORD_INDEX),
@@ -340,7 +341,7 @@ FUNCTION Clamp : ANY_NUM
   VAR_EXTERNAL Shared : Point; END_VAR
   IF Value > 1 THEN RETURN; ELSIF Value < 0 THEN Clamp := 0; ELSE Clamp := Value; END_IF;
   CASE IntValue OF 1, 2..3: Clamp := 1; ELSE Clamp := 0; END_CASE;
-  FOR IntValue := 0 TO 10 BY 2 DO EXIT; END_FOR;
+  FOR IntValue := 0 TO 10 BY 2 DO CONTINUE; EXIT; END_FOR;
   WHILE Value > 0 DO Value := Value - 1; END_WHILE;
   REPEAT Value := Value + 1; UNTIL Value > 0 END_REPEAT;
   Clamp := MAX(EN := TRUE, ENO => BitValue, IN1 := 1, IN2 := 2);
@@ -465,7 +466,8 @@ END_CONFIGURATION"#;
     (":=", OPERATOR), ("ELSE", KEYWORD), ("Clamp", VARIABLE), (":=", OPERATOR),
     ("END_CASE", KEYWORD),
     ("FOR", KEYWORD), ("IntValue", VARIABLE), (":=", OPERATOR), ("TO", KEYWORD),
-    ("BY", KEYWORD), ("DO", KEYWORD), ("EXIT", KEYWORD), ("END_FOR", KEYWORD),
+    ("BY", KEYWORD), ("DO", KEYWORD), ("CONTINUE", KEYWORD), ("EXIT", KEYWORD),
+    ("END_FOR", KEYWORD),
     ("WHILE", KEYWORD), ("Value", VARIABLE), (">", OPERATOR), ("DO", KEYWORD),
     ("Value", VARIABLE), (":=", OPERATOR), ("Value", VARIABLE), ("-", OPERATOR),
     ("END_WHILE", KEYWORD),
@@ -538,6 +540,7 @@ END_CONFIGURATION"#;
     fn every_keyword_enabled() -> CompilerOptions {
         CompilerOptions {
             allow_c_style_comments: true,
+            allow_continue: true,
             allow_fb_inheritance: true,
             allow_long_time_types: true,
             allow_partial_access_syntax: true,
