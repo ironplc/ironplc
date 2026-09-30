@@ -58,22 +58,22 @@ pub fn apply(
     let function_blocks = FunctionBlocks::from_library(lib);
 
     // Walk the library to find all references to function blocks
-    run_rule(RuleFunctionBlockUse::new(&function_blocks), lib)
+    run_rule(RuleFunctionBlockUse::new(&function_blocks, lib), lib)
 }
 
 struct RuleFunctionBlockUse<'a> {
     function_blocks: &'a FunctionBlocks<'a>,
 
-    /// The instances declared in the unit being walked.
+    /// The instances visible in the unit being walked.
     instances: InstanceTypes,
 
     diagnostics: Vec<Diagnostic>,
 }
 impl<'a> RuleFunctionBlockUse<'a> {
-    fn new(function_blocks: &'a FunctionBlocks<'a>) -> Self {
+    fn new(function_blocks: &'a FunctionBlocks<'a>, lib: &Library) -> Self {
         Self {
             function_blocks,
-            instances: InstanceTypes::default(),
+            instances: InstanceTypes::with_top_level_globals(lib),
             diagnostics: Vec::new(),
         }
     }
@@ -453,5 +453,187 @@ FB_INSTANCE(NOPE1 := TRUE, NOPE2 := TRUE);
 END_PROGRAM",
         2,
         ironplc_problems::Problem::FunctionInvocationMissingInput
+    );
+
+    fn top_level_global_options() -> ironplc_parser::options::CompilerOptions {
+        ironplc_parser::options::CompilerOptions {
+            allow_top_level_var_global: true,
+            ..ironplc_parser::options::CompilerOptions::default()
+        }
+    }
+
+    rule_ok!(
+        apply_when_program_calls_configuration_global_through_external_then_ok,
+        "
+PROGRAM main
+VAR_EXTERNAL
+    g : TON;
+END_VAR
+VAR
+    q : BOOL;
+END_VAR
+g(IN := TRUE, PT := T#1s);
+q := g.Q;
+END_PROGRAM
+
+CONFIGURATION config
+VAR_GLOBAL
+    g : TON;
+END_VAR
+RESOURCE res ON PLC
+    TASK t (INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM p WITH t : main;
+END_RESOURCE
+END_CONFIGURATION"
+    );
+
+    rule_ok!(
+        apply_when_program_calls_user_function_block_through_external_then_ok,
+        "
+FUNCTION_BLOCK Callee
+VAR_INPUT
+    IN1 : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR_EXTERNAL
+    inst : Callee;
+END_VAR
+inst(IN1 := TRUE);
+END_PROGRAM
+
+CONFIGURATION config
+VAR_GLOBAL
+    inst : Callee;
+END_VAR
+RESOURCE res ON PLC
+    TASK t (INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM p WITH t : main;
+END_RESOURCE
+END_CONFIGURATION"
+    );
+
+    rule_err_code!(
+        apply_when_call_through_external_names_undeclared_input_then_error,
+        "
+FUNCTION_BLOCK Callee
+VAR_INPUT
+    IN1 : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR_EXTERNAL
+    inst : Callee;
+END_VAR
+inst(NOPE := TRUE);
+END_PROGRAM
+
+CONFIGURATION config
+VAR_GLOBAL
+    inst : Callee;
+END_VAR
+RESOURCE res ON PLC
+    TASK t (INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM p WITH t : main;
+END_RESOURCE
+END_CONFIGURATION",
+        ironplc_problems::Problem::FunctionInvocationMissingInput
+    );
+
+    rule_err1!(
+        apply_when_external_of_elementary_type_is_called_then_p4012,
+        "
+PROGRAM main
+VAR_EXTERNAL
+    g : INT;
+END_VAR
+g();
+END_PROGRAM
+
+CONFIGURATION config
+VAR_GLOBAL
+    g : INT;
+END_VAR
+RESOURCE res ON PLC
+    TASK t (INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM p WITH t : main;
+END_RESOURCE
+END_CONFIGURATION",
+        ironplc_problems::Problem::FunctionBlockNotInScope
+    );
+
+    rule_ok!(
+        apply_when_function_block_calls_global_through_external_then_ok,
+        "
+FUNCTION_BLOCK Caller
+VAR_EXTERNAL
+    g : TON;
+END_VAR
+g(IN := TRUE, PT := T#1s);
+END_FUNCTION_BLOCK"
+    );
+
+    rule_ok_with!(
+        apply_when_program_calls_top_level_global_through_external_then_ok,
+        top_level_global_options(),
+        "
+FUNCTION_BLOCK Callee
+VAR_INPUT
+    IN1 : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+VAR_GLOBAL
+    inst : Callee;
+END_VAR
+
+PROGRAM main
+VAR_EXTERNAL
+    inst : Callee;
+END_VAR
+inst(IN1 := TRUE);
+END_PROGRAM"
+    );
+
+    rule_ok_with!(
+        apply_when_program_calls_top_level_global_directly_then_ok,
+        top_level_global_options(),
+        "
+FUNCTION_BLOCK Callee
+VAR_INPUT
+    IN1 : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+VAR_GLOBAL
+    inst : Callee;
+    timer : TON;
+END_VAR
+
+PROGRAM main
+inst(IN1 := TRUE);
+timer(IN := TRUE, PT := T#1s);
+END_PROGRAM"
+    );
+
+    rule_err1!(
+        apply_when_program_calls_configuration_global_without_external_then_p4012,
+        "
+PROGRAM main
+g(IN := TRUE, PT := T#1s);
+END_PROGRAM
+
+CONFIGURATION config
+VAR_GLOBAL
+    g : TON;
+END_VAR
+RESOURCE res ON PLC
+    TASK t (INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM p WITH t : main;
+END_RESOURCE
+END_CONFIGURATION",
+        ironplc_problems::Problem::FunctionBlockNotInScope
     );
 }

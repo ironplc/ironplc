@@ -65,13 +65,13 @@ pub fn apply(
 ) -> SemanticResult {
     let function_blocks = FunctionBlocks::from_library(lib);
 
-    run_rule(RuleMethodCallDeclared::new(&function_blocks), lib)
+    run_rule(RuleMethodCallDeclared::new(&function_blocks, lib), lib)
 }
 
 struct RuleMethodCallDeclared<'a> {
     function_blocks: &'a FunctionBlocks<'a>,
 
-    /// The instances declared in the unit being walked.
+    /// The instances visible in the unit being walked.
     instances: InstanceTypes,
 
     /// Whether the method call being visited is in expression position,
@@ -82,10 +82,10 @@ struct RuleMethodCallDeclared<'a> {
 }
 
 impl<'a> RuleMethodCallDeclared<'a> {
-    fn new(function_blocks: &'a FunctionBlocks<'a>) -> Self {
+    fn new(function_blocks: &'a FunctionBlocks<'a>, lib: &Library) -> Self {
         Self {
             function_blocks,
-            instances: InstanceTypes::default(),
+            instances: InstanceTypes::with_top_level_globals(lib),
             in_expression: false,
             diagnostics: Vec::new(),
         }
@@ -492,5 +492,61 @@ END_VAR
 v := m.Scaled(m.Nope());
 END_PROGRAM",
         Problem::MethodNotFound
+    );
+
+    rule_ok_with!(
+        apply_when_method_called_through_external_then_ok,
+        opts_with_fb_inheritance(),
+        "
+FUNCTION_BLOCK FB_Motor
+VAR
+    bRunning : BOOL;
+END_VAR
+METHOD Start
+    bRunning := TRUE;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR_EXTERNAL
+    m : FB_Motor;
+END_VAR
+m.Start();
+END_PROGRAM
+
+CONFIGURATION config
+VAR_GLOBAL
+    m : FB_Motor;
+END_VAR
+RESOURCE res ON PLC
+    TASK t (INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM p WITH t : main;
+END_RESOURCE
+END_CONFIGURATION"
+    );
+
+    rule_ok_with!(
+        apply_when_method_called_on_top_level_global_then_ok,
+        CompilerOptions {
+            allow_top_level_var_global: true,
+            ..opts_with_fb_inheritance()
+        },
+        "
+FUNCTION_BLOCK FB_Motor
+VAR
+    bRunning : BOOL;
+END_VAR
+METHOD Start
+    bRunning := TRUE;
+END_METHOD
+END_FUNCTION_BLOCK
+
+VAR_GLOBAL
+    m : FB_Motor;
+END_VAR
+
+PROGRAM main
+m.Start();
+END_PROGRAM"
     );
 }

@@ -78,7 +78,7 @@ pub fn apply(
         function_environment,
         symbol_environment,
         scope: Vec::new(),
-        instances: InstanceTypes::default(),
+        instances: InstanceTypes::with_top_level_globals(&lib),
         written: Writes::default(),
         globals: HashMap::new(),
     };
