@@ -29,7 +29,8 @@
 //!
 //! # Not yet supported
 //!
-//! - TODO: STRING[N] in VAR_IN_OUT (parsed, but runtime pass-by-reference not implemented)
+//! - TODO: VAR_IN_OUT of a non-elementary type such as STRING[N] (only
+//!   elementary types are passed by reference)
 //! - TODO: STRING[N] in STRUCT members (parsed, but struct compilation not implemented)
 //!
 //! # Integer type strategy: promote-operate-truncate
@@ -1206,6 +1207,22 @@ pub(crate) struct StringParamInfo {
     pub(crate) char_width: CharWidth,
 }
 
+/// How a call site passes an argument to one input parameter
+/// (`VAR_INPUT`/`VAR_IN_OUT`) of a user-defined function.
+#[derive(Clone)]
+pub(crate) enum ParamPassing {
+    /// The argument's value is pushed onto the operand stack at this type,
+    /// and `CALL` stores it in the parameter's slot.
+    Value(OpType),
+    /// The argument is copied into the parameter's data region space before
+    /// `CALL`, and a dummy value is pushed for the slot `CALL` pops.
+    String(StringParamInfo),
+    /// A `VAR_IN_OUT` argument: the variable's reference (its
+    /// variable-table index) is pushed, and the function reads and writes
+    /// the caller's variable through it.
+    Reference,
+}
+
 /// Metadata for a STRING/WSTRING return value in a user-defined function.
 ///
 /// When a function returns STRING/WSTRING, the return value lives in the
@@ -1229,11 +1246,8 @@ pub(crate) struct UserFunctionInfo {
     pub(crate) var_offset: VarIndex,
     /// Number of input parameters.
     pub(crate) num_params: u16,
-    /// OpTypes for each input parameter, in declaration order.
-    pub(crate) param_op_types: Vec<OpType>,
-    /// For each input parameter (in order), `Some(info)` if it is a STRING
-    /// parameter that needs copy-in at the call site, `None` for scalar params.
-    pub(crate) param_string_info: Vec<Option<StringParamInfo>>,
+    /// How the call site passes each input parameter, in declaration order.
+    pub(crate) params: Vec<ParamPassing>,
     /// If the function returns STRING/WSTRING, info about the return string
     /// in the data region. Used at call sites to initialize the return string
     /// header before CALL.
@@ -1404,6 +1418,14 @@ pub(crate) struct CompileContext {
     ///
     /// [`record_call_edge`]: CompileContext::record_call_edge
     pub(crate) call_graph: HashMap<FunctionId, HashSet<FunctionId>>,
+    /// The `VAR_IN_OUT` parameters of the function being compiled. Each
+    /// one's slot holds a reference to the caller's variable (a
+    /// variable-table index, as `REF_TO` stores) rather than a value, so it
+    /// is reached through [`in_out_ref_slot`], never [`var_index`].
+    ///
+    /// [`in_out_ref_slot`]: CompileContext::in_out_ref_slot
+    /// [`var_index`]: CompileContext::var_index
+    pub(crate) in_out_params: HashSet<Id>,
 }
 
 /// Describes how a `RETURN` statement should yield the function's value.
@@ -1431,6 +1453,7 @@ impl CompileContext {
             array_vars: HashMap::new(),
             struct_vars: HashMap::new(),
             struct_array_vars: HashMap::new(),
+            in_out_params: HashSet::new(),
             data_region_offset: 0,
             max_string_capacity: 0,
             has_wide_string: false,
@@ -1469,7 +1492,18 @@ impl CompileContext {
     }
 
     /// Looks up a variable index by identifier, using the provided span for error reporting.
+    ///
+    /// A `VAR_IN_OUT` parameter's slot holds a reference, not the value, so
+    /// loading or storing it directly would be wrong. Sites that handle one
+    /// ask [`Self::in_out_ref_slot`] first; every other site reaches here
+    /// and is refused.
     pub(crate) fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
+        if self.in_out_params.contains(name) {
+            return Err(Diagnostic::not_implemented(Label::span(
+                name.span(),
+                "VAR_IN_OUT parameter used where only a local or global variable is supported",
+            )));
+        }
         self.variables.get(name).copied().ok_or_else(|| {
             Diagnostic::problem(
                 Problem::VariableUndefined,
@@ -1477,6 +1511,16 @@ impl CompileContext {
             )
             .with_context("variable", &name.to_string())
         })
+    }
+
+    /// Returns the slot holding the reference when `name` is a `VAR_IN_OUT`
+    /// parameter of the function being compiled, or `None` for any other
+    /// variable.
+    pub(crate) fn in_out_ref_slot(&self, name: &Id) -> Option<VarIndex> {
+        if !self.in_out_params.contains(name) {
+            return None;
+        }
+        self.variables.get(name).copied()
     }
 
     /// Looks up type information for a variable by identifier.

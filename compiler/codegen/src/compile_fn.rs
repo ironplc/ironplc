@@ -4,22 +4,22 @@
 //! including variable setup, body compilation, and metadata registration.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
-use ironplc_container::debug_section::{var_section, VarNameEntry};
+use ironplc_container::debug_section::{iec_type_tag, var_section, VarNameEntry};
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType, InitialValueAssignmentKind,
     VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
 use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use super::compile::{
     char_width_for_string_type, finalize_function, string_region_size, CompileContext,
-    CompiledFunction, CurrentFunctionReturn, OpType, OpWidth, SavedFbScope, Signedness,
-    StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, DEFAULT_OP_TYPE,
-    NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
+    CompiledFunction, CurrentFunctionReturn, OpWidth, ParamPassing, SavedFbScope, Signedness,
+    StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo,
+    DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{
@@ -45,6 +45,13 @@ fn push_local_var_name(
     types: &TypeEnvironment,
 ) {
     let (tag, type_name) = debug_type_for_decl(decl, types);
+    // A VAR_IN_OUT parameter's slot holds a reference to the caller's
+    // variable, so it is described as one rather than as the value.
+    let (tag, type_name) = if decl.var_type == VariableType::InOut {
+        (iec_type_tag::OTHER, format!("REF_TO {type_name}"))
+    } else {
+        (tag, type_name)
+    };
     ctx.debug_var_names.push(VarNameEntry {
         var_index,
         function_id,
@@ -53,6 +60,25 @@ fn push_local_var_name(
         name: id.to_string(),
         type_name,
     });
+}
+
+/// Returns the type of the value a function's `VAR_IN_OUT` parameter
+/// refers to.
+///
+/// A `VAR_IN_OUT` parameter is passed as a reference to a single slot, so
+/// only elementary types are supported. A string, array, structure,
+/// reference or function block instance lives in the data region (or is
+/// itself a reference), and passing one by reference is not implemented.
+fn in_out_value_type(decl: &VarDecl) -> Result<VarTypeInfo, Diagnostic> {
+    if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
+        if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+            return Ok(type_info);
+        }
+    }
+    Err(Diagnostic::not_implemented(Label::span(
+        decl.identifier.span(),
+        "VAR_IN_OUT parameter of a type other than an elementary type",
+    )))
 }
 
 /// Compiles a single user-defined function body.
@@ -82,6 +108,7 @@ pub(crate) fn compile_user_function(
     let saved_array_vars = std::mem::take(&mut ctx.array_vars);
     let saved_struct_vars = std::mem::take(&mut ctx.struct_vars);
     let saved_struct_array_vars = std::mem::take(&mut ctx.struct_array_vars);
+    let saved_in_out_params = std::mem::take(&mut ctx.in_out_params);
 
     // Re-insert global variable mappings so the function body can access them.
     for (id, index) in &saved_variables {
@@ -137,6 +164,16 @@ pub(crate) fn compile_user_function(
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
             push_local_var_name(ctx, current_index, function_id, decl, id, types);
+            if decl.var_type == VariableType::InOut {
+                // The slot holds a reference to the caller's variable; its
+                // type info is the referenced value's, for reads and writes.
+                let type_info = in_out_value_type(decl)?;
+                ctx.var_types.insert(id.clone(), type_info);
+                ctx.in_out_params.insert(id.clone());
+                current_index = VarIndex::new(current_index.raw() + 1);
+                num_params += 1;
+                continue;
+            }
             match &decl.initializer {
                 InitialValueAssignmentKind::Simple(_) => {
                     if let Some(type_info) = decl_type_info(ctx, decl) {
@@ -376,56 +413,44 @@ pub(crate) fn compile_user_function(
     // Record function metadata for use at call sites.
     let func_name = func_decl.name.lower_case();
 
-    // Record parameter OpTypes and STRING info from the function's declarations.
-    let mut param_op_types: Vec<OpType> = Vec::new();
-    let mut param_string_info: Vec<Option<StringParamInfo>> = Vec::new();
+    // Record how a call site passes each parameter. The signature's input
+    // parameters are the input-compatible declarations in the same order.
+    let mut signature_params = functions
+        .get(&func_decl.name)
+        .into_iter()
+        .flat_map(|sig| sig.input_parameters());
+    let mut params: Vec<ParamPassing> = Vec::new();
     for decl in &func_decl.variables {
         if !decl.var_type.is_input_compatible() {
             continue;
         }
-        match &decl.initializer {
-            InitialValueAssignmentKind::String(_) => {
-                param_op_types.push(DEFAULT_OP_TYPE);
-                if let Some(id) = decl.identifier.symbolic_id() {
-                    if let Some(info) = ctx.string_vars.get(id) {
-                        param_string_info.push(Some(StringParamInfo {
-                            data_offset: info.data_offset,
-                            max_length: info.max_length,
-                            char_width: info.char_width,
-                        }));
-                    } else {
-                        param_string_info.push(None);
-                    }
-                } else {
-                    param_string_info.push(None);
-                }
-            }
-            InitialValueAssignmentKind::Reference(_) => {
-                param_op_types.push((OpWidth::W64, Signedness::Unsigned));
-                param_string_info.push(None);
-            }
-            _ => {
-                if let Some(sig) = functions.get(&func_decl.name) {
-                    if let Some(param) = sig
-                        .parameters
-                        .iter()
-                        .filter(|p| p.is_input)
-                        .nth(param_op_types.len())
-                    {
-                        param_op_types.push(
-                            resolve_type_name(&param.param_type.name)
-                                .map(|info| (info.op_width, info.signedness))
-                                .unwrap_or(DEFAULT_OP_TYPE),
-                        );
-                    } else {
-                        param_op_types.push(DEFAULT_OP_TYPE);
-                    }
-                } else {
-                    param_op_types.push(DEFAULT_OP_TYPE);
-                }
-                param_string_info.push(None);
-            }
+        let signature_param = signature_params.next();
+        if decl.var_type == VariableType::InOut {
+            params.push(ParamPassing::Reference);
+            continue;
         }
+        let passing = match &decl.initializer {
+            InitialValueAssignmentKind::String(_) => decl
+                .identifier
+                .symbolic_id()
+                .and_then(|id| ctx.string_vars.get(id))
+                .map_or(ParamPassing::Value(DEFAULT_OP_TYPE), |info| {
+                    ParamPassing::String(StringParamInfo {
+                        data_offset: info.data_offset,
+                        max_length: info.max_length,
+                        char_width: info.char_width,
+                    })
+                }),
+            InitialValueAssignmentKind::Reference(_) => {
+                ParamPassing::Value((OpWidth::W64, Signedness::Unsigned))
+            }
+            _ => ParamPassing::Value(
+                signature_param
+                    .and_then(|param| resolve_type_name(&param.param_type.name))
+                    .map_or(DEFAULT_OP_TYPE, |info| (info.op_width, info.signedness)),
+            ),
+        };
+        params.push(passing);
     }
 
     ctx.user_functions.insert(
@@ -434,8 +459,7 @@ pub(crate) fn compile_user_function(
             function_id,
             var_offset,
             num_params,
-            param_op_types,
-            param_string_info,
+            params,
             return_string_info,
             return_struct_desc_index,
             max_stack_depth: finalized.max_stack_depth,
@@ -449,6 +473,7 @@ pub(crate) fn compile_user_function(
     ctx.array_vars = saved_array_vars;
     ctx.struct_vars = saved_struct_vars;
     ctx.struct_array_vars = saved_struct_array_vars;
+    ctx.in_out_params = saved_in_out_params;
 
     Ok(CompiledFunction {
         function_id,

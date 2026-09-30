@@ -94,6 +94,9 @@ pub(crate) fn resolve_initializer(
         InitialValueAssignmentKind::Structure(si) => {
             Some(type_env.get(&si.type_name)?.representation.clone())
         }
+        InitialValueAssignmentKind::FunctionBlock(fbi) => {
+            Some(type_env.get(&fbi.type_name)?.representation.clone())
+        }
         InitialValueAssignmentKind::Array(ai) => match &ai.spec {
             SpecificationKind::Named(tn) => Some(type_env.get(tn)?.representation.clone()),
             SpecificationKind::Inline(subranges) => {

@@ -1,5 +1,25 @@
 # VAR_IN_OUT Parameters
 
+status: partially implemented
+date: 2026-09-27
+
+## Implementation Status
+
+Work is tracked in [#1793](https://github.com/ironplc/ironplc/issues/1793).
+Anything not yet implemented is reported as not implemented (P9999) rather
+than compiled with by-value semantics.
+
+| Section | Status |
+|---|---|
+| [Writable arguments](#writable-arguments), [Argument list](#argument-list), [Rules](#rules) | Implemented for function calls: P4058, P4059, P4060. P4061 and P4062 (function blocks) are not. Function block and method calls do not yet include `VAR_IN_OUT` in the positional order. |
+| [Constant arguments](#constant-arguments) | Not implemented; `VAR_IN_OUT CONSTANT` is not parsed. |
+| [References](#references) | Variable references and their instance-scope check are implemented. Data-region references, `REF_ELEM` and `REF_BASE` are not. |
+| [Call site](#call-site), [Parameter slots](#parameter-slots) | Implemented for functions with an elementary parameter, when the argument is a named variable or a forwarded `VAR_IN_OUT`. |
+| [Accesses by parameter type](#accesses-by-parameter-type) | Elementary: implemented. `REF_TO`, strings, arrays, structures and instances: not implemented. |
+| [Function blocks](#function-blocks), [Methods](#methods) | Not implemented: their `VAR_IN_OUT` is still passed by value. |
+| [Refusing unhandled sites](#refusing-unhandled-sites) | The refusal is implemented. The `FOR` control variable, bit and partial access writes, and `=>` targets are refused rather than handled. |
+| [Debug information](#debug-information) | Implemented. |
+
 ## Overview
 
 A `VAR_IN_OUT` parameter lets a POU read and write a variable that belongs to
@@ -187,11 +207,11 @@ counterparts in `call_assignment_check`, with these codes:
 
 | Code | Condition |
 |---|---|
-| P4057 `FunctionCallInOutArgNotVariable` | The argument is not a variable, element or field: a literal, an arithmetic expression, a function call. |
-| P4058 `FunctionCallInOutArgTypeMismatch` | The argument's type is not the parameter's type. Both are resolved through aliases and subranges. Otherwise types match only by identity: the same string kind and capacity, the same array bounds and element type, the same structure or function block type. |
-| P4059 `InOutArgNotWritable` | The argument cannot be proved writable (see [Writable arguments](#writable-arguments)). |
-| P4060 `InOutNotBound` | A function block invocation does not bind one of the instance's `VAR_IN_OUT` parameters. |
-| P4061 `InOutAccessedOutside` | `fb.IO` names an instance's `VAR_IN_OUT` from outside the instance. |
+| P4058 `FunctionCallInOutArgNotVariable` | The argument is not a variable, element or field: a literal, an arithmetic expression, a function call. |
+| P4059 `FunctionCallInOutArgTypeMismatch` | The argument's type is not the parameter's type. Both are resolved through aliases and subranges. Otherwise types match only by identity: the same string kind and capacity, the same array bounds and element type, the same structure or function block type. |
+| P4060 `InOutArgNotWritable` | The argument cannot be proved writable (see [Writable arguments](#writable-arguments)). |
+| P4061 `InOutNotBound` | A function block invocation does not bind one of the instance's `VAR_IN_OUT` parameters. |
+| P4062 `InOutAccessedOutside` | `fb.IO` names an instance's `VAR_IN_OUT` from outside the instance. |
 
 P4026 (`FunctionCallArgTypeMismatch`), which allows implicit widening, skips
 `VAR_IN_OUT` parameters so a mismatch is reported once.
@@ -377,7 +397,7 @@ one-element string array whose descriptor has the parameter's capacity:
 | `s := e` | `e`, `LOAD_CONST 0`, `STR_STORE_ARRAY_ELEM <base slot>, <desc>` |
 
 String functions receive `s` through the read path, like any string value.
-Because the capacity must match exactly (P4058), the descriptor describes the
+Because the capacity must match exactly (P4059), the descriptor describes the
 caller's string correctly.
 
 **Arrays and structures.** Compiled as a local of that type whose slot is the
@@ -388,7 +408,7 @@ all unchanged.
 **Function block instances.** Compiled as an instance local whose slot is the
 base slot. `p(...)`, `p.IN := e` and reads of `p.OUT` use the existing
 function block instructions with the base slot as the instance's slot. The
-call is dispatched on the parameter's declared type, which P4058 makes equal
+call is dispatched on the parameter's declared type, which P4059 makes equal
 to the argument's.
 
 A function may take a function block instance as `VAR_IN_OUT` and invoke it:
@@ -410,10 +430,10 @@ scratch slot and, for data-region types, a base slot filled by the body's
 prologue. Two rules keep the stored reference from outliving the call that
 bound it:
 
-- **Every invocation binds every `VAR_IN_OUT`** (P4060). An instance
+- **Every invocation binds every `VAR_IN_OUT`** (P4061). An instance
   never runs with a reference left over from an earlier call, and a body never
   sees the null initial value.
-- **The field is not accessible from outside** (P4061).
+- **The field is not accessible from outside** (P4062).
   `fb.IO` would read or write through a reference whose target the reader
   cannot see.
 
@@ -485,7 +505,7 @@ unrelated caller regions.
 - **Analyzer:**
   - arity and binding with `VAR_IN_OUT` before and after `VAR_INPUT`, in
     positional and named calls, for functions, function blocks and methods
-  - each rule, with P4058 covering string capacity, array bounds, structure
+  - each rule, with P4059 covering string capacity, array bounds, structure
     and instance types
   - every row of both writability tables, including a constant reaching a
     function block input that is then bound to a `VAR_IN_OUT`

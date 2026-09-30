@@ -23,7 +23,7 @@ Enable compilation and execution of user-defined IEC 61131-3 functions. A user-d
 - `ANY_*` type parameters (stdlib functions only)
 - Implicit type widening/coercion
 - Recursive call detection (IEC 61131-3 forbids recursion, but we don't enforce this yet)
-- `VAR_OUTPUT` and `VAR_IN_OUT` parameters on user-defined functions
+- `VAR_OUTPUT` parameters on user-defined functions (`VAR_IN_OUT` was added later; see [VAR_IN_OUT parameters](var-in-out-parameters.md))
 
 ## Key Decisions
 
@@ -99,6 +99,11 @@ New problem codes: `FunctionCallArgTypeMismatch`, `FunctionCallReturnTypeMismatc
 **`RET` opcode (0x88)** — No operands
 
 1. Pop the callee's frame and resume the caller. The top of the operand stack holds the return value, which remains on the stack for the caller.
+
+### VAR_IN_OUT parameters
+
+A `VAR_IN_OUT` parameter takes an argument like a `VAR_INPUT` does and is
+passed by reference. See [VAR_IN_OUT parameters](var-in-out-parameters.md).
 
 ### Debug Section
 
