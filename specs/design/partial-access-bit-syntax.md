@@ -147,6 +147,15 @@ last slice with `BitAccessOutOfRange` (`P4025`). The valid range is
 `0..(base_bytes / slice_bytes - 1)`: `word_var.%B1` is accepted and
 `word_var.%B2` is rejected.
 
+**REQ-PAB-analyzer-123** `rule_bit_and_partial_access_range` rejects a bit access
+(`.n`, `.%Xn`) or a partial access (`.%Bn`, `.%Wn`, `.%Dn`, `.%Ln`) on a variable
+whose type is neither a bit string (`BYTE`, `WORD`, `DWORD`, `LWORD`) nor an
+integer (`SINT` .. `ULINT`, or a subrange of one) with `BitAccessTypeInvalid`
+(`P4069`). `real_var.3`, `bool_var.0`, `string_var.%B0` and `array_var.3` on a
+whole array are errors. IEC 61131-3:2013 defines partial access on the bit
+strings; integers are accepted in every dialect, as CODESYS and TwinCAT accept
+them. A `BOOL` has no bits to select, although it occupies a byte.
+
 ### Execution Semantics
 
 **REQ-PAB-codegen-130** Reading `x.%Bn` / `x.%Wn` / `x.%Dn` on a wider base returns
@@ -223,6 +232,7 @@ requirement; a parametrized table names the cases that cover each.
 | REQ-PAB-codegen-120  | `partial_access_when_narrow_result_then_expected` (`word_1_of_dword`, result assigned to a `WORD`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
 | REQ-PAB-analyzer-121  | `apply_when_partial_access_wider_than_variable_then_err`                        | `compiler/analyzer/src/rule_bit_and_partial_access_range.rs` (tests mod) | analyzer |
 | REQ-PAB-analyzer-122  | `apply_when_partial_access_index_at_boundary_then_ok_or_err`                    | `compiler/analyzer/src/rule_bit_and_partial_access_range.rs` (tests mod) | analyzer |
+| REQ-PAB-analyzer-123  | `apply_when_accessed_type_has_no_bits_then_bit_access_type_invalid`             | `compiler/analyzer/src/rule_bit_and_partial_access_range.rs` (tests mod) | analyzer |
 | REQ-PAB-codegen-130  | `partial_access_when_narrow_result_then_expected` (`byte_0_of_dword`, `byte_3_of_dword`, `word_1_of_dword`, `dword_1_of_lword`), `partial_access_when_wide_result_then_expected` (`lword_0_of_lword`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
 | REQ-PAB-codegen-131  | `partial_access_when_narrow_result_then_expected` (`write_byte_1_of_dword`, `write_dword_0_of_dword`), `partial_access_when_wide_result_then_expected` (`write_word_1_of_lword`, `write_dword_1_of_lword`, `write_lword_0_of_lword`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
 | REQ-PAB-codegen-132  | `partial_access_when_narrow_result_then_expected` (`write_byte_3_of_array_element`, `write_byte_2_of_struct_field`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |

@@ -130,10 +130,23 @@ pub(crate) fn of(
     type_env: &TypeEnvironment,
 ) -> Option<IntermediateType> {
     match kind {
-        SymbolicVariableKind::Named(named) => match declarations.find(&named.name)? {
-            Declared::Variable { init, .. } => resolve_initializer(init, type_env),
-            Declared::Typed(type_name) => Some(type_env.get(type_name)?.representation.clone()),
-        },
+        SymbolicVariableKind::Named(named) => {
+            let declared = declarations.find(&named.name)?;
+            // The declaration's type id (ADR-0055) names a type spelled out
+            // in place as well: an inline array with its dimensions, an
+            // inline enumeration. The initializer is the fallback for a
+            // declaration the analyzer gave no id.
+            if let Some(attributes) = declared
+                .type_id(type_env)
+                .and_then(|id| type_env.get_by_id(id))
+            {
+                return Some(attributes.representation.clone());
+            }
+            match declared {
+                Declared::Variable { init, .. } => resolve_initializer(init, type_env),
+                Declared::Typed(_) => None,
+            }
+        }
         SymbolicVariableKind::Structured(structured) => {
             let record_type = of(&structured.record, declarations, type_env)?;
             struct_field_type(&record_type, &structured.field)
@@ -158,7 +171,12 @@ pub(crate) fn of(
             // resolution, which does not exist yet. See issue #1406.
             None
         }
-        SymbolicVariableKind::Deref(deref) => of(&deref.variable, declarations, type_env),
+        // `p^` is the variable `p` references, so it has the referenced
+        // type, not `REF_TO`.
+        SymbolicVariableKind::Deref(deref) => match of(&deref.variable, declarations, type_env)? {
+            IntermediateType::Reference { target_type } => Some(*target_type),
+            _ => None,
+        },
     }
 }
 
