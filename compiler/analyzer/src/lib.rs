@@ -71,6 +71,7 @@ mod rule_var_decl_const_not_fb;
 mod rule_var_decl_global_const_requires_external_const;
 mod rule_var_decl_initializer_type_compat;
 mod scoped_table;
+mod selection_type;
 mod semantic_context;
 pub mod stages;
 mod string_similarity;
