@@ -311,6 +311,11 @@ impl TimeOfDayLiteral {
         self.value.as_hms_micro()
     }
 
+    /// The literal's time of day as source text, `hh:mm:ss` and its fraction.
+    pub fn daytime_text(&self) -> String {
+        daytime_text(&self.value)
+    }
+
     /// Returns milliseconds since midnight as a u32.
     ///
     /// Maximum value is 86_399_999 (23:59:59.999).
@@ -326,6 +331,15 @@ impl fmt::Display for TimeOfDayLiteral {
         let (h, m, s, _) = self.hmsm();
         write!(f, "TIME_OF_DAY#{:02}:{:02}:{:02}", h, m, s)
     }
+}
+
+/// The text of a time of day in a literal: `hh:mm:ss` and its fraction.
+///
+/// Shared by the time-of-day and date-and-time literals, whose daytime parts
+/// are the same grammar and so are written the same way.
+fn daytime_text(time: &Time) -> String {
+    let (h, m, s, micro) = time.as_hms_micro();
+    format!("{h:02}:{m:02}:{s:02}.{micro:0>2}")
 }
 
 /// The number of seconds from the Unix epoch to midnight on `date`, negative
@@ -485,6 +499,11 @@ impl DateAndTimeLiteral {
     /// Returns the hour, minute, second and microsecond from the literal.
     pub fn hmsm(&self) -> (u8, u8, u8, u32) {
         self.value.as_hms_micro()
+    }
+
+    /// The literal's time of day as source text, `hh:mm:ss` and its fraction.
+    pub fn daytime_text(&self) -> String {
+        daytime_text(&self.value.time())
     }
 
     /// Returns seconds since the Unix epoch (1970-01-01 00:00:00).
