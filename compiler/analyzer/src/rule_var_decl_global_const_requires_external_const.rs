@@ -58,49 +58,27 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut global_consts = HashSet::new();
-
-    let mut diagnostics = Vec::new();
-
     // Collect the global constants. Only a global constant obliges its
     // externals to be constant. A `VAR CONSTANT` local to one unit says
     // nothing about a global that happens to share its name.
-    for decl in collect_global_var_decls(lib) {
-        if decl.qualifier != DeclarationQualifier::Constant {
-            continue;
-        }
-        match &decl.identifier {
-            VariableIdentifier::Symbol(name) => {
-                global_consts.insert(name.clone());
-            }
-            // A located CONSTANT declaration (`AT %QW0 : INT`) is not
-            // handled yet. Record that and keep collecting, so the rule
-            // still reports on every other declaration.
-            VariableIdentifier::Direct(_) => diagnostics.push(Diagnostic::not_implemented(
-                Label::span(decl.identifier.span(), "Located CONSTANT declaration"),
-            )),
-        }
-    }
+    //
+    // A located constant (`Limit AT %MW8 : INT := 3`) is collected by its
+    // name like any other. One without a name (`AT %MW8 : INT := 3`) cannot
+    // be named by a `VAR_EXTERNAL`, so there is nothing to check for it.
+    let mut global_consts: HashSet<Id> = collect_global_var_decls(lib)
+        .iter()
+        .filter(|decl| decl.qualifier == DeclarationQualifier::Constant)
+        .filter_map(|decl| decl.identifier.symbolic_id().cloned())
+        .collect();
 
-    // Check that externals with the same name are constants. This runs even
-    // when collection reported a problem: the constants it did collect are
-    // still worth checking, and stopping here would hide every violation
-    // behind one unhandled declaration.
-    if let Err(errs) = run_rule(
+    // Check that externals with the same name are constants.
+    run_rule(
         RuleExternalGlobalConst {
             global_consts: &mut global_consts,
             diagnostics: Vec::new(),
         },
         lib,
-    ) {
-        diagnostics.extend(errs);
-    }
-
-    if diagnostics.is_empty() {
-        Ok(())
-    } else {
-        Err(diagnostics)
-    }
+    )
 }
 
 struct RuleExternalGlobalConst<'a> {
@@ -213,6 +191,61 @@ FUNCTION_BLOCK func
     END_VAR
 
 END_FUNCTION_BLOCK"
+    );
+
+    rule_err_code!(
+        apply_when_located_global_const_external_not_const_then_error,
+        "
+CONFIGURATION config
+    VAR_GLOBAL CONSTANT
+        Limit AT %MW8 : INT := 3;
+    END_VAR
+    RESOURCE resource1 ON PLC
+        PROGRAM plc_task_instance : plc_prg;
+    END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM plc_prg
+    VAR_EXTERNAL
+        Limit : INT;
+    END_VAR
+END_PROGRAM",
+        ironplc_problems::Problem::VariableMustBeConst
+    );
+
+    rule_ok!(
+        apply_when_located_global_const_external_const_then_ok,
+        "
+CONFIGURATION config
+    VAR_GLOBAL CONSTANT
+        Limit AT %MW8 : INT := 3;
+    END_VAR
+    RESOURCE resource1 ON PLC
+        PROGRAM plc_task_instance : plc_prg;
+    END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM plc_prg
+    VAR_EXTERNAL CONSTANT
+        Limit : INT;
+    END_VAR
+END_PROGRAM"
+    );
+
+    rule_ok!(
+        apply_when_unnamed_located_global_const_then_ok,
+        "
+CONFIGURATION config
+    VAR_GLOBAL CONSTANT
+        AT %MW8 : INT := 3;
+    END_VAR
+    RESOURCE resource1 ON PLC
+        PROGRAM plc_task_instance : plc_prg;
+    END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM plc_prg
+END_PROGRAM"
     );
 
     rule_errn!(
