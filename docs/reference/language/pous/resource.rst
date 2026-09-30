@@ -19,9 +19,9 @@ Syntax
 .. code-block:: bnf
 
    RESOURCE resource_name ON resource_type
+       global_variable_declarations
        task_declarations
        program_associations
-       global_variable_declarations
    END_RESOURCE
 
 Example
@@ -41,6 +41,38 @@ A resource contains task declarations and associates programs with
 those tasks.
 
 .. include:: /includes/single-program-limitation.rst
+
+Resource Global Variables
+-------------------------
+
+A resource may declare its own :code:`VAR_GLOBAL` block before its tasks.
+These global variables belong to the resource: a program that the resource
+instantiates accesses them through :code:`VAR_EXTERNAL`, the same way as
+configuration globals (see :doc:`/reference/language/variables/scope`). Their
+values persist from one scan to the next.
+
+.. playground::
+
+   CONFIGURATION config
+     RESOURCE resource1 ON PLC
+       VAR_GLOBAL
+         ScanCount : DINT := 0;
+       END_VAR
+       TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+       PROGRAM plc_task_instance WITH plc_task : main;
+     END_RESOURCE
+   END_CONFIGURATION
+
+   PROGRAM main
+     VAR_EXTERNAL
+       ScanCount : DINT;
+     END_VAR
+     ScanCount := ScanCount + 1;
+   END_PROGRAM
+
+IEC 61131-3 makes the global variables of a resource visible only to the
+programs of that resource, while configuration globals are visible to every
+resource.
 
 See Also
 --------

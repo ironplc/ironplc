@@ -69,7 +69,8 @@ Example
 Global Variables
 ----------------
 
-Global variables are declared in a :code:`CONFIGURATION` block using
+Global variables are declared in a :code:`CONFIGURATION` block, or in one of
+its :doc:`resources </reference/language/pous/resource>`, using
 :code:`VAR_GLOBAL` and accessed from programs using :code:`VAR_EXTERNAL`.
 The :code:`VAR_EXTERNAL` declaration must match the name and type of the
 global variable it references.
