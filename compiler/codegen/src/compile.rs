@@ -65,7 +65,6 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNonNumeric};
 use ironplc_problems::Problem;
 
-use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 use ironplc_analyzer::{FunctionEnvironment, IntermediateType, SemanticContext, TypeEnvironment};
 
 use crate::emit::Emitter;
@@ -248,27 +247,7 @@ pub fn compile(
     if let Some(config) = config {
         check_single_program_instance(config)?;
     }
-    let user_globals: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
-
-    // Prepend system uptime globals when the feature is enabled.
-    let mut synthetic_globals: Vec<VarDecl> = Vec::new();
-    if options.system_uptime_global {
-        for global in &SYSTEM_UPTIME_GLOBALS {
-            synthetic_globals.push(
-                VarDecl::simple(global.name, global.type_name).with_type(VariableType::Global),
-            );
-        }
-    }
-
-    // Collect top-level VAR_GLOBAL declarations (outside CONFIGURATION blocks).
-    for element in &library.elements {
-        if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
-            synthetic_globals.extend_from_slice(decls);
-        }
-    }
-
-    synthetic_globals.extend_from_slice(user_globals);
-    let global_vars = &synthetic_globals;
+    let global_vars = &crate::program_globals::program_globals(library, config, options);
 
     let reachable = context.reachable();
 
@@ -418,14 +397,13 @@ fn find_bound_task<'a>(
     config: &'a ConfigurationDeclaration,
     program_name: &Id,
 ) -> Option<&'a TaskConfiguration> {
-    config.resource_decl.iter().find_map(|resource| {
-        let program = resource
-            .programs
-            .iter()
-            .find(|program| &program.type_name == program_name)?;
-        let task_name = program.task_name.as_ref()?;
-        resource.tasks.iter().find(|task| &task.name == task_name)
-    })
+    let resource = crate::program_globals::find_program_resource(config, program_name)?;
+    let program = resource
+        .programs
+        .iter()
+        .find(|program| &program.type_name == program_name)?;
+    let task_name = program.task_name.as_ref()?;
+    resource.tasks.iter().find(|task| &task.name == task_name)
 }
 
 /// Finds the one PROGRAM declaration that the container runs.

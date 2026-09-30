@@ -52,6 +52,7 @@ mod compile_time_arith;
 mod data_region;
 mod emit;
 mod optimize;
+mod program_globals;
 mod source_lookup;
 mod stack_balance;
 mod string_width;
