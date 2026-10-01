@@ -673,7 +673,9 @@ impl TokenType {
             TokenType::AnyString => "'ANY_STRING'",
             TokenType::AnyDate => "'ANY_DATE'",
             TokenType::DirectAddressIncomplete => "'%I*' | '%Q*' | '%M*' (incomplete address)",
-            TokenType::DirectAddress => "'%IX0.0' | '%MW10' | ... (direct address)",
+            TokenType::DirectAddress => {
+                "%[IQM][XBWDL]?\\d(_?\\d)*(\\.\\d(_?\\d)*)* (direct address)"
+            }
             TokenType::PartialAccessBit => "'%X<n>' (partial-access bit selector)",
             TokenType::PartialAccessByte => "'%B<n>' (partial-access byte selector)",
             TokenType::PartialAccessWord => "'%W<n>' (partial-access word selector)",
