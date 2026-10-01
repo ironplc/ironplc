@@ -184,7 +184,22 @@ impl Visitor<Infallible> for RuleInterfaceConversion<'_> {
         self.leave_unit(result)
     }
 
+    /// A method's variables shadow the function block's for the method's
+    /// body only, so the block's are restored when the method ends.
+    fn visit_method_declaration(
+        &mut self,
+        node: &MethodDeclaration,
+    ) -> Result<Self::Value, Infallible> {
+        let outer = self.instances.clone();
+        let result = node.recurse_visit(self);
+        self.instances = outer;
+        result
+    }
+
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
+        if let Some(name) = node.identifier.symbolic_id() {
+            self.instances.forget(name);
+        }
         self.instances.declare(node);
         Ok(())
     }

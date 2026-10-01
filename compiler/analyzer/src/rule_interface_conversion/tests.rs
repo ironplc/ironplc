@@ -91,3 +91,61 @@ fn apply_when_value_does_not_convert_then_error(#[case] body: &str) {
 fn apply_when_assignment_to_function_block_instance_then_not_checked_here() {
     assert_eq!(codes(&[]), check("serial := serial;"));
 }
+
+#[rstest]
+#[case::method_local_shadows_interface_variable(
+    "
+METHOD Count
+VAR
+    comm : INT;
+END_VAR
+    comm := 5;
+END_METHOD"
+)]
+#[case::method_parameter_shadows_interface_variable(
+    "
+METHOD Count
+VAR_INPUT
+    comm : INT;
+END_VAR
+    comm := 5;
+END_METHOD"
+)]
+fn apply_when_method_declares_same_name_with_other_type_then_ok(#[case] method: &str) {
+    let program = format!(
+        "{DECLARATIONS}
+FUNCTION_BLOCK FB_Holder
+VAR
+    comm : I_Comm;
+END_VAR
+{method}
+END_FUNCTION_BLOCK"
+    );
+    assert_eq!(codes(&[]), rule_codes(apply, &program, &options()));
+}
+
+#[test]
+fn apply_when_method_returns_then_block_interface_variable_is_checked_again() {
+    let program = format!(
+        "{DECLARATIONS}
+FUNCTION_BLOCK FB_Holder
+VAR
+    comm : I_Comm;
+    other : FB_Other;
+END_VAR
+METHOD Count
+VAR
+    comm : INT;
+END_VAR
+    comm := 5;
+END_METHOD
+METHOD Attach
+    comm := other;
+END_METHOD
+END_FUNCTION_BLOCK"
+    );
+    assert_eq!(
+        codes(&[Problem::InterfaceNotImplemented]),
+        rule_codes(apply, &program, &options())
+    );
+}

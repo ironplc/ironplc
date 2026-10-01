@@ -108,7 +108,7 @@ impl<'a> FunctionBlocks<'a> {
 /// Instances are declared per unit, so a walk records each declaration as
 /// it meets it and calls [`InstanceTypes::clear`] when it leaves the unit,
 /// exactly as the rules that own a walk have always done.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct InstanceTypes {
     var_to_fb: HashMap<Id, TypeName>,
     /// The variables of an interface type, which refer to an instance
@@ -146,6 +146,13 @@ impl InstanceTypes {
     /// variable of an interface type.
     pub(crate) fn interface_of(&self, name: &Id) -> Option<&TypeName> {
         self.var_to_interface.get(name)
+    }
+
+    /// Forgets the variable `name`, when a nearer scope (a method) declares
+    /// a variable of that name that is neither an instance nor an interface.
+    pub(crate) fn forget(&mut self, name: &Id) {
+        self.var_to_fb.remove(name);
+        self.var_to_interface.remove(name);
     }
 
     /// Forgets every instance, on leaving the unit that declared them.
