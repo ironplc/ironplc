@@ -27,13 +27,13 @@
 //!     s := w;        (* P4034: STRING := WSTRING *)
 //! ```
 
-use std::collections::HashMap;
 use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::*,
     core::{Id, Located},
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::*,
     visitor::Visitor,
 };
@@ -41,6 +41,7 @@ use ironplc_problems::Problem;
 
 use crate::result::SemanticResult;
 use crate::rule_support::{run_rule, DiagnosticVisitor};
+use crate::scoped_table::{ScopedTable, Value};
 use crate::semantic_context::SemanticContext;
 use ironplc_parser::options::CompilerOptions;
 
@@ -52,16 +53,28 @@ pub fn apply(
     run_rule(
         RuleStringEncodingCompat {
             diagnostics: vec![],
-            string_vars: HashMap::new(),
+            variables: ScopedTable::new(),
         },
         lib,
     )
 }
 
+/// The declared encoding of a variable, `None` when it is not a string.
+///
+/// A variable that is not a string is still recorded so that it hides a
+/// string variable of the same name in an enclosing scope.
+#[derive(Debug)]
+struct Encoding(Option<StringType>);
+impl Value for Encoding {}
+
+type Variables = ScopedTable<'static, Id, Encoding>;
+
 struct RuleStringEncodingCompat {
     diagnostics: Vec<Diagnostic>,
-    /// Declared encoding of each named string variable in the current POU.
-    string_vars: HashMap<Id, StringType>,
+    /// The variables in scope. Each POU opens a scope, and a method's
+    /// scope nests inside its function block's, so a method body sees
+    /// its own variables as well as the instance's fields.
+    variables: Variables,
 }
 
 impl DiagnosticVisitor for RuleStringEncodingCompat {
@@ -71,25 +84,21 @@ impl DiagnosticVisitor for RuleStringEncodingCompat {
 }
 
 /// Returns the declared string encoding of a simple named variable, if it is a
-/// string variable tracked in `string_vars`.
-fn named_variable_encoding<'a>(
-    var: &Variable,
-    string_vars: &'a HashMap<Id, StringType>,
-) -> Option<&'a StringType> {
+/// string variable in scope.
+fn named_variable_encoding<'a>(var: &Variable, variables: &'a Variables) -> Option<&'a StringType> {
     match var {
-        Variable::Symbolic(SymbolicVariableKind::Named(named)) => string_vars.get(&named.name),
+        Variable::Symbolic(SymbolicVariableKind::Named(named)) => {
+            variables.find(&named.name)?.0.as_ref()
+        }
         _ => None,
     }
 }
 
 /// Returns the declared string encoding of an expression when it is a simple
 /// named string variable. Literals and complex expressions return `None`.
-fn expr_string_encoding<'a>(
-    expr: &Expr,
-    string_vars: &'a HashMap<Id, StringType>,
-) -> Option<&'a StringType> {
+fn expr_string_encoding<'a>(expr: &Expr, variables: &'a Variables) -> Option<&'a StringType> {
     match &expr.kind {
-        ExprKind::Variable(var) => named_variable_encoding(var, string_vars),
+        ExprKind::Variable(var) => named_variable_encoding(var, variables),
         _ => None,
     }
 }
@@ -115,43 +124,31 @@ impl RuleStringEncodingCompat {
 impl Visitor<Infallible> for RuleStringEncodingCompat {
     type Value = ();
 
-    fn visit_function_declaration(
-        &mut self,
-        node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        self.string_vars.clear();
-        node.recurse_visit(self)
+    fn enter_scope(&mut self, _node: ScopeNode<'_>) -> Result<(), Infallible> {
+        self.variables.enter();
+        Ok(())
     }
 
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        self.string_vars.clear();
-        node.recurse_visit(self)
-    }
-
-    fn visit_program_declaration(
-        &mut self,
-        node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Infallible> {
-        self.string_vars.clear();
-        node.recurse_visit(self)
+    fn exit_scope(&mut self) {
+        self.variables.exit();
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let VariableIdentifier::Symbol(ref id) = node.identifier {
-            if let InitialValueAssignmentKind::String(ref string_init) = node.initializer {
-                self.string_vars
-                    .insert(id.clone(), string_init.width.clone());
-            }
+            let encoding = match node.initializer {
+                InitialValueAssignmentKind::String(ref string_init) => {
+                    Some(string_init.width.clone())
+                }
+                _ => None,
+            };
+            self.variables.add(id, Encoding(encoding));
         }
         node.recurse_visit(self)
     }
 
     fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, Infallible> {
-        let target_enc = named_variable_encoding(&node.target, &self.string_vars).cloned();
-        let value_enc = expr_string_encoding(&node.value, &self.string_vars).cloned();
+        let target_enc = named_variable_encoding(&node.target, &self.variables).cloned();
+        let value_enc = expr_string_encoding(&node.value, &self.variables).cloned();
         if let (Some(target_enc), Some(value_enc)) = (target_enc, value_enc) {
             if target_enc != value_enc {
                 self.report(node.span(), &target_enc, &value_enc);
@@ -161,8 +158,8 @@ impl Visitor<Infallible> for RuleStringEncodingCompat {
     }
 
     fn visit_compare_expr(&mut self, node: &CompareExpr) -> Result<Self::Value, Infallible> {
-        let left_enc = expr_string_encoding(&node.left, &self.string_vars).cloned();
-        let right_enc = expr_string_encoding(&node.right, &self.string_vars).cloned();
+        let left_enc = expr_string_encoding(&node.left, &self.variables).cloned();
+        let right_enc = expr_string_encoding(&node.right, &self.variables).cloned();
         if let (Some(left_enc), Some(right_enc)) = (left_enc, right_enc) {
             if left_enc != right_enc {
                 self.report(node.left.span(), &left_enc, &right_enc);
@@ -175,7 +172,9 @@ impl Visitor<Infallible> for RuleStringEncodingCompat {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::{
+        parse_and_resolve_types_with_context, parse_and_resolve_types_with_options,
+    };
     use ironplc_parser::options::CompilerOptions;
 
     fn check(source: &str) -> SemanticResult {
@@ -311,5 +310,79 @@ END_PROGRAM
             .diagnostics()
             .iter()
             .any(|d| d.code == Problem::StringEncodingMismatch.code()));
+    }
+
+    fn check_ed3(source: &str) -> SemanticResult {
+        let options =
+            CompilerOptions::from_dialect(ironplc_parser::options::Dialect::Iec61131_3Ed3);
+        let (library, context) = parse_and_resolve_types_with_options(source, &options);
+        apply(&library, &context, &options)
+    }
+
+    #[test]
+    fn apply_when_sibling_method_declares_wstring_then_field_encoding_used() {
+        let result = check_ed3(
+            "
+FUNCTION_BLOCK FB
+  VAR
+    s : STRING[10];
+    t : STRING[10];
+  END_VAR
+  METHOD A
+    VAR
+      t : WSTRING[10];
+    END_VAR
+  END_METHOD
+  METHOD B
+    s := t;
+  END_METHOD
+END_FUNCTION_BLOCK
+",
+        );
+        assert!(result.is_ok(), "{:?}", result.err());
+    }
+
+    #[test]
+    fn apply_when_method_local_wstring_assigned_to_field_string_then_p4034() {
+        let result = check_ed3(
+            "
+FUNCTION_BLOCK FB
+  VAR
+    s : STRING[10];
+  END_VAR
+  METHOD A
+    VAR
+      w : WSTRING[10];
+    END_VAR
+    s := w;
+  END_METHOD
+END_FUNCTION_BLOCK
+",
+        );
+        assert_eq!(
+            result.unwrap_err()[0].code,
+            Problem::StringEncodingMismatch.code()
+        );
+    }
+
+    #[test]
+    fn apply_when_method_local_not_string_shadows_wstring_field_then_ok() {
+        let result = check_ed3(
+            "
+FUNCTION_BLOCK FB
+  VAR
+    s : STRING[10];
+    w : WSTRING[10];
+  END_VAR
+  METHOD A
+    VAR
+      w : INT;
+    END_VAR
+    s := w;
+  END_METHOD
+END_FUNCTION_BLOCK
+",
+        );
+        assert!(result.is_ok(), "{:?}", result.err());
     }
 }
