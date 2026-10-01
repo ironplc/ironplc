@@ -21,7 +21,7 @@
 //! [`Fold`]: crate::fold::Fold
 
 use crate::common::{
-    FunctionBlockDeclaration, FunctionDeclaration, MethodDeclaration, ProgramDeclaration,
+    Accessor, FunctionBlockDeclaration, FunctionDeclaration, MethodDeclaration, ProgramDeclaration,
 };
 use crate::core::Id;
 
@@ -50,7 +50,20 @@ impl ScopeNode<'_> {
             ScopeNode::Function(node) => node.name.clone(),
             ScopeNode::FunctionBlock(node) => node.name.name.clone(),
             ScopeNode::Program(node) => node.name.clone(),
-            ScopeNode::Method(node) => node.name.clone(),
+            // An accessor is named after its property, so GET and SET would
+            // share a scope; the accessor keeps them apart. `.` cannot
+            // appear in an identifier, so this never names a method.
+            ScopeNode::Method(node) => match node.accessor {
+                None => node.name.clone(),
+                Some(accessor) => {
+                    let suffix = match accessor {
+                        Accessor::Get => "GET",
+                        Accessor::Set => "SET",
+                    };
+                    Id::from(&format!("{}.{suffix}", node.name.original()))
+                        .with_position(node.name.span.clone())
+                }
+            },
         }
     }
 }
@@ -107,5 +120,33 @@ mod tests {
             properties: vec![],
         };
         assert_eq!(Id::from("FB_Axis"), block.as_scope_node().scope_name());
+    }
+
+    #[test]
+    fn scope_name_when_property_accessors_then_get_and_set_differ() {
+        use crate::common::{FunctionReturnType, PropertyDeclaration};
+        let name = Id::from("Position");
+        let property_type = FunctionReturnType::Named(TypeName::from("INT"));
+        let span = SourceSpan::default;
+        let get = PropertyDeclaration::get_accessor(
+            &name,
+            &property_type,
+            vec![],
+            vec![],
+            vec![],
+            span(),
+        );
+        let set = PropertyDeclaration::set_accessor(
+            &name,
+            &property_type,
+            vec![],
+            vec![],
+            vec![],
+            span(),
+        );
+
+        assert_eq!(Id::from("Position.GET"), get.as_scope_node().scope_name());
+        assert_eq!(Id::from("Position.SET"), set.as_scope_node().scope_name());
+        assert_eq!(name, get.name);
     }
 }

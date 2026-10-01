@@ -1253,6 +1253,40 @@ END_FUNCTION_BLOCK",
         .is_empty());
     }
 
+    /// GET and SET are both named after the property, but each is a scope
+    /// of its own, as in TwinCAT.
+    #[test]
+    fn apply_when_get_and_set_declare_same_local_then_ok() {
+        assert_eq!(
+            analyzed_codes_with(
+                "
+FUNCTION_BLOCK fb
+  VAR
+    _pos : INT;
+  END_VAR
+  PROPERTY Position : INT
+  GET
+    VAR
+      tmp : INT;
+    END_VAR
+    tmp := _pos;
+    Position := tmp;
+  END_GET
+  SET
+    VAR
+      tmp : INT;
+    END_VAR
+    tmp := Position;
+    _pos := tmp;
+  END_SET
+  END_PROPERTY
+END_FUNCTION_BLOCK",
+                &oop()
+            ),
+            Vec::<String>::new()
+        );
+    }
+
     #[test]
     fn apply_when_method_variable_repeated_then_p4014() {
         assert_eq!(

@@ -1572,6 +1572,7 @@ parser! {
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
       MethodDeclaration {
         qualifiers,
+        accessor: None,
         name,
         return_type: rt,
         variables,

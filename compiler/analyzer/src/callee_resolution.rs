@@ -52,7 +52,10 @@ impl<'a> FunctionBlocks<'a> {
     /// `fb_name`, then its `EXTENDS` base, then that base's base, and so
     /// on. Stops at a block seen before: a cycle is independently invalid
     /// (and rejected elsewhere), this is just a safety net.
-    fn chain(&self, fb_name: &TypeName) -> impl Iterator<Item = &'a FunctionBlockDeclaration> + '_ {
+    pub(crate) fn chain(
+        &self,
+        fb_name: &TypeName,
+    ) -> impl Iterator<Item = &'a FunctionBlockDeclaration> + '_ {
         let mut current = self.get(fb_name);
         let mut visited: HashSet<TypeName> = HashSet::new();
         std::iter::from_fn(move || {
