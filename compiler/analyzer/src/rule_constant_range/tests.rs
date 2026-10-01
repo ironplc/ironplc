@@ -1,6 +1,9 @@
 use crate::stages::analyze;
 use ironplc_dsl::core::FileId;
-use ironplc_parser::{options::CompilerOptions, parse_program};
+use ironplc_parser::{
+    options::{CompilerOptions, Dialect},
+    parse_program,
+};
 use ironplc_problems::Problem;
 use rstest::rstest;
 
@@ -18,9 +21,12 @@ fn real_out_of_range_count(program: &str) -> usize {
 }
 
 fn problem_count(program: &str, problem: Problem) -> usize {
-    let options = CompilerOptions::default();
-    let library = parse_program(program, &FileId::default(), &options).unwrap();
-    let (_library, context) = analyze(&[&library], &options).unwrap();
+    problem_count_with(program, problem, &CompilerOptions::default())
+}
+
+fn problem_count_with(program: &str, problem: Problem, options: &CompilerOptions) -> usize {
+    let library = parse_program(program, &FileId::default(), options).unwrap();
+    let (_library, context) = analyze(&[&library], options).unwrap();
     context
         .diagnostics()
         .iter()
@@ -168,6 +174,43 @@ END_PROGRAM"
     ));
 
     assert_eq!(codes, 1);
+}
+
+/// A subrange written with radix bounds (a dialect extension) is checked
+/// the same way: each bound is a value. A subrange type with radix bounds
+/// gives a selector the range those values state.
+#[rstest]
+#[case::bounds_fill_unsigned("USINT", "16#00..16#FF", 0)]
+#[case::end_above_signed("SINT", "16#00..16#FF", 1)]
+#[case::binary_in_range("SINT", "2#0..2#1111111", 0)]
+#[case::octal_end_above("USINT", "8#0..8#400", 1)]
+#[case::radix_selector_type("INT(16#0..16#A)", "16#14", 1)]
+fn apply_when_case_label_has_radix_bounds_then_checked_against_selector_type(
+    #[case] selector_type: &str,
+    #[case] label: &str,
+    #[case] expected: usize,
+) {
+    let program = format!(
+        "TYPE
+Sel : {selector_type};
+END_TYPE
+
+PROGRAM main
+VAR
+    x : Sel;
+    y : DINT;
+END_VAR
+CASE x OF
+{label}: y := 1;
+END_CASE;
+END_PROGRAM"
+    );
+    let options = CompilerOptions::from_dialect(Dialect::TwinCat);
+
+    assert_eq!(
+        problem_count_with(&program, Problem::ConstantOverflow, &options),
+        expected
+    );
 }
 
 /// A label too large for any integer type is reported by the value the
