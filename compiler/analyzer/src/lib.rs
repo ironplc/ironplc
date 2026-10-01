@@ -23,6 +23,7 @@ mod test_macros;
 mod call_assignment_check;
 mod callee_resolution;
 mod constant_folding;
+pub mod enumeration_members;
 mod enumeration_values;
 mod function_environment;
 pub mod intermediate_type;

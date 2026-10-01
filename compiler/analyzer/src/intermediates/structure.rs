@@ -231,7 +231,7 @@ fn resolve_field_type(
         }
         InitialValueAssignmentKind::EnumeratedValues(values) => {
             // Handle enumerated field types with values
-            let enum_attrs = try_from_values(values, None)?;
+            let enum_attrs = try_from_values(values, None, None)?;
             Ok(enum_attrs.representation)
         }
         InitialValueAssignmentKind::EnumeratedType(enum_assignment) => {

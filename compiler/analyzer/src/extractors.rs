@@ -290,6 +290,7 @@ mod tests {
             underlying_type: Box::new(IntermediateType::Int {
                 size: crate::intermediate_type::ByteSized::B8,
             }),
+            members: crate::enumeration_members::EnumerationMembers::default(),
         });
         assert_eq!(kind, TypeSymbolKind::Enumeration);
     }

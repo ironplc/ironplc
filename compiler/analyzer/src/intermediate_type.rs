@@ -8,6 +8,7 @@
 //! booleans) and complex types (like structures, arrays, and function blocks) found in
 //! IEC 61131-3 standard and similar PLC programming languages.
 
+use crate::enumeration_members::EnumerationMembers;
 use ironplc_container::{string_region_size, CharWidth, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::core::Id;
 
@@ -104,6 +105,9 @@ pub enum IntermediateType {
     Enumeration {
         /// The underlying primitive type (usually Int { size: 8 })
         underlying_type: Box<IntermediateType>,
+        /// The members, their ordinals and the default. Not compared by
+        /// `PartialEq` (see [`EnumerationMembers`]).
+        members: EnumerationMembers,
     },
     /// Structure type containing named fields
     Structure {
@@ -296,7 +300,9 @@ impl IntermediateType {
                 char_width,
             } => max_len.map(|len| len as u32 * char_width.byte_width() as u32),
             IntermediateType::Subrange { base_type, .. } => base_type.size_in_bytes(),
-            IntermediateType::Enumeration { underlying_type } => underlying_type.size_in_bytes(),
+            IntermediateType::Enumeration {
+                underlying_type, ..
+            } => underlying_type.size_in_bytes(),
             IntermediateType::Structure { fields } => {
                 if fields.is_empty() {
                     return None;
@@ -372,7 +378,9 @@ impl IntermediateType {
             IntermediateType::DateAndTime { size } => size.as_bytes(),
             IntermediateType::String { .. } => 1, // Strings are byte-aligned
             IntermediateType::Subrange { base_type, .. } => base_type.alignment_bytes(),
-            IntermediateType::Enumeration { underlying_type } => underlying_type.alignment_bytes(),
+            IntermediateType::Enumeration {
+                underlying_type, ..
+            } => underlying_type.alignment_bytes(),
             IntermediateType::Structure { fields } => {
                 // Structure alignment is the maximum alignment of all fields
                 // Empty structures have 1-byte alignment
@@ -420,9 +428,9 @@ impl IntermediateType {
             | IntermediateType::DateAndTime { .. } => true,
             IntermediateType::String { max_len, .. } => max_len.is_some(),
             IntermediateType::Subrange { base_type, .. } => base_type.has_explicit_size(),
-            IntermediateType::Enumeration { underlying_type } => {
-                underlying_type.has_explicit_size()
-            }
+            IntermediateType::Enumeration {
+                underlying_type, ..
+            } => underlying_type.has_explicit_size(),
             IntermediateType::Structure { .. } => true, // Structures always have explicit size in IEC 61131-3
             IntermediateType::Array {
                 element_type,
@@ -854,6 +862,7 @@ mod tests {
             underlying_type: Box::new(IntermediateType::Int {
                 size: ByteSized::B8,
             }),
+            members: crate::enumeration_members::EnumerationMembers::default(),
         };
         assert_eq!(enumeration.size_in_bytes(), Some(1));
 
@@ -2011,7 +2020,8 @@ mod tests {
             IntermediateType::Enumeration {
                 underlying_type: Box::new(IntermediateType::Int {
                     size: ByteSized::B8
-                })
+                }),
+                members: crate::enumeration_members::EnumerationMembers::default(),
             }
             .slot_count(),
             Ok(1)

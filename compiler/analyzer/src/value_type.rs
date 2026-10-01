@@ -348,6 +348,7 @@ mod tests {
                 underlying_type: Box::new(IntermediateType::Int {
                     size: ByteSized::B8,
                 }),
+                members: crate::enumeration_members::EnumerationMembers::default(),
             },
         );
 
