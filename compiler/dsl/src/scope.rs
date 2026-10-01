@@ -23,6 +23,7 @@
 use crate::common::{
     FunctionBlockDeclaration, FunctionDeclaration, MethodDeclaration, ProgramDeclaration,
 };
+use crate::core::Id;
 
 /// The declaration that opened the scope the traversal is entering.
 ///
@@ -38,6 +39,20 @@ pub enum ScopeNode<'a> {
     FunctionBlock(&'a FunctionBlockDeclaration),
     Program(&'a ProgramDeclaration),
     Method(&'a MethodDeclaration),
+}
+
+impl ScopeNode<'_> {
+    /// The name the scope is known by in a scope path such as
+    /// `FB_Axis.Start`: the declaration's own name. Every pass that keys
+    /// variables by scope path names a scope with this, so they agree.
+    pub fn scope_name(&self) -> Id {
+        match self {
+            ScopeNode::Function(node) => node.name.clone(),
+            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
+            ScopeNode::Program(node) => node.name.clone(),
+            ScopeNode::Method(node) => node.name.clone(),
+        }
+    }
 }
 
 /// Implemented by every declaration marked `#[recurse(scope)]`.
@@ -70,5 +85,27 @@ impl ScopeBearing for ProgramDeclaration {
 impl ScopeBearing for MethodDeclaration {
     fn as_scope_node(&self) -> ScopeNode<'_> {
         ScopeNode::Method(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::{FunctionBlockBodyKind, TypeName};
+    use crate::core::SourceSpan;
+
+    #[test]
+    fn scope_name_when_function_block_then_block_name() {
+        let block = FunctionBlockDeclaration {
+            name: TypeName::from("FB_Axis"),
+            variables: vec![],
+            edge_variables: vec![],
+            body: FunctionBlockBodyKind::empty(),
+            span: SourceSpan::default(),
+            oop: None,
+            methods: vec![],
+            properties: vec![],
+        };
+        assert_eq!(Id::from("FB_Axis"), block.as_scope_node().scope_name());
     }
 }

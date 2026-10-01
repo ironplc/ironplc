@@ -118,12 +118,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
     /// stack, so the variables it declares are recorded against its own
     /// path rather than the enclosing declaration's.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.scope.push(match node {
-            ScopeNode::Function(node) => node.name.clone(),
-            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
-            ScopeNode::Program(node) => node.name.clone(),
-            ScopeNode::Method(node) => node.name.clone(),
-        });
+        self.scope.push(node.scope_name());
         Ok(())
     }
 
