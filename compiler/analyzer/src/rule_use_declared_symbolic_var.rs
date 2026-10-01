@@ -38,7 +38,6 @@
 //!    TRIG := TRIG0;
 //! END_FUNCTION_BLOCK
 //! ```
-use std::collections::HashMap;
 use std::convert::Infallible;
 
 use ironplc_dsl::{
@@ -51,52 +50,49 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
-    intermediates::inherited_fields::collect_inherited_fields,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
-    scoped_table::{self, Key, ScopedTable, Value},
     semantic_context::SemanticContext,
     string_similarity::find_closest_match,
-    system_globals::SYSTEM_UPTIME_GLOBALS,
+    symbol_environment::{ScopeKind, ScopeTracker, SymbolEnvironment, SymbolInfo, SymbolKind},
 };
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: &Library,
-    _context: &SemanticContext,
+    context: &SemanticContext,
     options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut checker = SymbolScopeChecker {
-        table: scoped_table::ScopedTable::new(),
-        inherited_fields: collect_inherited_fields(lib),
-        enclosing_properties: Vec::new(),
-        diagnostics: Vec::new(),
-    };
-
-    // Seed implicit system globals so direct references don't trigger P4007.
-    if options.allow_system_uptime_global {
-        for global in &SYSTEM_UPTIME_GLOBALS {
-            checker.table.add(&Id::from(global.name), DummyNode {});
-        }
-    }
-
-    run_rule(checker, lib)
+    run_rule(
+        SymbolScopeChecker {
+            symbols: context.symbols(),
+            scope: ScopeTracker::default(),
+            units: Vec::new(),
+            bare_globals: options.allow_top_level_var_global,
+            enclosing_properties: Vec::new(),
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
-#[derive(Debug)]
-struct DummyNode {}
-impl Value for DummyNode {}
-
-impl Key for Id {}
-impl Key for TypeName {}
-
-/// Wraps `ScopedTable` with the `EXTENDS`-inherited fields per function
-/// block (see `intermediates::inherited_fields`), so that a derived
-/// function block's own scope also includes fields declared only on its
-/// ancestor chain.
+/// Checks each name a body uses against the symbol environment, from the
+/// scope the body is in. The environment answers for the scope's own
+/// variables, those of the scopes enclosing it, the fields a function
+/// block inherits through `EXTENDS`, and the globals.
 struct SymbolScopeChecker<'a> {
-    table: ScopedTable<'a, Id, DummyNode>,
-    inherited_fields: HashMap<TypeName, Vec<VarDecl>>,
+    symbols: &'a SymbolEnvironment,
+    /// Where the traversal is, to look names up in the symbol environment.
+    scope: ScopeTracker,
+    /// One entry per open scope: the name of the function block or program
+    /// that opened it, which is in scope within its body, and `None` for a
+    /// function or method, whose own name is its result variable.
+    units: Vec<Option<Id>>,
+    /// Whether a body may use a `VAR_GLOBAL` directly, without a
+    /// `VAR_EXTERNAL` naming it. The vendor dialects that declare globals
+    /// in top-level lists (`--allow-top-level-var-global`) allow it; IEC
+    /// 61131-3 reaches a global only through `VAR_EXTERNAL`.
+    bare_globals: bool,
     /// One entry per open scope: the property names of the function block
     /// that opened it, `None` for any other scope. A name that is not a
     /// variable but is a property of the enclosing function block is a
@@ -114,6 +110,41 @@ impl SymbolScopeChecker<'_> {
             .find_map(|properties| properties.as_ref())
             .is_some_and(|properties| properties.contains(name))
     }
+
+    /// Whether a variable `info` describes can be used by name from here.
+    ///
+    /// A `VAR_GLOBAL` is reached through a `VAR_EXTERNAL`, which is a
+    /// variable of the scope that declares it, unless the dialect lets a
+    /// body use globals directly. A global the compiler provides is always
+    /// usable.
+    fn is_usable_variable(&self, info: &SymbolInfo) -> bool {
+        let is_variable = matches!(
+            info.kind,
+            SymbolKind::Variable
+                | SymbolKind::Parameter
+                | SymbolKind::OutputParameter
+                | SymbolKind::InOutParameter
+                | SymbolKind::EdgeVariable
+                | SymbolKind::Constant
+                | SymbolKind::ResultVariable
+        );
+        if !is_variable {
+            return false;
+        }
+        let is_declared_global =
+            info.scope == ScopeKind::Global && info.variable_type == Some(VariableType::Global);
+        !is_declared_global || info.compiler_provided || self.bare_globals
+    }
+
+    /// Whether `name` is in scope where the traversal is.
+    fn is_in_scope(&self, name: &Id) -> bool {
+        if self.units.iter().flatten().any(|unit| unit == name) {
+            return true;
+        }
+        self.symbols
+            .find(name, &self.scope.current())
+            .is_some_and(|info| self.is_usable_variable(info))
+    }
 }
 
 impl DiagnosticVisitor for SymbolScopeChecker<'_> {
@@ -125,79 +156,40 @@ impl DiagnosticVisitor for SymbolScopeChecker<'_> {
 impl Visitor<Infallible> for SymbolScopeChecker<'_> {
     type Value = ();
 
-    /// Opens the scope of a declaration and seeds the names that are in
-    /// scope by virtue of the declaration itself.
+    /// Tracks the scope of a declaration.
     ///
     /// The traversal calls this for every declaration marked
-    /// `#[recurse(scope)]`, so this rule states what a scope *contains*
-    /// and never which node kinds have one. The match is exhaustive on
-    /// purpose: a new kind of scope must be a compile error here rather
-    /// than a silently unseeded scope.
+    /// `#[recurse(scope)]`. The match is exhaustive on purpose: a new kind
+    /// of scope must be a compile error here rather than a scope whose own
+    /// name is silently out of reach. A function's or a method's own name
+    /// is its result variable, which the symbol environment holds.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.table.enter();
+        self.scope.enter(&node);
         self.enclosing_properties.push(match &node {
             ScopeNode::FunctionBlock(node) => {
                 Some(node.properties.iter().map(|p| p.name.clone()).collect())
             }
             _ => None,
         });
-
-        match node {
-            // A function's own name is its implicit result variable, so
-            // `FOO := ...` inside `FUNCTION FOO` resolves.
-            ScopeNode::Function(node) => {
-                self.table.add(&node.name, DummyNode {});
-            }
-            ScopeNode::Program(node) => {
-                self.table.add(&node.name, DummyNode {});
-            }
-            // A derived function block's scope also holds the fields it
-            // inherits through `EXTENDS`, so an unqualified reference to
-            // an ancestor's field resolves.
-            ScopeNode::FunctionBlock(node) => {
-                self.table.add(&node.name.name, DummyNode {});
-                if let Some(fields) = self.inherited_fields.get(&node.name).cloned() {
-                    for field in &fields {
-                        self.table
-                            .add_if(field.identifier.symbolic_id(), DummyNode {});
-                    }
-                }
-            }
-            // A method's own name is its result variable, exactly as a
-            // function's is -- but only when it declares a return type.
-            // A method without one is a procedure with no result to
-            // assign, so `Foo := ...` inside `METHOD Foo` stays
-            // undefined rather than becoming silently legal.
-            //
-            // The enclosing function block's scope stays open beneath
-            // this one, so a method still reads and writes the
-            // instance's fields, which is the point of a method.
-            ScopeNode::Method(node) => {
-                if node.return_type.is_some() {
-                    self.table.add(&node.name, DummyNode {});
-                }
-            }
-        }
-
+        self.units.push(match node {
+            ScopeNode::FunctionBlock(node) => Some(node.name.name.clone()),
+            ScopeNode::Program(node) => Some(node.name.clone()),
+            ScopeNode::Function(_) | ScopeNode::Method(_) => None,
+        });
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.table.exit();
+        self.scope.exit();
         self.enclosing_properties.pop();
-    }
-
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        self.table
-            .add_if(node.identifier.symbolic_id(), DummyNode {});
-        node.recurse_visit(self)
+        self.units.pop();
     }
 
     fn visit_named_variable(
         &mut self,
         node: &ironplc_dsl::textual::NamedVariable,
     ) -> Result<(), Infallible> {
-        if self.table.find(&node.name).is_some() {
+        if self.is_in_scope(&node.name) {
             // We found the variable being referred to
             return Ok(());
         }
@@ -210,9 +202,13 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
             return Ok(());
         }
 
+        let visible = self.symbols.visible_variables(&self.scope.current());
         let suggestion = find_closest_match(
             node.name.original(),
-            self.table.keys().iter().map(|k| k.original().as_str()),
+            visible
+                .iter()
+                .filter(|(_, info)| self.is_usable_variable(info))
+                .map(|(name, _)| name.original().as_str()),
         );
         let mut diagnostic = Diagnostic::problem(
             Problem::VariableUndefined,
@@ -229,8 +225,7 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
+    use crate::test_helpers::parse_and_resolve_types_with_context;
 
     use super::*;
 
@@ -245,8 +240,7 @@ END_VAR
 TRIG := TRIG0.A;
 END_FUNCTION_BLOCK";
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
+        let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
@@ -258,7 +252,7 @@ END_FUNCTION_BLOCK";
             .contains(&"variable=TRIG".to_owned()))
     }
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_function_block_all_symbol_declared_then_ok,
         "
 FUNCTION_BLOCK LOGGER
@@ -271,7 +265,7 @@ TRIG := TRIG0;
 END_FUNCTION_BLOCK"
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_function_all_symbol_declared_then_ok,
         "
 FUNCTION LOGGER : REAL
@@ -284,7 +278,7 @@ TRIG := TRIG0;
 END_FUNCTION"
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_program_all_symbol_declared_then_ok,
         "
 PROGRAM LOGGER
@@ -297,7 +291,7 @@ TRIG := TRIG0;
 END_PROGRAM"
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_assign_enum_variant_then_ok,
         "
 TYPE
@@ -323,8 +317,7 @@ END_VAR
 conter := 1;
 END_FUNCTION_BLOCK";
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
+        let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
@@ -345,8 +338,7 @@ END_VAR
 completely_different := 1;
 END_FUNCTION_BLOCK";
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
+        let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context, &CompilerOptions::default());
 
         assert!(result.is_err());
@@ -361,7 +353,7 @@ END_FUNCTION_BLOCK";
             .any(|d| d.starts_with("did you mean")));
     }
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_enum_value_in_comparison_then_ok,
         "
 TYPE
@@ -389,18 +381,18 @@ END_VAR
 t := __SYSTEM_UP_TIME;
 END_PROGRAM";
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
         let options = CompilerOptions {
             allow_system_uptime_global: true,
             ..CompilerOptions::default()
         };
+        let (library, context) =
+            crate::test_helpers::parse_and_resolve_types_with_options(program, &options);
         let result = apply(&library, &context, &options);
 
         assert!(result.is_ok());
     }
 
-    rule_err!(
+    rule_ctx_err!(
         apply_when_system_uptime_global_disabled_then_direct_access_error,
         "
 PROGRAM main
@@ -690,8 +682,7 @@ END_VAR
   x := UNDECLARED_TWO;
 END_PROGRAM";
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
+        let (library, context) = parse_and_resolve_types_with_context(program);
         let diagnostics = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
 
         let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
@@ -728,8 +719,7 @@ END_VAR
   y := BBB_ONE;
 END_PROGRAM";
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
+        let (library, context) = parse_and_resolve_types_with_context(program);
         let diagnostics = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
 
         let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
@@ -865,4 +855,81 @@ END_PROGRAM";
 
         assert!(errors[0].described.contains(&"variable=Speed".to_owned()));
     }
+
+    const CONFIG_WITH_GLOBAL: &str = "
+CONFIGURATION config
+  VAR_GLOBAL
+    g : INT;
+  END_VAR
+  RESOURCE res ON PLC
+    TASK t(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM inst WITH t : main;
+  END_RESOURCE
+END_CONFIGURATION
+";
+
+    const PROGRAM_USING_GLOBAL: &str = "
+PROGRAM main
+VAR
+  x : INT;
+END_VAR
+  x := g;
+END_PROGRAM
+";
+
+    fn top_level_globals() -> CompilerOptions {
+        CompilerOptions {
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    rule_ctx_err1!(
+        apply_when_global_used_without_external_after_configuration_then_error,
+        &format!("{CONFIG_WITH_GLOBAL}{PROGRAM_USING_GLOBAL}"),
+        Problem::VariableUndefined
+    );
+
+    rule_ctx_err1!(
+        apply_when_global_used_without_external_before_configuration_then_error,
+        &format!("{PROGRAM_USING_GLOBAL}{CONFIG_WITH_GLOBAL}"),
+        Problem::VariableUndefined
+    );
+
+    rule_ctx_ok!(
+        apply_when_global_used_through_external_then_ok,
+        &format!(
+            "{CONFIG_WITH_GLOBAL}
+PROGRAM main
+VAR_EXTERNAL
+  g : INT;
+END_VAR
+VAR
+  x : INT;
+END_VAR
+  x := g;
+END_PROGRAM"
+        )
+    );
+
+    rule_ctx_ok_with!(
+        apply_when_top_level_globals_allowed_and_global_used_directly_then_ok,
+        top_level_globals(),
+        &format!("{PROGRAM_USING_GLOBAL}{CONFIG_WITH_GLOBAL}")
+    );
+
+    rule_ctx_ok_with!(
+        apply_when_top_level_global_used_directly_then_ok,
+        top_level_globals(),
+        "
+VAR_GLOBAL
+  g : INT;
+END_VAR
+PROGRAM main
+VAR
+  x : INT;
+END_VAR
+  x := g;
+END_PROGRAM"
+    );
 }

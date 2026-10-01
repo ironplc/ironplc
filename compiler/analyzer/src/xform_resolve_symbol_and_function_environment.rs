@@ -339,7 +339,8 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         self.declare_global_symbol(
             name,
             SymbolInfo::new(SymbolKind::FunctionBlock, ScopeKind::Global, name.span())
-                .with_abstract(node.is_abstract()),
+                .with_abstract(node.is_abstract())
+                .with_extends(node.oop.as_ref().and_then(|oop| oop.base.clone())),
         );
         node.recurse_visit(self)
     }
