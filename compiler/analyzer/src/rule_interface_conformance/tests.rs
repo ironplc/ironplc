@@ -158,3 +158,51 @@ fn apply_when_interface_not_declared_then_ok() {
         check("FUNCTION_BLOCK FB_Other IMPLEMENTS I_Unknown\nEND_FUNCTION_BLOCK")
     );
 }
+
+/// An interface `I_Shape` with one method whose parameter is `{parameter}`,
+/// implemented by a function block whose method declares `{implemented}`.
+fn shape_check(parameter: &str, implemented: &str) -> Result<(), Vec<String>> {
+    let program = format!(
+        "
+INTERFACE I_Shape
+METHOD M
+VAR_INPUT
+    {parameter}
+END_VAR
+END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK FB_Shape IMPLEMENTS I_Shape
+METHOD M
+VAR_INPUT
+    {implemented}
+END_VAR
+END_METHOD
+END_FUNCTION_BLOCK"
+    );
+    let (library, context) = parse_and_resolve_types_with_options(&program, &options());
+    apply(&library, &context, &options())
+        .map_err(|errors| errors.iter().map(|e| e.code.clone()).collect())
+}
+
+#[rstest]
+#[case::inline_array("x : ARRAY[1..3] OF INT;")]
+#[case::sized_string("s : STRING[10];")]
+#[case::rising_edge("data : BOOL R_EDGE;")]
+fn apply_when_parameter_declared_identically_then_ok(#[case] parameter: &str) {
+    assert_eq!(Ok(()), shape_check(parameter, parameter));
+}
+
+#[rstest]
+#[case::inline_array_bounds("x : ARRAY[1..3] OF INT;", "x : ARRAY[1..4] OF INT;")]
+#[case::inline_array_element("x : ARRAY[1..3] OF INT;", "x : ARRAY[1..3] OF DINT;")]
+#[case::string_length("s : STRING[10];", "s : STRING[99];")]
+#[case::string_width("s : STRING[10];", "s : WSTRING[10];")]
+#[case::edge_input_missing("other : INT;\n    data : BOOL R_EDGE;", "other : INT;")]
+#[case::edge_direction("data : BOOL R_EDGE;", "data : BOOL F_EDGE;")]
+fn apply_when_parameter_declared_differently_then_mismatch(
+    #[case] parameter: &str,
+    #[case] implemented: &str,
+) {
+    assert_eq!(mismatch(), shape_check(parameter, implemented));
+}
