@@ -253,7 +253,7 @@ fn symbol_info_span_and_scope_when_creating_symbol_info_then_has_correct_span_an
     assert_eq!(symbol_info.visibility_scope, scope);
     assert_eq!(symbol_info.span, ironplc_dsl::core::SourceSpan::default());
     assert!(!symbol_info.is_external);
-    assert!(symbol_info.data_type.is_none());
+    assert!(symbol_info.type_id.is_none());
 }
 
 /// A scope path nests, so a symbol declared in an enclosing scope is
@@ -336,10 +336,10 @@ fn insert_variable_when_name_repeated_in_scope_then_p4014_and_first_kept() {
     let scope = ScopeKind::Named(Id::from("Unit").into());
     env.insert_variable(
         &Id::from("x"),
-        SymbolKind::Parameter,
         &scope,
         VariableType::Input,
         DeclarationQualifier::Unspecified,
+        None,
         None,
     )
     .unwrap();
@@ -347,10 +347,10 @@ fn insert_variable_when_name_repeated_in_scope_then_p4014_and_first_kept() {
     let error = env
         .insert_variable(
             &Id::from("X"),
-            SymbolKind::Variable,
             &scope,
             VariableType::Var,
             DeclarationQualifier::Unspecified,
+            None,
             None,
         )
         .unwrap_err();
@@ -365,10 +365,10 @@ fn insert_variable_when_same_name_in_two_scopes_then_ok() {
     let mut env = SymbolEnvironment::new();
     env.insert_variable(
         &Id::from("x"),
-        SymbolKind::Variable,
         &ScopeKind::Global,
         VariableType::Global,
         DeclarationQualifier::Unspecified,
+        None,
         None,
     )
     .unwrap();
@@ -376,10 +376,10 @@ fn insert_variable_when_same_name_in_two_scopes_then_ok() {
     assert!(env
         .insert_variable(
             &Id::from("x"),
-            SymbolKind::Variable,
             &ScopeKind::Named(Id::from("Unit").into()),
             VariableType::Var,
             DeclarationQualifier::Unspecified,
+            None,
             None,
         )
         .is_ok());
@@ -392,16 +392,17 @@ fn insert_variable_when_name_is_compiler_provided_then_reserved() {
         &Id::from("__SYSTEM_UP_TIME"),
         SymbolKind::Variable,
         &ScopeKind::Global,
+        None,
     )
     .unwrap();
 
     let error = env
         .insert_variable(
             &Id::from("__SYSTEM_UP_TIME"),
-            SymbolKind::Variable,
             &ScopeKind::Global,
             VariableType::Global,
             DeclarationQualifier::Unspecified,
+            None,
             None,
         )
         .unwrap_err();
@@ -421,10 +422,10 @@ fn insert_variable_when_name_matches_type_then_ok() {
     assert!(env
         .insert_variable(
             &Id::from("T"),
-            SymbolKind::Variable,
             &ScopeKind::Global,
             VariableType::Global,
             DeclarationQualifier::Unspecified,
+            None,
             None,
         )
         .is_ok());
@@ -519,10 +520,10 @@ fn get_variables_in_scope_when_several_declared_then_returns_declaration_order()
     for name in &variables {
         env.insert_variable(
             name,
-            SymbolKind::Variable,
             &scope,
             VariableType::Var,
             DeclarationQualifier::Unspecified,
+            None,
             None,
         )
         .unwrap();
@@ -577,10 +578,10 @@ fn get_variables_in_scope_when_global_scope_then_returns_global_variables_only()
     global(&mut env, "Speed", SymbolKind::Type).unwrap();
     env.insert_variable(
         &Id::from("shared"),
-        SymbolKind::Variable,
         &ScopeKind::Global,
         VariableType::Global,
         DeclarationQualifier::Unspecified,
+        None,
         None,
     )
     .unwrap();
@@ -598,10 +599,10 @@ fn insert_variable_when_constant_qualifier_then_symbol_is_constant() {
     let mut env = SymbolEnvironment::new();
     env.insert_variable(
         &Id::from("limit"),
-        SymbolKind::Variable,
         &ScopeKind::Global,
         VariableType::Global,
         DeclarationQualifier::Constant,
+        None,
         None,
     )
     .unwrap();
@@ -615,10 +616,10 @@ fn insert_variable_when_retain_qualifier_then_symbol_is_not_constant() {
     let mut env = SymbolEnvironment::new();
     env.insert_variable(
         &Id::from("count"),
-        SymbolKind::Variable,
         &ScopeKind::Global,
         VariableType::Global,
         DeclarationQualifier::Retain,
+        None,
         None,
     )
     .unwrap();

@@ -137,21 +137,14 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::VarDecl,
     ) -> Result<Self::Value, Infallible> {
-        let symbol_kind = match node.var_type {
-            VariableType::Input => SymbolKind::Parameter,
-            VariableType::Output => SymbolKind::OutputParameter,
-            VariableType::InOut => SymbolKind::InOutParameter,
-            _ => SymbolKind::Variable,
-        };
-
         match &node.identifier {
             ironplc_dsl::common::VariableIdentifier::Symbol(id) => {
                 let result = self.symbol_env.insert_variable(
                     id,
-                    symbol_kind,
                     &self.current_scope(),
                     node.var_type.clone(),
                     node.qualifier.clone(),
+                    node.type_id,
                     None,
                 );
                 self.record(result);
@@ -161,10 +154,10 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
                     let address = format_address(&direct.address_assignment);
                     let result = self.symbol_env.insert_variable(
                         name,
-                        symbol_kind,
                         &self.current_scope(),
                         node.var_type.clone(),
                         node.qualifier.clone(),
+                        node.type_id,
                         Some(address),
                     );
                     self.record(result);

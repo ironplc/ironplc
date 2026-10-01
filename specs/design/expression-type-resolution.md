@@ -47,6 +47,9 @@ A declaration carries the id of the type it declares in
 - a reference type is the one type `TypeEnvironment::reference_to(target)`
   interns, so `REF_TO INT` is the same type wherever it is spelled.
 
+The pass runs before the `SymbolEnvironment` is built, so each variable's
+`SymbolInfo::type_id` holds the same id as its declaration.
+
 `expr_type` is left out of `Expr`'s equality: its ids are allocated per
 compilation, so an expected expression built by hand cannot know them.
 

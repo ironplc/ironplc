@@ -217,7 +217,8 @@ fn map_variable(var: &VariableSymbol<'_>) -> VariableInfo {
         .is_some_and(|a| a.starts_with("%I"));
     VariableInfo {
         name: var.name.to_string(),
-        type_name: var.info.data_type.clone().unwrap_or_default(),
+        // Not yet resolved from `SymbolInfo::type_id`.
+        type_name: String::new(),
         direction: direction.as_str().to_string(),
         address: var.info.address.clone(),
         external,

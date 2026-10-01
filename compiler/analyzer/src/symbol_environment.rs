@@ -2,6 +2,7 @@ use indexmap::IndexMap;
 use ironplc_dsl::common::{DeclarationQualifier, TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::type_id::TypeId;
 use ironplc_problems::Problem;
 
 /// A scope's position in the nesting tree: the chain of declaration
@@ -87,8 +88,10 @@ pub struct SymbolInfo {
     pub visibility_scope: ScopeKind,
     /// Whether this symbol is a reference to an external declaration
     pub is_external: bool,
-    /// The data type of the symbol (if applicable)
-    pub data_type: Option<String>,
+    /// For variables, the id of the declared type in the type
+    /// environment. `None` for symbols that are not variables and for a
+    /// variable whose type the analyzer could not resolve.
+    pub type_id: Option<TypeId>,
     /// For enumeration values, the type name of the enumeration
     /// TODO this should probably be a new struct that is a TypeRef
     /// so that we can distinguish between the actual place of the declaration
@@ -119,7 +122,7 @@ impl SymbolInfo {
             scope: scope.clone(),
             visibility_scope: scope,
             is_external: false,
-            data_type: None,
+            type_id: None,
             enum_type: None,
             struct_type: None,
             variable_type: None,
@@ -149,6 +152,12 @@ impl SymbolInfo {
     /// Set the structure type for structure field symbols
     pub fn with_struct_type(mut self, struct_type: TypeName) -> Self {
         self.struct_type = Some(struct_type);
+        self
+    }
+
+    /// Set the id of the variable's declared type
+    pub fn with_type_id(mut self, type_id: Option<TypeId>) -> Self {
+        self.type_id = type_id;
         self
     }
 
@@ -302,30 +311,41 @@ impl SymbolEnvironment {
         name: &Id,
         kind: SymbolKind,
         scope: &ScopeKind,
+        type_id: Option<TypeId>,
     ) -> Result<(), Diagnostic> {
         self.insert_symbol(
             name,
-            SymbolInfo::new(kind, scope.clone(), name.span()).with_compiler_provided(),
+            SymbolInfo::new(kind, scope.clone(), name.span())
+                .with_type_id(type_id)
+                .with_compiler_provided(),
         )
     }
 
-    /// Insert a variable with direction, declaration qualifier and optional
-    /// hardware address.
+    /// Insert a variable with direction, declaration qualifier, the id of
+    /// its declared type and optional hardware address. The symbol's kind
+    /// follows from the section the variable is declared in.
     ///
     /// A name already declared in the scope is returned as `P4014`, as for
     /// [`Self::insert`].
     pub fn insert_variable(
         &mut self,
         name: &Id,
-        kind: SymbolKind,
         scope: &ScopeKind,
         variable_type: VariableType,
         qualifier: DeclarationQualifier,
+        type_id: Option<TypeId>,
         address: Option<String>,
     ) -> Result<(), Diagnostic> {
+        let kind = match variable_type {
+            VariableType::Input => SymbolKind::Parameter,
+            VariableType::Output => SymbolKind::OutputParameter,
+            VariableType::InOut => SymbolKind::InOutParameter,
+            _ => SymbolKind::Variable,
+        };
         let mut symbol_info = SymbolInfo::new(kind, scope.clone(), name.span())
             .with_variable_type(variable_type.clone())
-            .with_qualifier(qualifier);
+            .with_qualifier(qualifier)
+            .with_type_id(type_id);
         if let Some(addr) = address {
             symbol_info = symbol_info.with_address(addr);
         }
