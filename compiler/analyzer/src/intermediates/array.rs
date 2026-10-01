@@ -29,36 +29,7 @@ pub fn try_from(
     match spec {
         SpecificationKind::Inline(array_subranges) => {
             // Array with explicit subranges: MY_ARRAY : ARRAY [1..10, 1..5] OF INT;
-            let element_type_name = array_subranges.type_name.to_type_name();
-
-            // Resolve the element type representation based on the element type kind
-            let element_repr = match &array_subranges.type_name {
-                ArrayElementType::String(spec) => IntermediateType::String {
-                    max_len: spec
-                        .length
-                        .as_ref()
-                        .and_then(|len| len.as_integer().map(|i| i.value)),
-                    char_width: CharWidth::Narrow,
-                },
-                ArrayElementType::WString(spec) => IntermediateType::String {
-                    max_len: spec
-                        .length
-                        .as_ref()
-                        .and_then(|len| len.as_integer().map(|i| i.value)),
-                    char_width: CharWidth::Wide,
-                },
-                ArrayElementType::Named(_) => {
-                    let element_type =
-                        type_environment.get(&element_type_name).ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::ArrayElementTypeNotDeclared,
-                                Label::span(node_name.span(), "Array declaration"),
-                            )
-                            .with_secondary(Label::span(element_type_name.span(), "Element type"))
-                        })?;
-                    element_type.representation.clone()
-                }
-            };
+            let element_repr = element_type(node_name, array_subranges, type_environment)?;
 
             // Validate array bounds
             validate_array_bounds(&array_subranges.ranges, node_name)?;
@@ -107,6 +78,46 @@ pub fn try_from(
             Ok(IntermediateResult::Alias(base_type_name.clone()))
         }
     }
+}
+
+/// The representation of the element type of an inline array, without any
+/// `REF_TO` wrapper.
+///
+/// A named element type must be declared in `type_environment`; when it is
+/// not, the diagnostic is P2013 with `node_name` (the declaration that owns
+/// the array) as its primary label.
+pub fn element_type(
+    node_name: &TypeName,
+    array_subranges: &ArraySubranges,
+    type_environment: &TypeEnvironment,
+) -> Result<IntermediateType, Diagnostic> {
+    Ok(match &array_subranges.type_name {
+        ArrayElementType::String(spec) => IntermediateType::String {
+            max_len: spec
+                .length
+                .as_ref()
+                .and_then(|len| len.as_integer().map(|i| i.value)),
+            char_width: CharWidth::Narrow,
+        },
+        ArrayElementType::WString(spec) => IntermediateType::String {
+            max_len: spec
+                .length
+                .as_ref()
+                .and_then(|len| len.as_integer().map(|i| i.value)),
+            char_width: CharWidth::Wide,
+        },
+        ArrayElementType::Named(element_type_name) => type_environment
+            .get(element_type_name)
+            .ok_or_else(|| {
+                Diagnostic::problem(
+                    Problem::ArrayElementTypeNotDeclared,
+                    Label::span(node_name.span(), "Array declaration"),
+                )
+                .with_secondary(Label::span(element_type_name.span(), "Element type"))
+            })?
+            .representation
+            .clone(),
+    })
 }
 
 /// Resolves a `SignedIntegerRef` to a `SignedInteger` reference.

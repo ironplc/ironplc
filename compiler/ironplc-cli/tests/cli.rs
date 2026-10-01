@@ -625,3 +625,54 @@ fn version_then_ok() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn check_when_array_element_type_undeclared_then_p2013() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("check")
+        .arg(path_to_test_resource("undeclared_array_element_type.st"));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("P2013"));
+
+    Ok(())
+}
+
+#[test]
+fn check_when_twincat_pointer_target_undeclared_then_p2011(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("check")
+        .arg("--dialect")
+        .arg("twincat")
+        .arg(path_to_test_resource("undeclared_pointer_target_type.st"));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("P2011"));
+
+    Ok(())
+}
+
+/// Code generation is never reached: the analyzer reports the element type
+/// (P2013) where it used to fall through to "Unsupported array element type"
+/// (P9999).
+#[test]
+fn compile_when_twincat_array_element_type_undeclared_then_p2013_not_p9999(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let output = NamedTempFile::new()?;
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("compile")
+        .arg("--dialect")
+        .arg("twincat")
+        .arg(path_to_test_resource("undeclared_array_element_type.st"))
+        .arg("--output")
+        .arg(output.path());
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("P2013").and(predicate::str::contains("P9999").not()));
+
+    Ok(())
+}
