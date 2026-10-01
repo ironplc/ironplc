@@ -64,6 +64,9 @@ pub(crate) struct ArrayVarInfo {
     /// data-region offset, and no region is allocated for it -- so it must
     /// never be used as the source or destination of a whole-value copy.
     pub is_ref: bool,
+    /// The value of an element no initial value sets. Unused for STRING
+    /// elements, which start as empty strings.
+    pub element_default: crate::compile_default::LeafDefault,
 }
 
 /// The resolved target of a variable access.
@@ -747,6 +750,7 @@ pub(crate) fn register_array_variable(
             string_max_len,
             string_char_width,
             is_ref: false,
+            element_default: crate::compile_default::LeafDefault::of_array_element(spec),
         },
     );
 

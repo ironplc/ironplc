@@ -973,21 +973,7 @@ fn compile_program_with_functions(
         .filter(|decl| decl.var_type == VariableType::VarTemp)
         .cloned()
         .collect();
-    reject_unresettable_temp_arrays(&temp_vars)?;
-    // A scalar is rewritten to its initial value or zero; an aggregate or an
-    // instance goes through its setup initialization, which also restores
-    // the data-region offset its slot holds.
-    let (aggregate_temps, scalar_temps): (Vec<VarDecl>, Vec<VarDecl>) =
-        temp_vars.into_iter().partition(|decl| {
-            decl.identifier.symbolic_id().is_some_and(|id| {
-                ctx.struct_vars.contains_key(id)
-                    || ctx.array_vars.contains_key(id)
-                    || ctx.struct_array_vars.contains_key(id)
-                    || ctx.fb_instances.contains_key(id)
-            })
-        });
-    crate::compile_setup::emit_locals_reinit(&mut scan_emitter, &mut ctx, &scalar_temps)?;
-    emit_initial_values(&mut scan_emitter, &mut ctx, &aggregate_temps, types)?;
+    crate::compile_setup::emit_locals_reinit(&mut scan_emitter, &mut ctx, &temp_vars, types)?;
     compile_body(
         &mut scan_emitter,
         &mut ctx,
@@ -1311,25 +1297,6 @@ pub(crate) struct FbInstanceInfo {
     pub(crate) data_offset: u32,
     /// Maps field name (lowercase) to field index.
     pub(crate) field_indices: HashMap<String, u8>,
-}
-
-/// Guards the scan's re-initialization of a PROGRAM `VAR_TEMP` array, which
-/// sets only the elements an initial value names and relies on a zeroed data
-/// region for the others. `rule_program_var_temp_array` refuses such an array
-/// without initial values during analysis, so reaching one here is a
-/// compiler bug.
-fn reject_unresettable_temp_arrays(temp_vars: &[VarDecl]) -> Result<(), Diagnostic> {
-    for decl in temp_vars {
-        if let InitialValueAssignmentKind::Array(array) = &decl.initializer {
-            if array.initial_values.is_empty() {
-                return Err(Diagnostic::internal_error_at(Label::span(
-                    decl.identifier.span(),
-                    "VAR_TEMP array without initial values reached code generation",
-                )));
-            }
-        }
-    }
-    Ok(())
 }
 
 /// Metadata for a compiled user-defined function block type.

@@ -697,3 +697,12 @@ e2e_i32!(
     "TYPE Holder : STRUCT vals : ARRAY[1..3] OF DINT; END_STRUCT; END_TYPE PROGRAM main VAR h : Holder; i : INT; r : DINT; END_VAR FOR i := 1 TO 3 DO h.vals[i] := 5; END_FOR; r := h.vals[3]; END_PROGRAM",
     &[(2, 5)],
 );
+
+// A structure initializer that lists an array field's values sets the
+// listed elements; the others keep the element type's default. q1 is var
+// index 1, q2 var index 2 (s is var 0).
+e2e_i32!(
+    end_to_end_when_struct_array_field_initialized_then_listed_elements_set,
+    "TYPE MyStruct : STRUCT n : INT; a : ARRAY[1..3] OF INT; END_STRUCT; END_TYPE PROGRAM main VAR s : MyStruct := (n := 3, a := [4, 5]); q1 : INT; q2 : INT; q3 : INT; END_VAR q1 := s.a[1]; q2 := s.a[2]; q3 := s.a[3]; END_PROGRAM",
+    &[(1, 4), (2, 5), (3, 0)],
+);

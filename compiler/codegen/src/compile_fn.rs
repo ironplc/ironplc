@@ -363,6 +363,7 @@ pub(crate) fn compile_user_function(
         &mut func_emitter,
         ctx,
         &func_decl.variables,
+        types,
         &func_decl.name,
         return_var_index,
         return_op_type,

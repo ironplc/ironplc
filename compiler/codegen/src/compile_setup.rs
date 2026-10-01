@@ -9,8 +9,8 @@ use ironplc_container::debug_section::{
 };
 use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
-    ConstantKind, FunctionReturnType, InitialValueAssignmentKind, ReferenceInitialValue,
-    SpecificationKind, TypeName, VarDecl, VariableType,
+    FunctionReturnType, InitialValueAssignmentKind, ReferenceInitialValue, SpecificationKind,
+    TypeName, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -450,9 +450,8 @@ pub(crate) fn emit_initial_values(
                 InitialValueAssignmentKind::Array(array_init) => {
                     // An array of structures holds the data region offset in
                     // its variable slot, like a structure variable does. Its
-                    // element field values are left zeroed, matching what an
-                    // array-of-struct field of a structure gets today; only
-                    // the headers of its STRING fields are written.
+                    // elements' fields get their defaults, and the headers of
+                    // their STRING fields are written.
                     if let Some(struct_array_info) = ctx.struct_array_vars.get(id) {
                         if !array_init.initial_values.is_empty() {
                             return Err(Diagnostic::not_implemented(Label::span(
@@ -464,9 +463,26 @@ pub(crate) fn emit_initial_values(
                         let var_index = struct_array_info.var_index;
                         let scratch_var_index = struct_array_info.scratch_var_index;
                         let element_strings = struct_array_info.element_strings.clone();
+                        let region = crate::compile_array_init::SlotRegion {
+                            var_index,
+                            desc_index: struct_array_info.desc_index,
+                            data_offset,
+                        };
+                        let element_type = struct_array_info.element_type.clone();
+                        let dimensions = struct_array_info.dimensions.clone();
                         let offset_const = ctx.add_i32_constant(data_offset as i32);
                         emitter.emit_load_const_i32(offset_const);
                         emitter.emit_store_var_i32(var_index);
+                        crate::compile_array_init::initialize_slot_array(
+                            emitter,
+                            ctx,
+                            &region,
+                            0,
+                            &element_type,
+                            &dimensions,
+                            &[],
+                            &decl.identifier.span(),
+                        )?;
                         crate::compile_struct_init::initialize_element_strings(
                             emitter,
                             ctx,
@@ -475,63 +491,14 @@ pub(crate) fn emit_initial_values(
                             &element_strings,
                             &decl.identifier.span(),
                         )?;
-                    } else if let Some(array_info) = ctx.array_vars.get(id) {
-                        let data_offset = array_info.data_offset;
-                        let var_index = array_info.var_index;
-                        let desc_index = array_info.desc_index;
-                        let element_vti = array_info.element_var_type_info;
-                        let is_string = array_info.is_string_element;
-                        let element_char_width = array_info.string_char_width;
-
-                        // Store data_offset into the variable slot (like FB instances).
-                        let offset_const = ctx.add_i32_constant(data_offset as i32);
-                        emitter.emit_load_const_i32(offset_const);
-                        emitter.emit_store_var_i32(var_index);
-
-                        if is_string {
-                            // Initialize all string headers in the array.
-                            emitter.emit_str_init_array(var_index, desc_index);
-
-                            // Emit STR_STORE_ARRAY_ELEM for each initial string value.
-                            // String literals are encoded at the element width so
-                            // the array element's encoding check passes.
-                            if !array_init.initial_values.is_empty() {
-                                let values = crate::compile_array::flatten_array_initial_values(
-                                    &array_init.initial_values,
-                                )?;
-                                for (i, value) in values.iter().enumerate() {
-                                    if let ConstantKind::CharacterString(lit) = value {
-                                        emit_string_literal_load(
-                                            emitter,
-                                            ctx,
-                                            &lit.value,
-                                            element_char_width,
-                                        );
-                                    } else {
-                                        compile_constant(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-                                    }
-                                    let idx_const = ctx.add_i32_constant(i as i32);
-                                    emitter.emit_load_const_i32(idx_const);
-                                    emitter.emit_str_store_array_elem(var_index, desc_index);
-                                }
-                            }
-                        } else {
-                            // Emit STORE_ARRAY for each initial value.
-                            if !array_init.initial_values.is_empty() {
-                                let values = crate::compile_array::flatten_array_initial_values(
-                                    &array_init.initial_values,
-                                )?;
-                                let element_op_type =
-                                    (element_vti.op_width, element_vti.signedness);
-                                for (i, value) in values.iter().enumerate() {
-                                    compile_constant(emitter, ctx, value, element_op_type)?;
-                                    emit_truncation(emitter, element_vti);
-                                    let idx_const = ctx.add_i32_constant(i as i32);
-                                    emitter.emit_load_const_i32(idx_const);
-                                    emitter.emit_store_array(var_index, desc_index);
-                                }
-                            }
-                        }
+                    } else {
+                        crate::compile_array_init::initialize_array_variable(
+                            emitter,
+                            ctx,
+                            id,
+                            &array_init.initial_values,
+                            crate::compile_array_init::RegionState::Zeroed,
+                        )?;
                     }
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
@@ -656,23 +623,26 @@ pub(crate) fn emit_function_local_prologue(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     variables: &[VarDecl],
+    types: &TypeEnvironment,
     return_id: &Id,
     return_var_index: VarIndex,
     return_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    emit_locals_reinit(emitter, ctx, variables)?;
+    emit_locals_reinit(emitter, ctx, variables, types)?;
     emit_return_reinit(emitter, ctx, return_id, return_var_index, return_op_type)
 }
 
 /// Emits the re-initialization of the `VAR` and `VAR_TEMP` variables among
-/// `variables` to their declared initial values, or to zero when they
-/// declare none; parameters are left alone. Unlike `emit_initial_values`,
-/// which runs once over a zeroed data region, this writes every scalar, so
-/// it can run again at every call of a function or every scan of a program.
+/// `variables` to their declared initial values, or to their type's default
+/// when they declare none; parameters are left alone. Unlike
+/// `emit_initial_values`, which runs once over a zeroed data region, this
+/// writes every scalar and every array element, so it can run again at
+/// every call of a function or every scan of a program.
 pub(crate) fn emit_locals_reinit(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     variables: &[VarDecl],
+    types: &TypeEnvironment,
 ) -> Result<(), Diagnostic> {
     for decl in variables {
         if !decl.var_type.is_local() {
@@ -680,6 +650,9 @@ pub(crate) fn emit_locals_reinit(
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             let var_index = ctx.var_index(id)?;
+            if emit_data_region_reinit(emitter, ctx, decl, id, var_index, types)? {
+                continue;
+            }
             let type_info = ctx.var_type_info(id);
             let op_type = type_info
                 .map(|ti| (ti.op_width, ti.signedness))
@@ -744,10 +717,14 @@ pub(crate) fn emit_locals_reinit(
                     emitter.emit_load_const_i32(pool_index);
                     emit_store_var(emitter, var_index, op_type);
                 }
+                InitialValueAssignmentKind::Subrange(_) => {
+                    // The setup writes the subrange's lower bound.
+                    emit_initial_values(emitter, ctx, std::slice::from_ref(decl), types)?;
+                }
                 _ => {
-                    // Other initializer kinds; zero-fill as default.
-                    // `Structure` and `Array` reach this arm, and zero-filling
-                    // discards their declared field values.
+                    // Other initializer kinds; zero-fill as default. The
+                    // structure and array locals of a function, which are not
+                    // registered in the data region, reach this arm.
                     emit_zero_const(emitter, ctx, op_type);
                     emit_store_var(emitter, var_index, op_type);
                 }
@@ -756,6 +733,58 @@ pub(crate) fn emit_locals_reinit(
     }
 
     Ok(())
+}
+
+/// Emits the re-initialization of `decl` when it is an array, a structure or
+/// an instance, held in the data region through the offset its slot
+/// `var_index` holds. Returns whether it is one.
+fn emit_data_region_reinit(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    decl: &VarDecl,
+    id: &Id,
+    var_index: VarIndex,
+    types: &TypeEnvironment,
+) -> Result<bool, Diagnostic> {
+    // The registrations are those of this slot, not of a variable of the
+    // same name in an enclosing scope.
+    if ctx
+        .array_vars
+        .get(id)
+        .is_some_and(|info| info.var_index == var_index)
+    {
+        let initial_values = match &decl.initializer {
+            InitialValueAssignmentKind::Array(array_init) => array_init.initial_values.as_slice(),
+            _ => &[],
+        };
+        crate::compile_array_init::initialize_array_variable(
+            emitter,
+            ctx,
+            id,
+            initial_values,
+            crate::compile_array_init::RegionState::Stale,
+        )?;
+        return Ok(true);
+    }
+    let in_data_region = ctx
+        .struct_array_vars
+        .get(id)
+        .is_some_and(|info| info.var_index == var_index)
+        || ctx
+            .struct_vars
+            .get(id)
+            .is_some_and(|info| info.var_index == var_index)
+        || ctx
+            .fb_instances
+            .get(id)
+            .is_some_and(|info| info.var_index == var_index);
+    if !in_data_region {
+        return Ok(false);
+    }
+    // Writes every field and element of a structure or an array of
+    // structures, and restores the offset the slot holds.
+    emit_initial_values(emitter, ctx, std::slice::from_ref(decl), types)?;
+    Ok(true)
 }
 
 /// Emits the zero-initialization of a function's return variable.

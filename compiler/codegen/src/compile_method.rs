@@ -117,7 +117,7 @@ fn compile_user_method(
     param_var_off: VarIndex,
     ctx: &mut CompileContext,
     _builder: &mut ContainerBuilder,
-    _types: &TypeEnvironment,
+    types: &TypeEnvironment,
 ) -> Result<CompiledFunction, Diagnostic> {
     let mut current_index = param_var_off;
     let mut num_params: u16 = 0;
@@ -210,6 +210,7 @@ fn compile_user_method(
         &mut method_emitter,
         ctx,
         &method.variables,
+        types,
         &return_id,
         return_var_index,
         return_op_type,

@@ -70,3 +70,19 @@ END_PROGRAM
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
     );
 }
+
+// n is var index 1 (refs is var 0). An element no initializer sets is NULL.
+e2e_i32_with!(
+    end_to_end_when_array_of_ref_to_not_initialized_then_elements_null,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
+PROGRAM main
+  VAR
+    refs : ARRAY[0..1] OF REF_TO INT;
+    n : INT;
+  END_VAR
+  IF refs[1] = NULL THEN n := 1; END_IF;
+END_PROGRAM
+",
+    &[(1, 1)],
+);
