@@ -94,6 +94,20 @@ impl<'a> EnvironmentResolver<'a> {
         }
     }
 
+    /// Declares the implicit result variable of the function or method
+    /// `name` that the traversal is about to enter, in that declaration's
+    /// own scope. A variable the declaration declares with the same name
+    /// replaces it.
+    fn declare_result_variable(&mut self, name: &Id) {
+        let mut path = self.scope.clone();
+        path.push(name.clone());
+        let scope = ScopeKind::Named(ScopePath::new(path));
+        let result = self
+            .symbol_env
+            .insert(name, SymbolKind::ResultVariable, &scope);
+        self.record(result);
+    }
+
     /// Declares `name` in the global scope. A function already holds the
     /// name in the other environment, so that pair is checked here; every
     /// other repeat is the symbol environment's to report.
@@ -184,6 +198,8 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::FunctionDeclaration,
     ) -> Result<Self::Value, Infallible> {
+        self.declare_result_variable(&node.name);
+
         // Build function signature for function environment
         // (Functions are tracked in FunctionEnvironment, not SymbolEnvironment)
         // Collect parameters (INPUT, OUTPUT, INOUT variables)
@@ -268,6 +284,18 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         let result = self.function_env.insert(signature);
         self.record(result);
 
+        node.recurse_visit(self)
+    }
+
+    fn visit_method_declaration(
+        &mut self,
+        node: &ironplc_dsl::oop::MethodDeclaration,
+    ) -> Result<Self::Value, Infallible> {
+        // A method without a return type is a procedure: it has no result
+        // to assign.
+        if node.return_type.is_some() {
+            self.declare_result_variable(&node.name);
+        }
         node.recurse_visit(self)
     }
 

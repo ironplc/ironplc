@@ -2,6 +2,7 @@ use indexmap::IndexMap;
 use ironplc_dsl::common::{DeclarationQualifier, TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::type_id::TypeId;
 use ironplc_problems::Problem;
 
@@ -35,6 +36,42 @@ impl From<Id> for ScopePath {
     /// A scope directly inside the library, such as a function block.
     fn from(name: Id) -> Self {
         Self::new(vec![name])
+    }
+}
+
+/// Tracks the scope a traversal is in, from the `enter_scope` and
+/// `exit_scope` hooks, so that a pass can look names up in the
+/// [`SymbolEnvironment`] from where it is.
+#[derive(Debug, Default)]
+pub(crate) struct ScopeTracker {
+    /// The chain of declaration names the traversal is inside, outermost
+    /// first.
+    path: Vec<Id>,
+}
+
+impl ScopeTracker {
+    /// Enters the scope `node` opens.
+    pub(crate) fn enter(&mut self, node: &ScopeNode<'_>) {
+        self.path.push(match node {
+            ScopeNode::Function(node) => node.name.clone(),
+            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
+            ScopeNode::Program(node) => node.name.clone(),
+            ScopeNode::Method(node) => node.name.clone(),
+        });
+    }
+
+    /// Leaves the innermost scope.
+    pub(crate) fn exit(&mut self) {
+        self.path.pop();
+    }
+
+    /// The scope the traversal is in.
+    pub(crate) fn current(&self) -> ScopeKind {
+        if self.path.is_empty() {
+            ScopeKind::Global
+        } else {
+            ScopeKind::Named(ScopePath::new(self.path.clone()))
+        }
     }
 }
 
@@ -75,6 +112,11 @@ pub enum SymbolKind {
     StructureElement,
     /// Edge variable (rising/falling edge)
     EdgeVariable,
+    /// The implicit result variable of a function, or of a method that
+    /// declares a return type: the declaration's own name, assigned by its
+    /// body (`F := ...` inside `FUNCTION F`). A declared variable of the
+    /// same name replaces it.
+    ResultVariable,
 }
 
 /// Metadata associated with a symbol

@@ -627,3 +627,39 @@ fn insert_variable_when_retain_qualifier_then_symbol_is_not_constant() {
     let symbol = env.find(&Id::from("count"), &ScopeKind::Global).unwrap();
     assert!(!symbol.is_constant());
 }
+
+#[test]
+fn insert_when_variable_repeats_result_variable_then_replaces_without_diagnostic() {
+    let mut env = SymbolEnvironment::new();
+    let scope = ScopeKind::Named(Id::from("F").into());
+    env.insert(&Id::from("F"), SymbolKind::ResultVariable, &scope)
+        .unwrap();
+
+    env.insert_variable(
+        &Id::from("F"),
+        &scope,
+        VariableType::Var,
+        DeclarationQualifier::Unspecified,
+        None,
+        None,
+    )
+    .unwrap();
+
+    let symbol = env.find(&Id::from("F"), &scope).unwrap();
+    assert_eq!(symbol.kind, SymbolKind::Variable);
+}
+
+#[test]
+fn get_variables_in_scope_when_result_variable_then_not_listed() {
+    let mut env = SymbolEnvironment::new();
+    let scope = ScopeKind::Named(Id::from("F").into());
+    env.insert(&Id::from("F"), SymbolKind::ResultVariable, &scope)
+        .unwrap();
+
+    assert!(env.get_variables_in_scope(&scope).is_empty());
+}
+
+#[test]
+fn scope_tracker_when_no_scope_entered_then_global() {
+    assert_eq!(ScopeTracker::default().current(), ScopeKind::Global);
+}
