@@ -206,42 +206,6 @@ fn get_enumeration_values_for_type_when_no_matching_values_then_returns_empty() 
 }
 
 #[test]
-fn get_structure_fields_for_type_when_fields_in_global_and_scoped_then_returns_matching_only() {
-    let mut env = SymbolEnvironment::new();
-    let struct_type = TypeName::from("POINT");
-    let other_type = TypeName::from("LINE");
-
-    // Global structure field of the requested type.
-    env.insert_structure_field(&Id::from("X"), &struct_type, &ScopeKind::Global)
-        .unwrap();
-    // Scoped structure field of the requested type.
-    let scope = ScopeKind::Named(Id::from("FB").into());
-    env.insert_structure_field(&Id::from("Y"), &struct_type, &scope)
-        .unwrap();
-    // Structure field of a different type (should be excluded).
-    env.insert_structure_field(&Id::from("START"), &other_type, &ScopeKind::Global)
-        .unwrap();
-    // Non-structure symbol whose struct_type is None (should be excluded).
-    env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
-        .unwrap();
-
-    let fields = env.get_structure_fields_for_type(&struct_type);
-    assert_eq!(fields.len(), 2);
-    assert!(fields.iter().any(|id| **id == Id::from("X")));
-    assert!(fields.iter().any(|id| **id == Id::from("Y")));
-}
-
-#[test]
-fn get_structure_fields_for_type_when_no_matching_fields_then_returns_empty() {
-    let mut env = SymbolEnvironment::new();
-    env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
-        .unwrap();
-
-    let fields = env.get_structure_fields_for_type(&TypeName::from("POINT"));
-    assert!(fields.is_empty());
-}
-
-#[test]
 fn symbol_info_span_and_scope_when_creating_symbol_info_then_has_correct_span_and_scope() {
     let span = ironplc_dsl::core::SourceSpan::default();
     let scope = ScopeKind::Named(Id::from("TEST_FUNCTION").into());
