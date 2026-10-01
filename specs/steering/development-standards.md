@@ -106,11 +106,11 @@ Unlike an ADR, a design document is a *description* rather than a decision, so i
 
 Work breakdowns that describe **how** to implement: phased task lists, specific code changes, file modifications, and verification steps. A plan document answers "what steps do I follow to build this?" Plans reference the design they implement.
 
-**A plan is branch-local.** It is committed as the first commit on a feature branch so it can be reviewed as a file diff, and deleted from that branch before merge. Because the repository squash-merges, the add and the delete cancel within the squashed commit, so no plan content reaches `main`. The plan stays viewable on the pull request.
+**A plan lives in its own pull request, which is never merged.** The plan is committed to a **plan branch** and reviewed as a file diff in a **plan PR**. Prefactor and core change PRs do not contain the plan file, so no plan content reaches `main`. When the work is done, the plan PR is closed unmerged; the plan stays viewable on it (see [Required Steps](#required-steps)).
 
-Plans are the one document type in `specs/` that is not durable. Anything worth keeping — a decision, a constraint, a piece of rationale — must land somewhere durable in the same pull request: `specs/adrs/`, `specs/design/`, or a code doc comment where the reasoning is local to the code (see [Choosing the Right Location](#choosing-the-right-location)).
+Plans are the one document type in `specs/` that is not durable. Anything worth keeping — a decision, a constraint, a piece of rationale — must land somewhere durable in a prefactor or core change pull request: `specs/adrs/`, `specs/design/`, or a code doc comment where the reasoning is local to the code (see [Choosing the Right Location](#choosing-the-right-location)).
 
-**Never cite a plan from anywhere else.** Code comments, workflows, the `justfile`, design documents and ADRs must cite an ADR or a design document, never `specs/plans/`. A plan is deleted before its own pull request merges, so a reference to one is either already dead or about to be. `cd specs && just` enforces this and runs in CI.
+**Never cite a plan from anywhere else.** Code comments, workflows, the `justfile`, design documents and ADRs must cite an ADR or a design document, never `specs/plans/`. A plan never reaches `main`, so a reference to one dangles. `cd specs && just` enforces this and runs in CI.
 
 ### `specs/steering/` — AI Steering Files
 
@@ -123,7 +123,7 @@ Guidance for AI assistants working with the codebase (conventions, patterns, wor
 | Why did we choose approach X over Y? | `specs/adrs/` |
 | What should the container format look like? | `specs/design/` |
 | Why is *this function* written this way? | a doc comment on it |
-| What are the steps to implement the container format? | `specs/plans/` (deleted before merge) |
+| What are the steps to implement the container format? | `specs/plans/` (plan PR, never merged) |
 | How should AI assistants name tests? | `specs/steering/` |
 
 **A decision may live in a code comment.** Rationale whose reader is the next
@@ -178,26 +178,49 @@ A person is accountable for all changes. We use a custom process for all non-tri
 
 ### Required Steps
 
+Every step below is its own pull request. A PR never combines a plan, a
+prefactor and a core change, not even as separate commits: the reviewer would
+still have to review and approve them together.
+
 **Planning**
 
-1. AI researches the code base and desired changes
-2. AI creates a **plan branch**, writes the plan to `specs/plans/YYYY-MM-DD-short-description.md`, and creates a PR for the plan.
-3. A person reviews and provides feedback on the plan until the plan is approved. This PR is never merged.
+1. AI researches the code base and desired changes.
+2. AI creates a **plan branch** from `main`, writes the plan to `specs/plans/YYYY-MM-DD-short-description.md`, and opens a **plan PR**.
+3. A person reviews and gives feedback on the plan PR until the plan is approved. AI pushes revisions to the plan branch. This PR is never merged.
 
 **Prefactoring**
-4. AI creates one or more **prefactor branches**, implements any pre-factoring, and creates PRs for prefactors. Each prefactor PR contains only behaviour-preserving changes; AI stops after opening it and does not start the core change on the same branch.
-5. A person reviews, provides feedback and merges the prefactor PRs. Core change branches start from `main` after this.
+
+4. AI creates one **prefactor branch** from `main` per prefactor, implements only behaviour-preserving changes on it (see [Prefactoring](#prefactoring)), and opens a PR for each.
+5. A person reviews, gives feedback and merges the prefactor PRs.
 
 **Core Change**
-6. If the change requires one or more **core change PRs**, then AI creates a GitHub issue detailing the planned work. The issue is the durable record so that we complete all work in the plan.
-7. AI creates one or more **core change branches**, implements the changes, and creates PRs for the changes.
-8. A person reviews, provides feedback and merges the core change PRs.
+
+6. If the change needs more than one **core change PR**, AI creates a GitHub issue listing the planned PRs. The issue is the durable record that all the work in the plan is completed.
+7. AI creates one or more **core change branches**, implements the changes, and opens a PR for each. The plan file is not part of these PRs.
+8. A person reviews, gives feedback and merges the core change PRs.
+
+**Stacked PRs are allowed.** AI need not wait for a prefactor PR to merge
+before starting the core change: base the core change branch on the prefactor
+branch and open its PR against that branch, so the PR shows only the core
+change's diff. Say in the PR description which PR it is stacked on. Once the
+prefactor merges, rebase the core change branch onto `main` and retarget its
+PR to `main`. Never stack a PR on the plan branch: that would carry the plan
+file into `main`.
 
 **Cleanup**
-9. AI discards the plan branch.
-10. If there was an associated GitHub issue, then AI closes the GitHub issue.
 
-AI can help write code but all  **must** use the following process so that someone can review.
+9. AI lands anything from the plan worth keeping as an ADR or `specs/design/` update in a prefactor or core change PR, and opens an issue for anything the plan describes that was not delivered.
+10. AI closes the plan PR unmerged and deletes the plan branch.
+11. If there was an associated GitHub issue, AI closes it.
+
+**One PR per session branch.** If a session can push to only one branch, it
+delivers the next PR in this sequence (the plan, a prefactor, or a core change)
+and stops, saying what comes next. It does not fold later steps onto that
+branch.
+
+**Skip the plan PR** for mechanical changes: typo fixes, formatting, dependency
+bumps, single-line bug fixes, or documentation-only edits. These go straight to
+a single PR.
 
 ### Planning Document
 
@@ -210,7 +233,7 @@ A plan document should include:
   [Prefactoring](#prefactoring))
 - **Design doc reference** — link to `specs/design/` doc if one exists
 - **File map** — which files will be created or modified
-- **Tasks** — ordered steps with checkboxes (`- [ ]`) for tracking progress
+- **Tasks** — ordered steps with checkboxes (`- [ ]`) for tracking progress, grouped by the prefactor or core change PR that delivers them
 
 Name plan files with a date prefix: `YYYY-MM-DD-short-description.md` (e.g., `2026-04-01-planning-requirement.md`).
 
@@ -246,14 +269,11 @@ means stop and reshape first:
    unchanged. If they have to be edited to accept the prefactoring — beyond
    mechanical renames — the commit is not behaviour-preserving; split it.
 2. **Open a separate pull request for the prefactoring.** A reviewer can then
-   read a diff that provably changes nothing, followed later by a smaller diff
-   that adds the feature. Either can be reverted alone. Separate *commits* in
-   one pull request are not enough: the reviewer still has to review and
-   approve both at once. Never put a prefactor and the feature it enables in
-   the same pull request.
-3. **Stop after the prefactor pull request.** Start the feature on a fresh
-   branch from `main` once the prefactor has merged. If a session can push only
-   one branch, the prefactor pull request is that session's whole deliverable.
+   read a diff that provably changes nothing, followed by a smaller diff that
+   adds the feature. Either can be reverted alone. Separate *commits* in one
+   pull request are not enough: the reviewer still has to review and approve
+   both at once. The feature's PR may be stacked on the prefactor's (see
+   [Required Steps](#required-steps)), but it is never the same PR.
 
 #### When *not* to prefactor
 

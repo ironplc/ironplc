@@ -36,16 +36,18 @@ For full details, see [specs/steering/common-tasks.md](specs/steering/common-tas
 
 ### Workflow
 
-1. **Prefactor first, in its own PR** — simplify the existing code so the change drops in, on a branch of its own from `main`, and open a PR containing only that behaviour-preserving change. **Stop there.** The feature does not go in the same PR, not even as a later commit: a prefactor and a feature in one PR is the thing this step exists to prevent. If you can push only one branch this session, the prefactor PR is the whole deliverable; report that the feature follows once it merges (see [Development Standards — Prefactoring](specs/steering/development-standards.md#prefactoring))
-2. Once the prefactor PR has merged (or the plan says none is needed), create a feature branch from `main`
-3. **Write an implementation plan** in `specs/plans/` and commit it as the first commit on the branch. If the work spans more than one PR, open an issue first and reference it from the plan (see [Development Standards — Planning Requirement](specs/steering/development-standards.md#planning-requirement))
-4. Implement the changes following the plan
-5. Land any decision worth keeping as an ADR or `specs/design/` update, and open an issue for anything the plan describes that you are not delivering — it is about to be deleted
-6. **`git rm` the plan file** — plans are deleted before merge, so no plan content reaches `main`
-7. Run the full CI pipeline: `cd compiler && just`
-8. Push the feature branch and create a PR via `gh pr create`
+Each step is its own PR, never combined, not even as separate commits. See [Development Standards — Required Steps](specs/steering/development-standards.md#required-steps) for the full process.
 
-> **Skip the plan** for mechanical changes: typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits.
+1. **Plan PR** — on a plan branch from `main`, write the plan in `specs/plans/` and open a PR for it. It is reviewed and **never merged**. If the work needs more than one core change PR, also open an issue listing them
+2. **Prefactor PRs** — on a branch from `main`, make only behaviour-preserving changes so the feature drops in, and open a PR (see [Development Standards — Prefactoring](specs/steering/development-standards.md#prefactoring))
+3. **Core change PRs** — implement the plan on a new branch and open a PR. It may be **stacked** on an unmerged prefactor branch (PR based on that branch); rebase onto `main` and retarget once the prefactor merges. Never stack on the plan branch, and never include the plan file
+4. Land any decision worth keeping as an ADR or `specs/design/` update in a prefactor or core change PR, and open an issue for anything the plan describes that was not delivered
+5. Close the plan PR unmerged, and close the issue if there is one
+6. Before opening any PR, run the full CI pipeline: `cd compiler && just`
+
+If you can push only one branch this session, deliver the next PR in this sequence and stop, saying what comes next.
+
+> **Skip the plan PR** for mechanical changes: typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits.
 
 ### Before Creating a PR
 
@@ -87,11 +89,10 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 
 ### Critical Rules
 1. **NEVER push directly to `main`** - Always use a feature branch and pull request
-2. **Plan first, then delete it** - Non-trivial changes start with a plan in `specs/plans/`, committed before implementation code and removed before merge; work spanning more than one PR must also have an issue; never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
-3. **Prefactor before adding, in a separate PR** - Every change looks for a simplification to make first; the plan says what it is, or why none is needed. A prefactor is never bundled into the feature PR
-4. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
-5. **BDD-style test names**: `function_when_condition_then_result`
-6. **Module size limit**: Max 1000 lines per module
-7. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
-8. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
-9. **Version numbers**: Automatically managed - do not edit manually
+2. **Plan PR, then prefactor PRs, then core change PRs** - Non-trivial changes start with a plan PR in `specs/plans/` that is never merged and says what to prefactor first, or why nothing; each prefactor and core change is its own PR (stacking allowed); never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
+3. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
+4. **BDD-style test names**: `function_when_condition_then_result`
+5. **Module size limit**: Max 1000 lines per module
+6. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
+7. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
+8. **Version numbers**: Automatically managed - do not edit manually

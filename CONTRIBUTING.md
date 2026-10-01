@@ -73,31 +73,34 @@ environment.
 
 ## Planning Non-Trivial Changes
 
-**Non-trivial changes must start with a plan.** The plan is committed so it can
-be reviewed as a file diff, then deleted before merge.
+**Non-trivial changes must start with a plan.** The plan gets its own pull
+request so it can be reviewed as a file diff. That pull request is never
+merged. Prefactoring and the change itself then follow in pull requests of
+their own.
 
 Workflow:
 
-1. Create a feature branch from `main`. Do not commit directly to `main`.
-1. Write an implementation plan and save it under `specs/plans/` (follow the
-   naming convention used by existing files there).
-1. Commit the plan to the feature branch before the implementation code.
-1. Implement the changes following the plan.
+1. Create a plan branch from `main`. Do not commit directly to `main`.
+1. Write an implementation plan under `specs/plans/` (follow the naming
+   convention used by existing files there) and open a pull request for it.
+   Revise it until it is approved. Do not merge it.
+1. For each prefactor the plan calls for, create a branch from `main`, make
+   only behaviour-preserving changes, and open a pull request.
+1. Implement the change on a new branch and open a pull request. It may be
+   stacked on an unmerged prefactor branch; once the prefactor merges, rebase
+   onto `main` and retarget the pull request. Never include the plan file.
 1. Land any decision worth keeping as an ADR (`specs/adrs/`) or a design
-   document (`specs/design/`) in the same pull request.
-1. Open an issue for anything the plan describes that this pull request does
-   not deliver — a comment saying "follow-up" is not tracking, and the plan
-   that recorded it is about to be deleted.
-1. `git rm` the plan file. Because the repository squash-merges, the add and
-   the delete cancel, so no plan content reaches `main`; the plan stays
-   viewable on the pull request.
-1. Run the pre-PR checks described below.
-1. Push the branch and open a pull request.
+   document (`specs/design/`) in a prefactor or change pull request.
+1. Open an issue for anything the plan describes that was not delivered — a
+   comment saying "follow-up" is not tracking, and the plan never reaches
+   `main`.
+1. Close the plan pull request without merging it.
+1. Run the pre-PR checks described below before opening each pull request.
 
 Do not reference `specs/plans/` from code, comments, workflows, the `justfile`,
-design documents or ADRs. A plan is deleted before its pull request merges, so
-it is never a stable link target — cite an ADR or a design document instead.
-`cd specs && just` fails the build on a violation.
+design documents or ADRs. A plan never reaches `main`, so it is never a stable
+link target — cite an ADR or a design document instead. `cd specs && just`
+fails the build on a violation.
 
 **Work that spans more than one pull request must have an issue.** It holds the
 slice breakdown, stays open until every slice lands, and is where each slice's
