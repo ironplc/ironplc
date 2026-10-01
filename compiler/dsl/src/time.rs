@@ -71,6 +71,22 @@ pub enum TemporalWidth {
     Long,
 }
 
+impl FixedPoint {
+    /// The fraction as a whole number of nanoseconds, when the number counts
+    /// seconds, as the seconds field of a time of day does. A fraction finer
+    /// than a nanosecond is truncated.
+    ///
+    /// ```rust
+    /// use ironplc_dsl::common::FixedPoint;
+    /// assert_eq!(FixedPoint::parse("1.25").unwrap().nanoseconds(), 250_000_000);
+    /// assert_eq!(FixedPoint::parse("0.0000000019").unwrap().nanoseconds(), 1);
+    /// ```
+    pub fn nanoseconds(&self) -> u32 {
+        // `femptos` is below 10^15, so the quotient is below 10^9.
+        (self.femptos / 1_000_000) as u32
+    }
+}
+
 // See section 2.2.2
 #[derive(Debug, PartialEq, Clone)]
 pub struct DurationLiteral {
@@ -212,7 +228,7 @@ impl DurationLiteral {
     /// ```
     pub fn seconds(seconds: FixedPoint) -> Self {
         let whole_seconds = Duration::seconds(seconds.whole as i64);
-        let fraction_seconds = Duration::nanoseconds((seconds.femptos / 1_000_000) as i64);
+        let fraction_seconds = Duration::nanoseconds(i64::from(seconds.nanoseconds()));
         Self::new(seconds.span, whole_seconds + fraction_seconds)
     }
 
@@ -311,10 +327,16 @@ impl TimeOfDayLiteral {
         self.value.as_hms_micro()
     }
 
+    /// The literal's time of day as source text, `hh:mm:ss` and its fraction.
+    pub fn daytime_text(&self) -> String {
+        daytime_text(&self.value)
+    }
+
     /// Returns milliseconds since midnight as a u32.
     ///
     /// Maximum value is 86_399_999 (23:59:59.999).
-    /// Microsecond precision from the underlying Time is truncated to milliseconds.
+    /// The fraction the literal carries below a millisecond is truncated, as
+    /// [`DurationLiteral`] truncates a sub-millisecond duration (ADR-0021).
     pub fn whole_milliseconds(&self) -> u32 {
         let (h, m, s, micro) = self.hmsm();
         (h as u32) * 3_600_000 + (m as u32) * 60_000 + (s as u32) * 1_000 + micro / 1_000
@@ -323,9 +345,26 @@ impl TimeOfDayLiteral {
 
 impl fmt::Display for TimeOfDayLiteral {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (h, m, s, _) = self.hmsm();
-        write!(f, "TIME_OF_DAY#{:02}:{:02}:{:02}", h, m, s)
+        write!(f, "TIME_OF_DAY#{}", self.daytime_text())
     }
+}
+
+/// The text of a time of day in a literal: `hh:mm:ss` and its fraction.
+///
+/// Shared by the time-of-day and date-and-time literals, whose daytime parts
+/// are the same grammar and so are written the same way.
+///
+/// The fraction is written to the nanosecond the value holds, with its
+/// trailing zeros removed, and not at all when it is zero, so that the text
+/// reads back as the same value: `10:00:00.25`, `10:00:00.005`, `10:00:00`.
+fn daytime_text(time: &Time) -> String {
+    let (h, m, s, nano) = time.as_hms_nano();
+    let whole = format!("{h:02}:{m:02}:{s:02}");
+    if nano == 0 {
+        return whole;
+    }
+    let fraction = format!("{nano:09}");
+    format!("{whole}.{}", fraction.trim_end_matches('0'))
 }
 
 /// The number of seconds from the Unix epoch to midnight on `date`, negative
@@ -487,11 +526,17 @@ impl DateAndTimeLiteral {
         self.value.as_hms_micro()
     }
 
+    /// The literal's time of day as source text, `hh:mm:ss` and its fraction.
+    pub fn daytime_text(&self) -> String {
+        daytime_text(&self.value.time())
+    }
+
     /// Returns seconds since the Unix epoch (1970-01-01 00:00:00).
     ///
     /// The IEC 61131-3 DATE_AND_TIME type is stored as a u32 count of seconds
     /// since 1970-01-01, matching the CODESYS/Beckhoff industry standard.
-    /// Resolution is 1 second.
+    /// Resolution is 1 second: the fraction of the literal's seconds is
+    /// truncated.
     ///
     /// As with [`DateLiteral::seconds_since_epoch`], the count is the
     /// literal's own and may lie outside what the storage holds.
@@ -507,11 +552,13 @@ impl DateAndTimeLiteral {
 impl fmt::Display for DateAndTimeLiteral {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (y, m, d) = self.ymd();
-        let (h, min, s, _) = self.hmsm();
         write!(
             f,
-            "DATE_AND_TIME#{}-{:02}-{:02}-{:02}:{:02}:{:02}",
-            y, m, d, h, min, s
+            "DATE_AND_TIME#{}-{:02}-{:02}-{}",
+            y,
+            m,
+            d,
+            self.daytime_text()
         )
     }
 }
@@ -560,6 +607,36 @@ mod tests {
     fn display_when_time_of_day_then_formats_as_tod() {
         let tod = TimeOfDayLiteral::new(Time::from_hms(14, 30, 0).unwrap());
         assert_eq!(format!("{tod}"), "TIME_OF_DAY#14:30:00");
+    }
+
+    #[test]
+    fn display_when_time_of_day_has_fraction_then_formats_fraction_without_trailing_zeros() {
+        let tod = TimeOfDayLiteral::new(Time::from_hms_milli(14, 30, 0, 250).unwrap());
+        assert_eq!(format!("{tod}"), "TIME_OF_DAY#14:30:00.25");
+    }
+
+    #[test]
+    fn whole_milliseconds_when_fraction_below_millisecond_then_truncated() {
+        let tod = TimeOfDayLiteral::new(Time::from_hms_nano(10, 0, 0, 250_999_999).unwrap());
+        assert_eq!(tod.whole_milliseconds(), 36_000_250);
+    }
+
+    #[test]
+    fn seconds_since_epoch_when_date_and_time_has_fraction_then_truncated() {
+        let dt = DateAndTimeLiteral::new(PrimitiveDateTime::new(
+            Date::from_calendar_date(1970, Month::January, 1).unwrap(),
+            Time::from_hms_milli(0, 0, 1, 999).unwrap(),
+        ));
+        assert_eq!(dt.seconds_since_epoch(), 1);
+    }
+
+    #[test]
+    fn display_when_date_and_time_has_fraction_then_formats_fraction() {
+        let dt = DateAndTimeLiteral::new(PrimitiveDateTime::new(
+            Date::from_calendar_date(2025, Month::January, 1).unwrap(),
+            Time::from_hms_micro(12, 0, 0, 5_000).unwrap(),
+        ));
+        assert_eq!(format!("{dt}"), "DATE_AND_TIME#2025-01-01-12:00:00.005");
     }
 
     #[test]

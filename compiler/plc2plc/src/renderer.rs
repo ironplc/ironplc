@@ -316,14 +316,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &TimeOfDayLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        let (hr, min, sec, milli) = node.hmsm();
-        self.write_ws(
-            format!(
-                "{}#{hr:0>2}:{min:0>2}:{sec:0>2}.{milli:0>2}",
-                node.type_name()
-            )
-            .as_str(),
-        );
+        self.write_ws(format!("{}#{}", node.type_name(), node.daytime_text()).as_str());
         Ok(())
     }
 
@@ -337,12 +330,12 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &DateAndTimeLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        let (hr, min, sec, milli) = node.hmsm();
         let (year, month, day) = node.ymd();
         self.write_ws(
             format!(
-                "{}#{year:0>4}-{month:0>2}-{day:0>2}-{hr:0>2}:{min:0>2}:{sec:0>2}.{milli:0>2}",
-                node.type_name()
+                "{}#{year:0>4}-{month:0>2}-{day:0>2}-{}",
+                node.type_name(),
+                node.daytime_text()
             )
             .as_str(),
         );

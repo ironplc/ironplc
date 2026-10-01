@@ -18,6 +18,11 @@ LTIME_OF_DAY
    * - **Support**
      - Supported (:doc:`Edition 3 </reference/language/edition-support>`)
 
+An ``LTIME_OF_DAY`` is stored as a count of milliseconds since midnight, as a
+:doc:`time-of-day` is, in 64 bits. The seconds of a literal may have a
+fraction: ``LTOD#10:00:00.250`` is 250 milliseconds past ten. A fraction finer
+than a millisecond is truncated.
+
 Literals
 --------
 

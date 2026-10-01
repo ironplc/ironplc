@@ -80,6 +80,7 @@ mod end_to_end_conv_real_to_real;
 mod end_to_end_conv_string;
 mod end_to_end_conv_time_date;
 mod end_to_end_date;
+mod end_to_end_daytime_fraction;
 mod end_to_end_debug_line_map;
 mod end_to_end_debug_var_names;
 mod end_to_end_delete;
