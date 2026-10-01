@@ -80,7 +80,10 @@ END_FUNCTION_BLOCK";
 #[test]
 fn parse_when_subrange_type_has_radix_bounds_then_subrange_values() {
     let library = parse_text_twincat("TYPE R : INT (16#00..16#FF); END_TYPE");
-    let dt = cast!(&library.elements[0], LibraryElementKind::DataTypeDeclaration);
+    let dt = cast!(
+        &library.elements[0],
+        LibraryElementKind::DataTypeDeclaration
+    );
     let decl = cast!(dt, DataTypeDeclarationKind::Subrange);
     let spec = cast!(&decl.spec, SpecificationKind::Inline);
     assert_eq!(bounds(&spec.subrange), (0, 255));
