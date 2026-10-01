@@ -48,13 +48,14 @@ fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Resolved {
         .with_stdlib_functions()
         .build();
     let mut symbol_environment = SymbolEnvironment::new();
+    let library = crate::xform_resolve_decl_types::apply(library, &mut type_environment).unwrap();
     let (library, _diagnostics) = xform_resolve_symbol_and_function_environment::apply(
         library,
         &mut symbol_environment,
         &mut function_environment,
+        &type_environment,
     )
     .unwrap();
-    let library = crate::xform_resolve_decl_types::apply(library, &mut type_environment).unwrap();
     let library = apply(
         library,
         &mut type_environment,

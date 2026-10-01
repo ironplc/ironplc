@@ -19,7 +19,7 @@
 use ironplc_dsl::{
     common::{
         AddressAssignment, InitialValueAssignmentKind, Library, LocationPrefix, SizePrefix,
-        TypeReference, VariableType,
+        TypeName, TypeReference, VariableType,
     },
     core::{Id, Located},
     diagnostic::Diagnostic,
@@ -34,30 +34,53 @@ use crate::{
     function_environment::{FunctionEnvironment, FunctionSignature},
     intermediate_type::IntermediateFunctionParameter,
     symbol_environment::{
-        duplicate_declaration, ScopeKind, ScopePath, SymbolEnvironment, SymbolKind,
+        duplicate_declaration, ScopeKind, ScopePath, SymbolEnvironment, SymbolInfo, SymbolKind,
     },
+    type_environment::TypeEnvironment,
 };
 
 /// Populates the environments from `lib`. Always keeps the library: the
 /// diagnostics are the repeated declaration names, and analysis continues
 /// on the first declaration of each.
+///
+/// A function's or method's result variable records the id of its return
+/// type from `type_environment`.
 pub fn apply(
     lib: Library,
     symbol_environment: &mut SymbolEnvironment,
     function_environment: &mut FunctionEnvironment,
+    type_environment: &TypeEnvironment,
 ) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
-    let diagnostics = apply_impl(&lib, symbol_environment, function_environment);
+    let diagnostics = resolve(
+        &lib,
+        symbol_environment,
+        function_environment,
+        Some(type_environment),
+    );
     Ok((lib, diagnostics))
 }
 
+/// Populates the environments from `lib` without a type environment, so
+/// result variables record no type id.
+#[cfg(test)]
 pub fn apply_impl(
     lib: &Library,
     symbol_env: &mut SymbolEnvironment,
     function_env: &mut FunctionEnvironment,
 ) -> Vec<Diagnostic> {
+    resolve(lib, symbol_env, function_env, None)
+}
+
+fn resolve(
+    lib: &Library,
+    symbol_env: &mut SymbolEnvironment,
+    function_env: &mut FunctionEnvironment,
+    type_env: Option<&TypeEnvironment>,
+) -> Vec<Diagnostic> {
     let mut resolver = EnvironmentResolver {
         symbol_env,
         function_env,
+        type_env,
         scope: Vec::new(),
         diagnostics: Vec::new(),
     };
@@ -71,6 +94,8 @@ pub fn apply_impl(
 struct EnvironmentResolver<'a> {
     symbol_env: &'a mut SymbolEnvironment,
     function_env: &'a mut FunctionEnvironment,
+    /// Resolves the return type of a result variable, when given.
+    type_env: Option<&'a TypeEnvironment>,
     /// The chain of declarations the traversal is currently inside,
     /// outermost first. A stack rather than a single name because
     /// declarations nest: a method is inside its function block.
@@ -98,13 +123,14 @@ impl<'a> EnvironmentResolver<'a> {
     /// `name` that the traversal is about to enter, in that declaration's
     /// own scope. A variable the declaration declares with the same name
     /// replaces it.
-    fn declare_result_variable(&mut self, name: &Id) {
+    fn declare_result_variable(&mut self, name: &Id, return_type: &TypeName) {
         let mut path = self.scope.clone();
         path.push(name.clone());
         let scope = ScopeKind::Named(ScopePath::new(path));
-        let result = self
-            .symbol_env
-            .insert(name, SymbolKind::ResultVariable, &scope);
+        let type_id = self.type_env.and_then(|types| types.id_of(return_type));
+        let info =
+            SymbolInfo::new(SymbolKind::ResultVariable, scope, name.span()).with_type_id(type_id);
+        let result = self.symbol_env.insert_info(name, info);
         self.record(result);
     }
 
@@ -198,7 +224,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::FunctionDeclaration,
     ) -> Result<Self::Value, Infallible> {
-        self.declare_result_variable(&node.name);
+        self.declare_result_variable(&node.name, &node.return_type.to_type_name());
 
         // Build function signature for function environment
         // (Functions are tracked in FunctionEnvironment, not SymbolEnvironment)
@@ -293,8 +319,8 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
     ) -> Result<Self::Value, Infallible> {
         // A method without a return type is a procedure: it has no result
         // to assign.
-        if node.return_type.is_some() {
-            self.declare_result_variable(&node.name);
+        if let Some(return_type) = &node.return_type {
+            self.declare_result_variable(&node.name, &return_type.to_type_name());
         }
         node.recurse_visit(self)
     }
