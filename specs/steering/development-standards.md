@@ -185,8 +185,8 @@ A person is accountable for all changes. We use a custom process for all non-tri
 3. A person reviews and provides feedback on the plan until the plan is approved. This PR is never merged.
 
 **Prefactoring**
-4. AI creates one or more **prefactor branches**, implements any pre-factoring, and creates PRs for prefactors.
-5. A person reviews, provides feedback and merges the prefactor PRs.
+4. AI creates one or more **prefactor branches**, implements any pre-factoring, and creates PRs for prefactors. Each prefactor PR contains only behaviour-preserving changes; AI stops after opening it and does not start the core change on the same branch.
+5. A person reviews, provides feedback and merges the prefactor PRs. Core change branches start from `main` after this.
 
 **Core Change**
 6. If the change requires one or more **core change PRs**, then AI creates a GitHub issue detailing the planned work. The issue is the durable record so that we complete all work in the plan.
@@ -245,9 +245,15 @@ means stop and reshape first:
 1. **Change the shape, not the behaviour.** The existing tests must pass
    unchanged. If they have to be edited to accept the prefactoring — beyond
    mechanical renames — the commit is not behaviour-preserving; split it.
-2. **Commit the prefactoring separately.** A reviewer can then read a diff that
-   provably changes nothing, followed by a smaller diff that adds the feature.
-   Either can be reverted alone.
+2. **Open a separate pull request for the prefactoring.** A reviewer can then
+   read a diff that provably changes nothing, followed later by a smaller diff
+   that adds the feature. Either can be reverted alone. Separate *commits* in
+   one pull request are not enough: the reviewer still has to review and
+   approve both at once. Never put a prefactor and the feature it enables in
+   the same pull request.
+3. **Stop after the prefactor pull request.** Start the feature on a fresh
+   branch from `main` once the prefactor has merged. If a session can push only
+   one branch, the prefactor pull request is that session's whole deliverable.
 
 #### When *not* to prefactor
 
