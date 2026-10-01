@@ -74,6 +74,23 @@ flag. The constant must be declared in a
      END_VAR
    END_PROGRAM
 
+Radix Bounds (Language Extension)
+---------------------------------
+
+.. include:: ../../../../includes/requires-dialect-extension.rst
+
+With the ``--allow-radix-subrange-bounds`` flag, a bound can be written in
+hex, binary, or octal. Without the flag, such a bound is reported as
+:doc:`P4073 </reference/compiler/problems/P4073>`.
+
+.. code-block::
+
+   PROGRAM main
+     VAR
+       nibbles : ARRAY[16#0..16#F] OF BYTE;
+     END_VAR
+   END_PROGRAM
+
 See Also
 --------
 

@@ -306,6 +306,14 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "PROGRAM main\nVAR i : INT; END_VAR\nFOR i := 1 TO 3 DO\nCONTINUE;\nEND_FOR;\nEND_PROGRAM",
     },
+    // A hex bound on an array dimension. The grammar accepts it
+    // unconditionally; a token-stream rule rejects it (P4073) when the flag
+    // is off. A decimal bound is always accepted.
+    FlagFixture {
+        key: "allow_radix_subrange_bounds",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\na : ARRAY[16#0..16#F] OF INT;\nEND_VAR\nEND_PROGRAM",
+    },
 ];
 
 /// Builds an ed2 options object with the given flags enabled.

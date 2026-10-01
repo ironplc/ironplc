@@ -250,8 +250,9 @@ Options
 
 ``--allow-bit-string-case-labels``
    Allow a hex, binary, or octal bit-string literal (e.g. ``16#D012``,
-   ``2#1010``) as a ``CASE`` label. The IEC 61131-3 standard permits only a
-   subrange, decimal integer, or enumerated value here. Produces
+   ``2#1010``) as a ``CASE`` label or as a bound of a subrange label. The
+   IEC 61131-3 standard permits only a subrange of decimal integers, a
+   decimal integer, or an enumerated value here. Produces
    :doc:`P4041 </reference/compiler/problems/P4041>` when used without this
    flag.
 
@@ -261,6 +262,13 @@ Options
    brackets. The IEC 61131-3 standard declares a string length only with
    brackets; the parenthesis form is an extension. Produces
    :doc:`P4042 </reference/compiler/problems/P4042>` when used without this
+   flag.
+
+``--allow-radix-subrange-bounds``
+   Allow a hex, binary, or octal literal (e.g. ``16#FF``, ``2#1010``) as a
+   bound of a subrange type or of an array dimension. The IEC 61131-3
+   standard permits only decimal integers here. Produces
+   :doc:`P4073 </reference/compiler/problems/P4073>` when used without this
    flag.
 
 ``--allow-struct-initializer-expressions``
