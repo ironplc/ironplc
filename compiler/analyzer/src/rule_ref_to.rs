@@ -7,11 +7,11 @@ use ironplc_dsl::{
     common::*,
     core::{Id, Located, SourceSpan},
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::*,
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
-use std::collections::HashMap;
 use std::convert::Infallible;
 
 use ironplc_parser::options::CompilerOptions;
@@ -19,6 +19,7 @@ use ironplc_parser::options::CompilerOptions;
 use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
+    scoped_table::{ScopedTable, Value},
     semantic_context::SemanticContext,
     type_environment::TypeEnvironment,
 };
@@ -31,8 +32,7 @@ pub fn apply(
     run_rule(
         RuleRefTo {
             type_environment: context.types(),
-            var_types: HashMap::new(),
-            var_classes: HashMap::new(),
+            variables: ScopedTable::new(),
             pou_kind: PouKind::Program,
             allow_ref_arithmetic: options.allow_ref_arithmetic,
             diagnostics: Vec::new(),
@@ -50,12 +50,22 @@ enum PouKind {
     Program,
 }
 
+/// A variable declaration as this rule needs it.
+#[derive(Debug)]
+struct DeclaredVar {
+    /// The declared type, as the initializer spells it.
+    init: InitialValueAssignmentKind,
+    /// The section the variable is declared in (VAR, VAR_TEMP, VAR_INPUT, etc.)
+    var_type: VariableType,
+}
+impl Value for DeclaredVar {}
+
 struct RuleRefTo<'a> {
     type_environment: &'a TypeEnvironment,
-    /// Maps variable names to their initializer kind within the current POU scope.
-    var_types: HashMap<Id, InitialValueAssignmentKind>,
-    /// Maps variable names to their variable class (VAR, VAR_TEMP, VAR_INPUT, etc.)
-    var_classes: HashMap<Id, VariableType>,
+    /// The variables in scope. Each POU opens a scope, and a method's
+    /// scope nests inside its function block's, so a method body sees
+    /// its own variables as well as the instance's fields.
+    variables: ScopedTable<'static, Id, DeclaredVar>,
     /// The kind of POU currently being visited.
     pou_kind: PouKind,
     /// When true, allow arithmetic and ordering comparisons on REF_TO types.
@@ -82,18 +92,9 @@ fn variable_span(var: &Variable) -> SourceSpan {
 }
 
 impl RuleRefTo<'_> {
-    fn collect_variables(&mut self, variables: &[VarDecl]) {
-        for var in variables {
-            if let VariableIdentifier::Symbol(id) = &var.identifier {
-                self.var_types.insert(id.clone(), var.initializer.clone());
-                self.var_classes.insert(id.clone(), var.var_type.clone());
-            }
-        }
-    }
-
-    fn clear_variables(&mut self) {
-        self.var_types.clear();
-        self.var_classes.clear();
+    /// Returns the initializer a variable in scope was declared with.
+    fn declared_init(&self, id: &Id) -> Option<&InitialValueAssignmentKind> {
+        self.variables.find(id).map(|var| &var.init)
     }
 
     /// Returns the TypeName for a variable's declared type, if it can be resolved.
@@ -106,7 +107,7 @@ impl RuleRefTo<'_> {
             },
             _ => return None,
         };
-        let init = self.var_types.get(id)?;
+        let init = self.declared_init(id)?;
         match init {
             InitialValueAssignmentKind::Simple(si) => Some(si.type_name.clone()),
             InitialValueAssignmentKind::Reference(ri) => ri.target.type_name().cloned(),
@@ -132,7 +133,7 @@ impl RuleRefTo<'_> {
             Variable::Symbolic(SymbolicVariableKind::Named(named)) => &named.name,
             _ => return false,
         };
-        match self.var_types.get(id) {
+        match self.declared_init(id) {
             Some(InitialValueAssignmentKind::Reference(_)) => true,
             Some(InitialValueAssignmentKind::Simple(si)) => self.is_reference_type(&si.type_name),
             Some(InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
@@ -196,8 +197,8 @@ impl RuleRefTo<'_> {
         // reference never escapes the function.
         if !self.allow_ref_stack_variables {
             if let Variable::Symbolic(SymbolicVariableKind::Named(named)) = var {
-                if let Some(var_class) = self.var_classes.get(&named.name) {
-                    match var_class {
+                if let Some(var) = self.variables.find(&named.name) {
+                    match var.var_type {
                         VariableType::VarTemp => {
                             self.diagnostics.push(Diagnostic::problem(
                                 Problem::RefOfEphemeralVariable,
@@ -335,7 +336,7 @@ impl RuleRefTo<'_> {
             Variable::Symbolic(SymbolicVariableKind::Named(named)) => &named.name,
             _ => return None,
         };
-        match self.var_types.get(id)? {
+        match self.declared_init(id)? {
             InitialValueAssignmentKind::Reference(ri) => ri.target.type_name().cloned(),
             _ => None,
         }
@@ -355,34 +356,44 @@ fn expr_span(expr: &Expr) -> SourceSpan {
 impl Visitor<Infallible> for RuleRefTo<'_> {
     type Value = ();
 
+    fn enter_scope(&mut self, _node: ScopeNode<'_>) -> Result<(), Infallible> {
+        self.variables.enter();
+        Ok(())
+    }
+
+    fn exit_scope(&mut self) {
+        self.variables.exit();
+    }
+
     fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Infallible> {
-        self.clear_variables();
         self.pou_kind = PouKind::Function;
-        self.collect_variables(&node.variables);
-        let ret = node.recurse_visit(self);
-        self.clear_variables();
-        ret
+        node.recurse_visit(self)
     }
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<(), Infallible> {
-        self.clear_variables();
         self.pou_kind = PouKind::FunctionBlock;
-        self.collect_variables(&node.variables);
-        let ret = node.recurse_visit(self);
-        self.clear_variables();
-        ret
+        node.recurse_visit(self)
     }
 
     fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Infallible> {
-        self.clear_variables();
         self.pou_kind = PouKind::Program;
-        self.collect_variables(&node.variables);
-        let ret = node.recurse_visit(self);
-        self.clear_variables();
-        ret
+        node.recurse_visit(self)
+    }
+
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
+        if let VariableIdentifier::Symbol(id) = &node.identifier {
+            self.variables.add(
+                id,
+                DeclaredVar {
+                    init: node.initializer.clone(),
+                    var_type: node.var_type.clone(),
+                },
+            );
+        }
+        node.recurse_visit(self)
     }
 
     fn visit_reference_declaration(
@@ -908,5 +919,76 @@ END_PROGRAM",
             &options,
         );
         assert!(result.is_err(), "Expected error but got OK");
+    }
+
+    #[test]
+    fn ref_when_method_local_reference_then_ok() {
+        assert_ok(
+            "FUNCTION_BLOCK FB
+VAR
+    x : INT;
+END_VAR
+METHOD Go
+VAR
+    r : REF_TO INT;
+END_VAR
+    r := REF(x);
+    r^ := 1;
+END_METHOD
+END_FUNCTION_BLOCK",
+        );
+    }
+
+    #[test]
+    fn assign_when_method_uses_function_block_reference_field_then_ok() {
+        assert_ok(
+            "FUNCTION_BLOCK FB
+VAR
+    x : INT;
+    r : REF_TO INT;
+END_VAR
+METHOD Go
+    r := REF(x);
+    r := NULL;
+END_METHOD
+END_FUNCTION_BLOCK",
+        );
+    }
+
+    #[test]
+    fn assign_when_method_local_shadows_field_then_uses_local() {
+        assert_ok(
+            "FUNCTION_BLOCK FB
+VAR
+    x : INT;
+    r : INT;
+END_VAR
+METHOD Go
+VAR
+    r : REF_TO INT;
+END_VAR
+    r := NULL;
+END_METHOD
+END_FUNCTION_BLOCK",
+        );
+    }
+
+    #[test]
+    fn assign_when_sibling_method_declares_reference_then_not_visible() {
+        assert_err(
+            "FUNCTION_BLOCK FB
+VAR
+    r : INT;
+END_VAR
+METHOD A
+VAR
+    r : REF_TO INT;
+END_VAR
+END_METHOD
+METHOD B
+    r := NULL;
+END_METHOD
+END_FUNCTION_BLOCK",
+        );
     }
 }
