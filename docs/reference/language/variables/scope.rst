@@ -110,6 +110,39 @@ second declaration is reported as
      firstReading := Readings[1];
    END_PROGRAM
 
+Global Function Block Instances
+-------------------------------
+
+A :code:`VAR_GLOBAL` may declare a function block instance, such as a timer
+or a counter that several program organization units share. A program or a
+function block declares it :code:`VAR_EXTERNAL` with the function block type,
+then calls it and reads its outputs as it would a local instance. Every call
+reaches the one global instance, so its state carries over from one call, and
+one scan, to the next.
+
+.. playground::
+
+   CONFIGURATION config
+     VAR_GLOBAL
+       Delay : TON;
+     END_VAR
+     RESOURCE resource1 ON PLC
+       TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+       PROGRAM plc_task_instance WITH plc_task : main;
+     END_RESOURCE
+   END_CONFIGURATION
+
+   PROGRAM main
+     VAR_EXTERNAL
+       Delay : TON;
+     END_VAR
+     VAR
+       done : BOOL;
+     END_VAR
+     Delay(IN := TRUE, PT := T#1s);
+     done := Delay.Q;
+   END_PROGRAM
+
 Top-Level Global Variables (Language Extension)
 -----------------------------------------------
 

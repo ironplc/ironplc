@@ -521,3 +521,48 @@ END_PROGRAM";
     let library = parse_and_resolve_types(program);
     assert_eq!(CONSTANT, qualifier(&library, "limit"));
 }
+
+/// The calls a unit makes on a global instance, reached through
+/// `VAR_EXTERNAL` or, for a top-level `VAR_GLOBAL`, directly, resolve like
+/// calls on its own instances: an argument bound to an input is only read.
+#[rstest]
+#[case::through_external(
+    "
+PROGRAM main
+VAR_EXTERNAL
+    timer : TON;
+END_VAR
+VAR
+    delay : TIME := T#1s;
+END_VAR
+    timer(IN := TRUE, PT := delay);
+END_PROGRAM
+CONFIGURATION config
+VAR_GLOBAL
+    timer : TON;
+END_VAR
+RESOURCE res ON PLC
+    PROGRAM p : main;
+END_RESOURCE
+END_CONFIGURATION"
+)]
+#[case::top_level_global(
+    "
+VAR_GLOBAL
+    timer : TON;
+END_VAR
+PROGRAM main
+VAR
+    delay : TIME := T#1s;
+END_VAR
+    timer(IN := TRUE, PT := delay);
+END_PROGRAM"
+)]
+fn apply_when_input_arg_to_global_instance_then_constant(#[case] program: &str) {
+    let options = CompilerOptions {
+        allow_top_level_var_global: true,
+        ..CompilerOptions::default()
+    };
+    let (library, _) = parse_and_resolve_types_with_options(program, &options);
+    assert_eq!(CONSTANT, qualifier(&library, "delay"));
+}

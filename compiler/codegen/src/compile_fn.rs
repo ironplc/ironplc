@@ -4,6 +4,8 @@
 //! including variable setup, body compilation, and metadata registration.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
+use std::collections::HashMap;
+
 use ironplc_container::debug_section::{iec_type_tag, var_section, VarNameEntry};
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::common::{
@@ -30,6 +32,26 @@ use super::compile_stmt::{
 };
 use super::type_info::{decl_type_info, resolve_type_name};
 use crate::emit::Emitter;
+
+/// The entries of `saved` that belong to a global variable: those whose
+/// variable, looked up in `saved_variables`, has an index below
+/// `num_globals`. A function or function block body starts from these, so it
+/// sees the globals but none of the program's own variables.
+fn global_entries<V: Clone>(
+    saved: &HashMap<Id, V>,
+    saved_variables: &HashMap<Id, VarIndex>,
+    num_globals: u16,
+) -> HashMap<Id, V> {
+    saved
+        .iter()
+        .filter(|(id, _)| {
+            saved_variables
+                .get(*id)
+                .is_some_and(|index| index.raw() < num_globals)
+        })
+        .map(|(id, value)| (id.clone(), value.clone()))
+        .collect()
+}
 
 /// Records a debug [`VarNameEntry`] for a function- or FB-local variable
 /// (parameter or local) owned by `function_id`. Mirrors the program/global
@@ -111,43 +133,11 @@ pub(crate) fn compile_user_function(
     let saved_in_out_params = std::mem::take(&mut ctx.in_out_params);
 
     // Re-insert global variable mappings so the function body can access them.
-    for (id, index) in &saved_variables {
-        if index.raw() < num_globals {
-            ctx.variables.insert(id.clone(), *index);
-        }
-    }
-    for (id, info) in &saved_var_types {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.var_types.insert(id.clone(), *info);
-        }
-    }
-    for (id, info) in &saved_string_vars {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.string_vars.insert(id.clone(), info.clone());
-        }
-    }
-    for (id, info) in &saved_struct_vars {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.struct_vars.insert(id.clone(), info.clone());
-        }
-    }
-    for (id, info) in &saved_struct_array_vars {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.struct_array_vars.insert(id.clone(), info.clone());
-        }
-    }
+    ctx.variables = global_entries(&saved_variables, &saved_variables, num_globals);
+    ctx.var_types = global_entries(&saved_var_types, &saved_variables, num_globals);
+    ctx.string_vars = global_entries(&saved_string_vars, &saved_variables, num_globals);
+    ctx.struct_vars = global_entries(&saved_struct_vars, &saved_variables, num_globals);
+    ctx.struct_array_vars = global_entries(&saved_struct_array_vars, &saved_variables, num_globals);
 
     // Assign variable slots for the function's parameters and locals,
     // starting at var_offset. Input parameters come first (declaration order),
@@ -535,43 +525,13 @@ pub(crate) fn compile_user_function_block(
     let saved_fb_instances = std::mem::take(&mut ctx.fb_instances);
 
     // Re-insert global variable mappings so the FB body can access them.
-    for (id, index) in &saved_variables {
-        if index.raw() < num_globals {
-            ctx.variables.insert(id.clone(), *index);
-        }
-    }
-    for (id, info) in &saved_var_types {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.var_types.insert(id.clone(), *info);
-        }
-    }
-    for (id, info) in &saved_string_vars {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.string_vars.insert(id.clone(), info.clone());
-        }
-    }
-    for (id, info) in &saved_struct_vars {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.struct_vars.insert(id.clone(), info.clone());
-        }
-    }
-    for (id, info) in &saved_struct_array_vars {
-        if saved_variables
-            .get(id)
-            .is_some_and(|i| i.raw() < num_globals)
-        {
-            ctx.struct_array_vars.insert(id.clone(), info.clone());
-        }
-    }
+    ctx.variables = global_entries(&saved_variables, &saved_variables, num_globals);
+    ctx.var_types = global_entries(&saved_var_types, &saved_variables, num_globals);
+    ctx.string_vars = global_entries(&saved_string_vars, &saved_variables, num_globals);
+    ctx.struct_vars = global_entries(&saved_struct_vars, &saved_variables, num_globals);
+    ctx.struct_array_vars = global_entries(&saved_struct_array_vars, &saved_variables, num_globals);
+    // A global instance, which the body may call through VAR_EXTERNAL.
+    ctx.fb_instances = global_entries(&saved_fb_instances, &saved_variables, num_globals);
 
     // Assign variable slots for all FB fields, in the same order as field_decls.
     let mut current_index = VarIndex::new(var_offset);

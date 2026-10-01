@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, InitialValueAssignmentKind, Library, LibraryElementKind,
-    MethodDeclaration, TypeName, VarDecl,
+    MethodDeclaration, TypeName, VarDecl, VariableType,
 };
 use ironplc_dsl::core::Id;
 
@@ -102,39 +102,92 @@ impl<'a> FunctionBlocks<'a> {
     }
 }
 
-/// The function-block instances declared in the program organization unit
+/// The function-block instances visible in the program organization unit
 /// being walked, by variable name.
 ///
-/// Instances are declared per unit, so a walk records each declaration as
-/// it meets it and calls [`InstanceTypes::clear`] when it leaves the unit,
-/// exactly as the rules that own a walk have always done.
+/// Two layers, the unit's own declarations shadowing the globals:
+///
+/// - The unit's own declarations. A walk records each as it meets it and
+///   calls [`InstanceTypes::clear`] when it leaves the unit, exactly as the
+///   rules that own a walk have always done. A `VAR_EXTERNAL` is one of
+///   them: it names a global instance, and is how a unit reaches the
+///   `VAR_GLOBAL` of a `CONFIGURATION`.
+/// - The instances of the top-level `VAR_GLOBAL` declarations (an
+///   extension), which every unit sees without a `VAR_EXTERNAL`. They are
+///   collected once, up front, because the walk meets them before the units
+///   that use them and must not forget them on leaving a unit.
 #[derive(Default)]
 pub(crate) struct InstanceTypes {
     var_to_fb: HashMap<Id, TypeName>,
+    globals: HashMap<Id, TypeName>,
 }
 
 impl InstanceTypes {
-    /// Records `decl` when it declares a function-block instance; any other
-    /// declaration is ignored. Type resolution has already turned every
-    /// instance declaration, member-initialized or not, into a
-    /// function-block initializer, so the initializer kind is the whole test.
-    pub(crate) fn declare(&mut self, decl: &VarDecl) {
-        if let InitialValueAssignmentKind::FunctionBlock(init) = &decl.initializer {
-            if let Some(name) = decl.identifier.symbolic_id() {
-                self.var_to_fb.insert(name.clone(), init.type_name.clone());
+    /// Starts a walk of `lib` with its top-level global instances visible.
+    pub(crate) fn with_top_level_globals(lib: &Library) -> Self {
+        let mut globals = HashMap::new();
+        for element in &lib.elements {
+            if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
+                for decl in decls {
+                    if let Some((name, type_name)) = instance_type(decl) {
+                        globals.insert(name.clone(), type_name.clone());
+                    }
+                }
             }
+        }
+        Self {
+            var_to_fb: HashMap::new(),
+            globals,
+        }
+    }
+
+    /// Records `decl` when it declares a function-block instance, or refers
+    /// to one through `VAR_EXTERNAL`; any other declaration is ignored.
+    ///
+    /// A `VAR_GLOBAL` is not the unit's own: a top-level one is already in
+    /// the global layer, and one of a `CONFIGURATION` is reached only
+    /// through a `VAR_EXTERNAL`.
+    pub(crate) fn declare(&mut self, decl: &VarDecl) {
+        if decl.var_type == VariableType::Global {
+            return;
+        }
+        if let Some((name, type_name)) = instance_type(decl) {
+            self.var_to_fb.insert(name.clone(), type_name.clone());
         }
     }
 
     /// The declared function-block type of the variable `instance`.
     pub(crate) fn type_of(&self, instance: &Id) -> Option<&TypeName> {
-        self.var_to_fb.get(instance)
+        self.var_to_fb
+            .get(instance)
+            .or_else(|| self.globals.get(instance))
     }
 
-    /// Forgets every instance, on leaving the unit that declared them.
+    /// Forgets the unit's own declarations, on leaving the unit that
+    /// declared them. The top-level globals stay visible.
     pub(crate) fn clear(&mut self) {
         self.var_to_fb.clear();
     }
+}
+
+/// The variable name and function-block type of `decl`, when it may name a
+/// function-block instance.
+///
+/// Type resolution has already turned every instance declaration,
+/// member-initialized or not, into a function-block initializer, so for
+/// those the initializer kind is the whole test. A `VAR_EXTERNAL` is not an
+/// instance declaration: the parser cannot tell a function block type from
+/// any other named type there, and type resolution leaves its initializer
+/// `Simple`. Its type name is returned whatever it names; a type that is not
+/// a function block then fails the caller's function-block lookup, exactly
+/// as an undeclared instance does.
+fn instance_type(decl: &VarDecl) -> Option<(&Id, &TypeName)> {
+    let type_name = match (&decl.var_type, &decl.initializer) {
+        (_, InitialValueAssignmentKind::FunctionBlock(init)) => &init.type_name,
+        (VariableType::External, InitialValueAssignmentKind::Simple(init)) => &init.type_name,
+        _ => return None,
+    };
+    decl.identifier.symbolic_id().map(|name| (name, type_name))
 }
 
 #[cfg(test)]
@@ -303,5 +356,71 @@ END_PROGRAM",
 
         instances.clear();
         assert_eq!(None, instances.type_of(&Id::from("inst")));
+    }
+
+    #[test]
+    fn instance_types_when_external_declared_then_type_of_finds_named_type() {
+        let (lib, _) = parse_and_resolve_types_with_options(
+            "
+FUNCTION_BLOCK FB_Base
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR_EXTERNAL
+    inst : FB_Base;
+    count : INT;
+END_VAR
+END_PROGRAM",
+            &oop_options(),
+        );
+        let mut instances = InstanceTypes::default();
+        for decl in &program(&lib).variables {
+            instances.declare(decl);
+        }
+        assert_eq!(
+            Some(&TypeName::from("FB_Base")),
+            instances.type_of(&Id::from("inst"))
+        );
+        // Recorded whatever it names: the function-block lookup rejects it.
+        assert_eq!(
+            Some(&TypeName::from("INT")),
+            instances.type_of(&Id::from("count"))
+        );
+    }
+
+    #[test]
+    fn instance_types_when_top_level_global_then_visible_after_clear() {
+        let (lib, _) = parse_and_resolve_types_with_options(
+            "
+FUNCTION_BLOCK FB_Base
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK FB_Other
+END_FUNCTION_BLOCK
+VAR_GLOBAL
+    inst : FB_Base;
+END_VAR
+PROGRAM main
+VAR
+    inst : FB_Other;
+END_VAR
+END_PROGRAM",
+            &CompilerOptions {
+                allow_top_level_var_global: true,
+                ..oop_options()
+            },
+        );
+        let mut instances = InstanceTypes::with_top_level_globals(&lib);
+        for decl in &program(&lib).variables {
+            instances.declare(decl);
+        }
+        assert_eq!(
+            Some(&TypeName::from("FB_Other")),
+            instances.type_of(&Id::from("inst"))
+        );
+
+        instances.clear();
+        assert_eq!(
+            Some(&TypeName::from("FB_Base")),
+            instances.type_of(&Id::from("inst"))
+        );
     }
 }

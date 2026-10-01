@@ -234,6 +234,41 @@ impl TypeResolver<'_> {
 }
 
 impl Fold<Diagnostic> for TypeResolver<'_> {
+    /// Gives a `VAR_GLOBAL` of a function block type its function-block
+    /// initializer. A global declaration takes its type through the same
+    /// rule as a located variable, which cannot tell a function block type
+    /// from any other named type, so the parser leaves it `Simple`.
+    ///
+    /// A `VAR_EXTERNAL` keeps its `Simple` initializer: it refers to the
+    /// global instance rather than declaring one, and a function-block
+    /// initializer is what the later passes take for an instance declaration.
+    fn fold_var_decl(&mut self, node: VarDecl) -> Result<VarDecl, Diagnostic> {
+        let node = VarDecl::recurse_fold(node, self)?;
+        if node.var_type != VariableType::Global {
+            return Ok(node);
+        }
+        match node.initializer {
+            InitialValueAssignmentKind::Simple(SimpleInitializer {
+                type_name,
+                initial_value: None,
+            }) if matches!(self.classify(&type_name), Some(ResolvedKind::FunctionBlock)) => {
+                Ok(VarDecl {
+                    initializer: InitialValueAssignmentKind::FunctionBlock(
+                        FunctionBlockInitialValueAssignment {
+                            type_name,
+                            init: vec![],
+                        },
+                    ),
+                    ..node
+                })
+            }
+            initializer => Ok(VarDecl {
+                initializer,
+                ..node
+            }),
+        }
+    }
+
     fn fold_initial_value_assignment_kind(
         &mut self,
         node: InitialValueAssignmentKind,
@@ -854,6 +889,72 @@ END_PROGRAM",
                 initial_value: Some(LateResolvedInitialValue::Members(_)),
                 ..
             })
+        ));
+    }
+
+    /// The configuration's first global and the program's first variable.
+    fn resolve_global_and_external(program: &str) -> (VarDecl, VarDecl) {
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironment::new();
+        let (result, diagnostics) = apply(input, &mut type_environment).unwrap();
+        assert!(diagnostics.is_empty());
+        let global = result
+            .elements
+            .iter()
+            .find_map(|element| match element {
+                LibraryElementKind::ConfigurationDeclaration(config) => config.global_var.first(),
+                _ => None,
+            })
+            .unwrap()
+            .clone();
+        let external = result
+            .elements
+            .iter()
+            .find_map(|element| match element {
+                LibraryElementKind::ProgramDeclaration(program) => program.variables.first(),
+                _ => None,
+            })
+            .unwrap()
+            .clone();
+        (global, external)
+    }
+
+    const GLOBAL_INSTANCE: &str = "
+FUNCTION_BLOCK Counter
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR_EXTERNAL
+    c : Counter;
+END_VAR
+END_PROGRAM
+CONFIGURATION config
+VAR_GLOBAL
+    c : Counter;
+END_VAR
+RESOURCE res ON PLC
+    PROGRAM p : main;
+END_RESOURCE
+END_CONFIGURATION";
+
+    #[test]
+    fn apply_when_global_names_function_block_type_then_function_block_initializer() {
+        let (global, _) = resolve_global_and_external(GLOBAL_INSTANCE);
+        assert_eq!(
+            VarDecl::function_block("c", "Counter").with_type(VariableType::Global),
+            global
+        );
+    }
+
+    #[test]
+    fn apply_when_external_names_function_block_type_then_keeps_simple_initializer() {
+        // An external refers to the global instance rather than declaring
+        // one, so it does not become an instance declaration.
+        let (_, external) = resolve_global_and_external(GLOBAL_INSTANCE);
+        assert!(matches!(
+            &external.initializer,
+            InitialValueAssignmentKind::Simple(init) if init.type_name == TypeName::from("Counter")
         ));
     }
 }
