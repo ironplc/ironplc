@@ -2,7 +2,7 @@
 //!
 //! Returns every variable the caller can drive (`inputs`) and every variable
 //! the caller can observe (`outputs`) across the supplied sources. Implements
-//! REQ-TOL-mcp-210, REQ-TOL-mcp-211, and REQ-TOL-mcp-212.
+//! REQ-TOL-mcp-210, REQ-TOL-mcp-211, REQ-TOL-mcp-212, and REQ-TOL-mcp-213.
 
 use ironplc_analyzer::symbol_environment::{ScopeKind, SymbolInfo, SymbolKind};
 use ironplc_analyzer::SemanticContext;
@@ -89,8 +89,17 @@ pub fn build_response(
     }
 }
 
+/// Where a variable was declared, as far as its classification goes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum IoScope {
+    /// Declared in a Program; named `<program>.<variable>`.
+    Program,
+    /// A global variable; named by its bare name.
+    Global,
+}
+
 /// Walks Programs and Globals, classifying each variable into inputs and/or
-/// outputs per REQ-TOL-mcp-210 and REQ-TOL-mcp-211.
+/// outputs per REQ-TOL-mcp-210, REQ-TOL-mcp-211 and REQ-TOL-mcp-213.
 fn collect_io(context: &SemanticContext) -> (Vec<IoEntry>, Vec<IoEntry>) {
     let mut inputs = Vec::new();
     let mut outputs = Vec::new();
@@ -100,7 +109,13 @@ fn collect_io(context: &SemanticContext) -> (Vec<IoEntry>, Vec<IoEntry>) {
         let scope = ScopeKind::Named(program_name.clone().into());
         for (var_name, info) in context.symbols().get_variables_in_scope(&scope) {
             let qualified = format!("{}.{}", program_name, var_name);
-            classify(&qualified, info, true, false, &mut inputs, &mut outputs);
+            classify(
+                &qualified,
+                info,
+                IoScope::Program,
+                &mut inputs,
+                &mut outputs,
+            );
         }
     }
 
@@ -109,8 +124,7 @@ fn collect_io(context: &SemanticContext) -> (Vec<IoEntry>, Vec<IoEntry>) {
         classify(
             &var_name.to_string(),
             info,
-            false,
-            true,
+            IoScope::Global,
             &mut inputs,
             &mut outputs,
         );
@@ -123,32 +137,39 @@ fn collect_io(context: &SemanticContext) -> (Vec<IoEntry>, Vec<IoEntry>) {
 fn classify(
     qualified_name: &str,
     info: &SymbolInfo,
-    is_program_scope: bool,
-    is_global_scope: bool,
+    scope: IoScope,
     inputs: &mut Vec<IoEntry>,
     outputs: &mut Vec<IoEntry>,
 ) {
-    let direction = direction_of(info);
     let addr = info.address.as_deref();
 
+    // REQ-TOL-mcp-211: marker memory (`%M*`) is neither, whatever else the
+    // declaration would qualify it for.
+    if addr.is_some_and(|a| a.starts_with("%M")) {
+        return;
+    }
+
+    let direction = direction_of(info);
+    let is_program_scope = scope == IoScope::Program;
+    let is_non_addressed_global = scope == IoScope::Global && addr.is_none();
     let is_hw_input = addr.is_some_and(|a| a.starts_with("%I"));
     let is_hw_output = addr.is_some_and(|a| a.starts_with("%Q"));
-    let is_hw_memory = addr.is_some_and(|a| a.starts_with("%M"));
+
+    // REQ-TOL-mcp-213: a constant, or a global the VM updates itself, cannot
+    // be driven however it is declared.
+    let is_writable = !info.is_constant() && !info.compiler_provided;
 
     // REQ-TOL-mcp-210: inputs.
-    let is_input = (is_program_scope && matches!(direction, "In" | "InOut"))
-        || direction == "External"
-        || (is_global_scope && addr.is_none())
-        || is_hw_input;
+    let is_input = is_writable
+        && ((is_program_scope && matches!(direction, "In" | "InOut"))
+            || direction == "External"
+            || is_non_addressed_global
+            || is_hw_input);
 
     // REQ-TOL-mcp-211: outputs.
     let is_output = (is_program_scope && matches!(direction, "Out" | "InOut"))
-        || (is_global_scope && addr.is_none())
+        || is_non_addressed_global
         || is_hw_output;
-
-    // %M* memory is neither — already excluded by the rules above, but keep
-    // this explicit for clarity.
-    let _ = is_hw_memory;
 
     if is_input {
         inputs.push(entry(qualified_name, info));
@@ -190,13 +211,52 @@ mod tests {
     use crate::tools::test_support::{
         ed2_options, source, unnamed_source, SEMANTIC_ERROR_PROGRAM, VALID_PROGRAM,
     };
+    use spec_test_macro::spec_test;
 
     fn build(src: &str) -> ProjectIoResponse {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: src.into(),
-        }];
-        build_response(&sources, &ed2_options())
+        build_response(&source(src), &ed2_options())
+    }
+
+    /// Builds with `flag` (a boolean option key) turned on.
+    fn build_with(flag: &str, src: &str) -> ProjectIoResponse {
+        let mut options = ed2_options();
+        options[flag] = serde_json::Value::Bool(true);
+        build_response(&source(src), &options)
+    }
+
+    fn names(entries: &[IoEntry]) -> Vec<&str> {
+        entries.iter().map(|e| e.name.as_str()).collect()
+    }
+
+    /// A configuration whose `VAR_GLOBAL` block declares `globals`, running
+    /// a program `p` whose body is `program_body`.
+    fn configuration(globals: &str, program_body: &str) -> String {
+        format!(
+            "CONFIGURATION config\n\
+             VAR_GLOBAL {globals} END_VAR\n\
+             RESOURCE resource1 ON PLC\n\
+             TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);\n\
+             PROGRAM main_instance WITH plc_task : p;\n\
+             END_RESOURCE\n\
+             END_CONFIGURATION\n\
+             PROGRAM p\n{program_body}\nEND_PROGRAM"
+        )
+    }
+
+    /// Classifies a global declared at `address`: located globals do not
+    /// parse in any `VAR_GLOBAL` block yet (#1913), so the symbol is built
+    /// the way the analyzer records one.
+    fn classify_global_at(address: &str) -> (Vec<IoEntry>, Vec<IoEntry>) {
+        let info = SymbolInfo::new(
+            SymbolKind::Variable,
+            ScopeKind::Global,
+            ironplc_dsl::core::SourceSpan::default(),
+        )
+        .with_variable_type(VariableType::Global)
+        .with_address(address.to_string());
+        let (mut inputs, mut outputs) = (vec![], vec![]);
+        classify("g", &info, IoScope::Global, &mut inputs, &mut outputs);
+        (inputs, outputs)
     }
 
     #[test]
@@ -312,5 +372,89 @@ mod tests {
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.inputs.iter().any(|e| e.name == "p.start"));
         assert!(resp.outputs.iter().any(|e| e.name == "p.count"));
+    }
+
+    #[spec_test(REQ_TOL_mcp_211)]
+    fn build_response_when_configuration_global_then_bare_name_in_inputs_and_outputs() {
+        let resp = build(&configuration("shared : INT;", ""));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(names(&resp.inputs), vec!["shared"]);
+        assert_eq!(names(&resp.outputs), vec!["shared"]);
+    }
+
+    #[spec_test(REQ_TOL_mcp_210)]
+    fn build_response_when_top_level_global_then_bare_name_in_inputs_and_outputs() {
+        let resp = build_with(
+            "allow_top_level_var_global",
+            &format!("VAR_GLOBAL level : REAL; END_VAR\n{VALID_PROGRAM}"),
+        );
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(names(&resp.inputs), vec!["level"]);
+        assert_eq!(names(&resp.outputs), vec!["level"]);
+    }
+
+    #[spec_test(REQ_TOL_mcp_210)]
+    fn build_response_when_program_var_external_then_qualified_name_in_inputs_only() {
+        let resp = build(&configuration(
+            "shared : INT;",
+            "VAR_EXTERNAL shared : INT; END_VAR",
+        ));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(names(&resp.inputs), vec!["p.shared", "shared"]);
+        assert_eq!(names(&resp.outputs), vec!["shared"]);
+    }
+
+    #[spec_test(REQ_TOL_mcp_210)]
+    fn classify_when_global_at_input_address_then_inputs_only() {
+        let (inputs, outputs) = classify_global_at("%IX0.0");
+        assert_eq!(names(&inputs), vec!["g"]);
+        assert_eq!(inputs[0].address.as_deref(), Some("%IX0.0"));
+        assert!(outputs.is_empty(), "outputs: {outputs:?}");
+    }
+
+    #[spec_test(REQ_TOL_mcp_211)]
+    fn classify_when_global_at_output_address_then_outputs_only() {
+        let (inputs, outputs) = classify_global_at("%QX0.0");
+        assert!(inputs.is_empty(), "inputs: {inputs:?}");
+        assert_eq!(names(&outputs), vec!["g"]);
+        assert_eq!(outputs[0].address.as_deref(), Some("%QX0.0"));
+    }
+
+    #[spec_test(REQ_TOL_mcp_211)]
+    fn classify_when_global_at_memory_address_then_in_neither() {
+        let (inputs, outputs) = classify_global_at("%MW2");
+        assert!(inputs.is_empty(), "inputs: {inputs:?}");
+        assert!(outputs.is_empty(), "outputs: {outputs:?}");
+    }
+
+    #[spec_test(REQ_TOL_mcp_213)]
+    fn build_response_when_constant_global_then_outputs_only() {
+        let resp = build(&configuration(
+            "CONSTANT limit : INT := 3;",
+            "VAR_EXTERNAL CONSTANT limit : INT; END_VAR",
+        ));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert!(resp.inputs.is_empty(), "inputs: {:?}", resp.inputs);
+        assert_eq!(names(&resp.outputs), vec!["limit"]);
+    }
+
+    #[spec_test(REQ_TOL_mcp_213)]
+    fn build_response_when_global_never_written_then_still_input() {
+        // Inferred constant (constant-variable-inference.md), not declared so.
+        let resp = build(&configuration("setpoint : INT := 3;", ""));
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(names(&resp.inputs), vec!["setpoint"]);
+        assert_eq!(names(&resp.outputs), vec!["setpoint"]);
+    }
+
+    #[spec_test(REQ_TOL_mcp_213)]
+    fn build_response_when_compiler_provided_global_then_outputs_only() {
+        let resp = build_with("allow_system_uptime_global", VALID_PROGRAM);
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert!(resp.inputs.is_empty(), "inputs: {:?}", resp.inputs);
+        assert_eq!(
+            names(&resp.outputs),
+            vec!["__SYSTEM_UP_LTIME", "__SYSTEM_UP_TIME"]
+        );
     }
 }
