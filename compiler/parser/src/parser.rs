@@ -754,7 +754,11 @@ parser! {
       = type_name:integer_type_name() _ tok(TokenType::LeftParen) _ subrange:subrange() _ tok(TokenType::RightParen) { SpecificationKind::Inline(SubrangeSpecification{ type_name, subrange }) }
     rule integer_ref() -> IntegerRef = i:integer() { IntegerRef::Literal(i) } / id:identifier() { IntegerRef::Constant(id) }
     rule signed_integer_ref() -> SignedIntegerRef = si:signed_integer() { SignedIntegerRef::Literal(si) } / id:identifier() { SignedIntegerRef::Constant(id) }
-    rule subrange() -> Subrange = start:signed_integer_ref() _ tok(TokenType::Range) _ end:signed_integer_ref() { Subrange{start, end} }
+    // A bound may also be a radix integer (`16#0F`), an extension that
+    // rule_token_radix_subrange_bound gates. It is unsigned, so it is never
+    // negative.
+    rule subrange_bound() -> SignedIntegerRef = signed_integer_ref() / value:radix_integer() { SignedIntegerRef::Literal(SignedInteger { value, is_neg: false }) }
+    rule subrange() -> Subrange = start:subrange_bound() _ tok(TokenType::Range) _ end:subrange_bound() { Subrange{start, end} }
 
     rule enumerated_type_declaration__with_value() -> EnumerationDeclaration =
       type_name:enumerated_type_name() _ tok(TokenType::Colon) _ spec:enumerated_specification() _ underlying_type:enum_underlying_type()? _ tok(TokenType::Assignment) _ def:enumerated_value() {

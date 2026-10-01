@@ -27,6 +27,7 @@ mod partial_access;
 mod pointer_to;
 mod pragmas;
 mod property;
+mod radix_subrange_bound;
 mod reference_to;
 mod set_reset_bind;
 mod sfc;
