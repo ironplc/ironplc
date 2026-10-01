@@ -95,7 +95,26 @@ impl DiagnosticVisitor for RuleBitAndPartialAccessRange<'_> {
 }
 
 impl RuleBitAndPartialAccessRange<'_> {
+    /// Reports a bit or partial access through `THIS^`/`SUPER^`, which this
+    /// rule can't range-check yet: the accessed member's type is not known
+    /// here. Reporting keeps the rule from quietly passing such a program.
+    fn unresolved_through_self_reference(&mut self, variable: &SymbolicVariableKind) -> bool {
+        let Some(self_ref) = self_reference_head(variable) else {
+            return false;
+        };
+        self.diagnostics.push(Diagnostic::not_implemented(Label::span(
+            self_ref.span(),
+            format!(
+                "bit and partial access through {} is recognized but not yet range-checked by IronPLC",
+                self_ref.kind.spelling()
+            ),
+        )));
+        true
+    }
     fn check_partial_access(&mut self, node: &PartialAccessVariable) {
+        if self.unresolved_through_self_reference(&node.variable) {
+            return;
+        }
         let accessed_type =
             match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
                 Some(t) => t,
@@ -155,6 +174,9 @@ impl RuleBitAndPartialAccessRange<'_> {
     }
 
     fn check_bit_access(&mut self, node: &BitAccessVariable) {
+        if self.unresolved_through_self_reference(&node.variable) {
+            return;
+        }
         // Resolve the type of the variable being bit-accessed
         let accessed_type =
             match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
@@ -217,21 +239,6 @@ impl Visitor<Infallible> for RuleBitAndPartialAccessRange<'_> {
         node.recurse_visit(self)
     }
 
-    fn visit_self_ref_variable(&mut self, node: &SelfRefVariable) -> Result<(), Infallible> {
-        // Report rather than skip: a bit access through THIS^/SUPER^ cannot
-        // be range-checked until member resolution exists, and staying
-        // silent here would keep this rule quietly passing such a program
-        // once the construct is otherwise supported. See issue #1406.
-        self.diagnostics.push(Diagnostic::not_implemented(Label::span(
-            node.span(),
-            format!(
-                "{} is recognized but its members are not yet resolved, so bit and partial access through it is not range-checked",
-                node.kind.spelling()
-            ),
-        )));
-        Ok(())
-    }
-
     fn visit_bit_access_variable(&mut self, node: &BitAccessVariable) -> Result<(), Infallible> {
         self.check_bit_access(node);
         node.recurse_visit(self)
@@ -243,6 +250,20 @@ impl Visitor<Infallible> for RuleBitAndPartialAccessRange<'_> {
     ) -> Result<(), Infallible> {
         self.check_partial_access(node);
         node.recurse_visit(self)
+    }
+}
+
+/// The `THIS^`/`SUPER^` a variable reference starts from, if it starts from
+/// one.
+fn self_reference_head(variable: &SymbolicVariableKind) -> Option<&SelfRefVariable> {
+    match variable {
+        SymbolicVariableKind::SelfRef(self_ref) => Some(self_ref),
+        SymbolicVariableKind::Structured(structured) => self_reference_head(&structured.record),
+        SymbolicVariableKind::Array(array) => self_reference_head(&array.subscripted_variable),
+        SymbolicVariableKind::BitAccess(access) => self_reference_head(&access.variable),
+        SymbolicVariableKind::PartialAccess(access) => self_reference_head(&access.variable),
+        SymbolicVariableKind::Deref(deref) => self_reference_head(&deref.variable),
+        SymbolicVariableKind::Named(_) => None,
     }
 }
 
@@ -272,6 +293,44 @@ mod tests {
             context.has_diagnostics(),
             "Expected diagnostics but got none"
         );
+    }
+
+    fn self_ref_codes(body: &str) -> Vec<String> {
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            allow_partial_access_syntax: true,
+            ..CompilerOptions::default()
+        };
+        let program = format!(
+            "
+FUNCTION_BLOCK FB_A
+VAR
+    flags : WORD;
+    count : INT;
+END_VAR
+METHOD M
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        );
+        let (library, context) =
+            crate::test_helpers::parse_and_resolve_types_with_options(&program, &options);
+        match apply(&library, &context, &options) {
+            Ok(()) => vec![],
+            Err(errors) => errors.iter().map(|e| e.code.clone()).collect(),
+        }
+    }
+
+    #[test]
+    fn apply_when_self_ref_member_without_bit_access_then_ok() {
+        assert!(self_ref_codes("    THIS^.count := 1;").is_empty());
+    }
+
+    #[rstest]
+    #[case::bit_access("    THIS^.flags.0 := TRUE;")]
+    #[case::partial_access("    THIS^.flags.%B1 := 1;")]
+    fn apply_when_access_through_self_ref_then_not_implemented(#[case] body: &str) {
+        assert_eq!(vec!["P9999".to_string()], self_ref_codes(body));
     }
 
     // --- Bit access boundary tests across all bit-sized types ---
