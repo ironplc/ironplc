@@ -2,7 +2,7 @@
 
 This file provides quick reference for common development tasks and commands in the IronPLC project.
 
-> **Note**: This is a reference guide for AI-assisted development. For complete setup instructions and contribution workflow, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
+> **Note**: This is a reference guide for AI-assisted development. For setup instructions, see [CONTRIBUTING.md](../../CONTRIBUTING.md); for the development process, see [development-standards.md](development-standards.md#development-process).
 
 ## Build System Overview
 
@@ -19,10 +19,10 @@ IronPLC uses [just](https://github.com/casey/just) as its command runner. All bu
 
 ## CRITICAL: Git Workflow
 
-**NEVER commit or push directly to `main`.** Always create a feature branch and open a pull request. This ensures CI validates all changes before they reach main.
+Which branches and pull requests to create is set by the [Development Process](development-standards.md#development-process). The commands for one pull request:
 
 ```bash
-git checkout -b feature/my-change    # Create a feature branch
+git checkout -b feature/my-change    # One branch per pull request
 # ... make changes, commit ...
 cd compiler && just                   # Run full CI pipeline
 git push -u origin feature/my-change  # Push the branch

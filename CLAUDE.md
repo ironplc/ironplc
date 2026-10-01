@@ -32,40 +32,7 @@ For full details, see [specs/steering/common-tasks.md](specs/steering/common-tas
 
 ## MANDATORY: Git Workflow
 
-**NEVER commit or push directly to `main`.** Always create a feature branch and open a pull request. This ensures CI validates all changes before they reach main.
-
-### Workflow
-
-1. Create a feature branch from `main`
-2. **Write an implementation plan** in `specs/plans/` and commit it as the first commit on the branch. If the work spans more than one PR, open an issue first and reference it from the plan (see [Development Standards — Planning Requirement](specs/steering/development-standards.md#planning-requirement))
-3. **Prefactor first** — simplify the existing code so the change drops in, in its own commit, before adding new behaviour (see [Development Standards — Prefactoring](specs/steering/development-standards.md#prefactoring))
-4. Implement the changes following the plan
-5. Land any decision worth keeping as an ADR or `specs/design/` update, and open an issue for anything the plan describes that you are not delivering — it is about to be deleted
-6. **`git rm` the plan file** — plans are deleted before merge, so no plan content reaches `main`
-7. Run the full CI pipeline: `cd compiler && just`
-8. Push the feature branch and create a PR via `gh pr create`
-
-> **Skip the plan** for mechanical changes: typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits.
-
-### Before Creating a PR
-
-**You MUST run the full CI pipeline and verify it passes before creating any PR:**
-
-```bash
-cd compiler && just
-```
-
-This runs compile, coverage (which includes tests), AND lint (clippy + fmt). **All checks must pass.**
-
-If any check fails:
-1. Fix the issues
-2. Re-run `cd compiler && just`
-3. Only create the PR after all checks pass
-
-**Common failures:**
-- **Clippy warnings** - Fix all clippy issues; the lint step runs `cargo clippy`
-- **Format issues** - Run `cd compiler && just format` to auto-fix
-- **Coverage below 85%** - Add tests for uncovered code
+**Follow the [Development Process](specs/steering/development-standards.md#development-process) for every change, and read it before non-trivial work.** Never push to `main`. Run `cd compiler && just` before opening any PR.
 
 ## Quick Reference
 
@@ -86,12 +53,9 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 - `playground/` - Interactive playground (browser-based editor/runner, built from `compiler/playground/` WASM crate)
 
 ### Critical Rules
-1. **NEVER push directly to `main`** - Always use a feature branch and pull request
-2. **Plan first, then delete it** - Non-trivial changes start with a plan in `specs/plans/`, committed before implementation code and removed before merge; work spanning more than one PR must also have an issue; never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
-3. **Prefactor before adding** - Every change looks for a simplification to make first; the plan says what it is, or why none is needed
-4. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
-5. **BDD-style test names**: `function_when_condition_then_result`
-6. **Module size limit**: Max 1000 lines per module
-7. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
-8. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
-9. **Version numbers**: Automatically managed - do not edit manually
+1. **Follow the [Development Process](specs/steering/development-standards.md#development-process)** - Never push to `main`; never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
+2. **BDD-style test names**: `function_when_condition_then_result`
+3. **Module size limit**: Max 1000 lines per module
+4. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
+5. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
+6. **Version numbers**: Automatically managed - do not edit manually
