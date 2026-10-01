@@ -482,6 +482,8 @@ parser! {
     rule binary_integer() -> Integer =  n:tok(TokenType::BinDigits) {? Integer::try_binary(n.text.as_str()).map(|i| Integer { span: n.span.clone(), value: i.value }) }
     rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()).map(|i| Integer { span: n.span.clone(), value: i.value }) }
     rule hex_integer() -> Integer = n:tok(TokenType::HexDigits) {? Integer::try_hex(n.text.as_str()).map(|i| Integer { span: n.span.clone(), value: i.value }) }
+    // An unsigned integer written with a radix prefix (`2#`, `8#` or `16#`).
+    rule radix_integer() -> Integer = binary_integer() / octal_integer() / hex_integer()
     // real_literal_type is used specifically for real literals (returns RealTypeName)
     rule real_literal_type() -> (RealTypeName, &'input Token) =
       t:tok(TokenType::Real) { (RealTypeName::REAL, t) }
@@ -2254,7 +2256,7 @@ parser! {
     // literals are already lexically distinct tokens from plain decimal
     // digits, so this alternative can only ever fire for the genuinely
     // new shape.
-    rule case_bit_string_literal() -> BitStringLiteral = value:(bi:binary_integer() { bi } / oi:octal_integer() { oi } / hi:hex_integer() { hi }) {
+    rule case_bit_string_literal() -> BitStringLiteral = value:radix_integer() {
       BitStringLiteral { value, data_type: None }
     }
 
