@@ -110,7 +110,7 @@ fn collect_io(context: &SemanticContext) -> (Vec<IoEntry>, Vec<IoEntry>) {
         for (var_name, info) in context.symbols().get_variables_in_scope(&scope) {
             let qualified = format!("{}.{}", program_name, var_name);
             classify(
-                &qualified,
+                entry(context, &qualified, info),
                 info,
                 IoScope::Program,
                 &mut inputs,
@@ -122,7 +122,7 @@ fn collect_io(context: &SemanticContext) -> (Vec<IoEntry>, Vec<IoEntry>) {
     // Globals: name is the bare variable name.
     for (var_name, info) in context.symbols().get_variables_in_scope(&ScopeKind::Global) {
         classify(
-            &var_name.to_string(),
+            entry(context, &var_name.to_string(), info),
             info,
             IoScope::Global,
             &mut inputs,
@@ -135,7 +135,7 @@ fn collect_io(context: &SemanticContext) -> (Vec<IoEntry>, Vec<IoEntry>) {
 
 /// Appends the variable to `inputs` and/or `outputs` based on its role.
 fn classify(
-    qualified_name: &str,
+    entry: IoEntry,
     info: &SymbolInfo,
     scope: IoScope,
     inputs: &mut Vec<IoEntry>,
@@ -172,18 +172,20 @@ fn classify(
         || is_hw_output;
 
     if is_input {
-        inputs.push(entry(qualified_name, info));
+        inputs.push(entry.clone());
     }
     if is_output {
-        outputs.push(entry(qualified_name, info));
+        outputs.push(entry);
     }
 }
 
-fn entry(name: &str, info: &SymbolInfo) -> IoEntry {
+fn entry(context: &SemanticContext, name: &str, info: &SymbolInfo) -> IoEntry {
     IoEntry {
         name: name.to_string(),
-        // Not yet resolved from `SymbolInfo::type_id`.
-        type_name: String::new(),
+        type_name: context
+            .variable_type_name(info)
+            .map(|t| t.to_string())
+            .unwrap_or_default(),
         address: info.address.clone(),
     }
 }
@@ -256,7 +258,12 @@ mod tests {
         .with_variable_type(VariableType::Global)
         .with_address(address.to_string());
         let (mut inputs, mut outputs) = (vec![], vec![]);
-        classify("g", &info, IoScope::Global, &mut inputs, &mut outputs);
+        let entry = IoEntry {
+            name: "g".to_string(),
+            type_name: String::new(),
+            address: info.address.clone(),
+        };
+        classify(entry, &info, IoScope::Global, &mut inputs, &mut outputs);
         (inputs, outputs)
     }
 
@@ -364,9 +371,6 @@ mod tests {
 
     #[test]
     fn build_response_when_program_with_input_and_output_then_both_classified() {
-        // `type` population from `SymbolInfo::type_id` is not yet wired for
-        // program parameters (same gap the `symbols` tool has today). This
-        // test confirms the classification; the type string is best-effort.
         let resp = build(
             "PROGRAM p\nVAR_INPUT start : BOOL; END_VAR\nVAR_OUTPUT count : INT; END_VAR\nEND_PROGRAM",
         );
