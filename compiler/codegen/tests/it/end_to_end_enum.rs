@@ -47,6 +47,15 @@ e2e_i32!(
     &[(0, 1)],
 );
 
+// `ON` is a keyword that is also accepted as a member name; assigning it
+// stores its ordinal like any other member.
+// See https://github.com/ironplc/ironplc/issues/1944.
+e2e_i32!(
+    end_to_end_when_assign_keyword_named_enum_member_then_stores_ordinal,
+    "TYPE M : (Off, On); END_TYPE PROGRAM main VAR c : M; END_VAR c := On; END_PROGRAM",
+    &[(0, 1)],
+);
+
 // Type default is LOW = ordinal 0.
 e2e_i32!(
     end_to_end_when_enum_variable_no_explicit_init_then_uses_type_default,
