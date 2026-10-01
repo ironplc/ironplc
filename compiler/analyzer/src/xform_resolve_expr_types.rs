@@ -6,8 +6,8 @@
 //! compares types by name, it derives the name from the id through
 //! `value_type::operand_type_name`.
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::{Id, Located};
-use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::core::Id;
+use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::*;
@@ -15,6 +15,7 @@ use ironplc_dsl::type_id::TypeId;
 use std::collections::HashMap;
 
 use crate::callee_resolution::FunctionBlocks;
+use crate::enclosing_block::EnclosingBlock;
 use crate::function_environment::FunctionEnvironment;
 use crate::intermediate_type::IntermediateType;
 use crate::intermediates::arithmetic_overload::{
@@ -36,8 +37,20 @@ pub fn apply(
 ) -> Result<Library, Vec<Diagnostic>> {
     let inherited_fields = collect_inherited_fields(&lib);
     let method_return_types = collect_method_return_types(&lib);
+    let own_fields = lib
+        .elements
+        .iter()
+        .filter_map(|element| match element {
+            LibraryElementKind::FunctionBlockDeclaration(fb) => {
+                Some((fb.name.clone(), fb.variables.clone()))
+            }
+            _ => None,
+        })
+        .collect();
     let mut resolver = ExprTypeResolver {
         declarations: Declarations::new(),
+        enclosing: EnclosingBlock::default(),
+        own_fields,
         inherited_fields,
         method_return_types,
         type_environment,
@@ -170,6 +183,11 @@ struct ExprTypeResolver<'a> {
     /// body sees the instance's fields and a method local shadows a
     /// field of the same name.
     declarations: Declarations<'static>,
+    /// The function block the traversal is inside, for `THIS^`/`SUPER^`.
+    enclosing: EnclosingBlock,
+    /// The fields each function block declares itself, so `THIS^.x` finds
+    /// the block's `x` even where a method parameter shadows it.
+    own_fields: HashMap<TypeName, Vec<VarDecl>>,
     /// Fields inherited via `EXTENDS`, per function block -- see
     /// `intermediates::inherited_fields`. Seeded into `var_types` before a
     /// function block's own fields so unqualified references to a base
@@ -381,14 +399,15 @@ impl ExprTypeResolver<'_> {
                     ParamAssignmentKind::Output(_) => None,
                 })
             }
-            // The method's return type. A call on `THIS^`/`SUPER^`, or to a
-            // method without a return type, has no type here; the method
-            // call rule reports both.
+            // The method's return type. A call to a method without a return
+            // type has no type here; the method call rule reports it.
             ExprKind::MethodCall(call) => {
-                let MethodReceiver::Instance(instance) = &call.receiver else {
-                    return None;
+                let fb_type = match &call.receiver {
+                    MethodReceiver::Instance(instance) => self.declared_type_name(instance)?,
+                    MethodReceiver::SelfRef(self_ref) => {
+                        self.enclosing.self_type(self_ref.kind)?.clone()
+                    }
                 };
-                let fb_type = self.declared_type_name(instance)?;
                 let return_type = self
                     .method_return_types
                     .get(&fb_type)?
@@ -532,6 +551,14 @@ impl ExprTypeResolver<'_> {
     /// Walks the member chain to find the root variable, looks up its type
     /// definition, then finds the leaf member's type.
     fn resolve_structured_variable_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
+        if let SymbolicVariableKind::SelfRef(self_ref) = sv.record.as_ref() {
+            let declared = self.self_member_type_name(self_ref.kind, &sv.field)?;
+            return Some(
+                self.type_environment
+                    .resolve_elementary_type_name(&declared)
+                    .unwrap_or(declared),
+            );
+        }
         let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
         let field = parent_type
             .member_fields()?
@@ -557,6 +584,10 @@ impl ExprTypeResolver<'_> {
                 self.type_environment.resolve_member_access_type(&var_type)
             }
             SymbolicVariableKind::Structured(sv) => {
+                if let SymbolicVariableKind::SelfRef(self_ref) = sv.record.as_ref() {
+                    let declared = self.self_member_type_name(self_ref.kind, &sv.field)?;
+                    return self.type_environment.resolve_member_access_type(&declared);
+                }
                 let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
                 let field = parent_type
                     .member_fields()?
@@ -570,6 +601,28 @@ impl ExprTypeResolver<'_> {
             }
             _ => None,
         }
+    }
+
+    /// The declared type name of `field` on what `THIS^` (the enclosing
+    /// function block, own fields first, then inherited ones) or `SUPER^`
+    /// (only the inherited ones) names. `None` outside a function block,
+    /// for `SUPER^` without a base, and for a field the block doesn't
+    /// have.
+    fn self_member_type_name(&self, kind: SelfRefKind, field: &Id) -> Option<TypeName> {
+        let block = self.enclosing.block()?;
+        self.enclosing.self_type(kind)?;
+        let own = match kind {
+            SelfRefKind::This => self.own_fields.get(block),
+            SelfRefKind::Super => None,
+        };
+        own.into_iter()
+            .flatten()
+            .chain(self.inherited_fields.get(block).into_iter().flatten())
+            .find(|decl| decl.identifier.symbolic_id() == Some(field))
+            .and_then(|decl| match decl.initializer.type_reference() {
+                TypeReference::Named(name) => Some(name),
+                TypeReference::Inline | TypeReference::Unspecified => None,
+            })
     }
 
     /// Resolves the element type of an array that lives inside a struct field.
@@ -684,6 +737,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
     /// it contributes rather than silently contributing nothing -- which
     /// in this pass means silently skipping type checks, not failing.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
+        self.enclosing.enter(&node);
         self.declarations.enter();
 
         match node {
@@ -722,6 +776,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
     }
 
     fn exit_scope(&mut self) {
+        self.enclosing.exit();
         self.declarations.exit();
     }
 
@@ -729,17 +784,10 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         &mut self,
         node: SelfRefVariable,
     ) -> Result<SelfRefVariable, Diagnostic> {
-        // Fail rather than resolve to "unknown": every downstream consumer
-        // of this pass treats an unresolved type as a fact about the
-        // program, and silently producing one here would let THIS^/SUPER^
-        // through unnoticed once it is otherwise supported. See issue #1406.
-        Err(Diagnostic::not_implemented(Label::span(
-            node.span(),
-            format!(
-                "{} is recognized but its type cannot be resolved by IronPLC yet",
-                node.kind.spelling()
-            ),
-        )))
+        // `THIS^`/`SUPER^` with nothing to refer to (outside a function
+        // block, or `SUPER^` without a base) is reported by
+        // `rule_self_reference_context`; its members then have no type.
+        Ok(node)
     }
 
     fn fold_expr(&mut self, node: Expr) -> Result<Expr, Diagnostic> {

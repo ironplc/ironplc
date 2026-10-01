@@ -93,13 +93,39 @@ impl Visitor<Infallible> for RuleUnsupportedExtension {
         node.recurse_visit(self)
     }
 
+    /// `THIS^.member` and `SUPER^.member` are analyzed; only the head of
+    /// the reference is a self reference, so it is not flagged here.
+    fn visit_structured_variable(
+        &mut self,
+        node: &ironplc_dsl::textual::StructuredVariable,
+    ) -> Result<Self::Value, Infallible> {
+        if matches!(
+            node.record.as_ref(),
+            ironplc_dsl::textual::SymbolicVariableKind::SelfRef(_)
+        ) {
+            return Ok(());
+        }
+        node.recurse_visit(self)
+    }
+
+    /// `THIS^.M()` and `SUPER^.M()` are analyzed, so the receiver is not
+    /// flagged.
+    fn visit_method_receiver(
+        &mut self,
+        node: &ironplc_dsl::textual::MethodReceiver,
+    ) -> Result<Self::Value, Infallible> {
+        if let ironplc_dsl::textual::MethodReceiver::SelfRef(_) = node {
+            return Ok(());
+        }
+        node.recurse_visit(self)
+    }
+
     fn visit_self_ref_variable(
         &mut self,
         node: &ironplc_dsl::textual::SelfRefVariable,
     ) -> Result<Self::Value, Infallible> {
-        // A SelfRefVariable only exists when THIS^/SUPER^ was written, so
-        // it is always an extension. Parsed and rendered, but neither
-        // analyzed nor executed.
+        // Only a bare THIS^/SUPER^ gets here: one used as a value on its
+        // own (passed, assigned, compared), which is not analyzed.
         self.flag(node);
         node.recurse_visit(self)
     }
@@ -180,34 +206,48 @@ END_FUNCTION_BLOCK";
         assert_eq!("P9999", errors[0].code);
     }
 
+    /// `THIS^`/`SUPER^` with a member or a method call after it is
+    /// analyzed, so it is not an unsupported extension.
     #[rstest::rstest]
     #[case::this("    THIS^.count := 1;")]
     #[case::super_("    count := SUPER^.count;")]
     #[case::this_method_call("    THIS^.Start();")]
-    fn apply_when_self_ref_then_p9999(#[case] body: &str) {
-        let program = format!(
+    fn apply_when_self_ref_member_then_ok(#[case] body: &str) {
+        let (input, _context) =
+            parse_and_resolve_types_with_options(&motor_with(body), &opts_with_fb_inheritance());
+        let context = SemanticContextBuilder::new().build().unwrap();
+        assert!(apply(&input, &context, &opts_with_fb_inheritance()).is_ok());
+    }
+
+    #[test]
+    fn apply_when_bare_self_ref_then_p9999() {
+        let (input, _context) = parse_and_resolve_types_with_options(
+            &motor_with("    THIS^ := THIS^;"),
+            &opts_with_fb_inheritance(),
+        );
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let errors = apply(&input, &context, &opts_with_fb_inheritance()).unwrap_err();
+        assert_eq!(errors.len(), 2);
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert!(errors.iter().all(|e| e.code == "P9999"));
+    }
+
+    fn motor_with(body: &str) -> String {
+        format!(
             "
 FUNCTION_BLOCK FB_Motor
 VAR
     count : INT;
 END_VAR
+METHOD Start
+END_METHOD
 METHOD Run
 {body}
 END_METHOD
 END_FUNCTION_BLOCK"
-        );
-
-        let (input, _context) =
-            parse_and_resolve_types_with_options(&program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
-
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
-        // (must be constructed via Diagnostic::not_implemented), so assert on
-        // the stable code string rather than referencing the variant.
-        assert_eq!("P9999", errors[0].code);
+        )
     }
 
     #[test]

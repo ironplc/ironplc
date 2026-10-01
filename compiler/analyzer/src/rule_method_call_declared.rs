@@ -45,6 +45,7 @@ use ironplc_dsl::{
     common::*,
     core::{Id, Located},
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::*,
     visitor::Visitor,
 };
@@ -52,6 +53,7 @@ use ironplc_problems::Problem;
 
 use crate::{
     callee_resolution::{FunctionBlocks, InstanceTypes},
+    enclosing_block::EnclosingBlock,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
@@ -74,6 +76,9 @@ struct RuleMethodCallDeclared<'a> {
     /// The instances declared in the unit being walked.
     instances: InstanceTypes,
 
+    /// The function block the walk is inside, for `THIS^`/`SUPER^`.
+    enclosing: EnclosingBlock,
+
     /// Whether the method call being visited is in expression position,
     /// where its value is used and the method must have a return type.
     in_expression: bool,
@@ -86,6 +91,7 @@ impl<'a> RuleMethodCallDeclared<'a> {
         Self {
             function_blocks,
             instances: InstanceTypes::default(),
+            enclosing: EnclosingBlock::default(),
             in_expression: false,
             diagnostics: Vec::new(),
         }
@@ -130,6 +136,15 @@ impl DiagnosticVisitor for RuleMethodCallDeclared<'_> {
 
 impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
     type Value = ();
+
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
+        self.enclosing.enter(&node);
+        Ok(())
+    }
+
+    fn exit_scope(&mut self) {
+        self.enclosing.exit();
+    }
 
     fn visit_function_block_declaration(
         &mut self,
@@ -181,22 +196,16 @@ impl Visitor<Infallible> for RuleMethodCallDeclared<'_> {
 
 impl RuleMethodCallDeclared<'_> {
     fn check_call(&mut self, call: &MethodCall, in_expression: bool) {
-        // `THIS^.M()` / `SUPER^.M()` resolve against the enclosing function
-        // block (and, for SUPER^, its base) rather than a variable's declared
-        // type. That resolution is not implemented yet, so say so rather than
-        // skipping the call: a silent skip would keep quietly passing once
-        // the receiver becomes resolvable. Tracked in issue #1406.
+        // `THIS^.M()` resolves against the enclosing function block and
+        // `SUPER^.M()` against its base, so a `SUPER^` call starts the
+        // `EXTENDS` walk one block up. Where there is nothing to name,
+        // `rule_self_reference_context` reports the receiver.
         let instance = match &call.receiver {
             MethodReceiver::Instance(id) => id,
             MethodReceiver::SelfRef(self_ref) => {
-                self.diagnostics
-                    .push(Diagnostic::not_implemented(Label::span(
-                        self_ref.span(),
-                        format!(
-                            "{} method invocation is recognized but not yet resolved by IronPLC",
-                            self_ref.kind.spelling()
-                        ),
-                    )));
+                if let Some(fb_type) = self.enclosing.self_type(self_ref.kind).cloned() {
+                    self.check_on_type(call, in_expression, &fb_type);
+                }
                 return;
             }
         };
@@ -214,13 +223,20 @@ impl RuleMethodCallDeclared<'_> {
             return;
         }
 
-        match self.function_blocks.resolve_method(&fb_type, &call.method) {
+        self.check_on_type(call, in_expression, &fb_type);
+    }
+
+    /// Checks `call` against the methods of `fb_type` and its `EXTENDS`
+    /// chain: the method exists, has a result where one is used, and gets
+    /// the arguments it declares.
+    fn check_on_type(&mut self, call: &MethodCall, in_expression: bool, fb_type: &TypeName) {
+        match self.function_blocks.resolve_method(fb_type, &call.method) {
             None => self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::MethodNotFound,
                     Label::span(call.span(), "Method invocation"),
                 )
-                .with_context_type("function block", &fb_type)
+                .with_context_type("function block", fb_type)
                 .with_context_id("method", &call.method),
             ),
             Some((owning_fb, method)) => {
@@ -316,6 +332,62 @@ VAR
 END_VAR
 m.Start();
 END_PROGRAM"
+    );
+
+    rule_ok_with!(
+        apply_when_this_and_super_methods_called_then_ok,
+        opts_with_fb_inheritance(),
+        "
+FUNCTION_BLOCK FB_Base
+METHOD Stop : BOOL
+    Stop := TRUE;
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+VAR
+    ok : BOOL;
+END_VAR
+METHOD Start
+VAR_INPUT
+    speed : INT;
+END_VAR
+END_METHOD
+METHOD Run
+    THIS^.Start(speed := 3);
+    ok := THIS^.Stop();
+    ok := SUPER^.Stop();
+END_METHOD
+END_FUNCTION_BLOCK"
+    );
+
+    rule_err1_with!(
+        apply_when_this_method_not_declared_then_error,
+        opts_with_fb_inheritance(),
+        "
+FUNCTION_BLOCK FB_Motor
+METHOD Run
+    THIS^.Nope();
+END_METHOD
+END_FUNCTION_BLOCK",
+        Problem::MethodNotFound
+    );
+
+    rule_err1_with!(
+        apply_when_super_method_only_on_derived_then_error,
+        opts_with_fb_inheritance(),
+        "
+FUNCTION_BLOCK FB_Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+METHOD Start
+END_METHOD
+METHOD Run
+    SUPER^.Start();
+END_METHOD
+END_FUNCTION_BLOCK",
+        Problem::MethodNotFound
     );
 
     rule_err1_with!(

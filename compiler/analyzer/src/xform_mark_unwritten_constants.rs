@@ -57,6 +57,7 @@ use ironplc_dsl::visitor::Visitor;
 
 use crate::call_assignment_check::bind_inputs;
 use crate::callee_resolution::{FunctionBlocks, InstanceTypes};
+use crate::enclosing_block::EnclosingBlock;
 use crate::function_environment::FunctionEnvironment;
 use crate::symbol_environment::{ScopeKind, ScopePath, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
@@ -78,6 +79,7 @@ pub fn apply(
         function_environment,
         symbol_environment,
         scope: Vec::new(),
+        enclosing: EnclosingBlock::default(),
         instances: InstanceTypes::default(),
         written: Writes::default(),
         globals: HashMap::new(),
@@ -134,6 +136,9 @@ struct WriteCollector<'a> {
     symbol_environment: &'a SymbolEnvironment,
     /// The declarations the walk is inside, outermost first.
     scope: Vec<Id>,
+    /// The function block the walk is inside, for `EXTENDS` lookups and
+    /// `THIS^`/`SUPER^`.
+    enclosing: EnclosingBlock,
     /// The function-block instances of the unit being walked.
     instances: InstanceTypes,
     written: Writes,
@@ -165,12 +170,9 @@ impl WriteCollector<'_> {
                 }
             }
             _ => self
-                .scope
-                .first()
-                .and_then(|unit| {
-                    self.function_blocks
-                        .declaring_block(&TypeName { name: unit.clone() }, name)
-                })
+                .enclosing
+                .block()
+                .and_then(|block| self.function_blocks.declaring_block(block, name))
                 .map(|block| unit_scope(&block.name.name))
                 .unwrap_or(ScopeKind::Global),
         }
@@ -222,7 +224,9 @@ impl WriteCollector<'_> {
     }
 
     /// Marks `field` written on `record`. An instance variable names its
-    /// block; `THIS^` is the enclosing block; a structure variable has no
+    /// block; `THIS^` is the enclosing block and `SUPER^` its base, so a
+    /// method parameter of the same name is not the one marked; a structure
+    /// variable has no
     /// members that are declarations. Any other record -- an array element,
     /// a nested field -- is not resolved, so every `field` is blocked.
     fn mark_field(&mut self, record: &SymbolicVariableKind, field: &Id) {
@@ -232,7 +236,12 @@ impl WriteCollector<'_> {
                     self.mark_member(&fb_type, field);
                 }
             }
-            SymbolicVariableKind::SelfRef(_) => self.mark(field),
+            SymbolicVariableKind::SelfRef(self_ref) => {
+                match self.enclosing.self_type(self_ref.kind).cloned() {
+                    Some(block) => self.mark_member(&block, field),
+                    None => self.mark(field),
+                }
+            }
             _ => self.mark_any_scope(field),
         }
     }
@@ -313,6 +322,7 @@ impl Visitor<Infallible> for WriteCollector<'_> {
     type Value = ();
 
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
+        self.enclosing.enter(&node);
         self.scope.push(match node {
             ScopeNode::Function(node) => node.name.clone(),
             ScopeNode::FunctionBlock(node) => node.name.name.clone(),
@@ -323,6 +333,7 @@ impl Visitor<Infallible> for WriteCollector<'_> {
     }
 
     fn exit_scope(&mut self) {
+        self.enclosing.exit();
         self.scope.pop();
         // A method's instances are its block's; they go when the block does.
         if self.scope.is_empty() {
