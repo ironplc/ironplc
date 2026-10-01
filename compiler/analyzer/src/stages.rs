@@ -285,8 +285,10 @@ pub fn resolve_types(
         xform_resolve_decl_types::apply(lib, &mut type_environment)
     });
 
-    // Resolve expression types using the function environment.
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+    // Resolve expression types using the function environment. Best effort:
+    // an unqualified enumerated value whose type is ambiguous is diagnosed
+    // and left without a type, and the rest of the library keeps its types.
+    library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_resolve_expr_types::apply(lib, &mut type_environment, &function_environment, options)
     });
 
