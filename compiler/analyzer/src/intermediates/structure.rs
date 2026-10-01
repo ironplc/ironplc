@@ -205,14 +205,14 @@ fn resolve_field_type(
             })?;
             Ok(type_attrs.representation.clone())
         }
-        InitialValueAssignmentKind::Subrange(subrange_spec) => {
+        InitialValueAssignmentKind::Subrange(subrange) => {
             // Handle subrange field types
             // TODO: Replace magic string with proper type-safe approach for anonymous subranges
             // Consider: Option<&TypeName> or dedicated enum for synthetic/anonymous type names
             // Current approach relies on underscore prefix convention which isn't type-safe
             let subrange_result = crate::intermediates::subrange::try_from(
                 &TypeName::from("_field_subrange"),
-                subrange_spec,
+                &subrange.spec,
                 type_environment,
             )?;
 

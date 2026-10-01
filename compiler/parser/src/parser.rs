@@ -882,7 +882,7 @@ parser! {
     rule structure_element_declaration() -> StructureElementDeclaration = name:structure_element_name() _ tok(TokenType::Colon) _ init:(
       arr:array_spec_init() { InitialValueAssignmentKind::Array(arr) }
       // handle the initial value
-      / subrange:subrange_spec_init__with_range() { InitialValueAssignmentKind::Subrange(subrange.0) }
+      / subrange:subrange_spec_init__with_range() { InitialValueAssignmentKind::Subrange(SubrangeInitialValueAssignment::bare(subrange.0)) }
       / i:initialized_structure__without_ambiguous() { late_resolved_members(i) }
       / spec_init:enumerated_spec_init__with_value() {
         match spec_init.0 {
@@ -1289,7 +1289,7 @@ parser! {
     }
     rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl()
     rule temp_var_decl() -> Vec<UntypedVarDecl> = string_var_declaration() / var1_declaration() / array_var_declaration() / structured_var_declaration()
-    rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(spec:subrange_specification__with_range() {InitialValueAssignmentKind::Subrange(spec)} / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer::bare(spec))} ) {
+    rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(spec:subrange_specification__with_range() {InitialValueAssignmentKind::Subrange(SubrangeInitialValueAssignment::bare(spec))} / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer::bare(spec))} ) {
       // TODO this could eventually cause duplicated definitions because
       // multiple variables have the same type declaration
       names.iter().map(|identifier| {

@@ -208,9 +208,9 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 }
                 self.insert_alias(&node.type_name, &fb_call.type_name)?;
             }
-            InitialValueAssignmentKind::Subrange(spec) => {
+            InitialValueAssignmentKind::Subrange(sr) => {
                 // Handle subrange specifications like: TYPE MY_RANGE : INT (1..100); END_TYPE
-                let result = subrange::try_from(&node.type_name, spec, self)?;
+                let result = subrange::try_from(&node.type_name, &sr.spec, self)?;
                 match result {
                     subrange::IntermediateResult::Type(attributes) => {
                         self.insert_type(&node.type_name, attributes);

@@ -67,8 +67,8 @@ impl DeclTypeResolver<'_> {
             InitialValueAssignmentKind::EnumeratedValues(values) => {
                 enumeration::try_from_values(values, None).ok()?
             }
-            InitialValueAssignmentKind::Subrange(spec) => {
-                match subrange::try_from(name, spec, env).ok()? {
+            InitialValueAssignmentKind::Subrange(sr) => {
+                match subrange::try_from(name, &sr.spec, env).ok()? {
                     subrange::IntermediateResult::Type(attributes) => attributes,
                     subrange::IntermediateResult::Alias(alias) => return env.id_of(&alias),
                 }
@@ -229,14 +229,14 @@ END_PROGRAM
                 SignedInteger::new(value, ironplc_dsl::core::SourceSpan::default()).unwrap(),
             )
         };
-        let init = InitialValueAssignmentKind::Subrange(SpecificationKind::Inline(
-            SubrangeSpecification {
+        let init = InitialValueAssignmentKind::Subrange(SubrangeInitialValueAssignment::bare(
+            SpecificationKind::Inline(SubrangeSpecification {
                 type_name: ElementaryTypeName::INT,
                 subrange: Subrange {
                     start: bound("0"),
                     end: bound("10"),
                 },
-            },
+            }),
         ));
         let mut resolver = DeclTypeResolver {
             type_environment: context.types_mut(),
