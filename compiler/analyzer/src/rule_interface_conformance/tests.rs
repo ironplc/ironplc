@@ -1,5 +1,5 @@
 use super::apply;
-use crate::test_helpers::parse_and_resolve_types_with_options;
+use crate::test_helpers::{codes, rule_codes};
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 use rstest::rstest;
@@ -62,28 +62,26 @@ END_GET
 END_PROPERTY
 ";
 
-fn check(source: &str) -> Result<(), Vec<String>> {
+fn check(source: &str) -> Vec<String> {
     let program = format!("{INTERFACES}\n{source}");
-    let (library, context) = parse_and_resolve_types_with_options(&program, &options());
-    apply(&library, &context, &options())
-        .map_err(|errors| errors.iter().map(|e| e.code.clone()).collect())
+    rule_codes(apply, &program, &options())
 }
 
 fn serial(members: &str) -> String {
     format!("FUNCTION_BLOCK FB_Serial IMPLEMENTS I_Comm\n{members}\nEND_FUNCTION_BLOCK")
 }
 
-fn missing() -> Result<(), Vec<String>> {
-    Err(vec![Problem::InterfaceMemberMissing.code().to_string()])
+fn missing() -> Vec<&'static str> {
+    codes(&[Problem::InterfaceMemberMissing])
 }
 
-fn mismatch() -> Result<(), Vec<String>> {
-    Err(vec![Problem::InterfaceMemberMismatch.code().to_string()])
+fn mismatch() -> Vec<&'static str> {
+    codes(&[Problem::InterfaceMemberMismatch])
 }
 
 #[test]
 fn apply_when_all_members_provided_then_ok() {
-    assert_eq!(Ok(()), check(&serial(&format!("{RESET}{SEND}{READY}"))));
+    assert_eq!(codes(&[]), check(&serial(&format!("{RESET}{SEND}{READY}"))));
 }
 
 #[test]
@@ -94,7 +92,7 @@ fn apply_when_members_inherited_through_extends_then_ok() {
 FUNCTION_BLOCK FB_Serial EXTENDS FB_Base IMPLEMENTS I_Comm
 END_FUNCTION_BLOCK"
     );
-    assert_eq!(Ok(()), check(&source));
+    assert_eq!(codes(&[]), check(&source));
 }
 
 #[test]
@@ -108,7 +106,7 @@ SET
 END_SET
 END_PROPERTY
 ";
-    assert_eq!(Ok(()), check(&serial(&format!("{RESET}{SEND}{ready}"))));
+    assert_eq!(codes(&[]), check(&serial(&format!("{RESET}{SEND}{ready}"))));
 }
 
 #[rstest]
@@ -154,7 +152,53 @@ fn apply_when_property_differs_then_error(#[case] from: &str, #[case] to: &str) 
 #[test]
 fn apply_when_interface_not_declared_then_ok() {
     assert_eq!(
-        Ok(()),
+        codes(&[]),
         check("FUNCTION_BLOCK FB_Other IMPLEMENTS I_Unknown\nEND_FUNCTION_BLOCK")
     );
+}
+
+/// An interface `I_Shape` with one method whose parameter is `{parameter}`,
+/// implemented by a function block whose method declares `{implemented}`.
+fn shape_check(parameter: &str, implemented: &str) -> Vec<String> {
+    let program = format!(
+        "
+INTERFACE I_Shape
+METHOD M
+VAR_INPUT
+    {parameter}
+END_VAR
+END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK FB_Shape IMPLEMENTS I_Shape
+METHOD M
+VAR_INPUT
+    {implemented}
+END_VAR
+END_METHOD
+END_FUNCTION_BLOCK"
+    );
+    rule_codes(apply, &program, &options())
+}
+
+#[rstest]
+#[case::inline_array("x : ARRAY[1..3] OF INT;")]
+#[case::sized_string("s : STRING[10];")]
+#[case::rising_edge("data : BOOL R_EDGE;")]
+fn apply_when_parameter_declared_identically_then_ok(#[case] parameter: &str) {
+    assert_eq!(codes(&[]), shape_check(parameter, parameter));
+}
+
+#[rstest]
+#[case::inline_array_bounds("x : ARRAY[1..3] OF INT;", "x : ARRAY[1..4] OF INT;")]
+#[case::inline_array_element("x : ARRAY[1..3] OF INT;", "x : ARRAY[1..3] OF DINT;")]
+#[case::string_length("s : STRING[10];", "s : STRING[99];")]
+#[case::string_width("s : STRING[10];", "s : WSTRING[10];")]
+#[case::edge_input_missing("other : INT;\n    data : BOOL R_EDGE;", "other : INT;")]
+#[case::edge_direction("data : BOOL R_EDGE;", "data : BOOL F_EDGE;")]
+fn apply_when_parameter_declared_differently_then_mismatch(
+    #[case] parameter: &str,
+    #[case] implemented: &str,
+) {
+    assert_eq!(mismatch(), shape_check(parameter, implemented));
 }

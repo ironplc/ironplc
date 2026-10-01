@@ -9,7 +9,9 @@ declares one of the interface's members, but with a different signature.
 
 A method must have the same return type as the interface's method, and the
 same input, output and in-out variables: the same names, the same kinds and
-the same types, in the same order. Local variables are not compared. A
+the same types, in the same order. A string parameter must have the same
+length, and an ``R_EDGE`` or ``F_EDGE`` input the same edge. Local variables
+are not compared. A
 property must have the same type, and every accessor (``GET``, ``SET``) that
 the interface declares. An extra accessor is allowed.
 

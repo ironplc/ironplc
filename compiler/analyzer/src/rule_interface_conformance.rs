@@ -54,7 +54,8 @@ use crate::semantic_context::SemanticContext;
 use ironplc_dsl::type_id::TypeId;
 
 use crate::{
-    callee_resolution::FunctionBlocks, result::SemanticResult, type_environment::TypeEnvironment,
+    callee_resolution::FunctionBlocks, result::SemanticResult, semantic_type::SemanticType,
+    type_environment::TypeEnvironment,
 };
 
 pub fn apply(
@@ -198,7 +199,40 @@ impl<'a> Conformance<'a> {
             && parameters
                 .iter()
                 .zip(&prototype.variables)
-                .all(|(a, b)| same_parameter(a, b))
+                .all(|(a, b)| self.same_parameter(a, b))
+            && same_edge_inputs(&method.edge_variables, &prototype.edge_variables)
+    }
+
+    /// Two parameters match when they have the same name, the same kind and
+    /// the same type.
+    fn same_parameter(&self, a: &VarDecl, b: &VarDecl) -> bool {
+        a.identifier.symbolic_id() == b.identifier.symbolic_id()
+            && a.var_type == b.var_type
+            && self.parameter_type_key(a) == self.parameter_type_key(b)
+    }
+
+    /// What two parameter types are compared by. A named type is compared
+    /// by its id, a string by its width and declared length, and a type
+    /// written in place (`ARRAY[1..3] OF INT`) by its shape: each such
+    /// declaration gets an id of its own, so equal shapes have different
+    /// ids.
+    fn parameter_type_key(&self, decl: &VarDecl) -> ParameterTypeKey {
+        if let InitialValueAssignmentKind::String(string) = &decl.initializer {
+            return ParameterTypeKey::Type(TypeKey::String {
+                wide: matches!(string.width, StringType::WString),
+                length: string.length.as_ref().map(LengthKey::of),
+            });
+        }
+        match decl.initializer.type_reference() {
+            TypeReference::Named(name) => {
+                ParameterTypeKey::Type(self.return_type_key(&FunctionReturnType::Named(name)))
+            }
+            TypeReference::Inline | TypeReference::Unspecified => ParameterTypeKey::Shape(
+                decl.type_id
+                    .and_then(|id| self.types.get_by_id(id))
+                    .map(|attributes| attributes.representation.clone()),
+            ),
+        }
     }
 
     fn property_matches(
@@ -250,17 +284,19 @@ impl<'a> Conformance<'a> {
     }
 }
 
-/// Two parameters match when they have the same name, the same kind and
-/// the same type. The type is compared by resolved id when both have one,
-/// else by the name each declaration states.
-fn same_parameter(a: &VarDecl, b: &VarDecl) -> bool {
-    let same_type = match (a.type_id, b.type_id) {
-        (Some(x), Some(y)) => x == y,
-        _ => a.initializer.type_reference() == b.initializer.type_reference(),
-    };
-    a.identifier.symbolic_id() == b.identifier.symbolic_id()
-        && a.var_type == b.var_type
-        && same_type
+/// The `R_EDGE`/`F_EDGE` inputs match when they have the same names and
+/// edges, in the same order. They are always `BOOL`.
+fn same_edge_inputs(a: &[EdgeVarDecl], b: &[EdgeVarDecl]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(x, y)| x.identifier == y.identifier && x.direction == y.direction)
+}
+
+#[derive(PartialEq)]
+enum ParameterTypeKey {
+    Type(TypeKey),
+    Shape(Option<SemanticType>),
 }
 
 #[derive(PartialEq)]
