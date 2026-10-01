@@ -18,15 +18,14 @@ use ironplc_dsl::textual::{
 use ironplc_problems::Problem;
 
 use super::compile::{
-    CompileContext, CurrentFunctionReturn, OpType, OpWidth, DEFAULT_OP_TYPE,
+    CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE,
     DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_expr::{
     compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
     condition_op_type, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, emit_load_var,
     emit_store_var, emit_truncation, extract_bit_access_target, extract_partial_access_target,
-    op_type, resolve_variable, resolve_variable_name, signed_integer_to_i64, try_classify_cmp,
-    variable_span,
+    op_type, resolve_variable, resolve_variable_name, try_classify_cmp, variable_span,
 };
 use super::compile_fb_init::{compile_fb_field_store, resolve_fb_field_op_type};
 use super::compile_loop::{compile_for, compile_repeat, compile_while};
@@ -699,11 +698,11 @@ impl CaseSelector<'_> {
         compile_expr(emitter, ctx, self.expr, self.op_type)?;
         match self.op_type.0 {
             OpWidth::W32 => {
-                let pool_index = ctx.add_i32_constant(label.to_i32()?);
+                let pool_index = ctx.add_i32_constant(label.to_i32(self.op_type.1)?);
                 emitter.emit_load_const_i32(pool_index);
             }
             OpWidth::W64 => {
-                let pool_index = ctx.add_i64_constant(label.to_i64()?);
+                let pool_index = ctx.add_i64_constant(label.to_i64(self.op_type.1)?);
                 emitter.emit_load_const_i64(pool_index);
             }
             // CASE with float types is not meaningful in IEC 61131-3.
@@ -716,43 +715,69 @@ impl CaseSelector<'_> {
     }
 }
 
-/// How a `CASE` label's value narrows to the selector's width.
-enum CaseLabelValue<'a> {
-    /// A decimal literal (`5:`, or a bound of `-3..7:`): a magnitude that
-    /// must fit the signed range of the width.
-    Signed(&'a SignedInteger),
-    /// A radix-prefixed literal (`16#D012:`, `2#1010:`): a bit pattern that
-    /// must fit the unsigned range of the width, the same narrowing as
-    /// `ConstantKind::BitStringLiteral` in compile_expr.rs.
-    Pattern(&'a BitStringLiteral),
+/// A `CASE` label's value, whatever radix it was written in.
+///
+/// A label is a value, not a bit pattern: `16#FFFFFFFF` and `4294967295` are
+/// the same label, and both narrow to the selector's width by the value they
+/// state. Analysis rejects a label outside the selector's type (P2026), so a
+/// value that does not fit here comes from a selector analysis could not
+/// type, such as an untyped literal, and is reported the same way.
+struct CaseLabelValue<'a> {
+    is_neg: bool,
+    magnitude: &'a Integer,
 }
 
-impl CaseLabelValue<'_> {
-    fn to_i32(&self) -> Result<i32, Diagnostic> {
-        match self {
-            CaseLabelValue::Signed(si) => signed_integer_to_i32(si),
-            CaseLabelValue::Pattern(lit) => u32::try_from(lit.value.value)
-                .map(|value| value as i32)
-                .map_err(|_| bit_string_overflow(lit)),
+impl<'a> CaseLabelValue<'a> {
+    fn signed(value: &'a SignedInteger) -> Self {
+        Self {
+            is_neg: value.is_neg,
+            magnitude: &value.value,
         }
     }
 
-    fn to_i64(&self) -> Result<i64, Diagnostic> {
-        match self {
-            CaseLabelValue::Signed(si) => signed_integer_to_i64(si),
-            CaseLabelValue::Pattern(lit) => u64::try_from(lit.value.value)
-                .map(|value| value as i64)
-                .map_err(|_| bit_string_overflow(lit)),
+    fn radix(literal: &'a BitStringLiteral) -> Self {
+        Self {
+            is_neg: false,
+            magnitude: &literal.value,
         }
     }
-}
 
-fn bit_string_overflow(lit: &BitStringLiteral) -> Diagnostic {
-    Diagnostic::problem(
-        Problem::ConstantOverflow,
-        Label::span(lit.value.span(), "Bit string literal"),
-    )
-    .with_context("value", &lit.value.value.to_string())
+    /// The label's value at the selector's 32-bit width. An unsigned
+    /// selector holds its value's bit pattern in the slot, so a label for one
+    /// is stored the same way.
+    fn to_i32(&self, signedness: Signedness) -> Result<i32, Diagnostic> {
+        let value = self.value()?;
+        match signedness {
+            Signedness::Signed => i32::try_from(value).ok(),
+            Signedness::Unsigned => u32::try_from(value).ok().map(|value| value as i32),
+        }
+        .ok_or_else(|| self.overflow())
+    }
+
+    /// The label's value at the selector's 64-bit width, stored the way
+    /// [`Self::to_i32`] stores it.
+    fn to_i64(&self, signedness: Signedness) -> Result<i64, Diagnostic> {
+        let value = self.value()?;
+        match signedness {
+            Signedness::Signed => i64::try_from(value).ok(),
+            Signedness::Unsigned => u64::try_from(value).ok().map(|value| value as i64),
+        }
+        .ok_or_else(|| self.overflow())
+    }
+
+    fn value(&self) -> Result<i128, Diagnostic> {
+        let magnitude = i128::try_from(self.magnitude.value).map_err(|_| self.overflow())?;
+        Ok(if self.is_neg { -magnitude } else { magnitude })
+    }
+
+    fn overflow(&self) -> Diagnostic {
+        let sign = if self.is_neg { "-" } else { "" };
+        Diagnostic::problem(
+            Problem::ConstantOverflow,
+            Label::span(self.magnitude.span(), "CASE label"),
+        )
+        .with_context("value", &format!("{sign}{}", self.magnitude.value))
+    }
 }
 
 /// Compiles a single case selector, leaving a boolean result on the stack.
@@ -769,13 +794,13 @@ fn compile_case_selector(
 ) -> Result<(), Diagnostic> {
     match selection {
         CaseSelectionKind::SignedInteger(si) => {
-            selector.cmp_label(emitter, ctx, CaseLabelValue::Signed(si), emit_eq)
+            selector.cmp_label(emitter, ctx, CaseLabelValue::signed(si), emit_eq)
         }
         CaseSelectionKind::Subrange(sr) => {
             let start = resolve_signed_integer_ref(&sr.start)?;
-            selector.cmp_label(emitter, ctx, CaseLabelValue::Signed(start), emit_ge)?;
+            selector.cmp_label(emitter, ctx, CaseLabelValue::signed(start), emit_ge)?;
             let end = resolve_signed_integer_ref(&sr.end)?;
-            selector.cmp_label(emitter, ctx, CaseLabelValue::Signed(end), emit_le)?;
+            selector.cmp_label(emitter, ctx, CaseLabelValue::signed(end), emit_le)?;
             emitter.emit_bool_and();
             Ok(())
         }
@@ -789,7 +814,7 @@ fn compile_case_selector(
             Ok(())
         }
         CaseSelectionKind::BitStringLiteral(lit) => {
-            selector.cmp_label(emitter, ctx, CaseLabelValue::Pattern(lit), emit_eq)
+            selector.cmp_label(emitter, ctx, CaseLabelValue::radix(lit), emit_eq)
         }
     }
 }

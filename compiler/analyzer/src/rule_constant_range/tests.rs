@@ -108,6 +108,91 @@ fn apply_when_case_label_out_of_range_then_err() {
     assert_eq!(codes, 1);
 }
 
+/// How a label is spelled makes no difference: each label is a value, and
+/// the value is checked against the selector's type. A radix label is not a
+/// bit pattern to be reinterpreted at the selector's width, so
+/// `16#FFFFFFFF` is 4294967295 and no `DINT`, rather than a `DINT` -1.
+#[rstest]
+#[case::decimal_in_range("DINT", "2147483647", 0)]
+#[case::decimal_above("DINT", "4294967295", 1)]
+#[case::decimal_below("DINT", "-2147483649", 1)]
+#[case::hex_in_range("DINT", "16#7FFFFFFF", 0)]
+#[case::hex_above("DINT", "16#FFFFFFFF", 1)]
+#[case::binary_above("SINT", "2#11111111", 1)]
+#[case::octal_above("SINT", "8#377", 1)]
+#[case::hex_fills_unsigned("UDINT", "16#FFFFFFFF", 0)]
+#[case::decimal_fills_unsigned("UDINT", "4294967295", 0)]
+#[case::hex_above_unsigned("UDINT", "16#100000000", 1)]
+#[case::hex_fills_unsigned_64("ULINT", "16#FFFFFFFFFFFFFFFF", 0)]
+#[case::hex_above_signed_64("LINT", "16#FFFFFFFFFFFFFFFF", 1)]
+#[case::negative_unsigned("USINT", "-1", 1)]
+#[case::subrange_in_range("SINT", "-128..127", 0)]
+#[case::subrange_end_above("SINT", "100..300", 1)]
+#[case::subrange_start_below("SINT", "-300..0", 1)]
+#[case::subrange_both_outside("USINT", "-1..256", 2)]
+#[case::subrange_unsigned_32("UDINT", "3000000000..4294967295", 0)]
+fn apply_when_case_label_then_checked_against_selector_type(
+    #[case] selector_type: &str,
+    #[case] label: &str,
+    #[case] expected: usize,
+) {
+    let codes = out_of_range_count(&program_with(
+        &format!("x : {selector_type};\ny : DINT;\n"),
+        &format!("CASE x OF\n{label}: y := 1;\nEND_CASE;\n"),
+    ));
+
+    assert_eq!(codes, expected);
+}
+
+/// A selector of a subrange type can hold only the values the subrange
+/// states, so a label beyond them selects a group that can never run.
+#[rstest]
+#[case::decimal("20")]
+#[case::hex("16#14")]
+#[case::subrange_bound("5..20")]
+fn apply_when_case_label_outside_subrange_selector_then_err(#[case] label: &str) {
+    let codes = out_of_range_count(&format!(
+        "TYPE
+Ratio : INT(0..10);
+END_TYPE
+
+PROGRAM main
+VAR
+    x : Ratio;
+    y : DINT;
+END_VAR
+CASE x OF
+{label}: y := 1;
+END_CASE;
+END_PROGRAM"
+    ));
+
+    assert_eq!(codes, 1);
+}
+
+/// A label too large for any integer type is reported by the value the
+/// source spelled, with its own sign.
+#[test]
+fn apply_when_case_label_beyond_every_type_then_reported_with_its_sign() {
+    let options = CompilerOptions::default();
+    let program = program_with(
+        "x : DINT;\ny : DINT;\n",
+        "CASE x OF\n16#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF: y := 1;\nEND_CASE;\n",
+    );
+    let library = parse_program(&program, &FileId::default(), &options).unwrap();
+    let (_library, context) = analyze(&[&library], &options).unwrap();
+
+    let overflow = context
+        .diagnostics()
+        .iter()
+        .find(|d| d.code == Problem::ConstantOverflow.code())
+        .map(|d| d.described.join(" "));
+
+    assert!(
+        overflow.is_some_and(|text| text.contains("value=340282366920938463463374607431768211455"))
+    );
+}
+
 #[test]
 fn apply_when_struct_field_out_of_range_then_err() {
     let codes = out_of_range_count(
