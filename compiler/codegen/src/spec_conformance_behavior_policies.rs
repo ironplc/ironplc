@@ -72,7 +72,7 @@ fn program_bytecode_of(
         ..CompilerOptions::default()
     };
     let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], &options).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     let container = crate::compile(
         &analyzed,
         &ctx,

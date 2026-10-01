@@ -616,9 +616,9 @@ pub enum ExprKind {
     /// value of the inner expression, which keeps its own type, converted to
     /// the type of the enclosing [`Expr`].
     ///
-    /// The parser never produces one: the analyzer inserts it once every
-    /// expression has its type, to record for the backends and the language
-    /// server a conversion the language makes. See ADR-0056.
+    /// The parser never produces one: the analyzer inserts it after the
+    /// semantic rules, to record for the backends and the language server a
+    /// conversion the language makes. See ADR-0056.
     ImplicitConversion(Box<Expr>),
     Null(SourceSpan),
 }
@@ -822,6 +822,25 @@ impl CompareOp {
             CompareOp::Gt => ">",
             CompareOp::LtEq => "<=",
             CompareOp::GtEq => ">=",
+        }
+    }
+
+    /// Returns `true` for the comparisons `=`, `<>`, `<`, `<=`, `>` and
+    /// `>=`, whose result is `BOOL` whatever their operands are, and `false`
+    /// for the logical and bitwise operators that share this enum.
+    pub fn is_comparison(&self) -> bool {
+        match self {
+            CompareOp::Eq
+            | CompareOp::Ne
+            | CompareOp::Lt
+            | CompareOp::Gt
+            | CompareOp::LtEq
+            | CompareOp::GtEq => true,
+            CompareOp::And
+            | CompareOp::Or
+            | CompareOp::Xor
+            | CompareOp::AndThen
+            | CompareOp::OrElse => false,
         }
     }
 }

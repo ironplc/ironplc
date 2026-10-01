@@ -36,12 +36,12 @@ use crate::{
     system_globals::SYSTEM_UPTIME_GLOBALS,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
-    xform_insert_implicit_deref, xform_int_to_bool_initializer, xform_mark_unwritten_constants,
-    xform_named_to_positional_args, xform_remove_unsigned_abs, xform_resolve_adr,
-    xform_resolve_constant_expressions, xform_resolve_decl_types, xform_resolve_expr_types,
-    xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
-    xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
-    xform_resolve_type_decl_environment, xform_toposort_declarations,
+    xform_insert_implicit_conversions, xform_insert_implicit_deref, xform_int_to_bool_initializer,
+    xform_mark_unwritten_constants, xform_named_to_positional_args, xform_remove_unsigned_abs,
+    xform_resolve_adr, xform_resolve_constant_expressions, xform_resolve_decl_types,
+    xform_resolve_expr_types, xform_resolve_late_bound_expr_kind,
+    xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
+    xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -68,6 +68,11 @@ pub fn analyze(
     if let Err(diagnostics) = semantic(&library, &context, options) {
         context.add_diagnostics(diagnostics);
     }
+
+    // Record the implicit conversions the backends compile and the language
+    // server shows. After the rules, so that a rule checks the operands the
+    // program wrote rather than their conversions. See ADR-0056.
+    let library = xform_insert_implicit_conversions::apply(library, context.types());
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
     // semantic analysis, but it should because the type table should influence rule checking.
@@ -140,6 +145,11 @@ fn run_best_effort(
     }
 }
 
+/// Resolves every declaration's and expression's type (stage 2).
+///
+/// The library this returns does not yet record implicit conversions: those
+/// are inserted by [`analyze`] after the semantic rules, so a backend compiles
+/// what [`analyze`] returns.
 pub fn resolve_types(
     sources: &[&Library],
     options: &CompilerOptions,
