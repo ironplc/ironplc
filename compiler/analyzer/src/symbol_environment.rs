@@ -113,6 +113,9 @@ pub struct SymbolInfo {
     /// uptime globals. There is no source location to point at, and a user
     /// declaration of the name is reported as reserved.
     pub compiler_provided: bool,
+    /// For a function block, whether it is declared `ABSTRACT`: it exists
+    /// only to be extended and cannot be instantiated.
+    pub is_abstract: bool,
 }
 
 impl SymbolInfo {
@@ -130,11 +133,18 @@ impl SymbolInfo {
             address: None,
             span,
             compiler_provided: false,
+            is_abstract: false,
         }
     }
 
     fn with_compiler_provided(mut self) -> Self {
         self.compiler_provided = true;
+        self
+    }
+
+    /// Set whether a function block is declared `ABSTRACT`
+    pub fn with_abstract(mut self, is_abstract: bool) -> Self {
+        self.is_abstract = is_abstract;
         self
     }
 
@@ -353,6 +363,13 @@ impl SymbolEnvironment {
             symbol_info = symbol_info.with_external(true);
         }
         self.insert_symbol(name, symbol_info)
+    }
+
+    /// Insert a symbol described by `info`, in `info`'s scope.
+    ///
+    /// A repeated name is reported as for [`Self::insert`].
+    pub fn insert_info(&mut self, name: &Id, info: SymbolInfo) -> Result<(), Diagnostic> {
+        self.insert_symbol(name, info)
     }
 
     /// The one insertion path: checks the scope for a repeated name, then
