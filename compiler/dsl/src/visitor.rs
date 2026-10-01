@@ -301,6 +301,8 @@ pub trait Visitor<E> {
     dispatch!(FunctionBlockOop);
     dispatch!(MethodDeclaration);
     dispatch!(PropertyDeclaration);
+    dispatch!(MethodPrototype);
+    dispatch!(PropertyPrototype);
 
     dispatch!(FunctionBlockBodyKind);
 

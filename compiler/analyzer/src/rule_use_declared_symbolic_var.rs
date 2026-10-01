@@ -177,6 +177,8 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
                     self.table.add(&node.name, DummyNode {});
                 }
             }
+            // No body, so nothing refers to a result variable.
+            ScopeNode::MethodPrototype(_) | ScopeNode::Interface(_) => {}
         }
 
         Ok(())

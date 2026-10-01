@@ -572,7 +572,9 @@ impl Visitor<Infallible> for RuleConstantRange<'_> {
             ScopeNode::Function(_)
             | ScopeNode::FunctionBlock(_)
             | ScopeNode::Program(_)
-            | ScopeNode::Method(_) => self.declarations.enter(),
+            | ScopeNode::Method(_)
+            | ScopeNode::MethodPrototype(_)
+            | ScopeNode::Interface(_) => self.declarations.enter(),
         }
         Ok(())
     }

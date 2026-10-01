@@ -856,4 +856,72 @@ END_PROGRAM",
             })
         ));
     }
+
+    fn interface_options() -> CompilerOptions {
+        CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    fn only_prototype_variable(library: &Library) -> &VarDecl {
+        let itf = library
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                LibraryElementKind::InterfaceDeclaration(itf) => Some(itf),
+                _ => None,
+            })
+            .unwrap();
+        &itf.methods[0].variables[0]
+    }
+
+    #[test]
+    fn apply_when_method_prototype_parameter_has_enum_type_then_resolves_type() {
+        let program = "
+TYPE
+    E_Mode : (idle, busy);
+END_TYPE
+
+INTERFACE I_Axis
+METHOD Move : BOOL
+VAR_INPUT
+    mode : E_Mode;
+END_VAR
+END_METHOD
+END_INTERFACE
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &interface_options())
+                .unwrap();
+        let mut type_environment = TypeEnvironment::new();
+        let (result, diagnostics) = apply(input, &mut type_environment).unwrap();
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert!(matches!(
+            only_prototype_variable(&result).initializer,
+            InitialValueAssignmentKind::EnumeratedType(_)
+        ));
+    }
+
+    #[test]
+    fn apply_when_method_prototype_parameter_has_undeclared_type_then_p2008() {
+        let program = "
+INTERFACE I_Axis
+METHOD Move : BOOL
+VAR_INPUT
+    mode : E_Missing;
+END_VAR
+END_METHOD
+END_INTERFACE
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &interface_options())
+                .unwrap();
+        let mut type_environment = TypeEnvironment::new();
+        let (_, diagnostics) = apply(input, &mut type_environment).unwrap();
+
+        assert_eq!(1, diagnostics.len());
+        assert_eq!(Problem::UndeclaredUnknownType.code(), diagnostics[0].code);
+    }
 }
