@@ -74,10 +74,8 @@ environment.
 ## Planning and Opening Pull Requests
 
 Follow the [Development Process](specs/steering/development-standards.md#development-process).
-It covers the plan pull request that starts every non-trivial change, splitting
-prefactoring and the change itself into separate pull requests, the checks to
-run before opening each one, and what to skip for mechanical changes. People
-and AI assistants follow the same process.
+It says which pull requests to open, in what order, and what to run before
+opening each one. People and AI assistants follow the same process.
 
 ## Automated Changes
 

@@ -23,7 +23,7 @@ This repository also defines Claude Code slash commands under `.claude/commands/
 
 ## MANDATORY: Git Workflow
 
-**Follow the [Development Process](specs/steering/development-standards.md#development-process) for every change.** Read it before starting any non-trivial work: it says which pull requests to open, in what order, and what each may contain. Never commit or push directly to `main`, and run `cd compiler && just` before opening any PR (see [Pre-PR Requirements](specs/steering/common-tasks.md#critical-pre-pr-requirements)).
+**Follow the [Development Process](specs/steering/development-standards.md#development-process) for every change, and read it before non-trivial work.** Never push to `main`. Run `cd compiler && just` before opening any PR.
 
 ## Quick Reference
 
