@@ -182,7 +182,8 @@ fn classify(
 fn entry(name: &str, info: &SymbolInfo) -> IoEntry {
     IoEntry {
         name: name.to_string(),
-        type_name: info.data_type.clone().unwrap_or_default(),
+        // Not yet resolved from `SymbolInfo::type_id`.
+        type_name: String::new(),
         address: info.address.clone(),
     }
 }
@@ -363,7 +364,7 @@ mod tests {
 
     #[test]
     fn build_response_when_program_with_input_and_output_then_both_classified() {
-        // `type` population from `SymbolInfo.data_type` is not yet wired for
+        // `type` population from `SymbolInfo::type_id` is not yet wired for
         // program parameters (same gap the `symbols` tool has today). This
         // test confirms the classification; the type string is best-effort.
         let resp = build(
