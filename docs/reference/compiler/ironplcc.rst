@@ -280,8 +280,8 @@ Options
    Allow the IEC 61131-3:2013 object-oriented syntax:
    ``EXTENDS``/``IMPLEMENTS`` and qualifiers (``ABSTRACT``, ``FINAL``,
    ``PUBLIC``, ...) on ``FUNCTION_BLOCK`` declarations, ``INTERFACE``
-   declarations, ``METHOD`` declarations, and ``THIS``/``SUPER``. Support
-   beyond parsing varies by keyword — see
+   declarations, ``METHOD`` and ``PROPERTY`` declarations, and
+   ``THIS``/``SUPER``. Support beyond parsing varies by keyword — see
    :doc:`/reference/language/object-orientation/index`; the parts that are
    parsed but not yet analyzed produce
    :doc:`P9999 </reference/compiler/problems/P9999>`. A function block

@@ -243,6 +243,7 @@ pub trait Fold<E> {
     // OOP extension
     dispatch!(FunctionBlockOop);
     dispatch!(MethodDeclaration);
+    dispatch!(PropertyDeclaration);
 
     dispatch!(FunctionBlockBodyKind);
 

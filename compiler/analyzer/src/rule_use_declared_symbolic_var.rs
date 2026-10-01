@@ -69,6 +69,7 @@ pub fn apply(
     let mut checker = SymbolScopeChecker {
         table: scoped_table::ScopedTable::new(),
         inherited_fields: collect_inherited_fields(lib),
+        enclosing_properties: Vec::new(),
         diagnostics: Vec::new(),
     };
 
@@ -96,7 +97,23 @@ impl Key for TypeName {}
 struct SymbolScopeChecker<'a> {
     table: ScopedTable<'a, Id, DummyNode>,
     inherited_fields: HashMap<TypeName, Vec<VarDecl>>,
+    /// One entry per open scope: the property names of the function block
+    /// that opened it, `None` for any other scope. A name that is not a
+    /// variable but is a property of the enclosing function block is a
+    /// property access, which is not implemented yet, rather than an
+    /// undefined variable.
+    enclosing_properties: Vec<Option<Vec<Id>>>,
     diagnostics: Vec<Diagnostic>,
+}
+
+impl SymbolScopeChecker<'_> {
+    fn is_enclosing_property(&self, name: &Id) -> bool {
+        self.enclosing_properties
+            .iter()
+            .rev()
+            .find_map(|properties| properties.as_ref())
+            .is_some_and(|properties| properties.contains(name))
+    }
 }
 
 impl DiagnosticVisitor for SymbolScopeChecker<'_> {
@@ -118,6 +135,12 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
     /// than a silently unseeded scope.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
         self.table.enter();
+        self.enclosing_properties.push(match &node {
+            ScopeNode::FunctionBlock(node) => {
+                Some(node.properties.iter().map(|p| p.name.clone()).collect())
+            }
+            _ => None,
+        });
 
         match node {
             // A function's own name is its implicit result variable, so
@@ -161,6 +184,7 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
 
     fn exit_scope(&mut self) {
         self.table.exit();
+        self.enclosing_properties.pop();
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
@@ -175,6 +199,14 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
     ) -> Result<(), Infallible> {
         if self.table.find(&node.name).is_some() {
             // We found the variable being referred to
+            return Ok(());
+        }
+
+        if self.is_enclosing_property(&node.name) {
+            self.diagnostics.push(
+                Diagnostic::not_implemented(Label::span(node.name.span(), "Use of a PROPERTY"))
+                    .with_context_id("property", &node.name),
+            );
             return Ok(());
         }
 
@@ -709,5 +741,128 @@ END_PROGRAM";
             reported.iter().any(|d| d.as_str() == "variable=BBB_ONE"),
             "expected BBB_ONE, got {reported:?}"
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // PROPERTY accessors and property use.
+    // ---------------------------------------------------------------------
+
+    /// Each accessor is a method (see `PropertyDeclaration`), so its body
+    /// sees the property name (GET result, SET input), its own variables,
+    /// and the function block's fields.
+    #[test]
+    fn apply_when_property_accessors_use_property_name_and_fields_then_ok() {
+        let program = "
+FUNCTION_BLOCK FB_Motor
+VAR
+    _speed : REAL;
+END_VAR
+PROPERTY Speed : REAL
+GET
+VAR
+    tmp : REAL;
+END_VAR
+    tmp := _speed;
+    Speed := tmp;
+END_GET
+SET
+    _speed := Speed;
+END_SET
+END_PROPERTY
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_fb_inheritance(),
+        );
+        let result = apply(&library, &context, &opts_with_fb_inheritance());
+
+        assert!(result.is_ok(), "unexpected errors: {result:?}");
+    }
+
+    /// Reading a property by its bare name in the function block body is a
+    /// property access, which is not implemented yet. It must not be
+    /// reported as an undefined variable.
+    #[test]
+    fn apply_when_fb_body_uses_own_property_then_not_implemented_names_property() {
+        let program = "
+FUNCTION_BLOCK FB_Motor
+VAR
+    _speed : REAL;
+    y : REAL;
+END_VAR
+y := Running;
+PROPERTY Running : BOOL
+GET
+    Running := _speed > 0.0;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_fb_inheritance(),
+        );
+        let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
+
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, "P9999");
+        assert!(errors[0].described.contains(&"property=Running".to_owned()));
+    }
+
+    /// A method body sees the enclosing function block's properties too.
+    #[test]
+    fn apply_when_method_uses_enclosing_property_then_not_implemented() {
+        let program = "
+FUNCTION_BLOCK FB_Motor
+VAR
+    _speed : REAL;
+END_VAR
+METHOD Stop
+    Speed := 0.0;
+END_METHOD
+PROPERTY Speed : REAL
+SET
+    _speed := Speed;
+END_SET
+END_PROPERTY
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_fb_inheritance(),
+        );
+        let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
+
+        assert_eq!(errors[0].code, "P9999");
+        assert!(errors[0].described.contains(&"property=Speed".to_owned()));
+    }
+
+    /// Property names are visible only inside their own function block.
+    #[test]
+    fn apply_when_program_uses_name_of_some_property_then_undefined_variable() {
+        let program = "
+FUNCTION_BLOCK FB_Motor
+PROPERTY Speed : REAL
+GET
+    Speed := 1.0;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    y : REAL;
+END_VAR
+y := Speed;
+END_PROGRAM";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_fb_inheritance(),
+        );
+        let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
+
+        assert!(errors[0].described.contains(&"variable=Speed".to_owned()));
     }
 }

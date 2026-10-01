@@ -34,7 +34,7 @@ Supported Dialects
    :doc:`NULL </reference/language/data-types/derived/reference-types>`, and the
    :doc:`object-oriented keywords </reference/language/object-orientation/index>`
    (``EXTENDS``, ``IMPLEMENTS``, ``ABSTRACT``, ``INTERFACE``, ``METHOD``,
-   ``THIS``, and ``SUPER``). No extensions.
+   ``PROPERTY``, ``THIS``, and ``SUPER``). No extensions.
 
    **Enables:** ``--allow-long-time-types``, ``--allow-ref-to`` (the
    Edition 3 keywords), ``--allow-partial-access-syntax``,
@@ -454,8 +454,8 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    </reference/language/object-orientation/index>`:
    ``EXTENDS``/``IMPLEMENTS`` and qualifiers (``ABSTRACT``, ``FINAL``,
    ``PUBLIC``, ...) on ``FUNCTION_BLOCK`` declarations, ``INTERFACE``
-   declarations, ``METHOD`` declarations, and ``THIS``/``SUPER``. Support
-   beyond parsing varies by keyword — see
+   declarations, ``METHOD`` and ``PROPERTY`` declarations, and
+   ``THIS``/``SUPER``. Support beyond parsing varies by keyword — see
    :doc:`/reference/language/object-orientation/index` for what each one
    analyzes and executes today; the parts that are parsed but not yet
    analyzed produce problem

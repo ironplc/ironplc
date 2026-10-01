@@ -270,7 +270,7 @@ struct FileArgs {
 
     /// Allow IEC 61131-3:2013 object-oriented syntax: EXTENDS/IMPLEMENTS/
     /// ABSTRACT on FUNCTION_BLOCK declarations, INTERFACE declarations,
-    /// METHOD declarations, and THIS/SUPER. Enabled by
+    /// METHOD and PROPERTY declarations, and THIS/SUPER. Enabled by
     /// `--dialect=iec61131-3-ed3` and by the vendor dialects.
     #[arg(long)]
     allow_fb_inheritance: bool,
