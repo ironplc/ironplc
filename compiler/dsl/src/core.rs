@@ -117,7 +117,7 @@ impl SourceSpan {
     pub fn join2(start: &dyn Located, end: &dyn Located) -> Self {
         Self {
             start: start.span().start,
-            end: end.span().start,
+            end: end.span().end,
             file_id: start.span().file_id.clone(),
         }
     }
@@ -271,6 +271,17 @@ mod tests {
     #[derive(Located)]
     struct DefaultPositionNode {
         position: SourceSpan,
+    }
+
+    #[test]
+    fn join2_when_end_node_has_span_then_ends_where_end_node_ends() {
+        let start = Id::from("s").with_position(SourceSpan::range(5, 6));
+        let end = Id::from("x").with_position(SourceSpan::range(7, 8));
+
+        let span = SourceSpan::join2(&start, &end);
+
+        assert_eq!(span.start, 5);
+        assert_eq!(span.end, 8);
     }
 
     #[test]
