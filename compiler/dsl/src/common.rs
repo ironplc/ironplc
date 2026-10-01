@@ -2566,7 +2566,7 @@ pub enum InitialValueAssignmentKind {
     /// `init` sets the instance's own member values -- see
     /// [`FunctionBlockCallInitializer`].
     FunctionBlockCall(FunctionBlockCallInitializer),
-    Subrange(SubrangeSpecificationKind),
+    Subrange(SubrangeInitialValueAssignment),
     Structure(StructureInitializationDeclaration),
     Array(ArrayInitialValueAssignment),
     /// Reference type initializer (REF_TO).
@@ -2640,12 +2640,10 @@ impl InitialValueAssignmentKind {
             InitialValueAssignmentKind::FunctionBlockCall(function_block_call_initializer) => {
                 TypeReference::Named(function_block_call_initializer.type_name.clone())
             }
-            InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
-                match subrange_specification_kind {
-                    SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
-                    SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
-                }
-            }
+            InitialValueAssignmentKind::Subrange(subrange) => match &subrange.spec {
+                SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
+                SpecificationKind::Named(type_name) => TypeReference::Named(type_name.clone()),
+            },
             InitialValueAssignmentKind::Structure(structure_initialization_declaration) => {
                 TypeReference::Named(structure_initialization_declaration.type_name.clone())
             }
@@ -2679,10 +2677,10 @@ impl InitialValueAssignmentKind {
             InitialValueAssignmentKind::Array(arr) => !arr.initial_values.is_empty(),
             InitialValueAssignmentKind::Structure(st) => !st.elements_init.is_empty(),
             InitialValueAssignmentKind::Reference(re) => re.initial_value.is_some(),
+            InitialValueAssignmentKind::Subrange(sr) => sr.initial_value.is_some(),
             InitialValueAssignmentKind::None(_)
             | InitialValueAssignmentKind::FunctionBlock(_)
             | InitialValueAssignmentKind::FunctionBlockCall(_)
-            | InitialValueAssignmentKind::Subrange(_)
             | InitialValueAssignmentKind::LateResolvedType(_)
             | InitialValueAssignmentKind::SimpleExpr(_) => false,
         }
@@ -2892,6 +2890,28 @@ pub struct FunctionBlockCallInitializer {
 pub struct ArrayInitialValueAssignment {
     pub spec: ArraySpecificationKind,
     pub initial_values: Vec<ArrayInitialElementKind>,
+}
+
+/// A variable or field declared with a subrange type, named or inline
+/// (`x : INT (0..15) := 3`).
+///
+/// See section 2.4.3.2 (`subrange_spec_init`).
+#[derive(Clone, PartialEq, Debug, Recurse)]
+pub struct SubrangeInitialValueAssignment {
+    pub spec: SubrangeSpecificationKind,
+    /// The value written after `:=`, if any. Without one, the variable
+    /// starts at the lower bound of the range.
+    pub initial_value: Option<SignedInteger>,
+}
+
+impl SubrangeInitialValueAssignment {
+    /// A subrange initializer with no initial value.
+    pub fn bare(spec: SubrangeSpecificationKind) -> Self {
+        Self {
+            spec,
+            initial_value: None,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]

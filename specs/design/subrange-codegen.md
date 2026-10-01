@@ -42,19 +42,19 @@ The design builds on:
 
 ## 2. Late-Bound Type Resolution
 
-**REQ-SR-010** When a variable is declared with a named subrange type and no initializer (`VAR x : MY_RANGE; END_VAR`), the parser produces `InitialValueAssignmentKind::LateResolvedType`. The late-bound resolver must convert this to `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(type_name))`.
+**REQ-SR-010** When a variable is declared with a named subrange type and no initializer (`VAR x : MY_RANGE; END_VAR`), the parser produces `InitialValueAssignmentKind::LateResolvedType`. The late-bound resolver must convert this to `InitialValueAssignmentKind::Subrange` whose `spec` is `SpecificationKind::Named(type_name)`.
 
 **REQ-SR-011** The late-bound resolver checks `IntermediateType::is_subrange()` on the type environment entry before falling through to the scoped type table.
 
-**REQ-SR-012** The scoped type table match handles `TypeDefinitionKind::Subrange` by producing `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(type_name))`.
+**REQ-SR-012** The scoped type table match handles `TypeDefinitionKind::Subrange` by producing `InitialValueAssignmentKind::Subrange` whose `spec` is `SpecificationKind::Named(type_name)`.
 
 **REQ-SR-013** When a variable is declared with a named subrange type and an explicit initializer (`VAR x : MY_RANGE := 75; END_VAR`), the parser produces `InitialValueAssignmentKind::Simple`. The codegen `assign_variables` function detects subrange types in the `Simple` arm by consulting the type environment.
 
 ## 3. Variable Allocation
 
-**REQ-SR-020** A variable declared with `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(type_name))` receives `VarTypeInfo` resolved from the type environment's `IntermediateType::Subrange`.
+**REQ-SR-020** A variable declared with `InitialValueAssignmentKind::Subrange` whose `spec` is `SpecificationKind::Named(type_name)` receives `VarTypeInfo` resolved from the type environment's `IntermediateType::Subrange`.
 
-**REQ-SR-021** A variable declared with `InitialValueAssignmentKind::Subrange(SpecificationKind::Inline(spec))` receives `VarTypeInfo` resolved from the inline specification's `ElementaryTypeName`.
+**REQ-SR-021** A variable declared with `InitialValueAssignmentKind::Subrange` whose `spec` is `SpecificationKind::Inline(spec)` receives `VarTypeInfo` resolved from the inline specification's `ElementaryTypeName`.
 
 **REQ-SR-022** A variable declared with `InitialValueAssignmentKind::Simple` whose type name resolves to a subrange in the type environment receives `VarTypeInfo` from the subrange's base type.
 
@@ -62,9 +62,9 @@ The design builds on:
 
 ## 4. Initialization
 
-**REQ-SR-030** When a subrange variable has no explicit initial value and arrives as `InitialValueAssignmentKind::Subrange(Named(type_name))`, the codegen emits `LOAD_CONST` with the subrange's `min_value` (lower bound) followed by `STORE_VAR`.
+**REQ-SR-030** When a subrange variable has no explicit initial value and arrives as `InitialValueAssignmentKind::Subrange` whose `spec` is `Named(type_name)`, the codegen emits `LOAD_CONST` with the subrange's `min_value` (lower bound) followed by `STORE_VAR`.
 
-**REQ-SR-031** When a subrange variable has no explicit initial value and arrives as `InitialValueAssignmentKind::Subrange(Inline(spec))`, the codegen extracts the lower bound from `spec.subrange.start` and emits it as the default.
+**REQ-SR-031** When a subrange variable has no explicit initial value and arrives as `InitialValueAssignmentKind::Subrange` whose `spec` is `Inline(spec)`, the codegen extracts the lower bound from `spec.subrange.start` and emits it as the default.
 
 **REQ-SR-032** When a subrange variable has an explicit initial value (`VAR x : MY_RANGE := 75; END_VAR`), it arrives as `InitialValueAssignmentKind::Simple` and the existing Simple initialization path emits the constant.
 

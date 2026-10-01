@@ -217,7 +217,7 @@ impl ExprTypeResolver<'_> {
             InitialValueAssignmentKind::EnumeratedType(e) => Some(e.type_name.clone()),
             InitialValueAssignmentKind::FunctionBlock(fb) => Some(fb.type_name.clone()),
             InitialValueAssignmentKind::FunctionBlockCall(fbc) => Some(fbc.type_name.clone()),
-            InitialValueAssignmentKind::Subrange(spec) => match spec {
+            InitialValueAssignmentKind::Subrange(sr) => match &sr.spec {
                 SpecificationKind::Named(tn) => Some(tn.clone()),
                 SpecificationKind::Inline(sr) => Some(TypeName::from(&sr.type_name.to_string())),
             },

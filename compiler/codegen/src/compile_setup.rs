@@ -229,10 +229,10 @@ pub(crate) fn assign_variables(
                     let name = enum_init.type_name.to_string().to_uppercase();
                     (iec_type_tag::DINT, name)
                 }
-                InitialValueAssignmentKind::Subrange(ref spec) => {
+                InitialValueAssignmentKind::Subrange(ref subrange) => {
                     // Subrange variable (e.g., x : MY_RANGE or x : INT (1..100))
                     // Resolve VarTypeInfo from the subrange's base type.
-                    let subrange_type = match spec {
+                    let subrange_type = match &subrange.spec {
                         SpecificationKind::Named(type_name) => {
                             types.resolve_subrange_type(type_name)
                         }
@@ -248,7 +248,7 @@ pub(crate) fn assign_variables(
                             ctx.var_types.insert(id.clone(), type_info);
                         }
                     }
-                    let name = match spec {
+                    let name = match &subrange.spec {
                         SpecificationKind::Named(tn) => tn.to_string().to_uppercase(),
                         SpecificationKind::Inline(inline) => {
                             format!("{}", inline.type_name)
@@ -580,7 +580,7 @@ pub(crate) fn emit_initial_values(
                     emitter.emit_load_const_i32(pool_index);
                     emit_store_var(emitter, var_index, op_type);
                 }
-                InitialValueAssignmentKind::Subrange(ref spec) => {
+                InitialValueAssignmentKind::Subrange(ref subrange) => {
                     // Initialize subrange variable to its lower bound (min_value)
                     // per IEC 61131-3 §2.4.3.1 (default is the "leftmost value").
                     let var_index = ctx.var_index(id)?;
@@ -590,7 +590,7 @@ pub(crate) fn emit_initial_values(
                         .unwrap_or(DEFAULT_OP_TYPE);
 
                     // Extract min_value from the type environment or inline spec
-                    let min_value: Option<i128> = match spec {
+                    let min_value: Option<i128> = match &subrange.spec {
                         SpecificationKind::Named(type_name) => {
                             _types.get(type_name).and_then(|attrs| {
                                 if let IntermediateType::Subrange { min_value, .. } =
