@@ -209,6 +209,13 @@ impl SymbolEnvironment {
 }
 
 impl SemanticContext {
+    /// The name of the type the variable `info` describes was declared
+    /// with, or `None` when it has no name (a type spelled out in place,
+    /// such as an inline array) or the analyzer could not resolve it.
+    pub fn variable_type_name(&self, info: &SymbolInfo) -> Option<&TypeName> {
+        self.types().name_of(info.type_id?)
+    }
+
     /// All `PROGRAM` declarations in the global scope, with their
     /// variables resolved.
     pub fn programs(&self) -> Vec<ProgramSymbol<'_>> {
