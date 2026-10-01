@@ -33,16 +33,17 @@ Keywords
    * - :doc:`extends`
      - Derive a function block type or interface from a base type
      - Function block: parsed and analyzed; what a derived type inherits
-       is not yet compiled. Interface: parsed only
+       is not yet compiled. Interface: parsed and analyzed
    * - :doc:`implements`
      - Declare that a function block type provides one or more interfaces
-     - Parsed only
+     - Parsed and analyzed
    * - :doc:`abstract`
      - Mark a function block type as not directly instantiable
      - Parsed only
    * - :doc:`interface`
      - Declare an interface — a named set of method signatures
-     - Parsed only
+     - Parsed and analyzed; calls through an interface are not yet
+       supported
    * - :doc:`method`
      - Declare a method on a function block type
      - Parsed, analyzed, compiled and executed for a method declared on

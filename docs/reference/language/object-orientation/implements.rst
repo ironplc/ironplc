@@ -18,8 +18,10 @@ part of the object-oriented programming introduced in IEC 61131-3 Edition 3.
    * - **IEC 61131-3**
      - Edition 3 (object-oriented programming)
    * - **Support**
-     - Parsed only — not yet analyzed or executed
-       (:doc:`P9999 </reference/compiler/problems/P9999>`). Enable with
+     - Parsed and analyzed: the function block must provide the
+       interface's members (:doc:`P4067 </reference/compiler/problems/P4067>`,
+       :doc:`P4068 </reference/compiler/problems/P4068>`), and an instance
+       can be used where an interface it implements is required. Enable with
        ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.
 
@@ -50,6 +52,13 @@ Example
            running : BOOL;
        END_VAR
    END_FUNCTION_BLOCK
+
+The function block must declare every method and property of the
+interface, and of the interfaces it extends, with the same signature: a
+method with the same return type and the same input, output and in-out
+variables, in the same order, and a property with the same type and every
+accessor the interface declares. A member inherited from a base type through
+``EXTENDS`` counts.
 
 A type may implement several interfaces at once:
 

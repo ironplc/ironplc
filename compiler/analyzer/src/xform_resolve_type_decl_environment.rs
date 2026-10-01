@@ -113,6 +113,11 @@ impl TypeEnvironment {
                 IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. } => {
                     Err(Diagnostic::internal_error())
                 }
+                // An alias of an interface type (`TYPE T : I_X; END_TYPE`)
+                // is not supported yet.
+                IntermediateType::Interface { .. } => {
+                    Err(Diagnostic::todo_with_type(&node.base_type_name))
+                }
                 // Primitive types are handled by the is_primitive() check above,
                 // so reaching this branch indicates a bug in the compiler
                 IntermediateType::Bool
@@ -192,6 +197,9 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 }
                 self.insert_alias(&node.type_name, &fb_init.type_name)?;
             }
+            // Only the type resolver produces an interface initializer, and
+            // only for variables, so a type declaration never has one.
+            InitialValueAssignmentKind::Interface(_) => return Err(Diagnostic::internal_error()),
             InitialValueAssignmentKind::FunctionBlockCall(fb_call) => {
                 // The call-style FB initializer (`X : FB(args)`) is only
                 // produced by the parser for VAR declarations, not type
@@ -442,6 +450,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
             },
         );
         self.insert_type(&node.name, attrs);
+        if let Some(oop) = &node.oop {
+            let supertypes = oop.base.iter().chain(&oop.implements).cloned().collect();
+            self.insert_supertypes(&node.name, supertypes);
+        }
 
         Ok(node)
     }
@@ -451,22 +463,14 @@ impl Fold<Diagnostic> for TypeEnvironment {
         node: InterfaceDeclaration,
     ) -> Result<InterfaceDeclaration, Diagnostic> {
         // Register the interface name as a known type so that variables
-        // declared with an interface type (e.g. `pDrv : I_Drivable;`)
-        // resolve instead of failing with "type not declared."
-        //
-        // Modeled as an empty structure: interfaces have no fields in
-        // IronPLC's model today (method/property signatures are not yet
-        // parsed — see specs/design/beckhoff-twincat-dialect.md §1.3).
-        // This is intentionally a placeholder representation, not a claim
-        // that interface field/method access works. Any real use beyond
-        // "declare a variable of this type" is unreachable: the
-        // `InterfaceDeclaration` itself always triggers P9999 via
-        // `rule_unsupported_extension`, which blocks codegen for the whole
-        // project before this representation could matter.
+        // declared with an interface type (e.g. `comm : I_Comm;`) resolve.
         let attrs = crate::type_attributes::TypeAttributes::new(
             node.name.span(),
-            IntermediateType::Structure { fields: vec![] },
+            IntermediateType::Interface {
+                name: node.name.to_string(),
+            },
         );
+        self.insert_supertypes(&TypeName::from_id(&node.name), node.extends.clone());
         self.insert_type(&TypeName::from_id(&node.name), attrs);
         Ok(node)
     }
@@ -1074,7 +1078,7 @@ END_TYPE
     // ---------------------------------------------------------------------
 
     #[test]
-    fn apply_when_interface_declared_then_registers_as_structure_type() {
+    fn apply_when_interface_declared_then_registers_as_interface_type() {
         let program = "
 INTERFACE I_Drivable
 END_INTERFACE
@@ -1092,7 +1096,7 @@ END_INTERFACE
         assert!(result.is_ok(), "{:?}", result.err());
 
         let interface_type = env.get(&TypeName::from("I_Drivable")).unwrap();
-        assert!(interface_type.representation.is_structure());
+        assert!(interface_type.representation.is_interface());
     }
 
     #[test]

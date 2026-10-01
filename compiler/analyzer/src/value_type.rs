@@ -98,6 +98,7 @@ fn operand_name_of(types: &TypeEnvironment, id: TypeId) -> Option<TypeName> {
         | IntermediateType::Structure { .. }
         | IntermediateType::Array { .. }
         | IntermediateType::FunctionBlock { .. }
+        | IntermediateType::Interface { .. }
         | IntermediateType::Function { .. } => types.name_of(id).cloned(),
     }
 }
@@ -121,7 +122,8 @@ pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
         IntermediateType::Array { .. }
         | IntermediateType::Structure { .. }
         | IntermediateType::Enumeration { .. }
-        | IntermediateType::FunctionBlock { .. } => Some(ValueType::Composite(*id)),
+        | IntermediateType::FunctionBlock { .. }
+        | IntermediateType::Interface { .. } => Some(ValueType::Composite(*id)),
         IntermediateType::Subrange { base_type, .. } => types
             .elementary_type_name_for(base_type)
             .map(ValueType::Scalar)
@@ -188,19 +190,29 @@ pub(crate) fn check(
 /// An array or a structure is accepted where an array or structure of the
 /// same shape is, as a whole-aggregate assignment is (P2037): an inline
 /// `ARRAY[1..2] OF DINT` passes for a parameter declared with a named array
-/// type of that shape. An enumeration or a function block instance is only
-/// ever its own type. No composite is accepted for a generic category.
+/// type of that shape. A function block instance or an interface value is
+/// accepted where an interface it converts to is (see [`crate::supertypes`]).
+/// An enumeration is only ever its own type. No composite is accepted for a
+/// generic category.
 fn composite_accepted(types: &TypeEnvironment, expected: &TypeName, id: TypeId) -> bool {
     if GenericTypeName::try_from(&expected.name).is_ok() {
         return false;
     }
-    let (Some(expected), Some(actual)) = (types.get(expected), types.get_by_id(id)) else {
+    let (Some(expected_type), Some(actual)) = (types.get(expected), types.get_by_id(id)) else {
         return false;
     };
-    matches!(
-        actual.representation,
-        IntermediateType::Array { .. } | IntermediateType::Structure { .. }
-    ) && expected.representation == actual.representation
+    match &actual.representation {
+        IntermediateType::Array { .. } | IntermediateType::Structure { .. } => {
+            expected_type.representation == actual.representation
+        }
+        IntermediateType::FunctionBlock { .. } | IntermediateType::Interface { .. } => {
+            expected_type.representation.is_interface()
+                && types
+                    .name_of(id)
+                    .is_some_and(|actual| types.supertypes().is_subtype_of(actual, expected))
+        }
+        _ => false,
+    }
 }
 
 /// The type `id` identifies, as a diagnostic shows it: its name when it
@@ -250,7 +262,9 @@ fn describe_representation(types: &TypeEnvironment, representation: &Intermediat
         }
         IntermediateType::Structure { .. } => "a structure".to_string(),
         IntermediateType::Enumeration { .. } => "an enumeration".to_string(),
-        IntermediateType::FunctionBlock { name, .. } => name.clone(),
+        IntermediateType::FunctionBlock { name, .. } | IntermediateType::Interface { name } => {
+            name.clone()
+        }
         IntermediateType::Reference { target_type } => {
             format!("REF_TO {}", describe_representation(types, target_type))
         }

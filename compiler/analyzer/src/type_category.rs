@@ -36,9 +36,9 @@ impl TypeCategory {
             IntermediateType::Subrange { .. } | IntermediateType::Array { .. } => {
                 TypeCategory::Derived
             }
-            IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. } => {
-                TypeCategory::UserDefined
-            }
+            IntermediateType::FunctionBlock { .. }
+            | IntermediateType::Function { .. }
+            | IntermediateType::Interface { .. } => TypeCategory::UserDefined,
             IntermediateType::Reference { .. } => TypeCategory::Derived,
         }
     }

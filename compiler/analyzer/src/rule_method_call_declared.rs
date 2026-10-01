@@ -203,6 +203,19 @@ impl RuleMethodCallDeclared<'_> {
 
         // Cloned so that the borrow of `instances` ends here: the arms below
         // push onto `self.diagnostics`, which borrows `self` mutably.
+        // A call through an interface needs dynamic dispatch: which method
+        // runs depends on the instance the variable refers to at run time.
+        if let Some(interface) = self.instances.interface_of(instance) {
+            self.diagnostics
+                .push(Diagnostic::not_implemented(Label::span(
+                    call.span(),
+                    format!(
+                        "A method call through the interface {interface} is recognized but not yet supported by IronPLC: it needs dynamic dispatch"
+                    ),
+                )));
+            return;
+        }
+
         let fb_type = self.instances.type_of(instance).cloned();
         let Some(fb_type) = fb_type else {
             self.diagnostics.push(Self::not_in_scope(call, instance));
@@ -317,6 +330,32 @@ END_VAR
 m.Start();
 END_PROGRAM"
     );
+
+    #[test]
+    fn apply_when_method_called_through_interface_then_p9999() {
+        let options = opts_with_fb_inheritance();
+        let (library, context) = crate::test_helpers::resolve_fresh_with(
+            "
+INTERFACE I_Comm
+METHOD Send : BOOL
+END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK FB_Device
+VAR
+    comm : I_Comm;
+    ok : BOOL;
+END_VAR
+    ok := comm.Send();
+END_FUNCTION_BLOCK",
+            &options,
+        );
+        let errors = apply(&library, &context, &options).unwrap_err();
+
+        assert_eq!(1, errors.len(), "{errors:?}");
+        // P9999 == Problem::NotImplemented, whose variant is #[deprecated].
+        assert_eq!("P9999", errors[0].code);
+    }
 
     rule_err1_with!(
         apply_when_method_not_declared_anywhere_then_error,

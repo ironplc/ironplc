@@ -108,6 +108,7 @@ pub(crate) fn resolve_field_op_type(field_type: &IntermediateType) -> Option<OpT
         | IntermediateType::Array { .. }
         | IntermediateType::String { .. }
         | IntermediateType::FunctionBlock { .. }
+        | IntermediateType::Interface { .. }
         | IntermediateType::Function { .. } => None,
     }
 }

@@ -109,6 +109,7 @@ fn operand_type_info(representation: &IntermediateType) -> Option<VarTypeInfo> {
         | IntermediateType::Structure { .. }
         | IntermediateType::Array { .. }
         | IntermediateType::FunctionBlock { .. }
+        | IntermediateType::Interface { .. }
         | IntermediateType::Function { .. } => None,
     }
 }
@@ -208,6 +209,7 @@ fn var_type_info(representation: &IntermediateType) -> Option<VarTypeInfo> {
         | IntermediateType::Array { .. }
         | IntermediateType::Subrange { .. }
         | IntermediateType::FunctionBlock { .. }
+        | IntermediateType::Interface { .. }
         | IntermediateType::Function { .. }
         | IntermediateType::Reference { .. } => return None,
     };

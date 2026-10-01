@@ -304,6 +304,9 @@ impl Fold<Diagnostic> for InitializerFolder<'_> {
             ScopeNode::FunctionBlock(node) => &node.variables,
             ScopeNode::Program(node) => &node.variables,
             ScopeNode::Method(node) => &node.variables,
+            ScopeNode::MethodPrototype(node) => &node.variables,
+            // An interface declares no variables of its own.
+            ScopeNode::Interface(_) => return Ok(()),
         };
         register_constants(&mut self.constants, variables);
 

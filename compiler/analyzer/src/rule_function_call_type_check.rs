@@ -237,8 +237,12 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                         .add(&node.name, Declared::Typed(return_type.to_type_name()));
                 }
             }
-            // Neither has a result variable.
-            ScopeNode::FunctionBlock(_) | ScopeNode::Program(_) => {}
+            // None of these has a result variable to assign: a prototype
+            // and an interface have no body.
+            ScopeNode::FunctionBlock(_)
+            | ScopeNode::Program(_)
+            | ScopeNode::MethodPrototype(_)
+            | ScopeNode::Interface(_) => {}
         }
 
         Ok(())

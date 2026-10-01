@@ -223,6 +223,38 @@ impl LibraryRenderer {
         self.outdent();
         Ok(())
     }
+
+    /// Renders `METHOD qualifiers name (: return_type)?` and ends the line.
+    fn render_method_header(
+        &mut self,
+        qualifiers: &MemberQualifiers,
+        name: &Id,
+        return_type: &Option<FunctionReturnType>,
+    ) -> Result<(), Diagnostic> {
+        self.write_ws("METHOD");
+        self.write_qualifiers(qualifiers);
+        self.visit_id(name)?;
+        if let Some(return_type) = return_type {
+            self.write_ws(":");
+            self.visit_function_return_type(return_type)?;
+        }
+        self.newline();
+        Ok(())
+    }
+
+    /// Renders `PROPERTY name : type` and ends the line.
+    fn render_property_header(
+        &mut self,
+        name: &Id,
+        property_type: &FunctionReturnType,
+    ) -> Result<(), Diagnostic> {
+        self.write_ws("PROPERTY");
+        self.visit_id(name)?;
+        self.write_ws(":");
+        self.visit_function_return_type(property_type)?;
+        self.newline();
+        Ok(())
+    }
 }
 
 impl Visitor<Diagnostic> for LibraryRenderer {
@@ -905,6 +937,14 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_type_name(&node.type_name)
     }
 
+    // A variable of an interface type (OOP extension) has no initializer.
+    fn visit_interface_initializer(
+        &mut self,
+        node: &InterfaceInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)
+    }
+
     // CODESYS/TwinCAT call-style FB instance initializer:
     // `name : FB_Type(args)`. Render the type name followed by the
     // parenthesized constructor argument list.
@@ -1075,15 +1115,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &MethodDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_ws("METHOD");
-        self.write_qualifiers(&node.qualifiers);
-        self.visit_id(&node.name)?;
-        if let Some(return_type) = &node.return_type {
-            self.write_ws(":");
-            self.visit_function_return_type(return_type)?;
-        }
-        self.newline();
-
+        self.render_method_header(&node.qualifiers, &node.name, &node.return_type)?;
         self.render_callable_body(&node.variables, &node.edge_variables, &node.body)?;
 
         self.write_ws("END_METHOD");
@@ -1099,11 +1131,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &PropertyDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_ws("PROPERTY");
-        self.visit_id(&node.name)?;
-        self.write_ws(":");
-        self.visit_function_return_type(&node.property_type)?;
-        self.newline();
+        self.render_property_header(&node.name, &node.property_type)?;
 
         if let Some(get) = &node.get {
             self.write_ws("GET");
@@ -1130,9 +1158,43 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    // OOP extension: INTERFACE ... END_INTERFACE. Only the
-    // header renders — method/property signatures are not yet parsed (see
-    // specs/design/beckhoff-twincat-dialect.md §1.3).
+    // OOP extension: a method signature inside an INTERFACE.
+    fn visit_method_prototype(
+        &mut self,
+        node: &MethodPrototype,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.render_method_header(&node.qualifiers, &node.name, &node.return_type)?;
+        self.render_callable_body(&node.variables, &node.edge_variables, &[])?;
+        self.write_ws("END_METHOD");
+        self.newline();
+        Ok(())
+    }
+
+    // OOP extension: a property signature inside an INTERFACE, with an empty
+    // accessor for each one it declares.
+    fn visit_property_prototype(
+        &mut self,
+        node: &PropertyPrototype,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.render_property_header(&node.name, &node.property_type)?;
+        if node.get.is_some() {
+            self.write_ws("GET");
+            self.write_ws("END_GET");
+            self.newline();
+        }
+        if node.set.is_some() {
+            self.write_ws("SET");
+            self.write_ws("END_SET");
+            self.newline();
+        }
+        self.write_ws("END_PROPERTY");
+        self.newline();
+        Ok(())
+    }
+
+    // OOP extension: INTERFACE ... END_INTERFACE. Methods render before
+    // properties, as in a function block; the source order between the two
+    // kinds is not kept.
     fn visit_interface_declaration(
         &mut self,
         node: &InterfaceDeclaration,
@@ -1149,6 +1211,13 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             }
         }
         self.newline();
+
+        for method in node.methods.iter() {
+            self.visit_method_prototype(method)?;
+        }
+        for property in node.properties.iter() {
+            self.visit_property_prototype(property)?;
+        }
 
         self.write_ws("END_INTERFACE");
         self.newline();

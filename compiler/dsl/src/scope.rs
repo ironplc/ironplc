@@ -2,7 +2,9 @@
 //!
 //! A scope-bearing declaration is one whose variable declarations are
 //! visible only inside its own body: a `FUNCTION`, a `FUNCTION_BLOCK`, a
-//! `PROGRAM`, a `METHOD`. Rather than each analysis pass deciding for
+//! `PROGRAM`, a `METHOD`, an interface's method prototype (whose parameters
+//! are its variables), and the `INTERFACE` that encloses those prototypes.
+//! Rather than each analysis pass deciding for
 //! itself which node kinds those are — and silently getting no scope for
 //! the kinds it forgot — the traversal opens and closes the scope, and a
 //! pass that cares implements
@@ -21,7 +23,8 @@
 //! [`Fold`]: crate::fold::Fold
 
 use crate::common::{
-    FunctionBlockDeclaration, FunctionDeclaration, MethodDeclaration, ProgramDeclaration,
+    FunctionBlockDeclaration, FunctionDeclaration, InterfaceDeclaration, MethodDeclaration,
+    MethodPrototype, ProgramDeclaration,
 };
 
 /// The declaration that opened the scope the traversal is entering.
@@ -38,6 +41,12 @@ pub enum ScopeNode<'a> {
     FunctionBlock(&'a FunctionBlockDeclaration),
     Program(&'a ProgramDeclaration),
     Method(&'a MethodDeclaration),
+    /// An interface's method signature: parameters and an optional return
+    /// type, but no body.
+    MethodPrototype(&'a MethodPrototype),
+    /// An interface. It declares no variables; it is a scope so that its
+    /// method prototypes nest inside it.
+    Interface(&'a InterfaceDeclaration),
 }
 
 /// Implemented by every declaration marked `#[recurse(scope)]`.
@@ -70,5 +79,17 @@ impl ScopeBearing for ProgramDeclaration {
 impl ScopeBearing for MethodDeclaration {
     fn as_scope_node(&self) -> ScopeNode<'_> {
         ScopeNode::Method(self)
+    }
+}
+
+impl ScopeBearing for MethodPrototype {
+    fn as_scope_node(&self) -> ScopeNode<'_> {
+        ScopeNode::MethodPrototype(self)
+    }
+}
+
+impl ScopeBearing for InterfaceDeclaration {
+    fn as_scope_node(&self) -> ScopeNode<'_> {
+        ScopeNode::Interface(self)
     }
 }
