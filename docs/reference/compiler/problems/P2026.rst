@@ -137,8 +137,8 @@ the -1 its bits would read as in a ``DINT``:
 The same holds wherever a constant is stored: an element of an array
 initializer (including each repetition, as in ``[2(300)]``), an element of a
 structure or function block instance initializer, the default of a structure
-field or a type declaration, and an argument passed to a function or function
-block input, which is checked against the parameter's type:
+field or a type declaration, and an argument passed to a function, function
+block or method input, which is checked against the parameter's type:
 
 .. code-block::
 

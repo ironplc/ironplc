@@ -1,6 +1,9 @@
 use crate::stages::analyze;
 use ironplc_dsl::core::FileId;
-use ironplc_parser::{options::CompilerOptions, parse_program};
+use ironplc_parser::{
+    options::{CompilerOptions, Dialect},
+    parse_program,
+};
 use ironplc_problems::Problem;
 use rstest::rstest;
 
@@ -18,9 +21,12 @@ fn real_out_of_range_count(program: &str) -> usize {
 }
 
 fn problem_count(program: &str, problem: Problem) -> usize {
-    let options = CompilerOptions::default();
-    let library = parse_program(program, &FileId::default(), &options).unwrap();
-    let (_library, context) = analyze(&[&library], &options).unwrap();
+    problem_count_with(program, problem, &CompilerOptions::default())
+}
+
+fn problem_count_with(program: &str, problem: Problem, options: &CompilerOptions) -> usize {
+    let library = parse_program(program, &FileId::default(), options).unwrap();
+    let (_library, context) = analyze(&[&library], options).unwrap();
     context
         .diagnostics()
         .iter()
@@ -578,4 +584,98 @@ fn apply_when_type_default_out_of_range_then_err(
         ),
         expected
     );
+}
+
+// --- Method call arguments ---
+//
+// Methods are a CODESYS/TwinCAT extension, so these run in both dialects.
+
+const METHOD_TYPES: &str = "
+FUNCTION_BLOCK BASE
+METHOD Put
+VAR_INPUT i : USINT; r : REAL; END_VAR
+END_METHOD
+METHOD Get : USINT
+VAR_INPUT i : USINT; END_VAR
+Get := i;
+END_METHOD
+METHOD Swap
+VAR_IN_OUT io : USINT; END_VAR
+VAR_INPUT i : USINT; END_VAR
+END_METHOD
+METHOD Again
+THIS^.Put(300, 1.0E300);
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK DERIVED EXTENDS BASE
+END_FUNCTION_BLOCK
+";
+
+/// Analyzes `program` in `dialect`, returning (integer, real) out-of-range
+/// counts.
+fn counts_in_dialect(program: &str, dialect: Dialect) -> (usize, usize) {
+    let options = CompilerOptions::from_dialect(dialect);
+    (
+        problem_count_with(program, Problem::ConstantOverflow, &options),
+        problem_count_with(program, Problem::RealLiteralOutOfRange, &options),
+    )
+}
+
+/// A method argument is checked against the parameter it binds to, named or
+/// positional, wherever the method is declared in the `EXTENDS` chain.
+///
+/// A positional argument to a method that declares a `VAR_IN_OUT` is not
+/// checked: the analyzer binds it among the `VAR_INPUT` parameters and code
+/// generation among the `VAR_INPUT` and `VAR_IN_OUT` ones, so there is no
+/// one parameter to check it against. A `THIS^` receiver is not resolved
+/// yet (#1406) and is not checked either.
+#[rstest]
+#[case::named("b.Put(i := 300, r := 1.0E300);\n", (1, 1))]
+#[case::positional("b.Put(300, 1.0E300);\n", (1, 1))]
+#[case::in_range("b.Put(255, 1.0);\n", (0, 0))]
+#[case::folded("b.Put(255 + 1, 1.0);\n", (1, 0))]
+#[case::inherited("d.Put(i := 300, r := 1.0);\n", (1, 0))]
+#[case::expression("y := b.Get(300);\n", (1, 0))]
+#[case::named_in_out("b.Swap(io := y, i := 300);\n", (1, 0))]
+#[case::positional_with_in_out("b.Swap(300);\n", (0, 0))]
+#[case::unknown_method("b.Nope(300);\n", (0, 0))]
+#[case::unknown_instance("z.Put(300, 1.0);\n", (0, 0))]
+fn apply_when_method_argument_out_of_range_then_err(
+    #[case] body: &str,
+    #[case] expected: (usize, usize),
+    #[values(Dialect::Codesys, Dialect::TwinCat)] dialect: Dialect,
+) {
+    let program = format!(
+        "{METHOD_TYPES}{}",
+        program_with("b : BASE;\nd : DERIVED;\ny : USINT;\n", body)
+    );
+
+    assert_eq!(counts_in_dialect(&program, dialect), expected);
+}
+
+/// An instance declared elsewhere and brought in with `VAR_EXTERNAL` is
+/// resolved through its external declaration.
+#[rstest]
+fn apply_when_method_called_on_external_instance_then_err(
+    #[values(Dialect::Codesys, Dialect::TwinCat)] dialect: Dialect,
+) {
+    let program = format!(
+        "{METHOD_TYPES}
+PROGRAM main
+VAR_EXTERNAL g : BASE; END_VAR
+g.Put(i := 300, r := 1.0);
+END_PROGRAM
+
+CONFIGURATION config
+VAR_GLOBAL g : BASE; END_VAR
+RESOURCE res ON PLC
+TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+PROGRAM plc_task_instance WITH plc_task : main;
+END_RESOURCE
+END_CONFIGURATION
+"
+    );
+
+    assert_eq!(counts_in_dialect(&program, dialect), (1, 0));
 }

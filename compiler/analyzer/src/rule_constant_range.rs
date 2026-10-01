@@ -18,8 +18,8 @@
 //! A constant is checked wherever it is stored: an assignment, a variable's
 //! initial value, the elements of an array, structure or function block
 //! instance initializer, the default of a structure field or type
-//! declaration, and an argument passed to a function or function block
-//! input, against the type of the parameter it binds to.
+//! declaration, and an argument passed to a function, function block or
+//! method input, against the type of the parameter it binds to.
 //!
 //! How a literal was spelled makes no difference: `16#1FF` is 511 whichever
 //! radix it was written in, and 511 is not a `USINT`. The radix does not
@@ -83,6 +83,8 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
+    call_assignment_check::bind_inputs,
+    callee_resolution::FunctionBlocks,
     function_environment::FunctionEnvironment,
     intermediate_type::{ByteSized, FunctionBlockVarType, IntermediateType},
     result::SemanticResult,
@@ -99,10 +101,12 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
+    let function_blocks = FunctionBlocks::from_library(lib);
     run_rule(
         RuleConstantRange {
             type_environment: context.types(),
             function_environment: context.functions(),
+            function_blocks: &function_blocks,
             // `Declarations::new` opens the base scope, where declarations
             // made outside any POU land. Opening another here would leave the
             // stack unbalanced when the table drops.
@@ -117,6 +121,9 @@ struct RuleConstantRange<'a> {
     type_environment: &'a TypeEnvironment,
     /// The signature of every function, which states its parameters' types.
     function_environment: &'a FunctionEnvironment,
+    /// The declaration of every user-defined function block, which states
+    /// the order of its inputs.
+    function_blocks: &'a FunctionBlocks<'a>,
     /// The declared type of every variable in scope.
     declarations: Declarations<'a>,
     diagnostics: Vec<Diagnostic>,
@@ -498,6 +505,67 @@ impl RuleConstantRange<'_> {
         }
     }
 
+    /// Checks each input argument of a method call against the type of the
+    /// parameter it binds to.
+    ///
+    /// The method is found as `rule_method_call_declared` finds it: by the
+    /// declared type of the instance, then up that type's `EXTENDS` chain. A
+    /// `THIS^` or `SUPER^` receiver is not resolved yet (#1406, reported by
+    /// that rule), so its arguments are not checked.
+    fn check_method_call_arguments(&mut self, node: &MethodCall) {
+        let MethodReceiver::Instance(instance) = &node.receiver else {
+            return;
+        };
+        let Some(declared) = self.declarations.find(instance) else {
+            return;
+        };
+        let TypeReference::Named(type_name) = declared.type_reference() else {
+            return;
+        };
+        let Some((_, method)) = self
+            .function_blocks
+            .resolve_method(&type_name, &node.method)
+        else {
+            return;
+        };
+
+        // The analyzer binds a positional argument among the `VAR_INPUT`
+        // parameters, and code generation among the `VAR_INPUT` and
+        // `VAR_IN_OUT` ones in declaration order. The two agree unless the
+        // method declares a `VAR_IN_OUT`, and then there is no one parameter
+        // to check the argument against, so none is checked.
+        let positional = node
+            .params
+            .iter()
+            .any(|param| matches!(param, ParamAssignmentKind::PositionalInput(_)));
+        let has_in_out = method
+            .variables
+            .iter()
+            .any(|decl| decl.var_type == VariableType::InOut);
+        if positional && has_in_out {
+            return;
+        }
+
+        self.check_declared_arguments(method, &node.params);
+    }
+
+    /// Checks each input argument in `params` against the declared type of
+    /// the parameter of `owner` that `bind_inputs` binds it to.
+    fn check_declared_arguments(
+        &mut self,
+        owner: &dyn HasVariables,
+        params: &[ParamAssignmentKind],
+    ) {
+        for (param, declared) in bind_inputs(owner, params) {
+            let expected = declared.and_then(|decl| {
+                variable_type::resolve_initializer(&decl.initializer, self.type_environment)
+            });
+            if let (Some(expected), Some(arg)) = (expected, param.input_expr()) {
+                self.check_expr(arg, &expected);
+            }
+        }
+    }
+
     /// Checks a comparison's literals against the type of the other side.
     ///
     /// `IF c = 200` compares at `c`'s type, so a literal that `c` can never
@@ -647,6 +715,11 @@ impl Visitor<Infallible> for RuleConstantRange<'_> {
 
     fn visit_fb_call(&mut self, node: &FbCall) -> Result<(), Infallible> {
         self.check_fb_call_arguments(node);
+        node.recurse_visit(self)
+    }
+
+    fn visit_method_call(&mut self, node: &MethodCall) -> Result<(), Infallible> {
+        self.check_method_call_arguments(node);
         node.recurse_visit(self)
     }
 
