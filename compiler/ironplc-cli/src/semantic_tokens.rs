@@ -16,7 +16,7 @@ pub(crate) fn to_semantic_tokens(tokens: Vec<Token>) -> Vec<SemanticToken> {
     // emitted token, so fold over the sequence to convert them.
     let absolute: Vec<SemanticToken> = tokens
         .into_iter()
-        .filter_map(|tok| LspTokenType(tok).into())
+        .flat_map(|tok| Vec::<SemanticToken>::from(LspTokenType(tok)))
         .collect();
     to_deltas(absolute)
 }
@@ -69,7 +69,9 @@ const OPERATOR_INDEX: u32 = 5;
 
 struct LspTokenType(Token);
 
-impl From<LspTokenType> for Option<SemanticToken> {
+/// A lexer token becomes no semantic token when its type is not coloured, and
+/// otherwise one semantic token per line it covers.
+impl From<LspTokenType> for Vec<SemanticToken> {
     fn from(val: LspTokenType) -> Self {
         let token_type = match val.0.token_type {
             TokenType::Newline => None,
@@ -252,14 +254,38 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::Ldt => Some(KEYWORD_INDEX),
         };
 
-        token_type.map(|token_type| SemanticToken {
-            delta_line: val.0.line as u32,
-            delta_start: val.0.col as u32,
-            length: val.0.text.len() as u32,
-            token_type,
-            token_modifiers_bitset: 0,
-        })
+        match token_type {
+            Some(token_type) => split_lines(&val.0, token_type),
+            None => Vec::new(),
+        }
     }
+}
+
+/// Split `token` into one absolute semantic token per line of its text.
+///
+/// The LSP specification does not allow a semantic token to span lines, but
+/// a comment, a pragma or a string can. The first part starts at the token's
+/// position and each later part at the start of its line. A part excludes its
+/// line terminator (`\n` or `\r\n`), and an empty part (a blank line inside
+/// a comment) produces no token. Columns and lengths count UTF-16 code units,
+/// the protocol's default position encoding.
+fn split_lines(token: &Token, token_type: u32) -> Vec<SemanticToken> {
+    token
+        .text
+        .split('\n')
+        .enumerate()
+        .filter_map(|(index, part)| {
+            let part = part.strip_suffix('\r').unwrap_or(part);
+            let length = part.encode_utf16().count() as u32;
+            (length > 0).then(|| SemanticToken {
+                delta_line: (token.line + index) as u32,
+                delta_start: if index == 0 { token.col as u32 } else { 0 },
+                length,
+                token_type,
+                token_modifiers_bitset: 0,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -635,6 +661,139 @@ END_CONFIGURATION"#;
         assert_eq!(
             actual,
             [("attribute", VARIABLE), ("'qualified_only'", STRING)]
+        );
+    }
+
+    /// Lex `source` with every dialect keyword enabled and resolve each
+    /// emitted semantic token to `(line, col, lexeme, legend name)`.
+    fn lsp_tokens(source: &str) -> Vec<(u32, u32, &str, &'static str)> {
+        let (tokens, diagnostics) =
+            tokenize_program(source, &FileId::default(), &every_keyword_enabled(), 0, 0);
+        assert!(
+            diagnostics.is_empty(),
+            "source must lex cleanly: {diagnostics:?}"
+        );
+        let semantic = to_semantic_tokens(tokens);
+
+        // The LSP specification does not allow a token to span lines: every
+        // token must end within its own line, before the line terminator.
+        let lines: Vec<&str> = source.split('\n').collect();
+        let resolved = resolve_lsp_tokens(source, &semantic);
+        for ((line, col, lexeme, _), token) in resolved.iter().zip(&semantic) {
+            let row = lines[*line as usize].trim_end_matches('\r');
+            let row_length = row.encode_utf16().count() as u32;
+            assert!(
+                col + token.length <= row_length,
+                "token {lexeme:?} at ({line},{col}) of length {} runs past the end of {row:?}",
+                token.length
+            );
+        }
+
+        resolved
+            .into_iter()
+            .map(|(line, col, lexeme, ty)| {
+                (line, col, lexeme, TOKEN_TYPE_LEGEND[ty as usize].as_str())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn to_semantic_tokens_when_block_comment_spans_lines_then_one_token_per_line() {
+        let actual = lsp_tokens("(* first\n   second *)\nx");
+        assert_eq!(
+            actual,
+            [
+                (0, 0, "(* first", COMMENT),
+                (1, 0, "   second *)", COMMENT),
+                (2, 0, "x", VARIABLE),
+            ]
+        );
+    }
+
+    #[test]
+    fn to_semantic_tokens_when_c_style_comment_spans_lines_then_one_token_per_line() {
+        let actual = lsp_tokens("/* first\nsecond */ x");
+        assert_eq!(
+            actual,
+            [
+                (0, 0, "/* first", COMMENT),
+                (1, 0, "second */", COMMENT),
+                (1, 10, "x", VARIABLE),
+            ]
+        );
+    }
+
+    #[test]
+    fn to_semantic_tokens_when_comment_spans_crlf_lines_then_tokens_exclude_carriage_return() {
+        let actual = lsp_tokens("(* first\r\nsecond *) x");
+        assert_eq!(
+            actual,
+            [
+                (0, 0, "(* first", COMMENT),
+                (1, 0, "second *)", COMMENT),
+                (1, 10, "x", VARIABLE),
+            ]
+        );
+    }
+
+    #[test]
+    fn to_semantic_tokens_when_comment_has_blank_line_then_blank_line_has_no_token() {
+        let actual = lsp_tokens("(* first\n\nthird *)");
+        assert_eq!(
+            actual,
+            [(0, 0, "(* first", COMMENT), (2, 0, "third *)", COMMENT)]
+        );
+    }
+
+    #[test]
+    fn to_semantic_tokens_when_string_spans_lines_then_one_token_per_line() {
+        let actual = lsp_tokens("s := 'first\nsecond'; x");
+        assert_eq!(
+            actual,
+            [
+                (0, 0, "s", VARIABLE),
+                (0, 2, ":=", OPERATOR),
+                (0, 5, "'first", STRING),
+                (1, 0, "second'", STRING),
+                (1, 9, "x", VARIABLE),
+            ]
+        );
+    }
+
+    #[test]
+    fn to_semantic_tokens_when_pragma_spans_lines_then_one_token_per_line() {
+        let actual = lsp_tokens("{attribute\n'qualified_only'} x");
+        assert_eq!(
+            actual,
+            [
+                (0, 0, "{attribute", KEYWORD),
+                (1, 0, "'qualified_only'}", KEYWORD),
+                (1, 18, "x", VARIABLE),
+            ]
+        );
+    }
+
+    #[test]
+    fn to_semantic_tokens_when_comment_has_non_ascii_text_then_counts_utf16_code_units() {
+        // `é` is one UTF-16 code unit, `𝄞` two (a surrogate pair); both take
+        // more than one byte, so a byte count would overrun the comment.
+        let source = "(* é𝄞\né *) x";
+        let (tokens, _) =
+            tokenize_program(source, &FileId::default(), &every_keyword_enabled(), 0, 0);
+        let lengths: Vec<u32> = to_semantic_tokens(tokens)
+            .iter()
+            .map(|t| t.length)
+            .collect();
+        assert_eq!(lengths, [6, 4, 1]);
+
+        let actual = lsp_tokens(source);
+        assert_eq!(
+            actual,
+            [
+                (0, 0, "(* é𝄞", COMMENT),
+                (1, 0, "é *)", COMMENT),
+                (1, 5, "x", VARIABLE),
+            ]
         );
     }
 }
