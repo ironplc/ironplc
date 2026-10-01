@@ -10,8 +10,10 @@ target of an assignment, the control variable of a ``FOR`` loop, the target
 of an output binding (``=>``), or an argument bound to a ``VAR_IN_OUT``
 parameter.
 
-The same applies to a global declared ``VAR_GLOBAL CONSTANT``, written
-through its ``VAR_EXTERNAL CONSTANT`` declaration.
+The same applies to a global written through a ``VAR_EXTERNAL CONSTANT``
+declaration. A write through a plain ``VAR_EXTERNAL`` is checked against that
+declaration only, so it is not affected by another program that declares the
+same global ``VAR_EXTERNAL CONSTANT``.
 
 Example
 -------

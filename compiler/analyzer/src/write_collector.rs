@@ -100,8 +100,10 @@ pub(crate) enum WriteKind {
 /// One write the collector resolved to exactly one declaration.
 #[derive(Clone, Debug)]
 pub(crate) struct WriteSite {
-    /// The scope that declares the written variable.
-    pub(crate) scope: ScopeKind,
+    /// The scope of the declaration the write reaches. A write through a
+    /// `VAR_EXTERNAL` keeps the scope of the `VAR_EXTERNAL`, not that of its
+    /// global, so its qualifier is the one the write sees.
+    pub(crate) declaration: ScopeKind,
     /// The written name, as it appears at the write; its span is the write.
     pub(crate) name: Id,
     pub(crate) kind: WriteKind,
@@ -110,7 +112,8 @@ pub(crate) struct WriteSite {
 /// The declarations the program writes.
 #[derive(Default)]
 pub(crate) struct Writes {
-    /// Declarations resolved exactly: the scope that declares the variable,
+    /// Declarations resolved exactly: the scope that declares the variable
+    /// the write changes (the global, for a write through a `VAR_EXTERNAL`),
     /// and its name.
     pub(crate) resolved: HashSet<(ScopeKind, Id)>,
     /// Names written through a path that does not resolve to one
@@ -156,17 +159,12 @@ impl WriteCollector<'_> {
     /// The scope whose declaration a bare `name` reaches from the current
     /// scope: the innermost enclosing unit that declares it, then the
     /// `EXTENDS` chain of the enclosing function block, then the globals. A
-    /// `VAR_EXTERNAL` declaration stands for its global.
+    /// `VAR_EXTERNAL` declaration keeps its own scope; `mark` decides that
+    /// the write changes the global.
     fn declaring_scope(&self, name: &Id) -> ScopeKind {
         let symbol = self.symbol_environment.find(name, &self.current_scope());
         match symbol {
-            Some(symbol) if symbol.scope != ScopeKind::Global => {
-                if symbol.is_external {
-                    ScopeKind::Global
-                } else {
-                    symbol.scope.clone()
-                }
-            }
+            Some(symbol) if symbol.scope != ScopeKind::Global => symbol.scope.clone(),
             _ => self
                 .scope
                 .first()
@@ -187,17 +185,28 @@ impl WriteCollector<'_> {
     }
 
     fn mark(&mut self, name: &Id) {
-        let scope = self.declaring_scope(name);
-        self.mark_resolved(scope, name);
+        let declaration = self.declaring_scope(name);
+        // A write through a `VAR_EXTERNAL` writes its global.
+        let written = match self.symbol_environment.find(name, &declaration) {
+            Some(symbol) if symbol.is_external => ScopeKind::Global,
+            _ => declaration.clone(),
+        };
+        self.record(declaration, written, name);
     }
 
     fn mark_resolved(&mut self, scope: ScopeKind, name: &Id) {
+        self.record(scope.clone(), scope, name);
+    }
+
+    /// Records a write of `name` whose declaration is in `declaration` and
+    /// that changes the variable declared in `written`.
+    fn record(&mut self, declaration: ScopeKind, written: ScopeKind, name: &Id) {
         self.written.sites.push(WriteSite {
-            scope: scope.clone(),
+            declaration,
             name: name.clone(),
             kind: self.kind,
         });
-        self.written.resolved.insert((scope, name.clone()));
+        self.written.resolved.insert((written, name.clone()));
     }
 
     fn mark_any_scope(&mut self, name: &Id) {

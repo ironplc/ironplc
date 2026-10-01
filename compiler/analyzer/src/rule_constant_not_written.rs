@@ -33,22 +33,16 @@
 //!     k := 2;
 //! END_PROGRAM
 //! ```
-use std::collections::HashMap;
-use std::convert::Infallible;
-
 use ironplc_dsl::{
     common::*,
-    core::{Id, Located, SourceSpan},
+    core::Located,
     diagnostic::{Diagnostic, Label},
-    scope::ScopeNode,
-    visitor::Visitor,
 };
 use ironplc_problems::Problem;
 
 use crate::{
     result::SemanticResult,
     semantic_context::SemanticContext,
-    symbol_environment::{ScopeKind, ScopePath},
     write_collector::{collect, WriteKind},
 };
 use ironplc_parser::options::CompilerOptions;
@@ -58,27 +52,25 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut constants = ConstantDeclarations::default();
-    let Ok(()) = constants.walk(lib);
-
     let writes = collect(lib, &context.types, &context.functions, &context.symbols).written;
 
+    // The qualifier that counts is the one of the declaration the write
+    // reaches: a write through a plain `VAR_EXTERNAL` is allowed even when
+    // another unit declares the same global `VAR_EXTERNAL CONSTANT`.
     let diagnostics: Vec<Diagnostic> = writes
         .sites
         .iter()
         .filter(|site| is_statement_write(site.kind))
         .filter_map(|site| {
-            let declared = constants
-                .declarations
-                .get(&(site.scope.clone(), site.name.clone()))?;
-            Some(
+            let declared = context.symbols.find(&site.name, &site.declaration)?;
+            declared.is_constant().then(|| {
                 Diagnostic::problem(
                     Problem::ConstantVariableWritten,
                     Label::span(site.name.span(), "Write to a constant"),
                 )
                 .with_context_id("variable", &site.name)
-                .with_secondary(Label::span(declared.clone(), "Declared CONSTANT")),
-            )
+                .with_secondary(Label::span(declared.span.clone(), "Declared CONSTANT"))
+            })
         })
         .collect();
 
@@ -100,51 +92,6 @@ fn is_statement_write(kind: WriteKind) -> bool {
         | WriteKind::AddressTaken
         | WriteKind::Invocation
         | WriteKind::Other => false,
-    }
-}
-
-/// The `CONSTANT` declarations of a library, keyed the way the write
-/// collector resolves a write: the declaring scope and the name. A
-/// `VAR_GLOBAL` or `VAR_EXTERNAL` declaration is a global.
-#[derive(Default)]
-struct ConstantDeclarations {
-    /// The declarations the walk is inside, outermost first.
-    scope: Vec<Id>,
-    declarations: HashMap<(ScopeKind, Id), SourceSpan>,
-}
-
-impl Visitor<Infallible> for ConstantDeclarations {
-    type Value = ();
-
-    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.scope.push(match node {
-            ScopeNode::Function(node) => node.name.clone(),
-            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
-            ScopeNode::Program(node) => node.name.clone(),
-            ScopeNode::Method(node) => node.name.clone(),
-        });
-        Ok(())
-    }
-
-    fn exit_scope(&mut self) {
-        self.scope.pop();
-    }
-
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-        if node.qualifier == DeclarationQualifier::Constant {
-            if let Some(name) = node.identifier.symbolic_id() {
-                let scope = match (&node.var_type, self.scope.first()) {
-                    (VariableType::Global | VariableType::External, _) | (_, None) => {
-                        ScopeKind::Global
-                    }
-                    (_, Some(_)) => ScopeKind::Named(ScopePath::new(self.scope.clone())),
-                };
-                self.declarations
-                    .entry((scope, name.clone()))
-                    .or_insert_with(|| name.span());
-            }
-        }
-        node.recurse_visit(self)
     }
 }
 
@@ -254,6 +201,60 @@ CONFIGURATION config
     END_RESOURCE
 END_CONFIGURATION",
         Problem::ConstantVariableWritten
+    );
+
+    rule_ctx_err_code!(
+        apply_when_assign_through_external_constant_to_non_constant_global_then_error,
+        "
+PROGRAM main
+VAR_EXTERNAL CONSTANT
+    g : INT;
+END_VAR
+    g := 5;
+END_PROGRAM
+
+CONFIGURATION config
+    VAR_GLOBAL
+        g : INT := 10;
+    END_VAR
+    RESOURCE res ON PLC
+        TASK t(INTERVAL := T#100ms, PRIORITY := 1);
+        PROGRAM inst WITH t : main;
+    END_RESOURCE
+END_CONFIGURATION",
+        Problem::ConstantVariableWritten
+    );
+
+    rule_ctx_ok!(
+        apply_when_assign_through_external_while_other_pou_declares_it_external_constant_then_ok,
+        "
+PROGRAM reader
+VAR_EXTERNAL CONSTANT
+    g : INT;
+END_VAR
+VAR
+    x : INT;
+END_VAR
+    x := g;
+END_PROGRAM
+
+PROGRAM writer
+VAR_EXTERNAL
+    g : INT;
+END_VAR
+    g := 5;
+END_PROGRAM
+
+CONFIGURATION config
+    VAR_GLOBAL
+        g : INT := 10;
+    END_VAR
+    RESOURCE res ON PLC
+        TASK t(INTERVAL := T#100ms, PRIORITY := 1);
+        PROGRAM r WITH t : reader;
+        PROGRAM w WITH t : writer;
+    END_RESOURCE
+END_CONFIGURATION"
     );
 
     rule_ctx_ok!(

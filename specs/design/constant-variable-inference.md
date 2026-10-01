@@ -156,8 +156,11 @@ that leaves its constants alone.
 or `VAR_IN_OUT` argument (REQ-CVI-analyzer-010 to 013) that resolves to a
 declaration qualified `CONSTANT` is P4064.
 
-**REQ-CVI-analyzer-051** A write that reaches a `VAR_EXTERNAL CONSTANT`
-resolves to its global (REQ-CVI-analyzer-021) and is P4064.
+**REQ-CVI-analyzer-051** A write through a `VAR_EXTERNAL` declaration is
+checked against the qualifier of that declaration, not of its global: through
+a `VAR_EXTERNAL CONSTANT` it is P4064, and through a plain `VAR_EXTERNAL` it is
+not, whatever other units declare for the same global. For
+REQ-CVI-analyzer-021 the write still reaches the global.
 
 **REQ-CVI-analyzer-052** Taking the address of a constant (REQ-CVI-analyzer-014),
 passing it where the parameter cannot be determined (REQ-CVI-analyzer-015), and
