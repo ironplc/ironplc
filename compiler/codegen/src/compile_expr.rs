@@ -177,8 +177,10 @@ pub(crate) fn compile_expr(
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
         ExprKind::Compare(compare) => compile_compare(emitter, ctx, compare, op_type),
         ExprKind::EnumeratedValue(enum_val) => {
-            // REQ-EN-codegen-030: Push the enum value's ordinal as an i32 constant.
-            let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, enum_val)?;
+            // REQ-EN-codegen-030: Push the enum value's ordinal as an i32
+            // constant, looked up in the type the analyzer gave the value.
+            let members = crate::compile_enum::members_of_expr(ctx, expr);
+            let ordinal = crate::compile_enum::ordinal_in(members, enum_val)?;
             let pool_index = ctx.add_i32_constant(ordinal);
             emitter.emit_load_const_i32(pool_index);
             Ok(())

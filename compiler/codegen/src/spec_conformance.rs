@@ -18,9 +18,7 @@ use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::VmBuffers;
 use spec_test_macro::spec_test;
 
-use crate::compile_enum::{
-    build_enum_ordinal_map, enum_var_type_info, resolve_enum_default_ordinal, resolve_enum_ordinal,
-};
+use crate::compile_enum::enum_var_type_info;
 
 // ---------------------------------------------------------------------------
 // Meta-test: completeness check
@@ -44,7 +42,7 @@ fn parse_library(source: &str) -> ironplc_dsl::common::Library {
 }
 
 /// Parse, analyze, compile, and run one scan cycle.
-fn compile_and_run(source: &str) -> (ironplc_container::Container, VmBuffers) {
+pub(crate) fn compile_and_run(source: &str) -> (ironplc_container::Container, VmBuffers) {
     let library = parse_library(source);
     let (analyzed, ctx) =
         ironplc_analyzer::stages::resolve_types(&[&library], &CompilerOptions::default()).unwrap();
@@ -59,7 +57,7 @@ fn compile_and_run(source: &str) -> (ironplc_container::Container, VmBuffers) {
 }
 
 /// Parse, analyze, and compile (no execution).
-fn compile_only(source: &str) -> ironplc_container::Container {
+pub(crate) fn compile_only(source: &str) -> ironplc_container::Container {
     let library = parse_library(source);
     let (analyzed, ctx) =
         ironplc_analyzer::stages::resolve_types(&[&library], &CompilerOptions::default()).unwrap();
@@ -74,19 +72,20 @@ fn compile_only(source: &str) -> ironplc_container::Container {
 /// REQ-EN-codegen-001: Ordinals are 0-based, assigned by declaration order.
 #[spec_test(REQ_EN_codegen_001)]
 fn enum_spec_req_en_001_ordinals_are_zero_based_by_declaration_order() {
-    let lib = parse_library(
-        "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-         PROGRAM main END_PROGRAM",
-    );
-    let map = build_enum_ordinal_map(&lib);
-
-    let red = ironplc_dsl::common::EnumeratedValue::new("RED");
-    let green = ironplc_dsl::common::EnumeratedValue::new("GREEN");
-    let blue = ironplc_dsl::common::EnumeratedValue::new("BLUE");
-
-    assert_eq!(resolve_enum_ordinal(&map, &red).unwrap(), 0);
-    assert_eq!(resolve_enum_ordinal(&map, &green).unwrap(), 1);
-    assert_eq!(resolve_enum_ordinal(&map, &blue).unwrap(), 2);
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    r : COLOR := RED;
+    g : COLOR := GREEN;
+    b : COLOR := BLUE;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 0);
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+    assert_eq!(bufs.vars[2].as_i32(), 2);
 }
 
 /// REQ-EN-codegen-002: The ordinal is the runtime value stored in the variable slot.
@@ -294,29 +293,34 @@ END_PROGRAM
 /// REQ-EN-codegen-031: Qualified enum reference (COLOR#GREEN) resolves correctly.
 #[spec_test(REQ_EN_codegen_031)]
 fn enum_spec_req_en_031_qualified_reference_resolves() {
-    let lib = parse_library(
-        "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-         PROGRAM main END_PROGRAM",
-    );
-    let map = build_enum_ordinal_map(&lib);
-
-    let mut ev = ironplc_dsl::common::EnumeratedValue::new("GREEN");
-    ev.type_name = Some(ironplc_dsl::common::TypeName::from("COLOR"));
-
-    assert_eq!(resolve_enum_ordinal(&map, &ev).unwrap(), 1);
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR := COLOR#GREEN;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 1);
 }
 
-/// REQ-EN-codegen-032: Unqualified enum reference (GREEN) resolves via reverse lookup.
+/// REQ-EN-codegen-032: Unqualified enum reference (GREEN) resolves in the
+/// type the analyzer gave it.
 #[spec_test(REQ_EN_codegen_032)]
 fn enum_spec_req_en_032_unqualified_reference_resolves() {
-    let lib = parse_library(
-        "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-         PROGRAM main END_PROGRAM",
-    );
-    let map = build_enum_ordinal_map(&lib);
-
-    let ev = ironplc_dsl::common::EnumeratedValue::new("BLUE");
-    assert_eq!(resolve_enum_ordinal(&map, &ev).unwrap(), 2);
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+TYPE LIGHT : (BLUE, OFF); END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR;
+  END_VAR
+  c := BLUE;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 2);
 }
 
 /// REQ-EN-codegen-033: Enum equality comparison uses integer comparison.
@@ -538,7 +542,7 @@ fn enum_spec_req_en_063_unknown_tags_skippable() {
 
 /// REQ-EN-codegen-064: Only named enum types are emitted in ENUM_DEF.
 #[spec_test(REQ_EN_codegen_064)]
-fn enum_spec_req_en_064_only_named_types_in_enum_def() {
+fn enum_spec_req_en_064_only_enumerations_in_enum_def() {
     let source = "
 TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
 PROGRAM main
@@ -549,7 +553,7 @@ END_PROGRAM
 ";
     let container = compile_only(source);
     let debug = container.debug_section.as_ref().unwrap();
-    // Only the named type COLOR appears, no anonymous types.
+    // Only the enumeration COLOR appears.
     assert_eq!(debug.enum_defs.len(), 1);
     assert_eq!(debug.enum_defs[0].type_name, "COLOR");
 }
@@ -619,68 +623,99 @@ fn enum_spec_req_en_072_missing_enum_def_falls_back() {
 // Section 9: Ordinal Map Construction (REQ-EN-codegen-080 through REQ-EN-codegen-083)
 // ---------------------------------------------------------------------------
 
-/// REQ-EN-codegen-080: Ordinal map built from DataTypeDeclaration(Enumeration) entries.
+/// REQ-EN-codegen-080: Ordinals come from the members the analyzer records
+/// with the type, explicit values included.
 #[spec_test(REQ_EN_codegen_080)]
-fn enum_spec_req_en_080_ordinal_map_from_type_declarations() {
-    let lib = parse_library(
-        "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-         TYPE LEVEL : (LOW, HIGH) := LOW; END_TYPE
-         PROGRAM main END_PROGRAM",
-    );
-    let map = build_enum_ordinal_map(&lib);
-    // Both type declarations are in the map.
-    assert!(map.definitions.contains_key("COLOR"));
-    assert!(map.definitions.contains_key("LEVEL"));
-    assert_eq!(
-        resolve_enum_ordinal(&map, &ironplc_dsl::common::EnumeratedValue::new("RED")).unwrap(),
-        0
-    );
-    assert_eq!(
-        resolve_enum_ordinal(&map, &ironplc_dsl::common::EnumeratedValue::new("HIGH")).unwrap(),
-        1
-    );
+fn enum_spec_req_en_080_ordinals_from_type_members() {
+    let options = CompilerOptions::from_dialect(ironplc_parser::options::Dialect::Iec61131_3Ed3);
+    let library = ironplc_parser::parse_program(
+        "TYPE LEVEL : (LOW, MEDIUM := 5, HIGH); END_TYPE
+         PROGRAM main VAR m : LEVEL := MEDIUM; h : LEVEL := HIGH; END_VAR END_PROGRAM",
+        &FileId::default(),
+        &options,
+    )
+    .unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], &options).unwrap();
+    let container = crate::compile(
+        &analyzed,
+        &ctx,
+        &crate::CodegenOptions::default(),
+        &crate::EmptyLookup,
+    )
+    .unwrap();
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm = load_and_start(&container, &mut bufs).unwrap();
+        vm.run_round(0).unwrap();
+    }
+    assert_eq!(bufs.vars[0].as_i32(), 5);
+    assert_eq!(bufs.vars[1].as_i32(), 6);
 }
 
-/// REQ-EN-codegen-081: Reverse lookup from unqualified value names.
+/// REQ-EN-codegen-081: An unqualified value's ordinal is looked up in the
+/// type of its expression: two enumerations may share a value name.
 #[spec_test(REQ_EN_codegen_081)]
-fn enum_spec_req_en_081_reverse_lookup_for_unqualified() {
-    let lib = parse_library(
-        "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-         PROGRAM main END_PROGRAM",
-    );
-    let map = build_enum_ordinal_map(&lib);
-    // Unqualified lookup resolves correctly.
-    let ev = ironplc_dsl::common::EnumeratedValue::new("GREEN");
-    assert_eq!(resolve_enum_ordinal(&map, &ev).unwrap(), 1);
-}
-
-/// REQ-EN-codegen-082: Type declaration default stored as pre-resolved ordinal.
-#[spec_test(REQ_EN_codegen_082)]
-fn enum_spec_req_en_082_default_ordinal_from_type_declaration() {
-    let lib = parse_library(
-        "TYPE LEVEL : (LOW, MEDIUM, HIGH) := HIGH; END_TYPE
-         PROGRAM main END_PROGRAM",
-    );
-    let map = build_enum_ordinal_map(&lib);
-    assert_eq!(resolve_enum_default_ordinal(&map, "LEVEL"), 2);
-}
-
-/// REQ-EN-codegen-083: Ordinal map built once at codegen entry, stored in CompileContext.
-#[spec_test(REQ_EN_codegen_083)]
-fn enum_spec_req_en_083_map_built_once_at_codegen_entry() {
-    // Verify the map is available by compiling a program with enum types.
-    // The compile function internally calls build_enum_ordinal_map and stores
-    // the result in CompileContext. If this path was broken, compilation would
-    // fail.
+fn enum_spec_req_en_081_lookup_by_expression_type() {
     let source = "
-TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+TYPE A : (X, Y); B : (W, X, Z); END_TYPE
 PROGRAM main
   VAR
-    c : COLOR := GREEN;
+    a : A;
+    b : B;
+  END_VAR
+  a := X;
+  b := X;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 0);
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+/// REQ-EN-codegen-082: The default comes from the type's members; an alias
+/// may declare its own.
+#[spec_test(REQ_EN_codegen_082)]
+fn enum_spec_req_en_082_default_ordinal_from_type() {
+    let source = "
+TYPE LEVEL : (LOW, MEDIUM, HIGH) := HIGH; END_TYPE
+TYPE LEVEL2 : LEVEL := MEDIUM; END_TYPE
+PROGRAM main
+  VAR
+    l : LEVEL;
+    m : LEVEL2;
   END_VAR
 END_PROGRAM
 ";
-    let _container = compile_only(source);
+    let (_c, bufs) = compile_and_run(source);
+    assert_eq!(bufs.vars[0].as_i32(), 2);
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+/// REQ-EN-codegen-083: A value outside an expression is a member of the type
+/// of where it appears: a CASE label of the selector's type, a structure
+/// field initializer of the field's type.
+#[spec_test(REQ_EN_codegen_083)]
+fn enum_spec_req_en_083_value_outside_expression_uses_its_place_type() {
+    let source = "
+TYPE A : (X, Y); B : (W, X, Z); END_TYPE
+TYPE S : STRUCT f : B; END_STRUCT; END_TYPE
+PROGRAM main
+  VAR
+    b : B := X;
+    d : DINT;
+    s : S := (f := X);
+    e : B;
+  END_VAR
+  CASE b OF
+    W: d := 10;
+    X: d := 20;
+  END_CASE;
+  e := s.f;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run(source);
+    assert_eq!(bufs.vars[1].as_i32(), 20);
+    assert_eq!(bufs.vars[3].as_i32(), 1);
 }
 
 // ---------------------------------------------------------------------------
