@@ -21,9 +21,12 @@
 //!   resolved context is discarded and a fresh empty one is used. The same
 //!   options value is threaded into both resolution and `apply`.
 //! * `rule_ctx_ok!` / `rule_ctx_err!` / `rule_ctx_err_code!` / `rule_ctx_err1!` /
-//!   `rule_ctx_errn!` — the "resolved context" scaffold
-//!   ([`parse_and_resolve_types_with_context`](crate::test_helpers::parse_and_resolve_types_with_context)),
-//!   always with default options.
+//!   `rule_ctx_errn!` (+ `_with` options variants) — the "resolved context"
+//!   scaffold
+//!   ([`parse_and_resolve_types_with_options`](crate::test_helpers::parse_and_resolve_types_with_options)):
+//!   the rule sees the context resolution built, including the symbol
+//!   environment. The same options value is threaded into both resolution
+//!   and `apply`.
 //!
 //! `apply` is referenced as `super::apply`, which resolves to the owning rule's
 //! function at each invocation site (the macros are invoked inside `rule_X::tests`).
@@ -215,22 +218,44 @@ macro_rules! rule_errn {
     };
 }
 
-// --- Resolved-context family (default options) ------------------------------
+// --- Resolved-context family (options-parameterised) ------------------------
+
+/// A rule test (resolved context) that expects `Ok` under `$opts`.
+macro_rules! rule_ctx_ok_with {
+    ($(#[$m:meta])* $name:ident, $opts:expr, $program:expr $(,)?) => {
+        $(#[$m])*
+        #[test]
+        fn $name() {
+            let opts = $opts;
+            let (library, context) =
+                $crate::test_helpers::parse_and_resolve_types_with_options($program, &opts);
+            let result = super::apply(&library, &context, &opts);
+            assert!(result.is_ok(), "expected Ok, got {:?}", result);
+        }
+    };
+}
 
 /// A rule test (resolved context, default options) that expects `Ok`.
 macro_rules! rule_ctx_ok {
     ($(#[$m:meta])* $name:ident, $program:expr $(,)?) => {
+        rule_ctx_ok_with!(
+            $(#[$m])* $name,
+            ironplc_parser::options::CompilerOptions::default(),
+            $program
+        );
+    };
+}
+
+/// A rule test (resolved context) that expects `Err` under `$opts`.
+macro_rules! rule_ctx_err_with {
+    ($(#[$m:meta])* $name:ident, $opts:expr, $program:expr $(,)?) => {
         $(#[$m])*
         #[test]
         fn $name() {
+            let opts = $opts;
             let (library, context) =
-                $crate::test_helpers::parse_and_resolve_types_with_context($program);
-            assert!(super::apply(
-                &library,
-                &context,
-                &ironplc_parser::options::CompilerOptions::default()
-            )
-            .is_ok());
+                $crate::test_helpers::parse_and_resolve_types_with_options($program, &opts);
+            assert!(super::apply(&library, &context, &opts).is_err());
         }
     };
 }
@@ -238,36 +263,25 @@ macro_rules! rule_ctx_ok {
 /// A rule test (resolved context, default options) that expects `Err`.
 macro_rules! rule_ctx_err {
     ($(#[$m:meta])* $name:ident, $program:expr $(,)?) => {
-        $(#[$m])*
-        #[test]
-        fn $name() {
-            let (library, context) =
-                $crate::test_helpers::parse_and_resolve_types_with_context($program);
-            assert!(super::apply(
-                &library,
-                &context,
-                &ironplc_parser::options::CompilerOptions::default()
-            )
-            .is_err());
-        }
+        rule_ctx_err_with!(
+            $(#[$m])* $name,
+            ironplc_parser::options::CompilerOptions::default(),
+            $program
+        );
     };
 }
 
-/// A rule test (resolved context, default options) that expects `Err` including
+/// A rule test (resolved context) that expects `Err` under `$opts`, including
 /// a diagnostic with `$problem`'s code.
-macro_rules! rule_ctx_err_code {
-    ($(#[$m:meta])* $name:ident, $program:expr, $problem:expr $(,)?) => {
+macro_rules! rule_ctx_err_code_with {
+    ($(#[$m:meta])* $name:ident, $opts:expr, $program:expr, $problem:expr $(,)?) => {
         $(#[$m])*
         #[test]
         fn $name() {
+            let opts = $opts;
             let (library, context) =
-                $crate::test_helpers::parse_and_resolve_types_with_context($program);
-            let errors = super::apply(
-                &library,
-                &context,
-                &ironplc_parser::options::CompilerOptions::default(),
-            )
-            .unwrap_err();
+                $crate::test_helpers::parse_and_resolve_types_with_options($program, &opts);
+            let errors = super::apply(&library, &context, &opts).unwrap_err();
             assert!(
                 errors.iter().any(|d| d.code == $problem.code()),
                 "expected a {} diagnostic, got {:?}",
@@ -278,21 +292,30 @@ macro_rules! rule_ctx_err_code {
     };
 }
 
-/// A rule test (resolved context, default options) that expects exactly `$count`
-/// diagnostics, every one of them with `$problem`'s code.
-macro_rules! rule_ctx_errn {
-    ($(#[$m:meta])* $name:ident, $program:expr, $count:expr, $problem:expr $(,)?) => {
+/// A rule test (resolved context, default options) that expects `Err` including
+/// a diagnostic with `$problem`'s code.
+macro_rules! rule_ctx_err_code {
+    ($(#[$m:meta])* $name:ident, $program:expr, $problem:expr $(,)?) => {
+        rule_ctx_err_code_with!(
+            $(#[$m])* $name,
+            ironplc_parser::options::CompilerOptions::default(),
+            $program,
+            $problem
+        );
+    };
+}
+
+/// A rule test (resolved context) that expects exactly `$count` diagnostics
+/// under `$opts`, every one of them with `$problem`'s code.
+macro_rules! rule_ctx_errn_with {
+    ($(#[$m:meta])* $name:ident, $opts:expr, $program:expr, $count:expr, $problem:expr $(,)?) => {
         $(#[$m])*
         #[test]
         fn $name() {
+            let opts = $opts;
             let (library, context) =
-                $crate::test_helpers::parse_and_resolve_types_with_context($program);
-            let errors = super::apply(
-                &library,
-                &context,
-                &ironplc_parser::options::CompilerOptions::default(),
-            )
-            .unwrap_err();
+                $crate::test_helpers::parse_and_resolve_types_with_options($program, &opts);
+            let errors = super::apply(&library, &context, &opts).unwrap_err();
             assert_eq!(
                 errors.len(), $count,
                 "expected exactly {} diagnostics, got {:?}", $count, errors
@@ -307,23 +330,46 @@ macro_rules! rule_ctx_errn {
     };
 }
 
+/// A rule test (resolved context, default options) that expects exactly `$count`
+/// diagnostics, every one of them with `$problem`'s code.
+macro_rules! rule_ctx_errn {
+    ($(#[$m:meta])* $name:ident, $program:expr, $count:expr, $problem:expr $(,)?) => {
+        rule_ctx_errn_with!(
+            $(#[$m])* $name,
+            ironplc_parser::options::CompilerOptions::default(),
+            $program,
+            $count,
+            $problem
+        );
+    };
+}
+
+/// A rule test (resolved context) that expects exactly one diagnostic under
+/// `$opts`, with `$problem`'s code.
+macro_rules! rule_ctx_err1_with {
+    ($(#[$m:meta])* $name:ident, $opts:expr, $program:expr, $problem:expr $(,)?) => {
+        $(#[$m])*
+        #[test]
+        fn $name() {
+            let opts = $opts;
+            let (library, context) =
+                $crate::test_helpers::parse_and_resolve_types_with_options($program, &opts);
+            let errors = super::apply(&library, &context, &opts).unwrap_err();
+            assert_eq!(errors.len(), 1, "expected exactly one diagnostic, got {:?}", errors);
+            assert_eq!(errors[0].code, $problem.code());
+        }
+    };
+}
+
 /// A rule test (resolved context, default options) that expects exactly one
 /// diagnostic, with `$problem`'s code.
 macro_rules! rule_ctx_err1 {
     ($(#[$m:meta])* $name:ident, $program:expr, $problem:expr $(,)?) => {
-        $(#[$m])*
-        #[test]
-        fn $name() {
-            let (library, context) =
-                $crate::test_helpers::parse_and_resolve_types_with_context($program);
-            let errors = super::apply(
-                &library,
-                &context,
-                &ironplc_parser::options::CompilerOptions::default(),
-            )
-            .unwrap_err();
-            assert_eq!(errors.len(), 1, "expected exactly one diagnostic, got {:?}", errors);
-            assert_eq!(errors[0].code, $problem.code());
-        }
+        rule_ctx_err1_with!(
+            $(#[$m])* $name,
+            ironplc_parser::options::CompilerOptions::default(),
+            $program,
+            $problem
+        );
     };
 }
