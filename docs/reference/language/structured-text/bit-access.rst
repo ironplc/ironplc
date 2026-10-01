@@ -76,8 +76,16 @@ Bit access is valid on any integer or bit-string type:
      - ``LINT``, ``ULINT``, ``LWORD``
      - ``0..63``
 
-Accessing a bit outside the valid range raises
+A subrange of an integer type has the bits of its base type. Accessing a bit
+outside the valid range raises
 :doc:`P4025 </reference/compiler/problems/P4025>`.
+
+IEC 61131-3 defines partial access on the bit-string types; IronPLC also
+accepts it on integers, in every dialect, as CODESYS and TwinCAT do. Any
+other type has no bits to select, and bit or partial access on it raises
+:doc:`P4069 </reference/compiler/problems/P4069>`: ``BOOL``, ``REAL``,
+``STRING``, ``TIME``, an enumeration, a structure, a function block instance,
+or a whole array rather than one of its elements.
 
 Example
 -------
@@ -223,4 +231,5 @@ See Also
 - :doc:`/reference/language/data-types/elementary/dword` — 32-bit bit string
 - :doc:`/reference/language/data-types/elementary/lword` — 64-bit bit string
 - :doc:`/reference/compiler/problems/P4025` — bit index out of range
+- :doc:`/reference/compiler/problems/P4069` — variable has no bits to select
 - :doc:`/reference/compiler/problems/P4033` — partial-access syntax disabled

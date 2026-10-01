@@ -3,8 +3,12 @@
 //!
 //! A variable's declared type fixes what parts it has: a `BYTE` has eight
 //! bits and one byte, a `WORD` sixteen bits and two bytes. An index past the
-//! last part names storage the variable does not have, and a slice wider than
-//! the variable cannot be taken from it at all.
+//! last part names storage the variable does not have (P4025), and a slice
+//! wider than the variable cannot be taken from it at all (P4025).
+//!
+//! Only a bit string or an integer has parts to select. A `REAL`, a `STRING`,
+//! a structure, a whole array or a `BOOL` has none, whatever the index
+//! (P4069).
 //!
 //! Both spellings of bit access are checked -- `x.3` and the IEC
 //! 61131-3:2013 form `x.%X3` -- along with the byte, word, dword and lword
@@ -38,10 +42,12 @@
 //!       myByte : BYTE;
 //!       myBool : BOOL;
 //!       myWord : WORD;
+//!       myReal : REAL;
 //!    END_VAR
 //!    myBool := myByte.8;     (* a BYTE has bits 0..7 *)
 //!    myWord := myByte.%W0;   (* a WORD does not fit in a BYTE *)
 //!    myByte := myWord.%B2;   (* a WORD has bytes 0..1 *)
+//!    myBool := myReal.3;     (* a REAL has no bits to select *)
 //! END_FUNCTION_BLOCK
 //! ```
 use ironplc_dsl::{
@@ -56,6 +62,7 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
+    intermediate_type::IntermediateType,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
@@ -95,15 +102,35 @@ impl DiagnosticVisitor for RuleBitAndPartialAccessRange<'_> {
 }
 
 impl RuleBitAndPartialAccessRange<'_> {
-    fn check_partial_access(&mut self, node: &PartialAccessVariable) {
-        let accessed_type =
-            match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
-                Some(t) => t,
-                None => return,
-            };
+    /// The number of bits a bit or partial access can select from
+    /// `variable`.
+    ///
+    /// `None` when there is nothing to check the index against: either the
+    /// variable's type is not resolved (another rule reports an undeclared
+    /// name), or the type has no bits to select, which this reports.
+    fn selectable_bits(&mut self, variable: &SymbolicVariableKind) -> Option<u128> {
+        let accessed_type = variable_type::of(variable, &self.declarations, self.type_environment)?;
+        let bits = bit_width(&accessed_type);
+        if bits.is_none() {
+            self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::BitAccessTypeInvalid,
+                    Label::span(
+                        variable.span(),
+                        format!(
+                            "Variable '{variable}' is not a bit string or integer, so it has no bits to select"
+                        ),
+                    ),
+                )
+                .with_context("variable", &variable.to_string()),
+            );
+        }
+        bits
+    }
 
-        let base_bytes = match accessed_type.size_in_bytes() {
-            Some(bytes) => bytes as u128,
+    fn check_partial_access(&mut self, node: &PartialAccessVariable) {
+        let base_bytes = match self.selectable_bits(&node.variable) {
+            Some(bits) => bits / 8,
             None => return,
         };
 
@@ -155,15 +182,8 @@ impl RuleBitAndPartialAccessRange<'_> {
     }
 
     fn check_bit_access(&mut self, node: &BitAccessVariable) {
-        // Resolve the type of the variable being bit-accessed
-        let accessed_type =
-            match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
-                Some(t) => t,
-                None => return,
-            };
-
-        let bit_width = match accessed_type.size_in_bytes() {
-            Some(bytes) => bytes as u128 * 8,
+        let bit_width = match self.selectable_bits(&node.variable) {
+            Some(bits) => bits,
             None => return,
         };
 
@@ -185,6 +205,23 @@ impl RuleBitAndPartialAccessRange<'_> {
                 .with_context("max_bit", &(bit_width - 1).to_string()),
             );
         }
+    }
+}
+
+/// The number of bits in a value of `accessed_type`, when it is a type a
+/// bit or partial access can select from.
+///
+/// IEC 61131-3:2013 defines partial access on the bit strings `BYTE`,
+/// `WORD`, `DWORD` and `LWORD`. Integers are accepted as well, in every
+/// dialect, as CODESYS and TwinCAT accept them. A `BOOL` is not: it has one
+/// bit, which is its value, even though it occupies a byte.
+fn bit_width(accessed_type: &IntermediateType) -> Option<u128> {
+    match accessed_type {
+        IntermediateType::Bytes { size }
+        | IntermediateType::Int { size }
+        | IntermediateType::UInt { size } => Some(size.as_bytes() as u128 * 8),
+        IntermediateType::Subrange { base_type, .. } => bit_width(base_type),
+        _ => None,
     }
 }
 
@@ -682,6 +719,96 @@ END_FUNCTION_BLOCK";
         assert!(
             context.has_diagnostics(),
             "Expected BitAccessOutOfRange diagnostic but got none"
+        );
+    }
+
+    // --- The type a bit or partial access selects from ---
+    //
+    // Only a bit string or an integer has bits to select. These run under
+    // Edition 3, which has the `%` selectors and `REF_TO`.
+
+    /// The problems the analyzer reports for `statement` in a program that
+    /// declares a variable of each kind.
+    fn problems_of(statement: &str) -> Vec<String> {
+        let program = format!(
+            "TYPE
+    Rec : STRUCT f : REAL; w : WORD; END_STRUCT;
+    Color : (Red, Green);
+    Small : INT (0..10);
+END_TYPE
+PROGRAM main
+VAR
+    x : BOOL;
+    y : BYTE;
+    b : BOOL;
+    r : REAL;
+    lr : LREAL;
+    q : STRING;
+    t : TIME;
+    rec : Rec;
+    fb : TON;
+    a : ARRAY[1..2] OF DINT;
+    ra : ARRAY[1..2] OF REAL;
+    e : Color;
+    ie : (Up, Down);
+    sr : Small;
+    p : REF_TO BYTE;
+END_VAR
+    {statement}
+END_PROGRAM"
+        );
+        let opts = CompilerOptions::from_dialect(ironplc_parser::options::Dialect::Iec61131_3Ed3);
+        let library = parse_program(&program, &FileId::default(), &opts).unwrap();
+        let (_library, context) = analyze(&[&library], &opts).unwrap();
+        context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.clone())
+            .collect()
+    }
+
+    /// REQ-PAB-analyzer-123: bit and partial access on a variable that is
+    /// not a bit string or an integer is rejected.
+    #[spec_test(REQ_PAB_analyzer_123)]
+    #[rstest]
+    #[case::bool("x := b.0;")]
+    #[case::real("x := r.3;")]
+    #[case::lreal("x := lr.3;")]
+    #[case::string("x := q.3;")]
+    #[case::time("x := t.3;")]
+    #[case::structure("x := rec.3;")]
+    #[case::function_block("x := fb.1;")]
+    #[case::whole_array("x := a.3;")]
+    #[case::whole_array_past_its_size("x := a.70;")]
+    #[case::array_element("x := ra[1].3;")]
+    #[case::structure_field("x := rec.f.3;")]
+    #[case::enumeration("x := e.0;")]
+    #[case::inline_enumeration("x := ie.0;")]
+    #[case::bit_access_target("r.3 := x;")]
+    #[case::percent_x("x := r.%X3;")]
+    #[case::partial_access("y := r.%B0;")]
+    #[case::partial_access_target("q.%B0 := y;")]
+    fn apply_when_accessed_type_has_no_bits_then_bit_access_type_invalid(#[case] statement: &str) {
+        assert_eq!(
+            problems_of(statement),
+            vec![Problem::BitAccessTypeInvalid.code().to_string()]
+        );
+    }
+
+    #[rstest]
+    #[case::structure_field("x := rec.w.15;")]
+    #[case::subrange("x := sr.15;")]
+    #[case::dereference("x := p^.7;")]
+    #[case::dereference_partial_access("y := p^.%B0;")]
+    fn apply_when_accessed_type_has_bits_then_ok(#[case] statement: &str) {
+        assert!(problems_of(statement).is_empty());
+    }
+
+    #[test]
+    fn apply_when_dereferenced_bit_past_target_width_then_out_of_range() {
+        assert_eq!(
+            problems_of("x := p^.8;"),
+            vec![Problem::BitAccessOutOfRange.code().to_string()]
         );
     }
 }
