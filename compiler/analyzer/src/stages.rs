@@ -261,6 +261,13 @@ pub fn resolve_types(
         xform_int_to_bool_initializer::apply(lib, &mut type_environment, options)
     });
 
+    // Record the type id each declaration declares, entering types spelled
+    // out in place as anonymous types. Runs before the symbol and function
+    // environments are built, so they see each declaration's type id.
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_resolve_decl_types::apply(lib, &mut type_environment)
+    });
+
     // Best effort: a repeated declaration name is diagnosed here, by the
     // environments, and the first declaration is kept, so the rest of the
     // library still resolves instead of reverting on the first repeat.
@@ -277,12 +284,6 @@ pub fn resolve_types(
     // state reverting would leave every call in -- including the valid ones.
     library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_named_to_positional_args::apply(lib, &function_environment)
-    });
-
-    // Record the type id each declaration declares, entering types spelled
-    // out in place as anonymous types.
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
-        xform_resolve_decl_types::apply(lib, &mut type_environment)
     });
 
     // Resolve expression types using the function environment.

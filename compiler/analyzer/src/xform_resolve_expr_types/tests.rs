@@ -44,6 +44,7 @@ fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Resolved {
     let library = xform_resolve_late_bound_expr_kind::apply(library, &mut type_environment)
         .unwrap()
         .0;
+    let library = crate::xform_resolve_decl_types::apply(library, &mut type_environment).unwrap();
     let mut function_environment = FunctionEnvironmentBuilder::new()
         .with_stdlib_functions()
         .build();
@@ -54,7 +55,6 @@ fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Resolved {
         &mut function_environment,
     )
     .unwrap();
-    let library = crate::xform_resolve_decl_types::apply(library, &mut type_environment).unwrap();
     let library = apply(
         library,
         &mut type_environment,
