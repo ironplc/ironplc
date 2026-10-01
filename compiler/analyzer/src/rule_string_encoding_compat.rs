@@ -44,6 +44,7 @@ use crate::result::SemanticResult;
 use crate::rule_support::{run_rule, DiagnosticVisitor};
 use crate::semantic_context::SemanticContext;
 use crate::symbol_environment::ScopeTracker;
+use crate::variable_type;
 use ironplc_container::CharWidth;
 use ironplc_parser::options::CompilerOptions;
 
@@ -85,20 +86,11 @@ impl RuleStringEncodingCompat<'_> {
         let Variable::Symbolic(SymbolicVariableKind::Named(named)) = var else {
             return None;
         };
-        let type_id = self
-            .context
-            .symbols()
-            .find(&named.name, &self.scope.current())?
-            .type_id?;
-        match self.context.types().get_by_id(type_id)?.representation {
-            IntermediateType::String {
-                char_width: CharWidth::Narrow,
-                ..
-            } => Some(StringType::String),
-            IntermediateType::String {
-                char_width: CharWidth::Wide,
-                ..
-            } => Some(StringType::WString),
+        match variable_type::declared(&named.name, self.context, &self.scope.current())? {
+            IntermediateType::String { char_width, .. } => Some(match char_width {
+                CharWidth::Narrow => StringType::String,
+                CharWidth::Wide => StringType::WString,
+            }),
             _ => None,
         }
     }

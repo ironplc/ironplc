@@ -110,15 +110,13 @@ impl RulePouHierarchy<'_> {
             return;
         }
         let types = self.context.types();
-        let Some(type_id) = info.type_id else {
+        let Some(type_id) = info.type_id.filter(|id| {
+            types
+                .get_by_id(*id)
+                .is_some_and(|attrs| attrs.representation.is_function_block())
+        }) else {
             return;
         };
-        if !types
-            .get_by_id(type_id)
-            .is_some_and(|attrs| attrs.representation.is_function_block())
-        {
-            return;
-        }
         let mut diagnostic = Diagnostic::problem(
             Problem::FunctionBlockInFunction,
             Label::span(call.span(), label),
