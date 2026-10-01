@@ -47,6 +47,11 @@ A declaration carries the id of the type it declares in
 - a reference type is the one type `TypeEnvironment::reference_to(target)`
   interns, so `REF_TO INT` is the same type wherever it is spelled.
 
+The `VAR_GLOBAL` grammar parses a declaration of any named type as a simple
+declaration. When the declared id is an array type, the same pass gives such
+a global the named array declaration form a `VAR` block's declaration of that
+type has, so a backend lays out every array variable from one form.
+
 `expr_type` is left out of `Expr`'s equality: its ids are allocated per
 compilation, so an expected expression built by hand cannot know them.
 

@@ -20,6 +20,19 @@
 //!
 //! A declaration whose type cannot be resolved keeps `type_id: None`. The
 //! rules that check declarations report why; this pass stays silent.
+//!
+//! The `VAR_GLOBAL` grammar parses every named type as a simple declaration,
+//! where a `VAR` block's declaration of the same type is resolved to an array
+//! declaration. Once the id is known, a global whose declared type is an
+//! array takes that array form too, so later passes and backends see one
+//! form for every variable of a named array type:
+//!
+//! ```ignore
+//! TYPE A3 : ARRAY[1..3] OF DINT; END_TYPE
+//! VAR_GLOBAL
+//!     g : A3;   (* Simple(A3) becomes Array(Named(A3)) *)
+//! END_VAR
+//! ```
 use ironplc_dsl::common::*;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
@@ -108,7 +121,38 @@ impl Fold<Diagnostic> for DeclTypeResolver<'_> {
             None => TypeName::from("_"),
         };
         let type_id = self.declared_type_id(&name, &node.initializer);
-        Ok(VarDecl { type_id, ..node })
+        let initializer = self.declared_form(type_id, node.initializer);
+        Ok(VarDecl {
+            type_id,
+            initializer,
+            ..node
+        })
+    }
+}
+
+impl DeclTypeResolver<'_> {
+    /// The initializer in the form its declared type calls for: a simple
+    /// declaration without a value whose type is an array becomes a
+    /// declaration of that named array type, as a `VAR` block has it.
+    /// Every other initializer is returned as it is.
+    fn declared_form(
+        &self,
+        type_id: Option<TypeId>,
+        init: InitialValueAssignmentKind,
+    ) -> InitialValueAssignmentKind {
+        let is_array = type_id
+            .and_then(|id| self.type_environment.get_by_id(id))
+            .is_some_and(|attributes| attributes.representation.is_array());
+        match init {
+            InitialValueAssignmentKind::Simple(SimpleInitializer {
+                type_name,
+                initial_value: None,
+            }) if is_array => InitialValueAssignmentKind::Array(ArrayInitialValueAssignment {
+                spec: SpecificationKind::Named(type_name),
+                initial_values: vec![],
+            }),
+            other => other,
+        }
     }
 }
 
@@ -217,6 +261,76 @@ END_PROGRAM
             declared_ids(&library)["na"],
             context.types().id_of(&TypeName::from("ARR"))
         );
+    }
+
+    /// Every symbolic declaration's initializer, by variable name.
+    fn initializers(library: &Library) -> HashMap<String, InitialValueAssignmentKind> {
+        struct Collect(HashMap<String, InitialValueAssignmentKind>);
+        impl Visitor<Infallible> for Collect {
+            type Value = ();
+            fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
+                if let Some(id) = node.identifier.symbolic_id() {
+                    self.0.insert(id.to_string(), node.initializer.clone());
+                }
+                Ok(())
+            }
+        }
+        let mut collect = Collect(HashMap::new());
+        let _ = collect.walk(library);
+        collect.0
+    }
+
+    const GLOBALS: &str = "
+TYPE
+  POINT : STRUCT x : DINT; END_STRUCT;
+  ARR : ARRAY[1..2] OF DINT;
+END_TYPE
+PROGRAM main
+VAR_EXTERNAL
+  ga : ARR;
+END_VAR
+END_PROGRAM
+CONFIGURATION config
+  VAR_GLOBAL
+    ga : ARR;
+    gp : POINT;
+    gn : DINT := 1;
+  END_VAR
+  RESOURCE res ON PLC
+    TASK t(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM inst WITH t : main;
+  END_RESOURCE
+END_CONFIGURATION
+";
+
+    #[test]
+    fn apply_when_global_of_named_array_type_then_named_array_initializer() {
+        let (library, context) = resolve(GLOBALS);
+        let init = &initializers(&library)["ga"];
+
+        assert_eq!(
+            init,
+            &InitialValueAssignmentKind::Array(ArrayInitialValueAssignment {
+                spec: SpecificationKind::Named(TypeName::from("ARR")),
+                initial_values: vec![],
+            })
+        );
+        assert_eq!(
+            declared_ids(&library)["ga"],
+            context.types().id_of(&TypeName::from("ARR"))
+        );
+    }
+
+    #[rstest::rstest]
+    #[case::structure("gp")]
+    #[case::elementary("gn")]
+    fn apply_when_global_of_other_named_type_then_initializer_unchanged(#[case] variable: &str) {
+        let (library, _) = resolve(GLOBALS);
+
+        assert!(matches!(
+            initializers(&library)[variable],
+            InitialValueAssignmentKind::Simple(_)
+        ));
     }
 
     /// An inline subrange cannot be written in a declaration, but the
