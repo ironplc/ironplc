@@ -1,27 +1,30 @@
 //! Resolves a variable reference to the type of the variable it names.
 //!
 //! A rule that checks something about a variable's type needs two things: the
-//! declarations that are in scope, and a way to walk from a reference such as
-//! `s.field[i]` to the type of the element it names. Both live here so that
-//! rules share one answer rather than each carrying its own copy.
+//! variable's declared type, and a way to walk from a reference such as
+//! `s.field[i]` to the type of the element it names. The declared type comes
+//! from the symbol environment, looked up from the scope the rule is in; the
+//! walk lives here so that rules share one answer rather than each carrying
+//! its own copy.
 //!
 //! ```ignore
-//! // In the visitor: open a scope per POU, record each declaration in it.
-//! fn enter_scope(&mut self, _: ScopeNode<'_>) { self.declarations.enter() }
-//! fn exit_scope(&mut self) { self.declarations.exit() }
-//! fn visit_var_decl(&mut self, node: &VarDecl) {
-//!     self.declarations
-//!         .add_if(node.identifier.symbolic_id(), Declared::of(node));
-//! }
+//! // In the visitor: track the scope the traversal is in.
+//! fn enter_scope(&mut self, node: ScopeNode<'_>) { self.scope.enter(&node) }
+//! fn exit_scope(&mut self) { self.scope.exit() }
 //!
-//! let element = variable_type::of(&kind, &self.declarations, type_environment);
+//! let element = variable_type::of(&kind, context, &self.scope.current());
 //! ```
+//!
+//! [`Declarations`] is the older scoped table a pass builds itself from the
+//! declarations it visits, still used by `xform_resolve_expr_types`.
 
 use ironplc_dsl::{common::*, core::Id, textual::*};
 
 use crate::{
     intermediate_type::IntermediateType,
     scoped_table::{ScopedTable, Value},
+    semantic_context::SemanticContext,
+    symbol_environment::ScopeKind,
     type_environment::TypeEnvironment,
 };
 use ironplc_dsl::type_id::TypeId;
@@ -56,15 +59,6 @@ impl Declared {
         Declared::Variable {
             init: Box::new(node.initializer.clone()),
             type_id: node.type_id,
-        }
-    }
-
-    /// The type named where the name is bound, or
-    /// [`TypeReference::Inline`] for a type spelled out in place.
-    pub(crate) fn type_reference(&self) -> TypeReference {
-        match self {
-            Declared::Variable { init, .. } => init.type_reference(),
-            Declared::Typed(type_name) => TypeReference::Named(type_name.clone()),
         }
     }
 }
@@ -126,20 +120,17 @@ pub(crate) fn resolve_initializer(
 /// value read from or written to the reference has.
 pub(crate) fn of(
     kind: &SymbolicVariableKind,
-    declarations: &Declarations,
-    type_env: &TypeEnvironment,
+    context: &SemanticContext,
+    scope: &ScopeKind,
 ) -> Option<IntermediateType> {
     match kind {
-        SymbolicVariableKind::Named(named) => match declarations.find(&named.name)? {
-            Declared::Variable { init, .. } => resolve_initializer(init, type_env),
-            Declared::Typed(type_name) => Some(type_env.get(type_name)?.representation.clone()),
-        },
+        SymbolicVariableKind::Named(named) => declared(&named.name, context, scope).cloned(),
         SymbolicVariableKind::Structured(structured) => {
-            let record_type = of(&structured.record, declarations, type_env)?;
+            let record_type = of(&structured.record, context, scope)?;
             struct_field_type(&record_type, &structured.field)
         }
         SymbolicVariableKind::Array(array) => {
-            let array_type = of(&array.subscripted_variable, declarations, type_env)?;
+            let array_type = of(&array.subscripted_variable, context, scope)?;
             match array_type {
                 IntermediateType::Array { element_type, .. } => Some(*element_type),
                 _ => None,
@@ -147,19 +138,26 @@ pub(crate) fn of(
         }
         // A selection answers with the variable it selects from; see the
         // note on this function.
-        SymbolicVariableKind::BitAccess(bit_access) => {
-            of(&bit_access.variable, declarations, type_env)
-        }
-        SymbolicVariableKind::PartialAccess(partial) => {
-            of(&partial.variable, declarations, type_env)
-        }
+        SymbolicVariableKind::BitAccess(bit_access) => of(&bit_access.variable, context, scope),
+        SymbolicVariableKind::PartialAccess(partial) => of(&partial.variable, context, scope),
         SymbolicVariableKind::SelfRef(_) => {
             // Typing a member of THIS^/SUPER^ needs function-block member
             // resolution, which does not exist yet. See issue #1406.
             None
         }
-        SymbolicVariableKind::Deref(deref) => of(&deref.variable, declarations, type_env),
+        SymbolicVariableKind::Deref(deref) => of(&deref.variable, context, scope),
     }
+}
+
+/// The declared type of the variable `name` names from `scope`: a variable,
+/// parameter or result variable, looked up in the symbol environment.
+pub(crate) fn declared<'a>(
+    name: &Id,
+    context: &'a SemanticContext,
+    scope: &ScopeKind,
+) -> Option<&'a IntermediateType> {
+    let type_id = context.symbols().find(name, scope)?.type_id?;
+    Some(&context.types().get_by_id(type_id)?.representation)
 }
 
 /// Finds the type of a field within a structure or function block type.

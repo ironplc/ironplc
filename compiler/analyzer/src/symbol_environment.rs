@@ -397,6 +397,13 @@ impl SymbolEnvironment {
         self.insert_symbol(name, symbol_info)
     }
 
+    /// Insert a symbol described by `info`, in `info`'s scope.
+    ///
+    /// A repeated name is reported as for [`Self::insert`].
+    pub fn insert_info(&mut self, name: &Id, info: SymbolInfo) -> Result<(), Diagnostic> {
+        self.insert_symbol(name, info)
+    }
+
     /// The one insertion path: checks the scope for a repeated name, then
     /// records the symbol in that scope.
     ///

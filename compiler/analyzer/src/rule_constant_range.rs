@@ -89,9 +89,9 @@ use crate::{
     rule_real_literal_range,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    symbol_environment::ScopeTracker,
     type_environment::TypeEnvironment,
-    value_range,
-    variable_type::{self, Declarations, Declared},
+    value_range, variable_type,
 };
 
 pub fn apply(
@@ -101,12 +101,10 @@ pub fn apply(
 ) -> SemanticResult {
     run_rule(
         RuleConstantRange {
+            context,
             type_environment: context.types(),
             function_environment: context.functions(),
-            // `Declarations::new` opens the base scope, where declarations
-            // made outside any POU land. Opening another here would leave the
-            // stack unbalanced when the table drops.
-            declarations: Declarations::new(),
+            scope: ScopeTracker::default(),
             diagnostics: Vec::new(),
         },
         lib,
@@ -114,11 +112,13 @@ pub fn apply(
 }
 
 struct RuleConstantRange<'a> {
+    context: &'a SemanticContext,
     type_environment: &'a TypeEnvironment,
     /// The signature of every function, which states its parameters' types.
     function_environment: &'a FunctionEnvironment,
-    /// The declared type of every variable in scope.
-    declarations: Declarations<'a>,
+    /// Where the traversal is, to look variables up in the symbol
+    /// environment.
+    scope: ScopeTracker,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -300,7 +300,7 @@ impl RuleConstantRange<'_> {
                     PartialAccessSize::LWord => ByteSized::B64,
                 },
             }),
-            _ => variable_type::of(kind, &self.declarations, self.type_environment),
+            _ => variable_type::of(kind, self.context, &self.scope.current()),
         }
     }
 
@@ -462,14 +462,8 @@ impl RuleConstantRange<'_> {
     /// `VAR_INPUT` and `VAR_IN_OUT` variables, a positional one by position
     /// among the `VAR_INPUT` variables.
     fn check_fb_call_arguments(&mut self, node: &FbCall) {
-        let Some(declared) = self.declarations.find(&node.var_name) else {
-            return;
-        };
-        let TypeReference::Named(type_name) = declared.type_reference() else {
-            return;
-        };
         let Some(IntermediateType::FunctionBlock { fields, .. }) =
-            self.representation_of(&type_name)
+            variable_type::declared(&node.var_name, self.context, &self.scope.current())
         else {
             return;
         };
@@ -561,30 +555,16 @@ impl RuleConstantRange<'_> {
 impl Visitor<Infallible> for RuleConstantRange<'_> {
     type Value = ();
 
-    /// Opens a declaration's scope.
-    ///
-    /// Every kind contributes the same thing -- a frame its own declarations
-    /// go into -- but the match stays exhaustive so that a new kind of scope
-    /// has to say so rather than silently sharing the enclosing
-    /// declaration's frame.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        match node {
-            ScopeNode::Function(_)
-            | ScopeNode::FunctionBlock(_)
-            | ScopeNode::Program(_)
-            | ScopeNode::Method(_) => self.declarations.enter(),
-        }
+        self.scope.enter(&node);
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.declarations.exit();
+        self.scope.exit();
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-        self.declarations
-            .add_if(node.identifier.symbolic_id(), Declared::of(node));
-
         self.check_initializer(&node.initializer);
 
         node.recurse_visit(self)

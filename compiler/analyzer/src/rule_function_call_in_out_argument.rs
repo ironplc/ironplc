@@ -74,7 +74,7 @@ use crate::{
     semantic_context::SemanticContext,
     symbol_environment::{ScopeTracker, SymbolInfo, SymbolKind},
     type_compat::is_checkable_type,
-    variable_type::{self, Declarations, Declared},
+    variable_type,
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -87,7 +87,6 @@ pub fn apply(
         RuleFunctionCallInOutArgument {
             context,
             diagnostics: vec![],
-            declarations: Declarations::new(),
             scope: ScopeTracker::default(),
         },
         lib,
@@ -97,9 +96,6 @@ pub fn apply(
 struct RuleFunctionCallInOutArgument<'a> {
     context: &'a SemanticContext,
     diagnostics: Vec<Diagnostic>,
-    /// The declared type of every variable in scope, to find whether a
-    /// field's record is a function block instance.
-    declarations: Declarations<'static>,
     /// Where the traversal is, to look variables up in the symbol
     /// environment.
     scope: ScopeTracker,
@@ -171,11 +167,7 @@ impl RuleFunctionCallInOutArgument<'_> {
                 // Only a function block's inputs are assignable from
                 // outside the instance; its outputs, locals and VAR_IN_OUT
                 // are not.
-                match variable_type::of(
-                    &structured.record,
-                    &self.declarations,
-                    self.context.types(),
-                ) {
+                match variable_type::of(&structured.record, self.context, &self.scope.current()) {
                     Some(IntermediateType::FunctionBlock { fields, .. }) => fields
                         .iter()
                         .find(|field| field.name == structured.field)
@@ -209,12 +201,10 @@ impl RuleFunctionCallInOutArgument<'_> {
             ExprKind::LateBound(late_bound) => Some(&late_bound.value),
             _ => None,
         };
-        if let Some(Declared::Variable { init, .. }) =
-            name.and_then(|name| self.declarations.find(name))
-        {
-            if matches!(**init, InitialValueAssignmentKind::Reference(_)) {
-                return Some(TypeName::from("REF_TO"));
-            }
+        let declared = name
+            .and_then(|name| variable_type::declared(name, self.context, &self.scope.current()));
+        if declared.is_some_and(IntermediateType::is_reference) {
+            return Some(TypeName::from("REF_TO"));
         }
         let Some(ExprType::Concrete(id)) = &arg.expr_type else {
             return None;
@@ -245,33 +235,12 @@ impl Visitor<Infallible> for RuleFunctionCallInOutArgument<'_> {
     type Value = ();
 
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.declarations.enter();
         self.scope.enter(&node);
-        // A function's or method's result variable is assigned by its body.
-        let result = match node {
-            ScopeNode::Function(node) => Some((&node.name, node.return_type.to_type_name())),
-            ScopeNode::Method(node) => node
-                .return_type
-                .as_ref()
-                .map(|return_type| (&node.name, return_type.to_type_name())),
-            ScopeNode::FunctionBlock(_) | ScopeNode::Program(_) => None,
-        };
-        if let Some((name, type_name)) = result {
-            self.declarations.add(name, Declared::Typed(type_name));
-        }
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.declarations.exit();
         self.scope.exit();
-    }
-
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        if let Some(id) = node.identifier.symbolic_id() {
-            self.declarations.add(id, Declared::of(node));
-        }
-        node.recurse_visit(self)
     }
 
     fn visit_function(&mut self, node: &Function) -> Result<Self::Value, Infallible> {
