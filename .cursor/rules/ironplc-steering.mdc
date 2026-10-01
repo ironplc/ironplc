@@ -12,7 +12,7 @@ alwaysApply: true
 ## Read when relevant
 
 - `specs/steering/glossary.md` — authoritative vocabulary (dialect, vendor, extension, edition); check before coining a term
-- `specs/steering/development-standards.md` — conventions, tests, planning requirement
+- `specs/steering/development-standards.md` — development process (plan, prefactor and core change PRs), specs structure, duplication rules
 - `specs/steering/compiler-architecture.md` — compiler layout and semantic patterns
 - `specs/steering/iec-61131-3-compliance.md` — analyzer / standard compliance
 - `specs/steering/plcopen-xml-module.md` — `compiler/sources/src/xml/`
@@ -23,7 +23,4 @@ alwaysApply: true
 
 ## Non-negotiables
 
-- Do not commit or push to `main`; use a feature branch and PR.
-- Non-trivial work: add a plan under `specs/plans/` before implementation, and `git rm` the plan before merge (see development standards); skip for trivial/mechanical changes only. Work spanning more than one PR must also have an issue.
-- Never cite `specs/plans/` from code, workflows, design docs or ADRs — plans are deleted at merge; `cd specs && just` fails the build.
-- Before opening a PR: run `cd compiler && just` and fix failures (compile, coverage, clippy, fmt).
+- Follow the development process in `specs/steering/development-standards.md` (section "Development Process") for every change; read it before non-trivial work.

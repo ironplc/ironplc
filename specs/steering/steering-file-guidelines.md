@@ -104,7 +104,7 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 
 **Layout**:
 
-- **`CURSOR.md`** (repository root): Same role as `CLAUDE.md` — steering links, git workflow, quick reference, and pointers to `specs/steering/common-tasks.md` for `just` commands (Cursor does not run Claude Code slash commands automatically).
+- **`CURSOR.md`** (repository root): Same role as `CLAUDE.md` — steering links, a pointer to the development process, quick reference, and pointers to `specs/steering/common-tasks.md` for `just` commands (Cursor does not run Claude Code slash commands automatically).
 - **`.cursor/rules/ironplc-steering.mdc`**: Concise `alwaysApply: true` rule that points at `CURSOR.md` and lists `specs/steering/` paths so standards apply in every chat without duplicating long-form docs in the rule file.
 
 #### Other AI Tools

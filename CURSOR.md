@@ -7,7 +7,7 @@ This file is the IronPLC entry point for Cursor. Detailed guidance lives in **`s
 Before making changes, read the relevant steering files in `specs/steering/`:
 
 - **[Glossary](specs/steering/glossary.md)** - Authoritative definitions of core vocabulary (dialect, vendor, extension, edition); resolve terminology questions here before coining a new term
-- **[Development Standards](specs/steering/development-standards.md)** - Core project conventions, testing patterns, error handling, and documentation standards
+- **[Development Standards](specs/steering/development-standards.md)** - Development process (plan, prefactor and core change PRs), specs directory structure, prefactoring, and duplication rules
 - **[Compiler Architecture](specs/steering/compiler-architecture.md)** - Patterns for implementing language features, module organization, and semantic analysis
 - **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules (especially relevant for `**/analyzer/**` files)
 - **[PLCopen XML Module](specs/steering/plcopen-xml-module.md)** - Architecture and patterns for the PLCopen XML parsing module (especially relevant for `compiler/sources/src/xml/` files)
@@ -23,44 +23,7 @@ This repository also defines Claude Code slash commands under `.claude/commands/
 
 ## MANDATORY: Git Workflow
 
-**NEVER commit or push directly to `main`.** Always create a feature branch and open a pull request. This ensures CI validates all changes before they reach main.
-
-### Workflow
-
-Each step is its own PR, never combined, not even as separate commits. See [Development Standards — Required Steps](specs/steering/development-standards.md#required-steps) for the full process.
-
-1. **Plan PR** — on a plan branch from `main`, write the plan in `specs/plans/` and open a PR for it. It is reviewed and **never merged**. If the work needs more than one core change PR, also open an issue listing them
-2. **Prefactor PRs** — on a branch from `main`, make only behaviour-preserving changes so the feature drops in, and open a PR (see [Development Standards — Prefactoring](specs/steering/development-standards.md#prefactoring))
-3. **Core change PRs** — implement the plan on a new branch and open a PR. It may be **stacked** on an unmerged prefactor branch (PR based on that branch); rebase onto `main` and retarget once the prefactor merges. Never stack on the plan branch, and never include the plan file
-4. Land any decision worth keeping as an ADR or `specs/design/` update in a prefactor or core change PR, and open an issue for anything the plan describes that was not delivered
-5. Close the plan PR unmerged, and close the issue if there is one
-6. Before opening any PR, run the full CI pipeline: `cd compiler && just`
-
-If you can push only one branch this session, deliver the next PR in this sequence and stop, saying what comes next.
-
-> **Skip the plan PR** for mechanical changes: typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits.
-
-### Before Creating a PR
-
-**You MUST run the full CI pipeline and verify it passes before creating any PR:**
-
-```bash
-cd compiler && just
-```
-
-This runs compile, coverage (which includes tests), AND lint (clippy + fmt). **All checks must pass.**
-
-If any check fails:
-
-1. Fix the issues
-2. Re-run `cd compiler && just`
-3. Only create the PR after all checks pass
-
-**Common failures:**
-
-- **Clippy warnings** - Fix all clippy issues; the lint step runs `cargo clippy`
-- **Format issues** - Run `cd compiler && just format` to auto-fix
-- **Coverage below 85%** - Add tests for uncovered code
+**Follow the [Development Process](specs/steering/development-standards.md#development-process) for every change.** Read it before starting any non-trivial work: it says which pull requests to open, in what order, and what each may contain. Never commit or push directly to `main`, and run `cd compiler && just` before opening any PR (see [Pre-PR Requirements](specs/steering/common-tasks.md#critical-pre-pr-requirements)).
 
 ## Quick Reference
 
@@ -84,11 +47,9 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 
 ### Critical Rules
 
-1. **NEVER push directly to `main`** - Always use a feature branch and pull request
-2. **Plan PR, then prefactor PRs, then core change PRs** - Non-trivial changes start with a plan PR in `specs/plans/` that is never merged; each prefactor and core change is its own PR (stacking allowed); never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
-3. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
-4. **BDD-style test names**: `function_when_condition_then_result`
-5. **Module size limit**: Max 1000 lines per module
-6. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
-7. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
-8. **Version numbers**: Automatically managed - do not edit manually
+1. **Follow the [Development Process](specs/steering/development-standards.md#development-process)** - Never push to `main`; never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
+2. **BDD-style test names**: `function_when_condition_then_result`
+3. **Module size limit**: Max 1000 lines per module
+4. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
+5. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
+6. **Version numbers**: Automatically managed - do not edit manually

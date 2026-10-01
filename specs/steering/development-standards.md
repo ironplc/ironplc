@@ -2,7 +2,7 @@
 
 This steering file defines the core development standards and patterns for the IronPLC project, a Rust-based PLC compiler implementing the IEC 61131-3 standard.
 
-> **Note**: This file provides detailed implementation guidance for AI-assisted development. For development workflow, setup instructions, and contribution processes, see the main [CONTRIBUTING.md](../../CONTRIBUTING.md) and component-specific contributing guides.
+> **Note**: This file is the single source of truth for the development process — how changes are planned, split into pull requests, and checked — for people and AI assistants alike. `CLAUDE.md`, `CURSOR.md`, `CONTRIBUTING.md` and the tool pointer files link here rather than restating it. For environment setup, see [CONTRIBUTING.md](../../CONTRIBUTING.md) and the component-specific contributing guides.
 
 ## Project Structure
 
@@ -172,13 +172,21 @@ The completeness half is weaker than it reads. A requirement counts as tested wh
 
 See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the full enforcement mechanism, and [ADR-0043](../adrs/0043-spec-conformance-tests-over-a-workflow-framework.md) for why this mechanism rather than a spec-driven-development framework.
 
-## AI Development Process
+## Development Process
 
-A person is accountable for all changes. We use a custom process for all non-trivial features and changes to ensure human review.
+A person is accountable for all changes. Every change, by a person or an AI assistant, follows this process so that a person can review it.
+
+**Never commit or push directly to `main`.** Every change reaches `main` through a pull request, so CI validates it first. Before opening any pull request, run and pass the full pipeline:
+
+```bash
+cd compiler && just
+```
+
+See [common-tasks.md](common-tasks.md#critical-pre-pr-requirements) for what this runs, the extra checks for the other components, and how to fix failures. The clippy-suppression rule lives in [compiler-standards.md](compiler-standards.md#code-quality).
 
 ### Required Steps
 
-Every step below is its own pull request. A PR never combines a plan, a
+The steps below say "AI" because AI assistants do most of this work; a person doing it follows the same steps. Every step below is its own pull request. A PR never combines a plan, a
 prefactor and a core change, not even as separate commits: the reviewer would
 still have to review and approve them together.
 
@@ -195,7 +203,7 @@ still have to review and approve them together.
 
 **Core Change**
 
-6. If the change needs more than one **core change PR**, AI creates a GitHub issue listing the planned PRs. The issue is the durable record that all the work in the plan is completed.
+6. If the change needs more than one **core change PR**, AI creates a GitHub issue listing the planned PRs and references it from the plan. The issue is the durable record that all the work in the plan is completed: it stays open until every PR lands, and undelivered work from each PR is recorded there. A change delivered in a single core change PR needs no issue.
 7. AI creates one or more **core change branches**, implements the changes, and opens a PR for each. The plan file is not part of these PRs.
 8. A person reviews, gives feedback and merges the core change PRs.
 
@@ -358,20 +366,6 @@ For complete guidance on steering files, see [steering-file-guidelines.md](./ste
 IronPLC uses `just` as its command runner. The full command reference — per
 component, coverage, packaging, and troubleshooting — lives in
 [common-tasks.md](common-tasks.md). Do not restate it here.
-
-### Git Workflow and Pre-PR Quality Gate
-
-**NEVER commit or push directly to `main`.** Create a feature branch and open a
-pull request so CI validates every change before it reaches `main`. Before
-creating any PR, run and pass the full pipeline:
-
-```bash
-cd compiler && just
-```
-
-See [common-tasks.md](common-tasks.md#critical-pre-pr-requirements) for what this
-runs and how to fix failures. The clippy-suppression rule lives in
-[compiler-standards.md](compiler-standards.md#code-quality).
 
 ### Version Management
 **Version numbers are generated and incremented automatically** — never edit them
