@@ -202,7 +202,9 @@ impl Visitor<Infallible> for RuleBitAndPartialAccessRange<'_> {
             ScopeNode::Function(_)
             | ScopeNode::FunctionBlock(_)
             | ScopeNode::Program(_)
-            | ScopeNode::Method(_) => self.declarations.enter(),
+            | ScopeNode::Method(_)
+            | ScopeNode::MethodPrototype(_)
+            | ScopeNode::Interface(_) => self.declarations.enter(),
         }
         Ok(())
     }

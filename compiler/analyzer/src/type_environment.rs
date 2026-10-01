@@ -301,6 +301,8 @@ pub struct TypeEnvironment {
     /// repeat does not abort the fold that met it: the first declaration is
     /// kept and every other declaration still resolves.
     duplicates: Vec<Diagnostic>,
+    /// Which interfaces each function block and interface converts to.
+    supertypes: crate::supertypes::Supertypes,
 }
 
 impl TypeEnvironment {
@@ -313,7 +315,19 @@ impl TypeEnvironment {
             references: HashMap::new(),
             referenced: HashMap::new(),
             duplicates: Vec::new(),
+            supertypes: crate::supertypes::Supertypes::default(),
         }
+    }
+
+    /// Which interfaces each function block and interface converts to.
+    pub(crate) fn supertypes(&self) -> &crate::supertypes::Supertypes {
+        &self.supertypes
+    }
+
+    /// Records the direct supertypes of a function block or an interface,
+    /// see [`crate::supertypes`].
+    pub(crate) fn insert_supertypes(&mut self, name: &TypeName, supertypes: Vec<TypeName>) {
+        self.supertypes.insert(name, supertypes);
     }
 
     /// Adds the type into the environment.

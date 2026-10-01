@@ -243,6 +243,7 @@ pub fn compile(
     options: &CodegenOptions,
     sources: &dyn crate::source_lookup::SourceLookup,
 ) -> Result<Container, Diagnostic> {
+    crate::compile_interface::reject_interface_variables(library)?;
     let program = find_program(library)?;
     let config = find_configuration(library);
     if let Some(config) = config {

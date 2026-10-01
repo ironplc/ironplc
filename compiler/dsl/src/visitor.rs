@@ -269,6 +269,8 @@ pub trait Visitor<E> {
     // 2.4.3.2
     dispatch!(FunctionBlockInitialValueAssignment);
 
+    dispatch!(InterfaceInitializer);
+
     dispatch!(FunctionBlockCallInitializer);
 
     // 2.4.3.2
@@ -301,6 +303,8 @@ pub trait Visitor<E> {
     dispatch!(FunctionBlockOop);
     dispatch!(MethodDeclaration);
     dispatch!(PropertyDeclaration);
+    dispatch!(MethodPrototype);
+    dispatch!(PropertyPrototype);
 
     dispatch!(FunctionBlockBodyKind);
 

@@ -280,7 +280,9 @@ fn render_type(ty: &IntermediateType) -> String {
             format!("ARRAY OF {}", render_type(element_type))
         }
         IntermediateType::Subrange { base_type, .. } => render_type(base_type),
-        IntermediateType::FunctionBlock { name, .. } => name.clone(),
+        IntermediateType::FunctionBlock { name, .. } | IntermediateType::Interface { name } => {
+            name.clone()
+        }
         IntermediateType::Function { .. } => "FUNCTION".into(),
         IntermediateType::Reference { target_type } => {
             format!("REF_TO {}", render_type(target_type))

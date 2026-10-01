@@ -90,6 +90,7 @@ enum VariableType {
     EnumeratedValues,
     EnumeratedType,
     FunctionBlock,
+    Interface,
     Subrange,
     Structure,
     Array,
@@ -118,6 +119,7 @@ impl DeclarationResolver<'_> {
             InitialValueAssignmentKind::EnumeratedType(_) => VariableType::EnumeratedType,
             InitialValueAssignmentKind::FunctionBlock(_) => VariableType::FunctionBlock,
             InitialValueAssignmentKind::FunctionBlockCall(_) => VariableType::FunctionBlock,
+            InitialValueAssignmentKind::Interface(_) => VariableType::Interface,
             InitialValueAssignmentKind::Subrange(_) => VariableType::Subrange,
             InitialValueAssignmentKind::Structure(_) => VariableType::Structure,
             InitialValueAssignmentKind::Array(_) => VariableType::Array,
@@ -357,6 +359,9 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                     // If we reach this branch, it indicates an internal error.
                     Err(Diagnostic::internal_error())
                 }
+                // The value is a function block instance or another
+                // interface variable.
+                VariableType::Interface => Ok(self.resolve_late_bound(node.value)),
                 VariableType::Subrange => Ok(self.resolve_late_bound(node.value)),
                 VariableType::Structure => Ok(self.resolve_late_bound(node.value)),
                 VariableType::Array => Ok(self.resolve_late_bound(node.value)),
