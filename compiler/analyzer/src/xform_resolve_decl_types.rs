@@ -65,7 +65,7 @@ impl DeclTypeResolver<'_> {
             }) => return env.id_of(type_name),
             InitialValueAssignmentKind::SimpleExpr(se) => return env.id_of(&se.type_name),
             InitialValueAssignmentKind::EnumeratedValues(values) => {
-                enumeration::try_from_values(values, None).ok()?
+                enumeration::try_from_values(values, None, None).ok()?
             }
             InitialValueAssignmentKind::Subrange(spec) => {
                 match subrange::try_from(name, spec, env).ok()? {

@@ -15,6 +15,7 @@ use ironplc_dsl::textual::*;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
+mod enumerated_value;
 mod expr_type;
 mod single_assignment;
 
@@ -23,6 +24,8 @@ mod single_assignment;
 struct Resolved {
     library: Library,
     types: crate::type_environment::TypeEnvironment,
+    /// The problems the pass reported.
+    diagnostics: Vec<ironplc_dsl::diagnostic::Diagnostic>,
 }
 
 /// Runs the prerequisite passes and then the expression type resolution pass.
@@ -55,7 +58,7 @@ fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Resolved {
     )
     .unwrap();
     let library = crate::xform_resolve_decl_types::apply(library, &mut type_environment).unwrap();
-    let library = apply(
+    let (library, diagnostics) = apply(
         library,
         &mut type_environment,
         &function_environment,
@@ -65,6 +68,7 @@ fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Resolved {
     Resolved {
         library,
         types: type_environment,
+        diagnostics,
     }
 }
 

@@ -23,6 +23,9 @@ mod test_macros;
 mod call_assignment_check;
 mod callee_resolution;
 mod constant_folding;
+mod enumerated_value_type;
+pub mod enumeration_members;
+mod enumeration_values;
 mod function_environment;
 pub mod intermediate_type;
 mod result;
@@ -117,7 +120,6 @@ pub use intermediate_type::IntermediateType;
 pub use intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, typed_overload, FoldFailure, Overload,
 };
-pub use intermediates::enumeration::resolve_ordinal_values;
 pub use intermediates::operator_function_form::{
     operator_function_form, FormOf, OperatorFunctionForm,
 };

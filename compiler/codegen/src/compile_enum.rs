@@ -1,138 +1,136 @@
 //! Enumeration support for IEC 61131-3 code generation.
 //!
-//! Builds an ordinal map from enumeration type declarations and provides
-//! helpers to resolve enumeration values to their integer ordinals.
+//! The analyzer records each enumeration's members, their ordinals and its
+//! default with the type (`IntermediateType::Enumeration::members`), and
+//! gives every enumerated value a type. Codegen only looks an ordinal up by
+//! `(TypeId, value)`; it neither walks declarations nor numbers members.
 //!
 //! See `specs/design/enumeration-codegen.md` for the full design.
 
-use std::collections::HashMap;
-
-use ironplc_dsl::common::{
-    DataTypeDeclarationKind, EnumeratedValue, Library, LibraryElementKind, SpecificationKind,
-};
+use ironplc_analyzer::enumeration_members::EnumerationMembers;
+use ironplc_analyzer::{IntermediateType, TypeEnvironment};
+use ironplc_container::debug_section::EnumDefEntry;
+use ironplc_dsl::common::{EnumeratedValue, InitialValueAssignmentKind, VarDecl};
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::textual::{Expr, ExprType};
+use ironplc_dsl::type_id::TypeId;
 
-use super::compile::{OpWidth, Signedness, VarTypeInfo};
+use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
 
-/// Pre-computed ordinal mappings for all named enumeration types.
+/// The ordinal of `value` as a member of the enumeration `members`.
 ///
-/// Built once at codegen entry from the library's type declarations
-/// and stored in `CompileContext` for use by all codegen phases.
-#[derive(Default)]
-pub(crate) struct EnumOrdinalMap {
-    /// Maps (type_name_upper, value_name_upper) → 0-based ordinal.
-    ordinals: HashMap<(String, String), i32>,
-
-    /// Maps unqualified value_name_upper → (type_name_upper, ordinal).
-    /// The analyzer guarantees unqualified names are unambiguous within scope.
-    value_lookup: HashMap<String, (String, i32)>,
-
-    /// Maps type_name_upper → default ordinal (from the type declaration's
-    /// default value, or 0 if no default is specified).
-    defaults: HashMap<String, i32>,
-
-    /// Maps type_name_upper → ordered list of value names (for debug output).
-    pub(crate) definitions: HashMap<String, Vec<String>>,
-}
-
-/// Builds the ordinal map by walking enumeration type declarations in the AST.
-///
-/// For each `TYPE X : (A, B, C) := A; END_TYPE`, records:
-/// - ordinals: (X, A)→0, (X, B)→1, (X, C)→2
-/// - value_lookup: A→(X, 0), B→(X, 1), C→(X, 2)
-/// - defaults: X→0 (ordinal of A)
-/// - definitions: X→[A, B, C]
-pub(crate) fn build_enum_ordinal_map(library: &Library) -> EnumOrdinalMap {
-    let mut ordinals = HashMap::new();
-    let mut value_lookup = HashMap::new();
-    let mut defaults = HashMap::new();
-    let mut definitions = HashMap::new();
-
-    for element in &library.elements {
-        if let LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(decl)) =
-            element
-        {
-            let type_upper = decl.type_name.to_string().to_uppercase();
-
-            if let SpecificationKind::Inline(spec_values) = &decl.spec_init.spec {
-                let mut value_names = Vec::new();
-
-                // Uses the resolved ordinal (not just declaration
-                // position) so explicit values (`member := 5`,
-                // an extension) are reflected at runtime,
-                // not just at the type-sizing stage.
-                let resolved = ironplc_analyzer::resolve_ordinal_values(&spec_values.values);
-                for (ev, ordinal) in spec_values.values.iter().zip(resolved) {
-                    let val_upper = ev.value.to_string().to_uppercase();
-                    let ordinal = ordinal as i32;
-                    ordinals.insert((type_upper.clone(), val_upper.clone()), ordinal);
-                    value_lookup.insert(val_upper.clone(), (type_upper.clone(), ordinal));
-                    value_names.push(val_upper);
-                }
-
-                // Resolve default ordinal from the type declaration.
-                let default_ordinal = decl
-                    .spec_init
-                    .default
-                    .as_ref()
-                    .and_then(|ev| {
-                        let val_upper = ev.value.to_string().to_uppercase();
-                        ordinals.get(&(type_upper.clone(), val_upper)).copied()
-                    })
-                    .unwrap_or(0);
-
-                defaults.insert(type_upper.clone(), default_ordinal);
-                definitions.insert(type_upper, value_names);
-            }
-        }
-    }
-
-    EnumOrdinalMap {
-        ordinals,
-        value_lookup,
-        defaults,
-        definitions,
-    }
-}
-
-/// Resolves an `EnumeratedValue` AST node to its integer ordinal.
-///
-/// For qualified values (`COLOR#GREEN`), uses the explicit type name.
-/// For unqualified values (`GREEN`), uses the reverse lookup.
-pub(crate) fn resolve_enum_ordinal(
-    map: &EnumOrdinalMap,
-    ev: &EnumeratedValue,
+/// `None` for `members` means the analyzer gave the value no enumeration
+/// type: a value it could not place, such as one of an inline enumeration
+/// declared in a structure field (#1946). That is refused as not
+/// implemented, as it was before the analyzer typed enumerated values.
+pub(crate) fn ordinal_in(
+    members: Option<&EnumerationMembers>,
+    value: &EnumeratedValue,
 ) -> Result<i32, Diagnostic> {
-    let value_upper = ev.value.to_string().to_uppercase();
+    members
+        .and_then(|members| members.ordinal_of(&value.value))
+        .map(|ordinal| ordinal as i32)
+        .ok_or_else(|| {
+            Diagnostic::not_implemented(Label::span(
+                value.span(),
+                "Enumerated value whose enumeration is not known",
+            ))
+        })
+}
 
-    if let Some(type_name) = &ev.type_name {
-        // Qualified: COLOR#GREEN
-        let type_upper = type_name.to_string().to_uppercase();
-        map.ordinals
-            .get(&(type_upper, value_upper))
-            .copied()
-            .ok_or_else(|| {
-                Diagnostic::not_implemented(Label::span(ev.span(), "Unknown qualified enum value"))
-            })
-    } else {
-        // Unqualified: GREEN
-        map.value_lookup
-            .get(&value_upper)
-            .map(|(_, ordinal)| *ordinal)
-            .ok_or_else(|| {
-                Diagnostic::not_implemented(Label::span(ev.span(), "Unknown enum value"))
-            })
+/// The members of the enumeration `id` identifies; `None` when `id` is not
+/// an enumeration.
+pub(crate) fn members_of(ctx: &CompileContext, id: Option<TypeId>) -> Option<&EnumerationMembers> {
+    ctx.types.get(&id?)?.enumeration_members()
+}
+
+/// The members of the enumeration `expr`'s value has as its type.
+pub(crate) fn members_of_expr<'a>(
+    ctx: &'a CompileContext,
+    expr: &Expr,
+) -> Option<&'a EnumerationMembers> {
+    match expr.expr_type.as_ref()? {
+        ExprType::Concrete(id) => members_of(ctx, Some(*id)),
+        _ => None,
     }
 }
 
-/// Returns the default ordinal for a named enumeration type.
+/// The ordinal a variable declared by `decl` starts at, or `None` when
+/// `decl` does not declare an enumeration.
 ///
-/// Uses the type declaration's default value if present, otherwise 0
-/// (the first declared value).
-pub(crate) fn resolve_enum_default_ordinal(map: &EnumOrdinalMap, type_name: &str) -> i32 {
-    let type_upper = type_name.to_uppercase();
-    map.defaults.get(&type_upper).copied().unwrap_or(0)
+/// An explicit initial value gives its own ordinal (REQ-EN-codegen-020);
+/// otherwise the enumeration's default applies (REQ-EN-codegen-021/022).
+/// Both are looked up in the declared type, `decl.type_id`
+/// (REQ-EN-codegen-093).
+pub(crate) fn initial_ordinal(
+    ctx: &CompileContext,
+    decl: &VarDecl,
+) -> Result<Option<i32>, Diagnostic> {
+    let initial_value = match &decl.initializer {
+        InitialValueAssignmentKind::EnumeratedType(init) => init.initial_value.as_ref(),
+        InitialValueAssignmentKind::EnumeratedValues(init) => init.initial_value.as_ref(),
+        _ => return Ok(None),
+    };
+    let members = members_of(ctx, decl.type_id).ok_or_else(|| {
+        Diagnostic::internal_error_at(Label::span(
+            decl.identifier.span(),
+            "Enumeration variable without an enumeration type",
+        ))
+    })?;
+    match initial_value {
+        Some(value) => ordinal_in(Some(members), value).map(Some),
+        None => Ok(Some(members.default_ordinal() as i32)),
+    }
+}
+
+/// The default ordinal of a structure field of type `field_type`, when it is
+/// an enumeration.
+pub(crate) fn field_default_ordinal(field_type: &IntermediateType) -> Option<i32> {
+    field_type
+        .enumeration_members()
+        .map(|members| members.default_ordinal() as i32)
+}
+
+/// The name the debug section knows the enumeration type `id` by: its
+/// declared name, upper-cased, or for an anonymous enumeration
+/// (`e : (A, B)`) a name made from its id (REQ-EN-codegen-092). Empty when
+/// `id` is unknown.
+pub(crate) fn debug_name(types: &TypeEnvironment, id: Option<TypeId>) -> String {
+    match id {
+        Some(id) => match types.name_of(id) {
+            Some(name) => name.to_string().to_uppercase(),
+            None => anonymous_name(id),
+        },
+        None => String::new(),
+    }
+}
+
+/// The debug name of the anonymous enumeration `id`. A parenthesis cannot
+/// start an identifier, so the name is never a declared type's.
+fn anonymous_name(id: TypeId) -> String {
+    format!("(ANONYMOUS ENUMERATION {})", id.raw())
+}
+
+/// The ENUM_DEF entries: one per enumeration type, its members' names in
+/// declaration order, sorted by type name so one source always gives the
+/// same bytes.
+pub(crate) fn enum_definitions(types: &TypeEnvironment) -> Vec<EnumDefEntry> {
+    let mut entries: Vec<EnumDefEntry> = types
+        .iter_ids()
+        .filter_map(|(id, attributes)| {
+            let members = attributes.representation.enumeration_members()?;
+            Some(EnumDefEntry {
+                type_name: debug_name(types, Some(id)),
+                values: members
+                    .iter()
+                    .map(|m| m.name.to_string().to_uppercase())
+                    .collect(),
+            })
+        })
+        .collect();
+    entries.sort_by(|a, b| a.type_name.cmp(&b.type_name));
+    entries
 }
 
 /// Returns the `VarTypeInfo` for an enumeration variable.
@@ -151,187 +149,27 @@ pub(crate) fn enum_var_type_info() -> VarTypeInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_dsl::core::FileId;
-    use ironplc_parser::options::CompilerOptions;
-
-    fn parse_library(source: &str) -> Library {
-        ironplc_parser::parse_program(source, &FileId::default(), &CompilerOptions::default())
-            .unwrap()
-    }
-
-    #[test]
-    fn build_enum_ordinal_map_when_simple_enum_then_assigns_ordinals() {
-        let lib = parse_library(
-            "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-             PROGRAM main END_PROGRAM",
-        );
-        let map = build_enum_ordinal_map(&lib);
-
-        assert_eq!(map.ordinals.get(&("COLOR".into(), "RED".into())), Some(&0));
-        assert_eq!(
-            map.ordinals.get(&("COLOR".into(), "GREEN".into())),
-            Some(&1)
-        );
-        assert_eq!(map.ordinals.get(&("COLOR".into(), "BLUE".into())), Some(&2));
-    }
-
-    #[test]
-    fn build_enum_ordinal_map_when_default_specified_then_stores_default() {
-        let lib = parse_library(
-            "TYPE LEVEL : (LOW, MEDIUM, HIGH) := MEDIUM; END_TYPE
-             PROGRAM main END_PROGRAM",
-        );
-        let map = build_enum_ordinal_map(&lib);
-
-        assert_eq!(map.defaults.get("LEVEL"), Some(&1));
-    }
-
-    #[test]
-    fn build_enum_ordinal_map_when_no_default_then_defaults_to_zero() {
-        let lib = parse_library(
-            "TYPE STATUS : (STOPPED, RUNNING); END_TYPE
-             PROGRAM main END_PROGRAM",
-        );
-        let map = build_enum_ordinal_map(&lib);
-
-        assert_eq!(map.defaults.get("STATUS"), Some(&0));
-    }
-
-    #[test]
-    fn build_enum_ordinal_map_when_multiple_enums_then_maps_all() {
-        let lib = parse_library(
-            "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-             TYPE LEVEL : (LOW, HIGH) := LOW; END_TYPE
-             PROGRAM main END_PROGRAM",
-        );
-        let map = build_enum_ordinal_map(&lib);
-
-        assert_eq!(map.ordinals.len(), 5);
-        assert_eq!(map.ordinals.get(&("COLOR".into(), "BLUE".into())), Some(&2));
-        assert_eq!(map.ordinals.get(&("LEVEL".into(), "HIGH".into())), Some(&1));
-    }
-
-    #[test]
-    fn resolve_enum_ordinal_when_unqualified_then_finds_value() {
-        let lib = parse_library(
-            "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-             PROGRAM main END_PROGRAM",
-        );
-        let map = build_enum_ordinal_map(&lib);
-
-        let ev = EnumeratedValue::new("GREEN");
-        let result = resolve_enum_ordinal(&map, &ev).unwrap();
-        assert_eq!(result, 1);
-    }
-
-    #[test]
-    fn resolve_enum_default_ordinal_when_default_set_then_returns_it() {
-        let lib = parse_library(
-            "TYPE LEVEL : (LOW, MEDIUM, HIGH) := HIGH; END_TYPE
-             PROGRAM main END_PROGRAM",
-        );
-        let map = build_enum_ordinal_map(&lib);
-
-        assert_eq!(resolve_enum_default_ordinal(&map, "LEVEL"), 2);
-    }
-
-    #[test]
-    fn resolve_enum_default_ordinal_when_unknown_type_then_returns_zero() {
-        let lib = parse_library("PROGRAM main END_PROGRAM");
-        let map = build_enum_ordinal_map(&lib);
-
-        assert_eq!(resolve_enum_default_ordinal(&map, "NONEXISTENT"), 0);
-    }
 
     #[test]
     fn enum_var_type_info_when_called_then_returns_dint() {
         let info = enum_var_type_info();
-        assert!(matches!(info.op_width, OpWidth::W32));
-        assert!(matches!(info.signedness, Signedness::Signed));
+
+        assert_eq!(info.op_width, OpWidth::W32);
+        assert_eq!(info.signedness, Signedness::Signed);
         assert_eq!(info.storage_bits, 32);
     }
 
     #[test]
-    fn build_enum_ordinal_map_when_enum_then_stores_definitions() {
-        let lib = parse_library(
-            "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-             PROGRAM main END_PROGRAM",
-        );
-        let map = build_enum_ordinal_map(&lib);
+    fn ordinal_in_when_no_enumeration_then_not_implemented() {
+        let result = ordinal_in(None, &EnumeratedValue::new("RED"));
 
-        assert_eq!(
-            map.definitions.get("COLOR"),
-            Some(&vec![
-                "RED".to_string(),
-                "GREEN".to_string(),
-                "BLUE".to_string()
-            ])
-        );
+        assert_eq!(result.unwrap_err().code, "P9999");
     }
 
     #[test]
-    fn build_enum_ordinal_map_when_enum_then_populates_value_lookup() {
-        let lib = parse_library(
-            "TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
-             PROGRAM main END_PROGRAM",
-        );
-        let map = build_enum_ordinal_map(&lib);
+    fn anonymous_name_when_id_then_cannot_be_identifier() {
+        let name = anonymous_name(TypeId::from_raw(42));
 
-        assert_eq!(map.value_lookup.get("RED"), Some(&("COLOR".to_string(), 0)));
-        assert_eq!(
-            map.value_lookup.get("GREEN"),
-            Some(&("COLOR".to_string(), 1))
-        );
-        assert_eq!(
-            map.value_lookup.get("BLUE"),
-            Some(&("COLOR".to_string(), 2))
-        );
-    }
-
-    #[test]
-    fn build_enum_ordinal_map_when_explicit_values_then_uses_resolved_ordinals() {
-        let lib = parse_library(
-            "TYPE E_ModeLanguage : (Deutsch := 1, English := 2); END_TYPE
-             PROGRAM main END_PROGRAM",
-        );
-        let map = build_enum_ordinal_map(&lib);
-
-        // Uses the explicit values, not declaration position (which
-        // would otherwise give Deutsch=0, English=1).
-        assert_eq!(
-            map.ordinals
-                .get(&("E_MODELANGUAGE".into(), "DEUTSCH".into())),
-            Some(&1)
-        );
-        assert_eq!(
-            map.ordinals
-                .get(&("E_MODELANGUAGE".into(), "ENGLISH".into())),
-            Some(&2)
-        );
-    }
-
-    #[test]
-    fn build_enum_ordinal_map_when_first_explicit_then_continues_for_rest() {
-        let lib = parse_library(
-            "TYPE E_AssertionType : (Type_UNDEFINED := 0, Type_ANY, Type_BOOL) BYTE; END_TYPE
-             PROGRAM main END_PROGRAM",
-        );
-        let map = build_enum_ordinal_map(&lib);
-
-        assert_eq!(
-            map.ordinals
-                .get(&("E_ASSERTIONTYPE".into(), "TYPE_UNDEFINED".into())),
-            Some(&0)
-        );
-        assert_eq!(
-            map.ordinals
-                .get(&("E_ASSERTIONTYPE".into(), "TYPE_ANY".into())),
-            Some(&1)
-        );
-        assert_eq!(
-            map.ordinals
-                .get(&("E_ASSERTIONTYPE".into(), "TYPE_BOOL".into())),
-            Some(&2)
-        );
+        assert_eq!(name, "(ANONYMOUS ENUMERATION 42)");
     }
 }

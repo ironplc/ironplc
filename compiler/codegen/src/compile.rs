@@ -42,9 +42,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ironplc_container::debug_section::{
-    EnumDefEntry, FuncNameEntry, StringLayoutEntry, VarNameEntry,
-};
+use ironplc_container::debug_section::{FuncNameEntry, StringLayoutEntry, VarNameEntry};
 use ironplc_container::{
     CharWidth, Container, ContainerBuilder, FbTypeId, FunctionId, TaskType, UserFbDescriptor,
     VarIndex,
@@ -300,8 +298,6 @@ pub fn compile(
         })
         .collect();
 
-    let enum_map = crate::compile_enum::build_enum_ordinal_map(library);
-
     let mut container = compile_program_with_functions(
         ProgramInputs {
             program,
@@ -311,7 +307,6 @@ pub fn compile(
         },
         context.functions(),
         context.types(),
-        enum_map,
         options.string_to_num,
         *context.compiler_options(),
         sources,
@@ -713,7 +708,6 @@ fn compile_program_with_functions(
     inputs: ProgramInputs<'_>,
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
-    enum_map: crate::compile_enum::EnumOrdinalMap,
     string_to_num: StringToNumPolicies,
     compiler_options: CompilerOptions,
     sources: &dyn crate::source_lookup::SourceLookup,
@@ -725,7 +719,6 @@ fn compile_program_with_functions(
         global_vars,
     } = inputs;
     let mut ctx = CompileContext::new();
-    ctx.enum_map = enum_map;
     ctx.types = crate::type_info::type_representations(types);
     ctx.operand_names = crate::type_info::operand_names(types);
     ctx.string_to_num = string_to_num;
@@ -763,6 +756,7 @@ fn compile_program_with_functions(
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let mut field_indices: HashMap<String, u8> = HashMap::new();
         let mut field_op_types: HashMap<String, OpType> = HashMap::new();
+        let mut field_type_ids = HashMap::new();
         let mut field_decls_tmp: Vec<&VarDecl> = Vec::new();
 
         for decl in &fb_decl.variables {
@@ -784,6 +778,9 @@ fn compile_program_with_functions(
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
                 field_indices.insert(name.clone(), i as u8);
+                if let Some(type_id) = decl.type_id {
+                    field_type_ids.insert(name.clone(), type_id);
+                }
                 if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
                     if let Some(vti) = crate::type_info::decl_type_info(&ctx, decl) {
                         field_op_types.insert(name, (vti.op_width, vti.signedness));
@@ -807,6 +804,7 @@ fn compile_program_with_functions(
                 function_id: FunctionId::new(next_function_id),
                 var_offset: 0, // updated after program vars are assigned
                 field_op_types,
+                field_type_ids,
                 methods: HashMap::new(),
             },
         );
@@ -1064,8 +1062,12 @@ fn compile_program_with_functions(
         builder = add_line_map_entries(builder, compiled.function_id, &compiled.line_map);
     }
 
-    // Add user FB type descriptors to the container.
-    for fb_info in ctx.user_fb_types.values() {
+    // Add user FB type descriptors to the container, by type id: the map
+    // iterates in an order that differs between runs, and the same source
+    // must compile to the same bytes.
+    let mut user_fb_types: Vec<&UserFbTypeInfo> = ctx.user_fb_types.values().collect();
+    user_fb_types.sort_by_key(|fb_info| fb_info.type_id);
+    for fb_info in user_fb_types {
         builder = builder.add_user_fb_type(UserFbDescriptor {
             type_id: FbTypeId::new(fb_info.type_id),
             function_id: fb_info.function_id,
@@ -1161,11 +1163,9 @@ fn compile_program_with_functions(
     for entry in ctx.debug_string_layouts {
         builder = builder.add_string_layout(entry);
     }
-    for (type_name, values) in &ctx.enum_map.definitions {
-        builder = builder.add_enum_def(EnumDefEntry {
-            type_name: type_name.clone(),
-            values: values.clone(),
-        });
+    // By type name, for the same reason as the user FB type descriptors.
+    for entry in crate::compile_enum::enum_definitions(types) {
+        builder = builder.add_enum_def(entry);
     }
 
     // Add constants to the pool.
@@ -1305,6 +1305,8 @@ pub(crate) struct UserFbTypeInfo {
     pub(crate) var_offset: u16,
     /// Maps field name (lowercase) to its op type for codegen at call sites.
     pub(crate) field_op_types: HashMap<String, OpType>,
+    /// Maps field name (lowercase) to the type its declaration declares.
+    pub(crate) field_type_ids: HashMap<String, ironplc_dsl::type_id::TypeId>,
     /// Maps method name (lowercase) to compilation metadata (OOP
     /// extension, ADR-0041 Phase 1). Populated in two steps: `function_id`,
     /// `num_params`, `param_op_types`, and `has_return_value` are known
@@ -1363,8 +1365,6 @@ pub(crate) struct CompileContext {
     /// Maps top-level `ARRAY OF <struct>` variable identifiers to their metadata.
     /// Kept apart from `array_vars`, whose elements occupy a single slot each.
     pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
-    /// Pre-computed ordinal mappings for named enumeration types.
-    pub(crate) enum_map: crate::compile_enum::EnumOrdinalMap,
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, IntermediateType>,
@@ -1464,7 +1464,6 @@ impl CompileContext {
             user_functions: HashMap::new(),
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,
-            enum_map: crate::compile_enum::EnumOrdinalMap::default(),
             types: HashMap::new(),
             operand_names: HashMap::new(),
             string_to_num: StringToNumPolicies::default(),

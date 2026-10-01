@@ -1,6 +1,9 @@
 //! Semantic rule that references to enumerations use enumeration values
 //! that are part of the enumeration declaration.
 //!
+//! This holds for an inline enumeration too: `e : (A, B) := C` names a
+//! value its own list does not declare.
+//!
 //! ## Passes
 //!
 //! ```ignore
@@ -140,6 +143,27 @@ impl Visitor<Infallible> for RuleDeclaredEnumeratedValues<'_> {
 
         Ok(())
     }
+
+    fn visit_enumerated_values_initializer(
+        &mut self,
+        init: &EnumeratedValuesInitializer,
+    ) -> Result<Self::Value, Infallible> {
+        // An inline enumeration's initial value must be one of the values
+        // the declaration itself lists.
+        if let Some(value) = &init.initial_value {
+            if !init.values.iter().any(|member| member.value == value.value) {
+                self.diagnostics.push(
+                    Diagnostic::problem(
+                        Problem::EnumValueNotDefined,
+                        Label::span(value.span(), "Expected value in enumeration"),
+                    )
+                    .with_context_id("value", &value.value),
+                );
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -180,6 +204,69 @@ END_FUNCTION_BLOCK";
             reported.iter().any(|d| d.as_str() == "value=FATAL"),
             "expected FATAL, got {reported:?}"
         );
+    }
+
+    /// The codes `analyze` reports for `program`.
+    fn analyze_codes(program: &str) -> Vec<String> {
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
+        context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.clone())
+            .collect()
+    }
+
+    #[test]
+    fn apply_when_two_enumerations_in_one_block_then_ok_on_every_run() {
+        // Each analysis builds its hash maps with fresh random keys, so a
+        // result that depends on hash iteration order shows up within a
+        // few runs (issue #1945).
+        let program = "
+TYPE A1 : (P, Q, R); A2 : (S0, S1); END_TYPE
+PROGRAM main
+VAR st : A2 := S1; pt : A1 := R; END_VAR
+END_PROGRAM";
+
+        for _ in 0..32 {
+            assert_eq!(analyze_codes(program), Vec::<String>::new());
+        }
+    }
+
+    #[test]
+    fn apply_when_two_enumerations_declare_same_value_then_each_accepts_it() {
+        let program = "
+TYPE A : (X, Y); B : (X, Z); END_TYPE
+PROGRAM main
+VAR a : A := X; b : B := X; END_VAR
+END_PROGRAM";
+
+        assert_eq!(analyze_codes(program), Vec::<String>::new());
+    }
+
+    #[test]
+    fn apply_when_value_of_other_enumeration_then_enum_value_not_defined() {
+        let program = "
+TYPE A : (X, Y); B : (X, Z); END_TYPE
+PROGRAM main
+VAR a : A := Z; END_VAR
+END_PROGRAM";
+
+        assert_eq!(analyze_codes(program), vec!["P2006"]);
+    }
+
+    #[test]
+    fn apply_when_alias_chain_then_values_of_declaring_enumeration() {
+        let program = "
+TYPE LEVEL : (INFO, WARN); LEVEL1 : LEVEL; LEVEL2 : LEVEL1; END_TYPE
+PROGRAM main
+VAR ok : LEVEL2 := WARN; bad : LEVEL2 := FATAL; END_VAR
+END_PROGRAM";
+
+        for _ in 0..32 {
+            assert_eq!(analyze_codes(program), vec!["P2006"]);
+        }
     }
 
     #[test]
@@ -246,7 +333,6 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
-    #[ignore = "flaky test - needs to be fixed"]
     fn apply_when_var_init_valid_enum_value_through_alias_then_ok() {
         let program = "
 TYPE
@@ -266,5 +352,42 @@ END_FUNCTION_BLOCK";
         let result = analyze(&[&library], &CompilerOptions::default());
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_inline_enum_init_not_a_member_then_enum_value_not_defined() {
+        let program = "
+PROGRAM main
+VAR
+e : (A, B) := C;
+END_VAR
+END_PROGRAM";
+
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
+
+        let codes: Vec<&str> = context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert_eq!(codes, vec!["P2006"]);
+    }
+
+    #[test]
+    fn apply_when_inline_enum_init_is_a_member_then_ok() {
+        let program = "
+PROGRAM main
+VAR
+e : (A, B) := B;
+END_VAR
+END_PROGRAM";
+
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
+
+        assert!(!context.has_diagnostics());
     }
 }

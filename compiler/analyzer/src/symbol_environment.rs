@@ -1,3 +1,4 @@
+use crate::enumeration_values::EnumerationValues;
 use indexmap::IndexMap;
 use ironplc_dsl::common::{DeclarationQualifier, TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
@@ -94,8 +95,6 @@ pub struct SymbolInfo {
     /// so that we can distinguish between the actual place of the declaration
     /// and a reference to the declaration.
     pub enum_type: Option<TypeName>,
-    /// For structure fields, the type name of the structure
-    pub struct_type: Option<TypeName>,
     /// The variable type qualifier (VAR, VAR_INPUT, VAR_OUTPUT, etc.)
     pub variable_type: Option<VariableType>,
     /// The qualifier the declaration was written with (CONSTANT, RETAIN,
@@ -121,7 +120,6 @@ impl SymbolInfo {
             is_external: false,
             data_type: None,
             enum_type: None,
-            struct_type: None,
             variable_type: None,
             qualifier: None,
             address: None,
@@ -143,12 +141,6 @@ impl SymbolInfo {
     /// Set the enumeration type for enumeration value symbols
     pub fn with_enum_type(mut self, enum_type: TypeName) -> Self {
         self.enum_type = Some(enum_type);
-        self
-    }
-
-    /// Set the structure type for structure field symbols
-    pub fn with_struct_type(mut self, struct_type: TypeName) -> Self {
-        self.struct_type = Some(struct_type);
         self
     }
 
@@ -264,6 +256,9 @@ pub struct SymbolEnvironment {
     global_symbols: IndexMap<Id, SymbolInfo>,
     /// Scoped symbols (variables within functions, function blocks, etc.)
     scoped_symbols: IndexMap<ScopeKind, IndexMap<Id, SymbolInfo>>,
+    /// The values of each enumeration type, which the name-keyed tables
+    /// above cannot hold when two enumerations share a value name.
+    enumerations: EnumerationValues,
 }
 
 impl SymbolEnvironment {
@@ -271,6 +266,7 @@ impl SymbolEnvironment {
         Self {
             global_symbols: IndexMap::new(),
             scoped_symbols: IndexMap::new(),
+            enumerations: EnumerationValues::default(),
         }
     }
 
@@ -364,6 +360,7 @@ impl SymbolEnvironment {
         enum_type: &TypeName,
         scope: &ScopeKind,
     ) -> Result<(), Diagnostic> {
+        self.enumerations.insert(enum_type, name);
         let symbol_info = SymbolInfo::new(SymbolKind::EnumerationValue, scope.clone(), name.span())
             .with_enum_type(enum_type.clone());
 
@@ -381,83 +378,10 @@ impl SymbolEnvironment {
         Ok(())
     }
 
-    /// Insert a structure field with its type information
-    pub fn insert_structure_field(
-        &mut self,
-        name: &Id,
-        struct_type: &TypeName,
-        scope: &ScopeKind,
-    ) -> Result<(), Diagnostic> {
-        let symbol_info = SymbolInfo::new(SymbolKind::StructureElement, scope.clone(), name.span())
-            .with_struct_type(struct_type.clone());
-
-        match scope {
-            ScopeKind::Global => {
-                self.global_symbols.insert(name.clone(), symbol_info);
-            }
-            ScopeKind::Named(_) => {
-                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
-
-                scope_symbols.insert(name.clone(), symbol_info);
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Duplicate enumeration values from one type to another (for aliases)
-    pub fn duplicate_enumeration_values_for_alias(
-        &mut self,
-        source_type: &TypeName,
-        alias_type: &TypeName,
-    ) -> Result<(), Diagnostic> {
-        // Find all enumeration values for the source type and collect them
-        let source_values: Vec<Id> = self
-            .get_enumeration_values_for_type(source_type)
-            .iter()
-            .map(|id| (*id).clone())
-            .collect();
-
-        // Duplicate each value with the alias type
-        for value_name in source_values {
-            self.insert_enumeration_value(&value_name, alias_type, &ScopeKind::Global)?;
-        }
-
-        Ok(())
-    }
-
-    /// Duplicate structure field symbols from one type to another (for aliases)
-    pub fn duplicate_structure_fields_for_alias(
-        &mut self,
-        source_type: &TypeName,
-        alias_type: &TypeName,
-    ) -> Result<(), Diagnostic> {
-        // Find all structure field symbols for the source type and collect them
-        let source_fields: Vec<Id> = self
-            .get_structure_fields_for_type(source_type)
-            .iter()
-            .map(|id| (*id).clone())
-            .collect();
-
-        // Duplicate each field with the alias type
-        for field_name in source_fields {
-            self.insert_structure_field(&field_name, alias_type, &ScopeKind::Global)?;
-        }
-
-        Ok(())
-    }
-
-    /// Duplicate array element type information from one type to another (for aliases)
-    pub fn duplicate_array_elements_for_alias(
-        &mut self,
-        _source_type: &TypeName,
-        _alias_type: &TypeName,
-    ) -> Result<(), Diagnostic> {
-        // For arrays, we don't need to duplicate symbols like we do for enumerations
-        // and structures, since arrays don't have named elements that need to be
-        // accessible through the alias. The array type itself is what gets aliased.
-        // Array elements are accessed by index, not by name.
-        Ok(())
+    /// Records that the enumeration `alias` is declared as an alias of
+    /// `base`, so it has the values of `base`.
+    pub fn insert_enumeration_alias(&mut self, alias: &TypeName, base: &TypeName) {
+        self.enumerations.insert_alias(alias, base);
     }
 
     /// Finds a symbol visible from the given scope.
@@ -541,35 +465,18 @@ impl SymbolEnvironment {
 
     /// Iterate over every symbol in the environment: the global symbols
     /// first, followed by every scoped symbol across all named scopes.
-    ///
-    /// This is the shared traversal used by the read-only lookups that need
-    /// to consider both global and scoped declarations.
+    #[cfg(test)]
     fn all_symbols(&self) -> impl Iterator<Item = (&Id, &SymbolInfo)> {
         self.global_symbols
             .iter()
             .chain(self.scoped_symbols.values().flat_map(|scope| scope.iter()))
     }
 
-    /// Get all enumeration values for a specific enumeration type
+    /// Get all enumeration values for a specific enumeration type, in
+    /// declaration order; for an alias, the values of the enumeration it
+    /// names.
     pub fn get_enumeration_values_for_type(&self, enum_type: &TypeName) -> Vec<&Id> {
-        self.all_symbols()
-            .filter(|(_, symbol)| {
-                matches!(symbol.kind, SymbolKind::EnumerationValue)
-                    && symbol.enum_type.as_ref() == Some(enum_type)
-            })
-            .map(|(name, _)| name)
-            .collect()
-    }
-
-    /// Get all structure fields for a specific structure type
-    pub fn get_structure_fields_for_type(&self, struct_type: &TypeName) -> Vec<&Id> {
-        self.all_symbols()
-            .filter(|(_, symbol)| {
-                matches!(symbol.kind, SymbolKind::StructureElement)
-                    && symbol.struct_type.as_ref() == Some(struct_type)
-            })
-            .map(|(name, _)| name)
-            .collect()
+        self.enumerations.values_of(enum_type)
     }
 }
 
@@ -584,6 +491,7 @@ impl std::fmt::Debug for SymbolEnvironment {
         f.debug_struct("SymbolEnvironment")
             .field("global_symbols", &self.global_symbols)
             .field("scoped_symbols", &self.scoped_symbols)
+            .field("enumerations", &self.enumerations)
             .finish()
     }
 }
