@@ -41,9 +41,9 @@ use super::compile::{
     char_width_for_string_type, emit_string_literal_load, CompileContext, DEFAULT_OP_TYPE,
     DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
 };
+use super::compile_call::collect_positional_args;
 use super::compile_call::{parse_string_conversion, StringConversion};
 use super::compile_expr::{compile_expr, variable_span};
-use super::compile_string::collect_positional_args;
 use crate::emit::Emitter;
 
 /// What a string-valued expression is, before any bytecode runs.
