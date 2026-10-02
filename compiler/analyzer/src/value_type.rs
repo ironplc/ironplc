@@ -45,12 +45,74 @@ pub(crate) struct Mismatch {
     pub(crate) actual: String,
 }
 
+/// The name the name-based type relations -- [`are_types_compatible`] and
+/// the arithmetic overloads -- know a value of type `expr_type` by.
+///
+/// An expression's type is its [`ExprType`]; this name is derived from it
+/// each time it is asked for, so the two cannot disagree:
+///
+/// - an untyped literal is its generic category (`ANY_INT`);
+/// - an elementary type, or an alias of one, is the elementary type's name;
+/// - a string is `STRING` or `WSTRING`, sized or not;
+/// - a reference is known by the type it references, as a `REF_TO`
+///   parameter records its type;
+/// - a subrange is its own name, or its base type's when it has none;
+/// - any other type is its own name, and has none when it is anonymous.
+///
+/// `None` for `NULL`, which is not of one type.
+pub fn operand_type_name(types: &TypeEnvironment, expr_type: &ExprType) -> Option<TypeName> {
+    match expr_type {
+        ExprType::Literal(generic) => Some(generic.clone().into()),
+        ExprType::Null => None,
+        ExprType::Concrete(id) => operand_name_of(types, *id),
+    }
+}
+
+fn operand_name_of(types: &TypeEnvironment, id: TypeId) -> Option<TypeName> {
+    let representation = &types.get_by_id(id)?.representation;
+    match representation {
+        IntermediateType::Bool
+        | IntermediateType::Int { .. }
+        | IntermediateType::UInt { .. }
+        | IntermediateType::Real { .. }
+        | IntermediateType::Bytes { .. }
+        | IntermediateType::Time { .. }
+        | IntermediateType::Date { .. }
+        | IntermediateType::TimeOfDay { .. }
+        | IntermediateType::DateAndTime { .. } => types.elementary_type_name_for(representation),
+        IntermediateType::String { char_width, .. } => {
+            Some(TypeName::from(if char_width.is_wide() {
+                "wstring"
+            } else {
+                "string"
+            }))
+        }
+        IntermediateType::Reference { .. } => operand_name_of(types, types.referenced_type(id)?),
+        // A named subrange is known by its name; one spelled out in place
+        // (`x : INT(-100..100)`) by its base type's.
+        IntermediateType::Subrange { base_type, .. } => types
+            .name_of(id)
+            .cloned()
+            .or_else(|| types.elementary_type_name_for(base_type)),
+        IntermediateType::Enumeration { .. }
+        | IntermediateType::Structure { .. }
+        | IntermediateType::Array { .. }
+        | IntermediateType::FunctionBlock { .. }
+        | IntermediateType::Function { .. } => types.name_of(id).cloned(),
+    }
+}
+
 /// Classifies the value of `expr`, or `None` when the analyzer resolved no
 /// type for it.
 pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
-    let by_name = || expr.resolved_type.clone().map(ValueType::Scalar);
-    let Some(ExprType::Concrete(id)) = &expr.expr_type else {
-        return by_name();
+    let expr_type = expr.expr_type.as_ref()?;
+    let by_name = || operand_type_name(types, expr_type).map(ValueType::Scalar);
+    let id = match expr_type {
+        ExprType::Concrete(id) => id,
+        // `NULL` is accepted for any reference, so there is nothing to
+        // compare it with.
+        ExprType::Null => return None,
+        ExprType::Literal(_) => return by_name(),
     };
     let Some(attributes) = types.get_by_id(*id) else {
         return by_name();
@@ -64,11 +126,10 @@ pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
             .elementary_type_name_for(base_type)
             .map(ValueType::Scalar)
             .or_else(by_name),
-        // Compared by the name `resolved_type` gives them, as before: an
-        // elementary type by its own name, a string by `STRING` or
-        // `WSTRING`, a reference by the name of the type it references. A
-        // function is not the type of any value, so it never gets here with
-        // a name that matters.
+        // Compared by name (see `operand_type_name`): an elementary type by
+        // its own name, a string by `STRING` or `WSTRING`, a reference by
+        // the name of the type it references. A function is not the type of
+        // any value, so it never gets here with a name that matters.
         IntermediateType::Bool
         | IntermediateType::Int { .. }
         | IntermediateType::UInt { .. }

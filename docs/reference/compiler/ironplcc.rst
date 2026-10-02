@@ -278,12 +278,15 @@ Options
 
 ``--allow-fb-inheritance``
    Allow the IEC 61131-3:2013 object-oriented syntax:
-   ``EXTENDS``/``IMPLEMENTS``/``ABSTRACT`` on ``FUNCTION_BLOCK``
-   declarations, ``INTERFACE`` declarations, ``METHOD`` declarations, and
+   ``EXTENDS``/``IMPLEMENTS`` and qualifiers (``ABSTRACT``, ``FINAL``,
+   ``PUBLIC``, ...) on ``FUNCTION_BLOCK`` declarations, ``INTERFACE``
+   declarations, ``METHOD`` and ``PROPERTY`` declarations, and
    ``THIS``/``SUPER``. Support beyond parsing varies by keyword — see
    :doc:`/reference/language/object-orientation/index`; the parts that are
    parsed but not yet analyzed produce
-   :doc:`P9999 </reference/compiler/problems/P9999>`. Enabled by
+   :doc:`P9999 </reference/compiler/problems/P9999>`. A function block
+   qualifier produces :doc:`P4062 </reference/compiler/problems/P4062>`
+   when used without this flag. Enabled by
    ``--dialect=iec61131-3-ed3``, ``--dialect=rusty``, ``--dialect=codesys``,
    and ``--dialect=twincat``.
 
@@ -304,6 +307,12 @@ Options
    smallest type that holds every member's value. Produces
    :doc:`P4056 </reference/compiler/problems/P4056>` when used without this
    flag.
+
+``--allow-continue``
+   Allow the ``CONTINUE`` statement, which goes on with the next iteration of
+   the innermost ``FOR``, ``WHILE``, or ``REPEAT`` loop. ``CONTINUE`` was added
+   in IEC 61131-3:2013 (Edition 3); without this flag it is an ordinary
+   identifier.
 
 ``--policy-string-to-num-non-numeric`` *ALTERNATIVE*
    Select what ``STRING_TO_<numeric>`` treats as convertible when the string

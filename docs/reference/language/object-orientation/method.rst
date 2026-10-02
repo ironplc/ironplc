@@ -45,10 +45,14 @@ value:
 
 .. code-block:: bnf
 
-   METHOD method_name [: return_type]
+   METHOD [qualifiers] method_name [: return_type]
        variable_declarations
-       statement_list
+       [statement_list]
    END_METHOD
+
+The optional :doc:`member qualifiers <member-qualifiers>` (such as
+``PRIVATE`` or ``PUBLIC FINAL``) come before the name. The body may be
+empty, and an ``ABSTRACT`` method has none.
 
 Parameters are declared the same way as on a
 :doc:`function </reference/language/pous/function>`, with ``VAR_INPUT``,
@@ -135,6 +139,8 @@ See Also
 --------
 
 - :doc:`extends` — derive from a base type and inherit its methods
+- :doc:`member-qualifiers` — ``PUBLIC``, ``PRIVATE``, ``FINAL`` and the
+  other qualifiers
 - :doc:`this-and-super` — the instance a method runs on, and its base type
 - :doc:`interface` — declare a set of method signatures
 - :doc:`implements` — provide the methods declared by an interface

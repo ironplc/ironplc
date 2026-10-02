@@ -12,7 +12,10 @@
 //! A function block's methods are split out the same way, each into its own
 //! `<Method>` element with the same `<Declaration>`/`<Implementation>` pair.
 //! They are reconstructed as `METHOD ... END_METHOD` and appended after the
-//! function block body, where the grammar expects them.
+//! function block body, where the grammar expects them. Properties follow the
+//! same path: a `<Property>` holds its own `<Declaration>` and a `<Get>` and/or
+//! `<Set>` element, each shaped like a method, and is reconstructed as
+//! `PROPERTY ... GET ... END_GET SET ... END_SET END_PROPERTY`.
 //!
 //! Since the ST parser produces byte positions relative to the concatenated
 //! text, this module adjusts all positions to point to the correct locations
@@ -213,10 +216,11 @@ fn parse_pou(
         None => builder.push_synthetic(&impl_text),
     }
 
-    // Methods follow the function block body and precede END_FUNCTION_BLOCK,
-    // which is where `function_block_declaration` expects them.
+    // Methods and properties follow the function block body and precede
+    // END_FUNCTION_BLOCK, which is where `function_block_declaration` expects
+    // them.
     if closing == "END_FUNCTION_BLOCK" {
-        append_methods(&mut builder, object, file_id)?;
+        append_members(&mut builder, object, file_id)?;
     }
 
     builder.push_synthetic("\n");
@@ -336,87 +340,164 @@ impl Fold<Diagnostic> for PositionAdjuster<'_> {
     }
 }
 
+/// The keywords that open a POU declaration, each with its closing keyword.
+/// `FUNCTION_BLOCK` comes before `FUNCTION` since `FUNCTION` is a prefix.
+const POU_KEYWORDS: [(&str, &str); 4] = [
+    ("FUNCTION_BLOCK", "END_FUNCTION_BLOCK"),
+    ("FUNCTION", "END_FUNCTION"),
+    ("PROGRAM", "END_PROGRAM"),
+    ("INTERFACE", "END_INTERFACE"),
+];
+
 /// Detect the POU type from the declaration text and return the closing keyword.
 fn closing_keyword(declaration: &str) -> &'static str {
-    let trimmed = declaration.trim_start();
-    // Check FUNCTION_BLOCK before FUNCTION since FUNCTION is a prefix
-    if trimmed.len() >= 14 && trimmed[..14].eq_ignore_ascii_case("FUNCTION_BLOCK") {
-        "END_FUNCTION_BLOCK"
-    } else if trimmed.len() >= 8 && trimmed[..8].eq_ignore_ascii_case("FUNCTION") {
-        "END_FUNCTION"
-    } else if trimmed.len() >= 7 && trimmed[..7].eq_ignore_ascii_case("PROGRAM") {
-        "END_PROGRAM"
-    } else if trimmed.len() >= 9 && trimmed[..9].eq_ignore_ascii_case("INTERFACE") {
-        "END_INTERFACE"
-    } else {
+    let header = skip_leading_trivia(declaration);
+    POU_KEYWORDS
+        .iter()
+        .find(|(open, _)| {
+            header
+                .get(..open.len())
+                .is_some_and(|start| start.eq_ignore_ascii_case(open))
+        })
         // Fallback — the ST parser will report a more specific error
-        ""
+        .map_or("", |(_, close)| close)
+}
+
+/// Skip the whitespace, comments and pragmas before the POU keyword, such as
+/// a header comment or `{attribute 'hide'}`.
+///
+/// The comment forms are those of the lexer's `Comment` token, none of which
+/// nest. An unterminated comment or pragma stops the skipping, so no keyword
+/// is found and the ST parser reports the problem.
+fn skip_leading_trivia(text: &str) -> &str {
+    const DELIMITED: [(&str, &str); 3] = [("(*", "*)"), ("/*", "*/"), ("{", "}")];
+
+    let mut rest = text.trim_start();
+    loop {
+        let after = if let Some(comment) = rest.strip_prefix("//") {
+            Some(comment.find('\n').map_or("", |end| &comment[end..]))
+        } else {
+            DELIMITED.iter().find_map(|(open, close)| {
+                let body = rest.strip_prefix(open)?;
+                body.find(close).map(|end| &body[end + close.len()..])
+            })
+        };
+        match after {
+            Some(after) => rest = after.trim_start(),
+            None => return rest,
+        }
     }
 }
 
-/// Append every `<Method>` child of a POU to the combined text as an inline
-/// `METHOD ... END_METHOD` declaration.
+/// Append every `<Method>` and `<Property>` child of a POU to the combined
+/// text, in document order, as inline `METHOD ... END_METHOD` and
+/// `PROPERTY ... END_PROPERTY` declarations.
 ///
-/// TwinCAT stores each method as a sibling `<Method>` element rather than
+/// TwinCAT stores each method and property as a sibling element rather than
 /// inline in the POU's own `<Declaration>`. A method element has the same
 /// shape as the POU itself: a `<Declaration>` (which already begins with the
 /// `METHOD` keyword and holds the signature and VAR blocks) and an optional
 /// `<Implementation><ST>` with the body. Only the closing `END_METHOD` is
 /// implicit in the XML structure and has to be reconstructed.
 ///
-/// Only function block methods are appended. `method_declaration` is
-/// reachable only from `function_block_declaration`, so a method on a
-/// `PROGRAM`, a `FUNCTION`, or an interface has nowhere to go in the grammar
-/// and is still dropped.
-fn append_methods(
+/// Only function block members are appended. `method_declaration` and
+/// `property_declaration` are reachable only from
+/// `function_block_declaration`, so a member of a `PROGRAM`, a `FUNCTION`, or
+/// an interface has nowhere to go in the grammar and is still dropped.
+fn append_members(
     builder: &mut CombinedText,
     pou: &roxmltree::Node,
     file_id: &FileId,
 ) -> Result<(), Diagnostic> {
-    for method in pou
-        .children()
-        .filter(|n| n.is_element() && n.tag_name().name() == "Method")
-    {
-        let declaration = match find_child_element(&method, "Declaration") {
-            Some(elem) => elem,
-            None => {
-                return Err(Diagnostic::problem(
-                    Problem::TwinCatMalformed,
-                    Label::file(
-                        file_id.clone(),
-                        format!(
-                            "Method '{}' is missing required 'Declaration' element",
-                            method.attribute("Name").unwrap_or("<unnamed>")
-                        ),
-                    ),
-                ));
-            }
-        };
-
-        let (declaration_text, declaration_byte_offset) = cdata_text_with_offset(&declaration);
-        let (impl_text, impl_byte_offset) = extract_implementation(&method, file_id)?;
-
-        builder.push_synthetic("\n");
-        builder.push_cdata(&declaration_text, declaration_byte_offset);
-        builder.push_synthetic("\n");
-        match impl_byte_offset {
-            Some(offset) => builder.push_cdata(&impl_text, offset),
-            None => builder.push_synthetic(&impl_text),
+    for member in pou.children().filter(|n| n.is_element()) {
+        match member.tag_name().name() {
+            "Method" => append_declared_block(builder, &member, "Method", "END_METHOD", file_id)?,
+            "Property" => append_property(builder, &member, file_id)?,
+            _ => {}
         }
-
-        // A method body must hold at least one statement, unlike a function
-        // block body which may be empty. TwinCAT writes a do-nothing method
-        // as a `<Method>` with no `<Implementation>` at all, so stand in an
-        // empty statement; the parser discards it and the method keeps the
-        // empty body it declares.
-        if impl_text.trim().is_empty() {
-            builder.push_synthetic(";");
-        }
-
-        builder.push_synthetic("\nEND_METHOD");
     }
 
     Ok(())
+}
+
+/// Append one `<Property>` element.
+///
+/// Its `<Declaration>` holds only the `PROPERTY name : type` header. Each
+/// accessor is a `<Get>` or `<Set>` child shaped like a method, whose
+/// `<Declaration>` holds only its VAR blocks, so the opening `GET`/`SET`
+/// keyword is implicit as well as the closing one.
+fn append_property(
+    builder: &mut CombinedText,
+    property: &roxmltree::Node,
+    file_id: &FileId,
+) -> Result<(), Diagnostic> {
+    let declaration = required_declaration(property, "Property", file_id)?;
+    let (declaration_text, declaration_byte_offset) = cdata_text_with_offset(&declaration);
+    builder.push_synthetic("\n");
+    builder.push_cdata(&declaration_text, declaration_byte_offset);
+
+    for (tag, opening, closing) in [("Get", "GET", "END_GET"), ("Set", "SET", "END_SET")] {
+        if let Some(accessor) = find_child_element(property, tag) {
+            builder.push_synthetic("\n");
+            builder.push_synthetic(opening);
+            append_declared_block(builder, &accessor, tag, closing, file_id)?;
+        }
+    }
+
+    builder.push_synthetic("\nEND_PROPERTY");
+    Ok(())
+}
+
+/// Append one element that carries a `<Declaration>` and an optional
+/// `<Implementation><ST>`, followed by the `closing` keyword that the XML
+/// structure leaves implicit.
+///
+/// `kind` names the element in the diagnostic when its `<Declaration>` is
+/// missing.
+fn append_declared_block(
+    builder: &mut CombinedText,
+    element: &roxmltree::Node,
+    kind: &str,
+    closing: &str,
+    file_id: &FileId,
+) -> Result<(), Diagnostic> {
+    let declaration = required_declaration(element, kind, file_id)?;
+    let (declaration_text, declaration_byte_offset) = cdata_text_with_offset(&declaration);
+    let (impl_text, impl_byte_offset) = extract_implementation(element, file_id)?;
+
+    builder.push_synthetic("\n");
+    builder.push_cdata(&declaration_text, declaration_byte_offset);
+    builder.push_synthetic("\n");
+    match impl_byte_offset {
+        Some(offset) => builder.push_cdata(&impl_text, offset),
+        None => builder.push_synthetic(&impl_text),
+    }
+
+    builder.push_synthetic("\n");
+    builder.push_synthetic(closing);
+
+    Ok(())
+}
+
+/// The `<Declaration>` child of `element`, which TwinCAT always writes.
+/// `kind` names the element in the diagnostic when it is missing.
+fn required_declaration<'a>(
+    element: &'a roxmltree::Node,
+    kind: &str,
+    file_id: &FileId,
+) -> Result<roxmltree::Node<'a, 'a>, Diagnostic> {
+    find_child_element(element, "Declaration").ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::TwinCatMalformed,
+            Label::file(
+                file_id.clone(),
+                format!(
+                    "{kind} '{}' is missing required 'Declaration' element",
+                    element.attribute("Name").unwrap_or("<unnamed>")
+                ),
+            ),
+        )
+    })
 }
 
 /// Extract the ST implementation text and its byte offset from an element
@@ -492,3 +573,6 @@ fn cdata_text_with_offset(node: &roxmltree::Node) -> (String, usize) {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod property_tests;

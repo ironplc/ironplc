@@ -73,7 +73,8 @@ function returns:
 - *MX* if *IN* > *MX*
 - *IN* otherwise
 
-The behavior is undefined if *MN* > *MX*.
+``LIMIT`` is defined as ``MIN(MAX(IN, MN), MX)``, so when *MN* > *MX* the
+result is *MX*.
 
 Example
 -------

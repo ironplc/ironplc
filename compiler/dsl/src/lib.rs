@@ -7,6 +7,8 @@ pub mod core;
 pub mod diagnostic;
 pub mod extension;
 pub mod fold;
+pub mod member_qualifier;
+pub mod oop;
 pub mod scope;
 pub mod sfc;
 pub mod string_escape;

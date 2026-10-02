@@ -3,15 +3,16 @@
 //! This module validates the usage of REF_TO, REF(), NULL, and the dereference
 //! operator (^) according to IEC 61131-3 Edition 3 safety constraints.
 
+use ironplc_dsl::type_id::TypeId;
 use ironplc_dsl::{
     common::*,
     core::{Id, Located, SourceSpan},
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::*,
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
-use std::collections::HashMap;
 use std::convert::Infallible;
 
 use ironplc_parser::options::CompilerOptions;
@@ -20,6 +21,7 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    symbol_environment::{ScopeTracker, SymbolEnvironment, SymbolInfo},
     type_environment::TypeEnvironment,
 };
 
@@ -31,8 +33,8 @@ pub fn apply(
     run_rule(
         RuleRefTo {
             type_environment: context.types(),
-            var_types: HashMap::new(),
-            var_classes: HashMap::new(),
+            symbols: context.symbols(),
+            scope: ScopeTracker::default(),
             pou_kind: PouKind::Program,
             allow_ref_arithmetic: options.allow_ref_arithmetic,
             diagnostics: Vec::new(),
@@ -52,10 +54,12 @@ enum PouKind {
 
 struct RuleRefTo<'a> {
     type_environment: &'a TypeEnvironment,
-    /// Maps variable names to their initializer kind within the current POU scope.
-    var_types: HashMap<Id, InitialValueAssignmentKind>,
-    /// Maps variable names to their variable class (VAR, VAR_TEMP, VAR_INPUT, etc.)
-    var_classes: HashMap<Id, VariableType>,
+    symbols: &'a SymbolEnvironment,
+    /// Where the traversal is, to look variables up in the symbol
+    /// environment. A method's scope nests inside its function block's,
+    /// so a method body sees its own variables as well as the instance's
+    /// fields.
+    scope: ScopeTracker,
     /// The kind of POU currently being visited.
     pou_kind: PouKind,
     /// When true, allow arithmetic and ordering comparisons on REF_TO types.
@@ -82,22 +86,19 @@ fn variable_span(var: &Variable) -> SourceSpan {
 }
 
 impl RuleRefTo<'_> {
-    fn collect_variables(&mut self, variables: &[VarDecl]) {
-        for var in variables {
-            if let VariableIdentifier::Symbol(id) = &var.identifier {
-                self.var_types.insert(id.clone(), var.initializer.clone());
-                self.var_classes.insert(id.clone(), var.var_type.clone());
-            }
-        }
+    /// Returns the symbol of the variable `name` names from the current
+    /// scope.
+    fn symbol(&self, name: &Id) -> Option<&SymbolInfo> {
+        self.symbols.find(name, &self.scope.current())
     }
 
-    fn clear_variables(&mut self) {
-        self.var_types.clear();
-        self.var_classes.clear();
-    }
-
-    /// Returns the TypeName for a variable's declared type, if it can be resolved.
-    fn variable_type_name(&self, var: &Variable) -> Option<TypeName> {
+    /// Returns the id of a variable's declared type, if it has a name the
+    /// type can be compared by.
+    ///
+    /// A field access (`s.f`) answers for its record. A type spelled out in
+    /// place (an inline array) has no name, and each declaration of one is
+    /// a type of its own, so it is not compared.
+    fn variable_type_id(&self, var: &Variable) -> Option<TypeId> {
         let id = match var {
             Variable::Symbolic(SymbolicVariableKind::Named(named)) => &named.name,
             Variable::Symbolic(SymbolicVariableKind::Structured(s)) => match s.record.as_ref() {
@@ -106,19 +107,12 @@ impl RuleRefTo<'_> {
             },
             _ => return None,
         };
-        let init = self.var_types.get(id)?;
-        match init {
-            InitialValueAssignmentKind::Simple(si) => Some(si.type_name.clone()),
-            InitialValueAssignmentKind::Reference(ri) => ri.target.type_name().cloned(),
-            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
-                type_name: tn,
-                ..
-            }) => Some(tn.clone()),
-            _ => None,
-        }
+        let type_id = self.symbol(id)?.type_id?;
+        self.type_environment.name_of(type_id)?;
+        Some(type_id)
     }
 
-    /// Returns true if the given type name resolves to a reference type.
+    /// Returns true if the given type resolves to a reference type.
     fn is_reference_type(&self, type_name: &TypeName) -> bool {
         self.type_environment
             .get(type_name)
@@ -126,21 +120,23 @@ impl RuleRefTo<'_> {
             .unwrap_or(false)
     }
 
+    /// Returns the id of the declared type of the simple named variable
+    /// `var`, when it is a reference type.
+    fn reference_type_id(&self, var: &Variable) -> Option<TypeId> {
+        let Variable::Symbolic(SymbolicVariableKind::Named(named)) = var else {
+            return None;
+        };
+        let type_id = self.symbol(&named.name)?.type_id?;
+        self.type_environment
+            .get_by_id(type_id)?
+            .representation
+            .is_reference()
+            .then_some(type_id)
+    }
+
     /// Returns true if the variable is declared as REF_TO.
     fn is_variable_reference(&self, var: &Variable) -> bool {
-        let id = match var {
-            Variable::Symbolic(SymbolicVariableKind::Named(named)) => &named.name,
-            _ => return false,
-        };
-        match self.var_types.get(id) {
-            Some(InitialValueAssignmentKind::Reference(_)) => true,
-            Some(InitialValueAssignmentKind::Simple(si)) => self.is_reference_type(&si.type_name),
-            Some(InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
-                type_name: tn,
-                ..
-            })) => self.is_reference_type(tn),
-            _ => false,
-        }
+        self.reference_type_id(var).is_some()
     }
 
     /// Returns true if the expression resolves to a reference type.
@@ -149,13 +145,21 @@ impl RuleRefTo<'_> {
             ExprKind::Ref(_) => true,
             ExprKind::Null(_) => true,
             ExprKind::Variable(var) => self.is_variable_reference(var),
-            _ => {
-                if let Some(ref resolved) = expr.resolved_type {
-                    self.is_reference_type(resolved)
-                } else {
-                    false
-                }
-            }
+            // Any other expression is a reference when its value's type is.
+            ExprKind::Compare(_)
+            | ExprKind::BinaryOp(_)
+            | ExprKind::UnaryOp(_)
+            | ExprKind::Expression(_)
+            | ExprKind::Const(_)
+            | ExprKind::EnumeratedValue(_)
+            | ExprKind::Function(_)
+            | ExprKind::MethodCall(_)
+            | ExprKind::LateBound(_)
+            | ExprKind::Deref(_)
+            | ExprKind::ImplicitConversion(_) => matches!(
+                self.type_environment.representation_of_expr(expr),
+                Some(crate::intermediate_type::IntermediateType::Reference { .. })
+            ),
         }
     }
 
@@ -189,8 +193,11 @@ impl RuleRefTo<'_> {
         // reference never escapes the function.
         if !self.allow_ref_stack_variables {
             if let Variable::Symbolic(SymbolicVariableKind::Named(named)) = var {
-                if let Some(var_class) = self.var_classes.get(&named.name) {
-                    match var_class {
+                if let Some(var_type) = self
+                    .symbol(&named.name)
+                    .and_then(|info| info.variable_type.clone())
+                {
+                    match var_type {
                         VariableType::VarTemp => {
                             self.diagnostics.push(Diagnostic::problem(
                                 Problem::RefOfEphemeralVariable,
@@ -309,7 +316,7 @@ impl RuleRefTo<'_> {
                 // Suppressed when allow_ref_type_punning is enabled — OSCAT
                 // uses REF() to reinterpret a REAL's bits as DWORD.
                 let target_ref_type = self.get_reference_target_type(target);
-                let operand_type = self.variable_type_name(ref_var);
+                let operand_type = self.variable_type_id(ref_var);
                 if let (Some(target_type), Some(operand_type)) = (target_ref_type, operand_type) {
                     if target_type != operand_type {
                         self.diagnostics.push(Diagnostic::problem(
@@ -322,16 +329,14 @@ impl RuleRefTo<'_> {
         }
     }
 
-    /// Returns the target type of a REF_TO variable.
-    fn get_reference_target_type(&self, var: &Variable) -> Option<TypeName> {
-        let id = match var {
-            Variable::Symbolic(SymbolicVariableKind::Named(named)) => &named.name,
-            _ => return None,
-        };
-        match self.var_types.get(id)? {
-            InitialValueAssignmentKind::Reference(ri) => ri.target.type_name().cloned(),
-            _ => None,
-        }
+    /// Returns the id of the type a REF_TO variable references, when that
+    /// type has a name the type can be compared by.
+    fn get_reference_target_type(&self, var: &Variable) -> Option<TypeId> {
+        let target = self
+            .type_environment
+            .referenced_type(self.reference_type_id(var)?)?;
+        self.type_environment.name_of(target)?;
+        Some(target)
     }
 }
 
@@ -348,34 +353,31 @@ fn expr_span(expr: &Expr) -> SourceSpan {
 impl Visitor<Infallible> for RuleRefTo<'_> {
     type Value = ();
 
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
+        self.scope.enter(&node);
+        Ok(())
+    }
+
+    fn exit_scope(&mut self) {
+        self.scope.exit();
+    }
+
     fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Infallible> {
-        self.clear_variables();
         self.pou_kind = PouKind::Function;
-        self.collect_variables(&node.variables);
-        let ret = node.recurse_visit(self);
-        self.clear_variables();
-        ret
+        node.recurse_visit(self)
     }
 
     fn visit_function_block_declaration(
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<(), Infallible> {
-        self.clear_variables();
         self.pou_kind = PouKind::FunctionBlock;
-        self.collect_variables(&node.variables);
-        let ret = node.recurse_visit(self);
-        self.clear_variables();
-        ret
+        node.recurse_visit(self)
     }
 
     fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Infallible> {
-        self.clear_variables();
         self.pou_kind = PouKind::Program;
-        self.collect_variables(&node.variables);
-        let ret = node.recurse_visit(self);
-        self.clear_variables();
-        ret
+        node.recurse_visit(self)
     }
 
     fn visit_reference_declaration(
@@ -421,485 +423,4 @@ impl Visitor<Infallible> for RuleRefTo<'_> {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::stages::analyze;
-    use ironplc_dsl::core::FileId;
-    use ironplc_parser::{
-        options::{CompilerOptions, Dialect},
-        parse_program,
-    };
-
-    fn edition3_options() -> CompilerOptions {
-        CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
-    }
-
-    fn ref_arithmetic_options() -> CompilerOptions {
-        let mut options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
-        options.allow_ref_arithmetic = true;
-        options
-    }
-
-    fn parse_with_options(program: &str, options: &CompilerOptions) -> Result<(), String> {
-        let library =
-            parse_program(program, &FileId::default(), options).map_err(|e| format!("{e:?}"))?;
-        let (_library, context) = analyze(&[&library], options).map_err(|e| format!("{e:?}"))?;
-        if context.has_diagnostics() {
-            Err(format!("{:?}", context.diagnostics()))
-        } else {
-            Ok(())
-        }
-    }
-
-    fn assert_ok(program: &str) {
-        let result = parse_with_options(program, &edition3_options());
-        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
-    }
-
-    fn assert_err(program: &str) {
-        let result = parse_with_options(program, &edition3_options());
-        assert!(result.is_err(), "Expected error but got OK");
-    }
-
-    // P2036: No nested REF_TO
-    #[test]
-    fn ref_to_when_single_level_then_ok() {
-        assert_ok(
-            "TYPE IntRef : REF_TO INT; END_TYPE
-PROGRAM Main
-VAR
-    x : INT;
-    r : IntRef;
-END_VAR
-    r := REF(x);
-END_PROGRAM",
-        );
-    }
-
-    // P2028: REF() operand must be a simple variable
-    #[test]
-    fn ref_when_operand_is_named_variable_then_ok() {
-        assert_ok(
-            "PROGRAM Main
-VAR
-    x : INT;
-    r : REF_TO INT;
-END_VAR
-    r := REF(x);
-END_PROGRAM",
-        );
-    }
-
-    // P2029: No REF of ephemeral variables - VAR_TEMP
-    #[test]
-    fn ref_when_operand_is_var_temp_then_error() {
-        assert_err(
-            "FUNCTION_BLOCK FB1
-VAR_TEMP
-    temp : INT;
-END_VAR
-VAR
-    r : REF_TO INT;
-END_VAR
-    r := REF(temp);
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // P2029: No REF of FUNCTION VAR_INPUT
-    #[test]
-    fn ref_when_operand_is_function_var_input_then_error() {
-        assert_err(
-            "FUNCTION MyFunc : INT
-VAR_INPUT
-    inVal : INT;
-END_VAR
-VAR
-    r : REF_TO INT;
-END_VAR
-    r := REF(inVal);
-    MyFunc := 0;
-END_FUNCTION",
-        );
-    }
-
-    // P2029: FB VAR_INPUT is persistent — OK
-    #[test]
-    fn ref_when_operand_is_fb_var_input_then_ok() {
-        assert_ok(
-            "FUNCTION_BLOCK FB1
-VAR_INPUT
-    inVal : INT;
-END_VAR
-VAR
-    r : REF_TO INT;
-END_VAR
-    r := REF(inVal);
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // P2030: No REF of array elements
-    #[test]
-    fn ref_when_operand_is_array_element_then_error() {
-        assert_err(
-            "PROGRAM Main
-VAR
-    arr : ARRAY [0..9] OF INT;
-    r : REF_TO INT;
-END_VAR
-    r := REF(arr[3]);
-END_PROGRAM",
-        );
-    }
-
-    // P2031: Deref requires reference type
-    #[test]
-    fn deref_when_type_is_not_reference_then_error() {
-        assert_err(
-            "PROGRAM Main
-VAR
-    x : INT := 42;
-    y : INT;
-END_VAR
-    y := x^;
-END_PROGRAM",
-        );
-    }
-
-    #[test]
-    fn deref_when_type_is_reference_then_ok() {
-        assert_ok(
-            "PROGRAM Main
-VAR
-    x : INT;
-    r : REF_TO INT := REF(x);
-    y : INT;
-END_VAR
-    y := r^;
-END_PROGRAM",
-        );
-    }
-
-    // P2033: No arithmetic on references
-    #[test]
-    fn arithmetic_when_operand_is_reference_then_error() {
-        assert_err(
-            "PROGRAM Main
-VAR
-    x : INT;
-    r : REF_TO INT := REF(x);
-    y : INT;
-END_VAR
-    y := r + 1;
-END_PROGRAM",
-        );
-    }
-
-    // P2034: NULL only for reference types
-    #[test]
-    fn null_when_assigned_to_non_reference_then_error() {
-        assert_err(
-            "PROGRAM Main
-VAR
-    x : INT;
-END_VAR
-    x := NULL;
-END_PROGRAM",
-        );
-    }
-
-    #[test]
-    fn null_when_assigned_to_reference_then_ok() {
-        assert_ok(
-            "PROGRAM Main
-VAR
-    x : INT;
-    r : REF_TO INT := REF(x);
-END_VAR
-    r := NULL;
-END_PROGRAM",
-        );
-    }
-
-    // P2035: Only = and <> on references
-    #[test]
-    fn compare_when_equality_on_reference_then_ok() {
-        assert_ok(
-            "PROGRAM Main
-VAR
-    x : INT;
-    r1 : REF_TO INT := REF(x);
-    r2 : REF_TO INT := REF(x);
-    result : BOOL;
-END_VAR
-    result := r1 = r2;
-END_PROGRAM",
-        );
-    }
-
-    #[test]
-    fn compare_when_ordering_on_reference_then_error() {
-        assert_err(
-            "PROGRAM Main
-VAR
-    x : INT;
-    r1 : REF_TO INT := REF(x);
-    r2 : REF_TO INT := REF(x);
-    result : BOOL;
-END_VAR
-    result := r1 > r2;
-END_PROGRAM",
-        );
-    }
-
-    // P2032: Reference type mismatch
-    #[test]
-    fn assign_when_ref_types_match_then_ok() {
-        assert_ok(
-            "PROGRAM Main
-VAR
-    x : INT;
-    r : REF_TO INT;
-END_VAR
-    r := REF(x);
-END_PROGRAM",
-        );
-    }
-
-    #[test]
-    fn assign_when_ref_types_incompatible_then_error() {
-        assert_err(
-            "PROGRAM Main
-VAR
-    x : REAL;
-    r : REF_TO INT;
-END_VAR
-    r := REF(x);
-END_PROGRAM",
-        );
-    }
-
-    #[test]
-    fn array_of_ref_to_when_declared_then_ok() {
-        assert_ok(
-            "PROGRAM Main
-VAR
-    data : ARRAY[0..3] OF REF_TO BYTE;
-END_VAR
-END_PROGRAM",
-        );
-    }
-
-    #[test]
-    fn ref_to_array_when_declared_then_ok() {
-        assert_ok(
-            "PROGRAM Main
-VAR
-    data : REF_TO ARRAY[1..10] OF INT;
-END_VAR
-END_PROGRAM",
-        );
-    }
-
-    #[test]
-    fn ref_to_array_type_decl_when_declared_then_ok() {
-        assert_ok(
-            "TYPE ArrRef : REF_TO ARRAY[0..3] OF BYTE; END_TYPE
-PROGRAM Main
-VAR
-    data : ArrRef;
-END_VAR
-END_PROGRAM",
-        );
-    }
-
-    // --allow-ref-arithmetic tests: negative (flag not set)
-    #[test]
-    fn arithmetic_when_ref_arithmetic_not_allowed_then_error() {
-        let result = parse_with_options(
-            "PROGRAM Main
-VAR
-    x : INT;
-    r : REF_TO INT := REF(x);
-    y : INT;
-END_VAR
-    y := r + 1;
-END_PROGRAM",
-            &edition3_options(),
-        );
-        assert!(result.is_err(), "Expected error but got OK");
-    }
-
-    #[test]
-    fn compare_when_ordering_without_ref_arithmetic_then_error() {
-        let result = parse_with_options(
-            "PROGRAM Main
-VAR
-    x : INT;
-    r1 : REF_TO INT := REF(x);
-    r2 : REF_TO INT := REF(x);
-    result : BOOL;
-END_VAR
-    result := r1 > r2;
-END_PROGRAM",
-            &edition3_options(),
-        );
-        assert!(result.is_err(), "Expected error but got OK");
-    }
-
-    // --allow-ref-arithmetic tests: positive (flag set)
-    #[test]
-    fn arithmetic_when_ref_arithmetic_allowed_then_ok() {
-        let result = parse_with_options(
-            "PROGRAM Main
-VAR
-    x : INT;
-    r : REF_TO INT := REF(x);
-    y : INT;
-END_VAR
-    y := r + 1;
-END_PROGRAM",
-            &ref_arithmetic_options(),
-        );
-        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
-    }
-
-    #[test]
-    fn compare_when_ordering_with_ref_arithmetic_allowed_then_ok() {
-        let result = parse_with_options(
-            "PROGRAM Main
-VAR
-    x : INT;
-    r1 : REF_TO INT := REF(x);
-    r2 : REF_TO INT := REF(x);
-    result : BOOL;
-END_VAR
-    result := r1 > r2;
-END_PROGRAM",
-            &ref_arithmetic_options(),
-        );
-        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
-    }
-
-    #[test]
-    fn compare_when_equality_with_ref_arithmetic_allowed_then_ok() {
-        let result = parse_with_options(
-            "PROGRAM Main
-VAR
-    x : INT;
-    r1 : REF_TO INT := REF(x);
-    r2 : REF_TO INT := REF(x);
-    result : BOOL;
-END_VAR
-    result := r1 = r2;
-END_PROGRAM",
-            &ref_arithmetic_options(),
-        );
-        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
-    }
-
-    // P2029: allow_ref_stack_variables suppresses REF of FUNCTION VAR_INPUT
-    #[test]
-    fn ref_when_allow_ref_stack_variables_and_function_var_input_then_ok() {
-        let options = CompilerOptions {
-            allow_ref_to: true,
-            allow_ref_stack_variables: true,
-            ..CompilerOptions::default()
-        };
-        let result = parse_with_options(
-            "FUNCTION MyFunc : INT
-VAR_INPUT
-    inVal : INT;
-END_VAR
-VAR
-    r : REF_TO INT;
-END_VAR
-    r := REF(inVal);
-    MyFunc := 0;
-END_FUNCTION",
-            &options,
-        );
-        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
-    }
-
-    // P2029: allow_ref_stack_variables suppresses REF of VAR_TEMP
-    #[test]
-    fn ref_when_allow_ref_stack_variables_and_var_temp_then_ok() {
-        let options = CompilerOptions {
-            allow_ref_to: true,
-            allow_ref_stack_variables: true,
-            ..CompilerOptions::default()
-        };
-        let result = parse_with_options(
-            "FUNCTION_BLOCK FB1
-VAR_TEMP
-    temp : INT;
-END_VAR
-VAR
-    r : REF_TO INT;
-END_VAR
-    r := REF(temp);
-END_FUNCTION_BLOCK",
-            &options,
-        );
-        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
-    }
-
-    // P2032: allow_ref_type_punning suppresses type mismatch
-    #[test]
-    fn assign_when_allow_ref_type_punning_and_types_incompatible_then_ok() {
-        let options = CompilerOptions {
-            allow_ref_to: true,
-            allow_ref_type_punning: true,
-            ..CompilerOptions::default()
-        };
-        let result = parse_with_options(
-            "PROGRAM Main
-VAR
-    x : REAL;
-    r : REF_TO INT;
-END_VAR
-    r := REF(x);
-END_PROGRAM",
-            &options,
-        );
-        assert!(result.is_ok(), "Expected OK but got: {:?}", result.err());
-    }
-
-    // P2032: type mismatch still fires without allow_ref_type_punning
-    #[test]
-    fn assign_when_no_allow_ref_type_punning_and_types_incompatible_then_error() {
-        let result = parse_with_options(
-            "PROGRAM Main
-VAR
-    x : REAL;
-    r : REF_TO INT;
-END_VAR
-    r := REF(x);
-END_PROGRAM",
-            &edition3_options(),
-        );
-        assert!(result.is_err(), "Expected error but got OK");
-    }
-
-    // P2032: allow_ref_stack_variables alone does NOT suppress type mismatch
-    #[test]
-    fn assign_when_allow_ref_stack_variables_only_and_types_incompatible_then_error() {
-        let options = CompilerOptions {
-            allow_ref_to: true,
-            allow_ref_stack_variables: true,
-            ..CompilerOptions::default()
-        };
-        let result = parse_with_options(
-            "PROGRAM Main
-VAR
-    x : REAL;
-    r : REF_TO INT;
-END_VAR
-    r := REF(x);
-END_PROGRAM",
-            &options,
-        );
-        assert!(result.is_err(), "Expected error but got OK");
-    }
-}
+mod tests;

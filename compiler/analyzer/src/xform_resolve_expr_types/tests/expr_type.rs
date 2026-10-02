@@ -136,8 +136,44 @@ fn apply_when_untyped_integer_literal_then_literal_any_int() {
 }
 
 #[test]
-fn apply_when_ref_then_no_type() {
-    let (library, _) = resolve("r := REF(n);");
+fn apply_when_ref_then_same_reference_type_as_declared_reference() {
+    let (library, context) = resolve("r := REF(n);");
 
-    assert_eq!(first_assigned_type(&library), None);
+    let id = concrete(first_assigned_type(&library));
+    let types = context.types();
+
+    let dint = types.id_of(&TypeName::from("DINT")).unwrap();
+    assert_eq!(types.referenced_type(id), Some(dint));
+    assert!(matches!(
+        types.get_by_id(id).unwrap().representation,
+        IntermediateType::Reference { .. }
+    ));
+}
+
+#[test]
+fn apply_when_ref_and_reference_variable_then_one_type() {
+    let (by_ref, _) = resolve("r := REF(n);");
+    let (by_variable, _) = resolve("r := r;");
+
+    assert_eq!(
+        first_assigned_type(&by_ref),
+        first_assigned_type(&by_variable)
+    );
+}
+
+#[test]
+fn apply_when_null_then_null() {
+    let (library, _) = resolve("r := NULL;");
+
+    assert_eq!(first_assigned_type(&library), Some(ExprType::Null));
+}
+
+#[test]
+fn apply_when_deref_then_referenced_type() {
+    let (library, context) = resolve("n := r^;");
+
+    assert_eq!(
+        Some(concrete(first_assigned_type(&library))),
+        context.types().id_of(&TypeName::from("DINT"))
+    );
 }

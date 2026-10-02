@@ -114,9 +114,11 @@ In TwinCAT XML:
 </Property>
 ```
 
-**Design:** Add `Property`, `EndProperty`, `Get`, `EndGet`, `Set`, `EndSet` as keyword tokens. The `twincat_parser.rs` module handles `Property`, `Get`, and `Set` XML elements. In the ST parser, property declarations and get/set bodies are recognized within function blocks.
+**Design:** `Property`, `EndProperty`, `EndGet` and `EndSet` are keyword tokens, demoted to identifiers unless `allow_fb_inheritance` is set, like `Method`/`EndMethod`. `GET` and `SET` are **not** tokens: the property rule matches an identifier spelled `GET`/`SET` (any case) where an accessor starts. A keyword token would break TwinCAT code under `--dialect twincat`, where the flag is on and `SET` is an ordinary name (the `RS` block's input is `SET`). `GET` and `SET` are each optional, in that order. Properties and methods may interleave after the function block body, as TwinCAT stores them in file order. The `twincat_parser.rs` module rebuilds this text form from a `<Property>` element: its `<Declaration>` holds only the header, and each `<Get>`/`<Set>` child has its own `<Declaration>` (VAR blocks only) and `<Implementation>`.
 
-**AST representation:** New `PropertyDeclaration` variant containing the property name, type, and optional get/set bodies.
+**AST representation:** `PropertyDeclaration` (in `dsl/src/oop.rs`) holds the name, the type (`FunctionReturnType`, as a method's return type), and `get`/`set: Option<MethodDeclaration>`, and sits in `FunctionBlockDeclaration::properties`. Each accessor is represented as the method it behaves as: `GET` is a method named after the property with the property type as its return type, and `SET` is a method with no return type and one implicit `VAR_INPUT` named after the property that holds the assigned value. Every scope-aware analyzer pass therefore handles an accessor body as a method body, and a property read or write can later compile to an ordinary method call (ADR-0041 Phase 1).
+
+**As shipped (syntax):** declarations parse from ST and `.TcPOU`, render through plc2plc, and their accessor bodies are analyzed. Using a property (`fb.P`, `fb.P := x`, or a bare `P` inside the function block) reports P9999. Not yet parsed: access modifiers (`PROPERTY PUBLIC`, issue #1424) and properties in an `INTERFACE`.
 
 #### 1.3 `INTERFACE` / `END_INTERFACE`
 
@@ -151,37 +153,67 @@ FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor IMPLEMENTS I_Drivable, I_Loggab
 
 **Design:** Add `Extends` and `Implements` as keyword tokens. The parser recognizes an optional `EXTENDS base_name` clause and an optional `IMPLEMENTS interface_list` clause after the function block name. These are stored as metadata on the function block AST node.
 
-#### 1.5 Access Modifiers
+#### 1.5 Member Qualifiers (Access Modifiers, `FINAL`, `ABSTRACT`, `OVERRIDE`)
 
-Access modifiers in TwinCAT apply to **methods and properties only**, not to individual variables or VAR sections. This is confirmed by the [Beckhoff documentation](https://infosys.beckhoff.com/content/1033/tc3_plc_intro/3537661579.html) and [community references](https://stefanhenneken.net/2017/04/23/iec-61131-3-methods-properties-and-inheritance/).
+A member qualifier is a word between `FUNCTION_BLOCK`/`METHOD`/`PROPERTY` and the name. TwinCAT writes them after the keyword, not before it, as a `.TcPOU` `<Declaration>` shows (`METHOD PRIVATE Reset`):
 
 ```
-FUNCTION_BLOCK FB_Example
+FUNCTION_BLOCK PUBLIC FINAL FB_Example
 
-PUBLIC METHOD DoWork : BOOL
+METHOD PUBLIC DoWork : BOOL
     ...
 END_METHOD
 
-PRIVATE METHOD InternalHelper : BOOL
+METHOD PRIVATE InternalHelper : BOOL
     ...
 END_METHOD
 
-PROTECTED METHOD ForSubclasses : BOOL
+METHOD PROTECTED FINAL ForSubclasses : BOOL
     ...
 END_METHOD
+END_FUNCTION_BLOCK
 
-ABSTRACT METHOD MustOverride : BOOL
-END_METHOD
+FUNCTION_BLOCK ABSTRACT FB_Base
 
-FINAL METHOD CannotOverride : BOOL
-    ...
+METHOD PUBLIC ABSTRACT MustOverride : BOOL
 END_METHOD
 END_FUNCTION_BLOCK
 ```
 
-The default access modifier is `PUBLIC` when none is specified.
+Access modifiers (`PUBLIC`, `PRIVATE`, `PROTECTED`, `INTERNAL`) apply to function blocks, methods and properties, not to variables or VAR sections. This is confirmed by the [Beckhoff documentation](https://infosys.beckhoff.com/content/1033/tc3_plc_intro/3537661579.html) and [community references](https://stefanhenneken.net/2017/04/23/iec-61131-3-methods-properties-and-inheritance/). The default access modifier is `PUBLIC` when none is specified.
 
-**Design:** Add `Public`, `Private`, `Protected`, `Internal`, `Abstract`, `Final` as keyword tokens. These appear as optional modifiers before method and property declarations. The parser accepts them in modifier positions and stores them as metadata on the `MethodDeclaration` and `PropertyDeclaration` AST nodes. No semantic enforcement initially.
+**What TwinCAT accepts.** Checked in TwinCAT XAE 3.1.4024.66 on 2026-09-28 (#1424), one isolated PLC project per case. Only pass/fail was available (the headless shell leaves the Error List empty), so no error text was captured, and where a case has more than one possible cause the cause is inferred. TwinCAT 4026 was not checked.
+
+| Case | TwinCAT 4024 |
+|------|--------------|
+| `FUNCTION_BLOCK PUBLIC` / `INTERNAL` / `FINAL` / `PUBLIC FINAL` | builds |
+| `FUNCTION_BLOCK PRIVATE` / `PROTECTED` / `OVERRIDE` | error |
+| `FUNCTION_BLOCK ABSTRACT FINAL` (either order) | error |
+| `FUNCTION_BLOCK FINAL PUBLIC` | error (order matters) |
+| `METHOD INTERNAL`, `METHOD PUBLIC FINAL`, `METHOD PUBLIC ABSTRACT` (in `ABSTRACT` FB) | builds |
+| `METHOD FINAL PUBLIC`, `METHOD ABSTRACT PUBLIC` | error (order matters) |
+| `METHOD FINAL ABSTRACT`, `METHOD PUBLIC PRIVATE`, `METHOD PUBLIC PUBLIC` | error |
+| `METHOD ABSTRACT` in a function block that is not `ABSTRACT` | error |
+| `METHOD ABSTRACT` with a body | error |
+| `METHOD OVERRIDE M` redeclaring a base method | error (cause unknown, see §3.5) |
+| `PROPERTY PUBLIC`, `PROPERTY PRIVATE FINAL`, `PROPERTY ABSTRACT` | builds |
+| `VAR PUBLIC` / `PROTECTED` / `PRIVATE`, `VAR_INPUT PUBLIC`, with or without `CONSTANT` | error |
+| `Final`, `Private`, `Internal`, `Public`, `Protected` as variable names | error |
+| `Override` as a variable name | builds |
+| Extending a `FINAL` FB, redeclaring a `FINAL` method | error |
+
+So the access specifier comes first, `FINAL` and `ABSTRACT` exclude each other, and an `ABSTRACT` method has no body and belongs to an `ABSTRACT` function block. The CODESYS and Edition 3 rules were not checked. TwinCAT's PLC compiler is CODESYS-based, so CODESYS very likely behaves the same.
+
+**Design:**
+
+- **Contextual words, not tokens.** `PUBLIC`, `PRIVATE`, `PROTECTED`, `INTERNAL`, `FINAL` and `OVERRIDE` are matched by text (`contextual_keyword`), only in the qualifier slot, and are identifiers everywhere else. `OVERRIDE` is a legal name in TwinCAT, so it has to be contextual anyway, and `allow_fb_inheritance` is also enabled by dialects whose reserved words were not checked. Accepting `VAR Final : BOOL;` is a superset of TwinCAT, as ADR-0040 asks. `ABSTRACT` stays a demoted keyword token, and the qualifier slot accepts it next to the contextual words.
+- **A word is a qualifier only when the name still follows it.** The rule is `member_qualifier() &(_ (member_qualifier() / identifier() !(_ statement_continuation())))`, where `statement_continuation` is the token after a statement's first identifier (`:=`, `(`, `.`, `[`, `^`, `REF=`, `S=`, `R=`). So `METHOD Override : BOOL` is a method named `Override`, and in `METHOD Override x := 1;` the name is `Override` and `x := 1;` is the body. The second case matters for `.TcPOU` files, where the body comes straight after a header with no VAR blocks.
+- **Any order in the grammar, checked afterwards.** The grammar keeps qualifiers in source order (`MemberQualifiers` in `dsl/src/member_qualifier.rs`, on `MethodDeclaration::qualifiers` and `FunctionBlockOop::qualifiers`). `rule_member_qualifier_invalid` (P4063) reports a repeated qualifier, a second access specifier, an access specifier after `FINAL`/`ABSTRACT`/`OVERRIDE`, `ABSTRACT` with `FINAL`, `PRIVATE`/`PROTECTED`/`OVERRIDE` on a function block, and an `ABSTRACT` method with a body or in a function block that is not `ABSTRACT`. A message that names the broken rule is more useful than a syntax error at the second qualifier.
+- **Flag gating.** Methods need no gate: without `allow_fb_inheritance`, `METHOD` is not a keyword. The parser cannot see `CompilerOptions`, so function block qualifiers parse unconditionally and `rule_member_qualifier_allowed` reports P4062 without the flag (ADR-0040 rule 3).
+- **Empty method body.** An `ABSTRACT` method has no body, so a method body may be empty, unlike a function body.
+- **Metadata only.** Access is not enforced (ADR-0041 lists it as a non-goal), and neither is `FINAL`: a `PRIVATE` method can be called from outside, and a `FINAL` function block can be extended. Qualifiers do not report P9999. An `ABSTRACT` method can only be valid inside an `ABSTRACT` function block, which already reports it.
+- **No `VAR` access specifiers.** TwinCAT 4024 rejects them, so they are not parsed.
+- **Properties** take the same qualifiers (`PROPERTY PUBLIC`). Not parsed yet; see §1.2.
 
 #### 1.6 `THIS^` and `SUPER^`
 
@@ -335,13 +367,15 @@ Short-circuiting applies only when both operands are `BOOL`. `AND`/`OR` are also
 
 #### 3.5 `OVERRIDE` and `CONTINUE` Keywords
 
-`OVERRIDE` marks a method as overriding a base class method:
+`OVERRIDE` marks a method as overriding a base class method. It is IEC 61131-3 Edition 3 syntax:
 
 ```
-METHOD OVERRIDE Start : BOOL
+METHOD PUBLIC OVERRIDE Start : BOOL
     // ...
 END_METHOD
 ```
+
+It is probably **not** TwinCAT 4024 syntax: `Override` is a legal variable name there, unlike the other qualifier words, and redeclaring a base method with `OVERRIDE` fails to build (§1.5; the cause of that failure was not captured). In TwinCAT a derived function block overrides a method by declaring one with the same name. IronPLC still accepts `OVERRIDE` on a method, as Edition 3 syntax, and rejects it on a function block (P4063).
 
 `CONTINUE` skips to the next loop iteration (common extension):
 
@@ -354,7 +388,7 @@ FOR i := 0 TO 100 DO
 END_FOR;
 ```
 
-**Design:** Add `Override` and `Continue` as keyword tokens. `OVERRIDE` is a method modifier alongside `ABSTRACT`/`FINAL`. `CONTINUE` is a statement keyword, parallel to `EXIT`.
+**Design:** `OVERRIDE` is a contextual qualifier word, not a token (§1.5). `CONTINUE` is a keyword token and a statement, parallel to `EXIT`.
 
 #### 3.6 Extended Assignment Operators
 
@@ -487,7 +521,7 @@ Multi-token constructs (`POINTER TO`, `REFERENCE TO`) are composed by the parser
 The `twincat_parser.rs` module currently handles `POU`, `GVL`, and `DUT` XML elements. It needs to be extended:
 
 1. **Method elements** — iterate over `<Method>` children of a POU and parse each as a **standalone declaration**
-2. **Property elements** — iterate over `<Property>` children; parse each `<Get>` and `<Set>` body as a standalone statement list
+2. **Property elements** — iterate over `<Property>` children together with `<Method>` children, in document order, and rebuild each as `PROPERTY ... GET ... END_GET SET ... END_SET END_PROPERTY` (see §1.2)
 3. **Interface elements** — handle `<Itf>` as a new top-level object type alongside POU/GVL/DUT
 
 Each sub-element is parsed independently following the existing CDATA extraction pattern: extract Declaration CDATA, extract Implementation/ST CDATA (if present), concatenate with closing keyword, parse, adjust positions. The parsed results are then attached to the parent FB's AST node.
@@ -512,20 +546,13 @@ These are added to the `TokenType` enum **without** `#[token(...)]` attributes �
 | `EndMethod` | `END_METHOD` | 1 |
 | `Property` | `PROPERTY` | 1 |
 | `EndProperty` | `END_PROPERTY` | 1 |
-| `GetAccessor` | `GET` | 1 |
 | `EndGet` | `END_GET` | 1 |
-| `SetAccessor` | `SET` | 1 |
 | `EndSet` | `END_SET` | 1 |
 | `Interface` | `INTERFACE` | 1 |
 | `EndInterface` | `END_INTERFACE` | 1 |
 | `Extends` | `EXTENDS` | 1 |
 | `Implements` | `IMPLEMENTS` | 1 |
-| `Public` | `PUBLIC` | 1 |
-| `Private` | `PRIVATE` | 1 |
-| `Protected` | `PROTECTED` | 1 |
-| `Internal` | `INTERNAL` | 1 |
 | `Abstract` | `ABSTRACT` | 1 |
-| `Final` | `FINAL` | 1 |
 | `This` | `THIS` | 1 |
 | `Super` | `SUPER` | 1 |
 | `Pointer` | `POINTER` | 2 |
@@ -540,8 +567,9 @@ These are added to the `TokenType` enum **without** `#[token(...)]` attributes �
 | `VarStat` | `VAR_STAT` | 3 |
 | `AndThen` | `AND_THEN` | 3 |
 | `OrElse` | `OR_ELSE` | 3 |
-| `Override` | `OVERRIDE` | 3 |
 | `Continue` | `CONTINUE` | 3 |
+
+`PUBLIC`, `PRIVATE`, `PROTECTED`, `INTERNAL`, `FINAL` and `OVERRIDE` are not tokens: they are matched by text in the qualifier slot only (§1.5).
 
 Multi-token constructs handled by parser context (not promotion):
 - `POINTER TO` — parser sees `Pointer` + `To` (standard keyword)
@@ -616,40 +644,25 @@ pub struct PropertySignature {
 pub struct MethodDeclaration {
     pub name: Id,
     pub return_type: Option<TypeName>,
-    pub access: Option<AccessModifier>,
-    pub is_abstract: bool,
-    pub is_final: bool,
-    pub is_override: bool,
+    pub qualifiers: MemberQualifiers,      // source order, see §1.5
     pub variables: Vec<VarDecl>,
     pub body: Vec<StmtKind>,
     pub span: SourceSpan,
 }
 
-/// A property declaration (function block context).
+/// A property declaration (function block context). Each accessor is a
+/// method, see §1.2.
 pub struct PropertyDeclaration {
     pub name: Id,
-    pub prop_type: TypeName,
-    pub access: Option<AccessModifier>,
-    pub getter: Option<PropertyAccessor>,
-    pub setter: Option<PropertyAccessor>,
+    pub property_type: FunctionReturnType,
+    pub get: Option<MethodDeclaration>,
+    pub set: Option<MethodDeclaration>,
     pub span: SourceSpan,
 }
 
-/// A property getter or setter body.
-pub struct PropertyAccessor {
-    pub variables: Vec<VarDecl>,
-    pub body: Vec<StmtKind>,
-    pub span: SourceSpan,
-}
-
-/// Access modifier for methods and properties.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AccessModifier {
-    Public,
-    Private,
-    Protected,
-    Internal,
-}
+/// Qualifiers are `MemberQualifiers` in `dsl/src/member_qualifier.rs`:
+/// `AccessSpecifier` (Public, Private, Protected, Internal), Abstract,
+/// Final, Override.
 ```
 
 ### New Variable Section Type
@@ -966,7 +979,7 @@ This test lives in `compiler/parser/src/tests/` alongside the other parser tests
    - Access modifiers on methods/properties (`PUBLIC`, `PRIVATE`, `PROTECTED`, `INTERNAL`)
    - `ABSTRACT` / `FINAL` / `OVERRIDE` method modifiers
    - `THIS^` / `SUPER^` expressions
-   - DSL: `AccessModifier`, `ThisRef`, `SuperRef`
+   - DSL: `MemberQualifiers`, `ThisRef`, `SuperRef`
    - `LanguageExtension` impls on new nodes
 
 3. **Phase 3 — Type system extensions**:

@@ -41,6 +41,8 @@ use crate::{
 ///   `allow_short_circuit_operators`.
 /// * **`PERSISTENT`** — demoted unless `allow_persistent_var`
 ///   (Beckhoff TwinCAT/CODESYS extension).
+/// * **`CONTINUE`** — demoted unless `allow_continue` (standardized in
+///   IEC 61131-3:2013).
 ///
 /// The context-sensitive `TIME` keyword is handled by [`apply_time`].
 pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
@@ -52,6 +54,7 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     let demote_oop = !options.allow_fb_inheritance;
     let demote_short_circuit = !options.allow_short_circuit_operators;
     let demote_persistent = !options.allow_persistent_var;
+    let demote_continue = !options.allow_continue;
 
     for tok in tokens.iter_mut() {
         let demote = match tok.token_type {
@@ -68,10 +71,15 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
             | TokenType::Abstract
             | TokenType::Method
             | TokenType::EndMethod
+            | TokenType::Property
+            | TokenType::EndProperty
+            | TokenType::EndGet
+            | TokenType::EndSet
             | TokenType::This
             | TokenType::Super => demote_oop,
             TokenType::AndThen | TokenType::OrElse => demote_short_circuit,
             TokenType::Persistent => demote_persistent,
+            TokenType::Continue => demote_continue,
             _ => false,
         };
         if demote {
@@ -394,6 +402,31 @@ mod tests {
     }
 
     // --- OOP keywords: demoted unless allow_fb_inheritance ---
+
+    const PROPERTY_KEYWORDS: [(TokenType, &str); 4] = [
+        (TokenType::Property, "PROPERTY"),
+        (TokenType::EndProperty, "END_PROPERTY"),
+        (TokenType::EndGet, "END_GET"),
+        (TokenType::EndSet, "END_SET"),
+    ];
+
+    #[test]
+    fn apply_when_property_keywords_and_disabled_then_demoted_to_identifier() {
+        for (token_type, text) in PROPERTY_KEYWORDS {
+            let mut tokens = vec![make_token(token_type, text)];
+            apply(&mut tokens, &opts_default());
+            assert_eq!(tokens[0].token_type, TokenType::Identifier, "{text}");
+        }
+    }
+
+    #[test]
+    fn apply_when_property_keywords_and_enabled_then_stay_keywords() {
+        for (token_type, text) in PROPERTY_KEYWORDS {
+            let mut tokens = vec![make_token(token_type.clone(), text)];
+            apply(&mut tokens, &opts_fb_inheritance());
+            assert_eq!(tokens[0].token_type, token_type, "{text}");
+        }
+    }
 
     #[test]
     fn apply_when_extends_and_disabled_then_demoted_to_identifier() {

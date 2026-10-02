@@ -104,7 +104,7 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 
 **Layout**:
 
-- **`CURSOR.md`** (repository root): Same role as `CLAUDE.md` — steering links, git workflow, quick reference, and pointers to `specs/steering/common-tasks.md` for `just` commands (Cursor does not run Claude Code slash commands automatically).
+- **`CURSOR.md`** (repository root): Same role as `CLAUDE.md` — steering links, a pointer to the development process, quick reference, and pointers to `specs/steering/common-tasks.md` for `just` commands (Cursor does not run Claude Code slash commands automatically).
 - **`.cursor/rules/ironplc-steering.mdc`**: Concise `alwaysApply: true` rule that points at `CURSOR.md` and lists `specs/steering/` paths so standards apply in every chat without duplicating long-form docs in the rule file.
 
 #### Other AI Tools
@@ -495,6 +495,6 @@ If you're unsure whether something should be in a steering file:
 - **Is it API documentation?** → No, code comments
 - **Is it a trade-off decision (why X over Y)?** → ADR (`specs/adrs/`)
 - **Is it describing what to build (architecture, formats, interfaces)?** → Design doc (`specs/design/`)
-- **Is it describing how to implement (phased tasks, code changes)?** → Implementation plan (`specs/plans/`), which is reviewed on the branch and deleted before merge
+- **Is it describing how to implement (phased tasks, code changes)?** → Implementation plan (`specs/plans/`), which is reviewed in its own plan PR and never merged
 - **Is it explaining a design decision for users?** → Maybe, consider `docs/explanation/`
 - **Is it a common mistake AI makes?** → Yes, steering file (`specs/steering/`)

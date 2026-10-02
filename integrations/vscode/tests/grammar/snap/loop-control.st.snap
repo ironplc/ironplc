@@ -1,0 +1,76 @@
+>PROGRAM main
+#^^^^^^^ source.61131-3-st keyword.control.st
+#       ^ source.61131-3-st
+#        ^^^^ source.61131-3-st entity.name.function.st
+>VAR
+#^^^ source.61131-3-st keyword.declaration.variable.st
+>    i : INT;
+#^^^^ source.61131-3-st
+#    ^ source.61131-3-st variable.other.st
+#     ^ source.61131-3-st
+#      ^ source.61131-3-st punctuation.separator.st
+#       ^ source.61131-3-st
+#        ^^^ source.61131-3-st storage.type.primitive.integer.st
+#           ^ source.61131-3-st punctuation.separator.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>    FOR i := 1 TO 10 DO
+#^^^^ source.61131-3-st
+#    ^^^ source.61131-3-st keyword.control.loop.st
+#       ^ source.61131-3-st
+#        ^ source.61131-3-st variable.other.st
+#         ^ source.61131-3-st
+#          ^^ source.61131-3-st keyword.operator.assignment.st
+#            ^ source.61131-3-st
+#             ^ source.61131-3-st constant.numeric.decimal.st
+#              ^ source.61131-3-st
+#               ^^ source.61131-3-st keyword.control.loop.st
+#                 ^ source.61131-3-st
+#                  ^^ source.61131-3-st constant.numeric.decimal.st
+#                    ^ source.61131-3-st
+#                     ^^ source.61131-3-st keyword.control.loop.st
+>        IF i = 2 THEN
+#^^^^^^^^ source.61131-3-st
+#        ^^ source.61131-3-st keyword.control.conditional.st
+#          ^ source.61131-3-st
+#           ^ source.61131-3-st variable.other.st
+#            ^ source.61131-3-st
+#             ^ source.61131-3-st keyword.operator.comparison.st
+#              ^ source.61131-3-st
+#               ^ source.61131-3-st constant.numeric.decimal.st
+#                ^ source.61131-3-st
+#                 ^^^^ source.61131-3-st keyword.control.conditional.st
+>            CONTINUE;
+#^^^^^^^^^^^^ source.61131-3-st
+#            ^^^^^^^^ source.61131-3-st keyword.control.flow.st
+#                    ^ source.61131-3-st punctuation.separator.st
+>        END_IF;
+#^^^^^^^^ source.61131-3-st
+#        ^^^^^^ source.61131-3-st keyword.control.conditional.st
+#              ^ source.61131-3-st punctuation.separator.st
+>        IF i = 8 THEN
+#^^^^^^^^ source.61131-3-st
+#        ^^ source.61131-3-st keyword.control.conditional.st
+#          ^ source.61131-3-st
+#           ^ source.61131-3-st variable.other.st
+#            ^ source.61131-3-st
+#             ^ source.61131-3-st keyword.operator.comparison.st
+#              ^ source.61131-3-st
+#               ^ source.61131-3-st constant.numeric.decimal.st
+#                ^ source.61131-3-st
+#                 ^^^^ source.61131-3-st keyword.control.conditional.st
+>            EXIT;
+#^^^^^^^^^^^^ source.61131-3-st
+#            ^^^^ source.61131-3-st keyword.control.flow.st
+#                ^ source.61131-3-st punctuation.separator.st
+>        END_IF;
+#^^^^^^^^ source.61131-3-st
+#        ^^^^^^ source.61131-3-st keyword.control.conditional.st
+#              ^ source.61131-3-st punctuation.separator.st
+>    END_FOR;
+#^^^^ source.61131-3-st
+#    ^^^^^^^ source.61131-3-st keyword.control.loop.st
+#           ^ source.61131-3-st punctuation.separator.st
+>END_PROGRAM
+#^^^^^^^^^^^ source.61131-3-st keyword.control.st
+>

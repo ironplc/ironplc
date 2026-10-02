@@ -29,7 +29,8 @@
 //!
 //! # Not yet supported
 //!
-//! - TODO: STRING[N] in VAR_IN_OUT (parsed, but runtime pass-by-reference not implemented)
+//! - TODO: VAR_IN_OUT of a non-elementary type such as STRING[N] (only
+//!   elementary types are passed by reference)
 //! - TODO: STRING[N] in STRUCT members (parsed, but struct compilation not implemented)
 //!
 //! # Integer type strategy: promote-operate-truncate
@@ -72,7 +73,6 @@ use crate::emit::Emitter;
 use super::compile_fn::{compile_user_function, compile_user_function_block};
 use super::compile_setup::{assign_variables, emit_initial_values};
 use super::compile_stmt::compile_body;
-use super::type_info::resolve_type_name;
 
 /// The native operation width used for arithmetic and comparisons.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -727,6 +727,7 @@ fn compile_program_with_functions(
     let mut ctx = CompileContext::new();
     ctx.enum_map = enum_map;
     ctx.types = crate::type_info::type_representations(types);
+    ctx.operand_names = crate::type_info::operand_names(types);
     ctx.string_to_num = string_to_num;
     ctx.compiler_options = compiler_options;
     let mut builder = ContainerBuilder::new();
@@ -783,8 +784,8 @@ fn compile_program_with_functions(
             if let Some(id) = decl.identifier.symbolic_id() {
                 let name = id.to_string().to_lowercase();
                 field_indices.insert(name.clone(), i as u8);
-                if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-                    if let Some(vti) = resolve_type_name(&simple.type_name.name) {
+                if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
+                    if let Some(vti) = crate::type_info::decl_type_info(&ctx, decl) {
                         field_op_types.insert(name, (vti.op_width, vti.signedness));
                     } else {
                         field_op_types.insert(name, DEFAULT_OP_TYPE);
@@ -833,9 +834,8 @@ fn compile_program_with_functions(
                 if let Some(id) = decl.identifier.symbolic_id() {
                     param_names_in_order.push(id.to_string().to_lowercase());
                 }
-                let op_type = if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer
-                {
-                    resolve_type_name(&simple.type_name.name)
+                let op_type = if let InitialValueAssignmentKind::Simple(_) = &decl.initializer {
+                    crate::type_info::decl_type_info(&ctx, decl)
                         .map_or(DEFAULT_OP_TYPE, |vti| (vti.op_width, vti.signedness))
                 } else {
                     DEFAULT_OP_TYPE
@@ -1207,6 +1207,22 @@ pub(crate) struct StringParamInfo {
     pub(crate) char_width: CharWidth,
 }
 
+/// How a call site passes an argument to one input parameter
+/// (`VAR_INPUT`/`VAR_IN_OUT`) of a user-defined function.
+#[derive(Clone)]
+pub(crate) enum ParamPassing {
+    /// The argument's value is pushed onto the operand stack at this type,
+    /// and `CALL` stores it in the parameter's slot.
+    Value(OpType),
+    /// The argument is copied into the parameter's data region space before
+    /// `CALL`, and a dummy value is pushed for the slot `CALL` pops.
+    String(StringParamInfo),
+    /// A `VAR_IN_OUT` argument: the variable's reference (its
+    /// variable-table index) is pushed, and the function reads and writes
+    /// the caller's variable through it.
+    Reference,
+}
+
 /// Metadata for a STRING/WSTRING return value in a user-defined function.
 ///
 /// When a function returns STRING/WSTRING, the return value lives in the
@@ -1230,11 +1246,8 @@ pub(crate) struct UserFunctionInfo {
     pub(crate) var_offset: VarIndex,
     /// Number of input parameters.
     pub(crate) num_params: u16,
-    /// OpTypes for each input parameter, in declaration order.
-    pub(crate) param_op_types: Vec<OpType>,
-    /// For each input parameter (in order), `Some(info)` if it is a STRING
-    /// parameter that needs copy-in at the call site, `None` for scalar params.
-    pub(crate) param_string_info: Vec<Option<StringParamInfo>>,
+    /// How the call site passes each input parameter, in declaration order.
+    pub(crate) params: Vec<ParamPassing>,
     /// If the function returns STRING/WSTRING, info about the return string
     /// in the data region. Used at call sites to initialize the return string
     /// header before CALL.
@@ -1335,9 +1348,10 @@ pub(crate) struct CompileContext {
     pub(crate) var_types: HashMap<Id, VarTypeInfo>,
     /// Ordered list of constants added to the constant pool.
     pub(crate) constants: Vec<PoolConstant>,
-    /// Stack of loop exit labels for EXIT statement compilation.
-    /// Each enclosing loop pushes its end label; EXIT jumps to the top.
-    pub(crate) loop_exit_labels: Vec<crate::emit::Label>,
+    /// Stack of the labels of the enclosing loops, for EXIT and CONTINUE
+    /// statement compilation. Each loop pushes its labels; EXIT and CONTINUE
+    /// jump to those of the top.
+    pub(crate) loop_labels: Vec<crate::compile_loop::LoopLabels>,
     /// Maps STRING variable identifiers to their data region metadata.
     pub(crate) string_vars: HashMap<Id, StringVarInfo>,
     /// Maps FB instance variable identifiers to their metadata.
@@ -1354,6 +1368,9 @@ pub(crate) struct CompileContext {
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
     pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, IntermediateType>,
+    /// The name the arithmetic overloads know a value of each type by.
+    /// See [`crate::type_info::expr_operand_name`].
+    pub(crate) operand_names: HashMap<ironplc_dsl::type_id::TypeId, ironplc_dsl::common::TypeName>,
     /// The behavior policies `STRING_TO_<numeric>` calls select their
     /// builtin by (ADR-0049).
     pub(crate) string_to_num: StringToNumPolicies,
@@ -1402,6 +1419,14 @@ pub(crate) struct CompileContext {
     ///
     /// [`record_call_edge`]: CompileContext::record_call_edge
     pub(crate) call_graph: HashMap<FunctionId, HashSet<FunctionId>>,
+    /// The `VAR_IN_OUT` parameters of the function being compiled. Each
+    /// one's slot holds a reference to the caller's variable (a
+    /// variable-table index, as `REF_TO` stores) rather than a value, so it
+    /// is reached through [`in_out_ref_slot`], never [`var_index`].
+    ///
+    /// [`in_out_ref_slot`]: CompileContext::in_out_ref_slot
+    /// [`var_index`]: CompileContext::var_index
+    pub(crate) in_out_params: HashSet<Id>,
 }
 
 /// Describes how a `RETURN` statement should yield the function's value.
@@ -1423,12 +1448,13 @@ impl CompileContext {
             variables: HashMap::new(),
             var_types: HashMap::new(),
             constants: Vec::new(),
-            loop_exit_labels: Vec::new(),
+            loop_labels: Vec::new(),
             string_vars: HashMap::new(),
             fb_instances: HashMap::new(),
             array_vars: HashMap::new(),
             struct_vars: HashMap::new(),
             struct_array_vars: HashMap::new(),
+            in_out_params: HashSet::new(),
             data_region_offset: 0,
             max_string_capacity: 0,
             has_wide_string: false,
@@ -1440,6 +1466,7 @@ impl CompileContext {
             next_user_fb_type_id: 0x1000,
             enum_map: crate::compile_enum::EnumOrdinalMap::default(),
             types: HashMap::new(),
+            operand_names: HashMap::new(),
             string_to_num: StringToNumPolicies::default(),
             compiler_options: CompilerOptions::default(),
             current_function_return: None,
@@ -1450,7 +1477,16 @@ impl CompileContext {
 
     /// Returns the exit label for the innermost enclosing loop, if any.
     pub(crate) fn current_loop_exit(&self) -> Option<crate::emit::Label> {
-        self.loop_exit_labels.last().copied()
+        self.loop_labels.last().map(|labels| labels.exit)
+    }
+
+    /// Returns the label where the innermost enclosing loop goes on with its
+    /// next iteration, if any, and records that it is used.
+    pub(crate) fn current_loop_next(&mut self) -> Option<crate::emit::Label> {
+        self.loop_labels.last_mut().map(|labels| {
+            labels.next_used = true;
+            labels.next
+        })
     }
 
     /// Records a static call-graph edge from the function whose body is
@@ -1466,7 +1502,18 @@ impl CompileContext {
     }
 
     /// Looks up a variable index by identifier, using the provided span for error reporting.
+    ///
+    /// A `VAR_IN_OUT` parameter's slot holds a reference, not the value, so
+    /// loading or storing it directly would be wrong. Sites that handle one
+    /// ask [`Self::in_out_ref_slot`] first; every other site reaches here
+    /// and is refused.
     pub(crate) fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
+        if self.in_out_params.contains(name) {
+            return Err(Diagnostic::not_implemented(Label::span(
+                name.span(),
+                "VAR_IN_OUT parameter used where only a local or global variable is supported",
+            )));
+        }
         self.variables.get(name).copied().ok_or_else(|| {
             Diagnostic::problem(
                 Problem::VariableUndefined,
@@ -1474,6 +1521,16 @@ impl CompileContext {
             )
             .with_context("variable", &name.to_string())
         })
+    }
+
+    /// Returns the slot holding the reference when `name` is a `VAR_IN_OUT`
+    /// parameter of the function being compiled, or `None` for any other
+    /// variable.
+    pub(crate) fn in_out_ref_slot(&self, name: &Id) -> Option<VarIndex> {
+        if !self.in_out_params.contains(name) {
+            return None;
+        }
+        self.variables.get(name).copied()
     }
 
     /// Looks up type information for a variable by identifier.
@@ -1592,14 +1649,13 @@ mod tests {
 
     /// Helper to parse and analyze an IEC 61131-3 program string into a Library.
     ///
-    /// Runs the analyzer's type resolution pass so that `Expr.resolved_type` is
+    /// Runs the analyzer's type resolution pass so that `Expr.expr_type` is
     /// populated, which codegen requires for control flow and bitwise operations.
     fn parse(source: &str) -> (Library, SemanticContext) {
         let library =
             parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
         let (analyzed, ctx) =
-            ironplc_analyzer::stages::resolve_types(&[&library], &CompilerOptions::default())
-                .unwrap();
+            ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
         (analyzed, ctx)
     }
 

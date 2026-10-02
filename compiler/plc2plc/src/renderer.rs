@@ -7,6 +7,7 @@
 use dsl::configuration::LocatedVarInit;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Id;
+use ironplc_dsl::member_qualifier::MemberQualifiers;
 use ironplc_dsl::time::*;
 use ironplc_dsl::{diagnostic::Diagnostic, visitor::Visitor};
 use paste::paste;
@@ -80,6 +81,12 @@ impl LibraryRenderer {
         self.buffer.push_str(val);
     }
 
+    fn write_qualifiers(&mut self, qualifiers: &MemberQualifiers) {
+        for qualifier in qualifiers.iter() {
+            self.write_ws(qualifier.kind.keyword());
+        }
+    }
+
     fn write_ws(&mut self, val: &str) {
         if self.buffer.ends_with('\n') {
             self.buffer.push_str("   ".repeat(self.indents).as_str());
@@ -112,6 +119,14 @@ impl LibraryRenderer {
 
     fn indent(&mut self) {
         self.indents += 1;
+    }
+
+    /// Writes a statement that is a keyword alone, such as `RETURN;`.
+    fn write_keyword_statement(&mut self, keyword: &str) -> Result<(), Diagnostic> {
+        self.write_ws(keyword);
+        self.write_ws(";");
+        self.newline();
+        Ok(())
     }
 
     fn outdent(&mut self) {
@@ -172,6 +187,40 @@ impl LibraryRenderer {
 
         self.write_ws("END_STEP");
         self.newline();
+        Ok(())
+    }
+
+    /// Renders the variable blocks and statements of a method or a property
+    /// accessor; the caller writes the header and the closing keyword.
+    fn render_callable_body(
+        &mut self,
+        variables: &[VarDecl],
+        edge_variables: &[EdgeVarDecl],
+        body: &[dsl::textual::StmtKind],
+    ) -> Result<(), Diagnostic> {
+        if !variables.is_empty() {
+            self.indent();
+            for item in variables.iter() {
+                self.visit_var_decl(item)?;
+            }
+            self.outdent();
+            self.newline();
+        }
+
+        if !edge_variables.is_empty() {
+            self.indent();
+            for item in edge_variables.iter() {
+                self.visit_edge_var_decl(item)?;
+            }
+            self.outdent();
+            self.newline();
+        }
+
+        self.indent();
+        for stmt in body.iter() {
+            self.visit_stmt_kind(stmt)?;
+        }
+        self.outdent();
         Ok(())
     }
 }
@@ -267,14 +316,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &TimeOfDayLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        let (hr, min, sec, milli) = node.hmsm();
-        self.write_ws(
-            format!(
-                "{}#{hr:0>2}:{min:0>2}:{sec:0>2}.{milli:0>2}",
-                node.type_name()
-            )
-            .as_str(),
-        );
+        self.write_ws(format!("{}#{}", node.type_name(), node.daytime_text()).as_str());
         Ok(())
     }
 
@@ -288,12 +330,12 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &DateAndTimeLiteral,
     ) -> Result<Self::Value, Diagnostic> {
-        let (hr, min, sec, milli) = node.hmsm();
         let (year, month, day) = node.ymd();
         self.write_ws(
             format!(
-                "{}#{year:0>4}-{month:0>2}-{day:0>2}-{hr:0>2}:{min:0>2}:{sec:0>2}.{milli:0>2}",
-                node.type_name()
+                "{}#{year:0>4}-{month:0>2}-{day:0>2}-{}",
+                node.type_name(),
+                node.daytime_text()
             )
             .as_str(),
         );
@@ -983,8 +1025,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("FUNCTION_BLOCK");
-        if node.oop.as_ref().is_some_and(|oop| oop.is_abstract) {
-            self.write_ws("ABSTRACT");
+        if let Some(oop) = &node.oop {
+            self.write_qualifiers(&oop.qualifiers);
         }
         self.visit_id(&node.name.name)?;
         if let Some(oop) = &node.oop {
@@ -1019,6 +1061,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             self.visit_method_declaration(method)?;
         }
 
+        for property in node.properties.iter() {
+            self.visit_property_declaration(property)?;
+        }
+
         self.write_ws("END_FUNCTION_BLOCK");
         self.newline();
         Ok(())
@@ -1030,6 +1076,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &MethodDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("METHOD");
+        self.write_qualifiers(&node.qualifiers);
         self.visit_id(&node.name)?;
         if let Some(return_type) = &node.return_type {
             self.write_ws(":");
@@ -1037,31 +1084,48 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         }
         self.newline();
 
-        if !node.variables.is_empty() {
-            self.indent();
-            for item in node.variables.iter() {
-                self.visit_var_decl(item)?;
-            }
-            self.outdent();
-            self.newline();
-        }
-
-        if !node.edge_variables.is_empty() {
-            self.indent();
-            for item in node.edge_variables.iter() {
-                self.visit_edge_var_decl(item)?;
-            }
-            self.outdent();
-            self.newline();
-        }
-
-        self.indent();
-        for stmt in node.body.iter() {
-            self.visit_stmt_kind(stmt)?;
-        }
-        self.outdent();
+        self.render_callable_body(&node.variables, &node.edge_variables, &node.body)?;
 
         self.write_ws("END_METHOD");
+        self.newline();
+        Ok(())
+    }
+
+    // OOP extension: PROPERTY ... END_PROPERTY. Each accessor is a
+    // `MethodDeclaration`, but renders as `GET`/`SET` without a method
+    // header, and the SET accessor without the implicit input that holds
+    // the assigned value (see `PropertyDeclaration`).
+    fn visit_property_declaration(
+        &mut self,
+        node: &PropertyDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("PROPERTY");
+        self.visit_id(&node.name)?;
+        self.write_ws(":");
+        self.visit_function_return_type(&node.property_type)?;
+        self.newline();
+
+        if let Some(get) = &node.get {
+            self.write_ws("GET");
+            self.newline();
+            self.render_callable_body(&get.variables, &get.edge_variables, &get.body)?;
+            self.write_ws("END_GET");
+            self.newline();
+        }
+
+        if let Some(set) = &node.set {
+            self.write_ws("SET");
+            self.newline();
+            self.render_callable_body(
+                node.set_declared_variables(),
+                &set.edge_variables,
+                &set.body,
+            )?;
+            self.write_ws("END_SET");
+            self.newline();
+        }
+
+        self.write_ws("END_PROPERTY");
         self.newline();
         Ok(())
     }
@@ -1427,7 +1491,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     }
 
     // A method call is rendered by `visit_method_call` in both positions;
-    // only the statement form ends with `;`.
+    // only the statement form ends with `;`. `RETURN`, `EXIT` and `CONTINUE` have no
+    // node to visit, so they are written here.
     fn visit_stmt_kind(
         &mut self,
         node: &dsl::textual::StmtKind,
@@ -1439,6 +1504,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
                 self.newline();
                 Ok(())
             }
+            dsl::textual::StmtKind::Return => self.write_keyword_statement("RETURN"),
+            dsl::textual::StmtKind::Exit(_) => self.write_keyword_statement("EXIT"),
+            dsl::textual::StmtKind::Continue(_) => self.write_keyword_statement("CONTINUE"),
             _ => node.recurse_visit(self),
         }
     }

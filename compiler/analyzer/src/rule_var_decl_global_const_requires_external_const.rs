@@ -34,61 +34,50 @@
 //!   END_VAR
 //! END_FUNCTION_BLOCK
 //! ```
-use std::collections::HashSet;
 use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::*,
-    core::{Id, Located},
+    core::Located,
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
 
 use crate::{
-    intermediates::global_vars::collect_global_var_decls,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    symbol_environment::{ScopeKind, SymbolEnvironment, SymbolInfo},
 };
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: &Library,
-    _context: &SemanticContext,
+    context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut global_consts = HashSet::new();
-
+    let symbols = context.symbols();
     let mut diagnostics = Vec::new();
 
-    // Collect the global constants. Only a global constant obliges its
-    // externals to be constant. A `VAR CONSTANT` local to one unit says
-    // nothing about a global that happens to share its name.
-    for decl in collect_global_var_decls(lib) {
-        if decl.qualifier != DeclarationQualifier::Constant {
-            continue;
-        }
-        match &decl.identifier {
-            VariableIdentifier::Symbol(name) => {
-                global_consts.insert(name.clone());
-            }
-            // A located CONSTANT declaration (`AT %QW0 : INT`) is not
-            // handled yet. Record that and keep collecting, so the rule
-            // still reports on every other declaration.
-            VariableIdentifier::Direct(_) => diagnostics.push(Diagnostic::not_implemented(
-                Label::span(decl.identifier.span(), "Located CONSTANT declaration"),
-            )),
+    // A located CONSTANT declaration (`AT %QW0 : INT`) is not handled yet.
+    // Record that and keep going, so the rule still reports on every other
+    // declaration.
+    for (_, info) in symbols.get_variables_in_scope(&ScopeKind::Global) {
+        if is_global_constant(info) && info.address.is_some() {
+            diagnostics.push(Diagnostic::not_implemented(Label::span(
+                info.span.clone(),
+                "Located CONSTANT declaration",
+            )));
         }
     }
 
-    // Check that externals with the same name are constants. This runs even
-    // when collection reported a problem: the constants it did collect are
-    // still worth checking, and stopping here would hide every violation
-    // behind one unhandled declaration.
+    // Check that externals naming a global constant are constants. This runs
+    // even when a located constant was reported: stopping there would hide
+    // every violation behind one unhandled declaration.
     if let Err(errs) = run_rule(
         RuleExternalGlobalConst {
-            global_consts: &mut global_consts,
+            symbols,
             diagnostics: Vec::new(),
         },
         lib,
@@ -103,8 +92,19 @@ pub fn apply(
     }
 }
 
+/// Whether `info` is a `VAR_GLOBAL` declared `CONSTANT`.
+///
+/// Only a global constant obliges its externals to be constant. A `VAR
+/// CONSTANT` local to one unit says nothing about a global that happens to
+/// share its name. The qualifier is the one the source wrote, before the
+/// compiler infers constants, so an inferred constant global (whose
+/// externals inference marks too) does not oblige anything here.
+fn is_global_constant(info: &SymbolInfo) -> bool {
+    info.variable_type == Some(VariableType::Global) && info.is_constant()
+}
+
 struct RuleExternalGlobalConst<'a> {
-    global_consts: &'a mut HashSet<Id>,
+    symbols: &'a SymbolEnvironment,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -122,9 +122,11 @@ impl Visitor<Infallible> for RuleExternalGlobalConst<'_> {
             && node.qualifier != DeclarationQualifier::Constant
         {
             if let Some(name) = node.identifier.symbolic_id() {
-                // Cloned so that the borrow of `global_consts` ends before the
-                // push, which borrows `self` mutably.
-                let global = self.global_consts.get(name).cloned();
+                // A located global is reported as not implemented above.
+                let global = self
+                    .symbols
+                    .find(name, &ScopeKind::Global)
+                    .filter(|info| is_global_constant(info) && info.address.is_none());
                 if let Some(global) = global {
                     self.diagnostics.push(
                         Diagnostic::problem(
@@ -132,7 +134,10 @@ impl Visitor<Infallible> for RuleExternalGlobalConst<'_> {
                             Label::span(node.identifier.span(), "Reference to global variable"),
                         )
                         .with_context("variable", &node.identifier.to_string())
-                        .with_secondary(Label::span(global.span(), "Constant global variable")),
+                        .with_secondary(Label::span(
+                            global.span.clone(),
+                            "Constant global variable",
+                        )),
                     );
                 }
             }
@@ -144,7 +149,7 @@ impl Visitor<Infallible> for RuleExternalGlobalConst<'_> {
 
 #[cfg(test)]
 mod test {
-    rule_err!(
+    rule_ctx_err!(
         apply_when_global_const_external_not_const_then_error,
         "
 CONFIGURATION config
@@ -164,7 +169,7 @@ FUNCTION_BLOCK func
 END_FUNCTION_BLOCK"
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_local_const_shares_name_with_plain_global_then_ok,
         "
 CONFIGURATION config
@@ -193,7 +198,7 @@ PROGRAM plc_prg
 END_PROGRAM"
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_global_const_external_const_then_ok,
         "
 CONFIGURATION config
@@ -215,7 +220,7 @@ FUNCTION_BLOCK func
 END_FUNCTION_BLOCK"
     );
 
-    rule_errn!(
+    rule_ctx_errn!(
         apply_when_two_non_const_externals_then_reports_both,
         "
 CONFIGURATION config

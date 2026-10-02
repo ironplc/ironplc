@@ -802,8 +802,7 @@ fn write_compiled_container(path: &Path, source: &str) {
     let library =
         ironplc_parser::parse_program(source, &ironplc_dsl::core::FileId::default(), &options)
             .unwrap();
-    let (analyzed, context) =
-        ironplc_analyzer::stages::resolve_types(&[&library], &options).unwrap();
+    let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     let container = ironplc_codegen::compile(
         &analyzed,
         &context,
@@ -871,6 +870,7 @@ PROGRAM main
     span  : TIME := T#1500ms;
     day   : DATE := D#2024-01-15;
     clock : TIME_OF_DAY := TOD#14:30:00;
+    tick  : TIME_OF_DAY := TOD#14:30:00.250;
     stamp : DATE_AND_TIME := DT#2024-01-15-14:30:00;
   END_VAR
   flag := flag;
@@ -895,6 +895,10 @@ END_PROGRAM
     assert!(dump.contains("span: T#1500ms\n"), "dump was:\n{dump}");
     assert!(dump.contains("day: D#2024-01-15\n"), "dump was:\n{dump}");
     assert!(dump.contains("clock: TOD#14:30:00\n"), "dump was:\n{dump}");
+    assert!(
+        dump.contains("tick: TOD#14:30:00.250\n"),
+        "dump was:\n{dump}"
+    );
     assert!(
         dump.contains("stamp: DT#2024-01-15-14:30:00\n"),
         "dump was:\n{dump}"

@@ -29,6 +29,10 @@ Syntax
 The ``ELSIF`` and ``ELSE`` clauses are optional. Multiple ``ELSIF`` clauses
 may appear.
 
+Each ``IF`` and ``ELSIF`` expression must be of type ``BOOL``. A condition
+of any other type, such as an integer or a ``WORD``, is reported as
+:doc:`P4072 </reference/compiler/problems/P4072>`.
+
 Description
 -----------
 

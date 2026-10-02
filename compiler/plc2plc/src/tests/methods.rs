@@ -78,6 +78,56 @@ m.SetSpeed(1.5);
 END_PROGRAM
 "
 )]
+#[case::method_access_specifier(
+    "
+FUNCTION_BLOCK FB_Motor
+VAR
+    bRunning : BOOL;
+END_VAR
+METHOD PRIVATE Reset
+    bRunning := FALSE;
+END_METHOD
+END_FUNCTION_BLOCK
+"
+)]
+#[case::method_several_qualifiers(
+    "
+FUNCTION_BLOCK ABSTRACT FB_Motor
+VAR
+    bRunning : BOOL;
+END_VAR
+METHOD PUBLIC FINAL Start : BOOL
+    Start := TRUE;
+END_METHOD
+METHOD PROTECTED ABSTRACT Stop
+    bRunning := FALSE;
+END_METHOD
+END_FUNCTION_BLOCK
+"
+)]
+#[case::method_named_like_qualifier(
+    "
+FUNCTION_BLOCK FB_Motor
+VAR
+    bRunning : BOOL;
+END_VAR
+METHOD Override
+    bRunning := FALSE;
+END_METHOD
+END_FUNCTION_BLOCK
+"
+)]
+#[case::method_empty_body(
+    "
+FUNCTION_BLOCK ABSTRACT FB_Motor
+VAR
+    bRunning : BOOL;
+END_VAR
+METHOD Start : BOOL
+END_METHOD
+END_FUNCTION_BLOCK
+"
+)]
 fn write_to_string_when_method_source_then_round_trips(#[case] source: &'static str) {
     let options = CompilerOptions {
         allow_fb_inheritance: true,

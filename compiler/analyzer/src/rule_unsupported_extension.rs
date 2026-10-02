@@ -86,7 +86,7 @@ impl Visitor<Infallible> for RuleUnsupportedExtension {
         // (P4045) for a direct variable declaration, but indirect
         // instantiation (as an array element type) is still unchecked.
         if let Some(oop) = &node.oop {
-            if !oop.implements.is_empty() || oop.is_abstract {
+            if !oop.implements.is_empty() || oop.qualifiers.is_abstract() {
                 self.flag(oop);
             }
         }

@@ -160,3 +160,33 @@ END_FUNCTION_BLOCK";
     let selector = &case.statement_groups[0].selectors[0];
     assert!(matches!(selector, CaseSelectionKind::SignedInteger(_)));
 }
+
+/// A radix label carries the position of the token that spelled it, so a
+/// diagnostic about the label points at it rather than at the start of the
+/// file.
+#[rstest::rstest]
+#[case::hex("16#D012")]
+#[case::binary("2#1010")]
+#[case::octal("8#17")]
+fn parse_when_case_label_is_radix_literal_then_span_covers_literal(#[case] label: &str) {
+    let source = format!(
+        "
+FUNCTION_BLOCK FB_Example
+VAR
+    x : DINT;
+    y : INT;
+END_VAR
+CASE x OF
+    {label}: y := 1;
+END_CASE;
+END_FUNCTION_BLOCK"
+    );
+    let library = parse_program(&source, &FileId::default(), &CompilerOptions::default()).unwrap();
+    let case = extract_case(&library);
+    let selector = &case.statement_groups[0].selectors[0];
+    let lit = cast!(selector, CaseSelectionKind::BitStringLiteral);
+
+    let start = source.find(label).unwrap();
+    assert_eq!(lit.value.span.start, start);
+    assert_eq!(lit.value.span.end, start + label.len());
+}

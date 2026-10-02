@@ -575,7 +575,7 @@ macro_rules! assert_bytecode {
 
 /// Parses an IEC 61131-3 source string and runs type resolution via the analyzer.
 ///
-/// The analyzer populates `Expr.resolved_type` and resolves type aliases in
+/// The analyzer populates `Expr.expr_type` and resolves type aliases in
 /// variable declarations, which codegen requires.
 /// Reads a STRING value from the data region at the given byte offset.
 pub fn read_string(data_region: &[u8], data_offset: usize) -> String {
@@ -601,7 +601,7 @@ pub fn string_offset(preceding_max_lengths: &[u16]) -> usize {
 
 pub fn parse(source: &str, options: &CompilerOptions) -> (Library, SemanticContext) {
     let library = parse_program(source, &FileId::default(), options).unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], options).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
     (analyzed, ctx)
 }
 

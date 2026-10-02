@@ -143,7 +143,20 @@ which to trace.
 **Inputs:** ``sources``, ``options``.
 
 **Returns:** an object with ``ok``, ``inputs``, ``outputs``, and
-``diagnostics``.
+``diagnostics``. Each entry has a ``name``, a ``type`` and an
+``address``. A program variable is named ``program.variable`` and a
+global variable by its bare name.
+
+* ``inputs`` holds the program ``VAR_INPUT``, ``VAR_IN_OUT`` and
+  ``VAR_EXTERNAL`` variables, the global variables without an address,
+  and the variables at an ``%I`` address.
+* ``outputs`` holds the program ``VAR_OUTPUT`` and ``VAR_IN_OUT``
+  variables, the global variables without an address, and the
+  variables at a ``%Q`` address.
+* A variable at an ``%M`` address is in neither list.
+* A ``CONSTANT`` variable, or a global the compiler declares such as
+  ``__SYSTEM_UP_TIME``, is never an input, because the caller cannot
+  change it.
 
 Execution Tools
 ===============

@@ -359,9 +359,9 @@ e2e_f32!(
 );
 
 // Regression for `compile_expr.rs#L32` TODO on `struct.field[i, j] = x`.
-// The analyzer previously failed to set `resolved_type` for array
+// The analyzer previously failed to type array
 // subscripts rooted in a struct field, so codegen's condition path hit
-// the "missing resolved_type" branch when a 2-D STRING array field was
+// the "missing type" branch when a 2-D STRING array field was
 // compared inside an IF.
 // Global DATA is var 0, scratch is var 1, r_match is var 2, r_mismatch is var 3.
 e2e_i32_with!(

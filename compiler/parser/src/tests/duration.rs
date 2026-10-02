@@ -109,7 +109,7 @@ fn duration_spec_req_tl_023_negative_duration() {
 #[case("D#2026-01-01")]
 #[case("d#2026-01-01")]
 fn date_prefix_case_insensitive(#[case] literal: &str) {
-    // Sanity check for the `dt_sep("D")` simplification.
+    // `contextual_keyword("D")` matches the prefix in any case.
     let source = format!(
         "FUNCTION fun:DATE\nVAR\n    dv : DATE := {literal};\nEND_VAR\nfun := dv;\nEND_FUNCTION"
     );

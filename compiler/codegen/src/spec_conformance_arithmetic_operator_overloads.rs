@@ -27,7 +27,7 @@ use crate::compile_time_arith::time_arith_for;
 fn program_bytecode(source: &str) -> Vec<u8> {
     let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
     let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], &options).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     let container = crate::compile(
         &analyzed,
         &ctx,

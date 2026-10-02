@@ -325,7 +325,7 @@ The basic verifier tracks stack depth (an integer) and validates static indices.
 
   **Status (partial):** two narrow, local forms of this have shipped in codegen rather than the verifier.
 
-  `for_loop_trunc_can_be_elided` (`codegen/src/compile_stmt.rs`) checks the interval spanned by a FOR loop's constant `from`/`to`/`step` bounds and elides the per-iteration `TRUNC` when every visible value of the control variable — including the post-final increment — stays inside the declared narrow type's range. It is deliberately conservative: any non-constant bound, or any boundary that could wrap, keeps the `TRUNC`. The scope is the loop's own init and increment only.
+  `for_loop_trunc_can_be_elided` (`codegen/src/compile_loop.rs`) checks the interval spanned by a FOR loop's constant `from`/`to`/`step` bounds and elides the per-iteration `TRUNC` when every visible value of the control variable — including the post-final increment — stays inside the declared narrow type's range. It is deliberately conservative: any non-constant bound, or any boundary that could wrap, keeps the `TRUNC`. The scope is the loop's own init and increment only.
 
   `pass_const_trunc` covers the constant-valued case everywhere else, resolving the truncation during code generation wherever a `TRUNC_*` follows a constant load. See [Bytecode Peephole Optimizer §7](bytecode-peephole-optimizer.md) for what it matches and why it is sound.
 

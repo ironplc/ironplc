@@ -61,9 +61,9 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    symbol_environment::ScopeTracker,
     type_compat::is_checkable_type,
     value_type::{self, ValueType},
-    variable_type::{Declarations, Declared},
 };
 use ironplc_parser::options::CompilerOptions;
 pub fn apply(
@@ -76,7 +76,7 @@ pub fn apply(
             context,
             options,
             diagnostics: vec![],
-            declarations: Declarations::new(),
+            scope: ScopeTracker::default(),
         },
         lib,
     )
@@ -86,12 +86,11 @@ struct RuleFunctionCallTypeCheck<'a> {
     context: &'a SemanticContext,
     options: &'a CompilerOptions,
     diagnostics: Vec<Diagnostic>,
-    /// Declared type of every variable in scope.
-    ///
-    /// Each declaration the traversal enters pushes a frame, so a
-    /// method's locals do not outlive the method and a local shadows a
-    /// field of the same name only within its own body.
-    declarations: Declarations<'static>,
+    /// Where the traversal is, to look variables up in the symbol
+    /// environment. A method's scope nests inside its function block's,
+    /// so a local shadows a field of the same name only within its own
+    /// body.
+    scope: ScopeTracker,
 }
 
 impl DiagnosticVisitor for RuleFunctionCallTypeCheck<'_> {
@@ -103,11 +102,16 @@ impl DiagnosticVisitor for RuleFunctionCallTypeCheck<'_> {
 impl RuleFunctionCallTypeCheck<'_> {
     /// The type name a variable in scope was declared with, or `None` for
     /// one declared with an inline type or not declared at all.
+    ///
+    /// A function's or method's own name is its result variable, so
+    /// assigning it is an assignment with a target type like any other.
     fn declared_type_name(&self, id: &Id) -> Option<TypeName> {
-        match self.declarations.find(id)?.type_reference() {
-            TypeReference::Named(type_name) => Some(type_name),
-            TypeReference::Inline | TypeReference::Unspecified => None,
-        }
+        let type_id = self
+            .context
+            .symbols()
+            .find(id, &self.scope.current())?
+            .type_id?;
+        self.context.types().name_of(type_id).cloned()
     }
 
     /// Checks whether a function call expression assigned to a variable has a
@@ -116,7 +120,7 @@ impl RuleFunctionCallTypeCheck<'_> {
     /// Standard-library calls are checked like any other. Their declared
     /// return type may be a generic category, but `xform_resolve_expr_types`
     /// has already narrowed it to the concrete type of the argument the
-    /// category binds to; where it could not, `resolved_type` is `None` and
+    /// category binds to; where it could not, `expr_type` is `None` and
     /// the call is skipped below. A call naming a function the environment
     /// does not hold resolves to `None` the same way, so the signature
     /// itself is never needed here.
@@ -209,50 +213,13 @@ impl RuleFunctionCallTypeCheck<'_> {
 impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
     type Value = ();
 
-    /// Opens a declaration's scope.
-    ///
-    /// Replaces the per-POU `clear()` this rule used to do, which could
-    /// not express a method: clearing at a method boundary would discard
-    /// the enclosing function block's fields, and not clearing left a
-    /// method's locals shadowing those fields for every later method.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.declarations.enter();
-
-        // A declaration's own name is its result variable, so assigning
-        // it is an assignment with a target type like any other. Without
-        // this the target lookup missed and the check returned early,
-        // leaving `Foo := <wrong type>` unreported -- for a FUNCTION as
-        // much as for a METHOD.
-        match node {
-            ScopeNode::Function(node) => {
-                self.declarations
-                    .add(&node.name, Declared::Typed(node.return_type.to_type_name()));
-            }
-            // Only a method that declares a return type has a result to
-            // assign; `rule_use_declared_symbolic_var` rejects the
-            // assignment outright for one that does not.
-            ScopeNode::Method(node) => {
-                if let Some(return_type) = &node.return_type {
-                    self.declarations
-                        .add(&node.name, Declared::Typed(return_type.to_type_name()));
-                }
-            }
-            // Neither has a result variable.
-            ScopeNode::FunctionBlock(_) | ScopeNode::Program(_) => {}
-        }
-
+        self.scope.enter(&node);
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.declarations.exit();
-    }
-
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        if let VariableIdentifier::Symbol(ref id) = node.identifier {
-            self.declarations.add(id, Declared::of(node));
-        }
-        node.recurse_visit(self)
+        self.scope.exit();
     }
 
     fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, Infallible> {
@@ -284,7 +251,9 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
             // generic ANY_* categories (or concrete types for the conversion
             // functions), all handled by `are_types_compatible`. The parameter
             // list continues past the declared ones for an extensible
-            // function, so every input of `AND(a, b, c)` is checked.
+            // function, so every input of `AND(a, b, c)` is checked. A
+            // VAR_IN_OUT argument must match exactly, not just be compatible;
+            // `rule_function_call_in_out_argument` checks it.
             //
             // `ADD`, `SUB`, `MUL` and `DIV` are the exception. Their inputs
             // are checked against every overload (the numeric one and the
@@ -297,6 +266,9 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
                 .bind_inputs(&node.param_assignment)
                 .filter(|_| !overloaded);
             for (param, arg_expr) in inputs {
+                if param.is_inout {
+                    continue;
+                }
                 if let Err(mismatch) = value_type::check(
                     self.context.types(),
                     &param.param_type,
@@ -537,6 +509,37 @@ END_VAR
 END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
+
+    // A VAR_IN_OUT declared before a VAR_INPUT takes the first positional
+    // argument, so a mismatch on the second names the VAR_INPUT (#1658).
+    #[test]
+    fn apply_when_in_out_before_input_mismatch_then_names_input_parameter() {
+        let program = "
+FUNCTION Scale : INT
+VAR_IN_OUT acc : INT; END_VAR
+VAR_INPUT factor : INT; END_VAR
+    acc := acc * factor;
+    Scale := acc;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    total : INT;
+    s : STRING;
+    result : INT;
+END_VAR
+    result := Scale(total, s);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let errors = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].code, Problem::FunctionCallArgTypeMismatch.code());
+        assert!(
+            errors[0].described.contains(&"parameter=factor".to_owned()),
+            "{:?}",
+            errors[0].described
+        );
+    }
 
     // NOT(x) parses as the unary operator; the named-argument spelling is the
     // one that reaches the function signature.

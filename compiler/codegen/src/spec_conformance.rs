@@ -47,7 +47,7 @@ fn parse_library(source: &str) -> ironplc_dsl::common::Library {
 fn compile_and_run(source: &str) -> (ironplc_container::Container, VmBuffers) {
     let library = parse_library(source);
     let (analyzed, ctx) =
-        ironplc_analyzer::stages::resolve_types(&[&library], &CompilerOptions::default()).unwrap();
+        ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
     let codegen_options = crate::CodegenOptions::default();
     let container = crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
@@ -62,7 +62,7 @@ fn compile_and_run(source: &str) -> (ironplc_container::Container, VmBuffers) {
 fn compile_only(source: &str) -> ironplc_container::Container {
     let library = parse_library(source);
     let (analyzed, ctx) =
-        ironplc_analyzer::stages::resolve_types(&[&library], &CompilerOptions::default()).unwrap();
+        ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
     let codegen_options = crate::CodegenOptions::default();
     crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap()
 }
@@ -713,7 +713,7 @@ fn compile_and_try_run_with(
     options: &CompilerOptions,
 ) -> Result<(ironplc_container::Container, VmBuffers), ironplc_vm::FaultContext> {
     let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], options).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
     let codegen_options = crate::CodegenOptions::default();
     let container = crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap();
     let mut bufs = VmBuffers::from_container(&container);

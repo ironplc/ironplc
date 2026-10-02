@@ -137,7 +137,7 @@ END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
     let oop = fb.oop.as_ref().unwrap();
-    assert!(oop.is_abstract);
+    assert!(oop.qualifiers.is_abstract());
     assert_eq!(oop.base, None);
     assert!(oop.implements.is_empty());
 }
@@ -154,7 +154,7 @@ END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
     let oop = fb.oop.as_ref().unwrap();
-    assert!(oop.is_abstract);
+    assert!(oop.qualifiers.is_abstract());
     assert_eq!(oop.base, Some(TypeName::from("FB_BaseAxis")));
     assert_eq!(oop.implements, vec![TypeName::from("I_Axis")]);
 }

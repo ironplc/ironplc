@@ -4,11 +4,11 @@
 //! An `ABSTRACT` function block exists only to be extended via
 //! `EXTENDS` -- it cannot be instantiated directly.
 //!
-//! Deliberately works directly off the AST rather than threading
-//! `is_abstract` through `IntermediateType::FunctionBlock` -- by the
-//! time semantic rules run, a `VAR`'s initializer has already been
-//! resolved from `LateResolvedType` into the concrete `FunctionBlock`
-//! variant, so no additional type resolution is needed here.
+//! Whether a function block is `ABSTRACT` is recorded on its symbol in
+//! the symbol environment. By the time semantic rules run, a `VAR`'s
+//! initializer has already been resolved from `LateResolvedType` into the
+//! concrete `FunctionBlock` variant, so the instance's type name is the
+//! function block's name.
 //!
 //! ## Passes
 //!
@@ -39,7 +39,6 @@
 //! END_FUNCTION_BLOCK
 //! ```
 
-use std::collections::HashSet;
 use std::convert::Infallible;
 
 use ironplc_dsl::{
@@ -54,57 +53,50 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
 };
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: &Library,
-    _context: &SemanticContext,
+    context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let abstract_fbs: HashSet<TypeName> = lib
-        .elements
-        .iter()
-        .filter_map(|e| match e {
-            LibraryElementKind::FunctionBlockDeclaration(fb)
-                if fb.oop.as_ref().is_some_and(|oop| oop.is_abstract) =>
-            {
-                Some(fb.name.clone())
-            }
-            _ => None,
-        })
-        .collect();
-
-    if abstract_fbs.is_empty() {
-        return Ok(());
-    }
-
     run_rule(
         RuleAbstractNotInstantiated {
-            abstract_fbs,
+            symbols: context.symbols(),
             diagnostics: Vec::new(),
         },
         lib,
     )
 }
 
-struct RuleAbstractNotInstantiated {
-    abstract_fbs: HashSet<TypeName>,
+struct RuleAbstractNotInstantiated<'a> {
+    symbols: &'a SymbolEnvironment,
     diagnostics: Vec<Diagnostic>,
 }
 
-impl DiagnosticVisitor for RuleAbstractNotInstantiated {
+impl RuleAbstractNotInstantiated<'_> {
+    /// Whether `type_name` names a function block declared `ABSTRACT`.
+    fn is_abstract_function_block(&self, type_name: &TypeName) -> bool {
+        self.symbols
+            .find(&type_name.name, &ScopeKind::Global)
+            .is_some_and(|info| info.kind == SymbolKind::FunctionBlock && info.is_abstract)
+    }
+}
+
+impl DiagnosticVisitor for RuleAbstractNotInstantiated<'_> {
     fn into_diagnostics(self) -> Vec<Diagnostic> {
         self.diagnostics
     }
 }
 
-impl Visitor<Infallible> for RuleAbstractNotInstantiated {
+impl Visitor<Infallible> for RuleAbstractNotInstantiated<'_> {
     type Value = ();
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
         if let InitialValueAssignmentKind::FunctionBlock(fb_init) = &node.initializer {
-            if self.abstract_fbs.contains(&fb_init.type_name) {
+            if self.is_abstract_function_block(&fb_init.type_name) {
                 self.diagnostics.push(Diagnostic::problem(
                     Problem::AbstractFunctionBlockInstantiated,
                     Label::span(
@@ -132,7 +124,7 @@ mod tests {
         }
     }
 
-    rule_err1_with!(
+    rule_ctx_err1_with!(
         apply_when_abstract_fb_instantiated_then_error,
         opts_with_fb_inheritance(),
         "
@@ -147,7 +139,7 @@ END_FUNCTION_BLOCK",
         Problem::AbstractFunctionBlockInstantiated
     );
 
-    rule_ok_with!(
+    rule_ctx_ok_with!(
         apply_when_non_abstract_fb_instantiated_then_ok,
         opts_with_fb_inheritance(),
         "
@@ -161,7 +153,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ok_with!(
+    rule_ctx_ok_with!(
         apply_when_concrete_subclass_of_abstract_instantiated_then_ok,
         opts_with_fb_inheritance(),
         "
@@ -178,7 +170,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ok_with!(
+    rule_ctx_ok_with!(
         apply_when_no_abstract_fb_in_library_then_ok,
         opts_with_fb_inheritance(),
         "

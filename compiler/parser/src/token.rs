@@ -17,7 +17,8 @@ pub struct Token {
     /// This is public only in the crate for the purpose of nice error messages.
     pub line: usize,
 
-    /// The column in the source text where the token begins.
+    /// The column in the source text where the token begins, counted in
+    /// UTF-16 code units (the language server protocol's default unit).
     /// This is public only in the crate for the purpose of nice error messages.
     pub col: usize,
 
@@ -184,6 +185,9 @@ pub enum TokenType {
     #[token("EXIT", ignore(case))]
     Exit,
 
+    #[token("CONTINUE", ignore(case))]
+    Continue,
+
     #[token("FALSE", ignore(case))]
     False,
 
@@ -228,6 +232,19 @@ pub enum TokenType {
     Method,
     #[token("END_METHOD", ignore(case))]
     EndMethod,
+    // `PROPERTY ... END_PROPERTY` and the closing keywords of its accessors.
+    // The accessors open with `GET` / `SET`, which stay identifiers (`SET`
+    // is an ordinary input name in TwinCAT code) and are matched by text in
+    // the grammar. Identifiers unless `allow_fb_inheritance` is set -- see
+    // xform_demote_keywords.rs.
+    #[token("PROPERTY", ignore(case))]
+    Property,
+    #[token("END_PROPERTY", ignore(case))]
+    EndProperty,
+    #[token("END_GET", ignore(case))]
+    EndGet,
+    #[token("END_SET", ignore(case))]
+    EndSet,
     // `THIS^` / `SUPER^` -- the self-reference and base-reference forms.
     // The caret is the ordinary dereference operator. Identifiers unless
     // `allow_fb_inheritance` is set -- see xform_demote_keywords.rs.
@@ -560,6 +577,7 @@ impl TokenType {
             TokenType::En => "'EN'",
             TokenType::Eno => "'ENO'",
             TokenType::Exit => "'EXIT'",
+            TokenType::Continue => "'CONTINUE'",
             TokenType::False => "'FALSE'",
             TokenType::FEdge => "'F_EDGE'",
             TokenType::For => "'FOR'",
@@ -578,6 +596,10 @@ impl TokenType {
             TokenType::Abstract => "'ABSTRACT'",
             TokenType::Method => "'METHOD'",
             TokenType::EndMethod => "'END_METHOD'",
+            TokenType::Property => "'PROPERTY'",
+            TokenType::EndProperty => "'END_PROPERTY'",
+            TokenType::EndGet => "'END_GET'",
+            TokenType::EndSet => "'END_SET'",
             TokenType::This => "'THIS'",
             TokenType::Super => "'SUPER'",
             TokenType::If => "'IF'",
@@ -788,6 +810,7 @@ mod tests {
             (En, "EN"),
             (Eno, "ENO"),
             (Exit, "EXIT"),
+            (Continue, "CONTINUE"),
             (False, "FALSE"),
             (FEdge, "F_EDGE"),
             (For, "FOR"),
@@ -806,6 +829,10 @@ mod tests {
             (Abstract, "ABSTRACT"),
             (Method, "METHOD"),
             (EndMethod, "END_METHOD"),
+            (Property, "PROPERTY"),
+            (EndProperty, "END_PROPERTY"),
+            (EndGet, "END_GET"),
+            (EndSet, "END_SET"),
             (This, "THIS"),
             (Super, "SUPER"),
             (If, "IF"),

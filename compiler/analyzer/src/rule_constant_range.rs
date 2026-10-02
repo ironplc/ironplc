@@ -89,9 +89,9 @@ use crate::{
     rule_real_literal_range,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    symbol_environment::ScopeTracker,
     type_environment::TypeEnvironment,
-    value_range,
-    variable_type::{self, Declarations, Declared},
+    value_range, variable_type,
 };
 
 pub fn apply(
@@ -101,12 +101,10 @@ pub fn apply(
 ) -> SemanticResult {
     run_rule(
         RuleConstantRange {
+            context,
             type_environment: context.types(),
             function_environment: context.functions(),
-            // `Declarations::new` opens the base scope, where declarations
-            // made outside any POU land. Opening another here would leave the
-            // stack unbalanced when the table drops.
-            declarations: Declarations::new(),
+            scope: ScopeTracker::default(),
             diagnostics: Vec::new(),
         },
         lib,
@@ -114,11 +112,13 @@ pub fn apply(
 }
 
 struct RuleConstantRange<'a> {
+    context: &'a SemanticContext,
     type_environment: &'a TypeEnvironment,
     /// The signature of every function, which states its parameters' types.
     function_environment: &'a FunctionEnvironment,
-    /// The declared type of every variable in scope.
-    declarations: Declarations<'a>,
+    /// Where the traversal is, to look variables up in the symbol
+    /// environment.
+    scope: ScopeTracker,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -128,17 +128,14 @@ impl DiagnosticVisitor for RuleConstantRange<'_> {
     }
 }
 
-/// The value of an integer literal, or `None` when it is too large to be one.
+/// The value a sign and a magnitude spell, or `None` when it is too large to
+/// be one.
 ///
 /// A literal beyond `i128` cannot be stored in any IEC 61131-3 type, so the
 /// caller reports it against whatever range it was checked against.
-fn literal_value(literal: &IntegerLiteral) -> Option<i128> {
-    let magnitude = i128::try_from(literal.value.value.value).ok()?;
-    Some(if literal.value.is_neg {
-        -magnitude
-    } else {
-        magnitude
-    })
+fn signed_value(is_neg: bool, magnitude: u128) -> Option<i128> {
+    let magnitude = i128::try_from(magnitude).ok()?;
+    Some(if is_neg { -magnitude } else { magnitude })
 }
 
 impl RuleConstantRange<'_> {
@@ -212,19 +209,30 @@ impl RuleConstantRange<'_> {
 
     /// Reports `literal` when its value is outside `range`.
     fn check_literal(&mut self, literal: &IntegerLiteral, range: (i128, i128)) {
+        self.check_signed(&literal.value, range);
+    }
+
+    /// Reports the value that `is_neg` and `magnitude` spell at `span` when
+    /// it is outside `range`.
+    fn check_magnitude(
+        &mut self,
+        span: SourceSpan,
+        is_neg: bool,
+        magnitude: u128,
+        range: (i128, i128),
+    ) {
         let (minimum, maximum) = range;
-        let value = literal_value(literal);
+        let value = signed_value(is_neg, magnitude);
         if value.is_some_and(|value| value >= minimum && value <= maximum) {
             return;
         }
 
         // A literal too large for `i128` has no printable value of its own,
         // so it is reported by the magnitude the source spelled.
-        let reported = value.map_or_else(
-            || format!("-{}", literal.value.value.value),
-            |value| value.to_string(),
-        );
-        self.report_out_of_range(literal.value.value.span(), &reported, range);
+        let sign = if is_neg { "-" } else { "" };
+        let reported =
+            value.map_or_else(|| format!("{sign}{magnitude}"), |value| value.to_string());
+        self.report_out_of_range(span, &reported, range);
     }
 
     /// Reports the value spelled `reported` as outside `range`.
@@ -292,7 +300,7 @@ impl RuleConstantRange<'_> {
                     PartialAccessSize::LWord => ByteSized::B64,
                 },
             }),
-            _ => variable_type::of(kind, &self.declarations, self.type_environment),
+            _ => variable_type::of(kind, self.context, &self.scope.current()),
         }
     }
 
@@ -454,14 +462,8 @@ impl RuleConstantRange<'_> {
     /// `VAR_INPUT` and `VAR_IN_OUT` variables, a positional one by position
     /// among the `VAR_INPUT` variables.
     fn check_fb_call_arguments(&mut self, node: &FbCall) {
-        let Some(declared) = self.declarations.find(&node.var_name) else {
-            return;
-        };
-        let TypeReference::Named(type_name) = declared.type_reference() else {
-            return;
-        };
         let Some(IntermediateType::FunctionBlock { fields, .. }) =
-            self.representation_of(&type_name)
+            variable_type::declared(&node.var_name, self.context, &self.scope.current())
         else {
             return;
         };
@@ -503,75 +505,66 @@ impl RuleConstantRange<'_> {
         }
     }
 
-    /// Checks a `CASE` label against the selector's type.
+    /// Checks every `CASE` label against the selector's type.
     ///
     /// A label the selector can never equal selects a group that can never
-    /// run.
+    /// run. Each label is a value, whatever radix it was written in:
+    /// `16#FFFFFFFF` is 4294967295, which no `DINT` is, rather than a bit
+    /// pattern that happens to read as -1 at the selector's width. A
+    /// subrange label's bounds are values too, each compared against the
+    /// selector; `rule_range_limits` checks their order.
     fn check_case(&mut self, node: &Case) {
         let Some(selector) = self.type_environment.representation_of_expr(&node.selector) else {
             return;
         };
-        let Some((minimum, maximum)) = value_range::of(selector) else {
+        let Some(range) = value_range::of(selector) else {
             return;
         };
 
-        let labels: Vec<&SignedInteger> = node
+        for selection in node
             .statement_groups
             .iter()
             .flat_map(|group| group.selectors.iter())
-            .filter_map(|selection| match selection {
-                CaseSelectionKind::SignedInteger(value) => Some(value),
-                // A subrange label's bounds are not checked against the
-                // selector type here; `rule_range_limits` checks their order.
-                // A bit-string label is a pattern.
-                _ => None,
-            })
-            .collect();
-
-        for label in labels {
-            let value = match i128::try_from(label.value.value) {
-                Ok(magnitude) if label.is_neg => -magnitude,
-                Ok(magnitude) => magnitude,
-                Err(_) => continue,
-            };
-            if value < minimum || value > maximum {
-                self.report_out_of_range(
-                    label.value.span(),
-                    &value.to_string(),
-                    (minimum, maximum),
-                );
+        {
+            match selection {
+                CaseSelectionKind::SignedInteger(value) => self.check_signed(value, range),
+                CaseSelectionKind::BitStringLiteral(literal) => {
+                    self.check_magnitude(literal.value.span(), false, literal.value.value, range)
+                }
+                CaseSelectionKind::Subrange(subrange) => {
+                    // A bound that names a constant has no value here.
+                    for bound in [&subrange.start, &subrange.end] {
+                        if let Some(value) = bound.as_signed_integer() {
+                            self.check_signed(value, range);
+                        }
+                    }
+                }
+                // An enumerated value is not an integer; a selector with a
+                // range is not an enumeration.
+                CaseSelectionKind::EnumeratedValue(_) => {}
             }
         }
+    }
+
+    /// Reports the signed integer `value` when it is outside `range`.
+    fn check_signed(&mut self, value: &SignedInteger, range: (i128, i128)) {
+        self.check_magnitude(value.value.span(), value.is_neg, value.value.value, range);
     }
 }
 
 impl Visitor<Infallible> for RuleConstantRange<'_> {
     type Value = ();
 
-    /// Opens a declaration's scope.
-    ///
-    /// Every kind contributes the same thing -- a frame its own declarations
-    /// go into -- but the match stays exhaustive so that a new kind of scope
-    /// has to say so rather than silently sharing the enclosing
-    /// declaration's frame.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        match node {
-            ScopeNode::Function(_)
-            | ScopeNode::FunctionBlock(_)
-            | ScopeNode::Program(_)
-            | ScopeNode::Method(_) => self.declarations.enter(),
-        }
+        self.scope.enter(&node);
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.declarations.exit();
+        self.scope.exit();
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-        self.declarations
-            .add_if(node.identifier.symbolic_id(), Declared::of(node));
-
         self.check_initializer(&node.initializer);
 
         node.recurse_visit(self)

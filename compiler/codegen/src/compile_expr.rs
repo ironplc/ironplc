@@ -22,10 +22,10 @@ use super::compile::{
 };
 use super::compile_arith::compile_binary_arith;
 use super::compile_call::compile_function_call;
+use super::compile_comparison::compile_comparison;
 use super::compile_method::compile_method_call_expression;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
-use super::compile_string::compile_string_compare;
-use super::type_info::{expr_representation, expr_type_info};
+use super::type_info::{expr_operand_name, expr_representation, expr_type_info};
 use crate::emit::Emitter;
 
 /// Returns the operation type of an expression's value, from its
@@ -87,7 +87,7 @@ pub(crate) fn storage_bits(ctx: &CompileContext, expr: &Expr) -> Result<u8, Diag
 /// Builds the P9999 for an expression whose type the analyzer did not resolve
 /// to one codegen knows, pointing at the expression.
 ///
-/// The analyzer leaves `resolved_type` empty for constructs it does not type
+/// The analyzer leaves `expr_type` empty for constructs it does not type
 /// yet (a direct address such as `%QX0.0`, for example), so this is a gap in
 /// the compiler rather than an invalid program.
 #[track_caller]
@@ -98,8 +98,8 @@ pub(crate) fn unresolved_expr_type(expr: &Expr) -> Diagnostic {
 /// Returns the operation type for compiling a condition expression.
 ///
 /// For comparison operators (`>`, `<`, `=`, etc.), returns the type of the
-/// left operand since the comparison's own resolved type is BOOL but we need
-/// the operand type for correct signedness. For boolean combinations (AND,
+/// left operand, which the analyzer made the comparison's operand type
+/// (ADR-0056). For boolean combinations (AND,
 /// OR, XOR), recurses into the first operand. For other expressions (bare
 /// boolean variables, parenthesized expressions), returns the expression's
 /// own resolved type.
@@ -141,7 +141,7 @@ pub(crate) fn compile_expr(
         // converted: loading an INT's slot as a REAL would reinterpret its
         // bits, and loading a UDINT's as a LINT would sign-extend it.
         ExprKind::Variable(variable) => {
-            match crate::compile_arith::numeric_op_type(expr.resolved_type.as_ref()) {
+            match crate::compile_arith::numeric_op_type(expr_operand_name(ctx, expr).as_ref()) {
                 Some(own) if own.0 != op_type.0 => {
                     compile_variable_read(emitter, ctx, variable, own)?;
                     crate::compile_arith::convert(emitter, own, op_type);
@@ -151,7 +151,8 @@ pub(crate) fn compile_expr(
             }
         }
         ExprKind::BinaryOp(binary) => {
-            compile_binary_arith(emitter, ctx, binary, expr.resolved_type.as_ref(), op_type)
+            let result = expr_operand_name(ctx, expr);
+            compile_binary_arith(emitter, ctx, binary, result.as_ref(), op_type)
         }
         ExprKind::UnaryOp(unary) => match unary.op {
             UnaryOp::Neg => {
@@ -165,6 +166,10 @@ pub(crate) fn compile_expr(
             }
         },
         ExprKind::LateBound(late_bound) => {
+            if let Some(ref_slot) = ctx.in_out_ref_slot(&late_bound.value) {
+                emit_load_in_out(emitter, ref_slot);
+                return Ok(());
+            }
             let var_index = ctx.var_index(&late_bound.value)?;
             emit_load_var(emitter, var_index, op_type);
             Ok(())
@@ -181,6 +186,12 @@ pub(crate) fn compile_expr(
         ExprKind::Function(func) => compile_function_call(emitter, ctx, func, op_type),
         ExprKind::MethodCall(call) => compile_method_call_expression(emitter, ctx, call),
         ExprKind::Ref(variable) => {
+            // REF(param) of a VAR_IN_OUT parameter is the reference its slot
+            // already holds: the caller's variable.
+            if let Some(ref_slot) = in_out_ref_slot(ctx, variable) {
+                emitter.emit_load_var_i64(ref_slot);
+                return Ok(());
+            }
             // REF(var) → push the variable's table index as a u64 constant.
             let var_index = resolve_variable(ctx, variable)?;
             let pool_index = ctx.add_i64_constant(var_index.into());
@@ -192,6 +203,17 @@ pub(crate) fn compile_expr(
             // then emit LOAD_INDIRECT to load the referenced variable's value.
             compile_expr(emitter, ctx, inner, (OpWidth::W64, Signedness::Unsigned))?;
             emitter.emit_load_indirect();
+            Ok(())
+        }
+        // The analyzer decided the conversion (ADR-0056): the inner value is
+        // compiled at its own type, so it widens by its own signedness, and
+        // converted to the type the node records.
+        ExprKind::ImplicitConversion(inner) => {
+            let from = self::op_type(ctx, inner)?;
+            let to = self::op_type(ctx, expr)?;
+            compile_expr(emitter, ctx, inner, from)?;
+            crate::compile_arith::convert(emitter, from, to);
+            crate::compile_arith::convert(emitter, to, op_type);
             Ok(())
         }
         ExprKind::Null(_) => {
@@ -222,19 +244,22 @@ fn compile_compare(
         return compile_short_circuit(emitter, ctx, compare, short_circuit);
     }
 
-    // String comparisons need a completely different code path because
-    // strings live in the data region, not on the operand stack.
-    if expr_is_string(ctx, &compare.left) {
-        return compile_string_compare(emitter, ctx, compare);
+    if compare.op.is_comparison() {
+        return compile_comparison(
+            emitter,
+            ctx,
+            &compare.op,
+            &compare.left,
+            &compare.right,
+            op_type,
+        );
     }
 
-    // A comparison's result is BOOL, but its operands may be a different
-    // type (e.g. REAL for `in < 0.0`). Derive the operand type from a
-    // concrete (non-generic) resolved type, preferring the left operand.
-    // When one side is a literal (generic type like ANY_INT) and the other
-    // is a typed variable (e.g. DWORD), we use the concrete type to ensure
-    // correct signedness. This also applies to AND/OR/XOR which can be
-    // either boolean (BOOL operands) or bitwise (e.g. DWORD operands).
+    // AND, OR and XOR are boolean on BOOL operands and bitwise on a bit
+    // string. Their result has the operand type, derived from a concrete
+    // (non-generic) resolved type, preferring the left operand: when one
+    // side is a literal (generic type like ANY_INT) and the other is a typed
+    // variable (e.g. DWORD), the concrete type gives the right width.
     let operand_op_type = concrete_op_type_from_expr(ctx, &compare.left)
         .or_else(|| concrete_op_type_from_expr(ctx, &compare.right))
         .or_else(|| op_type_from_expr(ctx, &compare.left))
@@ -732,7 +757,8 @@ pub(crate) fn compile_variable_read(
                                 Diagnostic::not_implemented(Label::span(
                                     structured.field.span(),
                                     format!(
-                                        "Unknown field '{}' on function block '{}'",
+                                        "Unknown field '{}' on function block '{}' \
+                                         (reading a PROPERTY is not supported yet)",
                                         structured.field, named.name
                                     ),
                                 ))
@@ -792,6 +818,9 @@ pub(crate) fn compile_variable_read(
             match crate::compile_array::resolve_access(ctx, variable)? {
                 crate::compile_array::ResolvedAccess::Scalar { var_index } => {
                     emit_load_var(emitter, var_index, op_type);
+                }
+                crate::compile_array::ResolvedAccess::InOut { ref_slot } => {
+                    emit_load_in_out(emitter, ref_slot);
                 }
                 crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
                     let arr_var_index = info.var_index;
@@ -901,6 +930,21 @@ pub(crate) fn resolve_symbolic_variable_name(
         // error, never a guess at some enclosing name.
         SymbolicVariableKind::SelfRef(self_ref) => Err(Diagnostic::todo_with_span(self_ref.span())),
     }
+}
+
+/// Returns the slot holding the reference when `variable` names a
+/// `VAR_IN_OUT` parameter of the function being compiled.
+pub(crate) fn in_out_ref_slot(ctx: &CompileContext, variable: &Variable) -> Option<VarIndex> {
+    match variable {
+        Variable::Symbolic(SymbolicVariableKind::Named(named)) => ctx.in_out_ref_slot(&named.name),
+        _ => None,
+    }
+}
+
+/// Loads the value of the variable a `VAR_IN_OUT` parameter refers to.
+pub(crate) fn emit_load_in_out(emitter: &mut Emitter, ref_slot: VarIndex) {
+    emitter.emit_load_var_i64(ref_slot);
+    emitter.emit_load_indirect();
 }
 
 /// Resolves a variable reference to its variable table index.

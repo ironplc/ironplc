@@ -25,7 +25,6 @@ use super::compile::{
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
 use super::compile_stmt::resolve_string_max_length;
-use super::type_info::resolve_type_name;
 use crate::emit::Emitter;
 
 /// Assigns variable table indices and type info for all variable declarations.
@@ -71,7 +70,7 @@ pub(crate) fn assign_variables(
                         let name = simple.type_name.to_string().to_uppercase();
                         (iec_type_tag::OTHER, name)
                     } else {
-                        if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+                        if let Some(type_info) = crate::type_info::decl_type_info(ctx, decl) {
                             ctx.var_types.insert(id.clone(), type_info);
                         }
                         let tag = resolve_iec_type_tag(types, &simple.type_name);

@@ -625,6 +625,7 @@ fn mcp_spec_req_tol_051_program_variable_details() {
     let prog = &resp.programs[0];
     let var = &prog.variables[0];
     assert_eq!(var.name, "x");
+    assert_eq!(var.type_name.to_uppercase(), "INT");
     assert_eq!(var.direction, "Local");
     assert!(!var.external);
 }
@@ -1016,7 +1017,7 @@ fn mcp_spec_req_tol_212_project_io_entry_format() {
         .find(|e| e["name"] == "p.start")
         .unwrap();
     assert!(entry.get("name").is_some());
-    assert!(entry.get("type").is_some());
+    assert_eq!(entry["type"].as_str().unwrap().to_uppercase(), "BOOL");
     assert!(entry.get("address").is_some());
     // `address` is `null` when the variable is not hardware-mapped.
     assert!(entry["address"].is_null());

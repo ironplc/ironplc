@@ -58,7 +58,7 @@ use ironplc_dsl::visitor::Visitor;
 use crate::call_assignment_check::bind_inputs;
 use crate::callee_resolution::{FunctionBlocks, InstanceTypes};
 use crate::function_environment::FunctionEnvironment;
-use crate::symbol_environment::{ScopeKind, ScopePath, SymbolEnvironment};
+use crate::symbol_environment::{ScopeKind, ScopePath, ScopeTracker, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
 
 /// Marks every never-written variable in `lib` as `CONSTANT`.
@@ -77,7 +77,7 @@ pub fn apply(
         type_environment,
         function_environment,
         symbol_environment,
-        scope: Vec::new(),
+        scope: ScopeTracker::default(),
         instances: InstanceTypes::default(),
         written: Writes::default(),
         globals: HashMap::new(),
@@ -132,8 +132,8 @@ struct WriteCollector<'a> {
     type_environment: &'a TypeEnvironment,
     function_environment: &'a FunctionEnvironment,
     symbol_environment: &'a SymbolEnvironment,
-    /// The declarations the walk is inside, outermost first.
-    scope: Vec<Id>,
+    /// The declaration the walk is inside.
+    scope: ScopeTracker,
     /// The function-block instances of the unit being walked.
     instances: InstanceTypes,
     written: Writes,
@@ -144,10 +144,7 @@ struct WriteCollector<'a> {
 
 impl WriteCollector<'_> {
     fn current_scope(&self) -> ScopeKind {
-        match self.scope.first() {
-            None => ScopeKind::Global,
-            Some(_) => ScopeKind::Named(ScopePath::new(self.scope.clone())),
-        }
+        self.scope.current()
     }
 
     /// The scope whose declaration a bare `name` reaches from the current
@@ -166,7 +163,7 @@ impl WriteCollector<'_> {
             }
             _ => self
                 .scope
-                .first()
+                .unit()
                 .and_then(|unit| {
                     self.function_blocks
                         .declaring_block(&TypeName { name: unit.clone() }, name)
@@ -313,19 +310,14 @@ impl Visitor<Infallible> for WriteCollector<'_> {
     type Value = ();
 
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.scope.push(match node {
-            ScopeNode::Function(node) => node.name.clone(),
-            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
-            ScopeNode::Program(node) => node.name.clone(),
-            ScopeNode::Method(node) => node.name.clone(),
-        });
+        self.scope.enter(&node);
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.scope.pop();
+        self.scope.exit();
         // A method's instances are its block's; they go when the block does.
-        if self.scope.is_empty() {
+        if self.scope.unit().is_none() {
             self.instances.clear();
         }
     }
@@ -530,8 +522,8 @@ struct Marker {
     /// Global names whose `VAR_GLOBAL` and `VAR_EXTERNAL` declarations are
     /// all marked together.
     constant_globals: HashSet<Id>,
-    /// The declarations the fold is inside, outermost first.
-    scope: Vec<Id>,
+    /// The declaration the fold is inside.
+    scope: ScopeTracker,
 }
 
 impl Marker {
@@ -544,7 +536,7 @@ impl Marker {
         Marker {
             written,
             constant_globals,
-            scope: Vec::new(),
+            scope: ScopeTracker::default(),
         }
     }
 
@@ -557,11 +549,8 @@ impl Marker {
         };
         match decl.var_type {
             VariableType::Var | VariableType::VarTemp => {
-                let scope = match self.scope.first() {
-                    None => ScopeKind::Global,
-                    Some(_) => ScopeKind::Named(ScopePath::new(self.scope.clone())),
-                };
-                may_be_constant(&decl.initializer) && !self.written.contains(&scope, name)
+                may_be_constant(&decl.initializer)
+                    && !self.written.contains(&self.scope.current(), name)
             }
             VariableType::Global | VariableType::External => self.constant_globals.contains(name),
             VariableType::Input
@@ -574,17 +563,12 @@ impl Marker {
 
 impl Fold<Infallible> for Marker {
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.scope.push(match node {
-            ScopeNode::Function(node) => node.name.clone(),
-            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
-            ScopeNode::Program(node) => node.name.clone(),
-            ScopeNode::Method(node) => node.name.clone(),
-        });
+        self.scope.enter(&node);
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.scope.pop();
+        self.scope.exit();
     }
 
     fn fold_var_decl(&mut self, mut node: VarDecl) -> Result<VarDecl, Infallible> {

@@ -61,6 +61,7 @@ fn parse_when_first_steps_function_block_counter_fbd_then_builds_structure() {
             span: SourceSpan::default(),
             oop: None,
             methods: vec![],
+            properties: vec![],
         },
     ));
     assert_eq!(actual, expected);
@@ -250,6 +251,7 @@ fn parse_when_first_steps_function_block_logger_then_test_apply_when_names_corre
             span: SourceSpan::default(),
             oop: None,
             methods: vec![],
+            properties: vec![],
         },
     ));
 
@@ -345,6 +347,7 @@ fn parse_when_first_steps_function_block_counter_sfc_then_builds_structure() {
             span: SourceSpan::default(),
             oop: None,
             methods: vec![],
+            properties: vec![],
         },
     ));
     assert_eq!(actual, expected);
