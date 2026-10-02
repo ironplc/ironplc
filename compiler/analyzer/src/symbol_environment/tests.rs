@@ -663,3 +663,82 @@ fn get_variables_in_scope_when_result_variable_then_not_listed() {
 fn scope_tracker_when_no_scope_entered_then_global() {
     assert_eq!(ScopeTracker::default().current(), ScopeKind::Global);
 }
+
+fn function_block(env: &mut SymbolEnvironment, name: &str, extends: Option<&str>) {
+    let info = SymbolInfo::new(
+        SymbolKind::FunctionBlock,
+        ScopeKind::Global,
+        ironplc_dsl::core::SourceSpan::default(),
+    )
+    .with_extends(extends.map(TypeName::from));
+    env.insert_info(&Id::from(name), info).unwrap();
+}
+
+fn field(env: &mut SymbolEnvironment, block: &str, name: &str) {
+    env.insert_variable(
+        &Id::from(name),
+        &ScopeKind::Named(Id::from(block).into()),
+        VariableType::Var,
+        DeclarationQualifier::Unspecified,
+        None,
+        None,
+    )
+    .unwrap();
+}
+
+#[test]
+fn find_when_field_declared_on_base_then_visible_from_derived_method() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "Base", None);
+    function_block(&mut env, "Mid", Some("Base"));
+    function_block(&mut env, "Derived", Some("Mid"));
+    field(&mut env, "Base", "speed");
+    let method = ScopeKind::Named(ScopePath::new(vec![Id::from("Derived"), Id::from("M")]));
+
+    let symbol = env.find(&Id::from("speed"), &method).unwrap();
+
+    assert_eq!(symbol.scope, ScopeKind::Named(Id::from("Base").into()));
+}
+
+#[test]
+fn find_when_derived_redeclares_base_field_then_derived_wins() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "Base", None);
+    function_block(&mut env, "Derived", Some("Base"));
+    field(&mut env, "Base", "speed");
+    field(&mut env, "Derived", "speed");
+    let derived = ScopeKind::Named(Id::from("Derived").into());
+
+    let symbol = env.find(&Id::from("speed"), &derived).unwrap();
+
+    assert_eq!(symbol.scope, derived);
+}
+
+#[test]
+fn find_when_extends_cycle_then_terminates() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "A", Some("B"));
+    function_block(&mut env, "B", Some("A"));
+
+    assert!(env
+        .find(
+            &Id::from("missing"),
+            &ScopeKind::Named(Id::from("A").into())
+        )
+        .is_none());
+}
+
+#[test]
+fn visible_variables_when_inherited_then_listed_once_nearest_first() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "Base", None);
+    function_block(&mut env, "Derived", Some("Base"));
+    field(&mut env, "Base", "speed");
+    field(&mut env, "Base", "limit");
+    field(&mut env, "Derived", "speed");
+
+    let visible = env.visible_variables(&ScopeKind::Named(Id::from("Derived").into()));
+    let names: Vec<String> = visible.iter().map(|(name, _)| name.to_string()).collect();
+
+    assert_eq!(names, vec!["speed", "limit"]);
+}
