@@ -49,13 +49,22 @@ The design builds on:
 - **[Expression Type Resolution](expression-type-resolution.md)** and
   **[Arithmetic Operator Overloads](arithmetic-operator-overloads.md)**: where
   expression types and operator results are decided today.
+- **[ADR-0056](../adrs/0056-analyzer-records-implicit-conversions-in-the-ast.md)**
+  and **[Implicit Conversions](implicit-conversions.md)**: the analyzer records
+  the implicit conversions of a comparison as `ExprKind::ImplicitConversion`
+  nodes, and planned to move arithmetic operands, assignments and arguments to
+  the same pass. This design changes where the rest of that work lands; see
+  [Relationship to ADR-0056](#relationship-to-adr-0056).
 
 ## Problem
 
 All figures are from the non-test source of `compiler/codegen/src` at commit
-`7001b4a` (about 14,900 lines).
+`7001b4a` (about 15,000 lines, blank lines and comments included). Of the
+commits since, only `784ff7f` (ADR-0056) touched that source, and it changed
+none of the counts below.
 
-`codegen::compile` takes `(&Library, &SemanticContext)`. The `Library` is the
+`codegen::compile` takes `(&Library, &SemanticContext, &CodegenOptions,
+&dyn SourceLookup)`. The `Library` is the
 same tree the parser built, annotated in place by the analyzer. That one type
 serves three consumers with incompatible needs:
 
@@ -70,11 +79,11 @@ code generation checks at run time. What that costs:
 
 | Symptom | Count | Example |
 |---|---|---|
-| Sites raising P9999 or P9998 | 144 | `Diagnostic::todo_with_span(func.name.span())` after an argument count check |
+| Sites raising P9999 or P9998 | 145 | `Diagnostic::todo_with_span(func.name.span())` after an argument count check |
 | `_ =>` match arms | 91 | Some are over integers, where Rust requires one |
 | Probes of maps keyed by variable or POU name | 43 | `ctx.struct_vars.get(&root_name)` |
 | Silent `unwrap_or(DEFAULT_OP_TYPE)` fallbacks | 14 | An unknown type compiles as a signed 32-bit integer |
-| `collect_positional_args` calls, each followed by a count check | 28 | The analyzer has already enforced the count |
+| `collect_positional_args` calls, each followed by a count check | 26 | The analyzer has already enforced the count. The function itself is defined twice, identically, in `compile_call.rs` and `compile_string.rs` |
 | Sites raising a user-facing problem code | 23 | 14 are `ConstantOverflow` |
 
 The fallbacks fall into five kinds, and only the first is about missing types:
@@ -85,8 +94,8 @@ The fallbacks fall into five kinds, and only the first is about missing types:
    are documented as mutually exclusive.
 2. **Name resolution.** `CompileContext` holds nine maps keyed by name
    (`variables`, `var_types`, `string_vars`, `fb_instances`, `array_vars`,
-   `struct_vars`, `struct_array_vars`, `user_functions`, `user_fb_types`). A
-   variable's kind is whichever map it is found in. `SavedFbScope` saves and
+   `struct_vars`, `struct_array_vars`, `user_functions`, `user_fb_types`), and
+   a set of names (`in_out_params`). A variable's kind is whichever map it is found in. `SavedFbScope` saves and
    restores seven of them around each function block body because bare names
    collide across scopes.
 3. **Call resolution.** `compile_function_call` dispatches on the lower-case
@@ -103,11 +112,12 @@ The fallbacks fall into five kinds, and only the first is about missing types:
 Three decisions are already implemented twice, once in the analyzer and once in
 codegen, and kept in step by comments and tests:
 
-- `rule_constant_range` pushes the expected type down to literals following
-  "the operators the backend compiles at one operation type", so that it
-  predicts what `compile_constant` will do.
-- `compile_arith.rs` calls `resolve_arithmetic_overload` with "the same
-  options" the analyzer used.
+- `rule_constant_range` pushes the expected type down to literals because
+  that "is how the backend compiles them: one operation type covers both
+  operands", so that it predicts what `compile_constant` will do.
+- `compile_arith.rs` calls `resolve_arithmetic_overload` with
+  `ctx.compiler_options`, a field documented as holding the same options the
+  analyzer used.
 - Standard function signatures live in the analyzer's `FunctionEnvironment`
   keyed by name; their codegen lives in `lookup_builtin` keyed by name.
 
@@ -200,8 +210,10 @@ that `check` produced to the backend; it does not lower a second time.
 ## 2. The Clean-Analysis Gate
 
 Today "codegen runs only on a clean analysis" is a run-time check written at
-each caller: `ironplc_project::compile` tests `diagnostics.is_empty()`, and
-`lsp_runner.rs` has its own. Comments in codegen ("reaching here means analysis
+each caller: `ironplc_project::compile` tests `diagnostics.is_empty()`,
+`lsp_runner.rs` tests `context.has_diagnostics()`, and the MCP server
+(`mcp/src/tools/compile.rs`, `mcp/src/runner.rs`) and the benchmarks reach
+codegen by their own routes. Every one of them moves behind the gate. Comments in codegen ("reaching here means analysis
 was skipped") record what happens when a caller gets it wrong.
 
 The gate makes the check a value. A clean analysis is a type that borrows the
@@ -381,7 +393,12 @@ is not optional and is never a generic category such as `ANY_INT`.
 `Binary` itself.
 
 **REQ-LOW-lowering-043** The operands of a `Compare` have the same type as each
-other, and the `Compare` itself is a `BOOL`.
+other, and the `Compare` itself has the operation type of `BOOL`.
+
+A `ScalarType` does not say whether a value is a `BOOL`, a `UDINT` or a
+`DWORD`: all three are unsigned 32-bit operations. Lowering knows which from
+the source type and chooses operators accordingly (REQ-LOW-lowering-048); a
+backend never needs to.
 
 **REQ-LOW-lowering-044** A `Convert` changes type: its operand's type differs
 from its own.
@@ -706,7 +723,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `FunctionEnvironment` | Keep | Signatures of standard functions name their `Intrinsic`. |
 | `SymbolEnvironment` | Keep | Supplies the declarations `VarId`s are allocated from. |
 | `Expr::expr_type`, `VarDecl::type_id`, `ExprKind::LateBound` | Keep | Lowering is their last reader. |
-| `type_table.rs` | Delete | Its result is only logged (`stages.rs`). Unrelated to this design, listed because the name invites confusion. |
+| `type_table.rs` | Delete | On success its result is only logged (`stages.rs`); on failure it adds diagnostics, which would move to the rule or transform that owns them. Unrelated to this design, listed because the name invites confusion. |
 
 ### `CompileContext`
 
@@ -736,7 +753,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 ## 9. Testing
 
 **The end-to-end suite is the regression net.** `compiler/codegen/tests/it`
-compiles source and asserts variable values after a run (144 `end_to_end_*`
+compiles source and asserts variable values after a run (143 `end_to_end_*`
 files). Those tests say nothing about how the compiler is structured, so they
 hold across this change without edits. A step that needs one edited is not
 behaviour preserving.
@@ -751,16 +768,19 @@ small program and inspecting the node: the literal in `x := 300` for a `USINT`
 refuses the violating operands.
 
 **Structure is tested mechanically.** REQ-LOW-codegen-002 is a test over the
-crate manifest. REQ-LOW-lowering-082 is a lint.
+crate manifest. REQ-LOW-lowering-082 is enforced by clippy; its conformance
+test asserts that each crate root carries the `deny` attribute, since a test
+cannot observe a lint that is not configured.
 
 **Backends are tested against each other.** Once a second backend exists, the
 end-to-end helpers run each program on both and compare variable values. A
 disagreement is a defect in one backend, because both consumed the same lowered
 program.
 
-**REQ-LOW-codegen-130** Every end-to-end test that passes before the bytecode
-backend consumes the lowered program passes after, with its source and
-assertions unchanged.
+Every end-to-end test that passes before the bytecode backend consumes the
+lowered program passes after, with its source and assertions unchanged. This is
+a delivery constraint rather than a requirement: it says how the work is done,
+and no single test can check it.
 
 ## Delivery Constraints
 
@@ -784,7 +804,7 @@ This section constrains the order of work; it is not a work breakdown.
 checked library has a non-optional `expr_type` and an uninhabited `LateBound`.
 GHC ("Trees That Grow") and Scala 3 (`Tree[T]`) do this. It removes the phase
 leftovers and none of the name, call or typing work, and it changes every type
-in the 9,400-line DSL crate, the derive macro, 44 rules and 17 transforms.
+in the 9,400-line DSL crate, the derive macro, 44 rules and 18 transforms.
 ADR-0013 already weighed churn in the AST against benefit.
 
 **Side tables keyed by node id.** The AST stays syntactic and analysis results
@@ -807,14 +827,44 @@ in [Decisions Lowering Owns](#4-decisions-lowering-owns) to be made again by
 the second.
 
 **Decisions written into the AST by analyzer transforms.** The analyzer already
-inserts implicit dereferences and makes named arguments positional this way.
-Extending it to conversions and literal types would add node kinds the parser
-never produces to a tree `plc2plc` renders, which trades one set of states that
-are illegal in some phase for another.
+inserts implicit dereferences, makes named arguments positional and, since
+ADR-0056, records the implicit conversions of a comparison this way. Extending
+it to every conversion and literal type would add node kinds the parser never
+produces to a tree `plc2plc` renders, which trades one set of states that are
+illegal in some phase for another. It also leaves the name, call and layout
+work in the backend, because the AST still refers by name.
 
 **A validator in front of codegen.** One pass that asserts the invariants, with
 accessors that unwrap. It centralises the checks and leaves every state
 representable.
+
+## Relationship to ADR-0056
+
+ADR-0056 chose this alternative for comparisons, on the day this design is dated,
+and named arithmetic operands, assignments and function arguments as the next
+conversions to move into `xform_insert_implicit_conversions`. Its drivers were
+one recorded answer per expression, a language server that can show the
+answer without running codegen, and backends that lower rather than decide.
+This design shares the first and third. It does not, by itself, give the
+language server what ADR-0056 gives it, unless the language server reads the
+lowered program by span.
+
+The two cannot both be the long-term home of implicit conversions. One of
+these holds, and the ADR this design calls for must say which:
+
+- **Lowering decides; ADR-0056 is superseded.** The `ImplicitConversion` pass
+  is removed once lowering produces `Convert` for comparisons, and no further
+  conversions move into the analyzer. The language server shows conversions
+  from the lowered program.
+- **The analyzer decides; lowering translates.** ADR-0056 stands and is
+  extended to every conversion. Lowering turns each `ImplicitConversion` into a
+  `Convert` and decides no conversion itself, and the "Implicit conversion" row
+  of [Decisions Lowering Owns](#4-decisions-lowering-owns) moves to the
+  analyzer. Goal 1 still holds: the decision is made once, upstream of every
+  backend.
+
+Until that is settled, no further conversions should be moved into
+`xform_insert_implicit_conversions`, so that the work is not done twice.
 
 ## Decisions to Record
 
@@ -824,6 +874,8 @@ that this document then cites. Three decisions are separable:
 1. Code generation consumes a separate, target-neutral lowered program.
 2. Lowering owns every implicit language decision, and `check` includes it.
 3. A backend does not depend on the analyzer.
+4. Where implicit conversions are decided, which supersedes or extends
+   ADR-0056 (see [Relationship to ADR-0056](#relationship-to-adr-0056)).
 
 ## Open Questions
 
@@ -831,7 +883,9 @@ that this document then cites. Three decisions are separable:
    `LOW` are proposals. The repository already uses "intermediate" for
    `IntermediateType` and `intermediates/`, so that word is avoided here.
    "Lowering", "lowered program" and "backend" are not in the
-   [glossary](../steering/glossary.md) and would be added to it.
+   [glossary](../steering/glossary.md) and would be added to it. The doc
+   comment of `xform_insert_implicit_conversions` already calls that analyzer
+   transform "a lowering pass", which would have to change.
 2. **One crate or two.** A backend needs `IntermediateType` and `Intrinsic`,
    which the analyzer owns. This design re-exports them. The alternative is a
    small types crate below the analyzer. Relatedly, REQ-LOW-codegen-003 forbids
@@ -866,6 +920,13 @@ that this document then cites. Three decisions are separable:
     anything from the AST that the lowered program as described does not carry.
 15. **Language server cost.** Lowering would run on every edit that analyzes
     cleanly.
+16. **Aggregate results.** A user function may return a structure today
+    (`UserFunctionInfo::return_struct_desc_index`, `compile_aggregate.rs`).
+    The lowered program has no aggregate expression, `Copy` takes a `Place`
+    as its source, and the `Call` statement discards its result, so `s := f()`
+    has no representation. One option is for lowering to give the call a
+    destination place (`CallInto { dst: Place, callee, args }`); another is to
+    pass the result variable as a hidden `Ref` argument.
 
 ## References
 
