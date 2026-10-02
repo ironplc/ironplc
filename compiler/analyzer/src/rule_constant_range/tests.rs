@@ -579,3 +579,21 @@ fn apply_when_type_default_out_of_range_then_err(
         expected
     );
 }
+
+#[test]
+fn apply_when_assignment_to_named_subrange_out_of_range_then_err() {
+    let program = format!(
+        "TYPE Small : INT(0..10); END_TYPE\n{}",
+        program_with("  x : Small;\n", "  x := 20;\n")
+    );
+    assert_eq!(out_of_range_count(&program), 1);
+}
+
+#[test]
+fn apply_when_assignment_to_named_subrange_in_range_then_ok() {
+    let program = format!(
+        "TYPE Small : INT(0..10); END_TYPE\n{}",
+        program_with("  x : Small;\n", "  x := 10;\n")
+    );
+    assert_eq!(out_of_range_count(&program), 0);
+}

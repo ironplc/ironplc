@@ -47,6 +47,9 @@ A declaration carries the id of the type it declares in
 - a reference type is the one type `TypeEnvironment::reference_to(target)`
   interns, so `REF_TO INT` is the same type wherever it is spelled.
 
+The pass runs before the `SymbolEnvironment` is built, so each variable's
+`SymbolInfo::type_id` holds the same id as its declaration.
+
 `expr_type` is left out of `Expr`'s equality: its ids are allocated per
 compilation, so an expected expression built by hand cannot know them.
 
@@ -63,12 +66,19 @@ on each expression from its operands' types:
 | Arithmetic operator | the result of the overload that applies (see [Arithmetic Operator Overloads](arithmetic-operator-overloads.md)), else the concrete operand's type |
 | Unary operator, parenthesised expression | the operand's type |
 | `AND`, `OR`, `XOR`, `AND_THEN`, `OR_ELSE` | the concrete operand's type |
-| Comparison | `BOOL` |
+| Comparison | `BOOL`; the operands compare at the type one widens to (see [Comparison Operand Type](comparison-operand-type.md)) |
 | Function call | the overload's result, else the declared return type, else for a generic return type the argument bound to it |
 | Enumerated value | its enumeration, when qualified |
 | `REF(x)` | `reference_to(x's type)` |
 | Dereference | the referenced type (`TypeEnvironment::referenced_type`) |
 | `NULL` | `Null` |
+| Implicit conversion | the type it converts to, recorded when the node is inserted |
+
+After the semantic rules, `xform_insert_implicit_conversions` records the
+conversions the language makes without the program spelling them: an
+`ExprKind::ImplicitConversion` around an operand converted to another type,
+and an untyped literal given the type it is used as. See
+[Implicit Conversions](implicit-conversions.md).
 
 ## Relations that compare by name
 

@@ -71,10 +71,10 @@ use crate::{
     intermediate_type::{FunctionBlockVarType, IntermediateType},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
-    scoped_table::{ScopedTable, Value},
     semantic_context::SemanticContext,
+    symbol_environment::{ScopeTracker, SymbolInfo, SymbolKind},
     type_compat::is_checkable_type,
-    variable_type::{self, Declarations, Declared},
+    variable_type,
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -87,8 +87,7 @@ pub fn apply(
         RuleFunctionCallInOutArgument {
             context,
             diagnostics: vec![],
-            declarations: Declarations::new(),
-            writable: ScopedTable::new(),
+            scope: ScopeTracker::default(),
         },
         lib,
     )
@@ -97,38 +96,35 @@ pub fn apply(
 struct RuleFunctionCallInOutArgument<'a> {
     context: &'a SemanticContext,
     diagnostics: Vec<Diagnostic>,
-    /// The declared type of every variable in scope, to find whether a
-    /// field's record is a function block instance.
-    declarations: Declarations<'static>,
-    /// Whether each variable in scope can be proved writable, by the
-    /// section and qualifier it is declared with.
-    writable: ScopedTable<'static, Id, Writable>,
+    /// Where the traversal is, to look variables up in the symbol
+    /// environment.
+    scope: ScopeTracker,
 }
 
-/// Whether a declared variable can be proved writable.
-#[derive(Debug, Clone, Copy)]
-struct Writable(bool);
-impl Value for Writable {}
-
-impl Writable {
-    /// A variable is provably writable when it is declared without
-    /// `CONSTANT` in a section the declaring POU may assign.
-    ///
-    /// A `VAR_INPUT` is not: its value came from the POU's caller, which may
-    /// have passed a constant. A `VAR_IN_OUT` is: every call that bound it
-    /// proved its own argument writable.
-    fn of(node: &VarDecl) -> Self {
-        let section = match node.var_type {
+/// Whether the variable `info` describes can be proved writable.
+///
+/// A variable is provably writable when it is declared without `CONSTANT`
+/// in a section the declaring POU may assign. A `VAR_INPUT` is not: its
+/// value came from the POU's caller, which may have passed a constant. A
+/// `VAR_IN_OUT` is: every call that bound it proved its own argument
+/// writable. A function's or method's result variable is assigned by its
+/// body.
+fn is_declared_writable(info: &SymbolInfo) -> bool {
+    if info.kind == SymbolKind::ResultVariable {
+        return true;
+    }
+    let section = match info.variable_type {
+        Some(
             VariableType::Var
             | VariableType::VarTemp
             | VariableType::Output
             | VariableType::InOut
             | VariableType::External
-            | VariableType::Global => true,
-            VariableType::Input | VariableType::Access => false,
-        };
-        Writable(section && node.qualifier != DeclarationQualifier::Constant)
-    }
+            | VariableType::Global,
+        ) => true,
+        Some(VariableType::Input | VariableType::Access) | None => false,
+    };
+    section && !info.is_constant()
 }
 
 impl DiagnosticVisitor for RuleFunctionCallInOutArgument<'_> {
@@ -149,12 +145,18 @@ impl RuleFunctionCallInOutArgument<'_> {
         }
     }
 
+    /// Whether the variable `name` names from the current scope can be
+    /// proved writable.
+    fn is_name_writable(&self, name: &Id) -> bool {
+        self.context
+            .symbols()
+            .find(name, &self.scope.current())
+            .is_some_and(is_declared_writable)
+    }
+
     fn is_symbolic_writable(&self, kind: &SymbolicVariableKind) -> bool {
         match kind {
-            SymbolicVariableKind::Named(named) => self
-                .writable
-                .find(&named.name)
-                .is_some_and(|writable| writable.0),
+            SymbolicVariableKind::Named(named) => self.is_name_writable(&named.name),
             SymbolicVariableKind::Array(array) => {
                 self.is_symbolic_writable(&array.subscripted_variable)
             }
@@ -165,11 +167,7 @@ impl RuleFunctionCallInOutArgument<'_> {
                 // Only a function block's inputs are assignable from
                 // outside the instance; its outputs, locals and VAR_IN_OUT
                 // are not.
-                match variable_type::of(
-                    &structured.record,
-                    &self.declarations,
-                    self.context.types(),
-                ) {
+                match variable_type::of(&structured.record, self.context, &self.scope.current()) {
                     Some(IntermediateType::FunctionBlock { fields, .. }) => fields
                         .iter()
                         .find(|field| field.name == structured.field)
@@ -203,12 +201,10 @@ impl RuleFunctionCallInOutArgument<'_> {
             ExprKind::LateBound(late_bound) => Some(&late_bound.value),
             _ => None,
         };
-        if let Some(Declared::Variable { init, .. }) =
-            name.and_then(|name| self.declarations.find(name))
-        {
-            if matches!(**init, InitialValueAssignmentKind::Reference(_)) {
-                return Some(TypeName::from("REF_TO"));
-            }
+        let declared = name
+            .and_then(|name| variable_type::declared(name, self.context, &self.scope.current()));
+        if declared.is_some_and(IntermediateType::is_reference) {
+            return Some(TypeName::from("REF_TO"));
         }
         let Some(ExprType::Concrete(id)) = &arg.expr_type else {
             return None;
@@ -239,35 +235,12 @@ impl Visitor<Infallible> for RuleFunctionCallInOutArgument<'_> {
     type Value = ();
 
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.declarations.enter();
-        self.writable.enter();
-        // A function's or method's result variable is assigned by its body.
-        let result = match node {
-            ScopeNode::Function(node) => Some((&node.name, node.return_type.to_type_name())),
-            ScopeNode::Method(node) => node
-                .return_type
-                .as_ref()
-                .map(|return_type| (&node.name, return_type.to_type_name())),
-            ScopeNode::FunctionBlock(_) | ScopeNode::Program(_) => None,
-        };
-        if let Some((name, type_name)) = result {
-            self.declarations.add(name, Declared::Typed(type_name));
-            self.writable.add(name, Writable(true));
-        }
+        self.scope.enter(&node);
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.declarations.exit();
-        self.writable.exit();
-    }
-
-    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        if let Some(id) = node.identifier.symbolic_id() {
-            self.declarations.add(id, Declared::of(node));
-            self.writable.add(id, Writable::of(node));
-        }
-        node.recurse_visit(self)
+        self.scope.exit();
     }
 
     fn visit_function(&mut self, node: &Function) -> Result<Self::Value, Infallible> {
@@ -300,10 +273,7 @@ impl Visitor<Infallible> for RuleFunctionCallInOutArgument<'_> {
 
                 let writable = match &arg.kind {
                     ExprKind::Variable(variable) => self.is_writable(variable),
-                    ExprKind::LateBound(late_bound) => self
-                        .writable
-                        .find(&late_bound.value)
-                        .is_some_and(|writable| writable.0),
+                    ExprKind::LateBound(late_bound) => self.is_name_writable(&late_bound.value),
                     _ => false,
                 };
                 if !writable {
@@ -579,4 +549,38 @@ END_VAR
     result := SQ(1 + 2);
 END_PROGRAM"
     );
+
+    fn apply_to_caller_ed3(caller: &str) -> SemanticResult {
+        let options =
+            CompilerOptions::from_dialect(ironplc_parser::options::Dialect::Iec61131_3Ed3);
+        let program = format!("{INC}\n{caller}");
+        let (library, context) =
+            crate::test_helpers::parse_and_resolve_types_with_options(&program, &options);
+        apply(&library, &context, &options)
+    }
+
+    #[rstest]
+    #[case::method_result(
+        "FUNCTION_BLOCK FB METHOD M : DINT M := 0; M := INC(1, M); END_METHOD END_FUNCTION_BLOCK"
+    )]
+    #[case::method_local(
+        "FUNCTION_BLOCK FB METHOD M VAR x : DINT; r : DINT; END_VAR r := INC(1, x); END_METHOD END_FUNCTION_BLOCK"
+    )]
+    #[case::field_from_method(
+        "FUNCTION_BLOCK FB VAR f : DINT; r : DINT; END_VAR METHOD M r := INC(1, f); END_METHOD END_FUNCTION_BLOCK"
+    )]
+    fn apply_when_in_out_argument_in_method_provably_writable_then_ok(#[case] caller: &str) {
+        let result = apply_to_caller_ed3(caller);
+        assert!(result.is_ok(), "{:?}", result.err());
+    }
+
+    #[test]
+    fn apply_when_in_out_argument_is_method_input_then_p4059() {
+        let errors = apply_to_caller_ed3(
+            "FUNCTION_BLOCK FB VAR r : DINT; END_VAR METHOD M VAR_INPUT i : DINT; END_VAR r := INC(1, i); END_METHOD END_FUNCTION_BLOCK",
+        )
+        .unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].code, Problem::InOutArgNotWritable.code());
+    }
 }

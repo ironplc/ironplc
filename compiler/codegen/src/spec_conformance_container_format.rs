@@ -19,7 +19,7 @@ use spec_test_macro::spec_test;
 fn compiled(source: &str) -> (Vec<u8>, FileHeader) {
     let options = CompilerOptions::default();
     let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], &options).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     let container = crate::compile(
         &analyzed,
         &ctx,

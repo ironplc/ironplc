@@ -341,6 +341,10 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                 let folded = self.fold_expr(*node)?;
                 Ok(ExprKind::Deref(Box::new(folded)))
             }
+            ExprKind::ImplicitConversion(node) => {
+                let folded = self.fold_expr(*node)?;
+                Ok(ExprKind::ImplicitConversion(Box::new(folded)))
+            }
             ExprKind::Null(span) => Ok(ExprKind::Null(span)),
             ExprKind::LateBound(node) => match self.current_type {
                 VariableType::None => Ok(self.resolve_late_bound(node.value)),

@@ -24,7 +24,7 @@
 //!
 //! let source = "PROGRAM main VAR x : INT; END_VAR x := 42; END_PROGRAM";
 //! let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
-//! let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
+//! let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
 //! let container = compile(&analyzed, &ctx, &CodegenOptions::default(), &EmptyLookup).unwrap();
 //! ```
 
@@ -35,6 +35,7 @@ mod compile_arith;
 mod compile_array;
 mod compile_array_struct;
 mod compile_call;
+mod compile_comparison;
 mod compile_enum;
 mod compile_expr;
 mod compile_fb_init;

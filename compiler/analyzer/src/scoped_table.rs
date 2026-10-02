@@ -35,6 +35,9 @@ use std::marker::PhantomData;
 pub trait Key: Eq + Hash + Clone + fmt::Debug {}
 pub trait Value: fmt::Debug {}
 
+impl Key for ironplc_dsl::core::Id {}
+impl Key for ironplc_dsl::common::TypeName {}
+
 struct Scope<'a, K: Key, V: 'a + Value> {
     table: HashMap<K, V>,
     phantom: PhantomData<&'a V>,
