@@ -217,7 +217,7 @@ fn symbol_info_span_and_scope_when_creating_symbol_info_then_has_correct_span_an
     assert_eq!(symbol_info.visibility_scope, scope);
     assert_eq!(symbol_info.span, ironplc_dsl::core::SourceSpan::default());
     assert!(!symbol_info.is_external);
-    assert!(symbol_info.data_type.is_none());
+    assert!(symbol_info.type_id.is_none());
 }
 
 /// A scope path nests, so a symbol declared in an enclosing scope is
@@ -300,10 +300,10 @@ fn insert_variable_when_name_repeated_in_scope_then_p4014_and_first_kept() {
     let scope = ScopeKind::Named(Id::from("Unit").into());
     env.insert_variable(
         &Id::from("x"),
-        SymbolKind::Parameter,
         &scope,
         VariableType::Input,
         DeclarationQualifier::Unspecified,
+        None,
         None,
     )
     .unwrap();
@@ -311,10 +311,10 @@ fn insert_variable_when_name_repeated_in_scope_then_p4014_and_first_kept() {
     let error = env
         .insert_variable(
             &Id::from("X"),
-            SymbolKind::Variable,
             &scope,
             VariableType::Var,
             DeclarationQualifier::Unspecified,
+            None,
             None,
         )
         .unwrap_err();
@@ -329,10 +329,10 @@ fn insert_variable_when_same_name_in_two_scopes_then_ok() {
     let mut env = SymbolEnvironment::new();
     env.insert_variable(
         &Id::from("x"),
-        SymbolKind::Variable,
         &ScopeKind::Global,
         VariableType::Global,
         DeclarationQualifier::Unspecified,
+        None,
         None,
     )
     .unwrap();
@@ -340,10 +340,10 @@ fn insert_variable_when_same_name_in_two_scopes_then_ok() {
     assert!(env
         .insert_variable(
             &Id::from("x"),
-            SymbolKind::Variable,
             &ScopeKind::Named(Id::from("Unit").into()),
             VariableType::Var,
             DeclarationQualifier::Unspecified,
+            None,
             None,
         )
         .is_ok());
@@ -356,16 +356,17 @@ fn insert_variable_when_name_is_compiler_provided_then_reserved() {
         &Id::from("__SYSTEM_UP_TIME"),
         SymbolKind::Variable,
         &ScopeKind::Global,
+        None,
     )
     .unwrap();
 
     let error = env
         .insert_variable(
             &Id::from("__SYSTEM_UP_TIME"),
-            SymbolKind::Variable,
             &ScopeKind::Global,
             VariableType::Global,
             DeclarationQualifier::Unspecified,
+            None,
             None,
         )
         .unwrap_err();
@@ -385,10 +386,10 @@ fn insert_variable_when_name_matches_type_then_ok() {
     assert!(env
         .insert_variable(
             &Id::from("T"),
-            SymbolKind::Variable,
             &ScopeKind::Global,
             VariableType::Global,
             DeclarationQualifier::Unspecified,
+            None,
             None,
         )
         .is_ok());
@@ -483,10 +484,10 @@ fn get_variables_in_scope_when_several_declared_then_returns_declaration_order()
     for name in &variables {
         env.insert_variable(
             name,
-            SymbolKind::Variable,
             &scope,
             VariableType::Var,
             DeclarationQualifier::Unspecified,
+            None,
             None,
         )
         .unwrap();
@@ -541,10 +542,10 @@ fn get_variables_in_scope_when_global_scope_then_returns_global_variables_only()
     global(&mut env, "Speed", SymbolKind::Type).unwrap();
     env.insert_variable(
         &Id::from("shared"),
-        SymbolKind::Variable,
         &ScopeKind::Global,
         VariableType::Global,
         DeclarationQualifier::Unspecified,
+        None,
         None,
     )
     .unwrap();
@@ -562,10 +563,10 @@ fn insert_variable_when_constant_qualifier_then_symbol_is_constant() {
     let mut env = SymbolEnvironment::new();
     env.insert_variable(
         &Id::from("limit"),
-        SymbolKind::Variable,
         &ScopeKind::Global,
         VariableType::Global,
         DeclarationQualifier::Constant,
+        None,
         None,
     )
     .unwrap();
@@ -579,14 +580,195 @@ fn insert_variable_when_retain_qualifier_then_symbol_is_not_constant() {
     let mut env = SymbolEnvironment::new();
     env.insert_variable(
         &Id::from("count"),
-        SymbolKind::Variable,
         &ScopeKind::Global,
         VariableType::Global,
         DeclarationQualifier::Retain,
+        None,
         None,
     )
     .unwrap();
 
     let symbol = env.find(&Id::from("count"), &ScopeKind::Global).unwrap();
     assert!(!symbol.is_constant());
+}
+
+#[test]
+fn insert_when_variable_repeats_result_variable_then_replaces_without_diagnostic() {
+    let mut env = SymbolEnvironment::new();
+    let scope = ScopeKind::Named(Id::from("F").into());
+    env.insert(&Id::from("F"), SymbolKind::ResultVariable, &scope)
+        .unwrap();
+
+    env.insert_variable(
+        &Id::from("F"),
+        &scope,
+        VariableType::Var,
+        DeclarationQualifier::Unspecified,
+        None,
+        None,
+    )
+    .unwrap();
+
+    let symbol = env.find(&Id::from("F"), &scope).unwrap();
+    assert_eq!(symbol.kind, SymbolKind::Variable);
+}
+
+#[test]
+fn get_variables_in_scope_when_result_variable_then_not_listed() {
+    let mut env = SymbolEnvironment::new();
+    let scope = ScopeKind::Named(Id::from("F").into());
+    env.insert(&Id::from("F"), SymbolKind::ResultVariable, &scope)
+        .unwrap();
+
+    assert!(env.get_variables_in_scope(&scope).is_empty());
+}
+
+#[test]
+fn scope_tracker_when_no_scope_entered_then_global() {
+    assert_eq!(ScopeTracker::default().current(), ScopeKind::Global);
+}
+
+fn function_block_decl(name: &str) -> ironplc_dsl::common::FunctionBlockDeclaration {
+    ironplc_dsl::common::FunctionBlockDeclaration {
+        name: TypeName::from(name),
+        variables: vec![],
+        edge_variables: vec![],
+        body: ironplc_dsl::common::FunctionBlockBodyKind::empty(),
+        span: ironplc_dsl::core::SourceSpan::default(),
+        oop: None,
+        methods: vec![],
+        properties: vec![],
+    }
+}
+
+fn method_decl(name: &str) -> ironplc_dsl::common::MethodDeclaration {
+    ironplc_dsl::common::MethodDeclaration {
+        qualifiers: Default::default(),
+        name: Id::from(name),
+        return_type: None,
+        variables: vec![],
+        edge_variables: vec![],
+        body: vec![],
+        span: ironplc_dsl::core::SourceSpan::default(),
+    }
+}
+
+#[test]
+fn scope_tracker_when_method_entered_then_path_through_block() {
+    let block = function_block_decl("FB_Axis");
+    let start = method_decl("Start");
+    let mut tracker = ScopeTracker::default();
+
+    tracker.enter(&ScopeNode::FunctionBlock(&block));
+    tracker.enter(&ScopeNode::Method(&start));
+
+    assert_eq!(
+        tracker.current(),
+        ScopeKind::Named(ScopePath::new(vec![Id::from("FB_Axis"), Id::from("Start")]))
+    );
+    assert_eq!(tracker.unit(), Some(&Id::from("FB_Axis")));
+}
+
+#[test]
+fn scope_tracker_when_exited_then_unit_none() {
+    let block = function_block_decl("FB_Axis");
+    let mut tracker = ScopeTracker::default();
+
+    tracker.enter(&ScopeNode::FunctionBlock(&block));
+    tracker.exit();
+
+    assert_eq!(tracker.unit(), None);
+    assert_eq!(tracker.current(), ScopeKind::Global);
+}
+
+#[test]
+fn scope_of_when_method_not_entered_then_scope_it_would_open() {
+    let block = function_block_decl("FB_Axis");
+    let start = method_decl("Start");
+    let mut tracker = ScopeTracker::default();
+    tracker.enter(&ScopeNode::FunctionBlock(&block));
+
+    let scope = tracker.scope_of(&ScopeNode::Method(&start));
+
+    tracker.enter(&ScopeNode::Method(&start));
+    assert_eq!(scope, tracker.current());
+}
+
+fn function_block(env: &mut SymbolEnvironment, name: &str, extends: Option<&str>) {
+    let info = SymbolInfo::new(
+        SymbolKind::FunctionBlock,
+        ScopeKind::Global,
+        ironplc_dsl::core::SourceSpan::default(),
+    )
+    .with_extends(extends.map(TypeName::from));
+    env.insert_info(&Id::from(name), info).unwrap();
+}
+
+fn field(env: &mut SymbolEnvironment, block: &str, name: &str) {
+    env.insert_variable(
+        &Id::from(name),
+        &ScopeKind::Named(Id::from(block).into()),
+        VariableType::Var,
+        DeclarationQualifier::Unspecified,
+        None,
+        None,
+    )
+    .unwrap();
+}
+
+#[test]
+fn find_when_field_declared_on_base_then_visible_from_derived_method() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "Base", None);
+    function_block(&mut env, "Mid", Some("Base"));
+    function_block(&mut env, "Derived", Some("Mid"));
+    field(&mut env, "Base", "speed");
+    let method = ScopeKind::Named(ScopePath::new(vec![Id::from("Derived"), Id::from("M")]));
+
+    let symbol = env.find(&Id::from("speed"), &method).unwrap();
+
+    assert_eq!(symbol.scope, ScopeKind::Named(Id::from("Base").into()));
+}
+
+#[test]
+fn find_when_derived_redeclares_base_field_then_derived_wins() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "Base", None);
+    function_block(&mut env, "Derived", Some("Base"));
+    field(&mut env, "Base", "speed");
+    field(&mut env, "Derived", "speed");
+    let derived = ScopeKind::Named(Id::from("Derived").into());
+
+    let symbol = env.find(&Id::from("speed"), &derived).unwrap();
+
+    assert_eq!(symbol.scope, derived);
+}
+
+#[test]
+fn find_when_extends_cycle_then_terminates() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "A", Some("B"));
+    function_block(&mut env, "B", Some("A"));
+
+    assert!(env
+        .find(
+            &Id::from("missing"),
+            &ScopeKind::Named(Id::from("A").into())
+        )
+        .is_none());
+}
+
+#[test]
+fn visible_variables_when_inherited_then_listed_once_nearest_first() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "Base", None);
+    function_block(&mut env, "Derived", Some("Base"));
+    field(&mut env, "Base", "speed");
+    field(&mut env, "Base", "limit");
+    field(&mut env, "Derived", "speed");
+
+    let visible = env.visible_variables(&ScopeKind::Named(Id::from("Derived").into()));
+    let names: Vec<String> = visible.iter().map(|(name, _)| name.to_string()).collect();
+
+    assert_eq!(names, vec!["speed", "limit"]);
 }

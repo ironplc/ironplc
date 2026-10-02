@@ -1,7 +1,8 @@
 pub mod arithmetic_overload;
 pub mod array;
+pub mod common_operand;
+pub mod comparison_operand;
 pub mod enumeration;
-pub mod global_vars;
 pub mod inherited_fields;
 pub mod operator_function_form;
 pub mod stdlib_function;

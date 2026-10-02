@@ -3,6 +3,8 @@ use indexmap::IndexMap;
 use ironplc_dsl::common::{DeclarationQualifier, TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_dsl::scope::ScopeNode;
+use ironplc_dsl::type_id::TypeId;
 use ironplc_problems::Problem;
 
 /// A scope's position in the nesting tree: the chain of declaration
@@ -35,6 +37,64 @@ impl From<Id> for ScopePath {
     /// A scope directly inside the library, such as a function block.
     fn from(name: Id) -> Self {
         Self::new(vec![name])
+    }
+}
+
+/// Tracks the scope a traversal is in, from the `enter_scope` and
+/// `exit_scope` hooks, so that a pass can look names up in the
+/// [`SymbolEnvironment`] from where it is.
+#[derive(Debug, Default)]
+pub(crate) struct ScopeTracker {
+    /// The chain of declaration names the traversal is inside, outermost
+    /// first.
+    path: Vec<Id>,
+}
+
+impl ScopeTracker {
+    /// The name `node`'s scope is known by in a [`ScopePath`]. Every pass
+    /// that keys symbols by scope tracks scopes with this type, so they all
+    /// name a scope the same way.
+    fn name_of(node: &ScopeNode<'_>) -> Id {
+        match node {
+            ScopeNode::Function(node) => node.name.clone(),
+            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
+            ScopeNode::Program(node) => node.name.clone(),
+            ScopeNode::Method(node) => node.name.clone(),
+        }
+    }
+
+    /// Enters the scope `node` opens.
+    pub(crate) fn enter(&mut self, node: &ScopeNode<'_>) {
+        self.path.push(Self::name_of(node));
+    }
+
+    /// Leaves the innermost scope.
+    pub(crate) fn exit(&mut self) {
+        self.path.pop();
+    }
+
+    /// The scope the traversal is in.
+    pub(crate) fn current(&self) -> ScopeKind {
+        if self.path.is_empty() {
+            ScopeKind::Global
+        } else {
+            ScopeKind::Named(ScopePath::new(self.path.clone()))
+        }
+    }
+
+    /// The scope `node` opens when the traversal enters it from the
+    /// current scope, for a pass that declares into it before entering.
+    pub(crate) fn scope_of(&self, node: &ScopeNode<'_>) -> ScopeKind {
+        let mut path = self.path.clone();
+        path.push(Self::name_of(node));
+        ScopeKind::Named(ScopePath::new(path))
+    }
+
+    /// The outermost declaration the traversal is inside, such as the
+    /// function block a method belongs to, or `None` outside every
+    /// declaration.
+    pub(crate) fn unit(&self) -> Option<&Id> {
+        self.path.first()
     }
 }
 
@@ -75,6 +135,11 @@ pub enum SymbolKind {
     StructureElement,
     /// Edge variable (rising/falling edge)
     EdgeVariable,
+    /// The implicit result variable of a function, or of a method that
+    /// declares a return type: the declaration's own name, assigned by its
+    /// body (`F := ...` inside `FUNCTION F`). A declared variable of the
+    /// same name replaces it.
+    ResultVariable,
 }
 
 /// Metadata associated with a symbol
@@ -88,8 +153,10 @@ pub struct SymbolInfo {
     pub visibility_scope: ScopeKind,
     /// Whether this symbol is a reference to an external declaration
     pub is_external: bool,
-    /// The data type of the symbol (if applicable)
-    pub data_type: Option<String>,
+    /// For variables, the id of the declared type in the type
+    /// environment. `None` for symbols that are not variables and for a
+    /// variable whose type the analyzer could not resolve.
+    pub type_id: Option<TypeId>,
     /// For enumeration values, the type name of the enumeration
     /// TODO this should probably be a new struct that is a TypeRef
     /// so that we can distinguish between the actual place of the declaration
@@ -109,6 +176,12 @@ pub struct SymbolInfo {
     /// uptime globals. There is no source location to point at, and a user
     /// declaration of the name is reported as reserved.
     pub compiler_provided: bool,
+    /// For a function block, whether it is declared `ABSTRACT`: it exists
+    /// only to be extended and cannot be instantiated.
+    pub is_abstract: bool,
+    /// For a function block, the function block it `EXTENDS`, whose
+    /// fields its own scope sees as well.
+    pub extends: Option<TypeName>,
 }
 
 impl SymbolInfo {
@@ -118,18 +191,32 @@ impl SymbolInfo {
             scope: scope.clone(),
             visibility_scope: scope,
             is_external: false,
-            data_type: None,
+            type_id: None,
             enum_type: None,
             variable_type: None,
             qualifier: None,
             address: None,
             span,
             compiler_provided: false,
+            is_abstract: false,
+            extends: None,
         }
     }
 
     fn with_compiler_provided(mut self) -> Self {
         self.compiler_provided = true;
+        self
+    }
+
+    /// Set the function block a function block `EXTENDS`
+    pub fn with_extends(mut self, extends: Option<TypeName>) -> Self {
+        self.extends = extends;
+        self
+    }
+
+    /// Set whether a function block is declared `ABSTRACT`
+    pub fn with_abstract(mut self, is_abstract: bool) -> Self {
+        self.is_abstract = is_abstract;
         self
     }
 
@@ -141,6 +228,12 @@ impl SymbolInfo {
     /// Set the enumeration type for enumeration value symbols
     pub fn with_enum_type(mut self, enum_type: TypeName) -> Self {
         self.enum_type = Some(enum_type);
+        self
+    }
+
+    /// Set the id of the variable's declared type
+    pub fn with_type_id(mut self, type_id: Option<TypeId>) -> Self {
+        self.type_id = type_id;
         self
     }
 
@@ -298,30 +391,41 @@ impl SymbolEnvironment {
         name: &Id,
         kind: SymbolKind,
         scope: &ScopeKind,
+        type_id: Option<TypeId>,
     ) -> Result<(), Diagnostic> {
         self.insert_symbol(
             name,
-            SymbolInfo::new(kind, scope.clone(), name.span()).with_compiler_provided(),
+            SymbolInfo::new(kind, scope.clone(), name.span())
+                .with_type_id(type_id)
+                .with_compiler_provided(),
         )
     }
 
-    /// Insert a variable with direction, declaration qualifier and optional
-    /// hardware address.
+    /// Insert a variable with direction, declaration qualifier, the id of
+    /// its declared type and optional hardware address. The symbol's kind
+    /// follows from the section the variable is declared in.
     ///
     /// A name already declared in the scope is returned as `P4014`, as for
     /// [`Self::insert`].
     pub fn insert_variable(
         &mut self,
         name: &Id,
-        kind: SymbolKind,
         scope: &ScopeKind,
         variable_type: VariableType,
         qualifier: DeclarationQualifier,
+        type_id: Option<TypeId>,
         address: Option<String>,
     ) -> Result<(), Diagnostic> {
+        let kind = match variable_type {
+            VariableType::Input => SymbolKind::Parameter,
+            VariableType::Output => SymbolKind::OutputParameter,
+            VariableType::InOut => SymbolKind::InOutParameter,
+            _ => SymbolKind::Variable,
+        };
         let mut symbol_info = SymbolInfo::new(kind, scope.clone(), name.span())
             .with_variable_type(variable_type.clone())
-            .with_qualifier(qualifier);
+            .with_qualifier(qualifier)
+            .with_type_id(type_id);
         if let Some(addr) = address {
             symbol_info = symbol_info.with_address(addr);
         }
@@ -329,6 +433,13 @@ impl SymbolEnvironment {
             symbol_info = symbol_info.with_external(true);
         }
         self.insert_symbol(name, symbol_info)
+    }
+
+    /// Insert a symbol described by `info`, in `info`'s scope.
+    ///
+    /// A repeated name is reported as for [`Self::insert`].
+    pub fn insert_info(&mut self, name: &Id, info: SymbolInfo) -> Result<(), Diagnostic> {
+        self.insert_symbol(name, info)
     }
 
     /// The one insertion path: checks the scope for a repeated name, then
@@ -388,24 +499,64 @@ impl SymbolEnvironment {
     ///
     /// Walks outward through the enclosing scopes and then the global
     /// scope, so a method body sees its function block's fields and an
-    /// inner declaration shadows an outer one of the same name.
+    /// inner declaration shadows an outer one of the same name. A
+    /// function block's scope is followed by those of the function blocks
+    /// it `EXTENDS`, nearest first, so a derived block and its methods see
+    /// the fields it inherits.
     pub fn find(&self, name: &Id, scope: &ScopeKind) -> Option<&SymbolInfo> {
+        self.visible_scopes(scope)
+            .iter()
+            .find_map(|scope| self.symbols_in(scope)?.get(name))
+    }
+
+    /// The scopes a name is looked up in from `scope`, innermost first:
+    /// each enclosing scope, the scopes of the function blocks the
+    /// outermost one `EXTENDS`, then the global scope.
+    fn visible_scopes(&self, scope: &ScopeKind) -> Vec<ScopeKind> {
+        let mut scopes = Vec::new();
         if let ScopeKind::Named(path) = scope {
             let segments = path.segments();
             for depth in (1..=segments.len()).rev() {
-                let enclosing = ScopeKind::Named(ScopePath::new(segments[..depth].to_vec()));
-                if let Some(symbol) = self
-                    .scoped_symbols
-                    .get(&enclosing)
-                    .and_then(|symbols| symbols.get(name))
-                {
-                    return Some(symbol);
+                scopes.push(ScopeKind::Named(ScopePath::new(segments[..depth].to_vec())));
+            }
+            // The base chain. The analyzer rejects a cycle in it, but a
+            // name seen twice still ends the walk rather than looping.
+            let mut seen = vec![segments[0].clone()];
+            let mut unit = &segments[0];
+            while let Some(base) = self
+                .global_symbols
+                .get(unit)
+                .filter(|info| info.kind == SymbolKind::FunctionBlock)
+                .and_then(|info| info.extends.as_ref())
+            {
+                if seen.contains(&base.name) {
+                    break;
+                }
+                seen.push(base.name.clone());
+                scopes.push(ScopeKind::Named(ScopePath::new(vec![base.name.clone()])));
+                unit = &base.name;
+            }
+        }
+        scopes.push(ScopeKind::Global);
+        scopes
+    }
+
+    /// The variables visible from `scope`, as [`Self::find`] would see
+    /// them: innermost scope first, each name listed once at its nearest
+    /// declaration. Result variables count as variables.
+    pub fn visible_variables(&self, scope: &ScopeKind) -> Vec<(&Id, &SymbolInfo)> {
+        let mut visible: IndexMap<&Id, &SymbolInfo> = IndexMap::new();
+        for scope in self.visible_scopes(scope) {
+            let Some(symbols) = self.symbols_in(&scope) else {
+                continue;
+            };
+            for (name, info) in symbols {
+                if is_variable(&info.kind) || info.kind == SymbolKind::ResultVariable {
+                    visible.entry(name).or_insert(info);
                 }
             }
         }
-
-        // Fall back to global scope
-        self.global_symbols.get(name)
+        visible.into_iter().collect()
     }
 
     /// Get a symbol by name and scope (alias for find)
