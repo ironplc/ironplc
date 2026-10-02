@@ -238,6 +238,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 match result {
                     array::IntermediateResult::Type(attributes) => {
                         self.insert_type(&node.type_name, attributes);
+                        self.record_declared_array_element(&node.type_name, &array_init.spec);
                     }
                     array::IntermediateResult::Alias(base_type_name) => {
                         self.insert_alias(&node.type_name, &base_type_name)?;
@@ -338,6 +339,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         match result {
             array::IntermediateResult::Type(attributes) => {
                 self.insert_type(&node.type_name, attributes);
+                self.record_declared_array_element(&node.type_name, &node.spec);
             }
             array::IntermediateResult::Alias(base_type_name) => {
                 self.insert_alias(&node.type_name, &base_type_name)?;
