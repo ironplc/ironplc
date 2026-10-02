@@ -3,6 +3,7 @@ use ironplc_dsl::common::{DeclarationQualifier, TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::scope::ScopeNode;
+use ironplc_dsl::textual::SelfRefKind;
 use ironplc_dsl::type_id::TypeId;
 use ironplc_problems::Problem;
 
@@ -585,6 +586,32 @@ impl SymbolEnvironment {
             .find_map(|scope| self.symbols_in(scope)?.get(name))
     }
 
+    /// The function block `THIS^` or `SUPER^` names from `scope`.
+    ///
+    /// Inside a function block's body, its methods and its property
+    /// accessors, `THIS^` names that block and `SUPER^` the block it
+    /// `EXTENDS`. `None` outside a function block (in a program or a
+    /// function), and for `SUPER^` in a block that extends nothing.
+    pub fn self_type(&self, scope: &ScopeKind, kind: SelfRefKind) -> Option<TypeName> {
+        let ScopeKind::Named(path) = scope else {
+            return None;
+        };
+        let unit = &path.segments()[0];
+        let block = self.function_block(unit)?;
+        match kind {
+            SelfRefKind::This => Some(TypeName::from_id(unit)),
+            SelfRefKind::Super => block.extends.clone(),
+        }
+    }
+
+    /// The symbol of the function block named `name`, or `None` when
+    /// `name` is not a function block.
+    fn function_block(&self, name: &Id) -> Option<&SymbolInfo> {
+        self.global_symbols
+            .get(name)
+            .filter(|info| info.kind == SymbolKind::FunctionBlock)
+    }
+
     /// The scopes a name is looked up in from `scope`, innermost first:
     /// each enclosing scope, the scopes of the function blocks the
     /// outermost one `EXTENDS`, then the global scope.
@@ -600,9 +627,7 @@ impl SymbolEnvironment {
             let mut seen = vec![segments[0].clone()];
             let mut unit = &segments[0];
             while let Some(base) = self
-                .global_symbols
-                .get(unit)
-                .filter(|info| info.kind == SymbolKind::FunctionBlock)
+                .function_block(unit)
                 .and_then(|info| info.extends.as_ref())
             {
                 if seen.contains(&base.name) {
