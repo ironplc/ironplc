@@ -164,12 +164,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
     /// stack, so the variables it declares are recorded against its own
     /// path rather than the enclosing declaration's.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.scope.push(match node {
-            ScopeNode::Function(node) => node.name.clone(),
-            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
-            ScopeNode::Program(node) => node.name.clone(),
-            ScopeNode::Method(node) => node.name.clone(),
-        });
+        self.scope.push(node.scope_name());
         Ok(())
     }
 
@@ -1314,6 +1309,40 @@ END_FUNCTION_BLOCK",
             &oop()
         )
         .is_empty());
+    }
+
+    /// GET and SET are both named after the property, but each is a scope
+    /// of its own, as in TwinCAT.
+    #[test]
+    fn apply_when_get_and_set_declare_same_local_then_ok() {
+        assert_eq!(
+            analyzed_codes_with(
+                "
+FUNCTION_BLOCK fb
+  VAR
+    _pos : INT;
+  END_VAR
+  PROPERTY Position : INT
+  GET
+    VAR
+      tmp : INT;
+    END_VAR
+    tmp := _pos;
+    Position := tmp;
+  END_GET
+  SET
+    VAR
+      tmp : INT;
+    END_VAR
+    tmp := Position;
+    _pos := tmp;
+  END_SET
+  END_PROPERTY
+END_FUNCTION_BLOCK",
+                &oop()
+            ),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

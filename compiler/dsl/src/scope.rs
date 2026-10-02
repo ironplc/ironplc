@@ -21,8 +21,9 @@
 //! [`Fold`]: crate::fold::Fold
 
 use crate::common::{
-    FunctionBlockDeclaration, FunctionDeclaration, MethodDeclaration, ProgramDeclaration,
+    Accessor, FunctionBlockDeclaration, FunctionDeclaration, MethodDeclaration, ProgramDeclaration,
 };
+use crate::core::Id;
 
 /// The declaration that opened the scope the traversal is entering.
 ///
@@ -38,6 +39,33 @@ pub enum ScopeNode<'a> {
     FunctionBlock(&'a FunctionBlockDeclaration),
     Program(&'a ProgramDeclaration),
     Method(&'a MethodDeclaration),
+}
+
+impl ScopeNode<'_> {
+    /// The name the scope is known by in a scope path such as
+    /// `FB_Axis.Start`: the declaration's own name. Every pass that keys
+    /// variables by scope path names a scope with this, so they agree.
+    pub fn scope_name(&self) -> Id {
+        match self {
+            ScopeNode::Function(node) => node.name.clone(),
+            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
+            ScopeNode::Program(node) => node.name.clone(),
+            // An accessor is named after its property, so GET and SET would
+            // share a scope; the accessor keeps them apart. `.` cannot
+            // appear in an identifier, so this never names a method.
+            ScopeNode::Method(node) => match node.accessor {
+                None => node.name.clone(),
+                Some(accessor) => {
+                    let suffix = match accessor {
+                        Accessor::Get => "GET",
+                        Accessor::Set => "SET",
+                    };
+                    Id::from(&format!("{}.{suffix}", node.name.original()))
+                        .with_position(node.name.span.clone())
+                }
+            },
+        }
+    }
 }
 
 /// Implemented by every declaration marked `#[recurse(scope)]`.
@@ -70,5 +98,55 @@ impl ScopeBearing for ProgramDeclaration {
 impl ScopeBearing for MethodDeclaration {
     fn as_scope_node(&self) -> ScopeNode<'_> {
         ScopeNode::Method(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::{FunctionBlockBodyKind, TypeName};
+    use crate::core::SourceSpan;
+
+    #[test]
+    fn scope_name_when_function_block_then_block_name() {
+        let block = FunctionBlockDeclaration {
+            name: TypeName::from("FB_Axis"),
+            variables: vec![],
+            edge_variables: vec![],
+            body: FunctionBlockBodyKind::empty(),
+            span: SourceSpan::default(),
+            oop: None,
+            methods: vec![],
+            properties: vec![],
+        };
+        assert_eq!(Id::from("FB_Axis"), block.as_scope_node().scope_name());
+    }
+
+    #[test]
+    fn scope_name_when_property_accessors_then_get_and_set_differ() {
+        use crate::common::{FunctionReturnType, PropertyDeclaration};
+        let name = Id::from("Position");
+        let property_type = FunctionReturnType::Named(TypeName::from("INT"));
+        let span = SourceSpan::default;
+        let get = PropertyDeclaration::get_accessor(
+            &name,
+            &property_type,
+            vec![],
+            vec![],
+            vec![],
+            span(),
+        );
+        let set = PropertyDeclaration::set_accessor(
+            &name,
+            &property_type,
+            vec![],
+            vec![],
+            vec![],
+            span(),
+        );
+
+        assert_eq!(Id::from("Position.GET"), get.as_scope_node().scope_name());
+        assert_eq!(Id::from("Position.SET"), set.as_scope_node().scope_name());
+        assert_eq!(name, get.name);
     }
 }

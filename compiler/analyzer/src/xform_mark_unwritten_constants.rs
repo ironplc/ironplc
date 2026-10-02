@@ -313,12 +313,7 @@ impl Visitor<Infallible> for WriteCollector<'_> {
     type Value = ();
 
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.scope.push(match node {
-            ScopeNode::Function(node) => node.name.clone(),
-            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
-            ScopeNode::Program(node) => node.name.clone(),
-            ScopeNode::Method(node) => node.name.clone(),
-        });
+        self.scope.push(node.scope_name());
         Ok(())
     }
 
@@ -574,12 +569,7 @@ impl Marker {
 
 impl Fold<Infallible> for Marker {
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        self.scope.push(match node {
-            ScopeNode::Function(node) => node.name.clone(),
-            ScopeNode::FunctionBlock(node) => node.name.name.clone(),
-            ScopeNode::Program(node) => node.name.clone(),
-            ScopeNode::Method(node) => node.name.clone(),
-        });
+        self.scope.push(node.scope_name());
         Ok(())
     }
 

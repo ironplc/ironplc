@@ -51,6 +51,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
+    callee_resolution::FunctionBlocks,
     intermediates::inherited_fields::collect_inherited_fields,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
@@ -69,6 +70,7 @@ pub fn apply(
     let mut checker = SymbolScopeChecker {
         table: scoped_table::ScopedTable::new(),
         inherited_fields: collect_inherited_fields(lib),
+        function_blocks: FunctionBlocks::from_library(lib),
         enclosing_properties: Vec::new(),
         diagnostics: Vec::new(),
     };
@@ -97,8 +99,12 @@ impl Key for TypeName {}
 struct SymbolScopeChecker<'a> {
     table: ScopedTable<'a, Id, DummyNode>,
     inherited_fields: HashMap<TypeName, Vec<VarDecl>>,
+    /// The library's function blocks, to find the properties a block
+    /// inherits through `EXTENDS`.
+    function_blocks: FunctionBlocks<'a>,
     /// One entry per open scope: the property names of the function block
-    /// that opened it, `None` for any other scope. A name that is not a
+    /// that opened it, including those it inherits, `None` for any other
+    /// scope. A name that is not a
     /// variable but is a property of the enclosing function block is a
     /// property access, which is not implemented yet, rather than an
     /// undefined variable.
@@ -136,9 +142,12 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
         self.table.enter();
         self.enclosing_properties.push(match &node {
-            ScopeNode::FunctionBlock(node) => {
-                Some(node.properties.iter().map(|p| p.name.clone()).collect())
-            }
+            ScopeNode::FunctionBlock(node) => Some(
+                self.function_blocks
+                    .chain(&node.name)
+                    .flat_map(|block| block.properties.iter().map(|p| p.name.clone()))
+                    .collect(),
+            ),
             _ => None,
         });
 
@@ -806,6 +815,38 @@ END_FUNCTION_BLOCK";
         let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
 
         assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, "P9999");
+        assert!(errors[0].described.contains(&"property=Running".to_owned()));
+    }
+
+    #[test]
+    fn apply_when_derived_block_uses_inherited_property_then_not_implemented() {
+        let program = "
+FUNCTION_BLOCK FB_Base
+VAR
+    _speed : REAL;
+END_VAR
+PROPERTY Running : BOOL
+GET
+    Running := _speed > 0.0;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+VAR
+    y : BOOL;
+END_VAR
+y := Running;
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_fb_inheritance(),
+        );
+        let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
+
+        assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].code, "P9999");
         assert!(errors[0].described.contains(&"property=Running".to_owned()));
     }
