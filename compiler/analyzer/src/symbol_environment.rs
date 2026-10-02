@@ -180,6 +180,9 @@ pub struct SymbolInfo {
     /// For a function block, whether it is declared `ABSTRACT`: it exists
     /// only to be extended and cannot be instantiated.
     pub is_abstract: bool,
+    /// For a function block, the function block it `EXTENDS`, whose
+    /// fields its own scope sees as well.
+    pub extends: Option<TypeName>,
 }
 
 impl SymbolInfo {
@@ -198,11 +201,18 @@ impl SymbolInfo {
             span,
             compiler_provided: false,
             is_abstract: false,
+            extends: None,
         }
     }
 
     fn with_compiler_provided(mut self) -> Self {
         self.compiler_provided = true;
+        self
+    }
+
+    /// Set the function block a function block `EXTENDS`
+    pub fn with_extends(mut self, extends: Option<TypeName>) -> Self {
+        self.extends = extends;
         self
     }
 
@@ -565,24 +575,64 @@ impl SymbolEnvironment {
     ///
     /// Walks outward through the enclosing scopes and then the global
     /// scope, so a method body sees its function block's fields and an
-    /// inner declaration shadows an outer one of the same name.
+    /// inner declaration shadows an outer one of the same name. A
+    /// function block's scope is followed by those of the function blocks
+    /// it `EXTENDS`, nearest first, so a derived block and its methods see
+    /// the fields it inherits.
     pub fn find(&self, name: &Id, scope: &ScopeKind) -> Option<&SymbolInfo> {
+        self.visible_scopes(scope)
+            .iter()
+            .find_map(|scope| self.symbols_in(scope)?.get(name))
+    }
+
+    /// The scopes a name is looked up in from `scope`, innermost first:
+    /// each enclosing scope, the scopes of the function blocks the
+    /// outermost one `EXTENDS`, then the global scope.
+    fn visible_scopes(&self, scope: &ScopeKind) -> Vec<ScopeKind> {
+        let mut scopes = Vec::new();
         if let ScopeKind::Named(path) = scope {
             let segments = path.segments();
             for depth in (1..=segments.len()).rev() {
-                let enclosing = ScopeKind::Named(ScopePath::new(segments[..depth].to_vec()));
-                if let Some(symbol) = self
-                    .scoped_symbols
-                    .get(&enclosing)
-                    .and_then(|symbols| symbols.get(name))
-                {
-                    return Some(symbol);
+                scopes.push(ScopeKind::Named(ScopePath::new(segments[..depth].to_vec())));
+            }
+            // The base chain. The analyzer rejects a cycle in it, but a
+            // name seen twice still ends the walk rather than looping.
+            let mut seen = vec![segments[0].clone()];
+            let mut unit = &segments[0];
+            while let Some(base) = self
+                .global_symbols
+                .get(unit)
+                .filter(|info| info.kind == SymbolKind::FunctionBlock)
+                .and_then(|info| info.extends.as_ref())
+            {
+                if seen.contains(&base.name) {
+                    break;
+                }
+                seen.push(base.name.clone());
+                scopes.push(ScopeKind::Named(ScopePath::new(vec![base.name.clone()])));
+                unit = &base.name;
+            }
+        }
+        scopes.push(ScopeKind::Global);
+        scopes
+    }
+
+    /// The variables visible from `scope`, as [`Self::find`] would see
+    /// them: innermost scope first, each name listed once at its nearest
+    /// declaration. Result variables count as variables.
+    pub fn visible_variables(&self, scope: &ScopeKind) -> Vec<(&Id, &SymbolInfo)> {
+        let mut visible: IndexMap<&Id, &SymbolInfo> = IndexMap::new();
+        for scope in self.visible_scopes(scope) {
+            let Some(symbols) = self.symbols_in(&scope) else {
+                continue;
+            };
+            for (name, info) in symbols {
+                if is_variable(&info.kind) || info.kind == SymbolKind::ResultVariable {
+                    visible.entry(name).or_insert(info);
                 }
             }
         }
-
-        // Fall back to global scope
-        self.global_symbols.get(name)
+        visible.into_iter().collect()
     }
 
     /// Get a symbol by name and scope (alias for find)
