@@ -56,12 +56,11 @@ use std::convert::Infallible;
 
 use crate::{
     intermediate_type::IntermediateType,
-    intermediates,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    type_environment::TypeEnvironment,
-    variable_type::{Declarations, Declared},
+    symbol_environment::ScopeTracker,
+    variable_type,
 };
 
 pub fn apply(
@@ -71,13 +70,8 @@ pub fn apply(
 ) -> SemanticResult {
     run_rule(
         RuleAggregateAssignment {
-            type_environment: context.types(),
-            // `Declarations::new` opens the base scope. That is where
-            // declarations made outside any POU land -- a CONFIGURATION's
-            // VAR_GLOBAL block, most importantly -- so a POU scope's lookups
-            // fall through to them. Opening another here would leave the
-            // stack unbalanced when the table drops.
-            declarations: Declarations::new(),
+            context,
+            scope: ScopeTracker::default(),
             diagnostics: Vec::new(),
         },
         lib,
@@ -85,9 +79,10 @@ pub fn apply(
 }
 
 struct RuleAggregateAssignment<'a> {
-    type_environment: &'a TypeEnvironment,
-    /// Declared type of every variable in scope.
-    declarations: Declarations<'a>,
+    context: &'a SemanticContext,
+    /// Where the traversal is, to look variables up in the symbol
+    /// environment.
+    scope: ScopeTracker,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -98,48 +93,11 @@ impl DiagnosticVisitor for RuleAggregateAssignment<'_> {
 }
 
 impl RuleAggregateAssignment<'_> {
-    /// Resolves a declared variable to its [`IntermediateType`].
-    ///
-    /// Handles both spellings a variable's type can take: a named type
-    /// (`p : Point`) resolved through the type environment, and an inline
-    /// specification (`a : ARRAY[1..2] OF DINT`) built from the declaration.
-    fn declared_type(&mut self, id: &Id) -> Option<IntermediateType> {
-        let type_environment = self.type_environment;
-        let Declared::Variable { init: declared, .. } = self.declarations.find(id)? else {
-            // This rule binds only declared variables.
-            return None;
-        };
-        match declared.as_ref() {
-            InitialValueAssignmentKind::Array(array) => {
-                // An inline array specification. The name passed here only
-                // feeds diagnostics inside the helper, which are discarded:
-                // a malformed declaration is already reported by the
-                // declaration rules, and this rule stays silent on it.
-                let name = TypeName::from_id(id);
-                match intermediates::array::try_from(&name, &array.spec, type_environment) {
-                    Ok(intermediates::array::IntermediateResult::Type(attrs)) => {
-                        Some(attrs.representation)
-                    }
-                    Ok(intermediates::array::IntermediateResult::Alias(alias)) => type_environment
-                        .get(&alias)
-                        .map(|attrs| attrs.representation.clone()),
-                    Err(_) => None,
-                }
-            }
-            InitialValueAssignmentKind::Simple(simple) => type_environment
-                .get(&simple.type_name)
-                .map(|attrs| attrs.representation.clone()),
-            InitialValueAssignmentKind::Structure(structure) => type_environment
-                .get(&structure.type_name)
-                .map(|attrs| attrs.representation.clone()),
-            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
-                type_name,
-                ..
-            }) => type_environment
-                .get(type_name)
-                .map(|attrs| attrs.representation.clone()),
-            _ => None,
-        }
+    /// Resolves a declared variable to its [`IntermediateType`]: a named
+    /// type (`p : Point`) or one spelled out in place
+    /// (`a : ARRAY[1..2] OF DINT`), whose representation states its shape.
+    fn declared_type(&self, id: &Id) -> Option<IntermediateType> {
+        variable_type::declared(id, self.context, &self.scope.current()).cloned()
     }
 
     /// P2037: whole-array and whole-structure assignment requires identical
@@ -186,29 +144,16 @@ impl RuleAggregateAssignment<'_> {
 impl Visitor<Infallible> for RuleAggregateAssignment<'_> {
     type Value = ();
 
-    /// Opens a declaration's scope.
-    ///
-    /// Every kind contributes the same thing -- a frame its own
-    /// declarations go into -- but the match stays exhaustive so that a
-    /// new kind of scope has to say so rather than silently sharing the
-    /// enclosing declaration's frame.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        match node {
-            ScopeNode::Function(_)
-            | ScopeNode::FunctionBlock(_)
-            | ScopeNode::Program(_)
-            | ScopeNode::Method(_) => self.declarations.enter(),
-        }
+        self.scope.enter(&node);
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.declarations.exit();
+        self.scope.exit();
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Infallible> {
-        self.declarations
-            .add_if(node.identifier.symbolic_id(), Declared::of(node));
         node.recurse_visit(self)
     }
 

@@ -35,6 +35,53 @@ END_PROGRAM
     "STRING\n",
     "STRING"
 )]
+#[case::property_read(
+    "
+FUNCTION_BLOCK FB_Motor
+VAR
+    _speed : REAL;
+END_VAR
+PROPERTY Speed : REAL
+GET
+    Speed := _speed;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    m : FB_Motor;
+    x : REAL;
+END_VAR
+    x := m.Speed;
+END_PROGRAM
+",
+    "Speed;\nEND_PROGRAM",
+    "Speed"
+)]
+#[case::property_write(
+    "
+FUNCTION_BLOCK FB_Motor
+VAR
+    _speed : REAL;
+END_VAR
+PROPERTY Speed : REAL
+SET
+    _speed := Speed;
+END_SET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    m : FB_Motor;
+END_VAR
+    m.Speed := 2.0;
+END_PROGRAM
+",
+    "Speed := 2.0",
+    "Speed"
+)]
 fn compile_when_not_implemented_then_primary_label_names_the_construct(
     #[case] source: &str,
     #[case] anchor: &str,

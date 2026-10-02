@@ -22,6 +22,10 @@ Syntax
        statement_list
    END_WHILE ;
 
+The expression must be of type ``BOOL``. A condition of any other type, such
+as an integer or a ``WORD``, is reported as
+:doc:`P4072 </reference/compiler/problems/P4072>`.
+
 Description
 -----------
 

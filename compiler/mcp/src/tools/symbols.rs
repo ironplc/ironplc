@@ -2,6 +2,7 @@ use ironplc_analyzer::extractors::{
     FunctionBlockSymbol as FunctionBlockView, FunctionSymbolView, ProgramSymbol as ProgramView,
     TypeSymbolView, VariableDirection, VariableSymbol,
 };
+use ironplc_analyzer::SemanticContext;
 use ironplc_dsl::core::FileId;
 use ironplc_project::project::{MemoryBackedProject, Project};
 use schemars::JsonSchema;
@@ -104,7 +105,11 @@ pub fn build_response(
         }
     };
 
-    let mut programs: Vec<ProgramSymbol> = context.programs().iter().map(map_program).collect();
+    let mut programs: Vec<ProgramSymbol> = context
+        .programs()
+        .iter()
+        .map(|p| map_program(context, p))
+        .collect();
     let mut functions: Vec<FunctionSymbol> = context
         .user_defined_functions()
         .iter()
@@ -113,7 +118,7 @@ pub fn build_response(
     let mut function_blocks: Vec<FunctionBlockSymbol> = context
         .function_blocks()
         .iter()
-        .map(map_function_block)
+        .map(|fb| map_function_block(context, fb))
         .collect();
     let mut types: Vec<TypeSymbol> = context.user_defined_types().iter().map(map_type).collect();
 
@@ -160,17 +165,28 @@ pub fn build_response(
     response
 }
 
-fn map_program(view: &ProgramView<'_>) -> ProgramSymbol {
+fn map_program(context: &SemanticContext, view: &ProgramView<'_>) -> ProgramSymbol {
     ProgramSymbol {
         name: view.name.to_string(),
-        variables: view.variables.iter().map(map_variable).collect(),
+        variables: view
+            .variables
+            .iter()
+            .map(|v| map_variable(context, v))
+            .collect(),
     }
 }
 
-fn map_function_block(view: &FunctionBlockView<'_>) -> FunctionBlockSymbol {
+fn map_function_block(
+    context: &SemanticContext,
+    view: &FunctionBlockView<'_>,
+) -> FunctionBlockSymbol {
     FunctionBlockSymbol {
         name: view.name.to_string(),
-        variables: view.variables.iter().map(map_variable).collect(),
+        variables: view
+            .variables
+            .iter()
+            .map(|v| map_variable(context, v))
+            .collect(),
     }
 }
 
@@ -202,7 +218,7 @@ fn map_type(view: &TypeSymbolView<'_>) -> TypeSymbol {
     }
 }
 
-fn map_variable(var: &VariableSymbol<'_>) -> VariableInfo {
+fn map_variable(context: &SemanticContext, var: &VariableSymbol<'_>) -> VariableInfo {
     let direction = var.direction;
     let external = matches!(
         direction,
@@ -217,7 +233,10 @@ fn map_variable(var: &VariableSymbol<'_>) -> VariableInfo {
         .is_some_and(|a| a.starts_with("%I"));
     VariableInfo {
         name: var.name.to_string(),
-        type_name: var.info.data_type.clone().unwrap_or_default(),
+        type_name: context
+            .variable_type_name(var.info)
+            .map(|t| t.to_string())
+            .unwrap_or_default(),
         direction: direction.as_str().to_string(),
         address: var.info.address.clone(),
         external,
@@ -345,6 +364,22 @@ mod tests {
     fn build_response_when_valid_program_then_ok_true() {
         let resp = build_response(&source(VALID_PROGRAM), &ed2_options(), None);
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+    }
+
+    #[test]
+    fn build_response_when_variable_of_user_type_then_type_is_its_name() {
+        let src = "TYPE Point : STRUCT x : INT; END_STRUCT; END_TYPE\nPROGRAM p\nVAR pt : Point; END_VAR\nEND_PROGRAM";
+        let resp = build_response(&source(src), &ed2_options(), None);
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(resp.programs[0].variables[0].type_name, "Point");
+    }
+
+    #[test]
+    fn build_response_when_variable_of_inline_array_then_type_is_empty() {
+        let src = "PROGRAM p\nVAR a : ARRAY[1..2] OF INT; END_VAR\nEND_PROGRAM";
+        let resp = build_response(&source(src), &ed2_options(), None);
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(resp.programs[0].variables[0].type_name, "");
     }
 
     #[test]

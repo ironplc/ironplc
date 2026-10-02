@@ -35,6 +35,9 @@ use std::marker::PhantomData;
 pub trait Key: Eq + Hash + Clone + fmt::Debug {}
 pub trait Value: fmt::Debug {}
 
+impl Key for ironplc_dsl::core::Id {}
+impl Key for ironplc_dsl::common::TypeName {}
+
 struct Scope<'a, K: Key, V: 'a + Value> {
     table: HashMap<K, V>,
     phantom: PhantomData<&'a V>,
@@ -156,18 +159,6 @@ impl<'a, K: Key, V: 'a + Value> ScopedTable<'a, K, V> {
     /// return a reference derived from the table.
     pub fn find(&self, name: &K) -> Option<&V> {
         self.stack.iter().find_map(|scope| scope.find(name))
-    }
-
-    /// Returns all keys across all scopes.
-    ///
-    /// Keys from inner scopes appear before keys from outer scopes.
-    /// If the same key exists in multiple scopes, it may appear more
-    /// than once.
-    pub fn keys(&self) -> Vec<&K> {
-        self.stack
-            .iter()
-            .flat_map(|scope| scope.table.keys())
-            .collect()
     }
 
     /// Removes the name from the inner-most scope if

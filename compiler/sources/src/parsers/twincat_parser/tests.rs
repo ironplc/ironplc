@@ -9,7 +9,7 @@ use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::member_qualifier::AccessSpecifier;
 use ironplc_parser::options::Dialect;
 
-fn test_file_id() -> FileId {
+pub(super) fn test_file_id() -> FileId {
     FileId::from_string("test.TcPOU")
 }
 
@@ -436,7 +436,7 @@ END_VAR]]></Declaration>
     assert_eq!(library.elements.len(), 1);
 }
 
-fn opts_with_fb_inheritance() -> CompilerOptions {
+pub(super) fn opts_with_fb_inheritance() -> CompilerOptions {
     CompilerOptions {
         allow_fb_inheritance: true,
         ..CompilerOptions::default()
@@ -758,7 +758,7 @@ END_VAR]]></Declaration>
 
 /// Extract the single function block from a library, or panic describing
 /// what was found instead.
-fn only_function_block(library: Library) -> FunctionBlockDeclaration {
+pub(super) fn only_function_block(library: Library) -> FunctionBlockDeclaration {
     assert_eq!(library.elements.len(), 1);
     match library.elements.into_iter().next() {
         Some(LibraryElementKind::FunctionBlockDeclaration(decl)) => decl,

@@ -479,7 +479,7 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_struct_initializer_expressions,
 
-    "Allow IEC 61131-3:2013 object-oriented syntax: EXTENDS/IMPLEMENTS/ABSTRACT on FUNCTION_BLOCK declarations, INTERFACE declarations, METHOD declarations, and THIS/SUPER",
+    "Allow IEC 61131-3:2013 object-oriented syntax: EXTENDS/IMPLEMENTS/ABSTRACT on FUNCTION_BLOCK declarations, INTERFACE declarations, METHOD and PROPERTY declarations, and THIS/SUPER",
     "--allow-fb-inheritance",
     [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
     allow_fb_inheritance,

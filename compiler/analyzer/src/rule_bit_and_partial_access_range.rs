@@ -66,7 +66,8 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    variable_type::{self, Declarations, Declared},
+    symbol_environment::ScopeTracker,
+    variable_type,
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -77,11 +78,8 @@ pub fn apply(
 ) -> SemanticResult {
     run_rule(
         RuleBitAndPartialAccessRange {
-            type_environment: context.types(),
-            // `Declarations::new` opens the base scope, where declarations
-            // made outside any POU land. Opening another here would leave
-            // the stack unbalanced when the table drops.
-            declarations: Declarations::new(),
+            context,
+            scope: ScopeTracker::default(),
             diagnostics: Vec::new(),
         },
         lib,
@@ -89,9 +87,10 @@ pub fn apply(
 }
 
 struct RuleBitAndPartialAccessRange<'a> {
-    type_environment: &'a crate::type_environment::TypeEnvironment,
-    /// The declared type of every variable in scope.
-    declarations: Declarations<'a>,
+    context: &'a SemanticContext,
+    /// Where the traversal is, to look variables up in the symbol
+    /// environment.
+    scope: ScopeTracker,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -109,7 +108,7 @@ impl RuleBitAndPartialAccessRange<'_> {
     /// variable's type is not resolved (another rule reports an undeclared
     /// name), or the type has no bits to select, which this reports.
     fn selectable_bits(&mut self, variable: &SymbolicVariableKind) -> Option<u128> {
-        let accessed_type = variable_type::of(variable, &self.declarations, self.type_environment)?;
+        let accessed_type = variable_type::of(variable, self.context, &self.scope.current())?;
         let bits = bit_width(&accessed_type);
         if bits.is_none() {
             self.diagnostics.push(
@@ -228,29 +227,16 @@ fn bit_width(accessed_type: &IntermediateType) -> Option<u128> {
 impl Visitor<Infallible> for RuleBitAndPartialAccessRange<'_> {
     type Value = ();
 
-    /// Opens a declaration's scope.
-    ///
-    /// Every kind contributes the same thing -- a frame its own declarations
-    /// go into -- but the match stays exhaustive so that a new kind of scope
-    /// has to say so rather than silently sharing the enclosing
-    /// declaration's frame.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        match node {
-            ScopeNode::Function(_)
-            | ScopeNode::FunctionBlock(_)
-            | ScopeNode::Program(_)
-            | ScopeNode::Method(_) => self.declarations.enter(),
-        }
+        self.scope.enter(&node);
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.declarations.exit();
+        self.scope.exit();
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-        self.declarations
-            .add_if(node.identifier.symbolic_id(), Declared::of(node));
         node.recurse_visit(self)
     }
 

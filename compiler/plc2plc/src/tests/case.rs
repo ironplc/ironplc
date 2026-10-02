@@ -58,6 +58,6 @@ END_FUNCTION_BLOCK
 ";
     let rendered = assert_round_trips_idempotently(source, &CompilerOptions::default());
 
-    assert!(rendered.contains("53266"));
-    assert!(rendered.contains("10"));
+    assert!(rendered.contains("\n      53266 :\n"));
+    assert!(rendered.contains("\n      10 :\n"));
 }

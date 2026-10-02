@@ -113,6 +113,27 @@ variable can never equal makes a branch that can never run:
        END_IF;
    END_PROGRAM
 
+A :code:`CASE` label is checked by its value whatever radix it is written in,
+and so is each bound of a subrange label. ``16#FFFFFFFF`` is 4294967295, not
+the -1 its bits would read as in a ``DINT``:
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           selector : DINT;
+           small : SINT;
+           result : DINT;
+       END_VAR
+
+       CASE selector OF
+           16#FFFFFFFF: result := 1;  (* Error: a DINT is never 4294967295 *)
+       END_CASE;
+       CASE small OF
+           100..300: result := 2;     (* Error: a SINT is never 300 *)
+       END_CASE;
+   END_PROGRAM
+
 The same holds wherever a constant is stored: an element of an array
 initializer (including each repetition, as in ``[2(300)]``), an element of a
 structure or function block instance initializer, the default of a structure

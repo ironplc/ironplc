@@ -393,6 +393,7 @@ END_FUNCTION_BLOCK
                     span: SourceSpan::default(),
                     oop: None,
                     methods: vec![],
+                    properties: vec![],
                 }),
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: TypeName::from("caller"),
@@ -402,6 +403,7 @@ END_FUNCTION_BLOCK
                     span: SourceSpan::default(),
                     oop: None,
                     methods: vec![],
+                    properties: vec![],
                 }),
             ],
         };
@@ -452,6 +454,7 @@ END_FUNCTION_BLOCK
                     span: SourceSpan::default(),
                     oop: None,
                     methods: vec![],
+                    properties: vec![],
                 }),
             ],
         };
@@ -501,6 +504,7 @@ END_FUNCTION_BLOCK
                     span: SourceSpan::default(),
                     oop: None,
                     methods: vec![],
+                    properties: vec![],
                 }),
             ],
         };

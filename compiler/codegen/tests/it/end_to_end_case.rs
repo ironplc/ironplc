@@ -1,6 +1,9 @@
 //! End-to-end integration tests for CASE statement compilation.
 
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
+
+use crate::common::assert_run_i32_with;
 
 e2e_i32!(
     end_to_end_when_case_matches_first_arm_then_executes_body,
@@ -183,3 +186,39 @@ END_PROGRAM
 ",
     &[(1, 99)],
 );
+
+/// A label is narrowed to the selector's width by its value, whatever radix
+/// it was written in, so a value that fills an unsigned selector matches
+/// whether it was spelled in decimal or in hex.
+#[rstest]
+#[case::decimal_udint("UDINT", "4294967295", "4294967295")]
+#[case::hex_udint("UDINT", "4294967295", "16#FFFFFFFF")]
+#[case::subrange_udint("UDINT", "4294967295", "3000000000..4294967295")]
+#[case::decimal_ulint("ULINT", "18446744073709551615", "18446744073709551615")]
+#[case::hex_ulint("ULINT", "18446744073709551615", "16#FFFFFFFFFFFFFFFF")]
+#[case::subrange_ulint(
+    "ULINT",
+    "18446744073709551615",
+    "10000000000000000000..18446744073709551615"
+)]
+fn end_to_end_when_case_label_fills_unsigned_selector_then_matches(
+    #[case] selector_type: &str,
+    #[case] selector_value: &str,
+    #[case] label: &str,
+) {
+    let source = format!(
+        "
+PROGRAM main
+  VAR
+    y : DINT;
+    x : {selector_type} := {selector_value};
+  END_VAR
+  CASE x OF
+    {label}: y := 1;
+  END_CASE;
+END_PROGRAM
+"
+    );
+
+    assert_run_i32_with(&source, &opts_with_bit_string_case_labels(), &[(0, 1)]);
+}

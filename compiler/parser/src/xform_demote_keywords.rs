@@ -71,6 +71,10 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
             | TokenType::Abstract
             | TokenType::Method
             | TokenType::EndMethod
+            | TokenType::Property
+            | TokenType::EndProperty
+            | TokenType::EndGet
+            | TokenType::EndSet
             | TokenType::This
             | TokenType::Super => demote_oop,
             TokenType::AndThen | TokenType::OrElse => demote_short_circuit,
@@ -398,6 +402,31 @@ mod tests {
     }
 
     // --- OOP keywords: demoted unless allow_fb_inheritance ---
+
+    const PROPERTY_KEYWORDS: [(TokenType, &str); 4] = [
+        (TokenType::Property, "PROPERTY"),
+        (TokenType::EndProperty, "END_PROPERTY"),
+        (TokenType::EndGet, "END_GET"),
+        (TokenType::EndSet, "END_SET"),
+    ];
+
+    #[test]
+    fn apply_when_property_keywords_and_disabled_then_demoted_to_identifier() {
+        for (token_type, text) in PROPERTY_KEYWORDS {
+            let mut tokens = vec![make_token(token_type, text)];
+            apply(&mut tokens, &opts_default());
+            assert_eq!(tokens[0].token_type, TokenType::Identifier, "{text}");
+        }
+    }
+
+    #[test]
+    fn apply_when_property_keywords_and_enabled_then_stay_keywords() {
+        for (token_type, text) in PROPERTY_KEYWORDS {
+            let mut tokens = vec![make_token(token_type.clone(), text)];
+            apply(&mut tokens, &opts_fb_inheritance());
+            assert_eq!(tokens[0].token_type, token_type, "{text}");
+        }
+    }
 
     #[test]
     fn apply_when_extends_and_disabled_then_demoted_to_identifier() {

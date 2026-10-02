@@ -497,6 +497,7 @@ fn transform_function_block(
             // <Method> element, not nested under the POU body handled
             // here. Wiring those into `methods` is a follow-up slice.
             methods: vec![],
+            properties: vec![],
         },
     ))
 }

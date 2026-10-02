@@ -16,6 +16,10 @@ Time of day value.
    * - **Support**
      - Supported
 
+A time of day is stored as a count of milliseconds since midnight. The seconds
+of a literal may have a fraction: ``TOD#10:00:00.250`` is 250 milliseconds past
+ten. A fraction finer than a millisecond is truncated, so ``TOD#10:00:00.0009``
+is ``TOD#10:00:00``.
 
 Literals
 --------

@@ -49,6 +49,11 @@ Comparison operators compare two operands of the same type and return a
 ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``) and floating-point types
 (``REAL``, ``LREAL``).
 
+When the two operands have different types and one widens to the other, the
+comparison is done at the wider type, whichever side it is on: a ``DINT``
+compared with a ``LINT`` is compared as a ``LINT``, and a ``DATE_AND_TIME``
+compared with an ``LDATE_AND_TIME`` as an ``LDATE_AND_TIME``.
+
 Equality (``=``, ``<>``) has lower precedence than the relational operators
 (``<``, ``>``, ``<=``, ``>=``). Both groups have lower precedence than
 arithmetic operators.

@@ -22,9 +22,9 @@ use super::compile::{
 };
 use super::compile_arith::compile_binary_arith;
 use super::compile_call::compile_function_call;
+use super::compile_comparison::compile_comparison;
 use super::compile_method::compile_method_call_expression;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
-use super::compile_string::compile_string_compare;
 use super::type_info::{expr_operand_name, expr_representation, expr_type_info};
 use crate::emit::Emitter;
 
@@ -98,8 +98,8 @@ pub(crate) fn unresolved_expr_type(expr: &Expr) -> Diagnostic {
 /// Returns the operation type for compiling a condition expression.
 ///
 /// For comparison operators (`>`, `<`, `=`, etc.), returns the type of the
-/// left operand since the comparison's own resolved type is BOOL but we need
-/// the operand type for correct signedness. For boolean combinations (AND,
+/// left operand, which the analyzer made the comparison's operand type
+/// (ADR-0056). For boolean combinations (AND,
 /// OR, XOR), recurses into the first operand. For other expressions (bare
 /// boolean variables, parenthesized expressions), returns the expression's
 /// own resolved type.
@@ -205,6 +205,17 @@ pub(crate) fn compile_expr(
             emitter.emit_load_indirect();
             Ok(())
         }
+        // The analyzer decided the conversion (ADR-0056): the inner value is
+        // compiled at its own type, so it widens by its own signedness, and
+        // converted to the type the node records.
+        ExprKind::ImplicitConversion(inner) => {
+            let from = self::op_type(ctx, inner)?;
+            let to = self::op_type(ctx, expr)?;
+            compile_expr(emitter, ctx, inner, from)?;
+            crate::compile_arith::convert(emitter, from, to);
+            crate::compile_arith::convert(emitter, to, op_type);
+            Ok(())
+        }
         ExprKind::Null(_) => {
             // NULL → push null sentinel (u64::MAX) as a u64 constant.
             let pool_index = ctx.add_i64_constant(u64::MAX as i64);
@@ -233,19 +244,22 @@ fn compile_compare(
         return compile_short_circuit(emitter, ctx, compare, short_circuit);
     }
 
-    // String comparisons need a completely different code path because
-    // strings live in the data region, not on the operand stack.
-    if expr_is_string(ctx, &compare.left) {
-        return compile_string_compare(emitter, ctx, compare);
+    if compare.op.is_comparison() {
+        return compile_comparison(
+            emitter,
+            ctx,
+            &compare.op,
+            &compare.left,
+            &compare.right,
+            op_type,
+        );
     }
 
-    // A comparison's result is BOOL, but its operands may be a different
-    // type (e.g. REAL for `in < 0.0`). Derive the operand type from a
-    // concrete (non-generic) resolved type, preferring the left operand.
-    // When one side is a literal (generic type like ANY_INT) and the other
-    // is a typed variable (e.g. DWORD), we use the concrete type to ensure
-    // correct signedness. This also applies to AND/OR/XOR which can be
-    // either boolean (BOOL operands) or bitwise (e.g. DWORD operands).
+    // AND, OR and XOR are boolean on BOOL operands and bitwise on a bit
+    // string. Their result has the operand type, derived from a concrete
+    // (non-generic) resolved type, preferring the left operand: when one
+    // side is a literal (generic type like ANY_INT) and the other is a typed
+    // variable (e.g. DWORD), the concrete type gives the right width.
     let operand_op_type = concrete_op_type_from_expr(ctx, &compare.left)
         .or_else(|| concrete_op_type_from_expr(ctx, &compare.right))
         .or_else(|| op_type_from_expr(ctx, &compare.left))
@@ -743,7 +757,8 @@ pub(crate) fn compile_variable_read(
                                 Diagnostic::not_implemented(Label::span(
                                     structured.field.span(),
                                     format!(
-                                        "Unknown field '{}' on function block '{}'",
+                                        "Unknown field '{}' on function block '{}' \
+                                         (reading a PROPERTY is not supported yet)",
                                         structured.field, named.name
                                     ),
                                 ))

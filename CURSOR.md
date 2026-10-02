@@ -7,7 +7,7 @@ This file is the IronPLC entry point for Cursor. Detailed guidance lives in **`s
 Before making changes, read the relevant steering files in `specs/steering/`:
 
 - **[Glossary](specs/steering/glossary.md)** - Authoritative definitions of core vocabulary (dialect, vendor, extension, edition); resolve terminology questions here before coining a new term
-- **[Development Standards](specs/steering/development-standards.md)** - Core project conventions, testing patterns, error handling, and documentation standards
+- **[Development Standards](specs/steering/development-standards.md)** - Development process (plan, prefactor and core change PRs), specs directory structure, prefactoring, and duplication rules
 - **[Compiler Architecture](specs/steering/compiler-architecture.md)** - Patterns for implementing language features, module organization, and semantic analysis
 - **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules (especially relevant for `**/analyzer/**` files)
 - **[PLCopen XML Module](specs/steering/plcopen-xml-module.md)** - Architecture and patterns for the PLCopen XML parsing module (especially relevant for `compiler/sources/src/xml/` files)
@@ -23,41 +23,7 @@ This repository also defines Claude Code slash commands under `.claude/commands/
 
 ## MANDATORY: Git Workflow
 
-**NEVER commit or push directly to `main`.** Always create a feature branch and open a pull request. This ensures CI validates all changes before they reach main.
-
-### Workflow
-
-1. Create a feature branch from `main`
-2. **Write an implementation plan** in `specs/plans/` and commit it as the first commit on the branch. If the work spans more than one PR, open an issue first and reference it from the plan (see [Development Standards — Planning Requirement](specs/steering/development-standards.md#planning-requirement))
-3. Implement the changes following the plan
-4. Land any decision worth keeping as an ADR or `specs/design/` update, and open an issue for anything the plan describes that you are not delivering — it is about to be deleted
-5. **`git rm` the plan file** — plans are deleted before merge, so no plan content reaches `main`
-6. Run the full CI pipeline: `cd compiler && just`
-7. Push the feature branch and create a PR via `gh pr create`
-
-> **Skip the plan** for mechanical changes: typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits.
-
-### Before Creating a PR
-
-**You MUST run the full CI pipeline and verify it passes before creating any PR:**
-
-```bash
-cd compiler && just
-```
-
-This runs compile, coverage (which includes tests), AND lint (clippy + fmt). **All checks must pass.**
-
-If any check fails:
-
-1. Fix the issues
-2. Re-run `cd compiler && just`
-3. Only create the PR after all checks pass
-
-**Common failures:**
-
-- **Clippy warnings** - Fix all clippy issues; the lint step runs `cargo clippy`
-- **Format issues** - Run `cd compiler && just format` to auto-fix
-- **Coverage below 85%** - Add tests for uncovered code
+**Follow the [Development Process](specs/steering/development-standards.md#development-process) for every change, and read it before non-trivial work.** Never push to `main`. Run `cd compiler && just` before opening any PR.
 
 ## Quick Reference
 
@@ -81,11 +47,9 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 
 ### Critical Rules
 
-1. **NEVER push directly to `main`** - Always use a feature branch and pull request
-2. **Plan first, then delete it** - Non-trivial changes start with a plan in `specs/plans/`, committed before implementation code and removed before merge; work spanning more than one PR must also have an issue; never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
-3. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
-4. **BDD-style test names**: `function_when_condition_then_result`
-5. **Module size limit**: Max 1000 lines per module
-6. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
-7. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
-8. **Version numbers**: Automatically managed - do not edit manually
+1. **Follow the [Development Process](specs/steering/development-standards.md#development-process)** - Never push to `main`; never cite a plan from code, docs or workflows (`cd specs && just` enforces this)
+2. **BDD-style test names**: `function_when_condition_then_result`
+3. **Module size limit**: Max 1000 lines per module
+4. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
+5. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
+6. **Version numbers**: Automatically managed - do not edit manually

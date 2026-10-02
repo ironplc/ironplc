@@ -114,9 +114,11 @@ In TwinCAT XML:
 </Property>
 ```
 
-**Design:** Add `Property`, `EndProperty`, `Get`, `EndGet`, `Set`, `EndSet` as keyword tokens. The `twincat_parser.rs` module handles `Property`, `Get`, and `Set` XML elements. In the ST parser, property declarations and get/set bodies are recognized within function blocks.
+**Design:** `Property`, `EndProperty`, `EndGet` and `EndSet` are keyword tokens, demoted to identifiers unless `allow_fb_inheritance` is set, like `Method`/`EndMethod`. `GET` and `SET` are **not** tokens: the property rule matches an identifier spelled `GET`/`SET` (any case) where an accessor starts. A keyword token would break TwinCAT code under `--dialect twincat`, where the flag is on and `SET` is an ordinary name (the `RS` block's input is `SET`). `GET` and `SET` are each optional, in that order. Properties and methods may interleave after the function block body, as TwinCAT stores them in file order. The `twincat_parser.rs` module rebuilds this text form from a `<Property>` element: its `<Declaration>` holds only the header, and each `<Get>`/`<Set>` child has its own `<Declaration>` (VAR blocks only) and `<Implementation>`.
 
-**AST representation:** New `PropertyDeclaration` variant containing the property name, type, and optional get/set bodies.
+**AST representation:** `PropertyDeclaration` (in `dsl/src/oop.rs`) holds the name, the type (`FunctionReturnType`, as a method's return type), and `get`/`set: Option<MethodDeclaration>`, and sits in `FunctionBlockDeclaration::properties`. Each accessor is represented as the method it behaves as: `GET` is a method named after the property with the property type as its return type, and `SET` is a method with no return type and one implicit `VAR_INPUT` named after the property that holds the assigned value. Every scope-aware analyzer pass therefore handles an accessor body as a method body, and a property read or write can later compile to an ordinary method call (ADR-0041 Phase 1).
+
+**As shipped (syntax):** declarations parse from ST and `.TcPOU`, render through plc2plc, and their accessor bodies are analyzed. Using a property (`fb.P`, `fb.P := x`, or a bare `P` inside the function block) reports P9999. Not yet parsed: access modifiers (`PROPERTY PUBLIC`, issue #1424) and properties in an `INTERFACE`.
 
 #### 1.3 `INTERFACE` / `END_INTERFACE`
 
@@ -519,7 +521,7 @@ Multi-token constructs (`POINTER TO`, `REFERENCE TO`) are composed by the parser
 The `twincat_parser.rs` module currently handles `POU`, `GVL`, and `DUT` XML elements. It needs to be extended:
 
 1. **Method elements** — iterate over `<Method>` children of a POU and parse each as a **standalone declaration**
-2. **Property elements** — iterate over `<Property>` children; parse each `<Get>` and `<Set>` body as a standalone statement list
+2. **Property elements** — iterate over `<Property>` children together with `<Method>` children, in document order, and rebuild each as `PROPERTY ... GET ... END_GET SET ... END_SET END_PROPERTY` (see §1.2)
 3. **Interface elements** — handle `<Itf>` as a new top-level object type alongside POU/GVL/DUT
 
 Each sub-element is parsed independently following the existing CDATA extraction pattern: extract Declaration CDATA, extract Implementation/ST CDATA (if present), concatenate with closing keyword, parse, adjust positions. The parsed results are then attached to the parent FB's AST node.
@@ -544,9 +546,7 @@ These are added to the `TokenType` enum **without** `#[token(...)]` attributes �
 | `EndMethod` | `END_METHOD` | 1 |
 | `Property` | `PROPERTY` | 1 |
 | `EndProperty` | `END_PROPERTY` | 1 |
-| `GetAccessor` | `GET` | 1 |
 | `EndGet` | `END_GET` | 1 |
-| `SetAccessor` | `SET` | 1 |
 | `EndSet` | `END_SET` | 1 |
 | `Interface` | `INTERFACE` | 1 |
 | `EndInterface` | `END_INTERFACE` | 1 |
@@ -650,20 +650,13 @@ pub struct MethodDeclaration {
     pub span: SourceSpan,
 }
 
-/// A property declaration (function block context).
+/// A property declaration (function block context). Each accessor is a
+/// method, see §1.2.
 pub struct PropertyDeclaration {
     pub name: Id,
-    pub prop_type: TypeName,
-    pub access: Option<AccessModifier>,
-    pub getter: Option<PropertyAccessor>,
-    pub setter: Option<PropertyAccessor>,
-    pub span: SourceSpan,
-}
-
-/// A property getter or setter body.
-pub struct PropertyAccessor {
-    pub variables: Vec<VarDecl>,
-    pub body: Vec<StmtKind>,
+    pub property_type: FunctionReturnType,
+    pub get: Option<MethodDeclaration>,
+    pub set: Option<MethodDeclaration>,
     pub span: SourceSpan,
 }
 

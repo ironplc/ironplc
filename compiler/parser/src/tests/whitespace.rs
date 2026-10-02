@@ -269,6 +269,11 @@ END_CONFIGURATION"
     in_method,
     opts_with_fb_inheritance
 )]
+#[case::property_declaration(
+    "FUNCTION_BLOCK FB VAR v : INT; END_VAR PROPERTY P·:·INT GET P := v;·END_GET SET v := P;·END_SET END_PROPERTY END_FUNCTION_BLOCK",
+    verbatim,
+    opts_with_fb_inheritance
+)]
 // ---------------------------------------------------------------------
 // Gaps issue #1437 reported as rejected. Each row is a spelling that
 // returned P0002 before the grammar was widened.

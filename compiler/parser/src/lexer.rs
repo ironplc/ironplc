@@ -55,21 +55,20 @@ pub fn tokenize(
                         line += 1;
                         col = 0;
                     }
-                    TokenType::Comment => {
-                        // Comments can have new lines embedded
+                    _ => {
+                        // Comments, pragmas and strings can hold line breaks.
+                        // Columns count UTF-16 code units, the unit the
+                        // language server protocol uses by default.
                         for c in lexer.slice().chars() {
                             match c {
                                 '\n' => {
                                     line += 1;
                                     col = 0;
                                 }
-                                _ => {
-                                    col += 1;
-                                }
+                                _ => col += c.len_utf16(),
                             }
                         }
                     }
-                    _ => col += lexer.span().len(),
                 }
             }
             Err(_) => {
@@ -148,6 +147,35 @@ mod test {
             y.col, 17,
             "y column should reflect characters consumed by the comment"
         );
+    }
+
+    #[test]
+    fn tokenize_when_string_spans_lines_then_following_token_on_next_line() {
+        use dsl::core::FileId;
+        let (tokens, diagnostics) = super::tokenize("s := 'a\nbc'; y", &FileId::default(), 0, 0);
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+
+        let y = tokens.iter().find(|t| t.text == "y").unwrap();
+        assert_eq!((y.line, y.col), (1, 5));
+    }
+
+    #[test]
+    fn tokenize_when_non_ascii_text_then_col_counts_utf16_code_units() {
+        use dsl::core::FileId;
+        // `é` is two bytes and one UTF-16 code unit; `𝄞` is four bytes and
+        // two UTF-16 code units (a surrogate pair).
+        let source = "(* é *) 'é𝄞' y";
+        let (tokens, diagnostics) = super::tokenize(source, &FileId::default(), 0, 0);
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+
+        let y = tokens.iter().find(|t| t.text == "y").unwrap();
+        assert_eq!((y.line, y.col), (0, 14));
     }
 
     #[test]

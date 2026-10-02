@@ -2,7 +2,7 @@
 
 This steering file defines the core development standards and patterns for the IronPLC project, a Rust-based PLC compiler implementing the IEC 61131-3 standard.
 
-> **Note**: This file provides detailed implementation guidance for AI-assisted development. For development workflow, setup instructions, and contribution processes, see the main [CONTRIBUTING.md](../../CONTRIBUTING.md) and component-specific contributing guides.
+> **Note**: This file is the only description of the [Development Process](#development-process). `CLAUDE.md`, `CURSOR.md`, `CONTRIBUTING.md` and the tool pointer files link here instead of restating it. For environment setup, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## Project Structure
 
@@ -106,11 +106,11 @@ Unlike an ADR, a design document is a *description* rather than a decision, so i
 
 Work breakdowns that describe **how** to implement: phased task lists, specific code changes, file modifications, and verification steps. A plan document answers "what steps do I follow to build this?" Plans reference the design they implement.
 
-**A plan is branch-local.** It is committed as the first commit on a feature branch so it can be reviewed as a file diff, and deleted from that branch before merge. Because the repository squash-merges, the add and the delete cancel within the squashed commit, so no plan content reaches `main`. The plan stays viewable on the pull request.
+**A plan lives in its own PR, which is never merged.** No other PR contains the plan file, so no plan reaches `main`. The plan stays viewable on the closed PR (see [Required Steps](#required-steps)).
 
-Plans are the one document type in `specs/` that is not durable. Anything worth keeping — a decision, a constraint, a piece of rationale — must land somewhere durable in the same pull request: `specs/adrs/`, `specs/design/`, or a code doc comment where the reasoning is local to the code (see [Choosing the Right Location](#choosing-the-right-location)).
+Plans are the one document type in `specs/` that is not durable. Anything worth keeping — a decision, a constraint, a piece of rationale — must land somewhere durable in a prefactor or core change pull request: `specs/adrs/`, `specs/design/`, or a code doc comment where the reasoning is local to the code (see [Choosing the Right Location](#choosing-the-right-location)).
 
-**Never cite a plan from anywhere else.** Code comments, workflows, the `justfile`, design documents and ADRs must cite an ADR or a design document, never `specs/plans/`. A plan is deleted before its own pull request merges, so a reference to one is either already dead or about to be. `cd specs && just` enforces this and runs in CI.
+**Never cite a plan from anywhere else.** Code comments, workflows, the `justfile`, design documents and ADRs must cite an ADR or a design document, never `specs/plans/`. A plan never reaches `main`, so a reference to one dangles. `cd specs && just` enforces this and runs in CI.
 
 ### `specs/steering/` — AI Steering Files
 
@@ -123,7 +123,7 @@ Guidance for AI assistants working with the codebase (conventions, patterns, wor
 | Why did we choose approach X over Y? | `specs/adrs/` |
 | What should the container format look like? | `specs/design/` |
 | Why is *this function* written this way? | a doc comment on it |
-| What are the steps to implement the container format? | `specs/plans/` (deleted before merge) |
+| What are the steps to implement the container format? | `specs/plans/` (plan PR, never merged) |
 | How should AI assistants name tests? | `specs/steering/` |
 
 **A decision may live in a code comment.** Rationale whose reader is the next
@@ -172,32 +172,38 @@ The completeness half is weaker than it reads. A requirement counts as tested wh
 
 See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the full enforcement mechanism, and [ADR-0043](../adrs/0043-spec-conformance-tests-over-a-workflow-framework.md) for why this mechanism rather than a spec-driven-development framework.
 
-## AI Development Process
+## Development Process
 
-A person is accountable for all changes. We use a custom process for all non-trivial features and changes to ensure human review.
+**A non-trivial change is a plan PR, then prefactor PRs, then core change PRs, in that order.** Each is a separate PR; never combine them, not even as separate commits. People and AI assistants follow the same process, and a person reviews every PR.
+
+Never commit or push directly to `main`. Before opening any PR, run `cd compiler && just` and fix what fails; [common-tasks.md](common-tasks.md#critical-pre-pr-requirements) lists the checks for other components. The clippy-suppression rule lives in [compiler-standards.md](compiler-standards.md#code-quality).
 
 ### Required Steps
 
-**Planning**
+**1. Plan PR — never merged.**
 
-1. AI researches the code base and desired changes
-2. AI creates a **plan branch**, writes the plan to `specs/plans/YYYY-MM-DD-short-description.md`, and creates a PR for the plan.
-3. A person reviews and provides feedback on the plan until the plan is approved. This PR is never merged.
+- Branch from `main`, write `specs/plans/YYYY-MM-DD-short-description.md`, and open a PR.
+- Revise it until a person approves it.
+- If the change needs more than one core change PR, open an issue listing them and link it from the plan. The issue stays open until they all land.
 
-**Prefactoring**
-4. AI creates one or more **prefactor branches**, implements any pre-factoring, and creates PRs for prefactors.
-5. A person reviews, provides feedback and merges the prefactor PRs.
+**2. Prefactor PRs — one per prefactor, branched from `main`.**
 
-**Core Change**
-6. If the change requires one or more **core change PRs**, then AI creates a GitHub issue detailing the planned work. The issue is the durable record so that we complete all work in the plan.
-7. AI creates one or more **core change branches**, implements the changes, and creates PRs for the changes.
-8. A person reviews, provides feedback and merges the core change PRs.
+- Behaviour-preserving changes only (see [Prefactoring](#prefactoring)).
 
-**Cleanup**
-9. AI discards the plan branch.
-10. If there was an associated GitHub issue, then AI closes the GitHub issue.
+**3. Core change PRs — branched from `main`.**
 
-AI can help write code but all  **must** use the following process so that someone can review.
+- Never include the plan file.
+- A core change PR may be stacked on its unmerged prefactor PR. Base the branch on the prefactor branch, open the PR against it, and name the prefactor PR in the description. Once the prefactor merges, rebase onto `main` and retarget the PR. This is the only stacking allowed.
+
+**4. Cleanup.**
+
+- Land any decision worth keeping as an ADR or `specs/design/` update, in a prefactor or core change PR.
+- Open an issue for anything the plan describes that was not delivered.
+- Close the plan PR unmerged, and close the tracking issue if there is one.
+
+**Session limited to one branch?** Deliver the next PR in the sequence, stop, and say what comes next.
+
+**Skip the plan PR** for mechanical changes: typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits. These go in a single PR.
 
 ### Planning Document
 
@@ -210,7 +216,7 @@ A plan document should include:
   [Prefactoring](#prefactoring))
 - **Design doc reference** — link to `specs/design/` doc if one exists
 - **File map** — which files will be created or modified
-- **Tasks** — ordered steps with checkboxes (`- [ ]`) for tracking progress
+- **Tasks** — ordered steps with checkboxes (`- [ ]`) for tracking progress, grouped by the prefactor or core change PR that delivers them
 
 Name plan files with a date prefix: `YYYY-MM-DD-short-description.md` (e.g., `2026-04-01-planning-requirement.md`).
 
@@ -245,9 +251,11 @@ means stop and reshape first:
 1. **Change the shape, not the behaviour.** The existing tests must pass
    unchanged. If they have to be edited to accept the prefactoring — beyond
    mechanical renames — the commit is not behaviour-preserving; split it.
-2. **Commit the prefactoring separately.** A reviewer can then read a diff that
-   provably changes nothing, followed by a smaller diff that adds the feature.
-   Either can be reverted alone.
+2. **Open a separate PR for the prefactoring.** Separate commits in one PR are
+   not enough, because the reviewer still approves both at once. A separate PR
+   gives a diff that provably changes nothing, then a smaller feature diff;
+   either can be reverted alone. The core change PR may be stacked on it (see
+   [Required Steps](#required-steps)).
 
 #### When *not* to prefactor
 
@@ -332,20 +340,6 @@ For complete guidance on steering files, see [steering-file-guidelines.md](./ste
 IronPLC uses `just` as its command runner. The full command reference — per
 component, coverage, packaging, and troubleshooting — lives in
 [common-tasks.md](common-tasks.md). Do not restate it here.
-
-### Git Workflow and Pre-PR Quality Gate
-
-**NEVER commit or push directly to `main`.** Create a feature branch and open a
-pull request so CI validates every change before it reaches `main`. Before
-creating any PR, run and pass the full pipeline:
-
-```bash
-cd compiler && just
-```
-
-See [common-tasks.md](common-tasks.md#critical-pre-pr-requirements) for what this
-runs and how to fix failures. The clippy-suppression rule lives in
-[compiler-standards.md](compiler-standards.md#code-quality).
 
 ### Version Management
 **Version numbers are generated and incremented automatically** — never edit them

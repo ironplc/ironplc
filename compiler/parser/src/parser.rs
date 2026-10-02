@@ -34,6 +34,13 @@ use ironplc_dsl::member_qualifier::{
     AccessSpecifier, MemberQualifier, MemberQualifierKind, MemberQualifiers,
 };
 use ironplc_dsl::sfc::*;
+
+/// One member declared after a function block's body. TwinCAT stores
+/// methods and properties in file order, so the two interleave.
+enum FunctionBlockMember {
+    Method(Box<MethodDeclaration>),
+    Property(Box<PropertyDeclaration>),
+}
 use ironplc_dsl::textual::*;
 use ironplc_dsl::time::*;
 
@@ -358,8 +365,9 @@ parser! {
     }
 
     // An identifier spelled `val`, in any case. For a word that is a
-    // keyword only in one position, such as a duration unit or the `S` in
-    // `S=`, and an ordinary name everywhere else.
+    // keyword only in one position, such as a duration unit, the `S` in
+    // `S=` or a property's `GET`/`SET`, and an ordinary name everywhere
+    // else.
     rule contextual_keyword(val: &'static str) -> &'input Token = token:[t] {?
       if token.token_type == TokenType::Identifier && token.text.eq_ignore_ascii_case(val) {
         return Ok(token)
@@ -471,9 +479,9 @@ parser! {
     rule integer__string() -> &'input str = n:tok(TokenType::Digits) { n.text.as_str() }
     rule integer__string_simplified() -> String = n:integer__string() { n.to_string().chars().filter(|c| c.is_ascii_digit()).collect() }
     rule integer() -> Integer = n:tok(TokenType::Digits) {? Integer::new(n.text.as_str(), n.span.clone()) }
-    rule binary_integer() -> Integer =  n:tok(TokenType::BinDigits) {? Integer::try_binary(n.text.as_str()) }
-    rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()) }
-    rule hex_integer() -> Integer = n:tok(TokenType::HexDigits) {? Integer::try_hex(n.text.as_str()) }
+    rule binary_integer() -> Integer =  n:tok(TokenType::BinDigits) {? Integer::try_binary(n.text.as_str()).map(|i| Integer { span: n.span.clone(), value: i.value }) }
+    rule octal_integer() -> Integer = n:tok(TokenType::OctDigits) {? Integer::try_octal(n.text.as_str()).map(|i| Integer { span: n.span.clone(), value: i.value }) }
+    rule hex_integer() -> Integer = n:tok(TokenType::HexDigits) {? Integer::try_hex(n.text.as_str()).map(|i| Integer { span: n.span.clone(), value: i.value }) }
     // real_literal_type is used specifically for real literals (returns RealTypeName)
     rule real_literal_type() -> (RealTypeName, &'input Token) =
       t:tok(TokenType::Real) { (RealTypeName::REAL, t) }
@@ -588,8 +596,17 @@ parser! {
     // 1.2.3.2 Time of day and date
     rule time_of_day() -> TimeOfDayLiteral = width:time_of_day_prefix() tok(TokenType::Hash) d:daytime() { TimeOfDayLiteral::new(d).with_width(width) }
     rule time_of_day_prefix() -> TemporalWidth = tok(TokenType::TimeOfDay) { TemporalWidth::Short } / tok(TokenType::Ltod) { TemporalWidth::Long }
+    // The seconds are fixed point, and their fraction is part of the value:
+    // `TOD#10:00:00.250` is 250 ms past ten. `Time` holds nanoseconds, so a
+    // fraction finer than that is truncated; the stored count truncates
+    // further, to the type's own unit (ADR-0025).
     rule daytime() -> Time = h:day_hour() tok(TokenType::Colon) m:day_minute() tok(TokenType::Colon) s:day_second() {?
-      Time::from_hms(h.try_into().map_err(|e| "hour")?, m.try_into().map_err(|e| "min")?, s.whole as u8).map_err(|e| "time")
+      Time::from_hms_nano(
+        h.try_into().map_err(|e| "hour")?,
+        m.try_into().map_err(|e| "min")?,
+        u8::try_from(s.whole).map_err(|e| "second")?,
+        s.nanoseconds(),
+      ).map_err(|e| "time")
     }
     rule day_hour() -> Integer = integer()
     rule day_minute() -> Integer = integer()
@@ -1564,7 +1581,46 @@ parser! {
       }
     }
 
-    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ qualifiers:member_qualifiers() _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ methods:(_ m:method_declaration() {m}) ** _ _ end:tok(TokenType::EndFunctionBlock) {
+    // OOP extension: PROPERTY name : type, with an optional GET and an
+    // optional SET accessor, then END_PROPERTY. `GET`/`SET` are matched by
+    // text because they stay identifiers everywhere else. TwinCAT's `.TcPOU`
+    // form stores a `<Property>` element with `<Get>`/`<Set>` children;
+    // `ironplc-sources` rebuilds this textual form from it. Each accessor
+    // becomes a `MethodDeclaration`, see `PropertyDeclaration`.
+    rule property_accessor_parts() -> (Vec<VarDecl>, Vec<EdgeVarDecl>, Vec<StmtKind>) = decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body()? {
+      let decls = VarDeclarations::flatten(decls);
+      let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
+      let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
+      (variables, edge_variables, body.unwrap_or_default())
+    }
+    rule property_declaration() -> PropertyDeclaration = start:tok(TokenType::Property) _ name:identifier() _ tok(TokenType::Colon) _ property_type:function_return_type() _ get:(g:contextual_keyword("GET") _ parts:property_accessor_parts() _ e:tok(TokenType::EndGet) { (g, parts, e) })? _ set:(s:contextual_keyword("SET") _ parts:property_accessor_parts() _ e:tok(TokenType::EndSet) { (s, parts, e) })? _ end:tok(TokenType::EndProperty) {
+      let get = get.map(|(g, (variables, edge_variables, body), e)| {
+        PropertyDeclaration::get_accessor(&name, &property_type, variables, edge_variables, body, SourceSpan::join(&g.span, &e.span))
+      });
+      let set = set.map(|(s, (variables, edge_variables, body), e)| {
+        PropertyDeclaration::set_accessor(&name, &property_type, variables, edge_variables, body, SourceSpan::join(&s.span, &e.span))
+      });
+      PropertyDeclaration {
+        name,
+        property_type,
+        get,
+        set,
+        span: SourceSpan::join(&start.span, &end.span),
+      }
+    }
+
+    rule function_block_member() -> FunctionBlockMember = m:method_declaration() { FunctionBlockMember::Method(Box::new(m)) } / p:property_declaration() { FunctionBlockMember::Property(Box::new(p)) }
+
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ qualifiers:member_qualifiers() _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ members:(_ m:function_block_member() {m}) ** _ _ end:tok(TokenType::EndFunctionBlock) {
+      let mut methods = Vec::new();
+      let mut properties = Vec::new();
+      for member in members {
+        match member {
+          FunctionBlockMember::Method(m) => methods.push(*m),
+          FunctionBlockMember::Property(p) => properties.push(*p),
+        }
+      }
+
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
@@ -1605,6 +1661,7 @@ parser! {
         span: SourceSpan::join(&start.span, &end.span),
         oop,
         methods,
+        properties,
       }
     }
 

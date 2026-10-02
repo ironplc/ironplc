@@ -71,7 +71,10 @@ pub(crate) fn compile_fb_field_store(
                 .ok_or_else(|| {
                     Diagnostic::not_implemented(Label::span(
                         field.span(),
-                        format!("Unknown field '{field}' on function block '{instance_name}'"),
+                        format!(
+                            "Unknown field '{field}' on function block '{instance_name}' \
+                             (writing a PROPERTY is not supported yet)"
+                        ),
                     ))
                 })?;
             (field_idx, fb_info.var_index, fb_info.type_id)

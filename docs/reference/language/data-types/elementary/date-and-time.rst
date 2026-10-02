@@ -22,6 +22,11 @@ A date is stored as a count of seconds since 1970-01-01, so a literal
 outside ``DT#1970-01-01-00:00:00`` to ``DT#2106-02-07-06:28:15`` is reported as
 :doc:`P2038 </reference/compiler/problems/P2038>`.
 
+The seconds of a literal may have a fraction, as in
+``DT#2024-01-15-14:30:00.5``. A ``DATE_AND_TIME`` counts whole seconds, so the
+fraction is truncated: that literal holds the same value as
+``DT#2024-01-15-14:30:00``.
+
 Example
 -------
 
@@ -39,6 +44,7 @@ Literals
 
    DT#2024-01-15-14:30:00
    DATE_AND_TIME#2024-12-31-23:59:59
+   DT#2024-01-15-14:30:00.5
 
 See Also
 --------
