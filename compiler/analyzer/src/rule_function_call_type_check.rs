@@ -297,6 +297,9 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
 mod composite_tests;
 
 #[cfg(test)]
+mod label_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_helpers::parse_and_resolve_types_with_context;

@@ -38,4 +38,5 @@ mod time_functions;
 mod type_alias;
 mod types_and_returns;
 mod var_declarations;
+mod variable_spans;
 mod whitespace;
