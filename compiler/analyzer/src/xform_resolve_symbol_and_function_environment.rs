@@ -431,12 +431,8 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         // Add each enumeration value
         if let ironplc_dsl::common::SpecificationKind::Inline(values) = &node.spec_init.spec {
             for value in &values.values {
-                let result = self.symbol_env.insert_enumeration_value(
-                    &value.value,
-                    &node.type_name,
-                    &ScopeKind::Global,
-                );
-                self.record(result);
+                self.symbol_env
+                    .insert_enumeration_value(&value.value, &node.type_name);
             }
         }
 

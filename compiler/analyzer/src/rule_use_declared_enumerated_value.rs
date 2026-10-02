@@ -267,4 +267,60 @@ END_FUNCTION_BLOCK";
 
         assert!(result.is_ok());
     }
+
+    /// The diagnostics of analyzing `program` under default options.
+    fn diagnostics_of(program: &str) -> Vec<ironplc_dsl::diagnostic::Diagnostic> {
+        let library =
+            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
+        context.diagnostics().to_vec()
+    }
+
+    #[test]
+    fn apply_when_two_enums_share_value_then_each_value_defined() {
+        let diagnostics = diagnostics_of(
+            "
+TYPE
+  Colors : (Red, Green) := Red;
+  Lights : (Red, Amber) := Red;
+END_TYPE
+
+PROGRAM main
+VAR
+  c : Colors := Colors#Green;
+  l : Lights := Lights#Red;
+END_VAR
+END_PROGRAM",
+        );
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
+    #[test]
+    fn apply_when_global_shares_enum_value_name_then_value_defined() {
+        let diagnostics = diagnostics_of(
+            "
+TYPE
+  Colors : (Red, Green) := Red;
+END_TYPE
+
+CONFIGURATION config
+  VAR_GLOBAL
+    Red : INT;
+  END_VAR
+  RESOURCE res ON PLC
+    TASK t(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM inst WITH t : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+VAR
+  c : Colors := Colors#Red;
+END_VAR
+END_PROGRAM",
+        );
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
 }

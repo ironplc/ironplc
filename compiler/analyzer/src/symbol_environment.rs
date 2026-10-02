@@ -106,8 +106,6 @@ pub enum SymbolKind {
     /// Constant declaration
     #[allow(unused)]
     Constant,
-    /// Enumeration value
-    EnumerationValue,
     /// Structure element
     StructureElement,
     /// Edge variable (rising/falling edge)
@@ -134,11 +132,6 @@ pub struct SymbolInfo {
     /// environment. `None` for symbols that are not variables and for a
     /// variable whose type the analyzer could not resolve.
     pub type_id: Option<TypeId>,
-    /// For enumeration values, the type name of the enumeration
-    /// TODO this should probably be a new struct that is a TypeRef
-    /// so that we can distinguish between the actual place of the declaration
-    /// and a reference to the declaration.
-    pub enum_type: Option<TypeName>,
     /// For structure fields, the type name of the structure
     pub struct_type: Option<TypeName>,
     /// The variable type qualifier (VAR, VAR_INPUT, VAR_OUTPUT, etc.)
@@ -171,7 +164,6 @@ impl SymbolInfo {
             visibility_scope: scope,
             is_external: false,
             type_id: None,
-            enum_type: None,
             struct_type: None,
             variable_type: None,
             qualifier: None,
@@ -202,12 +194,6 @@ impl SymbolInfo {
 
     pub fn with_external(mut self, is_external: bool) -> Self {
         self.is_external = is_external;
-        self
-    }
-
-    /// Set the enumeration type for enumeration value symbols
-    pub fn with_enum_type(mut self, enum_type: TypeName) -> Self {
-        self.enum_type = Some(enum_type);
         self
     }
 
@@ -335,6 +321,12 @@ pub struct SymbolEnvironment {
     global_symbols: IndexMap<Id, SymbolInfo>,
     /// Scoped symbols (variables within functions, function blocks, etc.)
     scoped_symbols: IndexMap<ScopeKind, IndexMap<Id, SymbolInfo>>,
+    /// The values of each enumeration type, in declaration order.
+    ///
+    /// Kept apart from the named symbols: an enumeration value is always
+    /// read through its type (`Colors#Red`), and two enumerations, or an
+    /// enumeration and a variable, may use the same name.
+    enumeration_values: IndexMap<TypeName, Vec<Id>>,
 }
 
 impl SymbolEnvironment {
@@ -342,6 +334,7 @@ impl SymbolEnvironment {
         Self {
             global_symbols: IndexMap::new(),
             scoped_symbols: IndexMap::new(),
+            enumeration_values: IndexMap::new(),
         }
     }
 
@@ -446,28 +439,12 @@ impl SymbolEnvironment {
         Ok(())
     }
 
-    /// Insert an enumeration value with its type information
-    pub fn insert_enumeration_value(
-        &mut self,
-        name: &Id,
-        enum_type: &TypeName,
-        scope: &ScopeKind,
-    ) -> Result<(), Diagnostic> {
-        let symbol_info = SymbolInfo::new(SymbolKind::EnumerationValue, scope.clone(), name.span())
-            .with_enum_type(enum_type.clone());
-
-        match scope {
-            ScopeKind::Global => {
-                self.global_symbols.insert(name.clone(), symbol_info);
-            }
-            ScopeKind::Named(_) => {
-                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
-
-                scope_symbols.insert(name.clone(), symbol_info);
-            }
-        }
-
-        Ok(())
+    /// Records `name` as a value of the enumeration type `enum_type`.
+    pub fn insert_enumeration_value(&mut self, name: &Id, enum_type: &TypeName) {
+        self.enumeration_values
+            .entry(enum_type.clone())
+            .or_default()
+            .push(name.clone());
     }
 
     /// Insert a structure field with its type information
@@ -500,18 +477,12 @@ impl SymbolEnvironment {
         source_type: &TypeName,
         alias_type: &TypeName,
     ) -> Result<(), Diagnostic> {
-        // Find all enumeration values for the source type and collect them
-        let source_values: Vec<Id> = self
-            .get_enumeration_values_for_type(source_type)
-            .iter()
-            .map(|id| (*id).clone())
-            .collect();
-
-        // Duplicate each value with the alias type
-        for value_name in source_values {
-            self.insert_enumeration_value(&value_name, alias_type, &ScopeKind::Global)?;
+        if let Some(values) = self.enumeration_values.get(source_type).cloned() {
+            self.enumeration_values
+                .entry(alias_type.clone())
+                .or_default()
+                .extend(values);
         }
-
         Ok(())
     }
 
@@ -679,15 +650,13 @@ impl SymbolEnvironment {
             .chain(self.scoped_symbols.values().flat_map(|scope| scope.iter()))
     }
 
-    /// Get all enumeration values for a specific enumeration type
+    /// Get all enumeration values for a specific enumeration type, in
+    /// declaration order.
     pub fn get_enumeration_values_for_type(&self, enum_type: &TypeName) -> Vec<&Id> {
-        self.all_symbols()
-            .filter(|(_, symbol)| {
-                matches!(symbol.kind, SymbolKind::EnumerationValue)
-                    && symbol.enum_type.as_ref() == Some(enum_type)
-            })
-            .map(|(name, _)| name)
-            .collect()
+        self.enumeration_values
+            .get(enum_type)
+            .map(|values| values.iter().collect())
+            .unwrap_or_default()
     }
 
     /// Get all structure fields for a specific structure type
