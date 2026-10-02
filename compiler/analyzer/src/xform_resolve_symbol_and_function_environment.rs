@@ -138,6 +138,12 @@ impl<'a> EnvironmentResolver<'a> {
     /// name in the other environment, so that pair is checked here; every
     /// other repeat is the symbol environment's to report.
     fn declare_global(&mut self, name: &Id, kind: SymbolKind) {
+        self.declare_global_symbol(name, SymbolInfo::new(kind, ScopeKind::Global, name.span()));
+    }
+
+    /// Declares `name` in the global scope as [`Self::declare_global`]
+    /// does, with the symbol `info` describes.
+    fn declare_global_symbol(&mut self, name: &Id, info: SymbolInfo) {
         if let Some(function) = self.function_env.get(name) {
             self.diagnostics.push(duplicate_declaration(
                 Problem::PouDeclNameDuplicated,
@@ -146,7 +152,7 @@ impl<'a> EnvironmentResolver<'a> {
             ));
             return;
         }
-        let result = self.symbol_env.insert(name, kind, &ScopeKind::Global);
+        let result = self.symbol_env.insert_info(name, info);
         self.record(result);
     }
 }
@@ -329,7 +335,12 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         &mut self,
         node: &ironplc_dsl::common::FunctionBlockDeclaration,
     ) -> Result<Self::Value, Infallible> {
-        self.declare_global(&node.name.name, SymbolKind::FunctionBlock);
+        let name = &node.name.name;
+        self.declare_global_symbol(
+            name,
+            SymbolInfo::new(SymbolKind::FunctionBlock, ScopeKind::Global, name.span())
+                .with_abstract(node.is_abstract()),
+        );
         node.recurse_visit(self)
     }
 
