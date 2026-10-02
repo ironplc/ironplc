@@ -88,6 +88,7 @@ pub mod value_type;
 mod variable_type;
 mod xform_fold_constant_expressions;
 mod xform_fold_initializer_expressions;
+mod xform_insert_implicit_conversions;
 mod xform_insert_implicit_deref;
 mod xform_int_to_bool_initializer;
 mod xform_mark_unwritten_constants;

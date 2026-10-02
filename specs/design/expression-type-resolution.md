@@ -72,6 +72,13 @@ on each expression from its operands' types:
 | `REF(x)` | `reference_to(x's type)` |
 | Dereference | the referenced type (`TypeEnvironment::referenced_type`) |
 | `NULL` | `Null` |
+| Implicit conversion | the type it converts to, recorded when the node is inserted |
+
+After the semantic rules, `xform_insert_implicit_conversions` records the
+conversions the language makes without the program spelling them: an
+`ExprKind::ImplicitConversion` around an operand converted to another type,
+and an untyped literal given the type it is used as. See
+[Implicit Conversions](implicit-conversions.md).
 
 ## Relations that compare by name
 

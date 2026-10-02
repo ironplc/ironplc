@@ -155,7 +155,8 @@ impl RuleRefTo<'_> {
             | ExprKind::Function(_)
             | ExprKind::MethodCall(_)
             | ExprKind::LateBound(_)
-            | ExprKind::Deref(_) => matches!(
+            | ExprKind::Deref(_)
+            | ExprKind::ImplicitConversion(_) => matches!(
                 self.type_environment.representation_of_expr(expr),
                 Some(crate::intermediate_type::IntermediateType::Reference { .. })
             ),

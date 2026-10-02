@@ -415,6 +415,10 @@ impl ExprTypeResolver<'_> {
                 Some(ExprType::Literal(_) | ExprType::Null) | None => None,
             },
             ExprKind::Null(_) => Some(ExprType::Null),
+            // The type a conversion converts to is not a property of what it
+            // converts, so it is recorded on the node, which `fold_expr`
+            // keeps.
+            ExprKind::ImplicitConversion(_) => None,
         }
     }
 
@@ -747,7 +751,9 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         let mut expr = node.recurse_fold(self)?;
 
         // Then determine type based on the (now-folded) kind
-        expr.expr_type = self.resolve_type(&expr.kind);
+        if !matches!(expr.kind, ExprKind::ImplicitConversion(_)) {
+            expr.expr_type = self.resolve_type(&expr.kind);
+        }
         Ok(expr)
     }
 

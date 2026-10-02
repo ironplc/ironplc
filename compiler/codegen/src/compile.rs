@@ -1655,8 +1655,7 @@ mod tests {
         let library =
             parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
         let (analyzed, ctx) =
-            ironplc_analyzer::stages::resolve_types(&[&library], &CompilerOptions::default())
-                .unwrap();
+            ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
         (analyzed, ctx)
     }
 

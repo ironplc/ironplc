@@ -601,7 +601,7 @@ pub fn string_offset(preceding_max_lengths: &[u16]) -> usize {
 
 pub fn parse(source: &str, options: &CompilerOptions) -> (Library, SemanticContext) {
     let library = parse_program(source, &FileId::default(), options).unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], options).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
     (analyzed, ctx)
 }
 
