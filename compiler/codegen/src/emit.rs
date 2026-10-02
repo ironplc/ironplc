@@ -385,7 +385,6 @@ impl Emitter {
     emit_push_op!(emit_load_true, opcode::LOAD_TRUE);
     emit_push_op!(emit_load_false, opcode::LOAD_FALSE);
     /// Emits DUP (duplicates top of stack). Net: +1.
-    #[allow(dead_code)]
     pub fn emit_dup(&mut self) {
         self.emit_opcode(opcode::DUP);
         self.push_stack(1);
@@ -474,7 +473,6 @@ impl Emitter {
 
     // --- Stack manipulation ops ---
     /// Emits SWAP (swaps top two values). Net: 0.
-    #[allow(dead_code)]
     pub fn emit_swap(&mut self) {
         self.emit_opcode(opcode::SWAP);
     }

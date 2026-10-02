@@ -43,8 +43,9 @@ is reported as :doc:`P4053 </reference/compiler/problems/P4053>`.
 Description
 -----------
 
-The ``CASE`` statement evaluates the expression and compares it against each
-case value in order. When a match is found, the corresponding statement list
+The ``CASE`` statement evaluates the expression once and compares its value
+against each case value in order. A selector that calls a function therefore
+calls it once, however many case values are compared. When a match is found, the corresponding statement list
 executes and control passes to the statement after ``END_CASE``. If no match
 is found and an ``ELSE`` clause is present, its statement list executes.
 
