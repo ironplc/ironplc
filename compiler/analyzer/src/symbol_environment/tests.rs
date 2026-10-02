@@ -664,6 +664,72 @@ fn scope_tracker_when_no_scope_entered_then_global() {
     assert_eq!(ScopeTracker::default().current(), ScopeKind::Global);
 }
 
+fn function_block_decl(name: &str) -> ironplc_dsl::common::FunctionBlockDeclaration {
+    ironplc_dsl::common::FunctionBlockDeclaration {
+        name: TypeName::from(name),
+        variables: vec![],
+        edge_variables: vec![],
+        body: ironplc_dsl::common::FunctionBlockBodyKind::empty(),
+        span: ironplc_dsl::core::SourceSpan::default(),
+        oop: None,
+        methods: vec![],
+        properties: vec![],
+    }
+}
+
+fn method_decl(name: &str) -> ironplc_dsl::common::MethodDeclaration {
+    ironplc_dsl::common::MethodDeclaration {
+        qualifiers: Default::default(),
+        name: Id::from(name),
+        return_type: None,
+        variables: vec![],
+        edge_variables: vec![],
+        body: vec![],
+        span: ironplc_dsl::core::SourceSpan::default(),
+    }
+}
+
+#[test]
+fn scope_tracker_when_method_entered_then_path_through_block() {
+    let block = function_block_decl("FB_Axis");
+    let start = method_decl("Start");
+    let mut tracker = ScopeTracker::default();
+
+    tracker.enter(&ScopeNode::FunctionBlock(&block));
+    tracker.enter(&ScopeNode::Method(&start));
+
+    assert_eq!(
+        tracker.current(),
+        ScopeKind::Named(ScopePath::new(vec![Id::from("FB_Axis"), Id::from("Start")]))
+    );
+    assert_eq!(tracker.unit(), Some(&Id::from("FB_Axis")));
+}
+
+#[test]
+fn scope_tracker_when_exited_then_unit_none() {
+    let block = function_block_decl("FB_Axis");
+    let mut tracker = ScopeTracker::default();
+
+    tracker.enter(&ScopeNode::FunctionBlock(&block));
+    tracker.exit();
+
+    assert_eq!(tracker.unit(), None);
+    assert_eq!(tracker.current(), ScopeKind::Global);
+}
+
+#[test]
+fn scope_of_when_method_not_entered_then_scope_it_would_open() {
+    let block = function_block_decl("FB_Axis");
+    let start = method_decl("Start");
+    let mut tracker = ScopeTracker::default();
+    tracker.enter(&ScopeNode::FunctionBlock(&block));
+
+    let scope = tracker.scope_of(&ScopeNode::Method(&start));
+
+    tracker.enter(&ScopeNode::Method(&start));
+    assert_eq!(scope, tracker.current());
+}
+
 fn function_block(env: &mut SymbolEnvironment, name: &str, extends: Option<&str>) {
     let info = SymbolInfo::new(
         SymbolKind::FunctionBlock,

@@ -50,14 +50,21 @@ pub(crate) struct ScopeTracker {
 }
 
 impl ScopeTracker {
-    /// Enters the scope `node` opens.
-    pub(crate) fn enter(&mut self, node: &ScopeNode<'_>) {
-        self.path.push(match node {
+    /// The name `node`'s scope is known by in a [`ScopePath`]. Every pass
+    /// that keys symbols by scope tracks scopes with this type, so they all
+    /// name a scope the same way.
+    fn name_of(node: &ScopeNode<'_>) -> Id {
+        match node {
             ScopeNode::Function(node) => node.name.clone(),
             ScopeNode::FunctionBlock(node) => node.name.name.clone(),
             ScopeNode::Program(node) => node.name.clone(),
             ScopeNode::Method(node) => node.name.clone(),
-        });
+        }
+    }
+
+    /// Enters the scope `node` opens.
+    pub(crate) fn enter(&mut self, node: &ScopeNode<'_>) {
+        self.path.push(Self::name_of(node));
     }
 
     /// Leaves the innermost scope.
@@ -72,6 +79,21 @@ impl ScopeTracker {
         } else {
             ScopeKind::Named(ScopePath::new(self.path.clone()))
         }
+    }
+
+    /// The scope `node` opens when the traversal enters it from the
+    /// current scope, for a pass that declares into it before entering.
+    pub(crate) fn scope_of(&self, node: &ScopeNode<'_>) -> ScopeKind {
+        let mut path = self.path.clone();
+        path.push(Self::name_of(node));
+        ScopeKind::Named(ScopePath::new(path))
+    }
+
+    /// The outermost declaration the traversal is inside, such as the
+    /// function block a method belongs to, or `None` outside every
+    /// declaration.
+    pub(crate) fn unit(&self) -> Option<&Id> {
+        self.path.first()
     }
 }
 
