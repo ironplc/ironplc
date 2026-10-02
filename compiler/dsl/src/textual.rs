@@ -549,6 +549,17 @@ impl Expr {
     pub fn unary(op: UnaryOp, term: Expr) -> Expr {
         Expr::new(ExprKind::UnaryOp(Box::new(UnaryExpr { op, term })))
     }
+
+    /// Creates the implicit conversion of `inner` to the type `target`,
+    /// written where `inner` was written.
+    pub fn implicit_conversion(inner: Expr, target: TypeId) -> Expr {
+        let span = inner.span.clone();
+        Expr {
+            kind: ExprKind::ImplicitConversion(Box::new(inner)),
+            expr_type: Some(ExprType::Concrete(target)),
+            span,
+        }
+    }
 }
 
 impl fmt::Display for Expr {
@@ -580,6 +591,7 @@ impl Located for ExprKind {
             ExprKind::LateBound(late) => late.value.span(),
             ExprKind::Ref(var) => var.span(),
             ExprKind::Deref(expr) => expr.span(),
+            ExprKind::ImplicitConversion(inner) => inner.span(),
             ExprKind::Null(span) => span.clone(),
         }
     }
@@ -600,6 +612,14 @@ pub enum ExprKind {
     LateBound(LateBound),
     Ref(Box<Variable>),
     Deref(Box<Expr>),
+    /// A conversion the language makes without the program spelling it: the
+    /// value of the inner expression, which keeps its own type, converted to
+    /// the type of the enclosing [`Expr`].
+    ///
+    /// The parser never produces one: the analyzer inserts it after the
+    /// semantic rules, to record for the backends and the language server a
+    /// conversion the language makes. See ADR-0056.
+    ImplicitConversion(Box<Expr>),
     Null(SourceSpan),
 }
 
@@ -673,6 +693,8 @@ impl fmt::Display for ExprKind {
             ExprKind::LateBound(late) => write!(f, "{}", late.value),
             ExprKind::Ref(var) => write!(f, "REF({var})"),
             ExprKind::Deref(expr) => write!(f, "{expr}^"),
+            // Not source syntax: it is written as the expression it converts.
+            ExprKind::ImplicitConversion(inner) => write!(f, "{inner}"),
             ExprKind::Null(_) => write!(f, "NULL"),
         }
     }
@@ -800,6 +822,25 @@ impl CompareOp {
             CompareOp::Gt => ">",
             CompareOp::LtEq => "<=",
             CompareOp::GtEq => ">=",
+        }
+    }
+
+    /// Returns `true` for the comparisons `=`, `<>`, `<`, `<=`, `>` and
+    /// `>=`, whose result is `BOOL` whatever their operands are, and `false`
+    /// for the logical and bitwise operators that share this enum.
+    pub fn is_comparison(&self) -> bool {
+        match self {
+            CompareOp::Eq
+            | CompareOp::Ne
+            | CompareOp::Lt
+            | CompareOp::Gt
+            | CompareOp::LtEq
+            | CompareOp::GtEq => true,
+            CompareOp::And
+            | CompareOp::Or
+            | CompareOp::Xor
+            | CompareOp::AndThen
+            | CompareOp::OrElse => false,
         }
     }
 }

@@ -802,8 +802,7 @@ fn write_compiled_container(path: &Path, source: &str) {
     let library =
         ironplc_parser::parse_program(source, &ironplc_dsl::core::FileId::default(), &options)
             .unwrap();
-    let (analyzed, context) =
-        ironplc_analyzer::stages::resolve_types(&[&library], &options).unwrap();
+    let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     let container = ironplc_codegen::compile(
         &analyzed,
         &context,
