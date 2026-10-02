@@ -966,6 +966,14 @@ fn compile_program_with_functions(
     // emitted from inside the body records a call-graph edge.
     let mut scan_emitter = Emitter::new();
     ctx.current_function_id = Some(FunctionId::SCAN);
+    // A program's VAR_TEMP variables start from their initial values on
+    // every scan, so the scan re-runs their initialization first.
+    let temp_vars: Vec<VarDecl> = local_vars
+        .iter()
+        .filter(|decl| decl.var_type == VariableType::VarTemp)
+        .cloned()
+        .collect();
+    crate::compile_setup::emit_locals_reinit(&mut scan_emitter, &mut ctx, &temp_vars, types)?;
     compile_body(
         &mut scan_emitter,
         &mut ctx,

@@ -12,43 +12,24 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
 use ironplc_analyzer::intermediate_type::IntermediateType;
 use ironplc_container::{SlotIndex, VarIndex};
-use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit};
+use ironplc_dsl::common::{
+    ArrayInitialElementKind, StructInitialValueAssignmentKind, StructureElementInit,
+};
 
-use super::compile::{CompileContext, OpType, OpWidth, DEFAULT_STRING_MAX_LENGTH};
+use super::compile::{CompileContext, OpType, DEFAULT_STRING_MAX_LENGTH};
 use super::compile_array_struct::ElementStringField;
 use super::compile_expr::compile_constant;
-use super::compile_setup::emit_zero_const;
 use super::compile_struct::{build_struct_fields, emit_truncation_for_field, StructVarInfo};
 use crate::emit::Emitter;
 
 /// Emits a constant load for the type-appropriate default value of a struct field.
-///
-/// For subrange types, emits the subrange's lower bound (min_value) as an i32/i64
-/// constant, since IEC 61131-3 §2.4.3.1 specifies the default is the "leftmost
-/// value" of the subrange. For all other types, emits zero via `emit_zero_const`.
 fn emit_default_for_field(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     field_type: &IntermediateType,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    if let IntermediateType::Subrange { min_value, .. } = field_type {
-        match op_type.0 {
-            OpWidth::W32 => {
-                let pool_index = ctx.add_i32_constant(*min_value as i32);
-                emitter.emit_load_const_i32(pool_index);
-            }
-            OpWidth::W64 => {
-                let pool_index = ctx.add_i64_constant(*min_value as i64);
-                emitter.emit_load_const_i64(pool_index);
-            }
-            _ => {
-                emit_zero_const(emitter, ctx, op_type);
-            }
-        }
-    } else {
-        emit_zero_const(emitter, ctx, op_type);
-    }
+    crate::compile_default::LeafDefault::of(field_type).emit(emitter, ctx, op_type);
     Ok(())
 }
 
@@ -300,6 +281,28 @@ pub(crate) fn initialize_struct_fields(
                 let byte_offset = struct_data_offset + slot_idx.raw() * 8;
                 emitter.emit_str_init(byte_offset, max_length, *char_width);
             }
+        } else if let Some((element_type, dimensions)) =
+            crate::compile_array_init::slot_array(&field_info.field_type)
+        {
+            // Array field — write every element, then the listed values.
+            let values: &[ArrayInitialElementKind] = match init_map.get(&field_info.name) {
+                Some(StructInitialValueAssignmentKind::Array(values)) => values,
+                _ => &[],
+            };
+            crate::compile_array_init::initialize_slot_array(
+                emitter,
+                ctx,
+                &crate::compile_array_init::SlotRegion {
+                    var_index,
+                    desc_index,
+                    data_offset: struct_data_offset,
+                },
+                slot_idx.raw(),
+                element_type,
+                dimensions,
+                values,
+                span,
+            )?;
         } else if let IntermediateType::Array {
             element_type,
             dimensions: array_dims,

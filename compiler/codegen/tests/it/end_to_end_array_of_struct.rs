@@ -847,3 +847,26 @@ END_PROGRAM
         "an unknown field of an element",
     );
 }
+
+// arr = 0, result = 1. An element field takes its type's default, here the
+// subrange's lower bound.
+e2e_i32!(
+    end_to_end_when_top_level_array_of_struct_subrange_field_then_lower_bound,
+    "
+TYPE Level : INT(5..10); END_TYPE
+TYPE Item : STRUCT
+  a : DINT;
+  level : Level;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    arr : ARRAY[1..3] OF Item;
+    result : INT;
+  END_VAR
+  result := arr[2].level;
+END_PROGRAM
+",
+    &[(1, 5)],
+);

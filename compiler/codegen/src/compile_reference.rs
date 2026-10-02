@@ -97,6 +97,7 @@ fn register_ref_to_array_metadata(
             string_max_len: 0,
             string_char_width: CharWidth::Narrow,
             is_ref: true,
+            element_default: crate::compile_default::LeafDefault::Zero,
         },
     );
     Ok(())

@@ -41,6 +41,9 @@ Scope Keywords
    * - ``VAR_EXTERNAL``
      - Reference to a global variable
      - Supported
+   * - ``VAR_TEMP``
+     - Temporary variable, re-initialized on every execution
+     - Partial
 
 Example
 -------
@@ -141,6 +144,30 @@ command line.
 
 Programs access top-level globals the same way as configuration globals —
 through :code:`VAR_EXTERNAL` declarations that match the name and type.
+
+Temporary Variables
+-------------------
+
+:code:`VAR_TEMP` declares variables that last for one execution of a
+program or function: a program starts its temporaries from their initial
+values on every scan, and a function on every call. A temporary without an
+initial value starts from its type's default. So does every element of a
+temporary array that its initializer does not list, here
+``samples[2]`` and ``samples[3]``, so ``samples[2]`` is 1 after the
+increment on every scan.
+
+.. playground::
+
+   PROGRAM main
+     VAR
+       total : INT;
+     END_VAR
+     VAR_TEMP
+       samples : ARRAY[1..3] OF INT := [5];
+     END_VAR
+     samples[2] := samples[2] + 1;
+     total := total + samples[1] + samples[2];
+   END_PROGRAM
 
 See Also
 --------

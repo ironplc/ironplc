@@ -1720,7 +1720,7 @@ parser! {
     }
 
     // TODO program_access_decls
-    pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(access:program_access_decls() { vec![access] } / io:io_var_declarations() { io } / mixed:program_var_declarations() { mixed } / other:other_var_declarations() { vec![other] } / located:located_var_declarations() { vec![located] }) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
+    pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(access:program_access_decls() { vec![access] } / io:io_var_declarations() { io } / mixed:program_var_declarations() { mixed } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] } / located:located_var_declarations() { vec![located] }) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (access_variables, _) = VarDeclarations::drain_access(remainder);

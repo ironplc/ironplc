@@ -288,18 +288,24 @@ END_VAR
 
 The compiler matches each element in `StructureInitializationDeclaration.elements_init` to the corresponding field, then emits a constant load + store for the specified value. Fields without explicit initializers use their default values.
 
+An array field is initialized element by element: every element first gets
+its element type's default, then the values an array initializer lists
+(`(a := [1, 2])`) are stored on top, so an element past the end of a short
+initializer keeps the default. An element that is a structure gets its
+fields' defaults the same way.
+
 ### 3.2 Nested Structure Initialization
 
 For nested structures, initialization is recursive. Each leaf field gets its own constant + store instruction pair. The compiler flattens the nested structure initialization into a linear sequence of field-by-field stores.
 
 ### 3.3 Array-of-Struct Initialization
 
-The element field values of an array of structures are not initialized: the
-data region starts zeroed, so every field reads as zero. Default and
-explicit initial values for element fields are not applied
+Every field of every element of an array of structures gets its default,
+one constant load + store per field, as for a structure variable. Explicit
+initial values for element fields are not applied
 ([#1542](https://github.com/ironplc/ironplc/issues/1542)).
 
-The headers of STRING fields are the exception, because a zeroed header has
+The headers of STRING fields matter most, because a zeroed header has
 `char_width` 0 and traps on first use. The init function writes them with one
 `STR_INIT_ARRAY` per STRING field, through the field's strided descriptor
 (section 2.3), so every element's copy is initialized by a single
