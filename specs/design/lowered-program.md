@@ -161,7 +161,8 @@ the structures in `compiler/codegen` today, and how the result is tested.
 - Any change to the bytecode instruction set, the container format or the VM.
 - Removing `Expr::expr_type` or `VarDecl::type_id` from the AST. The analyzer's
   rules read them.
-- Optimization passes over the lowered program.
+- Any particular optimization pass. Where optimizations live, and what they
+  may assume, is in scope (see [Optimization](#10-optimization)).
 - A control-flow graph or any other non-tree form (see
   [Alternatives Considered](#alternatives-considered)).
 
@@ -207,6 +208,25 @@ reported without generating code.
 **REQ-LOW-project-005** `ironplc_project::compile` passes the lowered program
 that `check` produced to the backend; it does not lower a second time.
 
+A backend still emits debug information. Everything the bytecode debug section
+holds today ([Debug Info in the IPLC Container](debug-info-in-iplc-container.md))
+comes from the lowered program and from the source text, which the backend
+reads through `SourceLookup` by the file id of a span, as it does now. No
+backend reads the AST to build it.
+
+**REQ-LOW-lowering-006** Every variable of the lowered program carries its
+source name, its owning POU, its section, its type and the span of its
+declaration; every POU carries its source name and span; and the type table
+carries each type's declared name and each enumeration's value names. Those,
+with statement spans, are what the variable name, function name, line map and
+enumeration tables of the debug section are built from. String layouts are the
+backend's own layout.
+
+**REQ-LOW-codegen-007** A container the bytecode backend builds from the
+lowered program has the same debug section (variable names, function names,
+line map, source files, string layouts and enumeration definitions) as one
+built from the `Library` for the same program.
+
 ## 2. The Clean-Analysis Gate
 
 Today "codegen runs only on a clean analysis" is a run-time check written at
@@ -229,15 +249,23 @@ impl<'a> CleanAnalysis<'a> {
 }
 ```
 
-**REQ-LOW-analyzer-010** A clean analysis cannot be constructed from a
-`SemanticContext` that holds any diagnostic.
+**REQ-LOW-analyzer-010** Constructing a clean analysis from a
+`SemanticContext` that holds any diagnostic fails.
 
 **REQ-LOW-lowering-011** Lowering has no entry point that accepts a `Library`
 without a clean analysis.
 
-Because lowering runs only behind the gate, a state analysis rules out is a
-compiler defect when lowering meets it, and is reported as P9998 from one
-place. It is never a user-facing problem and never a silent default.
+The gate guards against a mistake, not an adversary. It stops a caller from
+forgetting the check; it does not prove that the `SemanticContext` describes
+the `Library`. A caller can still build a context with no diagnostics by hand
+(`SemanticContextBuilder` does exactly that for tests), or pair a context with
+a library it was not built from, and the gate accepts both.
+
+So lowering does not trust the gate further than it reaches. Behind it, a
+state analysis rules out is a compiler defect, and lowering reports it as
+P9998 from one place. It is never a user-facing problem, never a silent
+default and never a panic, which is what keeps a hand-built or mismatched
+context from crashing the compiler.
 
 ## 3. The Lowered Program
 
@@ -294,6 +322,14 @@ pub struct Pou {
     pub span: SourceSpan,
 }
 ```
+
+Initial values are statements because that is how the bytecode VM applies
+them: an init function runs once (ADR-0045), and a function re-initializes its
+locals in a prologue (ADR-0024). Another backend may prefer to place constant
+initial values in a data image, as a WebAssembly data segment would. Statements
+do not prevent that: a backend can evaluate an `init` whose values are all
+constants at compile time. Whether `init` should instead be declarative (a
+value per place) is an [open question](#open-questions).
 
 **REQ-LOW-lowering-025** The lowered program contains only POUs reachable from
 a program instance, matching what `SemanticContext::reachable` gives codegen
@@ -370,7 +406,7 @@ pub struct Expr { kind: ExprKind, ty: ScalarType, span: SourceSpan }
 
 pub enum ExprKind {
     Const(Const),                                   // I32, I64, F32 or F64
-    Load(Place),
+    Read(Place),
     Convert(Box<Expr>),                             // to `ty`, from the operand's type
     Truncate { bits: u8, value: Box<Expr> },        // wrap to a storage width (ADR-0001)
     Unary { op: UnaryOp, value: Box<Expr> },        // Neg, BitNot, BoolNot
@@ -382,6 +418,15 @@ pub enum ExprKind {
     Null,
 }
 ```
+
+`Read(Place)` is the value currently at a place. It says nothing about a
+stack, a register or memory. The split it keeps is between a place, which can
+be written and passed by reference, and a value, which cannot; every target has
+that split. On the bytecode VM a `Read` becomes a load opcode. On WebAssembly
+it becomes a local read or a load from linear memory. On a register machine it
+names a register when the backend allocated the variable to one, and loads
+from memory otherwise. Which of those applies is the backend's layout, so a
+place the backend keeps in a register costs nothing to read.
 
 **REQ-LOW-lowering-040** Every scalar expression has a `ScalarType`; the type
 is not optional and is never a generic category such as `ANY_INT`.
@@ -413,7 +458,7 @@ initiative.
 its operation width is produced by a `Truncate` to that width or is a `Const`
 already in range.
 
-**REQ-LOW-lowering-047** `Load` of a place has the operation type of the
+**REQ-LOW-lowering-047** `Read` of a place has the operation type of the
 place's type.
 
 **REQ-LOW-lowering-048** Logical and bitwise forms of `AND`, `OR`, `XOR` and
@@ -426,7 +471,7 @@ pub struct StrExpr { kind: StrExprKind, shape: StringShape, span: SourceSpan }
 
 pub enum StrExprKind {
     Literal(Vec<char>),
-    Load(Place),
+    Read(Place),
     Call { callee: Callee, args: Vec<Arg> },
 }
 ```
@@ -449,9 +494,9 @@ program.
 pub struct Stmt { kind: StmtKind, span: SourceSpan }
 
 pub enum StmtKind {
-    Store { place: Place, value: Expr },
-    StoreBits { place: Place, shift: u8, bits: u8, value: Expr },
-    StoreStr { place: Place, value: StrExpr },
+    Assign { place: Place, value: Expr },
+    AssignBits { place: Place, shift: u8, bits: u8, value: Expr },
+    AssignStr { place: Place, value: StrExpr },
     Copy { dst: Place, src: Place },                          // whole aggregate
     Call { callee: Callee, args: Vec<Arg> },                  // result discarded
     FbCall { instance: Place, block: Block,
@@ -470,7 +515,7 @@ skips the rest of `body` and runs `continuing`. That is enough for `WHILE`,
 `REPEAT` and `FOR` (see [Desugaring](#5-desugaring)), and it is the shape
 WebAssembly's structured control flow takes directly.
 
-**REQ-LOW-lowering-060** The type of a `Store`'s value is the operation type of
+**REQ-LOW-lowering-060** The type of an `Assign`'s value is the operation type of
 its place's type.
 
 **REQ-LOW-lowering-061** The two places of a `Copy` have the same type or types
@@ -485,14 +530,14 @@ it was lowered from, so a backend can build a line map without the AST.
 **REQ-LOW-lowering-064** The labels of a `Case` are constant values or constant
 ranges of the selector's type.
 
-**REQ-LOW-lowering-065** `StoreBits` names a bit range that lies within the
+**REQ-LOW-lowering-065** `AssignBits` names a bit range that lies within the
 storage width of its place's type.
 
 The arms of a `Case` are tried in order and the first arm with a matching
 label runs, as `compile_case` does today.
 
-`StoreBits` is the one read-modify-write statement. It exists as a node, and is
-not desugared to a `Store` of a masked `Load`, because that would name the
+`AssignBits` is the one read-modify-write statement. It exists as a node, and is
+not desugared to an `Assign` of a masked `Read`, because that would name the
 place twice and so evaluate its subscripts twice. `compile_bit_access_assignment_on_array`
 does exactly that today, emitting the flat index once for the load and again
 for the store.
@@ -506,9 +551,27 @@ pub enum Block  { User(PouId), Standard(StandardBlock) }   // ADR-0003
 pub enum Arg {
     Value(Expr),        // scalar, by value
     Str(StrExpr),       // string, by value
-    Ref(Place),         // VAR_IN_OUT, and aggregates
+    Copy(Place),        // array, structure or FB instance, by value
+    Ref(Place),         // VAR_IN_OUT, of any class
 }
 ```
+
+Arrays, structures and function block instances are never values in the
+lowered program. They are places: an element or field is reached by a
+`Projection`, a whole one is assigned by the `Copy` statement, and one is
+passed to a call as an `Arg`:
+
+- **`Copy`** for a `VAR_INPUT`: the callee receives its own copy, so its
+  writes do not reach the caller, as IEC 61131-3 requires of an input.
+- **`Ref`** for a `VAR_IN_OUT`: the callee reads and writes the caller's
+  place.
+
+Keeping the two apart matters because a backend may implement both by passing
+an address. Then the difference is only whether the backend copies first, and
+a node that says so cannot be forgotten. Today `ParamPassing` has no mode for a
+by-value aggregate input, and such a parameter falls through to the scalar
+default (`ParamPassing::Value(DEFAULT_OP_TYPE)` in `compile_fn.rs`). A function
+whose result is an aggregate is open question 16.
 
 `Intrinsic` is an enum with one variant per operation the compiler implements
 itself: the standard functions of IEC 61131-3 and the extensions ADR-0042
@@ -524,8 +587,12 @@ the analyzer matches a function's name.
 the callee's declared parameters.
 
 **REQ-LOW-lowering-072** Each argument's class and type match its parameter's:
-`Value` at the parameter's operation type, `Str` at its encoding, `Ref` to a
-place of its type.
+`Value` at the parameter's operation type, `Str` at its encoding, `Copy` from a
+place of its type, `Ref` to a place of its type.
+
+**REQ-LOW-lowering-075** An argument for a `VAR_INPUT` parameter of an array,
+structure or function block type is a `Copy`, and an argument for a
+`VAR_IN_OUT` parameter is a `Ref`.
 
 **REQ-LOW-lowering-073** A behaviour policy
 ([ADR-0049](../adrs/0049-behavior-policies-selected-at-compile-time.md))
@@ -573,7 +640,7 @@ it is made today.
 | Argument passing mode | `ParamPassing` in `compile.rs` | `Arg` variant |
 | Variable and field identity | Nine name-keyed maps; lower-cased field names | `VarId`, `FieldIdx` |
 | Enumeration ordinal | `enum_map` | `Const` |
-| Default initial value | `emit_initial_values`; subrange lower bound, first enumeration value | `Store` statements in `init` |
+| Default initial value | `emit_initial_values`; subrange lower bound, first enumeration value | `Assign` statements in `init` |
 | Function local re-initialization ([ADR-0024](../adrs/0024-function-local-reinit-via-bytecode-prologue.md)) | `emit_function_local_prologue` | Statements at the head of the function body |
 | Behaviour policy | `CodegenOptions::string_to_num` | `Intrinsic` variant |
 | Target of `EXIT` and `CONTINUE` | `loop_labels` stack, with `ExitOutsideLoop` as a fallback | `LoopId` |
@@ -601,12 +668,12 @@ implements it.
 | `ELSIF` | Nested `If` |
 | `WHILE c DO b` | `Loop` whose body exits when `c` is false, then `b` |
 | `REPEAT b UNTIL c` | `Loop` with body `b` and a `continuing` that exits when `c` is true |
-| `FOR` | A `Store` of the initial value, then a `Loop` whose body exits past the bound and whose `continuing` is the increment, with the semantics `compile_loop.rs` implements today |
-| Bit read `x.3`, partial read `x.%B1` | Shift and mask of a `Load` |
-| Bit and partial write | `StoreBits` |
-| `p^ := v` | `Store` to a place ending in `Deref` |
-| `S=`, `R=` | `If` on the value around a `Store` of `TRUE` or `FALSE` |
-| `REF=` | `Store` of a `RefTo` (already the analyzer's view) |
+| `FOR` | An `Assign` of the initial value, then a `Loop` whose body exits past the bound and whose `continuing` is the increment, with the semantics `compile_loop.rs` implements today |
+| Bit read `x.3`, partial read `x.%B1` | Shift and mask of a `Read` |
+| Bit and partial write | `AssignBits` |
+| `p^ := v` | `Assign` to a place ending in `Deref` |
+| `S=`, `R=` | `If` on the value around an `Assign` of `TRUE` or `FALSE` |
+| `REF=` | `Assign` of a `RefTo` (already the analyzer's view) |
 | Operator function form `ADD(a, b, c)` | Left fold of `Binary` |
 | Typed time function `ADD_DT_TIME(a, b)` | Scalar arithmetic with the unit conversion `compile_time_arith.rs` applies today |
 | Enumerated value | `Const` |
@@ -615,12 +682,12 @@ implements it.
 | Named argument | Positional `Arg` |
 
 **REQ-LOW-lowering-100** Reading a bit or a partial access of any place lowers
-to the same shift and mask over a `Load` of that place, whatever the shape of
+to the same shift and mask over a `Read` of that place, whatever the shape of
 the place.
 
 **REQ-LOW-lowering-101** `a + b` and `ADD(a, b)` lower to the same expression.
 
-**REQ-LOW-lowering-102** A bit or partial write lowers to one `StoreBits` that
+**REQ-LOW-lowering-102** A bit or partial write lowers to one `AssignBits` that
 names its place once.
 
 The cross product in `compile_expr.rs` disappears because access kind and base
@@ -743,7 +810,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `VarTypeInfo` | Dissolves. Operation type is on the expression; storage width comes from the place's type. |
 | `ArrayVarInfo`, `StructVarInfo`, `StructFieldInfo`, `StructArrayVarInfo`, `FbInstanceInfo`, `UserFunctionInfo`, `UserFbTypeInfo`, `UserMethodInfo`, `StringVarInfo` | Keep in the bytecode backend's layout, without their type fields (`StructFieldInfo::op_type`, `field_op_types`, `param_op_types`, `element_var_type_info`). |
 | `ResolvedAccess` | Keep in the bytecode backend. It is that backend's addressing mode: the result of asking its layout how to reach a `Place`. |
-| `ParamPassing` | Dissolves into `Arg`. |
+| `ParamPassing` | Dissolves into `Arg`, which adds the by-value aggregate mode `ParamPassing` lacks. |
 | `SavedFbScope` | Delete. Ids do not collide across scopes. |
 | `type_info.rs`, `string_width.rs` | Move into lowering. |
 | `TimeArith`, `StringConversion`, `ShortCircuitOp` | Become desugarings, `Intrinsic` variants and an `ExprKind` respectively. |
@@ -781,6 +848,57 @@ Every end-to-end test that passes before the bytecode backend consumes the
 lowered program passes after, with its source and assertions unchanged. This is
 a delivery constraint rather than a requirement: it says how the work is done,
 and no single test can check it.
+
+## 10. Optimization
+
+The compiler optimizes in two places, and this design keeps both.
+
+| Level | Input and output | Where | Examples |
+|---|---|---|---|
+| Target neutral | Lowered program to lowered program | `ironplc-lowering`, after lowering and before any backend | Constant folding across statements, dead branch removal, common subexpression elimination, loop-invariant code motion, vectorization |
+| Target specific | The backend's own form | The backend | The bytecode peephole optimizer (`optimize/`, [Bytecode Peephole Optimizer](bytecode-peephole-optimizer.md)), the fused compare and branch of `ClassifiedCmp` |
+
+A target-neutral pass runs once and benefits every backend, so an optimization
+belongs there unless it depends on the target's instructions. The analyzer's
+constant folding (`xform_fold_constant_expressions`) is not an optimization in
+this sense: it decides values the language requires to be constant, such as
+array bounds, and stays in the analyzer.
+
+**REQ-LOW-lowering-140** A pass over the lowered program builds its output
+through the same constructors as lowering, so its output meets every
+requirement of [The Lowered Program](#3-the-lowered-program).
+
+**REQ-LOW-lowering-141** A pass over the lowered program preserves the
+program's observable behaviour: the values of every variable after each scan,
+the run-time traps of [Backend Contract](#7-backend-contract), and the span of
+each statement it keeps.
+
+**REQ-LOW-lowering-142** Every optimization pass over the lowered program can
+be turned off, and a backend produces a correct program from the unoptimized
+lowered program.
+
+Requirement REQ-LOW-lowering-142 lets the end-to-end suite run with passes off
+and on, and lets a debugger present a program as written.
+
+### Vectorized operations
+
+No vector node is proposed now, but nothing here rules one out. A vectorizing
+pass would find loops of the canonical form "for each element of these arrays,
+compute an element of that array" and replace each with a node that states the
+whole operation, for example an `AssignEach { dst: Place, op, srcs: Vec<Place> }`
+statement over array places. WebAssembly's 128-bit SIMD and a native backend
+could implement it directly.
+
+Two constraints follow for whoever adds one:
+
+- **A vector node must not burden every backend** (Goal 4). It comes with an
+  expansion, in `ironplc-lowering`, back to the scalar `Loop` it replaced, so a
+  backend without vector instructions (the bytecode VM today) calls the
+  expansion and implements nothing new.
+- **The loop must stay recognizable.** A pass can only find the canonical form
+  if lowering leaves `FOR` in a shape it can match. That weighs on open
+  question 3: a `For` node keeps the bound and step explicit, while the
+  desugared `Loop` makes the pass recover them.
 
 ## Delivery Constraints
 
@@ -893,8 +1011,10 @@ that this document then cites. Three decisions are separable:
    `ironplc_dsl::core` and `diagnostic` into their own crate would forbid them
    by manifest.
 3. **`FOR`.** Desugaring it decides its semantics once. It may also cost the
-   bytecode backend the `FOR`-specific peepholes it has today. The alternative
-   is a `For` node with its semantics specified here.
+   bytecode backend the `FOR`-specific peepholes it has today, and makes a
+   future vectorizing pass recover the loop's bound and step
+   ([Vectorized operations](#vectorized-operations)). The alternative is a
+   `For` node with its semantics specified here.
 4. **Layout-dependent values.** `SIZEOF` returns a size. If backends lay types
    out differently, either the language defines the size independently of
    layout or programs diverge.
@@ -916,8 +1036,9 @@ that this document then cites. Three decisions are separable:
     call, or one per operation and type as the VM's `func_id` table has today.
 13. **Reference checks.** Whether a `Deref` of a `VAR_IN_OUT` parameter, which
     is never null, is distinguished from a `Deref` of a `REF_TO`.
-14. **Debug information.** Whether the bytecode backend's debug section needs
-    anything from the AST that the lowered program as described does not carry.
+14. **Debug information.** REQ-LOW-lowering-006 lists what the debug section
+    is built from today. Whether a debugger that steps through expressions, or
+    shows variables an optimization removed, needs more than that.
 15. **Language server cost.** Lowering would run on every edit that analyzes
     cleanly.
 16. **Aggregate results.** A user function may return a structure today
@@ -927,6 +1048,9 @@ that this document then cites. Three decisions are separable:
     has no representation. One option is for lowering to give the call a
     destination place (`CallInto { dst: Place, callee, args }`); another is to
     pass the result variable as a hidden `Ref` argument.
+17. **Initial values.** Whether `init` stays a list of statements, as the
+    bytecode VM applies it, or becomes declarative (a value per place), which
+    a backend with a data image could place without evaluating anything.
 
 ## References
 
