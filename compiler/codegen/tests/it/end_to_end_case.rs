@@ -222,3 +222,45 @@ END_PROGRAM
 
     assert_run_i32_with(&source, &opts_with_bit_string_case_labels(), &[(0, 1)]);
 }
+
+/// A selector with a side effect runs once, whichever group matches and
+/// however many labels are compared before it does. `NEXT_VAL` counts its
+/// calls in `calls`, so `calls` ends one above its start value.
+#[rstest]
+#[case::first_label(4, 5, 5)]
+#[case::second_label_of_group(6, 7, 6)]
+#[case::subrange(8, 9, 8)]
+#[case::no_match_runs_else(20, 21, 1)]
+fn end_to_end_when_case_selector_has_side_effect_then_evaluates_selector_once(
+    #[case] start: i32,
+    #[case] calls_after: i32,
+    #[case] y_after: i32,
+) {
+    let source = format!(
+        "
+FUNCTION NEXT_VAL : DINT
+VAR_IN_OUT c : DINT; END_VAR
+    c := c + 1;
+    NEXT_VAL := c;
+END_FUNCTION
+PROGRAM main
+  VAR
+    calls : DINT := {start};
+    y : DINT;
+  END_VAR
+  CASE NEXT_VAL(c := calls) OF
+    5: y := 5;
+    6, 7: y := 6;
+    8..10: y := 8;
+  ELSE
+    y := 1;
+  END_CASE;
+END_PROGRAM
+"
+    );
+    assert_run_i32_with(
+        &source,
+        &CompilerOptions::default(),
+        &[(0, calls_after), (1, y_after)],
+    );
+}

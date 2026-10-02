@@ -615,19 +615,26 @@ fn compile_if(
 
 /// Compiles a CASE statement.
 ///
-/// Each `CaseStatementGroup` is compiled as a chain of comparisons (like
-/// IF/ELSIF/ELSE). Multi-value selectors are OR'd together.
+/// The selector is evaluated once, before any label is compared, and its
+/// value stays on the stack while the labels are tried. Each label compares a
+/// `DUP` of it, so a selector with a side effect (a call to a function that
+/// writes a global, say) runs once however many labels the statement has.
+/// Each `CaseStatementGroup` is tried in order, like IF/ELSIF/ELSE; a group
+/// with several labels branches to its body on the first that matches.
 ///
 /// ```text
-///   // For each arm:
 ///   compile(selector)
-///   LOAD_CONST case_value
-///   EQ_I32
-///   JMP_IF_NOT → next_arm
-///   compile(body)
+///   // For each group, with labels l1 .. ln:
+///   DUP; compare(l1); BOOL_NOT; JMP_IF_NOT → body   // l1 .. l(n-1)
+///   DUP; compare(ln); JMP_IF_NOT → next_group
+/// body:
+///   POP
+///   compile(statements)
 ///   JMP → END
-/// next_arm:
-///   // ... next arm / ELSE body ...
+/// next_group:
+///   // ... next group ...
+///   POP
+///   compile(ELSE statements)
 /// END:
 /// ```
 fn compile_case(
@@ -644,28 +651,42 @@ fn compile_case(
         op_type: op_type(ctx, &case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE),
     };
 
+    selector.compile(emitter, ctx)?;
+    let depth_with_selector = emitter.stack_depth();
+
     for group in &case_stmt.statement_groups {
+        let body_label = emitter.create_label();
         let next_label = emitter.create_label();
 
-        // Compile selector comparisons with OR logic.
-        for (i, selection) in group.selectors.iter().enumerate() {
-            compile_case_selector(emitter, ctx, &selector, selection)?;
-            if i > 0 {
-                emitter.emit_bool_or();
+        match group.selectors.split_last() {
+            Some((last, others)) => {
+                for selection in others {
+                    emitter.emit_dup();
+                    compile_case_selector(emitter, ctx, &selector, selection)?;
+                    emitter.emit_bool_not();
+                    emitter.emit_jmp_if_not(body_label);
+                }
+                emitter.emit_dup();
+                compile_case_selector(emitter, ctx, &selector, last)?;
+                emitter.emit_jmp_if_not(next_label);
             }
+            // A group without labels matches nothing.
+            None => emitter.emit_jmp(next_label),
         }
 
-        emitter.emit_jmp_if_not(next_label);
-
-        // Compile body.
+        emitter.bind_label(body_label);
+        emitter.emit_pop();
         compile_stmts(emitter, ctx, &group.statements)?;
-
         emitter.emit_jmp(end_label);
 
+        // Reached only by a failed comparison, which leaves the selector on
+        // the stack; the straight-line tracking above has already popped it.
         emitter.bind_label(next_label);
+        emitter.reset_stack_depth(depth_with_selector);
     }
 
-    // Compile ELSE body if present.
+    // No group matched: drop the selector, then run ELSE (if present).
+    emitter.emit_pop();
     compile_stmts(emitter, ctx, &case_stmt.else_body)?;
 
     emitter.bind_label(end_label);
@@ -681,13 +702,21 @@ struct CaseSelector<'a> {
 }
 
 impl CaseSelector<'_> {
-    /// Emits `selector <cmp> label` at the selector's width, leaving a
-    /// boolean result on the stack.
+    /// Evaluates the selector, leaving its value on the stack.
     ///
-    /// The width is decided here, once, for every label kind. A `CASE`
-    /// compares its selector against integer labels, so only an integer
-    /// width is meaningful; a float-width selector is rejected against the
-    /// selector expression.
+    /// A `CASE` compares its selector against integer labels, so only an
+    /// integer width is meaningful; a float-width selector is rejected
+    /// against the selector expression.
+    fn compile(&self, emitter: &mut Emitter, ctx: &mut CompileContext) -> Result<(), Diagnostic> {
+        match self.op_type.0 {
+            OpWidth::W32 | OpWidth::W64 => compile_expr(emitter, ctx, self.expr, self.op_type),
+            // CASE with float types is not meaningful in IEC 61131-3.
+            OpWidth::F32 | OpWidth::F64 => Err(non_integer_case_selector(self.expr)),
+        }
+    }
+
+    /// Emits `<value on the stack> <cmp> label` at the selector's width,
+    /// consuming the value and leaving a boolean result on the stack.
     fn cmp_label(
         &self,
         emitter: &mut Emitter,
@@ -695,7 +724,6 @@ impl CaseSelector<'_> {
         label: CaseLabelValue<'_>,
         cmp: fn(&mut Emitter, OpType),
     ) -> Result<(), Diagnostic> {
-        compile_expr(emitter, ctx, self.expr, self.op_type)?;
         match self.op_type.0 {
             OpWidth::W32 => {
                 let pool_index = ctx.add_i32_constant(label.to_i32(self.op_type.1)?);
@@ -705,7 +733,7 @@ impl CaseSelector<'_> {
                 let pool_index = ctx.add_i64_constant(label.to_i64(self.op_type.1)?);
                 emitter.emit_load_const_i64(pool_index);
             }
-            // CASE with float types is not meaningful in IEC 61131-3.
+            // `compile` rejected a float selector before any label is compared.
             OpWidth::F32 | OpWidth::F64 => {
                 return Err(non_integer_case_selector(self.expr));
             }
@@ -780,7 +808,8 @@ impl<'a> CaseLabelValue<'a> {
     }
 }
 
-/// Compiles a single case selector, leaving a boolean result on the stack.
+/// Compares the selector value on top of the stack against one label,
+/// consuming the value and leaving a boolean result on the stack.
 ///
 /// - `SignedInteger`: `selector == value`
 /// - `Subrange`: `(selector >= start) AND (selector <= end)`
@@ -797,16 +826,18 @@ fn compile_case_selector(
             selector.cmp_label(emitter, ctx, CaseLabelValue::signed(si), emit_eq)
         }
         CaseSelectionKind::Subrange(sr) => {
+            // The value is compared twice, so keep a copy under the first result.
+            emitter.emit_dup();
             let start = resolve_signed_integer_ref(&sr.start)?;
             selector.cmp_label(emitter, ctx, CaseLabelValue::signed(start), emit_ge)?;
+            emitter.emit_swap();
             let end = resolve_signed_integer_ref(&sr.end)?;
             selector.cmp_label(emitter, ctx, CaseLabelValue::signed(end), emit_le)?;
             emitter.emit_bool_and();
             Ok(())
         }
         CaseSelectionKind::EnumeratedValue(ev) => {
-            // REQ-EN-codegen-040: Load selector, load ordinal constant, compare with EQ_I32.
-            compile_expr(emitter, ctx, selector.expr, selector.op_type)?;
+            // REQ-EN-codegen-040: compare the selector with the ordinal constant using EQ_I32.
             let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?;
             let pool_index = ctx.add_i32_constant(ordinal);
             emitter.emit_load_const_i32(pool_index);
