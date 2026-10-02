@@ -41,21 +41,25 @@ expression on the same pair agree. The analyzer exposes the answer as
 
 ## Codegen
 
-Each operand is compiled at its own type and converted to the operand type,
-then the comparison is emitted at the operand type. Converting from the
-operand's own type is what widens it by its own signedness: an unsigned
-integer, a bit string or a date type (unsigned, ADR-0025) is zero-extended, a
-signed integer or a `TIME` (ADR-0021) is sign-extended, and an integer is
-converted to a real. An operand whose own type codegen cannot place, a
-literal's category or a subrange, is compiled at the operand type directly.
+The analyzer records the operand type on the operands themselves (ADR-0056):
+`xform_insert_implicit_conversions` gives an untyped literal operand the
+operand type and wraps an operand of another type in an `ImplicitConversion`
+to it (see [Implicit Conversions](implicit-conversions.md)). Codegen compiles
+a comparison at its left operand's type and a conversion from the operand's
+own type, which is what widens it by its own signedness: an unsigned integer,
+a bit string or a date type (unsigned, ADR-0025) is zero-extended, a signed
+integer or a `TIME` (ADR-0021) is sign-extended, and an integer is converted
+to a real.
 
-A comparison with no operand type is compiled as it was before this design:
-at the concrete left operand's type, else the concrete right operand's. The
+A comparison with no operand type takes the concrete left operand's type,
+else the concrete right operand's, as codegen chose before this design. The
 analyzer does not check the operand pair of a comparison, so such a pair
-reaches codegen (see Out of scope).
+reaches the pass (see Out of scope).
 
 The operator and the function form compile through the same routine, so the
-two spellings cannot diverge.
+two spellings cannot diverge. The function form used to fold its inputs at the
+type of the enclosing expression, which compared two `STRING` operands as the
+integers on the stack rather than through the string comparison.
 
 **REQ-CMP-codegen-001** A comparison of two integers computes at the wider type whichever side it is on, so `DINT 1 < LINT 4294967297` and `LINT 4294967297 > DINT 1` are both TRUE.
 
@@ -65,14 +69,16 @@ two spellings cannot diverge.
 
 **REQ-CMP-codegen-004** A short temporal operand is widened to the long type by its signedness, so a `DATE_AND_TIME` compares below an `LDATE_AND_TIME` after 2106, and a negative `TIME` below an `LTIME` of zero.
 
-**REQ-CMP-codegen-005** A call to `EQ`, `NE`, `LT`, `LE`, `GT` or `GE` computes at the operand type of its two inputs, as the operator expression does, whatever the type it is assigned to.
+**REQ-CMP-codegen-005** A call to `EQ`, `NE`, `LT`, `LE`, `GT` or `GE` compiles as the operator expression on its two inputs, whatever the type it is assigned to: `GT(l1, l2)` on two `LINT` operands computes at `LINT`, and `EQ(s, s)` on a `STRING` compares the strings.
 
 ## Out of scope
 
 - The analyzer accepts a comparison of any two elementary operands, including
   a pair with no operand type (`DINT` and `UDINT`, `DINT` and `REAL`), which
-  compiles at the left operand's type. Checking the pair is a separate change.
+  compiles at the left operand's type. Checking the pair is a separate change
+  ([#1931](https://github.com/ironplc/ironplc/issues/1931)).
 - The ordered comparison functions are binary; the extensible monotonic form
   `GT(a, b, c)` is not implemented (see
   [Keyword Function Forms](keyword-function-forms.md)).
-- String comparisons take their own path and are unchanged.
+- A string comparison takes its own path, `compile_string_compare`, and is
+  unchanged but for being reachable from the function form.

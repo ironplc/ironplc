@@ -66,7 +66,7 @@ on each expression from its operands' types:
 | Arithmetic operator | the result of the overload that applies (see [Arithmetic Operator Overloads](arithmetic-operator-overloads.md)), else the concrete operand's type |
 | Unary operator, parenthesised expression | the operand's type |
 | `AND`, `OR`, `XOR`, `AND_THEN`, `OR_ELSE` | the concrete operand's type |
-| Comparison | `BOOL` |
+| Comparison | `BOOL`; the operands compare at the type one widens to (see [Comparison Operand Type](comparison-operand-type.md)) |
 | Function call | the overload's result, else the declared return type, else for a generic return type the argument bound to it |
 | Enumerated value | its enumeration, when qualified |
 | `REF(x)` | `reference_to(x's type)` |

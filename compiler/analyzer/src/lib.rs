@@ -118,7 +118,6 @@ pub use intermediate_type::IntermediateType;
 pub use intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, typed_overload, FoldFailure, Overload,
 };
-pub use intermediates::comparison_operand::comparison_operand_type;
 pub use intermediates::enumeration::resolve_ordinal_values;
 pub use intermediates::operator_function_form::{
     operator_function_form, FormOf, OperatorFunctionForm,

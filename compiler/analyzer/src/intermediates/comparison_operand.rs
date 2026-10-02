@@ -16,7 +16,7 @@ use super::common_operand::{common_operand, Side};
 /// Returns the type at which a comparison of operands of types `left` and
 /// `right` compares them, or `None` when an operand has no type or neither
 /// widens to the other.
-pub fn comparison_operand_type(
+pub(crate) fn comparison_operand_type(
     left: Option<&TypeName>,
     right: Option<&TypeName>,
     options: &CompilerOptions,

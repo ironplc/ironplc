@@ -99,11 +99,28 @@ fn apply_when_integer_variable_compared_with_real_then_converted_to_real() {
     assert_eq!(comparison_operands(&source), pair("REAL", "INT->REAL"));
 }
 
-#[spec_test(REQ_IC_analyzer_002)]
+#[spec_test(REQ_IC_analyzer_010)]
 #[test]
-fn apply_when_right_operand_wider_then_converted_to_left() {
+fn apply_when_right_operand_wider_then_left_converted() {
     let source = program("d : DINT; l : LINT;", "d < l");
-    assert_eq!(comparison_operands(&source), pair("DINT", "LINT->DINT"));
+    assert_eq!(comparison_operands(&source), pair("DINT->LINT", "LINT"));
+}
+
+#[spec_test(REQ_IC_analyzer_011)]
+#[test]
+fn apply_when_neither_widens_then_right_converted_to_left() {
+    let source = program("d : DINT; u : UDINT;", "d < u");
+    assert_eq!(comparison_operands(&source), pair("DINT", "UDINT->DINT"));
+}
+
+/// The widening relation does not see through a named subrange to its base
+/// type, so the comparison falls back to the left operand's type and narrows
+/// the `LINT`, as codegen did before the analyzer chose.
+#[test]
+fn apply_when_named_subrange_and_wider_integer_then_wider_converted_to_subrange() {
+    let source = "TYPE Small : INT (0..10); END_TYPE
+        PROGRAM main VAR b : BOOL; s : Small; l : LINT; END_VAR b := s < l; END_PROGRAM";
+    assert_eq!(comparison_operands(source), pair("SMALL", "LINT->SMALL"));
 }
 
 #[spec_test(REQ_IC_analyzer_003)]
@@ -133,24 +150,24 @@ fn apply_when_alias_of_operand_type_then_unchanged() {
     assert_eq!(comparison_operands(source), pair("INT", "INT"));
 }
 
-#[spec_test(REQ_IC_analyzer_005)]
+#[spec_test(REQ_IC_analyzer_012)]
 #[test]
-fn apply_when_call_of_another_type_then_not_converted() {
-    let source = program("d : DINT; l : LINT;", "d < ABS(l)");
-    assert_eq!(comparison_operands(&source), pair("DINT", "LINT"));
+fn apply_when_call_of_narrower_type_then_converted() {
+    let source = program("d : DINT; l : LINT;", "ABS(d) < l");
+    assert_eq!(comparison_operands(&source), pair("DINT->LINT", "LINT"));
 }
 
 #[test]
-fn apply_when_temporal_variable_of_another_type_then_not_converted() {
+fn apply_when_short_and_long_time_then_short_converted() {
     let source = program("t : TIME; lt : LTIME;", "t < lt");
-    assert_eq!(comparison_operands(&source), pair("TIME", "LTIME"));
+    assert_eq!(comparison_operands(&source), pair("TIME->LTIME", "LTIME"));
 }
 
-#[spec_test(REQ_IC_analyzer_006)]
+#[spec_test(REQ_IC_analyzer_013)]
 #[test]
-fn apply_when_function_form_then_inputs_not_converted() {
+fn apply_when_function_form_then_inputs_converted() {
     let source = program("d : DINT; l : LINT;", "GT(d, l)");
-    assert_eq!(comparison_operands(&source), pair("DINT", "LINT"));
+    assert_eq!(comparison_operands(&source), pair("DINT->LINT", "LINT"));
 }
 
 #[spec_test(REQ_IC_analyzer_007)]
