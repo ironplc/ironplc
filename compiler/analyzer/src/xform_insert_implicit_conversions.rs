@@ -1,30 +1,22 @@
 //! Lowering pass recording, in the AST, how each operand of a comparison is
 //! converted before it is compared.
 //!
-//! A comparison (`=`, `<>`, `<`, `<=`, `>`, `>=`) compares its operands at
-//! one operand type: the type of the concrete left operand, else of the
-//! concrete right one. This pass settles that type and makes it visible on
-//! the operands:
+//! A comparison (`=`, `<>`, `<`, `<=`, `>`, `>=` and the functions `EQ`,
+//! `NE`, `LT`, `LE`, `GT`, `GE`) compares its operands at one operand type.
+//! This pass settles that type and makes it visible on the operands:
 //!
-//! * a variable of a numeric or bit-string type other than the operand type
-//!   is wrapped in an [`ExprKind::ImplicitConversion`] to it, so `l > d` on
-//!   an `LINT` and a `DINT` becomes `l > LINT(d)`;
+//! * an operand of another scalar type is wrapped in an
+//!   [`ExprKind::ImplicitConversion`] to the operand type, so `d < l` on a
+//!   `DINT` and an `LINT` becomes `LINT(d) < l`;
 //! * an untyped literal operand is given the operand type, so the `1` of
-//!   `1 < l` is an `LINT`.
+//!   `l > 1` is an `LINT`.
 //!
-//! A backend compiles the comparison at the type of its left operand, and
-//! compiles a conversion where the node says, without choosing either
-//! itself. See ADR-0056.
-//!
-//! The pass records what codegen did before it, and no more: only a variable
-//! of a numeric or bit-string type was read at its own type and converted.
-//! Any other operand of another type -- a call, an expression, a temporal
-//! variable -- is compiled at the operand type, so a wider one is computed
-//! narrow (#1920).
-//!
-//! The function forms (`EQ`, `NE`, `LT`, `LE`, `GT`, `GE`) are not covered:
-//! codegen compiles them at the type of the enclosing expression, which is
-//! not a conversion this pass can record.
+//! After this pass both operands of a comparison have the operand type
+//! wherever either has a type, so a backend compiles the comparison at the
+//! type of its left operand and compiles a conversion where the node says,
+//! without choosing either itself. See ADR-0056,
+//! `specs/design/implicit-conversions.md` and
+//! `specs/design/comparison-operand-type.md`.
 //!
 //! The pass runs in `stages::analyze` after the semantic rules, so a rule
 //! checks the operands the program wrote. It reports nothing: a comparison
@@ -34,21 +26,25 @@ use std::convert::Infallible;
 
 use ironplc_dsl::common::Library;
 use ironplc_dsl::fold::Fold;
-use ironplc_dsl::textual::{CompareExpr, Expr, ExprKind, ExprType};
+use ironplc_dsl::textual::{CompareExpr, Expr, ExprKind, ExprType, Function, ParamAssignmentKind};
 use ironplc_dsl::type_id::TypeId;
+use ironplc_parser::options::CompilerOptions;
 
 use crate::intermediate_type::IntermediateType;
+use crate::intermediates::comparison_operand::comparison_operand_type;
+use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
 
-pub fn apply(lib: Library, types: &TypeEnvironment) -> Library {
-    let mut inserter = ImplicitConversions { types };
+pub fn apply(lib: Library, types: &TypeEnvironment, options: &CompilerOptions) -> Library {
+    let mut inserter = ImplicitConversions { types, options };
     let Ok(lib) = inserter.fold_library(lib);
     lib
 }
 
 struct ImplicitConversions<'a> {
     types: &'a TypeEnvironment,
+    options: &'a CompilerOptions,
 }
 
 impl ImplicitConversions<'_> {
@@ -66,24 +62,29 @@ impl ImplicitConversions<'_> {
         self.convert(right, target);
     }
 
-    /// The type a comparison of `left` and `right` compares at: the concrete
-    /// left operand's type, else the concrete right one's, the rule codegen
-    /// applied before the analyzer recorded it. A wider right operand is
-    /// therefore narrowed (#1920).
+    /// The type a comparison of `left` and `right` compares at: the type one
+    /// operand widens to, else the concrete left operand's type, else the
+    /// concrete right one's. The fallback is the rule codegen applied before
+    /// the analyzer chose; a pair neither of which widens to the other
+    /// (`DINT` and `UDINT`) is not checked yet (#1931).
     fn operand_type(&self, left: &Expr, right: &Expr) -> Option<TypeId> {
-        concrete(left).or_else(|| concrete(right))
+        comparison_operand_type(
+            self.operand_name(left).as_ref(),
+            self.operand_name(right).as_ref(),
+            self.options,
+        )
+        .and_then(|common| self.types.id_of(&common))
+        .or_else(|| concrete(left))
+        .or_else(|| concrete(right))
     }
 
     /// Makes `operand` a value of the type `target`: an untyped literal is
-    /// given the type, and a numeric or bit-string variable of another type
-    /// is wrapped in a conversion to it.
+    /// given the type, and a scalar operand of another type is wrapped
+    /// in a conversion to it.
     fn convert(&self, operand: &mut Expr, target: TypeId) {
         match operand.expr_type {
             Some(ExprType::Literal(_)) => operand.expr_type = Some(ExprType::Concrete(target)),
-            Some(ExprType::Concrete(own))
-                if matches!(operand.kind, ExprKind::Variable(_))
-                    && self.needs_conversion(own, target) =>
-            {
+            Some(ExprType::Concrete(own)) if self.needs_conversion(own, target) => {
                 let placeholder = Expr::new(ExprKind::Null(operand.span.clone()));
                 let inner = std::mem::replace(operand, placeholder);
                 *operand = Expr::implicit_conversion(inner, target);
@@ -92,27 +93,17 @@ impl ImplicitConversions<'_> {
         }
     }
 
-    /// Returns `true` when a variable of type `own` is converted to be
-    /// compared at `target`: `own` is numeric or a bit string, `target` is a
-    /// scalar, and they are different types rather than one type under two
-    /// names (an alias and the type it aliases).
+    /// Returns `true` when a value of type `own` is converted to be compared
+    /// at `target`: both are scalars, and they are different types rather
+    /// than one type under two names (an alias and the type it aliases, or
+    /// an anonymous subrange and its base type).
+    ///
+    /// An enumeration or a reference is compared as the type it is.
     fn needs_conversion(&self, own: TypeId, target: TypeId) -> bool {
         own != target
-            && self.is_numeric_or_bit_string(own)
+            && self.is_scalar(own)
             && self.is_scalar(target)
             && self.name_of(own) != self.name_of(target)
-    }
-
-    fn is_numeric_or_bit_string(&self, id: TypeId) -> bool {
-        matches!(
-            self.representation(id),
-            Some(
-                IntermediateType::Int { .. }
-                    | IntermediateType::UInt { .. }
-                    | IntermediateType::Real { .. }
-                    | IntermediateType::Bytes { .. }
-            )
-        )
     }
 
     /// Returns `true` for an elementary type, or a subrange of one.
@@ -144,6 +135,10 @@ impl ImplicitConversions<'_> {
     fn name_of(&self, id: TypeId) -> Option<ironplc_dsl::common::TypeName> {
         operand_type_name(self.types, &ExprType::Concrete(id))
     }
+
+    fn operand_name(&self, expr: &Expr) -> Option<ironplc_dsl::common::TypeName> {
+        operand_type_name(self.types, expr.expr_type.as_ref()?)
+    }
 }
 
 /// The type of `expr` when it is a value of one concrete type.
@@ -154,11 +149,33 @@ fn concrete(expr: &Expr) -> Option<TypeId> {
     }
 }
 
+/// Returns `true` when `function` is a call to the function form of a
+/// comparison, `EQ` to `GE`.
+fn is_comparison_form(function: &Function) -> bool {
+    operator_function_form(function.name.original())
+        .is_some_and(|form| matches!(&form.operator, FormOf::Compare(op) if op.is_comparison()))
+}
+
 impl Fold<Infallible> for ImplicitConversions<'_> {
     fn fold_compare_expr(&mut self, node: CompareExpr) -> Result<CompareExpr, Infallible> {
         let mut node = node.recurse_fold(self)?;
         if node.op.is_comparison() {
             self.convert_operands(&mut node.left, &mut node.right);
+        }
+        Ok(node)
+    }
+
+    fn fold_function(&mut self, node: Function) -> Result<Function, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        if is_comparison_form(&node) {
+            // The comparison forms are binary, and the named-argument pass
+            // made every input positional; any other shape is one a rule
+            // reported.
+            if let [ParamAssignmentKind::PositionalInput(left), ParamAssignmentKind::PositionalInput(right)] =
+                node.param_assignment.as_mut_slice()
+            {
+                self.convert_operands(&mut left.expr, &mut right.expr);
+            }
         }
         Ok(node)
     }

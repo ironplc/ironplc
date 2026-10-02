@@ -22,9 +22,9 @@ use super::compile::{
 };
 use super::compile_arith::compile_binary_arith;
 use super::compile_call::compile_function_call;
+use super::compile_comparison::compile_comparison;
 use super::compile_method::compile_method_call_expression;
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
-use super::compile_string::compile_string_compare;
 use super::type_info::{expr_operand_name, expr_representation, expr_type_info};
 use crate::emit::Emitter;
 
@@ -244,25 +244,15 @@ fn compile_compare(
         return compile_short_circuit(emitter, ctx, compare, short_circuit);
     }
 
-    // String comparisons need a completely different code path because
-    // strings live in the data region, not on the operand stack.
-    if expr_is_string(ctx, &compare.left) {
-        return compile_string_compare(emitter, ctx, compare);
-    }
-
-    // A comparison's result is BOOL, so it computes at the type of its
-    // operands. The analyzer gave both operands that type (ADR-0056): a
-    // literal is typed, and an operand of another type is converted. The
-    // right operand's type is the answer only when the left one has no type
-    // codegen can place, such as a direct address the analyzer does not type.
     if compare.op.is_comparison() {
-        let operand_op_type = op_type_from_expr(ctx, &compare.left)
-            .or_else(|| op_type_from_expr(ctx, &compare.right))
-            .unwrap_or(op_type);
-        compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
-        compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
-        emit_compare_op(emitter, &compare.op, operand_op_type);
-        return Ok(());
+        return compile_comparison(
+            emitter,
+            ctx,
+            &compare.op,
+            &compare.left,
+            &compare.right,
+            op_type,
+        );
     }
 
     // AND, OR and XOR are boolean on BOOL operands and bitwise on a bit
