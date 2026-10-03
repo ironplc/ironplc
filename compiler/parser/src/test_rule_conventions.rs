@@ -5,7 +5,7 @@
 //! Token rules take tokens, not a library and context, so the checks on
 //! macros, contexts and the analyze pipeline do not apply.
 
-use ironplc_test::rule_conventions::{violations, Convention};
+use ironplc_test::rule_conventions::{unregistered_rules, violations, Convention};
 use std::path::Path;
 
 const CONVENTIONS: &[Convention] = &[
@@ -28,5 +28,17 @@ fn rule_tests_when_checked_then_follow_conventions() {
         found.is_empty(),
         "rule tests break the conventions in specs/steering/compiler-standards.md (Rule Tests):\n{}",
         found.join("\n")
+    );
+}
+
+#[test]
+fn rules_when_checked_then_each_runs_in_the_pipeline() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+
+    let unregistered = unregistered_rules(&src, &src.join("lib.rs"));
+
+    assert!(
+        unregistered.is_empty(),
+        "rules whose apply the token rules in lib.rs never calls: {unregistered:?}"
     );
 }
