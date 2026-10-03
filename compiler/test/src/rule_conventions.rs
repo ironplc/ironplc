@@ -230,7 +230,15 @@ const ANY_ERROR: &[&str] = &[".is_err()", "has_diagnostics()"];
 
 const PIPELINE: &[&str] = &["analyze(&"];
 
-const OK_SIDE: &[&str] = &["rule_ok!(", "token_rule_ok!(", ".is_ok()", "is_empty()"];
+/// Markers of a test where the rule reports nothing; `&[]` is an empty
+/// expected problem list (`codes(&[])`, `const OK: &[Problem] = &[]`).
+const OK_SIDE: &[&str] = &[
+    "rule_ok!(",
+    "token_rule_ok!(",
+    ".is_ok()",
+    "is_empty()",
+    "&[]",
+];
 
 const ERR_SIDE: &[&str] = &["Problem::", "NOT_IMPLEMENTED_CODE"];
 
@@ -461,6 +469,16 @@ mod tests {
 
         fs::remove_dir_all(&dir).unwrap();
         assert_eq!(unregistered, vec![src.join("rule_b.rs")]);
+    }
+
+    #[test]
+    fn check_when_ok_side_is_empty_problem_list_then_no_missing_ok() {
+        let rule = RuleSource::from_text(
+            PathBuf::from("rule_x.rs"),
+            "#[cfg(test)]\nmod tests {\n    const OK: &[Problem] = &[];\n    rule_err!(err, \"\", [Problem::X]);\n}\n",
+        );
+
+        assert_eq!(found(&rule), vec![]);
     }
 
     #[test]

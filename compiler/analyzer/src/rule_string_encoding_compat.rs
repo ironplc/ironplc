@@ -300,7 +300,7 @@ END_FUNCTION_BLOCK
         edition3_options()
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_method_local_wstring_assigned_to_field_string_then_p4034,
         "
 FUNCTION_BLOCK FB
@@ -315,7 +315,8 @@ FUNCTION_BLOCK FB
   END_METHOD
 END_FUNCTION_BLOCK
 ",
-        [Problem::StringEncodingMismatch],
+        Problem::StringEncodingMismatch,
+        ":=",
         edition3_options()
     );
 

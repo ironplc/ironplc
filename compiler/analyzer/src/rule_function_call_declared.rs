@@ -198,7 +198,7 @@ END_FUNCTION_BLOCK",
         [Problem::FunctionCallUndeclared]
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_function_calls_undeclared_function_then_error,
         "
 FUNCTION MY_FUNC : INT
@@ -207,7 +207,8 @@ VAR_INPUT
 END_VAR
     MY_FUNC := UNDEFINED_HELPER(x);
 END_FUNCTION",
-        [Problem::FunctionCallUndeclared]
+        Problem::FunctionCallUndeclared,
+        "UNDEFINED_HELPER"
     );
 
     rule_err!(

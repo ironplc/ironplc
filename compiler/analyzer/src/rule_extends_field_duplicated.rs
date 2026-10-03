@@ -195,4 +195,23 @@ END_VAR
 END_FUNCTION_BLOCK",
         fb_inheritance_options()
     );
+
+    rule_err_at!(
+        apply_when_derived_redeclares_base_field_then_error_at_derived_field,
+        "
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+VAR
+    state : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Base
+VAR
+    state : INT;
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::ExtendsFieldNameDuplicated,
+        "state",
+        fb_inheritance_options()
+    );
 }

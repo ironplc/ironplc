@@ -385,4 +385,17 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK"
     );
+
+    rule_err_at!(
+        apply_when_fb_qualifier_invalid_then_error_at_qualifier,
+        "
+FUNCTION_BLOCK PRIVATE FB_Motor
+VAR
+    x : INT;
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::MemberQualifierInvalid,
+        "PRIVATE",
+        opts_flag()
+    );
 }

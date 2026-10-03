@@ -452,7 +452,7 @@ END_FUNCTION_BLOCK",
         fb_inheritance_options()
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_extends_and_genuinely_undeclared_field_then_error,
         "
 FUNCTION_BLOCK FB_Base
@@ -467,7 +467,8 @@ VAR
 END_VAR
 bRunning := bNotDeclaredAnywhere;
 END_FUNCTION_BLOCK",
-        [Problem::VariableUndefined],
+        Problem::VariableUndefined,
+        "bNotDeclaredAnywhere",
         fb_inheritance_options()
     );
 
@@ -628,18 +629,15 @@ END_PROGRAM";
             [Problem::VariableUndefined.code(); 2]
         );
 
-        let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
-        assert!(
-            reported
-                .iter()
-                .any(|d| d.as_str() == "variable=UNDECLARED_ONE"),
-            "expected UNDECLARED_ONE, got {reported:?}"
-        );
-        assert!(
-            reported
-                .iter()
-                .any(|d| d.as_str() == "variable=UNDECLARED_TWO"),
-            "expected UNDECLARED_TWO, got {reported:?}"
+        let reported: Vec<&str> = diagnostics
+            .iter()
+            .flat_map(|d| &d.described)
+            .map(String::as_str)
+            .filter(|d| d.starts_with("variable="))
+            .collect();
+        assert_eq!(
+            reported,
+            ["variable=UNDECLARED_ONE", "variable=UNDECLARED_TWO"]
         );
     }
 
@@ -669,15 +667,15 @@ END_PROGRAM";
             [Problem::VariableUndefined.code(); 2]
         );
 
-        let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
-        assert!(
-            reported.iter().any(|d| d.as_str() == "variable=AAA_ONE"),
-            "expected AAA_ONE, got {reported:?}"
-        );
-        assert!(
-            reported.iter().any(|d| d.as_str() == "variable=BBB_ONE"),
-            "expected BBB_ONE, got {reported:?}"
-        );
+        let mut reported: Vec<&str> = diagnostics
+            .iter()
+            .flat_map(|d| &d.described)
+            .map(String::as_str)
+            .filter(|d| d.starts_with("variable="))
+            .collect();
+        // Which POU is checked first is not the point; that both are is.
+        reported.sort_unstable();
+        assert_eq!(reported, ["variable=AAA_ONE", "variable=BBB_ONE"]);
     }
 
     // ---------------------------------------------------------------------

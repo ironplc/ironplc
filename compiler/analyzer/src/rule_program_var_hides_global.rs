@@ -178,7 +178,7 @@ END_PROGRAM"
         [Problem::ProgramVariableHidesGlobal]
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_program_var_differs_only_in_case_then_error,
         &with_config(
             "
@@ -188,7 +188,8 @@ PROGRAM main
   END_VAR
 END_PROGRAM"
         ),
-        [Problem::ProgramVariableHidesGlobal]
+        Problem::ProgramVariableHidesGlobal,
+        "MAXSPEED"
     );
 
     rule_err!(

@@ -325,7 +325,7 @@ FB_INSTANCE(IN1 := TRUE, IN2 := FALSE);
 END_FUNCTION_BLOCK"
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_formal_names_incorrect_then_error,
         "
 FUNCTION_BLOCK Callee
@@ -337,7 +337,8 @@ FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(BAR := TRUE);
 END_FUNCTION_BLOCK",
-        [Problem::FunctionInvocationMissingInput]
+        Problem::FunctionInvocationMissingInput,
+        "FB_INSTANCE(BAR := TRUE)"
     );
 
     rule_err!(

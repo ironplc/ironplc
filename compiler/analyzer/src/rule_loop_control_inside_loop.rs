@@ -220,7 +220,7 @@ mod tests {
         edition3_options()
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_continue_in_if_outside_loop_then_p4065,
         "
         FUNCTION f : INT
@@ -230,7 +230,8 @@ mod tests {
             END_IF;
             f := 0;
         END_FUNCTION",
-        [Problem::ContinueOutsideLoop],
+        Problem::ContinueOutsideLoop,
+        "CONTINUE",
         edition3_options()
     );
 
