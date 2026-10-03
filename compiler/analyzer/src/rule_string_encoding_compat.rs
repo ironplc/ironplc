@@ -301,6 +301,7 @@ PROGRAM main
 END_PROGRAM
 ",
         );
+        // rule-test-conventions: allow(pipeline) -- shows the rule is wired into analyze
         let (_lib, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
         let codes: Vec<_> = context
             .diagnostics()

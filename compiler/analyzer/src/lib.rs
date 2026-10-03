@@ -131,6 +131,8 @@ pub use type_environment::{
 
 #[cfg(test)]
 mod test_helpers;
+#[cfg(test)]
+mod test_rule_conventions;
 
 // Spec conformance testing infrastructure (test-only).
 #[cfg(test)]

@@ -1373,6 +1373,7 @@ END_PROGRAM",
     // Not asserted exactly: besides P4026 this also reports P4027, because
     // expression typing narrows SIN's ANY_REAL return to BOOL, a type outside
     // that category, and the return check then flags BOOL -> REAL.
+    // rule-test-conventions: allow(weak-macro)
     rule_ctx_err_code!(
         apply_when_stdlib_sin_arg_is_bool_then_arg_type_error,
         "
