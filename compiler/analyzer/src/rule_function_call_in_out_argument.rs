@@ -565,4 +565,27 @@ END_PROGRAM"
             [Problem::InOutArgNotWritable.code()]
         );
     }
+
+    rule_err_at!(
+        apply_when_in_out_argument_is_literal_then_error_at_argument,
+        "
+FUNCTION INC : DINT
+VAR_INPUT
+    step : DINT;
+END_VAR
+VAR_IN_OUT
+    data : DINT;
+END_VAR
+    INC := data;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+END_VAR
+    result := INC(1, 2);
+END_PROGRAM",
+        Problem::FunctionCallInOutArgNotVariable,
+        "2"
+    );
 }

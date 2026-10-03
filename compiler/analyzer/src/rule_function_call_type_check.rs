@@ -1624,7 +1624,7 @@ END_PROGRAM",
         [Problem::AssignmentTypeMismatch]
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_bool_target_assigned_real_expr_then_error,
         "
 PROGRAM main
@@ -1634,7 +1634,8 @@ VAR
 END_VAR
     b := x * 2.0;
 END_PROGRAM",
-        [Problem::AssignmentTypeMismatch]
+        Problem::AssignmentTypeMismatch,
+        "x * 2.0"
     );
 
     rule_err!(

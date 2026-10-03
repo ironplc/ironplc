@@ -611,3 +611,15 @@ fn apply_when_assignment_to_named_subrange_in_range_then_ok() {
     );
     assert_eq!(out_of_range_count(&program), 0);
 }
+
+rule_err_at!(
+    apply_when_assignment_out_of_range_then_error_at_literal,
+    "PROGRAM main
+VAR
+    x : SINT;
+END_VAR
+    x := 128;
+END_PROGRAM",
+    Problem::ConstantOverflow,
+    "128"
+);

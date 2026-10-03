@@ -525,7 +525,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_const_array_type_missing_initializer_then_error,
         "
 FUNCTION_BLOCK LOGGER
@@ -534,7 +534,8 @@ ResetCounterValue : ARRAY[1..10] OF INT;
 END_VAR
 
 END_FUNCTION_BLOCK",
-        [Problem::ConstantMustHaveInitializer]
+        Problem::ConstantMustHaveInitializer,
+        "ResetCounterValue"
     );
 
     rule_ok!(

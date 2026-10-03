@@ -423,7 +423,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_array_element_bit_out_of_range_then_err,
         "FUNCTION_BLOCK FB1
 VAR
@@ -432,7 +432,8 @@ VAR
 END_VAR
     y := arr[0].8;
 END_FUNCTION_BLOCK",
-        [Problem::BitAccessOutOfRange]
+        Problem::BitAccessOutOfRange,
+        "8"
     );
 
     rule_ok!(

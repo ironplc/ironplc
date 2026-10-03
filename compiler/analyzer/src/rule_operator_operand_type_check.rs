@@ -486,7 +486,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err!(
+    rule_err_at!(
         /// The function form is folded from the left and reported at the
         /// step that fails: TIME + REAL.
         apply_when_add_call_on_time_and_real_then_p4049,
@@ -498,8 +498,8 @@ VAR
 END_VAR
     t := ADD(t, t, r);
 END_PROGRAM",
-        [Problem::OperatorOperandTypeMismatch]
-    );
+        Problem::OperatorOperandTypeMismatch,
+        "ADD");
 
     rule_ok!(
         apply_when_add_call_on_times_then_ok,

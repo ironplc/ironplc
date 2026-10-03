@@ -251,7 +251,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_var_init_undefined_enum_value_through_alias_then_error,
         "
 TYPE
@@ -265,7 +265,8 @@ NAME : LEVEL_ALIAS := FATAL;
 END_VAR
 
 END_FUNCTION_BLOCK",
-        [Problem::EnumValueNotDefined]
+        Problem::EnumValueNotDefined,
+        "FATAL"
     );
 
     #[test]

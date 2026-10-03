@@ -256,7 +256,7 @@ END_PROGRAM",
         [Problem::InitializerTypeMismatch]
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_bool_var_with_integer_literal_then_error,
         "
 PROGRAM main
@@ -264,7 +264,8 @@ VAR
     x : BOOL := 1;
 END_VAR
 END_PROGRAM",
-        [Problem::InitializerTypeMismatch]
+        Problem::InitializerTypeMismatch,
+        "x"
     );
 
     rule_err!(

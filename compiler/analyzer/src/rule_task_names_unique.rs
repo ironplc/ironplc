@@ -134,4 +134,18 @@ mod tests {
             END_RESOURCE
         END_CONFIGURATION"
     );
+
+    rule_err_at!(
+        apply_when_task_names_duplicated_then_error_at_second_task,
+        "
+        CONFIGURATION config
+            RESOURCE resource1 ON PLC
+               TASK fast(INTERVAL := T#100ms,PRIORITY := 1);
+               TASK FAST(INTERVAL := T#200ms,PRIORITY := 2);
+               PROGRAM instance1 WITH fast : plc_prg;
+            END_RESOURCE
+        END_CONFIGURATION",
+        Problem::DuplicateTaskName,
+        "FAST"
+    );
 }

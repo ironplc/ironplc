@@ -83,7 +83,7 @@ impl Visitor<Infallible> for RuleVarDeclConstIsNotFunctionBlock {
 mod tests {
     use ironplc_problems::Problem;
 
-    rule_err!(
+    rule_err_at!(
         apply_when_var_init_function_block_is_const_then_error,
         "
 FUNCTION_BLOCK Callee
@@ -96,7 +96,8 @@ FB_INSTANCE : Callee;
 END_VAR
 
 END_FUNCTION_BLOCK",
-        [Problem::FunctionBlockNotConstant]
+        Problem::FunctionBlockNotConstant,
+        "FB_INSTANCE"
     );
 
     rule_ok!(

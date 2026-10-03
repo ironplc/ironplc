@@ -174,4 +174,20 @@ END_VAR
 END_FUNCTION_BLOCK",
         fb_inheritance_options()
     );
+
+    rule_err_at!(
+        apply_when_abstract_fb_instantiated_then_error_at_instance_type,
+        "
+FUNCTION_BLOCK FB_User
+VAR
+    inst : FB_Base;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK ABSTRACT FB_Base
+END_FUNCTION_BLOCK",
+        Problem::AbstractFunctionBlockInstantiated,
+        "FB_Base",
+        fb_inheritance_options()
+    );
 }
