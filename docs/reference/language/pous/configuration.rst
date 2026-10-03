@@ -38,6 +38,8 @@ Example
 A configuration contains one or more resources. Global variables
 declared at configuration level are accessible to all resources.
 
+.. include:: /includes/single-program-limitation.rst
+
 See Also
 --------
 

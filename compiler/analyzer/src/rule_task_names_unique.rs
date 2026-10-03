@@ -131,4 +131,21 @@ mod tests {
             END_RESOURCE
         END_CONFIGURATION"
     );
+
+    // Task names are scoped to their resource, so two resources may each
+    // declare a task of the same name.
+    rule_ok!(
+        apply_when_same_task_name_in_two_resources_then_return_ok,
+        "
+        CONFIGURATION config
+            RESOURCE resource1 ON PLC
+               TASK my_task(INTERVAL := T#100ms,PRIORITY := 1);
+               PROGRAM instance1 WITH my_task : plc_prg;
+            END_RESOURCE
+            RESOURCE resource2 ON PLC
+               TASK my_task(INTERVAL := T#200ms,PRIORITY := 2);
+               PROGRAM instance2 WITH my_task : plc_prg;
+            END_RESOURCE
+        END_CONFIGURATION"
+    );
 }

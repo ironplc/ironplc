@@ -253,6 +253,11 @@ END_CONFIGURATION"
     in_program,
     CompilerOptions::default
 )]
+#[case::resource_declarations(
+    "CONFIGURATION config RESOURCE r1 ON PLC PROGRAM a : p; END_RESOURCE ·RESOURCE r2 ON PLC PROGRAM b : p; END_RESOURCE· END_CONFIGURATION",
+    verbatim,
+    CompilerOptions::default
+)]
 #[case::var_declaration(
     "PROGRAM main VAR x·:·INT·:=·1·; END_VAR x := 2; END_PROGRAM",
     verbatim,

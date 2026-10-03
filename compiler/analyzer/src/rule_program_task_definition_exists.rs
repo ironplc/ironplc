@@ -91,6 +91,8 @@ impl DiagnosticVisitor for RuleProgramTaskDefinitionExists {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_problems::Problem;
+
     rule_err!(
         apply_when_task_not_defined_then_return_error,
         "
@@ -110,5 +112,22 @@ mod tests {
                PROGRAM plc_task_instance WITH plc_task : plc_prg;
             END_RESOURCE
         END_CONFIGURATION"
+    );
+
+    // A program is associated with a task of its own resource: a task
+    // declared in another resource is not in scope.
+    rule_err1!(
+        apply_when_task_defined_in_other_resource_then_p4006,
+        "
+        CONFIGURATION config
+            RESOURCE resource1 ON PLC
+               TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
+               PROGRAM instance1 WITH plc_task : plc_prg;
+            END_RESOURCE
+            RESOURCE resource2 ON PLC
+               PROGRAM instance2 WITH plc_task : plc_prg;
+            END_RESOURCE
+        END_CONFIGURATION",
+        Problem::ProgramMissingTaskConfig
     );
 }
