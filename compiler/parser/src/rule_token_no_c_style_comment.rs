@@ -37,8 +37,8 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 
 #[cfg(test)]
 mod test {
-    use crate::test_rule_helpers::result_codes;
     use dsl::core::SourceSpan;
+    use ironplc_problems::Problem;
 
     use crate::{
         options::CompilerOptions,
@@ -46,26 +46,21 @@ mod test {
         token::{Token, TokenType},
     };
 
-    #[test]
-    fn apply_when_has_cstyle_comment_and_not_allowed_then_error() {
-        let tokens = vec![Token {
+    token_rule_err!(
+        apply_when_has_cstyle_comment_and_not_allowed_then_error,
+        vec![Token {
             token_type: TokenType::Comment,
             span: SourceSpan::default(),
             line: 1,
             col: 1,
             text: String::from("// comment"),
-        }];
-
-        let result = apply(
-            &tokens,
-            &CompilerOptions {
-                allow_c_style_comments: false,
-                ..CompilerOptions::default()
-            },
-        );
-        let codes = result_codes(&result);
-        assert_eq!(codes, [ironplc_problems::Problem::CStyleComment.code()]);
-    }
+        }],
+        [Problem::CStyleComment],
+        CompilerOptions {
+            allow_c_style_comments: false,
+            ..CompilerOptions::default()
+        }
+    );
 
     #[test]
     fn apply_when_has_cstyle_comment_and_not_allowed_then_diagnostic_has_help() {
@@ -113,26 +108,21 @@ mod test {
         assert!(result.is_ok())
     }
 
-    #[test]
-    fn apply_when_has_block_comment_and_not_allowed_then_error() {
-        let tokens = vec![Token {
+    token_rule_err!(
+        apply_when_has_block_comment_and_not_allowed_then_error,
+        vec![Token {
             token_type: TokenType::Comment,
             span: SourceSpan::default(),
             line: 1,
             col: 1,
             text: String::from("/* block comment */"),
-        }];
-
-        let result = apply(
-            &tokens,
-            &CompilerOptions {
-                allow_c_style_comments: false,
-                ..CompilerOptions::default()
-            },
-        );
-        let codes = result_codes(&result);
-        assert_eq!(codes, [ironplc_problems::Problem::CStyleComment.code()]);
-    }
+        }],
+        [Problem::CStyleComment],
+        CompilerOptions {
+            allow_c_style_comments: false,
+            ..CompilerOptions::default()
+        }
+    );
 
     #[test]
     fn apply_when_has_block_comment_and_allowed_then_ok() {

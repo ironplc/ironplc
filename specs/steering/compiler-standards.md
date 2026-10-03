@@ -102,8 +102,10 @@ problems the rule reports**:
   the program and run the rule against the resolved context; compare with
   `codes(&[Problem::…])`, or `diagnostic_codes(&diagnostics)` when the test
   also checks a message. `fb_inheritance_options()` and `edition3_options()`
-  build the common options. Parser token rules use `token` and
-  `result_codes` in `parser/src/test_rule_helpers.rs`.
+  build the common options. Parser token rules use `token_rule_ok!(name, tokens)` and
+  `token_rule_err!(name, tokens, [P])` in `parser/src/test_rule_macros.rs`,
+  with `token` and `result_codes` in `parser/src/test_rule_helpers.rs` for
+  the tests the macros cannot express.
 - **Messages and labels** are asserted only when they are the feature (a
   "did you mean" hint, the location of the offending text), and alongside
   the code, never instead of it.

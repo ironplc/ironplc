@@ -211,7 +211,7 @@ const ANY_ERROR: &[&str] = &[".is_err()", "has_diagnostics()"];
 
 const PIPELINE: &[&str] = &["analyze(&"];
 
-const OK_SIDE: &[&str] = &["rule_ok!(", ".is_ok()", "is_empty()"];
+const OK_SIDE: &[&str] = &["rule_ok!(", "token_rule_ok!(", ".is_ok()", "is_empty()"];
 
 const ERR_SIDE: &[&str] = &["Problem::", "NOT_IMPLEMENTED_CODE"];
 
@@ -416,6 +416,16 @@ mod tests {
         );
 
         assert_eq!(found(&rule), vec![Convention::MissingOk]);
+    }
+
+    #[test]
+    fn check_when_ok_side_is_token_rule_macro_then_no_missing_ok() {
+        let rule = RuleSource::from_text(
+            PathBuf::from("rule_x.rs"),
+            "#[cfg(test)]\nmod test {\n    token_rule_ok!(ok, vec![]);\n    token_rule_err!(err, vec![], [Problem::X]);\n}\n",
+        );
+
+        assert_eq!(found(&rule), vec![]);
     }
 
     #[test]
