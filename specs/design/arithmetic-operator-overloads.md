@@ -265,8 +265,28 @@ same question with the same options and cannot disagree about a result type.
 `xform_resolve_expr_types` asks the resolver for the type of an arithmetic
 `BinaryOp` and of a call to an overloaded name. The result type of a
 resolved overload replaces today's "left operand" rule. When the resolver
-returns `Unchecked` or `None`, the pass keeps today's rule so later passes
-still see a type and the operator rule can report the operands.
+returns `Unchecked`, the pass keeps today's rule, so codegen still sees a
+type for an operand it can place, such as a subrange.
+
+When the resolver returns `None`, the expression has the *error type*
+(`ExprType::Error`): its value has no valid type, and the operator rule
+reports it. The error type spreads to every expression whose type is
+computed from an operand of the error type: an arithmetic operator, `AND`,
+`OR`, `XOR`, `AND_THEN`, `OR_ELSE`, `NOT` and negation, a parenthesised
+expression, a dereference, a call to `ADD`, `SUB`, `MUL` or `DIV`, and a
+call to a generic function whose result type binds to that operand
+(`MAX(1, s1 + s2)`). A relational comparison is still `BOOL`, and a call to
+a function with a concrete return type still has that type, because what
+encloses them is well typed whatever their operands are.
+
+Every check that judges a value's type skips a value of the error type, as
+it skips one with no resolved type. The two differ where an expression is
+typed from its operands: an operand with no resolved type lets the other
+operand type the expression (`prefer_concrete`, a generic return type
+binding to the next argument), which would judge the enclosing expression
+again against a type the user never wrote. So `(s1 + s2) * 2` is one P4049,
+not two, and `r := d * r2` with `r, r2 : REAL` and `d : DINT` is one P4049
+and no P4035.
 
 ### Rules
 
@@ -287,9 +307,9 @@ error[P4049]: Operator is not defined for the operand types
 An arithmetic expression is reported once, labelled at the whole expression,
 rather than once per operand as `MOD` is today: with overloads, no single
 operand is the wrong one. A call is reported at its name, with the operand
-types of the fold step that failed. An enclosing expression whose operand
-failed may be reported as well, since the failed operand keeps the left
-operand's type.
+types of the fold step that failed. Nothing that encloses the failed
+expression is reported because of it (see *Type resolution*): not an
+enclosing operator or call, not the assignment, not a `CASE` selector.
 
 P4049 is also the code for the bit-string operators `AND`, `OR`, `XOR` and
 `NOT`, which are checked against `ANY_BIT` and have no overloads. They keep
@@ -454,11 +474,19 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 
 **REQ-AO-analyzer-021** The resolved type of a call to an overloaded name is the result type of its resolved overload, so `SUB(d1, d2)` on `DATE` is `TIME`.
 
-**REQ-AO-analyzer-022** An arithmetic binary expression or call that resolves as unchecked or does not resolve keeps the left operand's type.
+**REQ-AO-analyzer-022** An arithmetic binary expression or call that resolves as unchecked keeps the left operand's type.
 
 **REQ-AO-analyzer-023** The analyzed tree contains no node the parser did not produce for an arithmetic expression: a resolved operator stays a binary expression and a resolved call stays a call.
 
 **REQ-AO-analyzer-024** Constant folding of literal arithmetic is unaffected.
+
+**REQ-AO-analyzer-025** An arithmetic binary expression or call to `ADD`, `SUB`, `MUL` or `DIV` that does not resolve has the error type.
+
+**REQ-AO-analyzer-026** An arithmetic, bitwise or unary operator, a parenthesised expression, or a call to `ADD`, `SUB`, `MUL` or `DIV` with an operand of the error type has the error type.
+
+**REQ-AO-analyzer-027** A call to a generic function whose result type binds to an argument of the error type has the error type.
+
+**REQ-AO-analyzer-028** A relational comparison with an operand of the error type is `BOOL`, and a call to a function with a concrete return type keeps that type.
 
 ### Diagnostics
 
@@ -475,6 +503,16 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 **REQ-AO-analyzer-035** A call to a typed name is checked against its own signature as today, so `ADD_TIME(t1, t2)` is clean and `ADD_TIME(t1, r)` is P4026.
 
 **REQ-AO-analyzer-036** An arithmetic expression whose operands do not resolve is reported as one P4049, while an operand of `AND`, `OR`, `XOR` or `NOT` outside `ANY_BIT` is still reported as one P4049 per operand with `expected` and `actual` contexts.
+
+**REQ-AO-analyzer-037** An operator or call to `ADD`, `SUB`, `MUL` or `DIV` with an operand of the error type is not reported, so `(s1 + s2) * 2`, `ADD(d * r, r)` and `(s1 + s2) AND b` are each one P4049.
+
+**REQ-AO-analyzer-038** An assignment whose value has the error type is not reported, so `r := d * r2` with `r, r2 : REAL` and `d : DINT` is one P4049 and no P4035.
+
+**REQ-AO-analyzer-039** A function call whose result has the error type is not reported against its assignment target, so `x := ADD(s1, s2)` with `x : DINT` is one P4049 and no P4027.
+
+**REQ-AO-analyzer-040** A function call argument of the error type is not reported, so `MAX(1, s1 + s2)` is one P4049 and no P4026.
+
+**REQ-AO-analyzer-041** A `CASE` selector or an `IF`, `ELSIF`, `WHILE` or `REPEAT` condition of the error type is not reported, so `CASE s1 + s2 OF` is one P4049 and no P4053.
 
 ### Codegen
 

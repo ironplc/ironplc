@@ -20,9 +20,12 @@ two integer operands only. The function forms ``ADD``, ``SUB``, ``MUL`` and
 operand types of the step that fails; ``MOD(a, b)`` is checked against its
 signature and reports :doc:`P4026` instead.
 
-Each arithmetic expression is reported once, naming both operand types. When
-an operand of an expression is itself an expression that failed, the
-enclosing expression may be reported as well.
+Each arithmetic expression is reported once, naming both operand types. An
+expression that fails has no type, so nothing that uses its value is reported
+because of it: not an enclosing expression or function call, and not the
+assignment of its value. ``result := (s1 + s2) * 2`` with ``STRING`` operands
+reports only ``s1 + s2``. Fix that expression, and any error in what encloses
+it is reported on the next check.
 
 Mixed numeric types
 -------------------

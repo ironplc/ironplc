@@ -59,11 +59,12 @@ pub(crate) struct Mismatch {
 /// - a subrange is its own name, or its base type's when it has none;
 /// - any other type is its own name, and has none when it is anonymous.
 ///
-/// `None` for `NULL`, which is not of one type.
+/// `None` for `NULL`, which is not of one type, and for the error type,
+/// which is none.
 pub fn operand_type_name(types: &TypeEnvironment, expr_type: &ExprType) -> Option<TypeName> {
     match expr_type {
         ExprType::Literal(generic) => Some(generic.clone().into()),
-        ExprType::Null => None,
+        ExprType::Null | ExprType::Error => None,
         ExprType::Concrete(id) => operand_name_of(types, *id),
     }
 }
@@ -103,7 +104,7 @@ fn operand_name_of(types: &TypeEnvironment, id: TypeId) -> Option<TypeName> {
 }
 
 /// Classifies the value of `expr`, or `None` when the analyzer resolved no
-/// type for it.
+/// type for it or resolved the error type.
 pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
     let expr_type = expr.expr_type.as_ref()?;
     let by_name = || operand_type_name(types, expr_type).map(ValueType::Scalar);
@@ -112,6 +113,8 @@ pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
         // `NULL` is accepted for any reference, so there is nothing to
         // compare it with.
         ExprType::Null => return None,
+        // Already reported; judging it again would report it twice.
+        ExprType::Error => return None,
         ExprType::Literal(_) => return by_name(),
     };
     let Some(attributes) = types.get_by_id(*id) else {
@@ -147,7 +150,7 @@ pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
 
 /// Checks that the value of `expr` may be used where `expected` is
 /// required. `Ok` when it may, and when the analyzer resolved no type for
-/// the value, since there is nothing to compare.
+/// the value or the error type, since there is nothing to compare.
 pub(crate) fn check(
     types: &TypeEnvironment,
     expected: &TypeName,
