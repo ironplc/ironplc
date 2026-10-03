@@ -67,6 +67,44 @@ Examples:
 - Include both positive and negative test cases
 - Test edge cases and boundary conditions
 
+### Rule Tests
+
+A rule's tests (the `#[cfg(test)]` module of an analyzer `rule_*.rs` or parser
+token `rule_*.rs`, and any `rule_*/` test files) assert **exactly the
+problems the rule reports**:
+
+- **Call the rule's own `apply`**, not the `analyze` pipeline: a pipeline
+  assertion passes when another rule reports something. A test whose purpose
+  is to show the rule is wired into `analyze` is the exception.
+- **Assert the exact list** of problem codes, in order: an empty list for a
+  program the rule accepts, `[P]` or `[P; n]` otherwise. Never `.is_err()`,
+  `has_diagnostics()`, or "some diagnostic has code P", which also hold
+  when the rule reports a problem twice or reports a different one too.
+- **Name codes as `Problem` variants**, never `"P####"` strings. The
+  compiler-located `P9xxx` variants are deprecated so that only their
+  `Diagnostic` constructors build them; compare against
+  `test_helpers::NOT_IMPLEMENTED_CODE` instead.
+- **Use the context the rule sees.** A rule whose `apply` reads its `context`
+  is tested with the `rule_ctx_*` macros (or
+  `parse_and_resolve_types_with_options`); the `rule_*` macros hand it an
+  empty one.
+- **One-liners**: `rule_ok!`, `rule_err1!` (exactly one problem),
+  `rule_errn!` (exactly n of one problem), `rule_err1_at!` (one problem,
+  labelled at the given text), and their `ctx_`/`_with` forms in
+  `analyzer/src/test_macros.rs`. `rule_err!`, `rule_ctx_err!` and the
+  `_code` forms assert less and are not used.
+- **Messages and labels** are asserted only when they are the feature (a
+  "did you mean" hint, the location of the offending text), and alongside
+  the code, never instead of it.
+- Every rule has a test where it reports nothing and a test naming each
+  problem it reports.
+
+`test_rule_conventions.rs` in the analyzer and parser checks these by reading
+the rule tests (see `ironplc_test::rule_conventions`). When an exact
+assertion would encode a result that is wrong (a second, cascaded
+diagnostic), keep the weaker assertion, say why in a comment, and opt the
+line out with `// rule-test-conventions: allow(<check>)`.
+
 For where each kind of test lives (VM, codegen, plc2plc, parser) and which leg
 asserts what, see [compiler-architecture.md](compiler-architecture.md#testing-architecture)
 and [syntax-support-guide.md](syntax-support-guide.md).
