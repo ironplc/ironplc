@@ -21,9 +21,10 @@ analyzer has ruled out is still representable, so each needs an error path, and
 the project's rule that every enum and `Option` variant is handled directly
 cannot be met without writing arms for states that cannot occur.
 
-The second is that a backend emitting WebAssembly is planned. Whatever the
-bytecode backend decides for itself today, a second backend would have to decide
-again, and two implementations of one decision can disagree. A program that
+The second is that a backend emitting WebAssembly is planned, and one emitting
+native code through LLVM is possible. Whatever the bytecode backend decides for
+itself today, every other backend would have to decide again, and two
+implementations of one decision can disagree. A program that
 behaves differently on two targets is a safety defect in a PLC, which is what
 [ADR-0005](../adrs/0005-safety-first-design-principle.md) exists to prevent.
 
@@ -170,13 +171,17 @@ Two further consequences:
 **In scope:** the lowered program's data model and the meaning of its
 operations, the lowering stage, the division of decisions between the analyzer
 and lowering, the gate between analysis and lowering, the contract a backend
-works to, what becomes of the structures in `compiler/codegen` today, and how
-the result is tested.
+works to, what becomes of the structures in `compiler/codegen` today, how
+the result is tested, and what the lowered program must allow so that
+sequential function charts and the graphical languages can be lowered later.
 
 **Out of scope:**
 
-- The WebAssembly backend itself. It is a constraint on this design, not part
-  of it.
+- The WebAssembly and LLVM backends themselves. They are constraints on this
+  design, not part of it.
+- Compiling sequential function charts, ladder diagrams, function block
+  diagrams and instruction lists. They are constraints too (see
+  [Sequential and Graphical Languages](#11-sequential-and-graphical-languages)).
 - Any change to the bytecode instruction set, the container format or the VM.
 - Changing what an operation does. [Meaning of operations](#310-meaning-of-operations)
   records what the bytecode VM does today.
@@ -193,8 +198,8 @@ the result is tested.
 
 ```
 parse ──▶ analyze ──────────▶ gate ──▶ lower ──────────────┬──▶ bytecode backend:  layout ──▶ emit
-          resolve, check,     clean    translate, desugar, │
-          decide and record   only     allocate ids        └──▶ WebAssembly backend (planned)
+          resolve, check,     clean    translate, desugar, ├──▶ WebAssembly backend (planned)
+          decide and record   only     allocate ids        └──▶ LLVM backend (possible)
           (ADR-0056)                   └── `check` ends here
 ```
 
@@ -239,7 +244,8 @@ backend reads the AST to build it.
 **REQ-LOW-lowering-006** Every variable of the lowered program carries its
 source name, its owning POU, its section, its type and the span of its
 declaration; every field of a structure, function block or program type carries
-its source name, its section where it has one and the span of its declaration;
+its name, its section where it has one and the span of its declaration, or for
+a synthesized field the span of the element it was synthesized for;
 every POU carries its source name and span; and the type table carries each
 type's declared name and each enumeration's value names. Those, with statement
 spans, are what the variable name, function name, line map and enumeration
@@ -316,7 +322,7 @@ Everything is referred to by an id allocated during lowering, never by name.
 |---|---|---|
 | `VarId` | One variable that is not a field: a global (including each program instance), a parameter, local or result of a function or method, a `VAR_TEMP` of any body, the instance parameter of a body, or a compiler-provided temporary | `Id` looked up in `CompileContext::variables` and six sibling maps |
 | `PouId` | A program, function, function block or method | The lower-case key of `user_functions`, the upper-case key of `user_fb_types` |
-| `FieldIdx` | A field of a structure, function block or program, by position. Every variable a function block or program declares, other than `VAR_TEMP` and `VAR_EXTERNAL`, is a field of its instance | The lower-case field name in `field_index` and `field_indices` |
+| `FieldIdx` | A field of a structure, function block or program, by position. Every variable a function block or program declares, other than `VAR_TEMP` and `VAR_EXTERNAL`, is a field of its instance, and so is every field lowering synthesizes for it (see [Synthesized state](#synthesized-state)) | The lower-case field name in `field_index` and `field_indices` |
 | `LoopId` | One `Loop` or `For` | The top of the `loop_labels` stack |
 | `TypeId` | A type (ADR-0055, unchanged) | Unchanged |
 
@@ -347,6 +353,8 @@ pub struct Variable {
     pub owner: Owner,                  // Global or Pou(PouId)
     pub section: Section,              // Global, Input, Output, InOut, Local, Temporary, Instance
     pub ty: TypeId,
+    pub location: Option<DirectAddress>, // `AT %IX0.1`
+    pub retention: Retention,          // None, Retain, NonRetain or Persistent
     pub span: SourceSpan,
 }
 
@@ -379,7 +387,12 @@ pub enum TypeKind {
     Reference { target: TypeId },
 }
 
-pub struct Field { pub name: Id, pub section: Option<Section>, pub ty: TypeId, pub span: SourceSpan }
+pub struct Field {
+    pub name: Id,
+    pub section: Option<Section>,      // Internal for a synthesized field
+    pub ty: TypeId,
+    pub span: SourceSpan,
+}
 ```
 
 A program, like a function block, has an instance: the global that a program
@@ -400,6 +413,22 @@ table from `IntermediateType` and carries none of those.
 **REQ-LOW-lowering-027** The type table holds no size, offset or slot count,
 and refers to the type of every field, element, enumeration, subrange and
 reference target by its `TypeId`.
+
+A variable's location and retention are part of the language, not of a
+layout: `x AT %IX0.1 : BOOL` says where its value comes from, and `RETAIN`
+says that it survives a warm restart. Neither has an effect on the bytecode VM
+today. A named located variable is an ordinary slot, a directly represented
+variable in an expression is P9999, and `RETAIN` and `PERSISTENT` are parsed
+and ignored. A native backend that drives real I/O, or keeps retained variables
+in non-volatile memory, needs both, so the lowered program carries them rather
+than dropping them a stage earlier.
+
+**REQ-LOW-lowering-023** A variable declared with a direct address carries
+that address.
+
+**REQ-LOW-lowering-024** A variable carries the retention qualifier of its
+declaration (`RETAIN`, `NON_RETAIN` or `PERSISTENT`), or none if its
+declaration has none.
 
 Initial values are statements because that is how the bytecode VM applies
 them: an init function runs once (ADR-0045), and a function re-initializes its
@@ -423,6 +452,29 @@ today.
 
 A function's result is a variable, as in the source, where the result is
 assigned through the function's name. `Return` carries no value.
+
+#### Synthesized state
+
+Some state an instance keeps from one round to the next is declared by no one:
+
+- **Standard function blocks.** The bytecode VM's TON keeps the time it started
+  and whether it is running in fields 4 and 5 of its instance
+  (`vm/src/intrinsic.rs`), which the analyzer's TON does not declare.
+- **Sequential function charts.** A chart keeps the activity and elapsed time
+  of each step, and the state of each action's control.
+- **Ladder diagrams.** A rung keeps the previous value of each edge contact.
+- **Function block diagrams.** A network keeps the value on each feedback path.
+
+Each of these is a field of the instance, because it persists across rounds,
+which a compiler-provided temporary (a `VarId` of one body) does not. Lowering
+synthesizes these fields. A synthesized field has section `Internal`, as the
+analyzer already declares the hidden `M` of `R_TRIG`, and a name a debugger can
+show: the activity of step `S1` is the field `S1.X`, which is what a debugger
+of a chart most needs to show.
+
+**REQ-LOW-lowering-028** A synthesized field has section `Internal`, a name
+unique within its type, and the span of the source element it was synthesized
+for.
 
 ### 3.3 Value classes
 
@@ -531,6 +583,7 @@ pub enum ExprKind {
     Call { callee: Callee, args: Vec<Arg> },
     RefTo(Place),
     Null,
+    RoundTime,                                      // the time of the current round
 }
 ```
 
@@ -542,6 +595,19 @@ it becomes a local read or a load from linear memory. On a register machine it
 names a register when the backend allocated the variable to one, and loads
 from memory otherwise. Which of those applies is the backend's layout, so a
 place the backend keeps in a register costs nothing to read.
+
+`RoundTime` is the time the host gave the current round: an unsigned 64-bit
+count of microseconds, the `uptime_us` that the bytecode VM's `run_round`
+receives. No source program names it. Lowering reads it where what a construct
+means depends on time: the expansions of the timers among the standard
+function blocks (see
+[Callees, arguments and intrinsics](#38-callees-arguments-and-intrinsics)), and
+the step times and timed action qualifiers of a sequential function chart.
+Today the time reaches only the VM's timer intrinsics (`vm.rs`), so without a
+node every backend would need its own route to it. The system uptime variables
+of [ADR-0030](../adrs/0030-dual-uptime-system-variables.md) hold the same time
+in milliseconds, which is too coarse: the VM's TON records its start in
+microseconds and converts only the elapsed time to milliseconds.
 
 **REQ-LOW-lowering-040** Every scalar expression has a `ScalarType`; the type
 is not optional and is never a generic category such as `ANY_INT`.
@@ -630,6 +696,18 @@ pub enum StmtKind {
 skips the rest of `body` and runs `continuing`. That is enough for `WHILE` and
 `REPEAT` (see [Desugaring](#5-desugaring)), and it is the shape WebAssembly's
 structured control flow takes directly.
+
+`Loop` and `For` are the only statements that repeat, and no call is
+recursive, since analysis reports a recursive cycle. So between two iterations
+of any loop a body runs a bounded number of statements, and a backend that must
+bound the run time of a round checks there. The bytecode VM's watchdog measures
+a task only after the task finishes (`vm.rs`), and codegen never sets a
+watchdog time, so an infinite loop is never interrupted. A native backend has
+no interpreter loop to check from at all. It checks a deadline at each
+iteration of a `Loop` or `For`.
+
+**REQ-LOW-lowering-059** Every repetition in the lowered program is a `Loop` or
+a `For`, and no POU calls itself directly or through other POUs.
 
 **REQ-LOW-lowering-060** The type of an `Assign`'s value is the operation type of
 its place's type.
@@ -728,6 +806,11 @@ by-value aggregate input, and such a parameter falls through to the scalar
 default (`ParamPassing::Value(DEFAULT_OP_TYPE)` in `compile_fn.rs`). A function
 whose result is an aggregate is open question 14.
 
+A function or method may also declare `VAR_OUTPUT`, which a call assigns to a
+place with `=>`. `Arg` has no mode for one. Codegen assigns outputs only for a
+function block call today, and a method call ignores an output argument
+(`compile_method.rs`). How an output is passed is open question 18.
+
 A method is called like a function whose first parameter is its instance, and
 the first argument of the call is a `Ref` to the receiver. `inst.m(a)` passes
 `inst`; `THIS^.m(a)` passes the caller's own instance, `this^`; and
@@ -770,6 +853,26 @@ policy options.
 with a match that has no wildcard arm, so adding a variant fails to compile
 until the backend handles it.
 
+`Block::Standard` names a standard function block (ADR-0003). What each one
+does is stated today only by the bytecode VM's own code (`vm/src/intrinsic.rs`):
+REQ-LOW-codegen-089 specifies the standard functions, not the blocks. A second
+backend would need a second implementation of all ten, which is the
+duplication this design exists to remove. So each standard block has an
+expansion in `ironplc-lowering`: lowered statements over the fields of its
+instance, with its hidden state among them as synthesized fields (see
+[Synthesized state](#synthesized-state)), and `RoundTime`. The expansion is
+the block's meaning. A backend implements `Block::Standard` natively, as the
+bytecode VM keeps doing for speed, or by calling the expansion, as an LLVM
+backend would, compiling it to native code like a user block.
+
+**REQ-LOW-lowering-077** `ironplc-lowering` provides, for every
+`StandardBlock`, an expansion into lowered statements over the block's
+instance, so a backend can implement `Block::Standard` by expanding it.
+
+**REQ-LOW-codegen-078** For every `StandardBlock`, running its expansion leaves
+the instance's visible fields with the values the bytecode VM's intrinsic
+leaves, for the same inputs and round times.
+
 ### 3.9 Invariants by construction
 
 The fields of `Expr`, `StrExpr`, `Place` and `Stmt` are private to
@@ -796,7 +899,7 @@ A lowered operation means the same on every target. Where a target's own
 instruction does something else, the backend emits what makes up the
 difference; the lowered program does not change. The rules below are what the
 bytecode VM does today (`vm/src/vm.rs`, `vm/src/builtin.rs`), recorded so that
-a second backend does the same. Each is checked by running a program, so each
+every other backend does the same. Each is checked by running a program, so each
 belongs to the end-to-end suite that every backend runs.
 
 **REQ-LOW-codegen-083** Integer `Add`, `Sub`, `Mul` and `Neg` wrap at the
@@ -834,11 +937,69 @@ function means, with these choices where the standard leaves room: the count
 of `SHL` and `SHR` is taken modulo the operation width, `SHR` fills with
 zeros, and `EXPT` of an integer base by a negative exponent traps.
 
+How precisely a real function such as `SIN` or `EXP` is computed is not
+settled; see open question 17.
+
+**REQ-LOW-codegen-096** Every `RoundTime` evaluated during one round has the
+value the host gave that round.
+
+A trap faults the whole bytecode VM today: no later statement runs, no later
+task in the round runs, and the VM does not resume (`run_round`, `VmFaulted`).
+
+**REQ-LOW-codegen-097** A trap ends the round: no statement after it runs, and
+no program instance after it in the round runs.
+
+**REQ-LOW-codegen-098** Every trap is a division by zero, a negative exponent,
+a null dereference, a subscript out of bounds, a string that does not convert
+or a watchdog timeout, and a backend reports each under the problem code the
+bytecode VM gives it (V4001 to V4006).
+
+What remains visible after a trap is not settled; see open question 16.
+
+The program instances of a round run one at a time, each to completion, as the
+bytecode VM's cooperative scheduler runs them (`vm/src/scheduler.rs`). The
+lowered program assumes it. Two bodies that ran at once would race on the
+globals they share, and the memory model of a native target, LLVM's among
+them, makes such a race undefined rather than merely unordered. Whether tasks
+may ever preempt each other, and what lowering would then add, is open
+question 19.
+
+These rules make every operation total: for every operand, an operation either
+gives the result stated above or traps. A backend never maps an operation to a
+target instruction whose result is undefined for an operand the lowered program
+can supply. Where a target's instruction differs, the backend emits the
+difference.
+
 A native WebAssembly instruction differs from these rules in three places, and
 a WebAssembly backend emits the difference: `i32.div_s` traps on the most
 negative value divided by -1, `i32.trunc_f32_s` traps on a NaN or an
 out-of-range value where `i32.trunc_sat_f32_s` does not, and address 0 is
 readable memory, so a null check is explicit.
+
+LLVM differs in more places. Where it differs, its result is undefined rather
+than a trap, so its optimizer may assume the case never happens and miscompile
+a program that reaches it:
+
+- `sdiv` and `srem` are undefined for a zero divisor and for the most negative
+  value divided by -1. An LLVM backend guards both (REQ-LOW-codegen-084).
+- `fptosi` and `fptoui` give poison for a NaN or an out-of-range value.
+  `llvm.fptosi.sat` and `llvm.fptoui.sat` give what REQ-LOW-codegen-086
+  requires.
+- A shift by the operand's width or more gives poison, so the count is reduced
+  modulo the width first (REQ-LOW-codegen-089).
+- Integer operations carry no `nsw` or `nuw` flag, because they wrap
+  (REQ-LOW-codegen-083). Real operations carry no fast-math flag, `<>` is
+  `fcmp une`, and every other comparison is ordered (REQ-LOW-codegen-085).
+- A load or store through a null or out-of-bounds address is undefined, so the
+  null and bounds checks of REQ-LOW-codegen-088 are explicit branches.
+- LLVM may assume that a function marked `mustprogress` eventually returns or
+  performs a volatile, atomic or I/O operation. A `FOR` whose bound is the
+  largest value of its control variable's type never ends
+  (REQ-LOW-lowering-066), so an LLVM backend does not mark functions
+  `mustprogress`.
+- `llvm.sin` and its siblings call the target's math library, and LLVM may
+  fold a call with a constant operand using the build machine's library (open
+  question 17).
 
 ## 4. Decisions
 
@@ -1019,22 +1180,23 @@ subscripts twice. Neither is visible unless the expression has a side effect,
 such as a call to a function that writes a global. Both are corrections rather
 than behaviour-preserving steps and are delivered as such.
 
-How the two targets are expected to realise the same node:
+How the three targets are expected to realise the same node:
 
-| Lowered | Bytecode VM | WebAssembly (expected) |
-|---|---|---|
-| `ScalarType` | I32, I64, F32 and F64 opcode families | `i32`, `i64`, `f32`, `f64` |
-| `ScalarType::Ref` | A 64-bit variable-table index | A 32-bit address in linear memory |
-| `Truncate` | `TRUNC_*` | Sign or zero extension from the narrow width |
-| Signed `Div` | `DIV_I32`, `DIV_I64`, which wrap the most negative value divided by -1 | `i32.div_s` behind a guard for that case |
-| `Convert` from a real to an integer | `CONV_F32_TO_I32` and siblings, which saturate | `i32.trunc_sat_f32_s` and siblings |
-| `Deref` | Load and store indirect, which trap on null | A load or store behind an explicit null check |
-| `Loop`, `Exit`, `Continue` | Labels and jumps | `loop`, `block`, `br` |
-| `For` | Labels and jumps, with a fused compare and branch | The expansion to `Loop` |
-| `Case` | Compare and branch chain | `br_table` or a chain |
-| `Place` | One of seven load and store opcode families, chosen by layout; a field of the current instance is the slot the VM copied it into | An address in linear memory, from the instance parameter for a field of the current instance |
-| `Intrinsic` | `BUILTIN func_id` (ADR-0008) | A call to a runtime function, or inline instructions |
-| `Block::Standard` | `FB_CALL` with a standard type id (ADR-0003) | A call to a runtime function |
+| Lowered | Bytecode VM | WebAssembly (expected) | LLVM (expected) |
+|---|---|---|---|
+| `ScalarType` | I32, I64, F32 and F64 opcode families | `i32`, `i64`, `f32`, `f64` | `i32`, `i64`, `float`, `double` |
+| `ScalarType::Ref` | A 64-bit variable-table index | A 32-bit address in linear memory | `ptr` |
+| `Truncate` | `TRUNC_*` | Sign or zero extension from the narrow width | `trunc`, then `sext` or `zext` |
+| Signed `Div` | `DIV_I32`, `DIV_I64`, which wrap the most negative value divided by -1 | `i32.div_s` behind a guard for that case | `sdiv` behind guards for a zero divisor and for that case |
+| `Convert` from a real to an integer | `CONV_F32_TO_I32` and siblings, which saturate | `i32.trunc_sat_f32_s` and siblings | `llvm.fptosi.sat` and siblings |
+| `Deref` | Load and store indirect, which trap on null | A load or store behind an explicit null check | A `load` or `store` behind an explicit null check |
+| `Loop`, `Exit`, `Continue` | Labels and jumps | `loop`, `block`, `br` | Basic blocks and `br` |
+| `For` | Labels and jumps, with a fused compare and branch | The expansion to `Loop` | Basic blocks, with the bounds left for LLVM's loop passes |
+| `Case` | Compare and branch chain | `br_table` or a chain | `switch` |
+| `Place` | One of seven load and store opcode families, chosen by layout; a field of the current instance is the slot the VM copied it into | An address in linear memory, from the instance parameter for a field of the current instance | A `getelementptr` from the variable's `alloca` or global, or from the instance parameter |
+| `Intrinsic` | `BUILTIN func_id` (ADR-0008) | A call to a runtime function, or inline instructions | An LLVM intrinsic such as `llvm.sqrt`, or a call to a runtime function |
+| `Block::Standard` | `FB_CALL` with a standard type id (ADR-0003) | A call to a runtime function, or its expansion | Its expansion, compiled like a user block |
+| `RoundTime` | The `uptime_us` of `run_round` | A value the host passes in | A global the runtime writes before each round |
 
 ## 8. Existing Structures
 
@@ -1118,10 +1280,16 @@ crate manifest. REQ-LOW-lowering-082 is enforced by clippy; its conformance
 test asserts that each crate root carries the `deny` attribute, since a test
 cannot observe a lint that is not configured.
 
+**Standard block expansions are tested against the VM.** REQ-LOW-codegen-078
+is asserted by running each standard function block both ways, through the
+bytecode VM's intrinsic and through its expansion, over the same inputs and
+round times.
+
 **Backends are tested against each other.** Once a second backend exists, the
 end-to-end helpers run each program on both and compare variable values by
 name. A disagreement is a defect in one backend, because both consumed the
-same lowered program.
+same lowered program, unless it is within the precision open question 17
+settles on for real functions.
 
 Every end-to-end test that passes before the bytecode backend consumes the
 lowered program passes after, with its source and assertions unchanged. This is
@@ -1142,6 +1310,12 @@ belongs there unless it depends on the target's instructions. The analyzer's
 constant folding (`xform_fold_constant_expressions`) is not an optimization in
 this sense: it decides values the language requires to be constant, such as
 array bounds, and stays in the analyzer.
+
+A backend with an optimizer of its own, such as LLVM, gains little from the
+target-neutral passes, because its own passes do the same work with more
+information. It takes the unoptimized program (REQ-LOW-lowering-142). The
+target-neutral passes are for the backends without an optimizer, the bytecode
+VM first.
 
 **REQ-LOW-lowering-140** A pass over the lowered program builds its output
 through the same constructors as lowering, so its output meets every
@@ -1177,6 +1351,145 @@ Two constraints follow for whoever adds one:
 - **The loop must stay recognizable.** A `For` keeps its control variable,
   bounds and step explicit (REQ-LOW-lowering-066), so a pass matches the node
   rather than recovering the loop from a `Loop`.
+
+## 11. Sequential and Graphical Languages
+
+The compiler cannot compile any of these languages today:
+
+- **Sequential function charts (SFC)** have an AST (`ironplc_dsl::sfc`), which
+  the parser and the PLCopen XML importer produce and analysis accepts. Codegen
+  refuses it with P9999 (`compile_stmt.rs`).
+- **Ladder diagrams (LD), function block diagrams (FBD) and instruction lists
+  (IL)** have no AST. The XML importer rejects their bodies with P9003.
+
+None of them needs a node kind of its own in the lowered program. Each lowers
+to the statements and expressions of
+[The Lowered Program](#3-the-lowered-program). This section says what each
+needs from the lowered program, so that adding them later changes no backend.
+
+Decisions divide as they do in [Decisions](#4-decisions):
+
+- **What makes a chart or a network invalid is an analyzer rule.** Examples are
+  a transition to an undeclared step, an action that a step names but no one
+  declares, an `L` or `D` qualifier without a duration, a chart that is unsafe
+  or has unreachable steps, and an FBD feedback path with no variable to hold
+  it. Analysis checks none of these today.
+- **What a valid chart or network does each round is decided by lowering,
+  once.** Every backend receives the result as ordinary statements.
+
+### Sequential function charts
+
+A chart lowers to statements at the head of its POU's body, which run every
+round:
+
+1. Each transition whose source steps are all active and whose condition holds
+   is cleared. The conditions are evaluated into temporaries before any step
+   changes, so every transition sees the chart as the round found it.
+2. The source steps of each cleared transition are deactivated and its target
+   steps activated. The priority of a selection divergence decides among
+   transitions that share a source step.
+3. The control of each action is updated from the qualifiers of the steps that
+   name it (`N`, `R`, `S`, `L`, `D`, `P`, `P0`, `P1`, `SD`, `DS`, `SL`).
+4. Each action whose control is active runs.
+
+The action control of IEC 61131-3 also allows an action a final run in the
+round its control becomes inactive. Whether and when that applies is decided
+once, in lowering, when SFC support is designed.
+
+The state a chart keeps is synthesized fields of its instance (see
+[Synthesized state](#synthesized-state)): the activity `X` and elapsed time
+`T` of each step, the state of each action's control, and the timers its timed
+qualifiers need. A step's elapsed time comes from `RoundTime`, and `init`
+activates the initial step. An action is a body that runs on the same instance,
+so it lowers to a `Method` with no parameter and no result, called with its
+instance. A vendor dialect that lets a program call an action as `inst.A()`
+then needs nothing more than a method call.
+
+The analyzer resolves `S1.X` and `S1.T` in a program to the step, as it
+resolves any other name, and lowering turns each into a `Read` of the
+synthesized field.
+
+**REQ-LOW-lowering-150** A sequential function chart lowers to statements of
+[Statements](#37-statements) over synthesized fields of its instance; the
+lowered program has no node for a step, a transition or an action.
+
+**REQ-LOW-lowering-151** Every step of a chart has synthesized fields for its
+activity and its elapsed time, named after the step.
+
+**REQ-LOW-lowering-152** An action of a chart lowers to a `Method` of the
+chart's POU with no parameter and no result.
+
+### Ladder and function block diagrams
+
+A rung or a network lowers to the statements its elements stand for, in the
+order the network is evaluated:
+
+| Element | Lowered to |
+|---|---|
+| Contact, normally open or closed | A `Read` of a `BOOL`, or its `BoolNot`, combined by `And` in series and by `Or` in parallel |
+| Coil | `Assign` of the rung's value |
+| Set and reset coil | `If` on the rung's value around an `Assign` of `TRUE` or `FALSE`, as `S=` and `R=` |
+| Rising and falling edge contact or coil | The value combined by `And` with the `BoolNot` of a synthesized field holding its previous value (or the reverse for a falling edge), then an `Assign` of the value to that field |
+| Function or block box | `Call` or `FbCall`, with a temporary for each wire that feeds more than one input |
+| FBD feedback path | A synthesized field, read before the network and written after it |
+| `RETURN` | `Return` |
+
+The order of evaluation within a function block diagram has observable effects
+when its blocks have side effects. PLCopen XML gives the order as
+`executionOrderId`. Where the source leaves it open, lowering decides it, once.
+
+**REQ-LOW-lowering-155** Every network of a ladder or function block diagram
+lowers to statements of [Statements](#37-statements); the lowered program has
+no node for a rung, a contact, a coil or a wire.
+
+### Jumps
+
+LD, FBD and IL have jumps to labels, and so does structured text in some
+vendor dialects. The lowered program has none. A forward jump lowers to an
+`Exit` from a `Loop` that runs its body once. A backward jump lowers to a
+`Continue` of a `Loop` around the networks between the label and the jump.
+
+Jumps between the networks of one body can form a loop with two entries, which
+nested `Loop`s cannot express. Suppose network 1 jumps to a label at network 3,
+and network 4 jumps back to a label at network 2. Then networks 2 to 4 repeat,
+and the repetition is entered both at network 2 and at network 3. Lowering
+structures such a body with a compiler-provided temporary that names the next
+network to run, and a `Loop` around a `Case` on that temporary.
+
+The nodes of [Statements](#37-statements) express this, so it needs no new
+node. It is, however, an algorithm lowering must implement: the kind
+WebAssembly compilers use to structure arbitrary control flow. It is the cost
+of choosing a tree over a control-flow graph (see
+[Alternatives Considered](#alternatives-considered)), paid once, in lowering,
+rather than by each backend. The structured result still repeats only through
+`Loop` and `For`, so REQ-LOW-lowering-059 holds, and a backend checks a
+deadline in the same places.
+
+**REQ-LOW-lowering-158** A jump lowers to `Loop`, `Exit` and `Continue`, and,
+where the jumps of a body form a loop with more than one entry, to a `Case` on
+a compiler-provided temporary; the lowered program has no jump.
+
+### EN and ENO
+
+Every function and block box of a diagram has an enable input `EN` and an
+enable output `ENO`, and structured text may name them as arguments. A call
+with `EN` lowers to an `If` on `EN` around the call, and an assignment of
+`ENO`.
+
+IEC 61131-3 sets `ENO` to `FALSE` when the function meets an error, while
+[Meaning of operations](#310-meaning-of-operations) says such an operation
+traps. Which applies is open question 20.
+
+### Debugging
+
+The line map is keyed by spans (REQ-LOW-lowering-063). A span into a PLCopen
+XML file identifies an element, so a debugger can show which rung, network or
+step a statement came from. The debug section already reserves tables for rung
+and network maps (tags 7 and 8 in [Debugger Support](debugger-support.md)).
+
+Animating the power flow of a rung needs the value on each wire. In the
+lowered program that value is part of an expression, not a place; see open
+question 21.
 
 ## Delivery Constraints
 
@@ -1229,10 +1542,13 @@ the annotation is missing. rustc avoids the same outcome by building a typed
 tree (THIR) from its tables before generating code.
 
 **A control-flow graph.** Typed instructions over basic blocks, as in rustc's
-MIR. Both targets are stack machines, and WebAssembly's control flow is
-structured, so a tree maps to each directly while a graph would have to be
-restructured for WebAssembly. A graph also needs everything this design
-provides first.
+MIR. The bytecode VM and WebAssembly are stack machines, and WebAssembly's
+control flow is structured, so a tree maps to each directly while a graph would
+have to be restructured for WebAssembly. LLVM takes a graph, but building one
+from a tree is mechanical; restructuring a graph is the hard direction. The
+cost of the tree falls on source languages with jumps, which lowering must
+structure ([Jumps](#jumps)). A graph also needs everything this design provides
+first.
 
 **A tree in the bytecode VM's terms.** Places as slots and data-region offsets,
 callees as `func_id`s. Simpler for one backend. It would leave every decision
@@ -1283,7 +1599,7 @@ does not supersede it.
 ## Decisions to Record
 
 The choice among the alternatives above is a decision, and belongs in ADRs
-that this document then cites. Four decisions are separable:
+that this document then cites. Six decisions are separable:
 
 1. Code generation consumes a separate, target-neutral lowered program.
 2. The analyzer makes and records every decision whose outcome can make a
@@ -1292,6 +1608,13 @@ that this document then cites. Four decisions are separable:
 3. A backend does not depend on the analyzer.
 4. Each lowered operation has one meaning on every target, which is the
    bytecode VM's today ([Meaning of operations](#310-meaning-of-operations)).
+   That meaning is total: no operation is undefined for any operand.
+5. Each standard function block has one meaning, given by its expansion in
+   `ironplc-lowering`, which a backend may implement natively instead.
+6. Sequential function charts and the graphical languages lower to the nodes
+   of the lowered program, with the state they keep as synthesized fields and
+   their jumps structured by lowering
+   ([Sequential and Graphical Languages](#11-sequential-and-graphical-languages)).
 
 ## Open Questions
 
@@ -1310,7 +1633,11 @@ that this document then cites. Four decisions are separable:
    `diagnostic` into their own crate would forbid them by manifest.
 3. **Layout-dependent values.** `SIZEOF` returns a size. If backends lay types
    out differently, either the language defines the size independently of
-   layout or programs diverge.
+   layout or programs diverge. References have the same problem. The bytecode
+   VM stores one as a variable-table index (`vm/src/value.rs`) and treats
+   `ADR(x)` as `REF(x)`, while a native target stores a byte address. So
+   pointer arithmetic, which analysis rejects today (P2033), would mean
+   something different on each.
 4. **`rule_constant_range`.** Its type push-down gives way to the recorded
    literal types. Which of its checks run after the pass that records them,
    and which keep checking the program as written.
@@ -1323,6 +1650,7 @@ that this document then cites. Four decisions are separable:
    diagnostics come from emission or from a separate pass that runs first.
 7. **Strings.** Whether `StringShape::capacity` is a language property or a
    bytecode VM concern, and how a function returning a string is represented.
+   The hidden `Ref` of open question 14 would answer the second.
 8. **Interface calls and properties.** Static method calls are settled
    ([Callees, arguments and intrinsics](#38-callees-arguments-and-intrinsics)).
    How a call through an interface appears under the later phases of ADR-0041,
@@ -1333,7 +1661,8 @@ that this document then cites. Four decisions are separable:
     call, or one per operation and type as the VM's `func_id` table has today.
 11. **Reference checks.** Whether a `Deref` of a `VAR_IN_OUT` parameter or of
     an instance parameter, which is never null, is distinguished from a
-    `Deref` of a `REF_TO`.
+    `Deref` of a `REF_TO`. Distinguishing them would let an LLVM backend mark
+    the pointer `nonnull` and `dereferenceable` and drop the check.
 12. **Debug information.** REQ-LOW-lowering-006 lists what the debug section
     is built from today. Whether a debugger that steps through expressions, or
     shows variables an optimization removed, needs more than that.
@@ -1346,10 +1675,17 @@ that this document then cites. Four decisions are separable:
     as its source, and the `Call` statement discards its result, so `s := f()`
     has no representation. One option is for lowering to give the call a
     destination place (`CallInto { dst: Place, callee, args }`); another is to
-    pass the result variable as a hidden `Ref` argument.
+    pass the result variable as a hidden `Ref` argument. The hidden `Ref` is
+    how LLVM and the C ABI return an aggregate (`sret`), and it would also
+    answer a string result (open question 7).
 15. **Initial values.** Whether `init` stays a list of statements, as the
     bytecode VM applies it, or becomes declarative (a value per place), which
-    a backend with a data image could place without evaluating anything.
+    a backend with a data image could place without evaluating anything. A
+    declarative `init` maps directly onto LLVM's global initializers. Related:
+    how a warm restart, which keeps the variables declared `RETAIN`
+    (REQ-LOW-lowering-024), is expressed. One `init` could skip the retained
+    variables on a warm restart, or there could be separate lists for a cold
+    and a warm restart. The bytecode VM performs only a cold restart today.
 16. **Aliasing an instance field.** Fields are accessed in place
     ([Places](#34-places)), while the bytecode VM copies an instance's fields
     into the function block type's slots for its body and back after. The two
@@ -1357,7 +1693,50 @@ that this document then cites. Four decisions are separable:
     instance's body runs, for example a `VAR_IN_OUT` argument or a `REF_TO`
     bound to `inst.x` and used inside `inst`'s body or one of its methods.
     Whether analysis rules that out, or the bytecode backend must address
-    fields in place, is open.
+    fields in place, is open. The copy also decides what a trap leaves behind.
+    The VM copies the fields back only when the body returns
+    (`handle_frame_return`), so a trap inside the body leaves the instance's
+    fields as they were before the call. A backend that addresses fields in
+    place leaves the writes made before the trap. Whether the values written
+    before a trap are part of a round's observable behaviour is open with it.
+17. **Precision of real functions.** The bytecode VM computes `SIN`, `LN`,
+    `EXP` and their siblings with Rust's `f64` methods, which call the
+    platform's math library (`vm/src/builtin.rs`). Another backend uses
+    another library. The WebAssembly target proposed in
+    [pull request 1846](https://github.com/ironplc/ironplc/pull/1846) differed
+    in the last bit of `LOG` and `EXP` in 2 of 942 programs. LLVM may also fold
+    a call with a constant operand using the build machine's library, so one
+    program can give different results at two optimization levels. Either
+    every backend uses one implementation, for example one written in Rust and
+    shipped with each runtime, or REQ-LOW-codegen-089 states a precision and
+    the comparison of backends in [Testing](#9-testing) allows it.
+18. **Function outputs.** A function or method may declare `VAR_OUTPUT`, and
+    `Arg` has no mode for one. A `Ref` would let the callee write the caller's
+    place while it runs, whereas an output is assigned when the call returns,
+    and possibly through a `Convert`. One option treats it as a function block
+    call treats an output (REQ-LOW-lowering-069): the callee writes a
+    temporary passed by `Ref`, and the call is followed by an assignment from
+    that temporary. An LLVM backend would realise it as a pointer to the
+    temporary.
+19. **Preemptive tasks.** Program instances run one at a time today (see
+    [Meaning of operations](#310-meaning-of-operations)). A native runtime
+    could run each task on its own thread, with a task of higher priority
+    preempting one of lower priority, as many PLC runtimes do. A global used by
+    two tasks would then need either a copy per task, taken at the start of its
+    round and written back at its end, or accesses the target makes atomic.
+    [61131 Task Support](61131-task-support.md) reserves room for per-task
+    images. Lowering knows which program instance runs in which task and which
+    globals each POU reaches, so it is where either would be decided.
+20. **`ENO` on error.** IEC 61131-3 sets `ENO` to `FALSE` when a function
+    meets an error, where [Meaning of operations](#310-meaning-of-operations)
+    traps. Either `ENO` follows `EN` and an error still traps, which needs
+    nothing new, or an operation called with `EN` reports its error as a value,
+    which needs `Intrinsic` variants that return one.
+21. **Power flow.** Showing the power flow of a rung, or the value on each wire
+    of a network, needs those values while the program runs. In the lowered
+    program they are parts of expressions, not places. Whether lowering keeps
+    them in named temporaries when debugging is on, and what that costs an
+    optimizer, is open.
 
 ## References
 
@@ -1368,3 +1747,7 @@ that this document then cites. Four decisions are separable:
   `compiler/plc_lowering`, at commit `10ead7b`
 - [`go/types`](https://pkg.go.dev/go/types)
 - [WebAssembly 2.0 numeric instructions](https://webassembly.github.io/spec/core/exec/numerics.html)
+- [LLVM Language Reference Manual](https://llvm.org/docs/LangRef.html): the
+  undefined behaviour of `sdiv`, `fptosi`, shifts and `mustprogress`
+- Norman Ramsey, *Beyond Relooper: Recursive Translation of Unstructured
+  Control Flow to Structured Control Flow*, ICFP 2022
