@@ -24,8 +24,6 @@ pub enum Convention {
     StringCode,
     /// An assertion that holds for any error (`.is_err()`, `has_diagnostics()`).
     AnyError,
-    /// A one-line macro that asserts less than the exact problems reported.
-    WeakMacro,
     /// An empty context handed to a rule whose `apply` reads its context.
     EmptyContext,
     /// A rule test that runs the whole `analyze` pipeline.
@@ -41,7 +39,6 @@ impl Convention {
     pub const ALL: &'static [Convention] = &[
         Convention::StringCode,
         Convention::AnyError,
-        Convention::WeakMacro,
         Convention::EmptyContext,
         Convention::Pipeline,
         Convention::MissingOk,
@@ -53,7 +50,6 @@ impl Convention {
         match self {
             Convention::StringCode => "string-code",
             Convention::AnyError => "any-error",
-            Convention::WeakMacro => "weak-macro",
             Convention::EmptyContext => "empty-context",
             Convention::Pipeline => "pipeline",
             Convention::MissingOk => "missing-ok",
@@ -69,11 +65,8 @@ impl Convention {
             Convention::AnyError => {
                 "assert the exact problems reported, not that some error occurred"
             }
-            Convention::WeakMacro => {
-                "use rule_err1!/rule_errn! (or the ctx_ forms), which assert the exact problems"
-            }
             Convention::EmptyContext => {
-                "this rule reads its context; test it with the rule_ctx_* macros"
+                "this rule reads its context; test it against the resolved one (rule_ok!, rule_err!, test_helpers::rule_codes)"
             }
             Convention::Pipeline => "call the rule's own apply rather than the analyze pipeline",
             Convention::MissingOk => "add a test where the rule reports no problems",
@@ -212,38 +205,13 @@ pub fn violations(src: &Path, conventions: &[Convention]) -> Vec<Violation> {
         .collect()
 }
 
-const WEAK_MACROS: &[&str] = &[
-    "rule_err_with!(",
-    "rule_ctx_err!(",
-    "rule_ctx_err_with!(",
-    "rule_err_code!(",
-    "rule_err_code_with!(",
-    "rule_ctx_err_code!(",
-    "rule_ctx_err_code_with!(",
-];
-
-const EMPTY_CONTEXT: &[&str] = &[
-    "rule_err1!(",
-    "rule_err1_with!(",
-    "rule_errn!(",
-    "rule_errn_with!(",
-    "rule_err1_at!(",
-    "resolve_fresh_with(",
-    "SemanticContextBuilder::new()",
-];
+const EMPTY_CONTEXT: &[&str] = &["SemanticContextBuilder::new()"];
 
 const ANY_ERROR: &[&str] = &[".is_err()", "has_diagnostics()"];
 
 const PIPELINE: &[&str] = &["analyze(&"];
 
-const OK_SIDE: &[&str] = &[
-    "rule_ok!(",
-    "rule_ok_with!(",
-    "rule_ctx_ok!(",
-    "rule_ctx_ok_with!(",
-    ".is_ok()",
-    "is_empty()",
-];
+const OK_SIDE: &[&str] = &["rule_ok!(", ".is_ok()", "is_empty()"];
 
 const ERR_SIDE: &[&str] = &["Problem::", "NOT_IMPLEMENTED_CODE"];
 
@@ -260,7 +228,6 @@ pub fn check(rule: &RuleSource, conventions: &[Convention]) -> Vec<Violation> {
                 let hit = match convention {
                     Convention::StringCode => contains_string_code(line),
                     Convention::AnyError => contains_any(line, ANY_ERROR),
-                    Convention::WeakMacro => contains_any(line, WEAK_MACROS),
                     Convention::EmptyContext => {
                         rule.reads_context && contains_any(line, EMPTY_CONTEXT)
                     }
@@ -296,7 +263,7 @@ pub fn check(rule: &RuleSource, conventions: &[Convention]) -> Vec<Violation> {
 }
 
 /// Whether `needle` occurs in `text` not as the tail of a longer identifier,
-/// so that `rule_ok!(` does not match inside `rule_ctx_ok!(`.
+/// so that `rule_ok!(` does not match inside a longer name such as `my_rule_ok!(`.
 fn contains_any(text: &str, needles: &[&str]) -> bool {
     needles.iter().any(|needle| {
         let is_identifier = |c: char| c.is_alphanumeric() || c == '_';
@@ -338,7 +305,7 @@ mod tests {
     /// only the convention under test can fire.
     fn rule(apply: &str, tests: &str) -> RuleSource {
         let text = format!(
-            "{apply}#[cfg(test)]\nmod tests {{\n    rule_ctx_ok!(ok, \"\");\n    rule_ctx_err1!(err, \"\", Problem::X);\n{tests}\n}}\n"
+            "{apply}#[cfg(test)]\nmod tests {{\n    rule_ok!(ok, \"\");\n    rule_err!(err, \"\", [Problem::X]);\n{tests}\n}}\n"
         );
         RuleSource::from_text(PathBuf::from("rule_x.rs"), &text)
     }
@@ -385,27 +352,10 @@ mod tests {
     }
 
     #[test]
-    fn check_when_weak_macro_then_weak_macro() {
-        let rule = rule(APPLY_IGNORES_CONTEXT, "    rule_ctx_err!(name, \"\");");
-
-        assert_eq!(found(&rule), vec![Convention::WeakMacro]);
-    }
-
-    #[test]
-    fn check_when_fresh_macro_and_rule_reads_context_then_empty_context() {
-        let rule = rule(
-            APPLY_READS_CONTEXT,
-            "    rule_err1!(name, \"\", Problem::X);",
-        );
-
-        assert_eq!(found(&rule), vec![Convention::EmptyContext]);
-    }
-
-    #[test]
-    fn check_when_fresh_macro_and_rule_ignores_context_then_no_violations() {
+    fn check_when_hand_built_empty_context_and_rule_ignores_context_then_no_violations() {
         let rule = rule(
             APPLY_IGNORES_CONTEXT,
-            "    rule_err1!(name, \"\", Problem::X);",
+            "    let context = SemanticContextBuilder::new().build().unwrap();",
         );
 
         assert_eq!(found(&rule), vec![]);
@@ -462,7 +412,7 @@ mod tests {
     fn check_when_no_ok_test_then_missing_ok() {
         let rule = RuleSource::from_text(
             PathBuf::from("rule_x.rs"),
-            "#[cfg(test)]\nmod tests {\n    rule_err1!(err, \"\", Problem::X);\n}\n",
+            "#[cfg(test)]\nmod tests {\n    rule_err!(err, \"\", [Problem::X]);\n}\n",
         );
 
         assert_eq!(found(&rule), vec![Convention::MissingOk]);

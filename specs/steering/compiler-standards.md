@@ -84,15 +84,19 @@ problems the rule reports**:
   compiler-located `P9xxx` variants are deprecated so that only their
   `Diagnostic` constructors build them; compare against
   `test_helpers::NOT_IMPLEMENTED_CODE` instead.
-- **Use the context the rule sees.** A rule whose `apply` reads its `context`
-  is tested with the `rule_ctx_*` macros (or the helpers below); the `rule_*`
-  macros hand it an empty one.
-- **One-liners**: `rule_ok!`, `rule_err1!` (exactly one problem),
-  `rule_errn!` (exactly n of one problem), `rule_err1_at!` (one problem,
-  labelled at the given text), and their `ctx_`/`_with` forms in
-  `analyzer/src/test_macros.rs`. `rule_err!`, `rule_ctx_err!` and the
-  `_code` forms assert less and are not used.
-- **Hand-written and `#[rstest]` bodies** use the shared helpers in
+- **Use the context the rule sees.** Every helper and macro below runs the
+  rule against the context resolution builds. Never hand a rule an empty
+  `SemanticContextBuilder` context: a rule that reads its context is then
+  tested against nothing.
+- **One-liners**, in `analyzer/src/test_macros.rs`, each with an optional
+  trailing `CompilerOptions` argument:
+  - `rule_ok!(name, program)`: the rule reports nothing.
+  - `rule_err!(name, program, [P])`: exactly the listed problems, in order:
+    `[P]`, `[P, Q]` or `[P; n]`.
+  - `rule_err_at!(name, program, P, "text")`: one `P`, labelled at the first
+    `"text"` in the program.
+- **Hand-written and `#[rstest]` bodies**, for a test the macros cannot
+  express (a message, a parameterised case), use the shared helpers in
   `analyzer/src/test_helpers.rs` rather than their own setup:
   `rule_codes(apply, program, &options)` and `rule_diagnostics(...)` resolve
   the program and run the rule against the resolved context; compare with
