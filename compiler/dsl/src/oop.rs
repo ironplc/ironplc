@@ -35,6 +35,18 @@ pub struct MethodDeclaration {
     pub qualifiers: MemberQualifiers,
     pub name: Id,
     pub return_type: Option<FunctionReturnType>,
+    /// Variables the method has without the source declaring them: the
+    /// implicit input of a property's `SET` accessor (see
+    /// [`PropertyDeclaration`]). Empty for a `METHOD` and a `GET`
+    /// accessor.
+    ///
+    /// Kept apart from `variables` so that a pass that reorders, filters
+    /// or rebuilds `variables` cannot lose or expose them. Declared before
+    /// `variables`, so the derived traversal visits them first. A pass
+    /// that needs every variable in the method's scope uses
+    /// [`MethodDeclaration::all_variables`].
+    pub implicit_variables: Vec<VarDecl>,
+    /// Variables declared in the source.
     pub variables: Vec<VarDecl>,
     /// `R_EDGE`/`F_EDGE`-qualified `VAR` declarations (IEC 61131-3
     /// §2.4.3). Not a TwinCAT-specific or OOP-specific capability: the
@@ -49,6 +61,16 @@ pub struct MethodDeclaration {
     pub span: SourceSpan,
 }
 
+impl MethodDeclaration {
+    /// Every variable in the method's scope: the implicit ones, then the
+    /// ones declared in the source.
+    pub fn all_variables(&self) -> impl Iterator<Item = &VarDecl> {
+        self.implicit_variables.iter().chain(self.variables.iter())
+    }
+}
+
+/// The variables declared in the source, without the implicit ones (see
+/// [`MethodDeclaration::implicit_variables`]).
 impl HasVariables for MethodDeclaration {
     fn variables(&self) -> &Vec<VarDecl> {
         &self.variables
@@ -74,8 +96,8 @@ impl FunctionBlockDeclaration {
 ///   it the property name is the result variable, as in any method.
 /// - `SET` is a method with no return type and one implicit `VAR_INPUT`
 ///   named after the property and of the property type, which holds the
-///   value being assigned. The input is always the first of its
-///   `variables`; [`PropertyDeclaration::set_declared_variables`] gives
+///   value being assigned. The input is held in
+///   [`MethodDeclaration::implicit_variables`], so `variables` holds only
 ///   the ones written in the source.
 ///
 /// Every scope-aware pass therefore handles an accessor body as a method
@@ -104,6 +126,7 @@ impl PropertyDeclaration {
             qualifiers: MemberQualifiers::default(),
             name: name.clone(),
             return_type: Some(property_type.clone()),
+            implicit_variables: vec![],
             variables,
             edge_variables,
             body,
@@ -112,7 +135,7 @@ impl PropertyDeclaration {
     }
 
     /// Builds the `SET` accessor of property `name`, with the implicit
-    /// input that holds the assigned value in front of `variables`.
+    /// input that holds the assigned value in `implicit_variables`.
     pub fn set_accessor(
         name: &Id,
         property_type: &FunctionReturnType,
@@ -142,26 +165,15 @@ impl PropertyDeclaration {
             block: next_block_id(),
             type_id: None,
         };
-        let mut all_variables = Vec::with_capacity(variables.len() + 1);
-        all_variables.push(value);
-        all_variables.extend(variables);
         MethodDeclaration {
             qualifiers: MemberQualifiers::default(),
             name: name.clone(),
             return_type: None,
-            variables: all_variables,
+            implicit_variables: vec![value],
+            variables,
             edge_variables,
             body,
             span,
-        }
-    }
-
-    /// The `SET` accessor's variables as written in the source, without the
-    /// implicit input that [`PropertyDeclaration::set_accessor`] adds.
-    pub fn set_declared_variables(&self) -> &[VarDecl] {
-        match &self.set {
-            Some(set) => &set.variables[1..],
-            None => &[],
         }
     }
 }
