@@ -92,3 +92,24 @@ pub fn declaration_qualifiers(library: &Library, name: &str) -> Vec<DeclarationQ
     let Ok(()) = finder.walk(library);
     finder.found
 }
+
+/// The code of `Problem::NotImplemented`. The variant is `#[deprecated]` so
+/// that only `Diagnostic::not_implemented` (which records the compiler
+/// location) constructs it, and that also keeps tests from naming it. Rule
+/// tests compare against this rather than spelling out the code.
+#[cfg(test)]
+pub const NOT_IMPLEMENTED_CODE: &str = "P9999";
+
+#[cfg(test)]
+mod tests {
+    use super::NOT_IMPLEMENTED_CODE;
+    use ironplc_dsl::core::SourceSpan;
+    use ironplc_dsl::diagnostic::{Diagnostic, Label};
+
+    #[test]
+    fn not_implemented_code_when_compared_to_constructor_then_equal() {
+        let diagnostic = Diagnostic::not_implemented(Label::span(SourceSpan::default(), "x"));
+
+        assert_eq!(diagnostic.code, NOT_IMPLEMENTED_CODE);
+    }
+}

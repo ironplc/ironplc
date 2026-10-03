@@ -165,23 +165,22 @@ impl Visitor<Infallible> for RuleAggregateAssignment<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::stages::analyze;
-    use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::CompilerOptions, parse_program};
+    use crate::test_helpers::parse_and_resolve_types_with_options;
+    use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
 
-    /// Analyzes `program`, returning the problem codes it reported.
-    fn problem_codes(program: &str) -> Vec<String> {
-        let options = CompilerOptions::default();
-        let library = parse_program(program, &FileId::default(), &options).unwrap();
-        match analyze(&[&library], &options) {
-            Ok((_, context)) => context
-                .diagnostics()
-                .iter()
-                .map(|d| d.code.clone())
-                .collect(),
-            Err(diagnostics) => diagnostics.iter().map(|d| d.code.clone()).collect(),
+    /// Runs this rule over `program` under `options`, returning the problem
+    /// codes it reported.
+    fn problem_codes_with(program: &str, options: &CompilerOptions) -> Vec<String> {
+        let (library, context) = parse_and_resolve_types_with_options(program, options);
+        match super::apply(&library, &context, options) {
+            Ok(()) => vec![],
+            Err(diagnostics) => diagnostics.into_iter().map(|d| d.code).collect(),
         }
+    }
+
+    fn problem_codes(program: &str) -> Vec<String> {
+        problem_codes_with(program, &CompilerOptions::default())
     }
 
     fn program_with(declarations: &str, body: &str) -> String {
@@ -203,7 +202,7 @@ mod tests {
             "a : ARRAY[1..2] OF DINT;\nb : ARRAY[1..5] OF DINT;\n",
             "a := b;\n",
         ));
-        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
     }
 
     #[test]
@@ -212,7 +211,7 @@ mod tests {
             "a : ARRAY[1..2] OF DINT;\nb : ARRAY[1..2] OF INT;\n",
             "a := b;\n",
         ));
-        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
     }
 
     /// The pair the VM cannot distinguish: same element count and element
@@ -223,7 +222,7 @@ mod tests {
             "a : ARRAY[1..6] OF DINT;\nb : ARRAY[1..2, 1..3] OF DINT;\n",
             "a := b;\n",
         ));
-        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
     }
 
     #[test]
@@ -232,7 +231,7 @@ mod tests {
             "a : ARRAY[1..2] OF STRING[8];\nb : ARRAY[1..2] OF STRING[16];\n",
             "a := b;\n",
         ));
-        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
     }
 
     #[test]
@@ -283,7 +282,7 @@ END_VAR
 END_PROGRAM
 ",
         );
-        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
     }
 
     #[test]
@@ -306,7 +305,7 @@ END_VAR
 END_PROGRAM
 ",
         );
-        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
     }
 
     /// Scalar assignment is out of this rule's scope: a narrowing store that
@@ -314,10 +313,7 @@ END_PROGRAM
     #[test]
     fn apply_when_scalar_widths_differ_then_no_diagnostic() {
         let codes = problem_codes(&program_with("a : DINT;\nb : INT;\n", "a := b;\n"));
-        assert!(
-            !codes.contains(&"P2037".to_string()),
-            "scalars are out of scope, got {codes:?}"
-        );
+        assert!(codes.is_empty(), "scalars are out of scope, got {codes:?}");
     }
 
     /// A global is reached through a `VAR_EXTERNAL` redeclaration, which is
@@ -348,7 +344,7 @@ END_VAR
 END_PROGRAM
 ",
         );
-        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
     }
 
     #[test]
@@ -436,7 +432,7 @@ END_VAR
 END_PROGRAM
 ",
         );
-        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
     }
 
     #[test]
@@ -459,7 +455,7 @@ END_VAR
 END_PROGRAM
 ",
         );
-        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
     }
 
     /// A function block's locals must not leak into a later POU's scope.
@@ -517,11 +513,7 @@ END_VAR
 END_PROGRAM
 ",
         );
-        assert!(
-            !codes.contains(&"P2037".to_string()),
-            "P4027 owns this case; got {codes:?}"
-        );
-        assert!(codes.contains(&"P4027".to_string()), "got {codes:?}");
+        assert!(codes.is_empty(), "P4027 owns this case; got {codes:?}");
     }
 
     #[test]
@@ -555,7 +547,7 @@ END_PROGRAM
     #[test]
     fn apply_when_constant_assigned_to_array_then_reports_mismatch() {
         let codes = problem_codes(&program_with("a : ARRAY[1..2] OF DINT;\n", "a := 5;\n"));
-        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
     }
 
     /// An element write is not a whole-aggregate assignment.
@@ -566,7 +558,7 @@ END_PROGRAM
             "a[1] := b[1];\n",
         ));
         assert!(
-            !codes.contains(&"P2037".to_string()),
+            codes.is_empty(),
             "element writes are out of scope, got {codes:?}"
         );
     }
@@ -578,15 +570,7 @@ END_PROGRAM
             allow_fb_inheritance: true,
             ..CompilerOptions::default()
         };
-        let library = parse_program(program, &FileId::default(), &options).unwrap();
-        match analyze(&[&library], &options) {
-            Ok((_, context)) => context
-                .diagnostics()
-                .iter()
-                .map(|d| d.code.clone())
-                .collect(),
-            Err(diagnostics) => diagnostics.iter().map(|d| d.code.clone()).collect(),
-        }
+        problem_codes_with(program, &options)
     }
 
     /// A method's local belongs to the method. Before the traversal
@@ -625,11 +609,10 @@ END_FUNCTION_BLOCK
 ",
         );
 
-        assert!(
-            codes
-                .iter()
-                .any(|c| c == Problem::AggregateAssignmentTypeMismatch.code()),
-            "expected an aggregate assignment mismatch on the function block's field, got {codes:?}"
+        assert_eq!(
+            codes,
+            [Problem::AggregateAssignmentTypeMismatch.code()],
+            "expected an aggregate assignment mismatch on the function block's field"
         );
     }
 }

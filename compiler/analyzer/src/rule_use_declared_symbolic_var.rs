@@ -225,7 +225,7 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::{parse_and_resolve_types_with_context, NOT_IMPLEMENTED_CODE};
 
     use super::*;
 
@@ -797,7 +797,7 @@ END_FUNCTION_BLOCK";
         let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
 
         assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].code, "P9999");
+        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
         assert!(errors[0].described.contains(&"property=Running".to_owned()));
     }
 
@@ -825,7 +825,7 @@ END_FUNCTION_BLOCK";
         );
         let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
 
-        assert_eq!(errors[0].code, "P9999");
+        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
         assert!(errors[0].described.contains(&"property=Speed".to_owned()));
     }
 

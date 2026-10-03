@@ -120,7 +120,7 @@ mod tests {
     use super::*;
 
     use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types_with_options;
+    use crate::test_helpers::{parse_and_resolve_types_with_options, NOT_IMPLEMENTED_CODE};
 
     fn opts_with_fb_inheritance() -> CompilerOptions {
         CompilerOptions {
@@ -174,10 +174,7 @@ END_FUNCTION_BLOCK";
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
-        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
-        // (must be constructed via Diagnostic::not_implemented), so assert on
-        // the stable code string rather than referencing the variant.
-        assert_eq!("P9999", errors[0].code);
+        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
     }
 
     #[rstest::rstest]
@@ -204,10 +201,7 @@ END_FUNCTION_BLOCK"
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
-        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
-        // (must be constructed via Diagnostic::not_implemented), so assert on
-        // the stable code string rather than referencing the variant.
-        assert_eq!("P9999", errors[0].code);
+        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
     }
 
     #[test]
@@ -226,10 +220,7 @@ END_FUNCTION_BLOCK";
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
-        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
-        // (must be constructed via Diagnostic::not_implemented), so assert on
-        // the stable code string rather than referencing the variant.
-        assert_eq!("P9999", errors[0].code);
+        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
     }
 
     #[test]
@@ -249,10 +240,7 @@ END_FUNCTION_BLOCK";
         let errors = result.unwrap_err();
         // One diagnostic for the whole FB, not one per clause.
         assert_eq!(errors.len(), 1);
-        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
-        // (must be constructed via Diagnostic::not_implemented), so assert on
-        // the stable code string rather than referencing the variant.
-        assert_eq!("P9999", errors[0].code);
+        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
     }
 
     #[test]
@@ -268,10 +256,7 @@ END_INTERFACE";
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
-        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
-        // (must be constructed via Diagnostic::not_implemented), so assert on
-        // the stable code string rather than referencing the variant.
-        assert_eq!("P9999", errors[0].code);
+        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
     }
 
     #[test]
