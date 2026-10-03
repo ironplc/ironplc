@@ -625,10 +625,12 @@ END_PROGRAM
 ",
         );
         let (_lib, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
-        assert!(context
+        let codes: Vec<_> = context
             .diagnostics()
             .iter()
-            .any(|d| d.code == Problem::OperatorOperandTypeMismatch.code()));
+            .map(|d| d.code.clone())
+            .collect();
+        assert_eq!(codes, [Problem::OperatorOperandTypeMismatch.code()]);
     }
 
     // --- The bit-string operators (AND, OR, XOR, NOT) ---

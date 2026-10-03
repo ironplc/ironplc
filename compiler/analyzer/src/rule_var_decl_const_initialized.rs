@@ -410,7 +410,14 @@ END_FUNCTION_BLOCK";
         let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context, &CompilerOptions::default());
 
-        assert!(result.is_err());
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+
+        assert_eq!(codes, [Problem::ConstantMustHaveInitializer.code()]);
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
         // Check that the error mentions the missing field 'y'
@@ -436,10 +443,15 @@ END_FUNCTION_BLOCK";
         let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context, &CompilerOptions::default());
 
-        assert!(result.is_err());
-        let errors = result.unwrap_err();
-        // Should have errors for both x and y fields
-        assert_eq!(errors.len(), 2);
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+
+        // One for each of the x and y fields.
+        assert_eq!(codes, [Problem::ConstantMustHaveInitializer.code(); 2]);
     }
 
     // Non-constant structures don't require initialization

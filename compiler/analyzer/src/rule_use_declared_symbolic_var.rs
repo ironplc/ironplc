@@ -243,7 +243,14 @@ END_FUNCTION_BLOCK";
         let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context, &CompilerOptions::default());
 
-        assert!(result.is_err());
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+
+        assert_eq!(codes, [Problem::VariableUndefined.code()]);
         assert!(result
             .unwrap_err()
             .first()
@@ -320,7 +327,14 @@ END_FUNCTION_BLOCK";
         let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context, &CompilerOptions::default());
 
-        assert!(result.is_err());
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+
+        assert_eq!(codes, [Problem::VariableUndefined.code()]);
         let errors = result.unwrap_err();
         let error = errors.first().unwrap();
         assert!(error.described.contains(&"variable=conter".to_owned()));
@@ -341,7 +355,14 @@ END_FUNCTION_BLOCK";
         let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context, &CompilerOptions::default());
 
-        assert!(result.is_err());
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+
+        assert_eq!(codes, [Problem::VariableUndefined.code()]);
         let errors = result.unwrap_err();
         let error = errors.first().unwrap();
         assert!(error
@@ -494,7 +515,14 @@ END_FUNCTION_BLOCK";
         );
         let result = apply(&library, &context, &opts_with_fb_inheritance());
 
-        assert!(result.is_err());
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+
+        assert_eq!(codes, [Problem::VariableUndefined.code()]);
     }
 
     // ---------------------------------------------------------------------
@@ -543,7 +571,14 @@ END_FUNCTION_BLOCK";
         );
         let result = apply(&library, &context, &opts_with_fb_inheritance());
 
-        assert!(result.is_err());
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+
+        assert_eq!(codes, [Problem::VariableUndefined.code()]);
         assert!(result
             .unwrap_err()
             .first()
@@ -579,7 +614,14 @@ END_FUNCTION_BLOCK";
         );
         let result = apply(&library, &context, &opts_with_fb_inheritance());
 
-        assert!(result.is_err());
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+
+        assert_eq!(codes, [Problem::VariableUndefined.code()]);
         assert!(result
             .unwrap_err()
             .first()
@@ -686,6 +728,10 @@ END_PROGRAM";
         let (library, context) = parse_and_resolve_types_with_context(program);
         let diagnostics = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
 
+        let codes: Vec<&str> = diagnostics.iter().map(|d| d.code.as_str()).collect();
+
+        assert_eq!(codes, [Problem::VariableUndefined.code(); 2]);
+
         let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
         assert!(
             reported
@@ -722,6 +768,10 @@ END_PROGRAM";
 
         let (library, context) = parse_and_resolve_types_with_context(program);
         let diagnostics = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
+
+        let codes: Vec<&str> = diagnostics.iter().map(|d| d.code.as_str()).collect();
+
+        assert_eq!(codes, [Problem::VariableUndefined.code(); 2]);
 
         let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
         assert!(
@@ -825,6 +875,12 @@ END_FUNCTION_BLOCK";
         );
         let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
 
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one diagnostic, got {errors:?}"
+        );
+
         assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
         assert!(errors[0].described.contains(&"property=Speed".to_owned()));
     }
@@ -853,6 +909,14 @@ END_PROGRAM";
             &opts_with_fb_inheritance(),
         );
         let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
+
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one diagnostic, got {errors:?}"
+        );
+
+        assert_eq!(errors[0].code, Problem::VariableUndefined.code());
 
         assert!(errors[0].described.contains(&"variable=Speed".to_owned()));
     }

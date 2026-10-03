@@ -105,9 +105,14 @@ mod test {
     fn apply_when_top_level_var_global_and_not_allowed_then_error() {
         let lib = parse("VAR_GLOBAL CONSTANT\nX : INT := 250;\nEND_VAR\nPROGRAM p\nEND_PROGRAM");
 
-        let result = apply(&lib, &context(), &CompilerOptions::default());
+        let errors = apply(&lib, &context(), &CompilerOptions::default()).unwrap_err();
 
-        assert!(result.is_err());
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one diagnostic, got {errors:?}"
+        );
+        assert_eq!(errors[0].code, Problem::TopLevelVarGlobalNotAllowed.code());
     }
 
     #[test]
@@ -115,6 +120,17 @@ mod test {
         let lib = parse("VAR_GLOBAL CONSTANT\nX : INT := 250;\nEND_VAR\nPROGRAM p\nEND_PROGRAM");
 
         let diagnostics = apply(&lib, &context(), &CompilerOptions::default()).unwrap_err();
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "expected exactly one diagnostic, got {diagnostics:?}"
+        );
+
+        assert_eq!(
+            diagnostics[0].code,
+            Problem::TopLevelVarGlobalNotAllowed.code()
+        );
 
         assert!(!diagnostics[0].help().is_empty());
     }

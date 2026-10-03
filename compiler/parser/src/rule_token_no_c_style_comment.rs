@@ -62,7 +62,13 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        assert!(result.is_err())
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert_eq!(codes, [ironplc_problems::Problem::CStyleComment.code()]);
     }
 
     #[test]
@@ -83,6 +89,15 @@ mod test {
             },
         );
         let diagnostics = result.unwrap_err();
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "expected exactly one diagnostic, got {diagnostics:?}"
+        );
+        assert_eq!(
+            diagnostics[0].code,
+            ironplc_problems::Problem::CStyleComment.code()
+        );
         assert!(!diagnostics[0].help().is_empty());
     }
 
@@ -123,7 +138,13 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        assert!(result.is_err())
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert_eq!(codes, [ironplc_problems::Problem::CStyleComment.code()]);
     }
 
     #[test]

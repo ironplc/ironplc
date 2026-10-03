@@ -1702,10 +1702,11 @@ END_FUNCTION_BLOCK",
         )
         .unwrap_err();
 
-        assert!(
-            errors
-                .iter()
-                .any(|d| d.code == Problem::AssignmentTypeMismatch.code()),
+        let codes: Vec<&str> = errors.iter().map(|d| d.code.as_str()).collect();
+
+        assert_eq!(
+            codes,
+            [Problem::AssignmentTypeMismatch.code()],
             "expected an assignment type mismatch on the INT field, got {errors:?}"
         );
     }
@@ -1728,9 +1729,9 @@ END_FUNCTION_BLOCK",
         )
         .unwrap_err();
 
-        assert!(errors
-            .iter()
-            .any(|d| d.code == Problem::AssignmentTypeMismatch.code()));
+        let codes: Vec<&str> = errors.iter().map(|d| d.code.as_str()).collect();
+
+        assert_eq!(codes, [Problem::AssignmentTypeMismatch.code()]);
     }
 
     /// A method reading the instance's field is not a mismatch: the
@@ -1796,9 +1797,9 @@ END_FUNCTION_BLOCK",
         )
         .unwrap_err();
 
-        assert!(errors
-            .iter()
-            .any(|d| d.code == Problem::AssignmentTypeMismatch.code()));
+        let codes: Vec<&str> = errors.iter().map(|d| d.code.as_str()).collect();
+
+        assert_eq!(codes, [Problem::AssignmentTypeMismatch.code()]);
     }
 
     #[test]

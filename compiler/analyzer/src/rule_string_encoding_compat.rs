@@ -183,8 +183,12 @@ PROGRAM main
 END_PROGRAM
 ",
         );
-        assert!(result.is_err());
         let errors = result.unwrap_err();
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one diagnostic, got {errors:?}"
+        );
         assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 
@@ -201,11 +205,13 @@ PROGRAM main
 END_PROGRAM
 ",
         );
-        assert!(result.is_err());
+        let errors = result.unwrap_err();
         assert_eq!(
-            result.unwrap_err()[0].code,
-            Problem::StringEncodingMismatch.code()
+            errors.len(),
+            1,
+            "expected exactly one diagnostic, got {errors:?}"
         );
+        assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 
     #[test]
@@ -254,11 +260,13 @@ PROGRAM main
 END_PROGRAM
 ",
         );
-        assert!(result.is_err());
+        let errors = result.unwrap_err();
         assert_eq!(
-            result.unwrap_err()[0].code,
-            Problem::StringEncodingMismatch.code()
+            errors.len(),
+            1,
+            "expected exactly one diagnostic, got {errors:?}"
         );
+        assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 
     #[test]
@@ -294,10 +302,19 @@ END_PROGRAM
 ",
         );
         let (_lib, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
-        assert!(context
+        let codes: Vec<_> = context
             .diagnostics()
             .iter()
-            .any(|d| d.code == Problem::StringEncodingMismatch.code()));
+            .map(|d| d.code.clone())
+            .collect();
+        // Not exact: the pipeline also reports P4035 for the same assignment,
+
+        // from rule_function_call_type_check.
+
+        assert!(
+            codes.contains(&Problem::StringEncodingMismatch.code().to_string()),
+            "got {codes:?}"
+        );
     }
 
     fn check_ed3(source: &str) -> SemanticResult {
@@ -347,10 +364,13 @@ FUNCTION_BLOCK FB
 END_FUNCTION_BLOCK
 ",
         );
+        let errors = result.unwrap_err();
         assert_eq!(
-            result.unwrap_err()[0].code,
-            Problem::StringEncodingMismatch.code()
+            errors.len(),
+            1,
+            "expected exactly one diagnostic, got {errors:?}"
         );
+        assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 
     #[test]
@@ -388,9 +408,12 @@ PROGRAM main
 END_PROGRAM
 ",
         );
+        let errors = result.unwrap_err();
         assert_eq!(
-            result.unwrap_err()[0].code,
-            Problem::StringEncodingMismatch.code()
+            errors.len(),
+            1,
+            "expected exactly one diagnostic, got {errors:?}"
         );
+        assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 }
