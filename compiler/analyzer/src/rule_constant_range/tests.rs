@@ -1,31 +1,46 @@
-use crate::stages::analyze;
-use ironplc_dsl::core::FileId;
-use ironplc_parser::{options::CompilerOptions, parse_program};
+use crate::test_helpers::parse_and_resolve_types_with_options;
+use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 use rstest::rstest;
 
-/// Analyzes `program`, returning how many out-of-range constants it
-/// reported. Naming the problem keeps a diagnostic from another rule
-/// from passing for one of ours.
+/// Runs this rule over `program`, returning how many out-of-range
+/// constants it reported.
 fn out_of_range_count(program: &str) -> usize {
     problem_count(program, Problem::ConstantOverflow)
 }
 
-/// Analyzes `program`, returning how many real literals it reported as
-/// outside their type's range.
+/// Runs this rule over `program`, returning how many real literals it
+/// reported as outside their type's range.
 fn real_out_of_range_count(program: &str) -> usize {
     problem_count(program, Problem::RealLiteralOutOfRange)
 }
 
-fn problem_count(program: &str, problem: Problem) -> usize {
+/// The diagnostics this rule reports for `program` under default options.
+fn diagnostics_of(program: &str) -> Vec<Diagnostic> {
     let options = CompilerOptions::default();
-    let library = parse_program(program, &FileId::default(), &options).unwrap();
-    let (_library, context) = analyze(&[&library], &options).unwrap();
-    context
-        .diagnostics()
-        .iter()
-        .filter(|d| d.code == problem.code())
-        .count()
+    let (library, context) = parse_and_resolve_types_with_options(program, &options);
+    super::apply(&library, &context, &options)
+        .err()
+        .unwrap_or_default()
+}
+
+/// How many `problem` diagnostics this rule reports for `program`. Every
+/// diagnostic must be one of the two problems this rule reports, so a count
+/// pair `(overflow, real)` is the exact list.
+fn problem_count(program: &str, problem: Problem) -> usize {
+    let codes: Vec<String> = diagnostics_of(program)
+        .into_iter()
+        .map(|d| d.code)
+        .collect();
+    assert!(
+        codes
+            .iter()
+            .all(|code| code == Problem::ConstantOverflow.code()
+                || code == Problem::RealLiteralOutOfRange.code()),
+        "expected only this rule's problems, got {codes:?}"
+    );
+    codes.iter().filter(|code| *code == problem.code()).count()
 }
 
 fn program_with(declarations: &str, body: &str) -> String {
@@ -174,23 +189,22 @@ END_PROGRAM"
 /// source spelled, with its own sign.
 #[test]
 fn apply_when_case_label_beyond_every_type_then_reported_with_its_sign() {
-    let options = CompilerOptions::default();
     let program = program_with(
         "x : DINT;\ny : DINT;\n",
         "CASE x OF\n16#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF: y := 1;\nEND_CASE;\n",
     );
-    let library = parse_program(&program, &FileId::default(), &options).unwrap();
-    let (_library, context) = analyze(&[&library], &options).unwrap();
 
-    let overflow = context
-        .diagnostics()
-        .iter()
-        .find(|d| d.code == Problem::ConstantOverflow.code())
-        .map(|d| d.described.join(" "));
+    let diagnostics = diagnostics_of(&program);
 
-    assert!(
-        overflow.is_some_and(|text| text.contains("value=340282366920938463463374607431768211455"))
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "expected exactly one diagnostic, got {diagnostics:?}"
     );
+    assert_eq!(diagnostics[0].code, Problem::ConstantOverflow.code());
+    assert!(diagnostics[0]
+        .described
+        .contains(&"value=340282366920938463463374607431768211455".to_owned()));
 }
 
 #[test]
@@ -442,14 +456,19 @@ fn apply_when_real_operand_out_of_range_then_err() {
 }
 
 /// A literal beyond every real type, or one that names its own type, is
-/// checked once, by `rule_real_literal_range`, not again here.
+/// checked by `rule_real_literal_range`, so this rule stays silent rather
+/// than report it a second time.
 #[rstest]
 #[case::beyond_lreal("1.0E400")]
 #[case::prefixed("REAL#1.0E40")]
-fn apply_when_real_literal_reported_by_own_rule_then_reported_once(#[case] value: &str) {
+fn apply_when_real_literal_reported_by_own_rule_then_not_reported_here(#[case] value: &str) {
     let program = program_with("x : REAL;\n", &format!("x := {value};\n"));
 
-    assert_eq!(real_out_of_range_count(&program), 1);
+    let codes: Vec<String> = diagnostics_of(&program)
+        .into_iter()
+        .map(|d| d.code)
+        .collect();
+    assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
 }
 
 #[rstest]

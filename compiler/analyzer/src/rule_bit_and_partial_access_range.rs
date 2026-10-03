@@ -234,29 +234,40 @@ impl Visitor<Infallible> for RuleBitAndPartialAccessRange<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::stages::analyze;
-    use crate::test_helpers::parse_and_resolve_types_with_context;
-    use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::CompilerOptions, parse_program};
+    use crate::test_helpers::parse_and_resolve_types_with_options;
+    use ironplc_parser::options::CompilerOptions;
     use rstest::rstest;
     use spec_test_macro::spec_test;
 
     use super::*;
 
+    /// No problems: the access is in range.
+    const OK: &[Problem] = &[];
+    /// The one problem an out-of-range access reports.
+    const OUT_OF_RANGE: &[Problem] = &[Problem::BitAccessOutOfRange];
+
+    /// The problem codes this rule reports for `program` under `opts`.
+    fn problems_with(program: &str, opts: &CompilerOptions) -> Vec<String> {
+        let (library, context) = parse_and_resolve_types_with_options(program, opts);
+        match apply(&library, &context, opts) {
+            Ok(()) => vec![],
+            Err(diagnostics) => diagnostics.into_iter().map(|d| d.code).collect(),
+        }
+    }
+
+    fn codes(problems: &[Problem]) -> Vec<&str> {
+        problems.iter().map(|p| p.code()).collect()
+    }
+
     fn assert_bit_access_ok(program: &str) {
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok(), "Expected OK but got: {:?}", result);
+        let codes = problems_with(program, &CompilerOptions::default());
+        assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
     }
 
     fn assert_bit_access_err(program: &str) {
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
-        let (_library, context) = result.unwrap();
-        assert!(
-            context.has_diagnostics(),
-            "Expected diagnostics but got none"
+        assert_eq!(
+            problems_with(program, &CompilerOptions::default()),
+            codes(OUT_OF_RANGE)
         );
     }
 
@@ -267,46 +278,46 @@ mod tests {
 
     #[rstest]
     // BYTE (8 bits): valid range 0..7
-    #[case::byte_bit_0("BYTE", 0, true)]
-    #[case::byte_bit_7("BYTE", 7, true)]
-    #[case::byte_bit_8("BYTE", 8, false)]
+    #[case::byte_bit_0("BYTE", 0, OK)]
+    #[case::byte_bit_7("BYTE", 7, OK)]
+    #[case::byte_bit_8("BYTE", 8, OUT_OF_RANGE)]
     // WORD (16 bits): valid range 0..15
-    #[case::word_bit_15("WORD", 15, true)]
-    #[case::word_bit_16("WORD", 16, false)]
+    #[case::word_bit_15("WORD", 15, OK)]
+    #[case::word_bit_16("WORD", 16, OUT_OF_RANGE)]
     // DWORD (32 bits): valid range 0..31
-    #[case::dword_bit_31("DWORD", 31, true)]
-    #[case::dword_bit_32("DWORD", 32, false)]
+    #[case::dword_bit_31("DWORD", 31, OK)]
+    #[case::dword_bit_32("DWORD", 32, OUT_OF_RANGE)]
     // LWORD (64 bits): valid range 0..63
-    #[case::lword_bit_63("LWORD", 63, true)]
-    #[case::lword_bit_64("LWORD", 64, false)]
+    #[case::lword_bit_63("LWORD", 63, OK)]
+    #[case::lword_bit_64("LWORD", 64, OUT_OF_RANGE)]
     // SINT (8 bits): valid range 0..7
-    #[case::sint_bit_7("SINT", 7, true)]
-    #[case::sint_bit_8("SINT", 8, false)]
+    #[case::sint_bit_7("SINT", 7, OK)]
+    #[case::sint_bit_8("SINT", 8, OUT_OF_RANGE)]
     // INT (16 bits): valid range 0..15
-    #[case::int_bit_15("INT", 15, true)]
-    #[case::int_bit_16("INT", 16, false)]
+    #[case::int_bit_15("INT", 15, OK)]
+    #[case::int_bit_16("INT", 16, OUT_OF_RANGE)]
     // DINT (32 bits): valid range 0..31
-    #[case::dint_bit_31("DINT", 31, true)]
-    #[case::dint_bit_32("DINT", 32, false)]
+    #[case::dint_bit_31("DINT", 31, OK)]
+    #[case::dint_bit_32("DINT", 32, OUT_OF_RANGE)]
     // LINT (64 bits): valid range 0..63
-    #[case::lint_bit_63("LINT", 63, true)]
-    #[case::lint_bit_64("LINT", 64, false)]
+    #[case::lint_bit_63("LINT", 63, OK)]
+    #[case::lint_bit_64("LINT", 64, OUT_OF_RANGE)]
     // USINT (8 bits): valid range 0..7
-    #[case::usint_bit_7("USINT", 7, true)]
-    #[case::usint_bit_8("USINT", 8, false)]
+    #[case::usint_bit_7("USINT", 7, OK)]
+    #[case::usint_bit_8("USINT", 8, OUT_OF_RANGE)]
     // UINT (16 bits): valid range 0..15
-    #[case::uint_bit_15("UINT", 15, true)]
-    #[case::uint_bit_16("UINT", 16, false)]
+    #[case::uint_bit_15("UINT", 15, OK)]
+    #[case::uint_bit_16("UINT", 16, OUT_OF_RANGE)]
     // UDINT (32 bits): valid range 0..31
-    #[case::udint_bit_31("UDINT", 31, true)]
-    #[case::udint_bit_32("UDINT", 32, false)]
+    #[case::udint_bit_31("UDINT", 31, OK)]
+    #[case::udint_bit_32("UDINT", 32, OUT_OF_RANGE)]
     // ULINT (64 bits): valid range 0..63
-    #[case::ulint_bit_63("ULINT", 63, true)]
-    #[case::ulint_bit_64("ULINT", 64, false)]
+    #[case::ulint_bit_63("ULINT", 63, OK)]
+    #[case::ulint_bit_64("ULINT", 64, OUT_OF_RANGE)]
     fn apply_when_bit_index_at_boundary_then_ok_or_err(
         #[case] type_name: &str,
         #[case] bit: u32,
-        #[case] expected_ok: bool,
+        #[case] expected: &[Problem],
     ) {
         let program = format!(
             "FUNCTION_BLOCK FB1
@@ -317,11 +328,10 @@ END_VAR
     y := x.{bit};
 END_FUNCTION_BLOCK"
         );
-        if expected_ok {
-            assert_bit_access_ok(&program);
-        } else {
-            assert_bit_access_err(&program);
-        }
+        assert_eq!(
+            problems_with(&program, &CompilerOptions::default()),
+            codes(expected)
+        );
     }
 
     // --- Bit access on assignment target ---
@@ -552,13 +562,7 @@ END_VAR
     y := local.8;
 END_METHOD
 END_FUNCTION_BLOCK";
-        let library = parse_program(program, &FileId::default(), &opts).unwrap();
-        let (_library, context) = analyze(&[&library], &opts).unwrap();
-
-        assert!(context
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == Problem::BitAccessOutOfRange.code()));
+        assert_eq!(problems_with(program, &opts), codes(OUT_OF_RANGE));
     }
 
     // --- Partial access: byte, word, dword and lword slices ---
@@ -566,21 +570,14 @@ END_FUNCTION_BLOCK";
     // The `%` selectors need `allow_partial_access_syntax`, so these build
     // their own options rather than using the helpers above.
 
-    /// Analyzes `program` with partial-access syntax enabled, returning
-    /// whether this rule reported the access as out of range. Naming the
-    /// problem keeps a diagnostic from some other rule from passing for one
-    /// of ours.
-    fn reports_out_of_range_with_partial_access(program: &str) -> bool {
+    /// The problem codes this rule reports for `program` with partial-access
+    /// syntax enabled.
+    fn partial_access_problems(program: &str) -> Vec<String> {
         let opts = CompilerOptions {
             allow_partial_access_syntax: true,
             ..CompilerOptions::default()
         };
-        let library = parse_program(program, &FileId::default(), &opts).unwrap();
-        let (_library, context) = analyze(&[&library], &opts).unwrap();
-        context
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == Problem::BitAccessOutOfRange.code())
+        problems_with(program, &opts)
     }
 
     fn partial_access_program(declared_type: &str, target_type: &str, selector: &str) -> String {
@@ -600,26 +597,23 @@ END_FUNCTION_BLOCK"
     #[spec_test(REQ_PAB_analyzer_122)]
     #[rstest]
     // A WORD holds two bytes, so byte 0 and byte 1 exist and byte 2 does not.
-    #[case::word_byte_0("WORD", "BYTE", "%B0", true)]
-    #[case::word_byte_1("WORD", "BYTE", "%B1", true)]
-    #[case::word_byte_2("WORD", "BYTE", "%B2", false)]
+    #[case::word_byte_0("WORD", "BYTE", "%B0", OK)]
+    #[case::word_byte_1("WORD", "BYTE", "%B1", OK)]
+    #[case::word_byte_2("WORD", "BYTE", "%B2", OUT_OF_RANGE)]
     // A DWORD holds four bytes and two words.
-    #[case::dword_byte_3("DWORD", "BYTE", "%B3", true)]
-    #[case::dword_byte_4("DWORD", "BYTE", "%B4", false)]
-    #[case::dword_word_1("DWORD", "WORD", "%W1", true)]
-    #[case::dword_word_2("DWORD", "WORD", "%W2", false)]
+    #[case::dword_byte_3("DWORD", "BYTE", "%B3", OK)]
+    #[case::dword_byte_4("DWORD", "BYTE", "%B4", OUT_OF_RANGE)]
+    #[case::dword_word_1("DWORD", "WORD", "%W1", OK)]
+    #[case::dword_word_2("DWORD", "WORD", "%W2", OUT_OF_RANGE)]
     fn apply_when_partial_access_index_at_boundary_then_ok_or_err(
         #[case] declared_type: &str,
         #[case] target_type: &str,
         #[case] selector: &str,
-        #[case] expected_ok: bool,
+        #[case] expected: &[Problem],
     ) {
         let program = partial_access_program(declared_type, target_type, selector);
 
-        assert_eq!(
-            !reports_out_of_range_with_partial_access(&program),
-            expected_ok
-        );
+        assert_eq!(partial_access_problems(&program), codes(expected));
     }
 
     /// REQ-PAB-analyzer-121: a slice wider than the variable is rejected.
@@ -637,7 +631,7 @@ END_FUNCTION_BLOCK"
     ) {
         let program = partial_access_program(declared_type, target_type, selector);
 
-        assert!(reports_out_of_range_with_partial_access(&program));
+        assert_eq!(partial_access_problems(&program), codes(OUT_OF_RANGE));
     }
 
     // ---------------------------------------------------------------------
@@ -648,9 +642,6 @@ END_FUNCTION_BLOCK"
     /// REQ-PAB-analyzer-030: `b.%X8` on a BYTE is rejected (bit 8 out of range).
     #[spec_test(REQ_PAB_analyzer_030)]
     fn analyzer_spec_req_pab_030_dot_percent_x_bit_out_of_range_is_rejected() {
-        use ironplc_parser::options::CompilerOptions;
-        use ironplc_parser::parse_program;
-
         let opts = CompilerOptions {
             allow_partial_access_syntax: true,
             ..CompilerOptions::default()
@@ -662,12 +653,6 @@ VAR
 END_VAR
     y := b.%X8;
 END_FUNCTION_BLOCK";
-        let library = parse_program(program, &FileId::default(), &opts).unwrap();
-        let result = analyze(&[&library], &opts);
-        let (_library, context) = result.unwrap();
-        assert!(
-            context.has_diagnostics(),
-            "Expected BitAccessOutOfRange diagnostic but got none"
-        );
+        assert_eq!(problems_with(program, &opts), codes(OUT_OF_RANGE));
     }
 }
