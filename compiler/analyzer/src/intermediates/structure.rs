@@ -44,6 +44,7 @@ pub fn try_from(
             offset: aligned_offset,
             var_type: None, // Structure fields don't have input/output distinction
             has_default,
+            default: field_default(&element.init, type_environment),
         };
 
         fields.push(field);
@@ -56,6 +57,61 @@ pub fn try_from(
         node_name.span(),
         IntermediateType::Structure { fields },
     ))
+}
+
+/// The initial value a structure type declaration gives a field, in the
+/// shape a variable's field initializer has, or `None` when it gives none.
+///
+/// A STRING default is kept too, although code generation does not yet
+/// apply a value to a STRING field of a structure.
+fn field_default(
+    init: &InitialValueAssignmentKind,
+    type_environment: &TypeEnvironment,
+) -> Option<StructInitialValueAssignmentKind> {
+    match init {
+        InitialValueAssignmentKind::Simple(simple) => simple
+            .initial_value
+            .clone()
+            .map(StructInitialValueAssignmentKind::Constant),
+        InitialValueAssignmentKind::String(string) => string.initial_value.clone().map(|lit| {
+            StructInitialValueAssignmentKind::Constant(ConstantKind::CharacterString(lit))
+        }),
+        InitialValueAssignmentKind::EnumeratedValues(values) => values
+            .initial_value
+            .clone()
+            .map(StructInitialValueAssignmentKind::EnumeratedValue),
+        InitialValueAssignmentKind::EnumeratedType(enumerated) => enumerated
+            .initial_value
+            .clone()
+            .map(StructInitialValueAssignmentKind::EnumeratedValue),
+        InitialValueAssignmentKind::Structure(structure) if !structure.elements_init.is_empty() => {
+            Some(StructInitialValueAssignmentKind::Structure(
+                structure.elements_init.clone(),
+            ))
+        }
+        // A field whose type the parser could not classify: `(a := 1)` is a
+        // nested structure's value, and a bare name is an enumerated value
+        // only when the type is an enumeration (a named constant is not
+        // carried here).
+        InitialValueAssignmentKind::LateResolvedType(late) => match &late.initial_value {
+            Some(LateResolvedInitialValue::Members(members)) if !members.is_empty() => {
+                Some(StructInitialValueAssignmentKind::Structure(members.clone()))
+            }
+            Some(LateResolvedInitialValue::Value(value))
+                if type_environment.is_enumeration(&late.type_name) =>
+            {
+                Some(StructInitialValueAssignmentKind::EnumeratedValue(
+                    EnumeratedValue {
+                        type_name: Some(late.type_name.clone()),
+                        value: value.clone(),
+                        explicit_value: None,
+                    },
+                ))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// Aligns an offset to the specified alignment boundary

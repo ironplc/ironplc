@@ -260,9 +260,12 @@ When both `i` and `j` are variables:
 During the init function (function 0), the compiler emits code to initialize each field of the structure variable.
 
 **Default initialization** (no explicit initial value):
-- Numeric fields: 0 (matching IEC 61131-3 defaults)
-- Boolean fields: FALSE
-- Enumeration fields: first enumeration value (or 0)
+- A field whose type declaration gives it a value (`speed : INT := 100;`)
+  starts with that value. A nested structure field takes the value the
+  outer declaration gives it, if any, and otherwise its own type's field
+  defaults.
+- Otherwise: numeric fields 0 (matching IEC 61131-3 defaults), Boolean
+  fields FALSE, enumeration fields the first enumeration value (or 0).
 
 The init function emits a constant load + data region store for each field:
 
@@ -286,7 +289,9 @@ VAR
 END_VAR
 ```
 
-The compiler matches each element in `StructureInitializationDeclaration.elements_init` to the corresponding field, then emits a constant load + store for the specified value. Fields without explicit initializers use their default values.
+The compiler matches each element in `StructureInitializationDeclaration.elements_init` to the corresponding field, then emits a constant load + store for the specified value. Fields without explicit initializers use their default values, the type declaration's first. For a nested structure field, an explicit initializer replaces the declared default element by element, so `(inner := (a := 30))` keeps the declared default of `inner.b`.
+
+A STRING field gets its header initialized but no value, from either an explicit initializer or a type default.
 
 ### 3.2 Nested Structure Initialization
 
