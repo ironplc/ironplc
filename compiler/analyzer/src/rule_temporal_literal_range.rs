@@ -346,16 +346,16 @@ END_PROGRAM",
 
     // A 64-bit date is still bounded below by the epoch: the count is
     // unsigned at both widths.
-    rule_err1_with!(
+    rule_err!(
         apply_when_ldate_is_before_epoch_then_error,
-        edition3_options(),
         "
 PROGRAM main
 VAR
     d : LDATE := LDATE#1969-12-31;
 END_VAR
 END_PROGRAM",
-        Problem::DateLiteralOutOfRange
+        [Problem::DateLiteralOutOfRange],
+        edition3_options()
     );
 
     // --- The literal's own type decides, not the variable's ---
@@ -405,7 +405,7 @@ END_PROGRAM",
 
     // --- Every violation is reported, not just the first ---
 
-    rule_errn!(
+    rule_err!(
         apply_when_several_literals_are_out_of_range_then_reports_every_one,
         "
 PROGRAM main
@@ -414,8 +414,7 @@ VAR
     b : DATE := DATE#1969-12-31;
 END_VAR
 END_PROGRAM",
-        2,
-        Problem::DateLiteralOutOfRange
+        [Problem::DateLiteralOutOfRange; 2]
     );
 
     // --- What the rule does not report ---

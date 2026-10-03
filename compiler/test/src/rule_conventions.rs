@@ -213,7 +213,6 @@ pub fn violations(src: &Path, conventions: &[Convention]) -> Vec<Violation> {
 }
 
 const WEAK_MACROS: &[&str] = &[
-    "rule_err!(",
     "rule_err_with!(",
     "rule_ctx_err!(",
     "rule_ctx_err_with!(",

@@ -107,11 +107,10 @@ TYPE
 E_ModeLanguage : (Deutsch := 1, English := 2);
 END_TYPE";
 
-    rule_errn!(
+    rule_err!(
         apply_when_enum_explicit_values_and_flag_disabled_then_error,
         SOURCE,
-        2,
-        Problem::EnumExplicitValueNotAllowed
+        [Problem::EnumExplicitValueNotAllowed; 2]
     );
 
     rule_ok!(

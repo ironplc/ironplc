@@ -125,16 +125,16 @@ mod tests {
     use crate::test_helpers::edition3_options;
     use ironplc_problems::Problem;
 
-    rule_err1!(
+    rule_err!(
         apply_when_exit_in_program_body_then_p4021,
         "
         PROGRAM main
             EXIT;
         END_PROGRAM",
-        Problem::ExitOutsideLoop
+        [Problem::ExitOutsideLoop]
     );
 
-    rule_err1!(
+    rule_err!(
         apply_when_exit_after_loop_then_p4021,
         "
         PROGRAM main
@@ -144,10 +144,10 @@ mod tests {
             END_FOR;
             EXIT;
         END_PROGRAM",
-        Problem::ExitOutsideLoop
+        [Problem::ExitOutsideLoop]
     );
 
-    rule_err1!(
+    rule_err!(
         apply_when_exit_in_if_outside_loop_then_p4021,
         "
         FUNCTION_BLOCK fb
@@ -156,7 +156,7 @@ mod tests {
                 EXIT;
             END_IF;
         END_FUNCTION_BLOCK",
-        Problem::ExitOutsideLoop
+        [Problem::ExitOutsideLoop]
     );
 
     rule_ok!(
@@ -210,19 +210,18 @@ mod tests {
         END_PROGRAM"
     );
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_continue_in_program_body_then_p4065,
-        edition3_options(),
         "
         PROGRAM main
             CONTINUE;
         END_PROGRAM",
-        Problem::ContinueOutsideLoop
+        [Problem::ContinueOutsideLoop],
+        edition3_options()
     );
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_continue_in_if_outside_loop_then_p4065,
-        edition3_options(),
         "
         FUNCTION f : INT
         VAR x : BOOL; END_VAR
@@ -231,7 +230,8 @@ mod tests {
             END_IF;
             f := 0;
         END_FUNCTION",
-        Problem::ContinueOutsideLoop
+        [Problem::ContinueOutsideLoop],
+        edition3_options()
     );
 
     rule_ok!(

@@ -103,10 +103,10 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-    rule_err1!(
+    rule_err!(
         apply_when_fb_qualifier_and_flag_disabled_then_error,
         SOURCE,
-        Problem::MemberQualifierNotAllowed
+        [Problem::MemberQualifierNotAllowed]
     );
 
     rule_ok!(
@@ -129,7 +129,7 @@ END_FUNCTION_BLOCK",
     );
 
     // Each qualifier is reported on its own.
-    rule_errn!(
+    rule_err!(
         apply_when_several_fb_qualifiers_then_one_error_each,
         "
 FUNCTION_BLOCK PUBLIC FINAL FB_Motor
@@ -137,8 +137,7 @@ VAR
     x : INT;
 END_VAR
 END_FUNCTION_BLOCK",
-        2,
-        Problem::MemberQualifierNotAllowed
+        [Problem::MemberQualifierNotAllowed; 2]
     );
 
     // A function block named like a qualifier is standard syntax.

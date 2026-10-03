@@ -97,7 +97,7 @@ mod tests {
         }
     }
 
-    rule_err1!(
+    rule_err!(
         apply_when_hex_case_label_and_flag_disabled_then_error,
         "
 FUNCTION_BLOCK FB_Example
@@ -109,7 +109,7 @@ CASE x OF
     16#D012: y := 1;
 END_CASE;
 END_FUNCTION_BLOCK",
-        Problem::BitStringCaseLabelNotAllowed
+        [Problem::BitStringCaseLabelNotAllowed]
     );
 
     #[test]

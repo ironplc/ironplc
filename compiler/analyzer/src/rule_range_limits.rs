@@ -219,13 +219,13 @@ END_TYPE",
         "10"
     );
 
-    rule_err1!(
+    rule_err!(
         apply_when_subrange_single_value_then_error,
         "
 TYPE
     SINGLE_VALUE : INT(5..5);
 END_TYPE",
-        Problem::SubrangeMinStrictlyLessMax
+        [Problem::SubrangeMinStrictlyLessMax]
     );
 
     rule_ok!(
@@ -269,7 +269,7 @@ END_PROGRAM",
         "1"
     );
 
-    rule_errn!(
+    rule_err!(
         apply_when_array_inverted_every_dimension_then_error_per_dimension,
         "
 PROGRAM main
@@ -277,8 +277,7 @@ PROGRAM main
         arr : ARRAY[1..0, 2..1] OF INT;
     END_VAR
 END_PROGRAM",
-        2,
-        Problem::ArrayDimensionInvalid
+        [Problem::ArrayDimensionInvalid; 2]
     );
 
     rule_ok!(
@@ -325,7 +324,7 @@ END_PROGRAM",
         "10"
     );
 
-    rule_errn!(
+    rule_err!(
         apply_when_case_label_range_inverted_twice_then_error_per_label,
         "
 PROGRAM main
@@ -338,7 +337,6 @@ PROGRAM main
         3..2: y := 2;
     END_CASE;
 END_PROGRAM",
-        2,
-        Problem::CaseLabelRangeInvalid
+        [Problem::CaseLabelRangeInvalid; 2]
     );
 }

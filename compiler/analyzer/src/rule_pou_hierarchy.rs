@@ -282,7 +282,7 @@ END_FUNCTION";
 
     // The declaration and the invocation are each reported, so both the
     // cause and the call site are marked.
-    rule_ctx_errn!(
+    rule_err!(
         apply_when_function_declares_and_invokes_function_block_then_reports_both,
         "
 FUNCTION Delayed : BOOL
@@ -292,11 +292,10 @@ FUNCTION Delayed : BOOL
   timer(IN := TRUE, PT := T#1s);
   Delayed := timer.Q;
 END_FUNCTION",
-        2,
-        Problem::FunctionBlockInFunction
+        [Problem::FunctionBlockInFunction; 2]
     );
 
-    rule_ctx_errn!(
+    rule_err!(
         apply_when_function_invokes_instance_twice_then_reports_each_invocation,
         "
 FUNCTION Delayed : BOOL
@@ -307,11 +306,10 @@ FUNCTION Delayed : BOOL
   timer(IN := FALSE, PT := T#1s);
   Delayed := timer.Q;
 END_FUNCTION",
-        3,
-        Problem::FunctionBlockInFunction
+        [Problem::FunctionBlockInFunction; 3]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_function_declares_function_block_as_temp_then_error,
         "
 FUNCTION Delayed : BOOL
@@ -320,12 +318,12 @@ FUNCTION Delayed : BOOL
   END_VAR
   Delayed := FALSE;
 END_FUNCTION",
-        Problem::FunctionBlockInFunction
+        [Problem::FunctionBlockInFunction]
     );
 
     // Passing an instance by value would copy its state into the function,
     // so an input is as stateful as a local.
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_function_declares_function_block_as_input_then_error,
         "
 FUNCTION Delayed : BOOL
@@ -334,7 +332,7 @@ FUNCTION Delayed : BOOL
   END_VAR
   Delayed := timer.Q;
 END_FUNCTION",
-        Problem::FunctionBlockInFunction
+        [Problem::FunctionBlockInFunction]
     );
 
     // Ed.3 permits a function block instance as VAR_IN_OUT of a function:
@@ -351,9 +349,8 @@ FUNCTION Delayed : BOOL
 END_FUNCTION"
     );
 
-    rule_ctx_errn_with!(
+    rule_err!(
         apply_when_function_calls_method_on_own_instance_then_reports_declaration_and_call,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
   VAR
@@ -371,8 +368,8 @@ FUNCTION Spin : BOOL
   motor.Start();
   Spin := TRUE;
 END_FUNCTION",
-        2,
-        Problem::FunctionBlockInFunction
+        [Problem::FunctionBlockInFunction; 2],
+        fb_inheritance_options()
     );
 
     // An instance the function never declared is P4012's to report.

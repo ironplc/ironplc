@@ -101,7 +101,7 @@ mod tests {
         END_CONFIGURATION"
     );
 
-    rule_err1!(
+    rule_err!(
         apply_when_task_names_duplicated_then_return_error,
         "
         CONFIGURATION config
@@ -111,7 +111,7 @@ mod tests {
                PROGRAM instance1 WITH my_task : plc_prg;
             END_RESOURCE
         END_CONFIGURATION",
-        Problem::DuplicateTaskName
+        [Problem::DuplicateTaskName]
     );
 
     rule_ok!(

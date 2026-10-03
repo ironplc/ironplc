@@ -165,7 +165,7 @@ END_PROGRAM"
         )
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_program_var_named_like_configuration_global_then_error,
         &with_config(
             "
@@ -175,10 +175,10 @@ PROGRAM main
   END_VAR
 END_PROGRAM"
         ),
-        Problem::ProgramVariableHidesGlobal
+        [Problem::ProgramVariableHidesGlobal]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_program_var_differs_only_in_case_then_error,
         &with_config(
             "
@@ -188,10 +188,10 @@ PROGRAM main
   END_VAR
 END_PROGRAM"
         ),
-        Problem::ProgramVariableHidesGlobal
+        [Problem::ProgramVariableHidesGlobal]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_program_input_named_like_global_then_error,
         &with_config(
             "
@@ -201,10 +201,10 @@ PROGRAM main
   END_VAR
 END_PROGRAM"
         ),
-        Problem::ProgramVariableHidesGlobal
+        [Problem::ProgramVariableHidesGlobal]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_program_var_named_like_resource_global_then_error,
         "
 CONFIGURATION config
@@ -222,15 +222,11 @@ PROGRAM main
     Limit : INT;
   END_VAR
 END_PROGRAM",
-        Problem::ProgramVariableHidesGlobal
+        [Problem::ProgramVariableHidesGlobal]
     );
 
-    rule_ctx_err1_with!(
+    rule_err!(
         apply_when_program_var_named_like_top_level_global_then_error,
-        CompilerOptions {
-            allow_top_level_var_global: true,
-            ..CompilerOptions::default()
-        },
         "
 VAR_GLOBAL
   Limit : INT;
@@ -241,10 +237,14 @@ PROGRAM main
     Limit : INT;
   END_VAR
 END_PROGRAM",
-        Problem::ProgramVariableHidesGlobal
+        [Problem::ProgramVariableHidesGlobal],
+        CompilerOptions {
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        }
     );
 
-    rule_ctx_errn!(
+    rule_err!(
         apply_when_two_program_vars_named_like_globals_then_reports_both,
         "
 CONFIGURATION config
@@ -264,8 +264,7 @@ PROGRAM main
     Second : INT;
   END_VAR
 END_PROGRAM",
-        2,
-        Problem::ProgramVariableHidesGlobal
+        [Problem::ProgramVariableHidesGlobal; 2]
     );
 
     // Hiding in a function block compiles correctly and is relied on by

@@ -108,9 +108,8 @@ mod tests {
     use super::*;
     use crate::test_helpers::fb_inheritance_options;
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_derived_redeclares_base_field_same_type_then_error,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 VAR
@@ -123,12 +122,12 @@ VAR
     state : INT;
 END_VAR
 END_FUNCTION_BLOCK",
-        Problem::ExtendsFieldNameDuplicated
+        [Problem::ExtendsFieldNameDuplicated],
+        fb_inheritance_options()
     );
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_derived_redeclares_base_field_different_type_then_error,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 VAR
@@ -141,7 +140,8 @@ VAR
     state : BOOL;
 END_VAR
 END_FUNCTION_BLOCK",
-        Problem::ExtendsFieldNameDuplicated
+        [Problem::ExtendsFieldNameDuplicated],
+        fb_inheritance_options()
     );
 
     rule_ok!(
@@ -161,9 +161,8 @@ END_FUNCTION_BLOCK",
         fb_inheritance_options()
     );
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_grandparent_field_collision_then_error,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_A
 VAR
@@ -182,7 +181,8 @@ VAR
     a : INT;
 END_VAR
 END_FUNCTION_BLOCK",
-        Problem::ExtendsFieldNameDuplicated
+        [Problem::ExtendsFieldNameDuplicated],
+        fb_inheritance_options()
     );
 
     rule_ok!(

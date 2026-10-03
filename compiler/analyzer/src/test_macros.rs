@@ -53,6 +53,36 @@ macro_rules! rule_ok {
     };
 }
 
+/// A rule test that expects the rule to report exactly the listed problems for
+/// `$program`, in order, under `$opts` (default options when omitted). The
+/// list is `[P]`, `[P, Q, ...]`, or `[P; n]` for `n` reports of one problem.
+macro_rules! rule_err {
+    ($(#[$m:meta])* $name:ident, $program:expr, [$problem:expr; $count:expr], $opts:expr $(,)?) => {
+        $(#[$m])*
+        #[test]
+        fn $name() {
+            let codes = $crate::test_helpers::rule_codes(super::apply, $program, &$opts);
+            assert_eq!(codes, [$problem.code(); $count]);
+        }
+    };
+    ($(#[$m:meta])* $name:ident, $program:expr, [$($problem:expr),+ $(,)?], $opts:expr $(,)?) => {
+        $(#[$m])*
+        #[test]
+        fn $name() {
+            let codes = $crate::test_helpers::rule_codes(super::apply, $program, &$opts);
+            assert_eq!(codes, [$($problem.code()),+]);
+        }
+    };
+    ($(#[$m:meta])* $name:ident, $program:expr, [$($list:tt)+] $(,)?) => {
+        rule_err!(
+            $(#[$m])* $name,
+            $program,
+            [$($list)+],
+            ironplc_parser::options::CompilerOptions::default()
+        );
+    };
+}
+
 // --- Fresh-context family (options-parameterised) ---------------------------
 
 /// A rule test that expects exactly one diagnostic, with `$problem`'s code,

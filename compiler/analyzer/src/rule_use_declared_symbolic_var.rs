@@ -393,7 +393,7 @@ END_PROGRAM";
         assert!(diagnostics.is_empty());
     }
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_system_uptime_global_disabled_then_direct_access_error,
         "
 PROGRAM main
@@ -403,7 +403,7 @@ END_VAR
 
 t := __SYSTEM_UP_TIME;
 END_PROGRAM",
-        Problem::VariableUndefined
+        [Problem::VariableUndefined]
     );
 
     // ---------------------------------------------------------------------
@@ -839,16 +839,16 @@ END_PROGRAM
         }
     }
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_global_used_without_external_after_configuration_then_error,
         &format!("{CONFIG_WITH_GLOBAL}{PROGRAM_USING_GLOBAL}"),
-        Problem::VariableUndefined
+        [Problem::VariableUndefined]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_global_used_without_external_before_configuration_then_error,
         &format!("{PROGRAM_USING_GLOBAL}{CONFIG_WITH_GLOBAL}"),
-        Problem::VariableUndefined
+        [Problem::VariableUndefined]
     );
 
     rule_ok!(

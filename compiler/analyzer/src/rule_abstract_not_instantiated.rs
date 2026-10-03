@@ -118,9 +118,8 @@ mod tests {
     use super::*;
     use crate::test_helpers::fb_inheritance_options;
 
-    rule_ctx_err1_with!(
+    rule_err!(
         apply_when_abstract_fb_instantiated_then_error,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK ABSTRACT FB_Base
 END_FUNCTION_BLOCK
@@ -130,7 +129,8 @@ VAR
     inst : FB_Base;
 END_VAR
 END_FUNCTION_BLOCK",
-        Problem::AbstractFunctionBlockInstantiated
+        [Problem::AbstractFunctionBlockInstantiated],
+        fb_inheritance_options()
     );
 
     rule_ok!(

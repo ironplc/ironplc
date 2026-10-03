@@ -305,7 +305,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_selector_is_alias_of_real_then_p4053,
         "
 TYPE
@@ -321,10 +321,10 @@ END_VAR
         1: y := 1;
     END_CASE;
 END_PROGRAM",
-        Problem::CaseSelectorTypeInvalid
+        [Problem::CaseSelectorTypeInvalid]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_selector_is_real_expression_then_p4053,
         "
 PROGRAM main
@@ -336,7 +336,7 @@ END_VAR
         1: y := 1;
     END_CASE;
 END_PROGRAM",
-        Problem::CaseSelectorTypeInvalid
+        [Problem::CaseSelectorTypeInvalid]
     );
 
     #[test]

@@ -343,7 +343,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_dint_arg_to_real_param_lossy_then_error,
         "
 FUNCTION DOUBLE_REAL : REAL
@@ -360,7 +360,7 @@ VAR
 END_VAR
     result := DOUBLE_REAL(x);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
     rule_ok!(
@@ -378,7 +378,7 @@ END_PROGRAM"
     // A standard-library return type is checked against the assignment
     // target like a user-defined one: INT_TO_REAL yields REAL, which does
     // not fit an INT.
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_stdlib_return_type_mismatches_target_then_error,
         "
 PROGRAM main
@@ -388,7 +388,7 @@ VAR
 END_VAR
     result := INT_TO_REAL(x);
 END_PROGRAM",
-        Problem::FunctionCallReturnTypeMismatch
+        [Problem::FunctionCallReturnTypeMismatch]
     );
 
     // Integer widening still applies to a standard-library return
@@ -450,7 +450,7 @@ END_PROGRAM"
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
-    rule_ctx_errn!(
+    rule_err!(
         apply_when_bitwise_function_form_on_int_then_error_per_argument,
         "
 PROGRAM main
@@ -461,8 +461,7 @@ VAR
 END_VAR
     result := AND(a, b);
 END_PROGRAM",
-        2,
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch; 2]
     );
 
     // An extensible call is checked past its declared parameters, so the
@@ -481,7 +480,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_extensible_call_third_arg_mismatch_then_error,
         "
 PROGRAM main
@@ -493,10 +492,10 @@ VAR
 END_VAR
     result := AND(a, b, c);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_mux_fourth_input_mismatch_then_error,
         "
 PROGRAM main
@@ -507,7 +506,7 @@ VAR
 END_VAR
     result := MUX(0, a, a, a, s);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
     // A VAR_IN_OUT declared before a VAR_INPUT takes the first positional
@@ -556,7 +555,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_multiple_args_one_mismatch_then_one_error,
         "
 FUNCTION MY_FUNC : INT
@@ -574,10 +573,10 @@ VAR
 END_VAR
     result := MY_FUNC(x, x);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_return_type_mismatch_then_error,
         "
 FUNCTION GET_VALUE : REAL
@@ -594,7 +593,7 @@ VAR
 END_VAR
     result := GET_VALUE(x);
 END_PROGRAM",
-        Problem::FunctionCallReturnTypeMismatch
+        [Problem::FunctionCallReturnTypeMismatch]
     );
 
     rule_ok!(
@@ -738,7 +737,7 @@ END_PROGRAM"
     // The reverse direction (LREAL -> REAL) is narrowing and must
     // remain an error -- guards against accidentally allowing both
     // directions.
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_typed_lreal_var_arg_to_real_param_then_error,
         "
 FUNCTION SNGL : REAL
@@ -755,10 +754,10 @@ VAR
 END_VAR
     result := SNGL(input);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_typed_dint_literal_arg_to_int_param_then_error,
         "
 FUNCTION ADD_ONE : INT
@@ -774,10 +773,10 @@ VAR
 END_VAR
     result := ADD_ONE(DINT#5);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_dint_var_arg_to_int_param_then_error,
         "
 FUNCTION ADD_ONE : INT
@@ -794,7 +793,7 @@ VAR
 END_VAR
     result := ADD_ONE(y);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
     rule_ok!(
@@ -970,7 +969,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_dint_arg_to_int_param_then_error,
         "
 FUNCTION TAKES_INT : INT
@@ -987,10 +986,10 @@ VAR
 END_VAR
     result := TAKES_INT(y);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_int_arg_to_uint_param_then_error,
         "
 FUNCTION TAKES_UINT : UINT
@@ -1007,10 +1006,10 @@ VAR
 END_VAR
     result := TAKES_UINT(y);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_byte_arg_to_int_param_then_error,
         "
 FUNCTION TAKES_INT : INT
@@ -1027,7 +1026,7 @@ VAR
 END_VAR
     result := TAKES_INT(y);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
     // --- Integration tests for new widening cases ---
@@ -1051,7 +1050,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_dint_arg_to_real_param_then_error,
         "
 FUNCTION TAKES_REAL : REAL
@@ -1068,7 +1067,7 @@ VAR
 END_VAR
     result := TAKES_REAL(y);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
     rule_ok!(
@@ -1090,7 +1089,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_word_arg_to_byte_param_then_error,
         "
 FUNCTION TAKES_BYTE : BYTE
@@ -1107,10 +1106,10 @@ VAR
 END_VAR
     result := TAKES_BYTE(y);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_real_arg_to_int_param_then_error,
         "
 FUNCTION TAKES_INT : INT
@@ -1127,7 +1126,7 @@ VAR
 END_VAR
     result := TAKES_INT(y);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
     // --- Cross-family widening tests (ADR-0031, requires flag) ---
@@ -1330,7 +1329,7 @@ END_PROGRAM";
         assert_eq!(rule_codes(apply, program, &only(flag)), codes(expected));
     }
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_literal_zero_to_byte_param_without_flag_then_error,
         "
 FUNCTION TAKES_BYTE : BYTE
@@ -1346,10 +1345,10 @@ VAR
 END_VAR
     result := TAKES_BYTE(0);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_byte_return_to_int_var_without_flag_then_error,
         "
 FUNCTION GET_BYTE : BYTE
@@ -1366,7 +1365,7 @@ VAR
 END_VAR
     result := GET_BYTE(y);
 END_PROGRAM",
-        Problem::FunctionCallReturnTypeMismatch
+        [Problem::FunctionCallReturnTypeMismatch]
     );
 
     // --- Standard-library argument type checks ---
@@ -1406,7 +1405,7 @@ END_PROGRAM"
     );
 
     // UINT_TO_REAL expects UINT, but the argument is UDINT.
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_wrong_conversion_function_arg_then_arg_type_error,
         "
 PROGRAM main
@@ -1416,7 +1415,7 @@ VAR
 END_VAR
     r := UINT_TO_REAL(u);
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
     rule_ok!(
@@ -1463,7 +1462,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_wstring_parameter_given_narrow_literal_then_error,
         "
 FUNCTION wide_len : INT
@@ -1479,7 +1478,7 @@ VAR
 END_VAR
     n := wide_len('abc');
 END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
+        [Problem::FunctionCallArgTypeMismatch]
     );
 
     // --- Assignment statement type checks (P4035) ---
@@ -1497,7 +1496,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_wstring_target_assigned_narrow_literal_then_error,
         "
 PROGRAM main
@@ -1506,7 +1505,7 @@ VAR
 END_VAR
     w := 'abc';
 END_PROGRAM",
-        Problem::AssignmentTypeMismatch
+        [Problem::AssignmentTypeMismatch]
     );
 
     rule_ok!(
@@ -1520,7 +1519,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_string_target_assigned_wide_literal_then_error,
         "
 PROGRAM main
@@ -1529,10 +1528,10 @@ VAR
 END_VAR
     s := \"abc\";
 END_PROGRAM",
-        Problem::AssignmentTypeMismatch
+        [Problem::AssignmentTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_bool_target_assigned_real_expr_then_error,
         "
 PROGRAM main
@@ -1542,10 +1541,10 @@ VAR
 END_VAR
     b := x * 2.0;
 END_PROGRAM",
-        Problem::AssignmentTypeMismatch
+        [Problem::AssignmentTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_int_target_assigned_real_var_then_error,
         "
 PROGRAM main
@@ -1555,7 +1554,7 @@ VAR
 END_VAR
     i := r;
 END_PROGRAM",
-        Problem::AssignmentTypeMismatch
+        [Problem::AssignmentTypeMismatch]
     );
 
     // INT widens losslessly to REAL, so this assignment is valid.
@@ -1641,7 +1640,7 @@ END_PROGRAM",
         assert_eq!(rule_codes(apply, program, &opts), codes(expected));
     }
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_dword_target_assigned_udint_var_without_flag_then_error,
         "
 PROGRAM main
@@ -1651,7 +1650,7 @@ VAR
 END_VAR
     dwFromUdint := udValue;
 END_PROGRAM",
-        Problem::AssignmentTypeMismatch
+        [Problem::AssignmentTypeMismatch]
     );
 
     // Temporal short/long widths are treated as one family.
@@ -1748,7 +1747,7 @@ END_FUNCTION_BLOCK",
     // Result variables. A declaration's own name is an assignment target.
     // ---------------------------------------------------------------------
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_function_result_assigned_wrong_type_then_error,
         "
 FUNCTION GetFlag : BOOL
@@ -1757,7 +1756,7 @@ VAR
 END_VAR
     GetFlag := n;
 END_FUNCTION",
-        Problem::AssignmentTypeMismatch,
+        [Problem::AssignmentTypeMismatch]
     );
 
     rule_ok!(

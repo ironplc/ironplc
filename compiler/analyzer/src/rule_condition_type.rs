@@ -316,7 +316,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_condition_is_alias_of_integer_then_p4072,
         "
 TYPE
@@ -330,10 +330,10 @@ VAR
 END_VAR
     IF n THEN y := 1; END_IF;
 END_PROGRAM",
-        Problem::ConditionTypeInvalid
+        [Problem::ConditionTypeInvalid]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_condition_is_enumeration_then_p4072,
         "
 TYPE
@@ -347,10 +347,10 @@ VAR
 END_VAR
     IF mode THEN y := 1; END_IF;
 END_PROGRAM",
-        Problem::ConditionTypeInvalid
+        [Problem::ConditionTypeInvalid]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_condition_is_integer_function_result_then_p4072,
         "
 FUNCTION count : DINT
@@ -367,7 +367,7 @@ VAR
 END_VAR
     IF count(level) THEN y := 1; END_IF;
 END_PROGRAM",
-        Problem::ConditionTypeInvalid
+        [Problem::ConditionTypeInvalid]
     );
 
     #[test]

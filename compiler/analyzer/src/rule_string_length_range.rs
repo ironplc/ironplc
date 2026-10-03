@@ -238,22 +238,22 @@ END_PROGRAM",
         "70000"
     );
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_parenthesized_length_exceeds_maximum_then_error,
-        CompilerOptions {
-            allow_paren_string_length: true,
-            ..Default::default()
-        },
         "
 PROGRAM main
 VAR
     s : STRING(70000);
 END_VAR
 END_PROGRAM",
-        Problem::StringLengthOutOfRange
+        [Problem::StringLengthOutOfRange],
+        CompilerOptions {
+            allow_paren_string_length: true,
+            ..Default::default()
+        }
     );
 
-    rule_errn!(
+    rule_err!(
         apply_when_two_lengths_exceed_maximum_then_two_errors,
         "
 PROGRAM main
@@ -262,7 +262,6 @@ VAR
     w : WSTRING[70000];
 END_VAR
 END_PROGRAM",
-        2,
-        Problem::StringLengthOutOfRange
+        [Problem::StringLengthOutOfRange; 2]
     );
 }
