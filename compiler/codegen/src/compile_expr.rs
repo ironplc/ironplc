@@ -1141,8 +1141,10 @@ fn compile_bit_access_assignment_on_array(
 
     let span = bit_access.span();
 
-    // 1. Compute flat index and load the element.
+    // 1. Compute the flat index once, keeping a copy for the store, and load
+    //    the element.
     crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
+    emitter.emit_dup();
     emitter.emit_load_array(arr_var_index, arr_desc_index);
 
     // 2/3. Clear the target bit, then OR in the shifted RHS bit. Width-
@@ -1183,8 +1185,8 @@ fn compile_bit_access_assignment_on_array(
     // 4. Truncate the new element value to fit its storage width.
     emit_truncation(emitter, element_vti);
 
-    // 5. Recompute the flat index and STORE back.
-    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
+    // 5. STORE back at the flat index kept in step 1.
+    emitter.emit_swap();
     emitter.emit_store_array(arr_var_index, arr_desc_index);
 
     Ok(())
@@ -1330,11 +1332,13 @@ fn compile_bit_access_assignment_on_struct_field_array(
 
     let span = bit_access.span();
 
-    // 1. Load the current element: flat_index + field_slot_offset → LOAD_ARRAY.
+    // 1. Load the current element: flat_index + field_slot_offset → LOAD_ARRAY,
+    //    keeping a copy of the index for the store.
     crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, dimensions, &span)?;
     let offset_const = ctx.add_i64_constant(field_slot_offset.raw() as i64);
     emitter.emit_load_const_i64(offset_const);
     emitter.emit_add_i64();
+    emitter.emit_dup();
     emitter.emit_load_array(var_index, desc_index);
 
     // 2/3. Clear target bit, then OR in the shifted RHS bit.
@@ -1372,11 +1376,8 @@ fn compile_bit_access_assignment_on_struct_field_array(
     // 4. Truncate the new element value.
     emit_truncation(emitter, element_vti);
 
-    // 5. Re-compute flat_index + field_slot_offset and STORE back.
-    let subscripts_again: Vec<&Expr> = array.subscripts.iter().collect();
-    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts_again, dimensions, &span)?;
-    emitter.emit_load_const_i64(offset_const);
-    emitter.emit_add_i64();
+    // 5. STORE back at the index kept in step 1.
+    emitter.emit_swap();
     emitter.emit_store_array(var_index, desc_index);
 
     Ok(())
@@ -1452,13 +1453,15 @@ fn compile_partial_access_assignment_on_array(
     let subscripts: Vec<&Expr> = array.subscripts.iter().collect();
     let span = pa.span();
 
+    // The flat index is computed once; the copy left by DUP is the store's.
     crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
+    emitter.emit_dup();
     emitter.emit_load_array(arr_var_index, arr_desc_index);
 
     emit_partial_access_read_modify_write(emitter, ctx, element_vti.op_width, pa, value)?;
     emit_truncation(emitter, element_vti);
 
-    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
+    emitter.emit_swap();
     emitter.emit_store_array(arr_var_index, arr_desc_index);
     Ok(())
 }
@@ -1529,19 +1532,18 @@ fn compile_partial_access_assignment_on_struct_field_array(
         })?;
     let span = pa.span();
 
+    // The flat index is computed once; the copy left by DUP is the store's.
     crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, dimensions, &span)?;
     let offset_const = ctx.add_i64_constant(field_slot_offset.raw() as i64);
     emitter.emit_load_const_i64(offset_const);
     emitter.emit_add_i64();
+    emitter.emit_dup();
     emitter.emit_load_array(var_index, desc_index);
 
     emit_partial_access_read_modify_write(emitter, ctx, element_vti.op_width, pa, value)?;
     emit_truncation(emitter, element_vti);
 
-    let subscripts_again: Vec<&Expr> = array.subscripts.iter().collect();
-    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts_again, dimensions, &span)?;
-    emitter.emit_load_const_i64(offset_const);
-    emitter.emit_add_i64();
+    emitter.emit_swap();
     emitter.emit_store_array(var_index, desc_index);
     Ok(())
 }

@@ -245,3 +245,48 @@ fn end_to_end_when_partial_access_byte_flag_on_then_compiles() {
         result.err()
     );
 }
+
+/// Counts its calls in `c` and returns the new count, so a subscript that
+/// calls it shows how many times the subscript was evaluated.
+const NEXT_IDX: &str = "
+FUNCTION NEXT_IDX : DINT
+VAR_IN_OUT c : DINT; END_VAR
+    c := c + 1;
+    NEXT_IDX := c;
+END_FUNCTION
+TYPE HOLDER : STRUCT
+    vals : ARRAY[1..3] OF DWORD;
+END_STRUCT;
+END_TYPE
+";
+
+/// A bit or partial write to an array element is one read-modify-write of
+/// one element: the subscript runs once, so the element read is the element
+/// written and a subscript with a side effect has it once.
+#[rstest]
+#[case::bit_of_array_element("arr[NEXT_IDX(c := calls)].3 := TRUE; r := arr[1];", 0x0000_0008)]
+#[case::partial_of_array_element(
+    "arr[NEXT_IDX(c := calls)].%B1 := BYTE#16#FF; r := arr[1];",
+    0x0000_FF00
+)]
+#[case::bit_of_struct_field_array_element(
+    "h.vals[NEXT_IDX(c := calls)].3 := TRUE; r := h.vals[1];",
+    0x0000_0008
+)]
+#[case::partial_of_struct_field_array_element(
+    "h.vals[NEXT_IDX(c := calls)].%B1 := BYTE#16#FF; r := h.vals[1];",
+    0x0000_FF00
+)]
+fn partial_access_when_write_subscript_has_side_effect_then_subscript_evaluated_once(
+    #[case] body: &str,
+    #[case] expected: u32,
+) {
+    let bufs = run_partial_access(
+        NEXT_IDX,
+        "calls : DINT; arr : ARRAY[1..3] OF DWORD; h : HOLDER",
+        "DWORD",
+        body,
+    );
+    assert_eq!(bufs.vars[0].as_i32() as u32, expected, "element 1");
+    assert_eq!(bufs.vars[1].as_i32(), 1, "calls");
+}
