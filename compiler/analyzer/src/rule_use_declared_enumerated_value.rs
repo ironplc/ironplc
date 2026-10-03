@@ -177,15 +177,13 @@ END_FUNCTION_BLOCK";
 
         let codes = diagnostic_codes(&diagnostics);
         assert_eq!(codes, [Problem::EnumValueNotDefined.code(); 2]);
-        let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
-        assert!(
-            reported.iter().any(|d| d.as_str() == "value=CRITICAL"),
-            "expected CRITICAL, got {reported:?}"
-        );
-        assert!(
-            reported.iter().any(|d| d.as_str() == "value=FATAL"),
-            "expected FATAL, got {reported:?}"
-        );
+        let reported: Vec<&str> = diagnostics
+            .iter()
+            .flat_map(|d| &d.described)
+            .map(String::as_str)
+            .filter(|d| d.starts_with("value="))
+            .collect();
+        assert_eq!(reported, ["value=CRITICAL", "value=FATAL"]);
     }
 
     #[test]
