@@ -78,76 +78,50 @@ pub fn apply(
 
 #[cfg(test)]
 mod test {
-    use crate::test_helpers::diagnostic_codes;
-    use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::CompilerOptions, parse_program};
-
-    use crate::semantic_context::SemanticContextBuilder;
+    use crate::test_helpers::{diagnostic_codes, rule_diagnostics_with};
+    use ironplc_parser::options::CompilerOptions;
 
     use super::*;
 
-    fn parse(source: &str) -> Library {
-        parse_program(
-            source,
-            &FileId::default(),
-            &CompilerOptions {
-                allow_top_level_var_global: true,
-                ..CompilerOptions::default()
-            },
-        )
-        .unwrap()
-    }
+    const TOP_LEVEL_GLOBAL: &str =
+        "VAR_GLOBAL CONSTANT\nX : INT := 250;\nEND_VAR\nPROGRAM p\nEND_PROGRAM";
 
-    fn context() -> SemanticContext {
-        SemanticContextBuilder::new().build().unwrap()
+    /// The parser accepts a top-level `VAR_GLOBAL` only with this option on.
+    fn allowed() -> CompilerOptions {
+        CompilerOptions {
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        }
     }
 
     #[test]
-    fn apply_when_top_level_var_global_and_not_allowed_then_error() {
-        let lib = parse("VAR_GLOBAL CONSTANT\nX : INT := 250;\nEND_VAR\nPROGRAM p\nEND_PROGRAM");
-
-        let errors = apply(&lib, &context(), &CompilerOptions::default()).unwrap_err();
-
-        assert_eq!(
-            diagnostic_codes(&errors),
-            [Problem::TopLevelVarGlobalNotAllowed.code()]
+    fn apply_when_top_level_var_global_and_not_allowed_then_error_with_help() {
+        let diagnostics = rule_diagnostics_with(
+            apply,
+            TOP_LEVEL_GLOBAL,
+            &allowed(),
+            &CompilerOptions::default(),
         );
-    }
-
-    #[test]
-    fn apply_when_top_level_var_global_and_not_allowed_then_diagnostic_has_help() {
-        let lib = parse("VAR_GLOBAL CONSTANT\nX : INT := 250;\nEND_VAR\nPROGRAM p\nEND_PROGRAM");
-
-        let diagnostics = apply(&lib, &context(), &CompilerOptions::default()).unwrap_err();
 
         assert_eq!(
             diagnostic_codes(&diagnostics),
             [Problem::TopLevelVarGlobalNotAllowed.code()]
         );
-
         assert!(!diagnostics[0].help().is_empty());
+        let location = &diagnostics[0].primary.location;
+        assert_eq!(&TOP_LEVEL_GLOBAL[location.start..location.end], "X");
     }
 
-    #[test]
-    fn apply_when_top_level_var_global_and_allowed_then_ok() {
-        let lib = parse("VAR_GLOBAL CONSTANT\nX : INT := 250;\nEND_VAR\nPROGRAM p\nEND_PROGRAM");
+    rule_ok!(
+        apply_when_top_level_var_global_and_allowed_then_ok,
+        TOP_LEVEL_GLOBAL,
+        allowed()
+    );
 
-        let result = apply(
-            &lib,
-            &context(),
-            &CompilerOptions {
-                allow_top_level_var_global: true,
-                ..CompilerOptions::default()
-            },
-        );
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_var_global_inside_configuration_then_ok() {
-        let lib = parse(
-            "CONFIGURATION config
+    // Even with the option off, a global inside a configuration is allowed.
+    rule_ok!(
+        apply_when_var_global_inside_configuration_then_ok,
+        "CONFIGURATION config
     VAR_GLOBAL CONSTANT
         X : INT := 250;
     END_VAR
@@ -157,21 +131,8 @@ mod test {
     END_RESOURCE
 END_CONFIGURATION
 PROGRAM p
-END_PROGRAM",
-        );
+END_PROGRAM"
+    );
 
-        // Even with the flag off, a config-nested global must not be flagged.
-        let result = apply(&lib, &context(), &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_no_var_global_then_ok() {
-        let lib = parse("PROGRAM p\nEND_PROGRAM");
-
-        let result = apply(&lib, &context(), &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
+    rule_ok!(apply_when_no_var_global_then_ok, "PROGRAM p\nEND_PROGRAM");
 }
