@@ -8,7 +8,7 @@
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
-use crate::common::{assert_run_with, Duration};
+use crate::common::{assert_run_with, Duration, SlotValue};
 
 #[rstest]
 #[case::assignment_ms(
@@ -52,14 +52,20 @@ END_PROGRAM
     2,
     Duration::milliseconds(300)
 )]
+fn end_to_end_ltime(#[case] source: &str, #[case] index: usize, #[case] expected: Duration) {
+    assert_ed3(source, index, expected);
+}
+
 // Comparison of two LTIME values (5s > 3s is TRUE).
-#[case::comparison(
-    "
+#[test]
+fn end_to_end_ltime_comparison() {
+    assert_ed3(
+        "
 PROGRAM main
   VAR
     a : LTIME;
     b : LTIME;
-    result : LTIME;
+    result : LINT;
   END_VAR
   a := LTIME#5s;
   b := LTIME#3s;
@@ -70,10 +76,12 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    2,
-    Duration::milliseconds(1)
-)]
-fn end_to_end_ltime(#[case] source: &str, #[case] index: usize, #[case] expected: Duration) {
+        2,
+        1_i64,
+    );
+}
+
+fn assert_ed3<T: SlotValue>(source: &str, index: usize, expected: T) {
     assert_run_with(
         source,
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
