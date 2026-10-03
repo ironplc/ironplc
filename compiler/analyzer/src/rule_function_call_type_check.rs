@@ -1374,19 +1374,24 @@ END_PROGRAM",
     // Not asserted exactly: besides P4026 this also reports P4027, because
     // expression typing narrows SIN's ANY_REAL return to BOOL, a type outside
     // that category, and the return check then flags BOOL -> REAL.
-    // rule-test-conventions: allow(weak-macro)
-    rule_ctx_err_code!(
-        apply_when_stdlib_sin_arg_is_bool_then_arg_type_error,
-        "
+    #[test]
+    fn apply_when_stdlib_sin_arg_is_bool_then_arg_type_error() {
+        let program = "
 PROGRAM main
 VAR
     b : BOOL;
     r : REAL;
 END_VAR
     r := SIN(b);
-END_PROGRAM",
-        Problem::FunctionCallArgTypeMismatch
-    );
+END_PROGRAM";
+
+        let codes = rule_codes(apply, program, &CompilerOptions::default());
+
+        assert!(
+            codes.contains(&Problem::FunctionCallArgTypeMismatch.code().to_string()),
+            "{codes:?}"
+        );
+    }
 
     rule_ctx_ok!(
         apply_when_stdlib_sin_arg_is_real_then_ok,
