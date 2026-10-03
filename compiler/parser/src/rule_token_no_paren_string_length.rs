@@ -67,7 +67,7 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 
 #[cfg(test)]
 mod test {
-    use dsl::core::SourceSpan;
+    use crate::test_rule_helpers::{result_codes, token};
 
     use crate::{
         options::CompilerOptions,
@@ -75,22 +75,12 @@ mod test {
         token::{Token, TokenType},
     };
 
-    fn mk_token(token_type: TokenType, text: &str) -> Token {
-        Token {
-            token_type,
-            span: SourceSpan::default(),
-            line: 1,
-            col: 1,
-            text: text.to_string(),
-        }
-    }
-
     fn paren_length_tokens(keyword: TokenType) -> Vec<Token> {
         vec![
-            mk_token(keyword, "STRING"),
-            mk_token(TokenType::LeftParen, "("),
-            mk_token(TokenType::Digits, "255"),
-            mk_token(TokenType::RightParen, ")"),
+            token(keyword, "STRING"),
+            token(TokenType::LeftParen, "("),
+            token(TokenType::Digits, "255"),
+            token(TokenType::RightParen, ")"),
         ]
     }
 
@@ -104,12 +94,7 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(
             codes,
             [ironplc_problems::Problem::ParenStringLengthNotAllowed.code()]
@@ -126,12 +111,7 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(
             codes,
             [ironplc_problems::Problem::ParenStringLengthNotAllowed.code()]
@@ -155,19 +135,14 @@ mod test {
     fn apply_when_string_paren_length_with_whitespace_and_flag_off_then_error() {
         // Whitespace between the keyword and `(` must not hide the delimiter.
         let tokens = vec![
-            mk_token(TokenType::String, "STRING"),
-            mk_token(TokenType::Whitespace, " "),
-            mk_token(TokenType::LeftParen, "("),
-            mk_token(TokenType::Digits, "255"),
-            mk_token(TokenType::RightParen, ")"),
+            token(TokenType::String, "STRING"),
+            token(TokenType::Whitespace, " "),
+            token(TokenType::LeftParen, "("),
+            token(TokenType::Digits, "255"),
+            token(TokenType::RightParen, ")"),
         ];
         let result = apply(&tokens, &CompilerOptions::default());
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(
             codes,
             [ironplc_problems::Problem::ParenStringLengthNotAllowed.code()]
@@ -177,19 +152,14 @@ mod test {
     #[test]
     fn apply_when_string_paren_length_with_newline_and_flag_off_then_error() {
         let tokens = vec![
-            mk_token(TokenType::String, "STRING"),
-            mk_token(TokenType::Newline, "\n"),
-            mk_token(TokenType::LeftParen, "("),
-            mk_token(TokenType::Digits, "255"),
-            mk_token(TokenType::RightParen, ")"),
+            token(TokenType::String, "STRING"),
+            token(TokenType::Newline, "\n"),
+            token(TokenType::LeftParen, "("),
+            token(TokenType::Digits, "255"),
+            token(TokenType::RightParen, ")"),
         ];
         let result = apply(&tokens, &CompilerOptions::default());
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(
             codes,
             [ironplc_problems::Problem::ParenStringLengthNotAllowed.code()]
@@ -199,19 +169,14 @@ mod test {
     #[test]
     fn apply_when_string_paren_length_with_comment_and_flag_off_then_error() {
         let tokens = vec![
-            mk_token(TokenType::String, "STRING"),
-            mk_token(TokenType::Comment, "(* n *)"),
-            mk_token(TokenType::LeftParen, "("),
-            mk_token(TokenType::Digits, "255"),
-            mk_token(TokenType::RightParen, ")"),
+            token(TokenType::String, "STRING"),
+            token(TokenType::Comment, "(* n *)"),
+            token(TokenType::LeftParen, "("),
+            token(TokenType::Digits, "255"),
+            token(TokenType::RightParen, ")"),
         ];
         let result = apply(&tokens, &CompilerOptions::default());
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(
             codes,
             [ironplc_problems::Problem::ParenStringLengthNotAllowed.code()]
@@ -224,19 +189,14 @@ mod test {
         // must too -- otherwise a pragma between the keyword and `(` would let
         // the paren form through unflagged.
         let tokens = vec![
-            mk_token(TokenType::String, "STRING"),
-            mk_token(TokenType::Pragma, "{attribute 'x'}"),
-            mk_token(TokenType::LeftParen, "("),
-            mk_token(TokenType::Digits, "255"),
-            mk_token(TokenType::RightParen, ")"),
+            token(TokenType::String, "STRING"),
+            token(TokenType::Pragma, "{attribute 'x'}"),
+            token(TokenType::LeftParen, "("),
+            token(TokenType::Digits, "255"),
+            token(TokenType::RightParen, ")"),
         ];
         let result = apply(&tokens, &CompilerOptions::default());
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(
             codes,
             [ironplc_problems::Problem::ParenStringLengthNotAllowed.code()]
@@ -247,10 +207,10 @@ mod test {
     fn apply_when_string_bracket_length_and_flag_off_then_ok() {
         // The standard bracket form is always allowed.
         let tokens = vec![
-            mk_token(TokenType::String, "STRING"),
-            mk_token(TokenType::LeftBracket, "["),
-            mk_token(TokenType::Digits, "255"),
-            mk_token(TokenType::RightBracket, "]"),
+            token(TokenType::String, "STRING"),
+            token(TokenType::LeftBracket, "["),
+            token(TokenType::Digits, "255"),
+            token(TokenType::RightBracket, "]"),
         ];
         let result = apply(&tokens, &CompilerOptions::default());
         assert!(result.is_ok());
@@ -259,8 +219,8 @@ mod test {
     #[test]
     fn apply_when_no_string_keyword_then_ok() {
         let tokens = vec![
-            mk_token(TokenType::Identifier, "x"),
-            mk_token(TokenType::LeftParen, "("),
+            token(TokenType::Identifier, "x"),
+            token(TokenType::LeftParen, "("),
         ];
         let result = apply(&tokens, &CompilerOptions::default());
         assert!(result.is_ok());

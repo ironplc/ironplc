@@ -32,6 +32,8 @@ use xform_tokens::insert_keyword_statement_terminators;
 #[cfg(test)]
 mod test_rule_conventions;
 #[cfg(test)]
+mod test_rule_helpers;
+#[cfg(test)]
 mod tests;
 
 // Spec conformance testing infrastructure (test-only).

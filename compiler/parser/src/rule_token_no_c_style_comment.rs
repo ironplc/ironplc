@@ -37,6 +37,7 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 
 #[cfg(test)]
 mod test {
+    use crate::test_rule_helpers::result_codes;
     use dsl::core::SourceSpan;
 
     use crate::{
@@ -62,12 +63,7 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(codes, [ironplc_problems::Problem::CStyleComment.code()]);
     }
 
@@ -134,12 +130,7 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(codes, [ironplc_problems::Problem::CStyleComment.code()]);
     }
 

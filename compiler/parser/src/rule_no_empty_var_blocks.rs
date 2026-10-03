@@ -81,27 +81,13 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 
 #[cfg(test)]
 mod test {
-    use dsl::core::SourceSpan;
+    use crate::test_rule_helpers::{result_codes, token};
 
-    use crate::{
-        options::CompilerOptions,
-        rule_no_empty_var_blocks::apply,
-        token::{Token, TokenType},
-    };
-
-    fn make_token(token_type: TokenType) -> Token {
-        Token {
-            token_type,
-            span: SourceSpan::default(),
-            line: 1,
-            col: 1,
-            text: String::new(),
-        }
-    }
+    use crate::{options::CompilerOptions, rule_no_empty_var_blocks::apply, token::TokenType};
 
     #[test]
     fn apply_when_empty_var_block_and_not_allowed_then_error() {
-        let tokens = vec![make_token(TokenType::Var), make_token(TokenType::EndVar)];
+        let tokens = vec![token(TokenType::Var, ""), token(TokenType::EndVar, "")];
 
         let result = apply(
             &tokens,
@@ -110,18 +96,13 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(codes, [ironplc_problems::Problem::EmptyVarBlock.code()]);
     }
 
     #[test]
     fn apply_when_empty_var_block_and_allowed_then_ok() {
-        let tokens = vec![make_token(TokenType::Var), make_token(TokenType::EndVar)];
+        let tokens = vec![token(TokenType::Var, ""), token(TokenType::EndVar, "")];
 
         let result = apply(
             &tokens,
@@ -136,11 +117,11 @@ mod test {
     #[test]
     fn apply_when_var_with_qualifier_empty_and_not_allowed_then_error() {
         let tokens = vec![
-            make_token(TokenType::Var),
-            make_token(TokenType::Whitespace),
-            make_token(TokenType::Constant),
-            make_token(TokenType::Whitespace),
-            make_token(TokenType::EndVar),
+            token(TokenType::Var, ""),
+            token(TokenType::Whitespace, ""),
+            token(TokenType::Constant, ""),
+            token(TokenType::Whitespace, ""),
+            token(TokenType::EndVar, ""),
         ];
 
         let result = apply(
@@ -150,21 +131,13 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(codes, [ironplc_problems::Problem::EmptyVarBlock.code()]);
     }
 
     #[test]
     fn apply_when_empty_var_input_and_not_allowed_then_error() {
-        let tokens = vec![
-            make_token(TokenType::VarInput),
-            make_token(TokenType::EndVar),
-        ];
+        let tokens = vec![token(TokenType::VarInput, ""), token(TokenType::EndVar, "")];
 
         let result = apply(
             &tokens,
@@ -173,22 +146,17 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(codes, [ironplc_problems::Problem::EmptyVarBlock.code()]);
     }
 
     #[test]
     fn apply_when_non_empty_var_block_then_ok() {
         let tokens = vec![
-            make_token(TokenType::Var),
-            make_token(TokenType::Whitespace),
-            make_token(TokenType::Identifier),
-            make_token(TokenType::EndVar),
+            token(TokenType::Var, ""),
+            token(TokenType::Whitespace, ""),
+            token(TokenType::Identifier, ""),
+            token(TokenType::EndVar, ""),
         ];
 
         let result = apply(

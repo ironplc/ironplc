@@ -46,28 +46,16 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 
 #[cfg(test)]
 mod test {
-    use dsl::core::SourceSpan;
+    use crate::test_rule_helpers::{result_codes, token};
     use spec_test_macro::spec_test;
 
     use crate::{
-        options::CompilerOptions,
-        rule_token_no_partial_access_syntax::apply,
-        token::{Token, TokenType},
+        options::CompilerOptions, rule_token_no_partial_access_syntax::apply, token::TokenType,
     };
-
-    fn mk_token(token_type: TokenType, text: &str) -> Token {
-        Token {
-            token_type,
-            span: SourceSpan::default(),
-            line: 1,
-            col: 1,
-            text: text.to_string(),
-        }
-    }
 
     #[test]
     fn apply_when_partial_access_bit_and_flag_off_then_error() {
-        let tokens = vec![mk_token(TokenType::PartialAccessBit, "%X0")];
+        let tokens = vec![token(TokenType::PartialAccessBit, "%X0")];
         let result = apply(
             &tokens,
             &CompilerOptions {
@@ -75,12 +63,7 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(
             codes,
             [ironplc_problems::Problem::PartialAccessSyntaxDisabled.code()]
@@ -89,7 +72,7 @@ mod test {
 
     #[test]
     fn apply_when_partial_access_bit_and_flag_on_then_ok() {
-        let tokens = vec![mk_token(TokenType::PartialAccessBit, "%X0")];
+        let tokens = vec![token(TokenType::PartialAccessBit, "%X0")];
         let result = apply(
             &tokens,
             &CompilerOptions {
@@ -104,7 +87,7 @@ mod test {
     /// `PartialAccessSyntaxDisabled`, the same diagnostic as `.%Xn`.
     #[spec_test(REQ_PAB_parser_140)]
     fn apply_when_partial_access_byte_and_flag_off_then_error() {
-        let tokens = vec![mk_token(TokenType::PartialAccessByte, "%B0")];
+        let tokens = vec![token(TokenType::PartialAccessByte, "%B0")];
         let result = apply(
             &tokens,
             &CompilerOptions {
@@ -112,12 +95,7 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = result_codes(&result);
         assert_eq!(
             codes,
             [ironplc_problems::Problem::PartialAccessSyntaxDisabled.code()]
@@ -126,7 +104,7 @@ mod test {
 
     #[test]
     fn apply_when_partial_access_byte_and_flag_on_then_ok() {
-        let tokens = vec![mk_token(TokenType::PartialAccessByte, "%B0")];
+        let tokens = vec![token(TokenType::PartialAccessByte, "%B0")];
         let result = apply(
             &tokens,
             &CompilerOptions {
@@ -139,7 +117,7 @@ mod test {
 
     #[test]
     fn apply_when_no_partial_access_bit_token_then_ok() {
-        let tokens = vec![mk_token(TokenType::Identifier, "x")];
+        let tokens = vec![token(TokenType::Identifier, "x")];
         let result = apply(&tokens, &CompilerOptions::default());
         assert!(result.is_ok());
     }
