@@ -118,9 +118,8 @@ mod tests {
     use super::*;
     use crate::test_helpers::fb_inheritance_options;
 
-    rule_ctx_err1_with!(
+    rule_err!(
         apply_when_abstract_fb_instantiated_then_error,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK ABSTRACT FB_Base
 END_FUNCTION_BLOCK
@@ -130,12 +129,12 @@ VAR
     inst : FB_Base;
 END_VAR
 END_FUNCTION_BLOCK",
-        Problem::AbstractFunctionBlockInstantiated
+        [Problem::AbstractFunctionBlockInstantiated],
+        fb_inheritance_options()
     );
 
-    rule_ctx_ok_with!(
+    rule_ok!(
         apply_when_non_abstract_fb_instantiated_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 END_FUNCTION_BLOCK
@@ -144,12 +143,12 @@ FUNCTION_BLOCK FB_User
 VAR
     inst : FB_Base;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
     );
 
-    rule_ctx_ok_with!(
+    rule_ok!(
         apply_when_concrete_subclass_of_abstract_instantiated_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK ABSTRACT FB_Base
 END_FUNCTION_BLOCK
@@ -161,17 +160,18 @@ FUNCTION_BLOCK FB_User
 VAR
     inst : FB_Concrete;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
     );
 
-    rule_ctx_ok_with!(
+    rule_ok!(
         apply_when_no_abstract_fb_in_library_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Plain
 VAR
     x : INT;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
     );
 }

@@ -17,7 +17,6 @@ fn init_test_logger() {
 // their inline `#[cfg(test)] mod tests`.
 #[cfg(test)]
 #[macro_use]
-#[allow(unused_macros)]
 mod test_macros;
 
 mod call_assignment_check;

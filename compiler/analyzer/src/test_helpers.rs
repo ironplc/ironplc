@@ -42,26 +42,6 @@ pub fn parse_and_resolve_types_with_options(
     resolve_types(&[&library], options).unwrap()
 }
 
-/// Resolves `program` under `options` but pairs the resolved library with a
-/// *fresh, empty* [`SemanticContext`] rather than the resolved one.
-///
-/// This mirrors the recurring rule-test scaffold that discards the resolved
-/// context (`let (input, _context) = parse_and_resolve_types_with_options(...)`)
-/// and builds `SemanticContextBuilder::new().build().unwrap()` instead. Rules in
-/// this group operate on the library and do not consult the type environment, so
-/// the empty context is intentional. Used by the `rule_ok!/rule_err!/…` macros.
-#[cfg(test)]
-pub fn resolve_fresh_with(
-    program: &str,
-    options: &ironplc_parser::options::CompilerOptions,
-) -> (Library, SemanticContext) {
-    use crate::semantic_context::SemanticContextBuilder;
-
-    let (library, _resolved) = parse_and_resolve_types_with_options(program, options);
-    let context = SemanticContextBuilder::new().build().unwrap();
-    (library, context)
-}
-
 /// The qualifier of every declaration named `name`, in library order.
 ///
 /// Transforms and rules that add or check `DeclarationQualifier`s assert on

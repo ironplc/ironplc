@@ -167,10 +167,9 @@ mod tests {
         rule_codes(apply, source, &CompilerOptions::default())
     }
 
-    #[test]
-    fn apply_when_string_assigned_wstring_then_p4034() {
-        let codes = check(
-            "
+    rule_err!(
+        apply_when_string_assigned_wstring_then_p4034,
+        "
 PROGRAM main
   VAR
     s : STRING[10];
@@ -179,14 +178,12 @@ PROGRAM main
   s := w;
 END_PROGRAM
 ",
-        );
-        assert_eq!(codes, [Problem::StringEncodingMismatch.code()]);
-    }
+        [Problem::StringEncodingMismatch]
+    );
 
-    #[test]
-    fn apply_when_wstring_assigned_string_then_p4034() {
-        let codes = check(
-            "
+    rule_err!(
+        apply_when_wstring_assigned_string_then_p4034,
+        "
 PROGRAM main
   VAR
     s : STRING[10];
@@ -195,14 +192,12 @@ PROGRAM main
   w := s;
 END_PROGRAM
 ",
-        );
-        assert_eq!(codes, [Problem::StringEncodingMismatch.code()]);
-    }
+        [Problem::StringEncodingMismatch]
+    );
 
-    #[test]
-    fn apply_when_string_assigned_string_then_ok() {
-        let codes = check(
-            "
+    rule_ok!(
+        apply_when_string_assigned_string_then_ok,
+        "
 PROGRAM main
   VAR
     a : STRING[10];
@@ -210,15 +205,12 @@ PROGRAM main
   END_VAR
   a := b;
 END_PROGRAM
-",
-        );
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+"
+    );
 
-    #[test]
-    fn apply_when_wstring_assigned_wstring_then_ok() {
-        let codes = check(
-            "
+    rule_ok!(
+        apply_when_wstring_assigned_wstring_then_ok,
+        "
 PROGRAM main
   VAR
     a : WSTRING[10];
@@ -226,15 +218,12 @@ PROGRAM main
   END_VAR
   a := b;
 END_PROGRAM
-",
-        );
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+"
+    );
 
-    #[test]
-    fn apply_when_cross_encoding_comparison_then_p4034() {
-        let codes = check(
-            "
+    rule_err!(
+        apply_when_cross_encoding_comparison_then_p4034,
+        "
 PROGRAM main
   VAR
     s : STRING[10];
@@ -244,9 +233,8 @@ PROGRAM main
   r := s = w;
 END_PROGRAM
 ",
-        );
-        assert_eq!(codes, [Problem::StringEncodingMismatch.code()]);
-    }
+        [Problem::StringEncodingMismatch]
+    );
 
     #[test]
     fn apply_when_wstring_assigned_literal_then_ok() {
@@ -295,14 +283,9 @@ END_PROGRAM
         );
     }
 
-    fn check_ed3(source: &str) -> Vec<String> {
-        rule_codes(apply, source, &edition3_options())
-    }
-
-    #[test]
-    fn apply_when_sibling_method_declares_wstring_then_field_encoding_used() {
-        let codes = check_ed3(
-            "
+    rule_ok!(
+        apply_when_sibling_method_declares_wstring_then_field_encoding_used,
+        "
 FUNCTION_BLOCK FB
   VAR
     s : STRING[10];
@@ -318,14 +301,12 @@ FUNCTION_BLOCK FB
   END_METHOD
 END_FUNCTION_BLOCK
 ",
-        );
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+        edition3_options()
+    );
 
-    #[test]
-    fn apply_when_method_local_wstring_assigned_to_field_string_then_p4034() {
-        let codes = check_ed3(
-            "
+    rule_err!(
+        apply_when_method_local_wstring_assigned_to_field_string_then_p4034,
+        "
 FUNCTION_BLOCK FB
   VAR
     s : STRING[10];
@@ -338,14 +319,13 @@ FUNCTION_BLOCK FB
   END_METHOD
 END_FUNCTION_BLOCK
 ",
-        );
-        assert_eq!(codes, [Problem::StringEncodingMismatch.code()]);
-    }
+        [Problem::StringEncodingMismatch],
+        edition3_options()
+    );
 
-    #[test]
-    fn apply_when_method_local_not_string_shadows_wstring_field_then_ok() {
-        let codes = check_ed3(
-            "
+    rule_ok!(
+        apply_when_method_local_not_string_shadows_wstring_field_then_ok,
+        "
 FUNCTION_BLOCK FB
   VAR
     s : STRING[10];
@@ -359,14 +339,12 @@ FUNCTION_BLOCK FB
   END_METHOD
 END_FUNCTION_BLOCK
 ",
-        );
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+        edition3_options()
+    );
 
-    #[test]
-    fn apply_when_string_assigned_wstring_alias_then_p4034() {
-        let codes = check(
-            "
+    rule_err!(
+        apply_when_string_assigned_wstring_alias_then_p4034,
+        "
 TYPE WName : WSTRING[10]; END_TYPE
 PROGRAM main
   VAR
@@ -376,7 +354,6 @@ PROGRAM main
   s := w;
 END_PROGRAM
 ",
-        );
-        assert_eq!(codes, [Problem::StringEncodingMismatch.code()]);
-    }
+        [Problem::StringEncodingMismatch]
+    );
 }

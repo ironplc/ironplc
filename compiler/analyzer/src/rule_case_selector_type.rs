@@ -219,7 +219,7 @@ END_PROGRAM"
         );
     }
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_selector_is_enumeration_then_ok,
         "
 TYPE
@@ -237,7 +237,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_selector_is_named_subrange_then_ok,
         "
 TYPE
@@ -255,7 +255,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// An alias of an integer type resolves to the integer type.
         apply_when_selector_is_alias_of_integer_then_ok,
         "
@@ -274,7 +274,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// A bare literal resolves to `ANY_INT`, which is not in the type
         /// environment, so the rule leaves it alone.
         apply_when_selector_is_integer_literal_then_ok,
@@ -289,7 +289,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// The selector is an expression, and its type is what is judged.
         apply_when_selector_is_integer_expression_then_ok,
         "
@@ -305,7 +305,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_selector_is_alias_of_real_then_p4053,
         "
 TYPE
@@ -321,10 +321,10 @@ END_VAR
         1: y := 1;
     END_CASE;
 END_PROGRAM",
-        Problem::CaseSelectorTypeInvalid
+        [Problem::CaseSelectorTypeInvalid]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_selector_is_real_expression_then_p4053,
         "
 PROGRAM main
@@ -336,7 +336,7 @@ END_VAR
         1: y := 1;
     END_CASE;
 END_PROGRAM",
-        Problem::CaseSelectorTypeInvalid
+        [Problem::CaseSelectorTypeInvalid]
     );
 
     #[test]

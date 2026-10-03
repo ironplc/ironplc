@@ -165,7 +165,7 @@ mod test {
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use ironplc_problems::Problem;
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_int_var_with_integer_literal_then_ok,
         "
 PROGRAM main
@@ -175,7 +175,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_real_var_with_real_literal_then_ok,
         "
 PROGRAM main
@@ -185,7 +185,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_real_var_with_integer_literal_then_ok,
         "
 PROGRAM main
@@ -195,7 +195,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bool_var_with_boolean_literal_then_ok,
         "
 PROGRAM main
@@ -205,7 +205,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_no_initializer_then_ok,
         "
 PROGRAM main
@@ -215,7 +215,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_uint_var_with_integer_literal_then_ok,
         "
 PROGRAM main
@@ -225,7 +225,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_int_var_with_negative_integer_literal_then_ok,
         "
 PROGRAM main
@@ -235,7 +235,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_real_var_with_negative_real_literal_then_ok,
         "
 PROGRAM main
@@ -245,7 +245,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_int_var_with_real_literal_then_error,
         "
 PROGRAM main
@@ -253,10 +253,10 @@ VAR
     dummy : INT := 10.0;
 END_VAR
 END_PROGRAM",
-        Problem::InitializerTypeMismatch
+        [Problem::InitializerTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_bool_var_with_integer_literal_then_error,
         "
 PROGRAM main
@@ -264,10 +264,10 @@ VAR
     x : BOOL := 1;
 END_VAR
 END_PROGRAM",
-        Problem::InitializerTypeMismatch
+        [Problem::InitializerTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_real_var_with_boolean_literal_then_error,
         "
 PROGRAM main
@@ -275,10 +275,10 @@ VAR
     x : REAL := TRUE;
 END_VAR
 END_PROGRAM",
-        Problem::InitializerTypeMismatch
+        [Problem::InitializerTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_int_var_with_string_literal_then_error,
         "
 PROGRAM main
@@ -286,7 +286,7 @@ VAR
     x : INT := 'hello';
 END_VAR
 END_PROGRAM",
-        Problem::InitializerTypeMismatch
+        [Problem::InitializerTypeMismatch]
     );
 
     #[test]

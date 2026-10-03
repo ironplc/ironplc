@@ -151,7 +151,7 @@ impl Visitor<Infallible> for RuleExternalGlobalConst<'_> {
 mod test {
     use ironplc_problems::Problem;
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_global_const_external_not_const_then_error,
         "
 CONFIGURATION config
@@ -169,10 +169,10 @@ FUNCTION_BLOCK func
         ResetCounterValue : INT;
     END_VAR
 END_FUNCTION_BLOCK",
-        Problem::VariableMustBeConst
+        [Problem::VariableMustBeConst]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_local_const_shares_name_with_plain_global_then_ok,
         "
 CONFIGURATION config
@@ -201,7 +201,7 @@ PROGRAM plc_prg
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_global_const_external_const_then_ok,
         "
 CONFIGURATION config
@@ -223,7 +223,7 @@ FUNCTION_BLOCK func
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_errn!(
+    rule_err!(
         apply_when_two_non_const_externals_then_reports_both,
         "
 CONFIGURATION config
@@ -243,7 +243,6 @@ FUNCTION_BLOCK func
         SecondValue : INT;
     END_VAR
 END_FUNCTION_BLOCK",
-        2,
-        ironplc_problems::Problem::VariableMustBeConst
+        [ironplc_problems::Problem::VariableMustBeConst; 2]
     );
 }

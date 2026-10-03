@@ -155,7 +155,7 @@ mod tests {
     use crate::test_helpers::rule_diagnostics;
     use rstest::rstest;
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_stdlib_function_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -167,7 +167,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_user_function_called_then_ok,
         "
 FUNCTION ADD_INTS : INT
@@ -186,7 +186,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_function_not_declared_then_error,
         "
 FUNCTION_BLOCK CALLER
@@ -195,10 +195,10 @@ VAR
 END_VAR
     result := NONEXISTENT_FUNC(1);
 END_FUNCTION_BLOCK",
-        Problem::FunctionCallUndeclared
+        [Problem::FunctionCallUndeclared]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_function_calls_undeclared_function_then_error,
         "
 FUNCTION MY_FUNC : INT
@@ -207,10 +207,10 @@ VAR_INPUT
 END_VAR
     MY_FUNC := UNDEFINED_HELPER(x);
 END_FUNCTION",
-        Problem::FunctionCallUndeclared
+        [Problem::FunctionCallUndeclared]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_wrong_arg_count_then_error,
         "
 FUNCTION_BLOCK CALLER
@@ -220,10 +220,10 @@ VAR
 END_VAR
     result := INT_TO_REAL(value, value);
 END_FUNCTION_BLOCK",
-        Problem::FunctionCallWrongArgCount
+        [Problem::FunctionCallWrongArgCount]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_abs_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -235,7 +235,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_sqrt_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -247,7 +247,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_min_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -260,7 +260,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_max_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -273,7 +273,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_limit_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -287,7 +287,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_limit_called_with_wrong_arg_count_then_error,
         "
 FUNCTION_BLOCK CALLER
@@ -298,10 +298,10 @@ VAR
 END_VAR
     result := LIMIT(a, b);
 END_FUNCTION_BLOCK",
-        Problem::FunctionCallWrongArgCount
+        [Problem::FunctionCallWrongArgCount]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_expt_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -314,7 +314,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_mux_called_with_3_args_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -327,7 +327,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_mux_called_with_5_args_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -342,7 +342,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_mux_called_with_too_few_args_then_error,
         "
 FUNCTION_BLOCK CALLER
@@ -352,10 +352,10 @@ VAR
 END_VAR
     result := MUX(0, a);
 END_FUNCTION_BLOCK",
-        Problem::FunctionCallWrongArgCount
+        [Problem::FunctionCallWrongArgCount]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_mux_called_with_17_args_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -382,7 +382,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_mux_called_with_18_args_then_error,
         "
 FUNCTION_BLOCK CALLER
@@ -408,10 +408,10 @@ VAR
 END_VAR
     result := MUX(0, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q);
 END_FUNCTION_BLOCK",
-        Problem::FunctionCallWrongArgCount
+        [Problem::FunctionCallWrongArgCount]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_too_few_args_then_error,
         "
 FUNCTION ADD_INTS : INT
@@ -428,12 +428,12 @@ VAR
 END_VAR
     result := ADD_INTS(1);
 END_FUNCTION_BLOCK",
-        Problem::FunctionCallWrongArgCount
+        [Problem::FunctionCallWrongArgCount]
     );
 
     // Note: MOD is excluded because the parser treats it as a keyword (the MOD operator).
     // MOD(a, b) requires parser changes to allow keywords in function call position.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_arithmetic_function_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -449,7 +449,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_comparison_function_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -467,7 +467,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bit_string_conversion_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -492,7 +492,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_shl_with_byte_to_word_conversion_then_ok,
         "
 FUNCTION MY_SHIFT : WORD
@@ -513,7 +513,7 @@ END_PROGRAM"
     // A call is either formal or non-formal; with a mix, the arity check
     // below it would count a misreading of the arguments, so P4001 is the
     // only diagnostic (#1816).
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_function_call_mixes_positional_and_named_then_error,
         "
 FUNCTION F : INT
@@ -530,10 +530,10 @@ VAR
 END_VAR
     x := F(1, b := 2);
 END_PROGRAM",
-        Problem::FunctionCallMixedArgTypes
+        [Problem::FunctionCallMixedArgTypes]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_call_named_with_output_then_ok,
         "
 FUNCTION F : INT
@@ -599,7 +599,7 @@ END_PROGRAM"
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_in_out_argument_missing_then_error,
         "
 FUNCTION ADD_N : DINT
@@ -614,6 +614,6 @@ VAR
 END_VAR
     result := ADD_N(42);
 END_PROGRAM",
-        Problem::FunctionCallWrongArgCount
+        [Problem::FunctionCallWrongArgCount]
     );
 }

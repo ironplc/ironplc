@@ -107,7 +107,6 @@ impl Visitor<Infallible> for RuleMixedLocatedVarDeclarations {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_helpers::rule_diagnostics;
 
     use super::*;
 
@@ -118,7 +117,7 @@ mod tests {
         }
     }
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_mixed_block_and_flag_disabled_then_error,
         "
 FUNCTION_BLOCK FB_Example
@@ -131,7 +130,7 @@ END_FUNCTION_BLOCK",
         "tempSensor",
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         /// The located variable is in the third of four blocks, so a label
         /// that named the declaration only by its enclosing POU -- or one
         /// carrying a default span -- would leave the reader to find it.
@@ -156,7 +155,7 @@ END_FUNCTION_BLOCK",
         "tempSensor",
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         /// A complete address (`AT %IX0.0`) reaches the rule through a
         /// different parser rule than the incomplete `AT %I*` above, so it
         /// needs its own span assertion.
@@ -172,20 +171,17 @@ END_FUNCTION_BLOCK",
         "tempSensor",
     );
 
-    #[test]
-    fn apply_when_mixed_block_and_flag_enabled_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_mixed_block_and_flag_enabled_then_ok,
+        "
 FUNCTION_BLOCK FB_Example
 VAR
     tempSensor AT%I*: INT;
     fbComm     : BOOL;
 END_VAR
-END_FUNCTION_BLOCK";
-
-        let diagnostics = rule_diagnostics(apply, program, &opts_with_flag());
-
-        assert!(diagnostics.is_empty());
-    }
+END_FUNCTION_BLOCK",
+        opts_with_flag()
+    );
 
     rule_ok!(
         apply_when_dedicated_incompl_located_block_then_never_flagged,

@@ -126,10 +126,10 @@ next, or misses an inherited field. When the environment lacks something a rule
 needs, add it to the environment, where every rule then has it, rather than
 working around it in the rule.
 
-Test such a rule against the context resolution builds, with the
-`rule_ctx_*` macros in `test_macros.rs`; the `rule_*` macros pass an empty
-context. See [Rule Tests](compiler-standards.md#rule-tests) for what a rule
-test asserts.
+Test such a rule against the context resolution builds: the `rule_ok!`,
+`rule_err!` and `rule_err_at!` macros in `test_macros.rs`, and the helpers in
+`test_helpers.rs`, all do. See [Rule Tests](compiler-standards.md#rule-tests)
+for what a rule test asserts.
 
 ## Testing Architecture
 

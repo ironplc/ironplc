@@ -108,17 +108,17 @@ mod tests {
 
     const SOURCE: &str = "FUNCTION_BLOCK FB_Device VAR_INPUT Delta : INT; END_VAR END_FUNCTION_BLOCK TYPE MyStruct : STRUCT x : INT; END_STRUCT; END_TYPE PROGRAM main VAR pDevice : REF_TO FB_Device; s : MyStruct := (x := pDevice^.Delta); END_VAR END_PROGRAM";
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_struct_init_expression_and_flag_disabled_then_error,
-        opts_ref_to(),
         SOURCE,
-        Problem::StructInitializerExpressionNotAllowed
+        [Problem::StructInitializerExpressionNotAllowed],
+        opts_ref_to()
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_struct_init_expression_and_flag_enabled_then_ok,
-        opts_ref_to_and_flag(),
-        SOURCE
+        SOURCE,
+        opts_ref_to_and_flag()
     );
 
     // A struct initializer whose value is an ordinary constant parses as
@@ -158,10 +158,10 @@ VAR
 END_VAR
 END_PROGRAM";
 
-    rule_err1!(
+    rule_err!(
         apply_when_struct_init_is_bare_variable_and_flag_disabled_then_error,
         BARE_VARIABLE_SOURCE,
-        Problem::StructInitializerExpressionNotAllowed
+        [Problem::StructInitializerExpressionNotAllowed]
     );
 
     // The label underlines the expression as written. A unary expression
@@ -195,13 +195,13 @@ END_PROGRAM";
         assert_eq!("-g", &UNARY_SOURCE[location.start..location.end]);
     }
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_struct_init_is_bare_variable_and_flag_enabled_then_ok,
+        BARE_VARIABLE_SOURCE,
         CompilerOptions {
             allow_struct_initializer_expressions: true,
             ..CompilerOptions::default()
-        },
-        BARE_VARIABLE_SOURCE
+        }
     );
 
     // A bare identifier naming an enumeration value is standard syntax and
@@ -228,7 +228,7 @@ END_PROGRAM"
     // A function block instance's member initializer goes through the same
     // gate: the declaration is rewritten to an FB instance before this rule
     // runs, and the rule must still reach the member values.
-    rule_err1!(
+    rule_err!(
         apply_when_fb_instance_member_init_is_expression_then_error,
         "
 FUNCTION_BLOCK FB_Example
@@ -237,7 +237,7 @@ VAR
     tonDelta : TON := (PT := delta);
 END_VAR
 END_FUNCTION_BLOCK",
-        Problem::StructInitializerExpressionNotAllowed
+        [Problem::StructInitializerExpressionNotAllowed]
     );
 
     /// ADR-0040 requires a dialect violation to point at the construct's real

@@ -246,9 +246,8 @@ mod tests {
     use super::*;
     use crate::test_helpers::fb_inheritance_options;
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_method_declared_on_own_type_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 VAR
@@ -264,12 +263,12 @@ VAR
     m : FB_Motor;
 END_VAR
 m.Start();
-END_PROGRAM"
+END_PROGRAM",
+        fb_inheritance_options()
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_method_declared_on_base_via_extends_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 METHOD Start
@@ -285,12 +284,12 @@ VAR
     m : FB_Derived;
 END_VAR
 m.Start();
-END_PROGRAM"
+END_PROGRAM",
+        fb_inheritance_options()
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_method_declared_two_levels_up_extends_chain_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 METHOD Start
@@ -309,12 +308,12 @@ VAR
     m : FB_Derived;
 END_VAR
 m.Start();
-END_PROGRAM"
+END_PROGRAM",
+        fb_inheritance_options()
     );
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_method_not_declared_anywhere_then_error,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 VAR
@@ -328,12 +327,12 @@ VAR
 END_VAR
 m.Start();
 END_PROGRAM",
-        Problem::MethodNotFound
+        [Problem::MethodNotFound],
+        fb_inheritance_options()
     );
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_method_call_has_wrong_arg_count_then_error,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD SetSpeed
@@ -350,12 +349,12 @@ VAR
 END_VAR
 m.SetSpeed(1.0, 2.0);
 END_PROGRAM",
-        Problem::FunctionInvocationRequiresFormal
+        [Problem::FunctionInvocationRequiresFormal],
+        fb_inheritance_options()
     );
 
-    rule_errn_with!(
+    rule_err!(
         apply_when_two_undeclared_methods_called_then_reports_both,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD Start
@@ -370,17 +369,16 @@ END_VAR
 m.NopeOne();
 m.NopeTwo();
 END_PROGRAM",
-        2,
-        Problem::MethodNotFound
+        [Problem::MethodNotFound; 2],
+        fb_inheritance_options()
     );
 
     // ---------------------------------------------------------------------
     // Method calls in expression position.
     // ---------------------------------------------------------------------
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_method_with_return_type_called_in_expression_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD IsRunning : BOOL
@@ -394,13 +392,13 @@ VAR
     b : BOOL;
 END_VAR
 b := m.IsRunning();
-END_PROGRAM"
+END_PROGRAM",
+        fb_inheritance_options()
     );
 
-    rule_ok_with!(
+    rule_ok!(
         /// The value is discarded, as in CODESYS and TwinCAT.
         apply_when_method_with_return_type_called_as_statement_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD IsRunning : BOOL
@@ -413,12 +411,12 @@ VAR
     m : FB_Motor;
 END_VAR
 m.IsRunning();
-END_PROGRAM"
+END_PROGRAM",
+        fb_inheritance_options()
     );
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_method_without_return_type_called_in_expression_then_error,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD Start
@@ -433,14 +431,14 @@ VAR
 END_VAR
 b := m.Start();
 END_PROGRAM",
-        Problem::MethodCallWithoutReturnValue
+        [Problem::MethodCallWithoutReturnValue],
+        fb_inheritance_options()
     );
 
-    rule_err1_with!(
+    rule_err!(
         /// A method called in an argument of a statement call is in expression
         /// position, even though the outer call is not.
         apply_when_void_method_is_argument_of_statement_call_then_error,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD Start
@@ -460,14 +458,14 @@ VAR
 END_VAR
 m.SetRunning(m.Start());
 END_PROGRAM",
-        Problem::MethodCallWithoutReturnValue
+        [Problem::MethodCallWithoutReturnValue],
+        fb_inheritance_options()
     );
 
-    rule_err1_with!(
+    rule_err!(
         /// Arguments are checked like any other call: before method calls could
         /// appear in expressions, this rule never looked inside them.
         apply_when_undeclared_method_is_argument_then_error,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD Scaled : REAL
@@ -485,6 +483,7 @@ VAR
 END_VAR
 v := m.Scaled(m.Nope());
 END_PROGRAM",
-        Problem::MethodNotFound
+        [Problem::MethodNotFound],
+        fb_inheritance_options()
     );
 }
