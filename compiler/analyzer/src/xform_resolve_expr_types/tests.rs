@@ -58,6 +58,7 @@ fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Resolved {
     .unwrap();
     let library = apply(
         library,
+        &symbol_environment,
         &mut type_environment,
         &function_environment,
         options,

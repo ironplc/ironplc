@@ -102,6 +102,34 @@ half-transformed node. A declaration the pass could not transform is left in a
 state later passes already handle — unchanged, or normalized to a placeholder —
 and nothing the author wrote is dropped from it.
 
+### Name and Type Lookup
+
+**A rule looks a name up in the environments; it never builds a table of its
+own.** Resolution builds one answer to "what does this name declare, and what is
+its type", and every rule reads that answer:
+
+- `SymbolEnvironment::find(name, scope)` (`symbol_environment.rs`) resolves a
+  name from a scope: the enclosing scopes innermost first, then the function
+  blocks the outermost one `EXTENDS`, then the global scope. Its `SymbolInfo`
+  carries the variable's section, declared qualifier, address and `type_id`. A
+  function's or method's own name is its `ResultVariable`.
+- `ScopeTracker` names the scope a visitor is in. Feed it from `enter_scope`
+  and `exit_scope`, and pass `current()` to `find`.
+- `variable_type::declared` gives a name's declared `IntermediateType`, and
+  `variable_type::of` walks a reference such as `s.field[i]` to the element it
+  names. `TypeEnvironment::get_by_id` answers for any `type_id`.
+
+A rule that copies declarations into a `HashMap` or `ScopedTable` of its own as
+it walks gets the scoping wrong in ways the environment already gets right: it
+sees only what it has visited so far, lets one method's locals leak into the
+next, or misses an inherited field. When the environment lacks something a rule
+needs, add it to the environment, where every rule then has it, rather than
+working around it in the rule.
+
+Test such a rule against the context resolution builds, with the
+`rule_ctx_*` macros in `test_macros.rs`. The `rule_*` macros pass an empty
+context.
+
 ## Testing Architecture
 
 ### Test Organization
@@ -215,9 +243,10 @@ For information on running tests, coverage analysis, and debugging tools, see [c
 ### Adding New Analysis Passes
 1. Create focused modules under 1000 lines
 2. Use consistent transformation patterns
-3. Integrate with existing error handling
-4. Add appropriate test coverage
-5. Document the analysis purpose and scope
+3. Look names and types up in the environments (see [Name and Type Lookup](#name-and-type-lookup))
+4. Integrate with existing error handling
+5. Add appropriate test coverage
+6. Document the analysis purpose and scope
 
 ### Adding New Problem Codes
 Follow the established problem code lifecycle:

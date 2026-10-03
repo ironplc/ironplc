@@ -115,21 +115,37 @@ fn run_of(c: char) -> Run {
     }
 }
 
-/// Splits an identifier into its runs of letters, digits and `_`. Each `_`
-/// is a token of its own, as the grammar reads it as a separator.
+/// Splits an identifier into its runs of letters, digits and `_`. An `_`
+/// with a digit on both sides belongs to the number (`1_000`); any other
+/// `_` is a token of its own, as the grammar reads it as a separator.
 fn split(tok: Token) -> Vec<Token> {
+    let chars: Vec<(usize, char)> = tok.text.char_indices().collect();
+    let is_digit_at = |i: Option<usize>| {
+        i.and_then(|i| chars.get(i))
+            .is_some_and(|&(_, c)| c.is_ascii_digit())
+    };
+    let runs: Vec<Run> = chars
+        .iter()
+        .enumerate()
+        .map(|(i, &(_, c))| match run_of(c) {
+            Run::Underscore if is_digit_at(i.checked_sub(1)) && is_digit_at(Some(i + 1)) => {
+                Run::Digit
+            }
+            run => run,
+        })
+        .collect();
+
     let mut pieces = Vec::new();
     let mut start = 0;
-    let chars: Vec<(usize, char)> = tok.text.char_indices().collect();
-    for (i, &(_, c)) in chars.iter().enumerate() {
-        let next = chars.get(i + 1);
+    for (i, &run) in runs.iter().enumerate() {
+        let next = runs.get(i + 1);
         let ends_run = match next {
             None => true,
-            Some(&(_, n)) => run_of(c) == Run::Underscore || run_of(n) != run_of(c),
+            Some(&n) => run == Run::Underscore || n != run,
         };
         if ends_run {
-            let end = next.map_or(tok.text.len(), |&(o, _)| o);
-            pieces.push((start, end, run_of(c)));
+            let end = chars.get(i + 1).map_or(tok.text.len(), |&(o, _)| o);
+            pieces.push((start, end, run));
             start = end;
         }
     }
@@ -190,6 +206,19 @@ mod test {
             vec!["TIME", "#", "1", "h", "_", "30", "m"],
             texts("TIME#1h_30m")
         );
+    }
+
+    #[test]
+    fn apply_when_underscore_between_digits_then_part_of_number() {
+        assert_eq!(
+            vec!["T", "#", "1", "m", "1_000", "ms"],
+            texts("T#1m1_000ms")
+        );
+    }
+
+    #[test]
+    fn apply_when_underscore_after_digits_before_unit_then_separate_token() {
+        assert_eq!(vec!["T", "#", "1", "d", "2", "_", "h"], texts("T#1d2_h"));
     }
 
     #[test]
