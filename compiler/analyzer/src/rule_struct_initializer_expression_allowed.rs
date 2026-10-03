@@ -89,7 +89,6 @@ impl Visitor<Infallible> for RuleStructInitializerExpression {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
 
     fn opts_ref_to() -> CompilerOptions {
         CompilerOptions {
@@ -182,18 +181,12 @@ VAR
 END_VAR
 END_PROGRAM";
 
-    #[test]
-    fn apply_when_struct_init_is_unary_expression_then_label_covers_the_operator() {
-        let opts = CompilerOptions::default();
-        let errors = rule_diagnostics(apply, UNARY_SOURCE, &opts);
-
-        assert_eq!(
-            diagnostic_codes(&errors),
-            [Problem::StructInitializerExpressionNotAllowed.code()]
-        );
-        let location = &errors[0].primary.location;
-        assert_eq!("-g", &UNARY_SOURCE[location.start..location.end]);
-    }
+    rule_err_at!(
+        apply_when_struct_init_is_unary_expression_then_label_covers_the_operator,
+        UNARY_SOURCE,
+        Problem::StructInitializerExpressionNotAllowed,
+        "-g"
+    );
 
     rule_ok!(
         apply_when_struct_init_is_bare_variable_and_flag_enabled_then_ok,
@@ -240,30 +233,19 @@ END_FUNCTION_BLOCK",
         [Problem::StructInitializerExpressionNotAllowed]
     );
 
-    /// ADR-0040 requires a dialect violation to point at the construct's real
-    /// span. A compound expression used to report byte offset 0, because
-    /// every literal kind but two carried a default span and
-    /// `Located for ExprKind` joins its operands' spans.
-    #[test]
-    fn apply_when_value_is_compound_expression_then_label_spans_the_expression() {
-        const PROGRAM: &str = "TYPE MyStruct : STRUCT x : INT; END_STRUCT; END_TYPE
+    rule_err_at!(
+        /// ADR-0040 requires a dialect violation to point at the construct's real
+        /// span. A compound expression used to report byte offset 0, because
+        /// every literal kind but two carried a default span and
+        /// `Located for ExprKind` joins its operands' spans.
+        apply_when_value_is_compound_expression_then_label_spans_the_expression,
+        "TYPE MyStruct : STRUCT x : INT; END_STRUCT; END_TYPE
 PROGRAM main
 VAR
     s : MyStruct := (x := 1 + 1);
 END_VAR
-END_PROGRAM";
-        let opts = CompilerOptions::default();
-        let diagnostics = rule_diagnostics(apply, PROGRAM, &opts);
-
-        assert_eq!(
-            diagnostic_codes(&diagnostics),
-            [Problem::StructInitializerExpressionNotAllowed.code()]
-        );
-        let location = &diagnostics[0].primary.location;
-        assert_eq!(
-            "1 + 1",
-            &PROGRAM[location.start..location.end],
-            "label should span the expression, not start at byte 0"
-        );
-    }
+END_PROGRAM",
+        Problem::StructInitializerExpressionNotAllowed,
+        "1 + 1"
+    );
 }
