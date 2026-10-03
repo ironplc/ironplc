@@ -392,7 +392,7 @@ END_PROGRAM";
         assert!(result.is_ok());
     }
 
-    rule_ctx_err!(
+    rule_ctx_err1!(
         apply_when_system_uptime_global_disabled_then_direct_access_error,
         "
 PROGRAM main
@@ -401,7 +401,8 @@ VAR
 END_VAR
 
 t := __SYSTEM_UP_TIME;
-END_PROGRAM"
+END_PROGRAM",
+        Problem::VariableUndefined
     );
 
     // ---------------------------------------------------------------------

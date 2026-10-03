@@ -184,6 +184,8 @@ impl Visitor<Infallible> for RuleFunctionBlockUse<'_> {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_problems::Problem;
+
     rule_ok!(
         apply_when_instance_declared_with_member_initializer_then_ok,
         "
@@ -237,7 +239,7 @@ FB_INSTANCE(IN1 := TRUE);
 END_FUNCTION_BLOCK"
     );
 
-    rule_err!(
+    rule_err1!(
         apply_when_mixed_formal_nonformal_then_error,
         "
 FUNCTION_BLOCK Callee
@@ -252,10 +254,11 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(IN1 := TRUE, FALSE);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::FunctionCallMixedArgTypes
     );
 
-    rule_err!(
+    rule_err1!(
         apply_when_function_block_definition_not_defined_then_error,
         "
 FUNCTION_BLOCK Caller
@@ -263,7 +266,8 @@ VAR
 IN1: BOOL;
 END_VAR
 FB_INSTANCE(IN1 := TRUE);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::FunctionBlockNotInScope
     );
 
     rule_ok!(
@@ -321,7 +325,7 @@ FB_INSTANCE(IN1 := TRUE, IN2 := FALSE);
 END_FUNCTION_BLOCK"
     );
 
-    rule_err!(
+    rule_err1!(
         apply_when_formal_names_incorrect_then_error,
         "
 FUNCTION_BLOCK Callee
@@ -332,10 +336,11 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(BAR := TRUE);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::FunctionInvocationMissingInput
     );
 
-    rule_err!(
+    rule_err1!(
         apply_when_nonformal_names_too_few_then_error,
         "
 FUNCTION_BLOCK Callee
@@ -350,10 +355,11 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(TRUE);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::FunctionInvocationRequiresFormal
     );
 
-    rule_err!(
+    rule_err1!(
         apply_when_nonformal_names_too_many_then_error,
         "
 FUNCTION_BLOCK Callee
@@ -367,10 +373,11 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(TRUE, FALSE);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::FunctionInvocationRequiresFormal
     );
 
-    rule_err!(
+    rule_err1!(
         apply_when_one_input_name_incorrect_then_error,
         "
 FUNCTION_BLOCK Callee
@@ -384,10 +391,11 @@ VAR
 FB_INSTANCE : Callee;
 END_VAR
 FB_INSTANCE(IN1 := TRUE, BAR := TRUE);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::FunctionInvocationMissingInput
     );
 
-    rule_err!(
+    rule_err1!(
         apply_when_one_output_name_incorrect_then_error,
         "
 FUNCTION_BLOCK Callee
@@ -402,7 +410,8 @@ FB_INSTANCE : Callee;
 LOCAL: BOOL;
 END_VAR
 FB_INSTANCE(OUT2 => LOCAL);
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::FunctionInvocationUndefinedOutput
     );
 
     rule_ok!(

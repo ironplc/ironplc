@@ -261,7 +261,7 @@ mod test {
 
     use super::*;
 
-    rule_err!(
+    rule_err1!(
         apply_when_const_simple_type_missing_initializer_then_error,
         "
 FUNCTION_BLOCK LOGGER
@@ -269,10 +269,11 @@ VAR CONSTANT
 ResetCounterValue : INT;
 END_VAR
 
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer
     );
 
-    rule_err!(
+    rule_err1!(
         apply_when_const_enum_type_missing_initializer_then_error,
         "
 TYPE
@@ -284,10 +285,11 @@ VAR CONSTANT
 ResetCounterValue : LOGLEVEL;
 END_VAR
 
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer
     );
 
-    rule_err!(
+    rule_err1!(
         apply_when_const_enum_values_type_missing_initializer_then_error,
         "
 FUNCTION_BLOCK LOGGER
@@ -295,7 +297,8 @@ VAR CONSTANT
 ResetCounterValue : (INFO, WARN);
 END_VAR
 
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer
     );
 
     rule_ok!(
@@ -481,7 +484,7 @@ END_FUNCTION_BLOCK"
 
     // When a nested structure's type has fields without defaults,
     // the outer const should require initialization
-    rule_ctx_err!(
+    rule_ctx_err1!(
         apply_when_const_nested_struct_inner_missing_defaults_then_error,
         "
 TYPE
@@ -498,7 +501,8 @@ FUNCTION_BLOCK MAIN
 VAR CONSTANT
     myOuter : Outer;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer
     );
 
     // Test deeply nested structures where all fields have defaults
@@ -524,7 +528,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_err!(
+    rule_err1!(
         apply_when_const_array_type_missing_initializer_then_error,
         "
 FUNCTION_BLOCK LOGGER
@@ -532,7 +536,8 @@ VAR CONSTANT
 ResetCounterValue : ARRAY[1..10] OF INT;
 END_VAR
 
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer
     );
 
     rule_ok!(

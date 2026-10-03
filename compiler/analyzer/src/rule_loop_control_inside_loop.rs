@@ -125,7 +125,7 @@ mod tests {
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use ironplc_problems::Problem;
 
-    rule_err_code!(
+    rule_err1!(
         apply_when_exit_in_program_body_then_p4021,
         "
         PROGRAM main
@@ -134,7 +134,7 @@ mod tests {
         Problem::ExitOutsideLoop
     );
 
-    rule_err_code!(
+    rule_err1!(
         apply_when_exit_after_loop_then_p4021,
         "
         PROGRAM main
@@ -147,7 +147,7 @@ mod tests {
         Problem::ExitOutsideLoop
     );
 
-    rule_err_code!(
+    rule_err1!(
         apply_when_exit_in_if_outside_loop_then_p4021,
         "
         FUNCTION_BLOCK fb
@@ -214,7 +214,7 @@ mod tests {
         CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
     }
 
-    rule_err_code_with!(
+    rule_err1_with!(
         apply_when_continue_in_program_body_then_p4065,
         edition_3(),
         "
@@ -224,7 +224,7 @@ mod tests {
         Problem::ContinueOutsideLoop
     );
 
-    rule_err_code_with!(
+    rule_err1_with!(
         apply_when_continue_in_if_outside_loop_then_p4065,
         edition_3(),
         "

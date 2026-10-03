@@ -600,7 +600,7 @@ END_PROGRAM"
         assert!(result.is_ok(), "{result:?}");
     }
 
-    rule_ctx_err!(
+    rule_ctx_err1!(
         apply_when_in_out_argument_missing_then_error,
         "
 FUNCTION ADD_N : DINT
@@ -614,6 +614,7 @@ VAR
     result : DINT;
 END_VAR
     result := ADD_N(42);
-END_PROGRAM"
+END_PROGRAM",
+        Problem::FunctionCallWrongArgCount
     );
 }
