@@ -75,7 +75,13 @@ impl DeclTypeResolver<'_> {
             }
             InitialValueAssignmentKind::Array(a) => {
                 match array::try_from(name, &a.spec, env).ok()? {
-                    array::IntermediateResult::Type(attributes) => attributes,
+                    array::IntermediateResult::Type(attributes) => {
+                        let id = self.type_environment.insert_anonymous(attributes);
+                        if let SpecificationKind::Inline(elements) = &a.spec {
+                            self.type_environment.record_array_element(id, elements);
+                        }
+                        return Some(id);
+                    }
                     array::IntermediateResult::Alias(alias) => return env.id_of(&alias),
                 }
             }
@@ -88,7 +94,9 @@ impl DeclTypeResolver<'_> {
                         let spec = SpecificationKind::Inline(subranges.clone());
                         match array::try_from(name, &spec, env).ok()? {
                             array::IntermediateResult::Type(attributes) => {
-                                self.type_environment.insert_anonymous(attributes)
+                                let id = self.type_environment.insert_anonymous(attributes);
+                                self.type_environment.record_array_element(id, subranges);
+                                id
                             }
                             array::IntermediateResult::Alias(alias) => env.id_of(&alias)?,
                         }
@@ -253,5 +261,75 @@ END_PROGRAM
             .unwrap()
             .representation
             .is_subrange());
+    }
+
+    const ARRAYS: &str = "
+TYPE
+  POINT : STRUCT x : DINT; END_STRUCT;
+  POINTS : ARRAY[1..2] OF POINT;
+  MORE_POINTS : POINTS;
+END_TYPE
+PROGRAM main
+VAR
+  inline_points : ARRAY[1..2] OF POINT;
+  named_points : POINTS;
+  alias_points : MORE_POINTS;
+  ints : ARRAY[1..2] OF INT;
+  refs : ARRAY[1..2] OF REF_TO INT;
+  ref_points : REF_TO ARRAY[1..2] OF POINT;
+END_VAR
+END_PROGRAM
+";
+
+    /// The element type of the array variable `name` declares.
+    fn element_of(variable: &str) -> (Option<TypeId>, SemanticContext) {
+        let (library, context) = resolve(ARRAYS);
+        let array = declared_ids(&library)[variable].unwrap();
+        (context.types().element_type(array), context)
+    }
+
+    #[rstest::rstest]
+    #[case::inline("inline_points")]
+    #[case::named("named_points")]
+    #[case::alias("alias_points")]
+    fn element_type_when_array_of_structure_then_structure(#[case] variable: &str) {
+        let (element, context) = element_of(variable);
+        assert_eq!(element, context.types().id_of(&TypeName::from("POINT")));
+    }
+
+    #[test]
+    fn element_type_when_array_of_elementary_then_elementary() {
+        let (element, context) = element_of("ints");
+        assert_eq!(element, context.types().id_of(&TypeName::from("INT")));
+    }
+
+    #[test]
+    fn element_type_when_array_of_references_then_reference_to_element() {
+        let (element, context) = element_of("refs");
+        let types = context.types();
+        assert_eq!(
+            types.referenced_type(element.unwrap()),
+            types.id_of(&TypeName::from("INT"))
+        );
+    }
+
+    #[test]
+    fn element_type_when_reference_to_array_then_array_element() {
+        let (library, context) = resolve(ARRAYS);
+        let types = context.types();
+        let reference = declared_ids(&library)["ref_points"].unwrap();
+        let array = types.referenced_type(reference).unwrap();
+        assert_eq!(
+            types.element_type(array),
+            types.id_of(&TypeName::from("POINT"))
+        );
+    }
+
+    #[test]
+    fn element_type_when_not_array_then_none() {
+        let (_library, context) = resolve(ARRAYS);
+        let types = context.types();
+        let point = types.id_of(&TypeName::from("POINT")).unwrap();
+        assert_eq!(types.element_type(point), None);
     }
 }

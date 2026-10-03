@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::{
-    common::{ElementaryTypeName, ReferenceTarget, SpecificationKind, TypeName},
+    common::{ArraySubranges, ElementaryTypeName, ReferenceTarget, SpecificationKind, TypeName},
     core::{Located, SourceSpan},
     diagnostic::{Diagnostic, Label},
     textual::{Expr, ExprType},
@@ -295,6 +295,11 @@ pub struct TypeEnvironment {
     references: HashMap<TypeId, TypeId>,
     /// The type each reference type in `references` references.
     referenced: HashMap<TypeId, TypeId>,
+    /// The element type of each array type whose element is not
+    /// elementary, by the id of the array type. The representation of an
+    /// array holds its element's structure but not its name, so an array of
+    /// `Point` could not otherwise be traced back to `Point`.
+    array_elements: HashMap<TypeId, TypeId>,
     /// The repeated declarations met while populating, until the transform
     /// that populates the environment drains them with
     /// [`Self::take_duplicates`]. Recorded rather than returned so that a
@@ -312,6 +317,7 @@ impl TypeEnvironment {
             next_id: type_id::FIRST_ALLOCATED,
             references: HashMap::new(),
             referenced: HashMap::new(),
+            array_elements: HashMap::new(),
             duplicates: Vec::new(),
         }
     }
@@ -473,12 +479,68 @@ impl TypeEnvironment {
         })?;
 
         self.insert_type(type_name, base_intermediate_type.clone());
+        let element = self
+            .id_of(base_type_name)
+            .and_then(|base| self.array_elements.get(&base).copied());
+        if let (Some(alias), Some(element)) = (self.id_of(type_name), element) {
+            self.array_elements.entry(alias).or_insert(element);
+        }
         Ok(())
     }
 
     /// Gets the type from the environment.
     pub fn get(&self, type_name: &TypeName) -> Option<&crate::type_attributes::TypeAttributes> {
         self.get_by_id(self.id_of(type_name)?)
+    }
+
+    /// Records that the array type `array` has the element type
+    /// `elements` spells: the element's own type, or the reference type to
+    /// it for `ARRAY[..] OF REF_TO T`. Nothing is recorded when the element
+    /// type is not known.
+    pub(crate) fn record_array_element(&mut self, array: TypeId, elements: &ArraySubranges) {
+        let Some(element) = self.id_of(&elements.type_name.to_type_name()) else {
+            return;
+        };
+        let element = if elements.ref_to.is_some() {
+            match self.reference_to(element) {
+                Some(reference) => reference,
+                None => return,
+            }
+        } else {
+            element
+        };
+        self.array_elements.insert(array, element);
+    }
+
+    /// Records the element type of the array type named `array`, declared
+    /// with `spec`. An array declared as an alias of another
+    /// (`TYPE A : B; END_TYPE`) takes its element through
+    /// [`Self::insert_alias`] instead.
+    pub(crate) fn record_declared_array_element(
+        &mut self,
+        array: &TypeName,
+        spec: &SpecificationKind<ArraySubranges>,
+    ) {
+        if let (Some(id), SpecificationKind::Inline(elements)) = (self.id_of(array), spec) {
+            self.record_array_element(id, elements);
+        }
+    }
+
+    /// The id of the element type of the array type `array`, or `None` when
+    /// `array` is not an array type or its element type is not known.
+    ///
+    /// An element of elementary type is found from the array's
+    /// representation; any other is the one recorded where the array type
+    /// was declared.
+    pub fn element_type(&self, array: TypeId) -> Option<TypeId> {
+        if let Some(element) = self.array_elements.get(&array) {
+            return Some(*element);
+        }
+        let IntermediateType::Array { element_type, .. } = &self.get_by_id(array)?.representation
+        else {
+            return None;
+        };
+        self.id_of(&self.elementary_type_name_for(element_type)?)
     }
 
     /// The id of the type `type_name` names.
