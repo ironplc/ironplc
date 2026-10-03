@@ -135,6 +135,21 @@ pub(crate) fn compile_expr(
     expr: &Expr,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
+    // A 32-bit value lives in its slot sign-extended, so widening it to 64
+    // bits is a no-op when it is signed and a zero-extension when it is
+    // unsigned: a UDINT or DWORD, or a DATE, TIME_OF_DAY or DATE_AND_TIME
+    // (ADR-0025). Widening here, once, covers every expression that yields
+    // its own type whatever it is asked for -- a typed time call, a user
+    // function, MOVE, an array element -- as well as the ones that honour
+    // `op_type`. A TIME is signed (ADR-0021) and needs nothing.
+    if op_type.0 == OpWidth::W64 {
+        let unsigned_32 = (OpWidth::W32, Signedness::Unsigned);
+        if concrete_op_type_from_expr(ctx, expr) == Some(unsigned_32) {
+            compile_expr(emitter, ctx, expr, unsigned_32)?;
+            emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
+            return Ok(());
+        }
+    }
     match &expr.kind {
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
         // A variable read at a different width is read at its own and
