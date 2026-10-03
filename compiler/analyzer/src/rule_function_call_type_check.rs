@@ -134,6 +134,9 @@ impl RuleFunctionCallTypeCheck<'_> {
         let Some(target_type) = self.declared_type_name(&nv.name) else {
             return;
         };
+        if self.generic_return_bound_to_mismatched_argument(func_call) {
+            return;
+        }
 
         if let Err(mismatch) =
             value_type::check(self.context.types(), &target_type, value, self.options)
@@ -148,6 +151,38 @@ impl RuleFunctionCallTypeCheck<'_> {
                 .with_context("target_type", &target_type.to_string()),
             );
         }
+    }
+
+    /// Whether `call`'s return type is a generic category bound by an argument
+    /// that is itself outside that category.
+    ///
+    /// `xform_resolve_expr_types` narrows a generic return type to the type
+    /// of the argument that binds it, even when that argument fails the
+    /// category: `SIN(b)` on a `BOOL` is typed `BOOL`. The argument is already
+    /// reported (P4026, by `visit_function`), so checking the return type
+    /// would report the same mistake a second time.
+    fn generic_return_bound_to_mismatched_argument(&self, call: &Function) -> bool {
+        let Some(signature) = self.context.functions.get(&call.name) else {
+            return false;
+        };
+        let Some(return_type) = signature.return_type.as_ref().map(|t| t.to_type_name()) else {
+            return false;
+        };
+        if GenericTypeName::try_from(&return_type.name).is_err() {
+            return false;
+        }
+        signature
+            .bind_inputs(&call.param_assignment)
+            .any(|(param, argument)| {
+                param.param_type == return_type
+                    && value_type::check(
+                        self.context.types(),
+                        &param.param_type,
+                        argument,
+                        self.options,
+                    )
+                    .is_err()
+            })
     }
 
     /// Checks whether the value assigned in an assignment statement is
@@ -1370,27 +1405,60 @@ END_PROGRAM",
 
     // --- Standard-library argument type checks ---
 
-    // Not asserted exactly: besides P4026 this also reports P4027, because
-    // expression typing narrows SIN's ANY_REAL return to BOOL, a type outside
-    // that category, and the return check then flags BOOL -> REAL.
-    #[test]
-    fn apply_when_stdlib_sin_arg_is_bool_then_arg_type_error() {
-        let program = "
+    // Reported once, as the argument: SIN's ANY_REAL return is bound to that
+    // same BOOL argument, so its return type is not checked as well.
+    rule_err!(
+        apply_when_stdlib_sin_arg_is_bool_then_arg_type_error,
+        "
 PROGRAM main
 VAR
     b : BOOL;
     r : REAL;
 END_VAR
     r := SIN(b);
-END_PROGRAM";
+END_PROGRAM",
+        [Problem::FunctionCallArgTypeMismatch]
+    );
 
-        let codes = rule_codes(apply, program, &CompilerOptions::default());
+    // The argument fits ANY_REAL, so the narrowed REAL return is checked
+    // against the BOOL target.
+    rule_err!(
+        apply_when_stdlib_sin_arg_fits_and_target_differs_then_return_type_error,
+        "
+PROGRAM main
+VAR
+    x : REAL;
+    b : BOOL;
+END_VAR
+    b := SIN(x);
+END_PROGRAM",
+        [Problem::FunctionCallReturnTypeMismatch]
+    );
 
-        assert!(
-            codes.contains(&Problem::FunctionCallArgTypeMismatch.code().to_string()),
-            "{codes:?}"
-        );
-    }
+    // A concrete return type does not come from the argument, so a bad
+    // argument and a mismatched return are two mistakes.
+    rule_err!(
+        apply_when_user_function_arg_and_return_both_mismatch_then_both_reported,
+        "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    r : REAL;
+    b : BOOL;
+END_VAR
+    b := TAKES_INT(r);
+END_PROGRAM",
+        [
+            Problem::FunctionCallReturnTypeMismatch,
+            Problem::FunctionCallArgTypeMismatch
+        ]
+    );
 
     rule_ok!(
         apply_when_stdlib_sin_arg_is_real_then_ok,
