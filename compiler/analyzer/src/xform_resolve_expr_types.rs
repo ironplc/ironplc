@@ -20,41 +20,28 @@ use crate::intermediate_type::IntermediateType;
 use crate::intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, Overload,
 };
-use crate::intermediates::inherited_fields::collect_inherited_fields;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
-use crate::system_globals::SYSTEM_UPTIME_GLOBALS;
+use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
-use crate::variable_type::{Declarations, Declared};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: Library,
+    symbols: &SymbolEnvironment,
     type_environment: &mut TypeEnvironment,
     function_environment: &FunctionEnvironment,
     options: &CompilerOptions,
 ) -> Result<Library, Vec<Diagnostic>> {
-    let inherited_fields = collect_inherited_fields(&lib);
     let method_return_types = collect_method_return_types(&lib);
     let mut resolver = ExprTypeResolver {
-        declarations: Declarations::new(),
-        inherited_fields,
+        symbols,
+        scope: ScopeTracker::default(),
         method_return_types,
         type_environment,
         function_environment,
         options: *options,
     };
-
-    // Implicit system globals live in the outermost scope, so every POU
-    // body sees them and a POU-local of the same name shadows them.
-    if options.allow_system_uptime_global {
-        for global in &SYSTEM_UPTIME_GLOBALS {
-            resolver.declarations.add(
-                &Id::from(global.name),
-                Declared::Typed(TypeName::from(global.type_name)),
-            );
-        }
-    }
 
     resolver.fold_library(lib).map_err(|e| vec![e])
 }
@@ -147,34 +134,10 @@ fn intermediate_to_elementary_type_name(
     }
 }
 
-/// Walks a nested [`SymbolicVariableKind`] chain to find the root named variable.
-///
-/// For example, `pt^[i]` is `Array { Deref { Named("pt") } }` — this returns `"pt"`.
-fn find_base_variable_name(var: &SymbolicVariableKind) -> Option<&Id> {
-    match var {
-        SymbolicVariableKind::Named(nv) => Some(&nv.name),
-        SymbolicVariableKind::Deref(dv) => find_base_variable_name(&dv.variable),
-        SymbolicVariableKind::Array(av) => find_base_variable_name(&av.subscripted_variable),
-        SymbolicVariableKind::BitAccess(ba) => find_base_variable_name(&ba.variable),
-        SymbolicVariableKind::PartialAccess(pa) => find_base_variable_name(&pa.variable),
-        _ => None,
-    }
-}
-
 struct ExprTypeResolver<'a> {
-    /// Declared type of every variable in scope.
-    ///
-    /// The outermost scope holds `VAR_GLOBAL` and the implicit system
-    /// globals; each POU the traversal enters pushes a scope of its own.
-    /// A method's scope nests inside its function block's, so a method
-    /// body sees the instance's fields and a method local shadows a
-    /// field of the same name.
-    declarations: Declarations<'static>,
-    /// Fields inherited via `EXTENDS`, per function block -- see
-    /// `intermediates::inherited_fields`. Seeded into `var_types` before a
-    /// function block's own fields so unqualified references to a base
-    /// class's fields type-check correctly.
-    inherited_fields: HashMap<TypeName, Vec<VarDecl>>,
+    /// The variables in scope, by the scope the traversal is in.
+    symbols: &'a SymbolEnvironment,
+    scope: ScopeTracker,
     /// See [`collect_method_return_types`].
     method_return_types: HashMap<TypeName, HashMap<Id, Option<TypeName>>>,
     type_environment: &'a mut TypeEnvironment,
@@ -185,117 +148,6 @@ struct ExprTypeResolver<'a> {
 }
 
 impl ExprTypeResolver<'_> {
-    /// Registers a declaration's own name as its result variable, so
-    /// `Foo := ...` inside `FUNCTION Foo` (or a `METHOD Foo : T`)
-    /// resolves to the declared return type.
-    fn insert_result_variable(&mut self, name: &Id, return_type: &FunctionReturnType) {
-        self.declarations
-            .add(name, Declared::Typed(return_type.to_type_name()));
-    }
-
-    /// Records a variable declaration in the current scope.
-    fn insert(&mut self, node: &VarDecl) {
-        self.declarations
-            .add_if(node.identifier.symbolic_id(), Declared::of(node));
-    }
-
-    /// Returns the type name a variable in scope was declared with.
-    ///
-    /// `None` for a variable that is not in scope and for one whose type
-    /// has no name to give: an inline enumeration, an inline array, or a
-    /// declaration without a type.
-    fn declared_type_name(&self, id: &Id) -> Option<TypeName> {
-        let init = match self.declarations.find(id)? {
-            Declared::Variable { init, .. } => init,
-            Declared::Typed(type_name) => return Some(type_name.clone()),
-        };
-        match init.as_ref() {
-            InitialValueAssignmentKind::None(_) => None,
-            InitialValueAssignmentKind::Simple(si) => Some(si.type_name.clone()),
-            InitialValueAssignmentKind::String(si) => Some(si.type_name()),
-            InitialValueAssignmentKind::EnumeratedValues(_) => None,
-            InitialValueAssignmentKind::EnumeratedType(e) => Some(e.type_name.clone()),
-            InitialValueAssignmentKind::FunctionBlock(fb) => Some(fb.type_name.clone()),
-            InitialValueAssignmentKind::FunctionBlockCall(fbc) => Some(fbc.type_name.clone()),
-            InitialValueAssignmentKind::Subrange(spec) => match spec {
-                SpecificationKind::Named(tn) => Some(tn.clone()),
-                SpecificationKind::Inline(sr) => Some(TypeName::from(&sr.type_name.to_string())),
-            },
-            InitialValueAssignmentKind::Structure(s) => Some(s.type_name.clone()),
-            InitialValueAssignmentKind::Array(a) => match &a.spec {
-                SpecificationKind::Named(tn) => Some(tn.clone()),
-                SpecificationKind::Inline(_) => None,
-            },
-            // An inline array target has no single type name.
-            InitialValueAssignmentKind::Reference(ref_init) => ref_init.target.type_name().cloned(),
-            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
-                type_name: tn,
-                ..
-            }) => Some(tn.clone()),
-            InitialValueAssignmentKind::SimpleExpr(se) => Some(se.type_name.clone()),
-        }
-    }
-
-    /// Returns the element type name of a variable in scope declared as an
-    /// array or a reference to one, so that `arr[i]` and `pt^[i]` resolve
-    /// to the element type.
-    ///
-    /// For `arr : ARRAY[0..10] OF INT` this is `"int"`; for
-    /// `pt : REF_TO ARRAY[1..255] OF BYTE` it is `"byte"`.
-    fn declared_element_type_name(&self, id: &Id) -> Option<TypeName> {
-        let Declared::Variable { init, .. } = self.declarations.find(id)? else {
-            // A result variable or system global is never subscripted.
-            return None;
-        };
-        match init.as_ref() {
-            // ARRAY[...] OF T (inline spec)
-            InitialValueAssignmentKind::Array(a) => match &a.spec {
-                SpecificationKind::Inline(inline) => {
-                    Some(self.resolve_element_type_name(&inline.type_name))
-                }
-                SpecificationKind::Named(tn) => self.element_type_from_named_array(tn),
-            },
-            // REF_TO ARRAY[...] OF T or REF_TO <named_array_type>
-            InitialValueAssignmentKind::Reference(ref_init) => match &ref_init.target {
-                ReferenceTarget::Array(subranges) => {
-                    Some(self.resolve_element_type_name(&subranges.type_name))
-                }
-                ReferenceTarget::Named(tn) => self.element_type_from_named_array(tn),
-            },
-            // Named type that may be an array alias (e.g., `arr : MyArr`
-            // where `TYPE MyArr : ARRAY[0..10] OF INT; END_TYPE`)
-            InitialValueAssignmentKind::Simple(si) => {
-                self.element_type_from_named_array(&si.type_name)
-            }
-            // Late-resolved type that may be an array alias
-            InitialValueAssignmentKind::LateResolvedType(LateResolvedInitializer {
-                type_name: tn,
-                ..
-            }) => self.element_type_from_named_array(tn),
-            _ => None,
-        }
-    }
-
-    /// Resolves an [`ArrayElementType`] to a canonical elementary type name.
-    fn resolve_element_type_name(&self, elem: &ArrayElementType) -> TypeName {
-        let tn = elem.to_type_name();
-        self.type_environment
-            .resolve_elementary_type_name(&tn)
-            .unwrap_or(tn)
-    }
-
-    /// Looks up a named type in the type environment; if it is an array,
-    /// returns the element type name.
-    fn element_type_from_named_array(&self, type_name: &TypeName) -> Option<TypeName> {
-        let attrs = self.type_environment.get(type_name)?;
-        match &attrs.representation {
-            IntermediateType::Array { element_type, .. } => {
-                self.type_environment.elementary_type_name_for(element_type)
-            }
-            _ => None,
-        }
-    }
-
     /// Determines the type of the value of an expression of `kind`, once its
     /// operands' types are known.
     fn resolve_type(&mut self, kind: &ExprKind) -> Option<ExprType> {
@@ -388,10 +240,12 @@ impl ExprTypeResolver<'_> {
                 let MethodReceiver::Instance(instance) = &call.receiver else {
                     return None;
                 };
-                let fb_type = self.declared_type_name(instance)?;
+                let fb_type = self
+                    .type_environment
+                    .name_of(self.declared_type_id(instance)?)?;
                 let return_type = self
                     .method_return_types
-                    .get(&fb_type)?
+                    .get(fb_type)?
                     .get(&call.method)?
                     .clone()?;
                 self.expr_type_named(return_type)
@@ -469,22 +323,18 @@ impl ExprTypeResolver<'_> {
         }
     }
 
-    /// The id of the type the variable `name` in scope was declared with.
+    /// The id of the type the variable `name` names from the current scope
+    /// was declared with.
     fn declared_type_id(&self, name: &Id) -> Option<TypeId> {
-        self.declarations
-            .find(name)
-            .and_then(|declared| declared.type_id(self.type_environment))
+        self.symbols.find(name, &self.scope.current())?.type_id
     }
 
     /// The id of the type of the value `var` names.
     fn variable_type_id(&self, var: &Variable) -> Option<TypeId> {
-        if let Variable::Symbolic(SymbolicVariableKind::Named(nv)) = var {
-            if let Some(id) = self.declared_type_id(&nv.name) {
-                return Some(id);
-            }
+        match var {
+            Variable::Symbolic(kind) => self.symbolic_type_id(kind),
+            Variable::Direct(_) => None,
         }
-        self.type_environment
-            .id_of(&self.resolve_variable_type(var)?)
     }
 
     fn resolve_const_type(&self, constant: &ConstantKind) -> Option<TypeName> {
@@ -548,18 +398,15 @@ impl ExprTypeResolver<'_> {
     /// Resolves a `SymbolicVariableKind` to the `IntermediateType` whose
     /// members it exposes.
     ///
-    /// For `Named`, looks up the variable's declared type and resolves it as a
-    /// structure or function block instance. For `Structured`, recursively
-    /// resolves the parent and finds the nested member type.
+    /// For `Structured`, recursively resolves the parent and finds the nested
+    /// member type. For anything else -- a variable, an array element, a
+    /// dereferenced reference -- takes the type its id names, when that is a
+    /// structure or function block.
     fn resolve_parent_struct_type<'b>(
         &'b self,
         kind: &SymbolicVariableKind,
     ) -> Option<&'b IntermediateType> {
         match kind {
-            SymbolicVariableKind::Named(nv) => {
-                let var_type = self.declared_type_name(&nv.name)?;
-                self.type_environment.resolve_member_access_type(&var_type)
-            }
             SymbolicVariableKind::Structured(sv) => {
                 let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
                 let field = parent_type
@@ -572,7 +419,13 @@ impl ExprTypeResolver<'_> {
                     None
                 }
             }
-            _ => None,
+            _ => {
+                let representation = &self
+                    .type_environment
+                    .get_by_id(self.symbolic_type_id(kind)?)?
+                    .representation;
+                representation.has_members().then_some(representation)
+            }
         }
     }
 
@@ -594,139 +447,64 @@ impl ExprTypeResolver<'_> {
         intermediate_to_elementary_type_name(self.type_environment, element_type)
     }
 
-    fn resolve_variable_type(&self, var: &Variable) -> Option<TypeName> {
-        match var {
-            Variable::Symbolic(SymbolicVariableKind::Named(nv)) => {
-                let declared = self.declared_type_name(&nv.name)?;
-                // Try to resolve to an elementary type. If the type is complex
-                // (enum, struct, etc.), keep the declared name.
-                Some(
-                    self.type_environment
-                        .resolve_elementary_type_name(&declared)
-                        .unwrap_or(declared),
-                )
-            }
-            Variable::Symbolic(SymbolicVariableKind::Array(arr_var)) => {
+    /// The id of the type of the value the symbolic variable `kind` names:
+    /// the declared type of a variable, the element type of a subscript,
+    /// the referenced type of a dereference and the field type of a member
+    /// access.
+    fn symbolic_type_id(&self, kind: &SymbolicVariableKind) -> Option<TypeId> {
+        match kind {
+            SymbolicVariableKind::Named(nv) => self.declared_type_id(&nv.name),
+            SymbolicVariableKind::Array(arr_var) => {
                 // Array subscript on a struct field (e.g. `DATA.DIRS[i, j]`).
-                // The base variable is a struct, not the array itself, so we
-                // resolve the field's type through the struct chain.
+                // A field's type is known by its representation only, so
+                // the element type is resolved through the struct chain.
                 if let SymbolicVariableKind::Structured(sv) = arr_var.subscripted_variable.as_ref()
                 {
-                    return self.resolve_struct_field_array_element_type(sv);
+                    return self
+                        .type_environment
+                        .id_of(&self.resolve_struct_field_array_element_type(sv)?);
                 }
-
-                // Array subscript: walk to base variable, return element type.
-                let base_name = find_base_variable_name(&arr_var.subscripted_variable)?;
-                let elem_type = self.declared_element_type_name(base_name)?;
-                Some(
-                    self.type_environment
-                        .resolve_elementary_type_name(&elem_type)
-                        .unwrap_or(elem_type),
-                )
+                let array = self.symbolic_type_id(&arr_var.subscripted_variable)?;
+                self.type_environment.element_type(array)
             }
-            Variable::Symbolic(SymbolicVariableKind::Structured(sv)) => {
-                self.resolve_structured_variable_type(sv)
+            SymbolicVariableKind::Structured(sv) => self
+                .type_environment
+                .id_of(&self.resolve_structured_variable_type(sv)?),
+            SymbolicVariableKind::BitAccess(_) => {
+                self.type_environment.id_of(&TypeName::from("BOOL"))
             }
-            Variable::Symbolic(SymbolicVariableKind::BitAccess(_)) => Some(TypeName::from("BOOL")),
-            Variable::Symbolic(SymbolicVariableKind::PartialAccess(pa)) => {
+            SymbolicVariableKind::PartialAccess(pa) => {
                 let type_name = match pa.size {
                     PartialAccessSize::Byte => "BYTE",
                     PartialAccessSize::Word => "WORD",
                     PartialAccessSize::DWord => "DWORD",
                     PartialAccessSize::LWord => "LWORD",
                 };
-                Some(TypeName::from(type_name))
+                self.type_environment.id_of(&TypeName::from(type_name))
             }
-            Variable::Symbolic(SymbolicVariableKind::Deref(deref_var)) => {
-                // Dereference: resolve the target type of the reference.
-                let base_name = find_base_variable_name(&deref_var.variable)?;
-                let declared = self.declared_type_name(base_name)?;
-                let attrs = self.type_environment.get(&declared)?;
-                if let Some(target) = attrs.representation.referenced_type() {
-                    self.type_environment.elementary_type_name_for(target)
-                } else {
-                    None
-                }
+            SymbolicVariableKind::Deref(deref_var) => {
+                let reference = self.symbolic_type_id(&deref_var.variable)?;
+                self.type_environment.referenced_type(reference)
             }
-            Variable::Symbolic(SymbolicVariableKind::SelfRef(_)) => {
+            SymbolicVariableKind::SelfRef(_) => {
                 // THIS^/SUPER^ has no resolvable type until function-block
                 // member resolution exists. Unreachable in practice:
                 // `fold_self_ref_variable` rejects the construct before any
                 // type resolution runs. See issue #1406.
                 None
             }
-            Variable::Direct(_) => None,
         }
     }
 }
 
 impl Fold<Diagnostic> for ExprTypeResolver<'_> {
-    fn fold_library(
-        &mut self,
-        node: ironplc_dsl::common::Library,
-    ) -> Result<ironplc_dsl::common::Library, Diagnostic> {
-        // Collect top-level VAR_GLOBAL types into the outermost scope,
-        // where they stay visible to every POU body the fold enters.
-        for element in &node.elements {
-            if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
-                for decl in decls {
-                    self.insert(decl);
-                }
-            }
-        }
-        node.recurse_fold(self)
-    }
-
-    /// Opens a declaration's scope and registers the types it declares.
-    ///
-    /// Replaces the per-POU `clear()` this pass used to do: clearing at a
-    /// method boundary would discard the enclosing function block's
-    /// fields, which a method body needs. A scope stack drops only what
-    /// the declaration itself added.
-    ///
-    /// The match is exhaustive so a new kind of scope has to state what
-    /// it contributes rather than silently contributing nothing -- which
-    /// in this pass means silently skipping type checks, not failing.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
-        self.declarations.enter();
-
-        match node {
-            ScopeNode::Function(node) => {
-                node.variables.iter().for_each(|v| self.insert(v));
-                self.insert_result_variable(&node.name, &node.return_type);
-            }
-            ScopeNode::FunctionBlock(node) => {
-                // Inherited fields first so the function block's own
-                // fields, inserted next into the same scope, win for a
-                // name declared in both. A program that reaches code
-                // generation never has such a name --
-                // `rule_extends_field_duplicated` (`P4044`) rejects it --
-                // but that rule runs after this transform, so this pass
-                // still needs a defined answer.
-                if let Some(fields) = self.inherited_fields.get(&node.name).cloned() {
-                    fields.iter().for_each(|v| self.insert(v));
-                }
-                node.variables.iter().for_each(|v| self.insert(v));
-            }
-            ScopeNode::Program(node) => {
-                node.variables.iter().for_each(|v| self.insert(v));
-            }
-            ScopeNode::Method(node) => {
-                node.all_variables().for_each(|v| self.insert(v));
-                // Only a method that declares a return type has a result
-                // variable; see `rule_use_declared_symbolic_var`, which
-                // rejects the assignment for one that does not.
-                if let Some(return_type) = &node.return_type {
-                    self.insert_result_variable(&node.name, return_type);
-                }
-            }
-        }
-
+        self.scope.enter(&node);
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.declarations.exit();
+        self.scope.exit();
     }
 
     fn fold_self_ref_variable(

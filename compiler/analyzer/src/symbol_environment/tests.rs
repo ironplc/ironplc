@@ -170,29 +170,56 @@ fn edge_cases_and_error_conditions_when_handling_edge_cases_then_handles_correct
 }
 
 #[test]
-fn get_enumeration_values_for_type_when_values_in_global_and_scoped_then_returns_matching_only() {
+fn get_enumeration_values_for_type_when_values_of_two_types_then_returns_matching_only() {
     let mut env = SymbolEnvironment::new();
     let enum_type = TypeName::from("COLOR");
     let other_type = TypeName::from("SIZE");
-
-    // Global enumeration value of the requested type.
-    env.insert_enumeration_value(&Id::from("RED"), &enum_type, &ScopeKind::Global)
-        .unwrap();
-    // Scoped enumeration value of the requested type.
-    let scope = ScopeKind::Named(Id::from("FB").into());
-    env.insert_enumeration_value(&Id::from("GREEN"), &enum_type, &scope)
-        .unwrap();
-    // Enumeration value of a different type (should be excluded).
-    env.insert_enumeration_value(&Id::from("SMALL"), &other_type, &ScopeKind::Global)
-        .unwrap();
-    // Non-enumeration symbol whose enum_type is None (should be excluded).
+    env.insert_enumeration_value(&Id::from("RED"), &enum_type);
+    env.insert_enumeration_value(&Id::from("SMALL"), &other_type);
+    env.insert_enumeration_value(&Id::from("GREEN"), &enum_type);
+    // A variable is not an enumeration value.
     env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
         .unwrap();
 
     let values = env.get_enumeration_values_for_type(&enum_type);
-    assert_eq!(values.len(), 2);
-    assert!(values.iter().any(|id| **id == Id::from("RED")));
-    assert!(values.iter().any(|id| **id == Id::from("GREEN")));
+
+    assert_eq!(values, vec![&Id::from("RED"), &Id::from("GREEN")]);
+}
+
+#[test]
+fn get_enumeration_values_for_type_when_two_types_share_value_then_each_keeps_it() {
+    let mut env = SymbolEnvironment::new();
+    let colors = TypeName::from("Colors");
+    let lights = TypeName::from("Lights");
+    env.insert_enumeration_value(&Id::from("Red"), &colors);
+    env.insert_enumeration_value(&Id::from("Green"), &colors);
+    env.insert_enumeration_value(&Id::from("Red"), &lights);
+
+    assert_eq!(
+        env.get_enumeration_values_for_type(&colors),
+        vec![&Id::from("Red"), &Id::from("Green")]
+    );
+    assert_eq!(
+        env.get_enumeration_values_for_type(&lights),
+        vec![&Id::from("Red")]
+    );
+}
+
+#[test]
+fn insert_when_global_shares_enumeration_value_name_then_both_kept() {
+    let mut env = SymbolEnvironment::new();
+    let colors = TypeName::from("Colors");
+    env.insert_enumeration_value(&Id::from("Red"), &colors);
+    global(&mut env, "Red", SymbolKind::Variable).unwrap();
+    env.duplicate_enumeration_values_for_alias(&colors, &TypeName::from("Paint"))
+        .unwrap();
+
+    let global = env.find(&Id::from("Red"), &ScopeKind::Global).unwrap();
+    assert_eq!(global.kind, SymbolKind::Variable);
+    assert_eq!(
+        env.get_enumeration_values_for_type(&colors),
+        vec![&Id::from("Red")]
+    );
 }
 
 #[test]
@@ -431,14 +458,14 @@ fn insert_variable_when_name_matches_type_then_ok() {
         .is_ok());
 }
 
-/// An enumeration value or structure element sharing a declaration's
-/// name is not a repeated declaration; those names have their own rules.
+/// A structure element sharing a declaration's name is not a repeated
+/// declaration; those names have their own rules.
 #[test]
-fn insert_when_enumeration_value_shares_type_name_then_ok() {
+fn insert_when_structure_element_shares_type_name_then_ok() {
     let mut env = SymbolEnvironment::new();
     global(&mut env, "Red", SymbolKind::Type).unwrap();
 
-    assert!(global(&mut env, "Red", SymbolKind::EnumerationValue).is_ok());
+    assert!(global(&mut env, "Red", SymbolKind::StructureElement).is_ok());
 }
 
 #[test]
@@ -544,8 +571,7 @@ fn get_enumeration_values_for_type_when_several_declared_then_returns_declaratio
     let enum_type = TypeName::from("Color");
     let values = names("value");
     for name in &values {
-        env.insert_enumeration_value(name, &enum_type, &ScopeKind::Global)
-            .unwrap();
+        env.insert_enumeration_value(name, &enum_type);
     }
 
     let actual = env.get_enumeration_values_for_type(&enum_type);
@@ -808,4 +834,45 @@ fn visible_variables_when_inherited_then_listed_once_nearest_first() {
     let names: Vec<String> = visible.iter().map(|(name, _)| name.to_string()).collect();
 
     assert_eq!(names, vec!["speed", "limit"]);
+}
+
+fn self_types(env: &SymbolEnvironment, scope: &ScopeKind) -> (Option<String>, Option<String>) {
+    let name = |kind| env.self_type(scope, kind).map(|t: TypeName| t.to_string());
+    (name(SelfRefKind::This), name(SelfRefKind::Super))
+}
+
+#[test]
+fn self_type_when_method_of_derived_block_then_block_and_base() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "Base", None);
+    function_block(&mut env, "Derived", Some("Base"));
+    let method = ScopeKind::Named(ScopePath::new(vec![Id::from("Derived"), Id::from("M")]));
+
+    assert_eq!(
+        (Some("Derived".to_string()), Some("Base".to_string())),
+        self_types(&env, &method)
+    );
+}
+
+#[test]
+fn self_type_when_block_without_base_then_super_none() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "Base", None);
+
+    assert_eq!(
+        (Some("Base".to_string()), None),
+        self_types(&env, &ScopeKind::Named(Id::from("Base").into()))
+    );
+}
+
+#[test]
+fn self_type_when_program_or_global_then_none() {
+    let mut env = SymbolEnvironment::new();
+    global(&mut env, "main", SymbolKind::Program).unwrap();
+
+    assert_eq!(
+        (None, None),
+        self_types(&env, &ScopeKind::Named(Id::from("main").into()))
+    );
+    assert_eq!((None, None), self_types(&env, &ScopeKind::Global));
 }

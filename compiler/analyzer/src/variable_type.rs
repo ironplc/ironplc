@@ -14,63 +14,13 @@
 //!
 //! let element = variable_type::of(&kind, context, &self.scope.current());
 //! ```
-//!
-//! [`Declarations`] is the older scoped table a pass builds itself from the
-//! declarations it visits, still used by `xform_resolve_expr_types`.
 
 use ironplc_dsl::{common::*, core::Id, textual::*};
 
 use crate::{
-    intermediate_type::IntermediateType,
-    scoped_table::{ScopedTable, Value},
-    semantic_context::SemanticContext,
-    symbol_environment::ScopeKind,
-    type_environment::TypeEnvironment,
+    intermediate_type::IntermediateType, semantic_context::SemanticContext,
+    symbol_environment::ScopeKind, type_environment::TypeEnvironment,
 };
-use ironplc_dsl::type_id::TypeId;
-
-/// A variable's declared type, as spelled where the name is bound.
-#[derive(Debug)]
-pub(crate) enum Declared {
-    /// A variable declaration: its initializer as written, and the id of
-    /// the type it declares once the analyzer has resolved it.
-    Variable {
-        init: Box<InitialValueAssignmentKind>,
-        type_id: Option<TypeId>,
-    },
-    /// A name bound to a type without a declaration of its own: a
-    /// function's or method's result variable, or an implicit system
-    /// global.
-    Typed(TypeName),
-}
-impl Value for Declared {}
-
-impl Declared {
-    /// The id of the declared type, when the analyzer has resolved one.
-    pub(crate) fn type_id(&self, type_env: &TypeEnvironment) -> Option<TypeId> {
-        match self {
-            Declared::Variable { type_id, .. } => *type_id,
-            Declared::Typed(type_name) => type_env.id_of(type_name),
-        }
-    }
-
-    /// The declaration of `node`.
-    pub(crate) fn of(node: &VarDecl) -> Self {
-        Declared::Variable {
-            init: Box::new(node.initializer.clone()),
-            type_id: node.type_id,
-        }
-    }
-}
-
-/// The declared type of every variable in scope.
-///
-/// A POU's own declarations shadow outer ones while still resolving the names
-/// it does not declare itself. The base scope -- the one
-/// [`ScopedTable::new`] opens -- is where declarations made outside any POU
-/// land, a `CONFIGURATION`'s `VAR_GLOBAL` block most importantly, so a POU
-/// body sees the globals.
-pub(crate) type Declarations<'a> = ScopedTable<'a, Id, Declared>;
 
 /// Resolves the [`IntermediateType`] a declaration denotes.
 pub(crate) fn resolve_initializer(
