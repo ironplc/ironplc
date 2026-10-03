@@ -1,37 +1,23 @@
 //! Declarative macros for analyzer rule tests.
 //!
-//! Every `rule_*.rs` rule has an inline `#[cfg(test)] mod tests` whose cases all
-//! repeat the same scaffold: build a library + semantic context from an IEC
-//! 61131-3 program string, call the rule's `apply`, and assert the result is
-//! `Ok`/`Err` (optionally checking a specific [`Problem`](ironplc_problems::Problem)
-//! code and diagnostic count). That 4–8 line body, repeated hundreds of times
-//! across ~20 rule files, is what `cargo dupes` flags as the analyzer's largest
-//! duplicate mass.
+//! Each macro expands to one BDD-named `#[test] fn` that resolves an IEC
+//! 61131-3 program, runs the owning rule's `apply` against the resolved
+//! library and context (see [`rule_codes`](crate::test_helpers::rule_codes)),
+//! and asserts exactly what it reports. Any `#[…]`/`///` attribute placed
+//! before the test name is forwarded onto the generated function.
 //!
-//! These macros collapse each case to a single line while preserving its exact
-//! semantics. Each invocation expands to one BDD-named `#[test] fn`, and any
-//! `#[…]`/`///` attribute placed before the invocation is forwarded onto it.
+//! * `rule_ok!(name, program)`: the rule reports nothing.
+//! * `rule_err!(name, program, [P])`: the rule reports exactly the listed
+//!   problems, in order: `[P]`, `[P, Q, ...]`, or `[P; n]`.
+//! * `rule_err_at!(name, program, P, "text")`: the rule reports one `P`,
+//!   labelled at the first occurrence of `"text"`.
 //!
-//! Two families, differing only in how the semantic context is built:
-//!
-//! * `rule_ok!` / `rule_err1!` /
-//!   `rule_err1_at!` / `rule_errn!` (+ `_with` options variants) — the
-//!   "fresh context" scaffold
-//!   ([`resolve_fresh_with`](crate::test_helpers::resolve_fresh_with)): the
-//!   resolved context is discarded and a fresh empty one is used. The same
-//!   options value is threaded into both resolution and `apply`.
-//! * `rule_ctx_ok!` / `rule_ctx_err1!` /
-//!   `rule_ctx_errn!` (+ `_with` options variants) — the "resolved context"
-//!   scaffold
-//!   ([`parse_and_resolve_types_with_options`](crate::test_helpers::parse_and_resolve_types_with_options)):
-//!   the rule sees the context resolution built, including the symbol
-//!   environment. The same options value is threaded into both resolution
-//!   and `apply`.
+//! Each takes an optional trailing `CompilerOptions` argument, used both to
+//! resolve the program and to run the rule; it defaults to
+//! `CompilerOptions::default()`.
 //!
 //! `apply` is referenced as `super::apply`, which resolves to the owning rule's
 //! function at each invocation site (the macros are invoked inside `rule_X::tests`).
-
-// --- The three rule-test macros ---------------------------------------------
 
 /// A rule test that expects the rule to report no problems for `$program`,
 /// under `$opts` (default options when omitted).
@@ -83,206 +69,47 @@ macro_rules! rule_err {
     };
 }
 
-// --- Fresh-context family (options-parameterised) ---------------------------
-
-/// A rule test that expects exactly one diagnostic, with `$problem`'s code,
-/// under `$opts`.
-macro_rules! rule_err1_with {
-    ($(#[$m:meta])* $name:ident, $opts:expr, $program:expr, $problem:expr $(,)?) => {
-        $(#[$m])*
-        #[test]
-        fn $name() {
-            let opts = $opts;
-            let (library, context) = $crate::test_helpers::resolve_fresh_with($program, &opts);
-            let errors = super::apply(&library, &context, &opts).unwrap_err();
-            assert_eq!(errors.len(), 1, "expected exactly one diagnostic, got {:?}", errors);
-            assert_eq!(errors[0].code, $problem.code());
-        }
-    };
-}
-
-/// A rule test that expects exactly one diagnostic, with `$problem`'s code,
-/// under default options.
-macro_rules! rule_err1 {
-    ($(#[$m:meta])* $name:ident, $program:expr, $problem:expr $(,)?) => {
-        rule_err1_with!(
-            $(#[$m])* $name,
-            ironplc_parser::options::CompilerOptions::default(),
-            $program, $problem
-        );
-    };
-}
-
-/// A rule test that expects exactly one diagnostic, with `$problem`'s code,
-/// whose primary label points exactly at `$at` -- the first occurrence of that
-/// text in `$program`.
+/// A rule test that expects the rule to report exactly one `$problem` for
+/// `$program`, under `$opts` (default options when omitted), whose primary
+/// label points exactly at `$at`: the first occurrence of that text in
+/// `$program`.
 ///
-/// Use this instead of `rule_err1!` for a rule whose diagnostic is only
-/// actionable if it names *where* the offending construct is. The `is_err`
-/// assertions above hold just as well when the label carries a default
-/// `SourceSpan` -- `range(0, 0)`, which renders as a caret on the first
-/// character of the file -- so they cannot catch a span that was never
-/// filled in.
-macro_rules! rule_err1_at {
-    ($(#[$m:meta])* $name:ident, $program:expr, $problem:expr, $at:expr $(,)?) => {
+/// Use this for a rule whose diagnostic is only actionable if it names
+/// *where* the offending construct is: an assertion on codes alone holds just
+/// as well when the label carries a default `SourceSpan`, which renders as a
+/// caret on the first character of the file.
+macro_rules! rule_err_at {
+    ($(#[$m:meta])* $name:ident, $program:expr, $problem:expr, $at:expr, $opts:expr $(,)?) => {
         $(#[$m])*
         #[test]
         fn $name() {
-            let opts = ironplc_parser::options::CompilerOptions::default();
-            let (library, context) = $crate::test_helpers::resolve_fresh_with($program, &opts);
-            let errors = super::apply(&library, &context, &opts).unwrap_err();
-            assert_eq!(errors.len(), 1, "expected exactly one diagnostic, got {:?}", errors);
-            assert_eq!(errors[0].code, $problem.code());
+            let program: &str = $program;
+            let diagnostics =
+                $crate::test_helpers::rule_diagnostics(super::apply, program, &$opts);
+            assert_eq!(
+                $crate::test_helpers::diagnostic_codes(&diagnostics),
+                [$problem.code()]
+            );
 
-            let start = $program
+            let start = program
                 .find($at)
                 .expect("the expected text does not occur in the program");
-            let location = &errors[0].primary.location;
+            let location = &diagnostics[0].primary.location;
             assert_eq!(
                 (location.start, location.end),
                 (start, start + $at.len()),
-                "expected the label to point at {:?}, but it points at {:?}",
-                $at,
-                $program.get(location.start..location.end),
+                "{:?}",
+                program.get(location.start..location.end),
             );
         }
     };
-}
-
-/// A rule test that expects exactly `$count` diagnostics, every one of them with
-/// `$problem`'s code, under `$opts`.
-///
-/// The counterpart of [`rule_err1_with`] for a program that violates the rule
-/// more than once. A rule that reports only the first violation is the defect
-/// this asserts against, so prefer this over `rule_err_code_with!` whenever the
-/// program contains more than one violation.
-macro_rules! rule_errn_with {
-    ($(#[$m:meta])* $name:ident, $opts:expr, $program:expr, $count:expr, $problem:expr $(,)?) => {
-        $(#[$m])*
-        #[test]
-        fn $name() {
-            let opts = $opts;
-            let (library, context) = $crate::test_helpers::resolve_fresh_with($program, &opts);
-            let errors = super::apply(&library, &context, &opts).unwrap_err();
-            assert_eq!(
-                errors.len(), $count,
-                "expected exactly {} diagnostics, got {:?}", $count, errors
-            );
-            assert!(
-                errors.iter().all(|d| d.code == $problem.code()),
-                "expected every diagnostic to be {}, got {:?}",
-                $problem.code(),
-                errors
-            );
-        }
-    };
-}
-
-/// A rule test that expects exactly `$count` diagnostics, every one of them with
-/// `$problem`'s code, under default options.
-macro_rules! rule_errn {
-    ($(#[$m:meta])* $name:ident, $program:expr, $count:expr, $problem:expr $(,)?) => {
-        rule_errn_with!(
+    ($(#[$m:meta])* $name:ident, $program:expr, $problem:expr, $at:expr $(,)?) => {
+        rule_err_at!(
             $(#[$m])* $name,
-            ironplc_parser::options::CompilerOptions::default(),
-            $program, $count, $problem
-        );
-    };
-}
-
-// --- Resolved-context family (options-parameterised) ------------------------
-
-/// A rule test (resolved context) that expects `Ok` under `$opts`.
-macro_rules! rule_ctx_ok_with {
-    ($(#[$m:meta])* $name:ident, $opts:expr, $program:expr $(,)?) => {
-        $(#[$m])*
-        #[test]
-        fn $name() {
-            let opts = $opts;
-            let (library, context) =
-                $crate::test_helpers::parse_and_resolve_types_with_options($program, &opts);
-            let result = super::apply(&library, &context, &opts);
-            assert!(result.is_ok(), "expected Ok, got {:?}", result);
-        }
-    };
-}
-
-/// A rule test (resolved context, default options) that expects `Ok`.
-macro_rules! rule_ctx_ok {
-    ($(#[$m:meta])* $name:ident, $program:expr $(,)?) => {
-        rule_ctx_ok_with!(
-            $(#[$m])* $name,
-            ironplc_parser::options::CompilerOptions::default(),
-            $program
-        );
-    };
-}
-
-/// A rule test (resolved context) that expects exactly `$count` diagnostics
-/// under `$opts`, every one of them with `$problem`'s code.
-macro_rules! rule_ctx_errn_with {
-    ($(#[$m:meta])* $name:ident, $opts:expr, $program:expr, $count:expr, $problem:expr $(,)?) => {
-        $(#[$m])*
-        #[test]
-        fn $name() {
-            let opts = $opts;
-            let (library, context) =
-                $crate::test_helpers::parse_and_resolve_types_with_options($program, &opts);
-            let errors = super::apply(&library, &context, &opts).unwrap_err();
-            assert_eq!(
-                errors.len(), $count,
-                "expected exactly {} diagnostics, got {:?}", $count, errors
-            );
-            assert!(
-                errors.iter().all(|d| d.code == $problem.code()),
-                "expected every diagnostic to be {}, got {:?}",
-                $problem.code(),
-                errors
-            );
-        }
-    };
-}
-
-/// A rule test (resolved context, default options) that expects exactly `$count`
-/// diagnostics, every one of them with `$problem`'s code.
-macro_rules! rule_ctx_errn {
-    ($(#[$m:meta])* $name:ident, $program:expr, $count:expr, $problem:expr $(,)?) => {
-        rule_ctx_errn_with!(
-            $(#[$m])* $name,
-            ironplc_parser::options::CompilerOptions::default(),
             $program,
-            $count,
-            $problem
-        );
-    };
-}
-
-/// A rule test (resolved context) that expects exactly one diagnostic under
-/// `$opts`, with `$problem`'s code.
-macro_rules! rule_ctx_err1_with {
-    ($(#[$m:meta])* $name:ident, $opts:expr, $program:expr, $problem:expr $(,)?) => {
-        $(#[$m])*
-        #[test]
-        fn $name() {
-            let opts = $opts;
-            let (library, context) =
-                $crate::test_helpers::parse_and_resolve_types_with_options($program, &opts);
-            let errors = super::apply(&library, &context, &opts).unwrap_err();
-            assert_eq!(errors.len(), 1, "expected exactly one diagnostic, got {:?}", errors);
-            assert_eq!(errors[0].code, $problem.code());
-        }
-    };
-}
-
-/// A rule test (resolved context, default options) that expects exactly one
-/// diagnostic, with `$problem`'s code.
-macro_rules! rule_ctx_err1 {
-    ($(#[$m:meta])* $name:ident, $program:expr, $problem:expr $(,)?) => {
-        rule_ctx_err1_with!(
-            $(#[$m])* $name,
-            ironplc_parser::options::CompilerOptions::default(),
-            $program,
-            $problem
+            $problem,
+            $at,
+            ironplc_parser::options::CompilerOptions::default()
         );
     };
 }

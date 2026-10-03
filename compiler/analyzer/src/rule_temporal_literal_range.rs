@@ -203,7 +203,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_date_is_past_last_representable_then_error,
         "
 PROGRAM main
@@ -225,7 +225,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_date_is_before_epoch_then_error,
         "
 PROGRAM main
@@ -247,7 +247,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_date_and_time_is_past_last_representable_then_error,
         "
 PROGRAM main
@@ -283,7 +283,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_duration_is_past_last_representable_then_error,
         "
 PROGRAM main
@@ -295,7 +295,7 @@ END_PROGRAM",
         "T#30d"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_duration_is_below_first_representable_then_error,
         "
 PROGRAM main
@@ -362,7 +362,7 @@ END_PROGRAM",
 
     // `DATE#` names a `DATE` whatever it is stored into, the way `INT#40000`
     // names an `INT`. Widening the variable does not widen the literal.
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_short_literal_is_out_of_range_in_a_long_variable_then_error,
         "
 PROGRAM main
@@ -376,7 +376,7 @@ END_PROGRAM",
 
     // --- Every position a literal can be written in ---
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_out_of_range_literal_is_assigned_then_error,
         "
 PROGRAM main
@@ -389,7 +389,7 @@ END_PROGRAM",
         "T#30d"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_out_of_range_literal_is_compared_then_error,
         "
 PROGRAM main

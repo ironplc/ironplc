@@ -200,8 +200,6 @@ impl Visitor<Infallible> for RulePouHierarchy<'_> {
 #[cfg(test)]
 mod tests {
     use crate::test_helpers::fb_inheritance_options;
-    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
-    use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
 
     rule_ok!(
@@ -248,11 +246,9 @@ PROGRAM main
 END_PROGRAM"
     );
 
-    // A hand-written `rule_err1_at!`: this rule reads the symbol environment,
-    // and that macro hands it an empty context.
-    #[test]
-    fn apply_when_function_declares_function_block_instance_then_error_at_declaration() {
-        let program = "
+    rule_err_at!(
+        apply_when_function_declares_function_block_instance_then_error_at_declaration,
+        "
 FUNCTION_BLOCK Callee
   VAR_INPUT
     IN1 : BOOL;
@@ -264,21 +260,10 @@ FUNCTION Caller : BOOL
     inst : Callee;
   END_VAR
   Caller := FALSE;
-END_FUNCTION";
-        let options = CompilerOptions::default();
-        let errors = rule_diagnostics(super::apply, program, &options);
-
-        assert_eq!(
-            diagnostic_codes(&errors),
-            [Problem::FunctionBlockInFunction.code()]
-        );
-        let start = program.find("inst").unwrap();
-        let location = &errors[0].primary.location;
-        assert_eq!(
-            (location.start, location.end),
-            (start, start + "inst".len())
-        );
-    }
+END_FUNCTION",
+        Problem::FunctionBlockInFunction,
+        "inst"
+    );
 
     // The declaration and the invocation are each reported, so both the
     // cause and the call site are marked.

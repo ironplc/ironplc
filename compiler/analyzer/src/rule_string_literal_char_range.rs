@@ -136,7 +136,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_string_literal_above_latin1_then_p4052_at_literal,
         "PROGRAM main
 VAR
@@ -158,7 +158,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_wstring_literal_above_bmp_then_p4052_at_literal,
         "PROGRAM main
 VAR
@@ -170,7 +170,7 @@ END_PROGRAM",
         "\"😀\""
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_string_initializer_above_latin1_then_p4052_at_literal,
         "PROGRAM main
 VAR
@@ -181,7 +181,7 @@ END_PROGRAM",
         "'等'"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_string_type_declaration_default_above_latin1_then_p4052_at_literal,
         "TYPE
     T : STRING[5] := '等';
@@ -200,7 +200,7 @@ END_TYPE",
 END_TYPE"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_array_of_string_initializer_element_above_latin1_then_p4052_at_literal,
         "PROGRAM main
 VAR
@@ -211,7 +211,7 @@ END_PROGRAM",
         "'等'"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_string_literal_in_comparison_then_p4052_at_literal,
         "PROGRAM main
 VAR
@@ -250,7 +250,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_string_literal_has_several_bad_chars_then_one_diagnostic,
         "PROGRAM main
 VAR
@@ -262,7 +262,7 @@ END_PROGRAM",
         "'等等'"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_prefixed_string_literal_above_latin1_then_label_covers_prefix,
         "PROGRAM main
 VAR

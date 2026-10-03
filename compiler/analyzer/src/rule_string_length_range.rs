@@ -152,7 +152,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_variable_length_exceeds_maximum_then_error,
         "
 PROGRAM main
@@ -164,7 +164,7 @@ END_PROGRAM",
         "70000"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_wstring_variable_length_exceeds_maximum_then_error,
         "
 PROGRAM main
@@ -176,7 +176,7 @@ END_PROGRAM",
         "65536"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_array_element_length_exceeds_maximum_then_error,
         "
 PROGRAM main
@@ -188,7 +188,7 @@ END_PROGRAM",
         "70000"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_structure_field_length_exceeds_maximum_then_error,
         "
 TYPE Recipe : STRUCT
@@ -204,7 +204,7 @@ END_PROGRAM",
         "70000"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_function_return_length_exceeds_maximum_then_error,
         "
 FUNCTION f : STRING[70000]
@@ -224,7 +224,7 @@ END_PROGRAM",
         "70000"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_type_declaration_length_exceeds_maximum_then_error,
         "
 TYPE Long : STRING[70000]; END_TYPE

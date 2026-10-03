@@ -209,7 +209,7 @@ TYPE
 END_TYPE"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_subrange_invalid_then_error,
         "
 TYPE
@@ -257,7 +257,7 @@ PROGRAM main
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_array_inverted_in_var_then_error,
         "
 PROGRAM main
@@ -308,7 +308,7 @@ PROGRAM main
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_case_label_range_inverted_then_error,
         "
 PROGRAM main

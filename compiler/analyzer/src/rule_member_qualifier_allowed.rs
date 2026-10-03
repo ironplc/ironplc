@@ -116,7 +116,7 @@ END_FUNCTION_BLOCK";
     );
 
     // The label points at the qualifier, not at the whole declaration.
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_fb_qualifier_then_label_names_the_qualifier,
         "
 FUNCTION_BLOCK INTERNAL FB_Motor

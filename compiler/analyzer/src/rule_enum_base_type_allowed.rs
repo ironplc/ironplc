@@ -131,7 +131,7 @@ END_TYPE";
 
     // The label has to name the declaration that carries the suffix, or the
     // user cannot tell which type to change in a file full of them.
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_enum_base_type_then_label_names_the_declared_type,
         "
 TYPE

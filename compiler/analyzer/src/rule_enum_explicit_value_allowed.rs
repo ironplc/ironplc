@@ -121,7 +121,7 @@ END_TYPE";
 
     // The label has to name the member that carries the value, or the user
     // cannot tell which one to remove in a long declaration.
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_one_member_has_explicit_value_then_label_names_that_member,
         "
 TYPE
