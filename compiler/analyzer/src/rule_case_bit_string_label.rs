@@ -112,9 +112,9 @@ END_FUNCTION_BLOCK",
         [Problem::BitStringCaseLabelNotAllowed]
     );
 
-    #[test]
-    fn apply_when_hex_case_label_and_flag_enabled_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_hex_case_label_and_flag_enabled_then_ok,
+        "
 FUNCTION_BLOCK FB_Example
 VAR
     x : DINT;
@@ -123,12 +123,9 @@ END_VAR
 CASE x OF
     16#D012: y := 1;
 END_CASE;
-END_FUNCTION_BLOCK";
-
-        let diagnostics = rule_diagnostics(apply, program, &opts_with_flag());
-
-        assert!(diagnostics.is_empty());
-    }
+END_FUNCTION_BLOCK",
+        opts_with_flag()
+    );
 
     #[test]
     fn apply_when_binary_and_octal_case_labels_and_flag_disabled_then_error_per_label() {

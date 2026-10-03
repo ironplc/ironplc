@@ -250,18 +250,6 @@ mod tests {
         rule_codes(apply, program, opts)
     }
 
-    fn assert_bit_access_ok(program: &str) {
-        let codes = problems_with(program, &CompilerOptions::default());
-        assert!(codes.is_empty(), "{codes:?}");
-    }
-
-    fn assert_bit_access_err(program: &str) {
-        assert_eq!(
-            problems_with(program, &CompilerOptions::default()),
-            codes(OUT_OF_RANGE)
-        );
-    }
-
     // --- Bit access boundary tests across all bit-sized types ---
     //
     // For each type: the highest valid bit index is OK, and one past the
@@ -327,38 +315,34 @@ END_FUNCTION_BLOCK"
 
     // --- Bit access on assignment target ---
 
-    #[test]
-    fn apply_when_bit_access_target_in_range_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
+    rule_ok!(
+        apply_when_bit_access_target_in_range_then_ok,
+        "FUNCTION_BLOCK FB1
 VAR
     x : WORD;
     y : BOOL;
 END_VAR
     x.0 := y;
-END_FUNCTION_BLOCK",
-        );
-    }
+END_FUNCTION_BLOCK"
+    );
 
-    #[test]
-    fn apply_when_bit_access_target_out_of_range_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
+    rule_err!(
+        apply_when_bit_access_target_out_of_range_then_err,
+        "FUNCTION_BLOCK FB1
 VAR
     x : BYTE;
     y : BOOL;
 END_VAR
     x.8 := y;
 END_FUNCTION_BLOCK",
-        );
-    }
+        [Problem::BitAccessOutOfRange]
+    );
 
     // --- Struct field bit access ---
 
-    #[test]
-    fn apply_when_struct_field_bit_in_range_then_ok() {
-        assert_bit_access_ok(
-            "TYPE
+    rule_ok!(
+        apply_when_struct_field_bit_in_range_then_ok,
+        "TYPE
     MyStruct : STRUCT
         field1 : BYTE;
     END_STRUCT;
@@ -370,14 +354,12 @@ VAR
     y : BOOL;
 END_VAR
     y := s.field1.7;
-END_FUNCTION_BLOCK",
-        );
-    }
+END_FUNCTION_BLOCK"
+    );
 
-    #[test]
-    fn apply_when_struct_field_bit_out_of_range_then_err() {
-        assert_bit_access_err(
-            "TYPE
+    rule_err!(
+        apply_when_struct_field_bit_out_of_range_then_err,
+        "TYPE
     MyStruct : STRUCT
         field1 : BYTE;
     END_STRUCT;
@@ -390,13 +372,12 @@ VAR
 END_VAR
     y := s.field1.8;
 END_FUNCTION_BLOCK",
-        );
-    }
+        [Problem::BitAccessOutOfRange]
+    );
 
-    #[test]
-    fn apply_when_struct_word_field_bit_in_range_then_ok() {
-        assert_bit_access_ok(
-            "TYPE
+    rule_ok!(
+        apply_when_struct_word_field_bit_in_range_then_ok,
+        "TYPE
     MyStruct : STRUCT
         field1 : WORD;
     END_STRUCT;
@@ -408,14 +389,12 @@ VAR
     y : BOOL;
 END_VAR
     y := s.field1.15;
-END_FUNCTION_BLOCK",
-        );
-    }
+END_FUNCTION_BLOCK"
+    );
 
-    #[test]
-    fn apply_when_struct_word_field_bit_out_of_range_then_err() {
-        assert_bit_access_err(
-            "TYPE
+    rule_err!(
+        apply_when_struct_word_field_bit_out_of_range_then_err,
+        "TYPE
     MyStruct : STRUCT
         field1 : WORD;
     END_STRUCT;
@@ -428,69 +407,62 @@ VAR
 END_VAR
     y := s.field1.16;
 END_FUNCTION_BLOCK",
-        );
-    }
+        [Problem::BitAccessOutOfRange]
+    );
 
     // --- Array element bit access ---
 
-    #[test]
-    fn apply_when_array_element_bit_in_range_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
+    rule_ok!(
+        apply_when_array_element_bit_in_range_then_ok,
+        "FUNCTION_BLOCK FB1
 VAR
     arr : ARRAY [0..3] OF BYTE;
     y : BOOL;
 END_VAR
     y := arr[0].7;
-END_FUNCTION_BLOCK",
-        );
-    }
+END_FUNCTION_BLOCK"
+    );
 
-    #[test]
-    fn apply_when_array_element_bit_out_of_range_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
+    rule_err!(
+        apply_when_array_element_bit_out_of_range_then_err,
+        "FUNCTION_BLOCK FB1
 VAR
     arr : ARRAY [0..3] OF BYTE;
     y : BOOL;
 END_VAR
     y := arr[0].8;
 END_FUNCTION_BLOCK",
-        );
-    }
+        [Problem::BitAccessOutOfRange]
+    );
 
-    #[test]
-    fn apply_when_array_word_element_bit_in_range_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
+    rule_ok!(
+        apply_when_array_word_element_bit_in_range_then_ok,
+        "FUNCTION_BLOCK FB1
 VAR
     arr : ARRAY [0..3] OF WORD;
     y : BOOL;
 END_VAR
     y := arr[1].15;
-END_FUNCTION_BLOCK",
-        );
-    }
+END_FUNCTION_BLOCK"
+    );
 
-    #[test]
-    fn apply_when_array_word_element_bit_out_of_range_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
+    rule_err!(
+        apply_when_array_word_element_bit_out_of_range_then_err,
+        "FUNCTION_BLOCK FB1
 VAR
     arr : ARRAY [0..3] OF WORD;
     y : BOOL;
 END_VAR
     y := arr[1].16;
 END_FUNCTION_BLOCK",
-        );
-    }
+        [Problem::BitAccessOutOfRange]
+    );
 
     // --- Bit access in FUNCTION (not FUNCTION_BLOCK) ---
 
-    #[test]
-    fn apply_when_function_dint_bit_access_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION FOO : INT
+    rule_ok!(
+        apply_when_function_dint_bit_access_then_ok,
+        "FUNCTION FOO : INT
 VAR_INPUT
     A : DINT;
 END_VAR
@@ -504,9 +476,8 @@ VAR
     result : INT;
 END_VAR
     result := FOO(A := 5);
-END_PROGRAM",
-        );
-    }
+END_PROGRAM"
+    );
 
     // --- Declarations outside the POU body ---
     //
@@ -514,10 +485,9 @@ END_PROGRAM",
     // the enclosing POU's own variables, so a global and a method local are
     // both checkable.
 
-    #[test]
-    fn apply_when_global_bit_out_of_range_then_err() {
-        assert_bit_access_err(
-            "PROGRAM main
+    rule_err!(
+        apply_when_global_bit_out_of_range_then_err,
+        "PROGRAM main
 VAR
     y : BOOL;
 END_VAR
@@ -533,8 +503,8 @@ RESOURCE res ON PLC
     PROGRAM inst WITH plc_task : main;
 END_RESOURCE
 END_CONFIGURATION",
-        );
-    }
+        [Problem::BitAccessOutOfRange]
+    );
 
     #[test]
     fn apply_when_method_local_bit_out_of_range_then_err() {

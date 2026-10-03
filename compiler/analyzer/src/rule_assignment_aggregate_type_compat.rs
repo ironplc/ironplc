@@ -165,69 +165,62 @@ impl Visitor<Infallible> for RuleAggregateAssignment<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_helpers::{fb_inheritance_options, rule_codes};
-    use ironplc_parser::options::CompilerOptions;
+    use crate::test_helpers::fb_inheritance_options;
     use ironplc_problems::Problem;
-
-    fn problem_codes(program: &str) -> Vec<String> {
-        rule_codes(super::apply, program, &CompilerOptions::default())
-    }
 
     fn program_with(declarations: &str, body: &str) -> String {
         format!("PROGRAM main\nVAR\n{declarations}END_VAR\n{body}END_PROGRAM\n")
     }
 
-    #[test]
-    fn apply_when_array_types_identical_then_accepted() {
-        let codes = problem_codes(&program_with(
+    rule_ok!(
+        apply_when_array_types_identical_then_accepted,
+        &program_with(
             "a : ARRAY[1..2] OF DINT;\nb : ARRAY[1..2] OF DINT;\n",
             "a := b;\n",
-        ));
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+        )
+    );
 
-    #[test]
-    fn apply_when_array_extents_differ_then_reports_mismatch() {
-        let codes = problem_codes(&program_with(
+    rule_err!(
+        apply_when_array_extents_differ_then_reports_mismatch,
+        &program_with(
             "a : ARRAY[1..2] OF DINT;\nb : ARRAY[1..5] OF DINT;\n",
             "a := b;\n",
-        ));
-        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
-    }
+        ),
+        [Problem::AggregateAssignmentTypeMismatch]
+    );
 
-    #[test]
-    fn apply_when_array_element_types_differ_then_reports_mismatch() {
-        let codes = problem_codes(&program_with(
+    rule_err!(
+        apply_when_array_element_types_differ_then_reports_mismatch,
+        &program_with(
             "a : ARRAY[1..2] OF DINT;\nb : ARRAY[1..2] OF INT;\n",
             "a := b;\n",
-        ));
-        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
-    }
+        ),
+        [Problem::AggregateAssignmentTypeMismatch]
+    );
 
-    /// The pair the VM cannot distinguish: same element count and element
-    /// type, different dimensions. Only the static check rejects it.
-    #[test]
-    fn apply_when_array_dimensions_differ_but_element_count_matches_then_reports_mismatch() {
-        let codes = problem_codes(&program_with(
+    rule_err!(
+        /// The pair the VM cannot distinguish: same element count and element
+        /// type, different dimensions. Only the static check rejects it.
+        apply_when_array_dimensions_differ_but_element_count_matches_then_reports_mismatch,
+        &program_with(
             "a : ARRAY[1..6] OF DINT;\nb : ARRAY[1..2, 1..3] OF DINT;\n",
             "a := b;\n",
-        ));
-        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
-    }
+        ),
+        [Problem::AggregateAssignmentTypeMismatch]
+    );
 
-    #[test]
-    fn apply_when_string_array_max_lengths_differ_then_reports_mismatch() {
-        let codes = problem_codes(&program_with(
+    rule_err!(
+        apply_when_string_array_max_lengths_differ_then_reports_mismatch,
+        &program_with(
             "a : ARRAY[1..2] OF STRING[8];\nb : ARRAY[1..2] OF STRING[16];\n",
             "a := b;\n",
-        ));
-        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
-    }
+        ),
+        [Problem::AggregateAssignmentTypeMismatch]
+    );
 
-    #[test]
-    fn apply_when_struct_types_identical_then_accepted() {
-        let codes = problem_codes(
-            "
+    rule_ok!(
+        apply_when_struct_types_identical_then_accepted,
+        "
 TYPE
   Point : STRUCT
     x : DINT;
@@ -242,15 +235,12 @@ VAR
 END_VAR
   a := b;
 END_PROGRAM
-",
-        );
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+"
+    );
 
-    #[test]
-    fn apply_when_struct_types_differ_then_reports_mismatch() {
-        let codes = problem_codes(
-            "
+    rule_err!(
+        apply_when_struct_types_differ_then_reports_mismatch,
+        "
 TYPE
   Point : STRUCT
     x : DINT;
@@ -271,14 +261,12 @@ END_VAR
   a := b;
 END_PROGRAM
 ",
-        );
-        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
-    }
+        [Problem::AggregateAssignmentTypeMismatch]
+    );
 
-    #[test]
-    fn apply_when_array_assigned_to_struct_then_reports_mismatch() {
-        let codes = problem_codes(
-            "
+    rule_err!(
+        apply_when_array_assigned_to_struct_then_reports_mismatch,
+        "
 TYPE
   Point : STRUCT
     x : DINT;
@@ -294,25 +282,22 @@ END_VAR
   a := b;
 END_PROGRAM
 ",
-        );
-        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
-    }
+        [Problem::AggregateAssignmentTypeMismatch]
+    );
 
-    /// Scalar assignment is out of this rule's scope: a narrowing store that
-    /// compiles today must keep compiling.
-    #[test]
-    fn apply_when_scalar_widths_differ_then_no_diagnostic() {
-        let codes = problem_codes(&program_with("a : DINT;\nb : INT;\n", "a := b;\n"));
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+    rule_ok!(
+        /// Scalar assignment is out of this rule's scope: a narrowing store that
+        /// compiles today must keep compiling.
+        apply_when_scalar_widths_differ_then_no_diagnostic,
+        &program_with("a : DINT;\nb : INT;\n", "a := b;\n")
+    );
 
-    /// A global is reached through a `VAR_EXTERNAL` redeclaration, which is
-    /// what carries the type inside the POU. The outer scope still matters:
-    /// the `VAR_GLOBAL` block itself is visited outside any POU.
-    #[test]
-    fn apply_when_global_array_extent_differs_then_reports_mismatch() {
-        let codes = problem_codes(
-            "
+    rule_err!(
+        /// A global is reached through a `VAR_EXTERNAL` redeclaration, which is
+        /// what carries the type inside the POU. The outer scope still matters:
+        /// the `VAR_GLOBAL` block itself is visited outside any POU.
+        apply_when_global_array_extent_differs_then_reports_mismatch,
+        "
 CONFIGURATION config
   VAR_GLOBAL
     g : ARRAY[1..5] OF DINT;
@@ -333,14 +318,12 @@ END_VAR
   a := g;
 END_PROGRAM
 ",
-        );
-        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
-    }
+        [Problem::AggregateAssignmentTypeMismatch]
+    );
 
-    #[test]
-    fn apply_when_global_array_type_matches_then_accepted() {
-        let codes = problem_codes(
-            "
+    rule_ok!(
+        apply_when_global_array_type_matches_then_accepted,
+        "
 CONFIGURATION config
   VAR_GLOBAL
     g : ARRAY[1..2] OF DINT;
@@ -360,18 +343,15 @@ VAR
 END_VAR
   a := g;
 END_PROGRAM
-",
-        );
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+"
+    );
 
-    /// A function block's own declaration hides an outer one of the same
-    /// name, so the inner type is what gets compared. (A program may not
-    /// reuse a global's name at all; that is `rule_program_var_hides_global`.)
-    #[test]
-    fn apply_when_local_hides_global_then_local_type_is_compared() {
-        let codes = problem_codes(
-            "
+    rule_ok!(
+        /// A function block's own declaration hides an outer one of the same
+        /// name, so the inner type is what gets compared. (A program may not
+        /// reuse a global's name at all; that is `rule_program_var_hides_global`.)
+        apply_when_local_hides_global_then_local_type_is_compared,
+        "
 CONFIGURATION config
   VAR_GLOBAL
     g : ARRAY[1..5] OF DINT;
@@ -396,15 +376,12 @@ VAR
 END_VAR
   fb();
 END_PROGRAM
-",
-        );
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+"
+    );
 
-    #[test]
-    fn apply_when_array_assigned_inside_function_then_reports_mismatch() {
-        let codes = problem_codes(
-            "
+    rule_err!(
+        apply_when_array_assigned_inside_function_then_reports_mismatch,
+        "
 FUNCTION Copy : DINT
 VAR
   a : ARRAY[1..2] OF DINT;
@@ -421,14 +398,12 @@ END_VAR
   r := Copy();
 END_PROGRAM
 ",
-        );
-        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
-    }
+        [Problem::AggregateAssignmentTypeMismatch]
+    );
 
-    #[test]
-    fn apply_when_array_assigned_inside_function_block_then_reports_mismatch() {
-        let codes = problem_codes(
-            "
+    rule_err!(
+        apply_when_array_assigned_inside_function_block_then_reports_mismatch,
+        "
 FUNCTION_BLOCK Holder
 VAR
   a : ARRAY[1..2] OF DINT;
@@ -444,15 +419,13 @@ END_VAR
   h();
 END_PROGRAM
 ",
-        );
-        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
-    }
+        [Problem::AggregateAssignmentTypeMismatch]
+    );
 
-    /// A function block's locals must not leak into a later POU's scope.
-    #[test]
-    fn apply_when_pou_ends_then_its_declarations_leave_scope() {
-        let codes = problem_codes(
-            "
+    rule_ok!(
+        /// A function block's locals must not leak into a later POU's scope.
+        apply_when_pou_ends_then_its_declarations_leave_scope,
+        "
 FUNCTION_BLOCK Holder
 VAR
   a : ARRAY[1..2] OF DINT;
@@ -467,20 +440,14 @@ VAR
 END_VAR
   a := b;
 END_PROGRAM
-",
-        );
-        assert!(
-            codes.is_empty(),
-            "main's own `a` is ARRAY[1..5], not the FB's ARRAY[1..2]; got {codes:?}"
-        );
-    }
+"
+    );
 
-    /// A function result is P4027's business; reporting here too would give
-    /// two diagnostics for one mistake.
-    #[test]
-    fn apply_when_function_result_assigned_then_defers_to_return_type_rule() {
-        let codes = problem_codes(
-            "
+    rule_ok!(
+        /// A function result is P4027's business; reporting here too would give
+        /// two diagnostics for one mistake.
+        apply_when_function_result_assigned_then_defers_to_return_type_rule,
+        "
 TYPE
   Point : STRUCT
     x : DINT;
@@ -501,15 +468,12 @@ VAR
 END_VAR
   a := MakePoint();
 END_PROGRAM
-",
-        );
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+"
+    );
 
-    #[test]
-    fn apply_when_matching_struct_returning_function_then_accepted() {
-        let codes = problem_codes(
-            "
+    rule_ok!(
+        apply_when_matching_struct_returning_function_then_accepted,
+        "
 TYPE
   Point : STRUCT
     x : DINT;
@@ -526,45 +490,35 @@ VAR
 END_VAR
   a := MakePoint();
 END_PROGRAM
-",
-        );
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+"
+    );
 
-    /// Nothing but a same-typed aggregate may be assigned to an aggregate.
-    /// Codegen depends on this: it treats an unresolvable source at
-    /// COPY_REGION emission as a compiler defect.
-    #[test]
-    fn apply_when_constant_assigned_to_array_then_reports_mismatch() {
-        let codes = problem_codes(&program_with("a : ARRAY[1..2] OF DINT;\n", "a := 5;\n"));
-        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
-    }
+    rule_err!(
+        /// Nothing but a same-typed aggregate may be assigned to an aggregate.
+        /// Codegen depends on this: it treats an unresolvable source at
+        /// COPY_REGION emission as a compiler defect.
+        apply_when_constant_assigned_to_array_then_reports_mismatch,
+        &program_with("a : ARRAY[1..2] OF DINT;\n", "a := 5;\n"),
+        [Problem::AggregateAssignmentTypeMismatch]
+    );
 
-    /// An element write is not a whole-aggregate assignment.
-    #[test]
-    fn apply_when_array_element_assigned_then_no_diagnostic() {
-        let codes = problem_codes(&program_with(
+    rule_ok!(
+        /// An element write is not a whole-aggregate assignment.
+        apply_when_array_element_assigned_then_no_diagnostic,
+        &program_with(
             "a : ARRAY[1..2] OF DINT;\nb : ARRAY[1..5] OF DINT;\n",
             "a[1] := b[1];\n",
-        ));
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+        )
+    );
 
-    /// Analyzes `program` with methods enabled, returning the problem
-    /// codes it reported.
-    fn problem_codes_with_methods(program: &str) -> Vec<String> {
-        rule_codes(super::apply, program, &fb_inheritance_options())
-    }
-
-    /// A method's local belongs to the method. Before the traversal
-    /// opened a scope for a method, every method's declarations landed in
-    /// the enclosing function block's frame, so a method local overwrote
-    /// a field of the same name for every method compiled after it --
-    /// and the mismatch it hid was accepted.
-    #[test]
-    fn apply_when_method_local_shadows_field_then_sibling_method_uses_field_type() {
-        let codes = problem_codes_with_methods(
-            "
+    rule_err!(
+        /// A method's local belongs to the method. Before the traversal
+        /// opened a scope for a method, every method's declarations landed in
+        /// the enclosing function block's frame, so a method local overwrote
+        /// a field of the same name for every method compiled after it --
+        /// and the mismatch it hid was accepted.
+        apply_when_method_local_shadows_field_then_sibling_method_uses_field_type,
+        "
 TYPE
     Pt : STRUCT
         x : INT;
@@ -590,8 +544,7 @@ METHOD B
 END_METHOD
 END_FUNCTION_BLOCK
 ",
-        );
-
-        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
-    }
+        [Problem::AggregateAssignmentTypeMismatch],
+        fb_inheritance_options()
+    );
 }

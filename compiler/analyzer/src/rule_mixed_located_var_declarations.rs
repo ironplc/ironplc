@@ -107,7 +107,6 @@ impl Visitor<Infallible> for RuleMixedLocatedVarDeclarations {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_helpers::rule_diagnostics;
 
     use super::*;
 
@@ -172,20 +171,17 @@ END_FUNCTION_BLOCK",
         "tempSensor",
     );
 
-    #[test]
-    fn apply_when_mixed_block_and_flag_enabled_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_mixed_block_and_flag_enabled_then_ok,
+        "
 FUNCTION_BLOCK FB_Example
 VAR
     tempSensor AT%I*: INT;
     fbComm     : BOOL;
 END_VAR
-END_FUNCTION_BLOCK";
-
-        let diagnostics = rule_diagnostics(apply, program, &opts_with_flag());
-
-        assert!(diagnostics.is_empty());
-    }
+END_FUNCTION_BLOCK",
+        opts_with_flag()
+    );
 
     rule_ok!(
         apply_when_dedicated_incompl_located_block_then_never_flagged,

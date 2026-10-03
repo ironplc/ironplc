@@ -1674,15 +1674,14 @@ END_PROGRAM"
         rule_codes(super::apply, program, &fb_inheritance_options())
     }
 
-    /// A method's local belongs to the method. It used to be recorded
-    /// against the enclosing function block, so it overwrote a field of
-    /// the same name for every method compiled after it -- and the
-    /// mismatch below was accepted because `v` was still recorded as the
-    /// `REAL` from `A`.
-    #[test]
-    fn apply_when_method_local_shadows_field_then_sibling_method_uses_field_type() {
-        let codes = apply_with_methods(
-            "
+    rule_err!(
+        /// A method's local belongs to the method. It used to be recorded
+        /// against the enclosing function block, so it overwrote a field of
+        /// the same name for every method compiled after it -- and the
+        /// mismatch below was accepted because `v` was still recorded as the
+        /// `REAL` from `A`.
+        apply_when_method_local_shadows_field_then_sibling_method_uses_field_type,
+        "
 FUNCTION_BLOCK FB_Motor
 VAR
     v : INT;
@@ -1697,17 +1696,15 @@ METHOD B
     v := 2.5;
 END_METHOD
 END_FUNCTION_BLOCK",
-        );
+        [Problem::AssignmentTypeMismatch],
+        fb_inheritance_options()
+    );
 
-        assert_eq!(codes, [Problem::AssignmentTypeMismatch.code()]);
-    }
-
-    /// A method's locals are still checked against their own declared
-    /// types once they live in the method's own scope.
-    #[test]
-    fn apply_when_method_local_assigned_wrong_type_then_error() {
-        let codes = apply_with_methods(
-            "
+    rule_err!(
+        /// A method's locals are still checked against their own declared
+        /// types once they live in the method's own scope.
+        apply_when_method_local_assigned_wrong_type_then_error,
+        "
 FUNCTION_BLOCK FB_Motor
 METHOD A
 VAR
@@ -1717,10 +1714,9 @@ END_VAR
     b := i;
 END_METHOD
 END_FUNCTION_BLOCK",
-        );
-
-        assert_eq!(codes, [Problem::AssignmentTypeMismatch.code()]);
-    }
+        [Problem::AssignmentTypeMismatch],
+        fb_inheritance_options()
+    );
 
     /// A method reading the instance's field is not a mismatch: the
     /// method scope nests inside the function block's.
@@ -1770,10 +1766,9 @@ END_VAR
 END_FUNCTION"
     );
 
-    #[test]
-    fn apply_when_method_result_assigned_wrong_type_then_error() {
-        let codes = apply_with_methods(
-            "
+    rule_err!(
+        apply_when_method_result_assigned_wrong_type_then_error,
+        "
 FUNCTION_BLOCK FB_Motor
 METHOD GetFlag : BOOL
 VAR
@@ -1782,10 +1777,9 @@ END_VAR
     GetFlag := n;
 END_METHOD
 END_FUNCTION_BLOCK",
-        );
-
-        assert_eq!(codes, [Problem::AssignmentTypeMismatch.code()]);
-    }
+        [Problem::AssignmentTypeMismatch],
+        fb_inheritance_options()
+    );
 
     #[test]
     fn apply_when_method_result_assigned_correct_type_then_ok() {

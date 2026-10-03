@@ -221,9 +221,9 @@ END_FUNCTION_BLOCK";
         assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
     }
 
-    #[test]
-    fn apply_when_var_init_valid_enum_value_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_var_init_valid_enum_value_then_ok,
+        "
 TYPE
 LEVEL : (CRITICAL) := CRITICAL;
 END_TYPE
@@ -232,11 +232,8 @@ FUNCTION_BLOCK LOGGER
 VAR_INPUT
 LEVEL : LEVEL := CRITICAL;
 END_VAR
-END_FUNCTION_BLOCK";
-
-        let codes = codes_of(program);
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+END_FUNCTION_BLOCK"
+    );
 
     #[test]
     #[ignore = "flaky test - needs to be fixed"]

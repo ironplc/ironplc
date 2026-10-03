@@ -227,7 +227,7 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
 mod tests {
     use crate::test_helpers::fb_inheritance_options;
     use crate::test_helpers::NOT_IMPLEMENTED_CODE;
-    use crate::test_helpers::{diagnostic_codes, rule_codes, rule_diagnostics};
+    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
 
     use super::*;
 
@@ -410,9 +410,9 @@ END_PROGRAM",
     // EXTENDS field inheritance.
     // ---------------------------------------------------------------------
 
-    #[test]
-    fn apply_when_unqualified_inherited_field_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_unqualified_inherited_field_then_ok,
+        "
 FUNCTION_BLOCK FB_Base
 VAR
     bEnabled : BOOL;
@@ -424,16 +424,13 @@ VAR
     bRunning : BOOL;
 END_VAR
 bRunning := bEnabled;
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
-        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
-
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    }
-
-    #[test]
-    fn apply_when_multi_level_inherited_field_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_multi_level_inherited_field_then_ok,
+        "
 FUNCTION_BLOCK FB_A
 VAR
     a : BOOL;
@@ -451,16 +448,13 @@ VAR
     c : BOOL;
 END_VAR
 c := a AND b;
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
-        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
-
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    }
-
-    #[test]
-    fn apply_when_extends_and_genuinely_undeclared_field_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_extends_and_genuinely_undeclared_field_then_error,
+        "
 FUNCTION_BLOCK FB_Base
 VAR
     bEnabled : BOOL;
@@ -472,23 +466,21 @@ VAR
     bRunning : BOOL;
 END_VAR
 bRunning := bNotDeclaredAnywhere;
-END_FUNCTION_BLOCK";
-
-        let codes = rule_codes(apply, program, &fb_inheritance_options());
-
-        assert_eq!(codes, [Problem::VariableUndefined.code()]);
-    }
+END_FUNCTION_BLOCK",
+        [Problem::VariableUndefined],
+        fb_inheritance_options()
+    );
 
     // ---------------------------------------------------------------------
     // METHOD scoping.
     // See https://github.com/ironplc/ironplc/issues/1439.
     // ---------------------------------------------------------------------
 
-    /// The standard way a method produces its result, and the same
-    /// spelling a `FUNCTION` body already uses.
-    #[test]
-    fn apply_when_method_assigns_own_name_then_ok() {
-        let program = "
+    rule_ok!(
+        /// The standard way a method produces its result, and the same
+        /// spelling a `FUNCTION` body already uses.
+        apply_when_method_assigns_own_name_then_ok,
+        "
 FUNCTION_BLOCK FB_Motor
 VAR
     speed : REAL;
@@ -496,12 +488,9 @@ END_VAR
 METHOD GetSpeed : REAL
     GetSpeed := speed;
 END_METHOD
-END_FUNCTION_BLOCK";
-
-        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
-
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    }
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
     /// A method with no return type has no result to assign, so its name
     /// is not a variable and must stay undefined rather than becoming
@@ -558,12 +547,12 @@ END_FUNCTION_BLOCK";
             .contains(&"variable=newSpeed".to_owned()));
     }
 
-    /// The method scope nests inside the function block's rather than
-    /// replacing it -- reading and writing the instance's fields is the
-    /// point of a method.
-    #[test]
-    fn apply_when_method_references_function_block_field_then_ok() {
-        let program = "
+    rule_ok!(
+        /// The method scope nests inside the function block's rather than
+        /// replacing it -- reading and writing the instance's fields is the
+        /// point of a method.
+        apply_when_method_references_function_block_field_then_ok,
+        "
 FUNCTION_BLOCK FB_Motor
 VAR
     speed : INT;
@@ -574,18 +563,15 @@ VAR_INPUT
 END_VAR
     speed := newSpeed;
 END_METHOD
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
-        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
-
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    }
-
-    /// Nesting reaches the whole `EXTENDS` chain, not just the immediately
-    /// enclosing function block's own fields.
-    #[test]
-    fn apply_when_method_references_inherited_field_then_ok() {
-        let program = "
+    rule_ok!(
+        /// Nesting reaches the whole `EXTENDS` chain, not just the immediately
+        /// enclosing function block's own fields.
+        apply_when_method_references_inherited_field_then_ok,
+        "
 FUNCTION_BLOCK FB_Base
 VAR
     bEnabled : BOOL;
@@ -596,18 +582,15 @@ FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
 METHOD Enable
     bEnabled := TRUE;
 END_METHOD
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
-        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
-
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    }
-
-    /// Sibling scopes, so the same name in two methods is two variables
-    /// and not a redeclaration.
-    #[test]
-    fn apply_when_two_methods_declare_same_local_name_then_ok() {
-        let program = "
+    rule_ok!(
+        /// Sibling scopes, so the same name in two methods is two variables
+        /// and not a redeclaration.
+        apply_when_two_methods_declare_same_local_name_then_ok,
+        "
 FUNCTION_BLOCK FB_Motor
 METHOD A
 VAR
@@ -621,12 +604,9 @@ VAR
 END_VAR
     q := 2;
 END_METHOD
-END_FUNCTION_BLOCK";
-
-        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
-
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    }
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
     /// Reproduces issue #1566: the rule used to abort at the first undefined
     /// variable, so a program with two of them reported one.
@@ -704,12 +684,12 @@ END_PROGRAM";
     // PROPERTY accessors and property use.
     // ---------------------------------------------------------------------
 
-    /// Each accessor is a method (see `PropertyDeclaration`), so its body
-    /// sees the property name (GET result, SET input), its own variables,
-    /// and the function block's fields.
-    #[test]
-    fn apply_when_property_accessors_use_property_name_and_fields_then_ok() {
-        let program = "
+    rule_ok!(
+        /// Each accessor is a method (see `PropertyDeclaration`), so its body
+        /// sees the property name (GET result, SET input), its own variables,
+        /// and the function block's fields.
+        apply_when_property_accessors_use_property_name_and_fields_then_ok,
+        "
 FUNCTION_BLOCK FB_Motor
 VAR
     _speed : REAL;
@@ -726,12 +706,9 @@ SET
     _speed := Speed;
 END_SET
 END_PROPERTY
-END_FUNCTION_BLOCK";
-
-        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
-
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    }
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
     /// Reading a property by its bare name in the function block body is a
     /// property access, which is not implemented yet. It must not be
