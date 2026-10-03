@@ -331,7 +331,7 @@ END_PROGRAM",
         fb_inheritance_options()
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_method_call_has_wrong_arg_count_then_error,
         "
 FUNCTION_BLOCK FB_Motor
@@ -349,7 +349,8 @@ VAR
 END_VAR
 m.SetSpeed(1.0, 2.0);
 END_PROGRAM",
-        [Problem::FunctionInvocationRequiresFormal],
+        Problem::FunctionInvocationRequiresFormal,
+        "m.SetSpeed(1.0, 2.0)",
         fb_inheritance_options()
     );
 

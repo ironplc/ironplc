@@ -128,4 +128,16 @@ END_FUNCTION_BLOCK";
             [Problem::StdlibTypeRedefinition.code()]
         );
     }
+
+    rule_err_at!(
+        apply_when_user_defines_ton_then_error_at_name,
+        "
+FUNCTION_BLOCK TON
+VAR_INPUT
+value : INT;
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::StdlibTypeRedefinition,
+        "TON"
+    );
 }

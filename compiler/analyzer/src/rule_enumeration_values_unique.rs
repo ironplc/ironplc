@@ -114,12 +114,13 @@ LOGLEVEL2 : LOGLEVEL;
 END_TYPE"
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_value_duplicated_then_error,
         "
 TYPE
 LOGLEVEL : (CRITICAL, CRITICAL);
 END_TYPE",
-        [Problem::EnumTypeDeclDuplicateItem]
+        Problem::EnumTypeDeclDuplicateItem,
+        "CRITICAL"
     );
 }

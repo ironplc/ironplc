@@ -111,7 +111,7 @@ TYPE
 END_TYPE"
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_structure_has_duplicated_names_then_error,
         "
 TYPE
@@ -120,6 +120,7 @@ TYPE
         NAME: BOOL;
     END_STRUCT;
 END_TYPE",
-        [Problem::StructureDuplicatedElement]
+        Problem::StructureDuplicatedElement,
+        "CUSTOM_STRUCT"
     );
 }

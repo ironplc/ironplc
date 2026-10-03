@@ -452,7 +452,7 @@ END_FUNCTION_BLOCK",
         fb_inheritance_options()
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_extends_and_genuinely_undeclared_field_then_error,
         "
 FUNCTION_BLOCK FB_Base
@@ -467,7 +467,8 @@ VAR
 END_VAR
 bRunning := bNotDeclaredAnywhere;
 END_FUNCTION_BLOCK",
-        [Problem::VariableUndefined],
+        Problem::VariableUndefined,
+        "bNotDeclaredAnywhere",
         fb_inheritance_options()
     );
 

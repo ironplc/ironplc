@@ -580,3 +580,16 @@ END_VAR
 END_PROGRAM",
     );
 }
+
+rule_err_at!(
+    null_when_assigned_to_non_reference_then_error_at_null,
+    "PROGRAM Main
+VAR
+x : INT;
+END_VAR
+x := NULL;
+END_PROGRAM",
+    Problem::NullRequiresReferenceType,
+    "NULL",
+    edition3_options()
+);

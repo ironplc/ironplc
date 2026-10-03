@@ -493,14 +493,14 @@ END_PROGRAM
 "
     );
 
-    rule_err!(
+    rule_err_at!(
         /// Nothing but a same-typed aggregate may be assigned to an aggregate.
         /// Codegen depends on this: it treats an unresolvable source at
         /// COPY_REGION emission as a compiler defect.
         apply_when_constant_assigned_to_array_then_reports_mismatch,
         &program_with("a : ARRAY[1..2] OF DINT;\n", "a := 5;\n"),
-        [Problem::AggregateAssignmentTypeMismatch]
-    );
+        Problem::AggregateAssignmentTypeMismatch,
+        "5");
 
     rule_ok!(
         /// An element write is not a whole-aggregate assignment.
