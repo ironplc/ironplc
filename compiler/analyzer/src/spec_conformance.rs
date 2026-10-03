@@ -83,7 +83,7 @@ END_PROGRAM";
         codes
             .iter()
             .any(|c| c.as_str() == Problem::ReferenceTypeMismatch.code()),
-        "expected P2032 (ReferenceTypeMismatch), got {codes:?}"
+        "{codes:?}"
     );
 }
 
@@ -375,7 +375,7 @@ fn analyzer_spec_req_cl_007_same_scope_redeclaration_is_duplicate() {
         codes
             .iter()
             .any(|c| c.as_str() == Problem::FunctionDeclNameDuplicated.code()),
-        "a redeclared library function must be a duplicate (P4016), got {codes:?}"
+        "a redeclared library function must be a duplicate, got {codes:?}"
     );
 
     // The same for a global: the user's own PI repeats the library's.
@@ -391,7 +391,7 @@ fn analyzer_spec_req_cl_007_same_scope_redeclaration_is_duplicate() {
     assert_eq!(
         codes,
         [Problem::SymbolDeclDuplicated.code()],
-        "a redeclared library global must be one duplicate (P4014)"
+        "a redeclared library global must be one duplicate"
     );
 }
 

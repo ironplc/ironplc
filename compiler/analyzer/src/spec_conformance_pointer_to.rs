@@ -131,7 +131,7 @@ END_PROGRAM";
         codes
             .iter()
             .any(|c| c.as_str() == Problem::ReferenceTypeMismatch.code()),
-        "expected P2032 (ReferenceTypeMismatch), got {codes:?}"
+        "{codes:?}"
     );
 }
 
@@ -153,7 +153,7 @@ END_PROGRAM";
         codes
             .iter()
             .any(|c| c.as_str() == Problem::ArithmeticOnReference.code()),
-        "expected P2033 (ArithmeticOnReference), got {codes:?}"
+        "{codes:?}"
     );
 }
 
