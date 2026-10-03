@@ -139,6 +139,10 @@ pub(crate) struct StringVarInfo {
     pub(crate) max_length: u16,
     /// Per-code-unit byte width: `Narrow` for STRING, `Wide` for WSTRING.
     pub(crate) char_width: CharWidth,
+    /// The length, in code units, the string holds for the whole run, when
+    /// it cannot change: see [`crate::string_constant`]. `None` for a string
+    /// whose length is only known at run time.
+    pub(crate) constant_length: Option<u16>,
 }
 
 /// Per-code-unit byte width for STRING (Latin-1 per ADR-0016).

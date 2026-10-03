@@ -55,6 +55,7 @@ mod emit;
 mod optimize;
 mod source_lookup;
 mod stack_balance;
+mod string_constant;
 mod string_width;
 mod type_info;
 
@@ -74,6 +75,8 @@ mod spec_conformance_adr;
 mod spec_conformance_arithmetic_operator_overloads;
 #[cfg(test)]
 mod spec_conformance_behavior_policies;
+#[cfg(test)]
+mod spec_conformance_constant_inference;
 #[cfg(test)]
 mod spec_conformance_container_format;
 #[cfg(test)]

@@ -304,6 +304,263 @@ END_PROGRAM
     &[(3, 4)],
 );
 
+// --- LEN of a string that cannot change -----------------------------------
+//
+// These compile to a constant (see compile_len.rs); what they pin is that the
+// constant is the value LEN_STR would have read at run time.
+
+// `$'` is one quote and `$$` one dollar sign: the length counts what the
+// literal denotes, not how it is spelled. n is at slot 0.
+e2e_i32!(
+    end_to_end_when_len_of_literal_with_escaped_quote_and_dollar_then_counts_characters,
+    "
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN('it$'s $$5');
+END_PROGRAM
+",
+    &[(0, 7)],
+);
+
+// `$N` is a newline and `$41` the character 'A'. n is at slot 0.
+e2e_i32!(
+    end_to_end_when_len_of_literal_with_newline_and_hex_escapes_then_counts_characters,
+    "
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN('a$N$41');
+END_PROGRAM
+",
+    &[(0, 3)],
+);
+
+// A WSTRING escape names a four-digit code unit. n is at slot 0.
+e2e_i32!(
+    end_to_end_when_len_of_wstring_literal_with_escapes_then_counts_code_units,
+    "
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(\"$0041$\"é\");
+END_PROGRAM
+",
+    &[(0, 3)],
+);
+
+// The folded length takes part in the surrounding expression. n is at slot 0.
+e2e_i32!(
+    end_to_end_when_len_of_literal_in_arithmetic_then_uses_length,
+    "
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN('abc') * 2 + 1;
+END_PROGRAM
+",
+    &[(0, 7)],
+);
+
+// d is at slot 0.
+e2e_i32!(
+    end_to_end_when_len_of_literal_assigned_to_dint_then_returns_length,
+    "
+PROGRAM main
+  VAR
+    d : DINT;
+  END_VAR
+  d := LEN('Hello');
+END_PROGRAM
+",
+    &[(0, 5)],
+);
+
+// l is at slot 0.
+e2e_i64!(
+    end_to_end_when_len_of_literal_assigned_to_lint_then_returns_length,
+    "
+PROGRAM main
+  VAR
+    l : LINT;
+  END_VAR
+  l := LEN('Hello');
+END_PROGRAM
+",
+    &[(0, 5)],
+);
+
+// n is at slot 0.
+e2e_i32!(
+    end_to_end_when_len_of_nested_concat_of_literals_then_returns_total_length,
+    "
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(CONCAT(CONCAT('a', 'bc'), 'def'));
+END_PROGRAM
+",
+    &[(0, 6)],
+);
+
+// msg is at slot 0, n at slot 1.
+e2e_i32!(
+    end_to_end_when_len_of_declared_constant_string_then_returns_length,
+    "
+PROGRAM main
+  VAR CONSTANT
+    msg : STRING := 'Hello';
+  END_VAR
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(msg);
+END_PROGRAM
+",
+    &[(1, 5)],
+);
+
+// msg is at slot 0, n at slot 1.
+e2e_i32!(
+    end_to_end_when_len_of_declared_constant_wstring_then_returns_code_unit_count,
+    "
+PROGRAM main
+  VAR CONSTANT
+    msg : WSTRING := \"héllo\";
+  END_VAR
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(msg);
+END_PROGRAM
+",
+    &[(1, 5)],
+);
+
+// An initial value longer than the declaration holds is truncated when it is
+// stored, so the constant's length is the declared capacity. msg is at slot
+// 0, n at slot 1.
+e2e_i32!(
+    end_to_end_when_len_of_constant_string_with_longer_initial_value_then_returns_capacity,
+    "
+PROGRAM main
+  VAR CONSTANT
+    msg : STRING[3] := 'Hello';
+  END_VAR
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(msg);
+END_PROGRAM
+",
+    &[(1, 3)],
+);
+
+// A string the program never writes is marked CONSTANT by the analyzer.
+// msg is at slot 0, n at slot 1.
+e2e_i32!(
+    end_to_end_when_len_of_never_written_string_then_returns_length,
+    "
+PROGRAM main
+  VAR
+    msg : STRING := 'Hello';
+    n : INT;
+  END_VAR
+  n := LEN(msg);
+END_PROGRAM
+",
+    &[(1, 5)],
+);
+
+// msg is at slot 0, n at slot 1.
+e2e_i32!(
+    end_to_end_when_len_of_concat_of_constant_and_literal_then_returns_total_length,
+    "
+PROGRAM main
+  VAR CONSTANT
+    msg : STRING[20] := 'Hello';
+  END_VAR
+  VAR
+    n : INT;
+  END_VAR
+  n := LEN(CONCAT(msg, ', world'));
+END_PROGRAM
+",
+    &[(1, 12)],
+);
+
+// A written variable is not constant: LEN reads its current value. msg is
+// at slot 0, n at slot 1.
+e2e_i32!(
+    end_to_end_when_len_of_written_string_then_returns_current_length,
+    "
+PROGRAM main
+  VAR
+    msg : STRING := 'Hello';
+    n : INT;
+  END_VAR
+  msg := 'Hi';
+  n := LEN(msg);
+END_PROGRAM
+",
+    &[(1, 2)],
+);
+
+// n is at slot 0.
+e2e_i32!(
+    end_to_end_when_len_of_constant_string_in_function_then_returns_length,
+    "
+FUNCTION f : INT
+  VAR CONSTANT
+    s : STRING := 'abcd';
+  END_VAR
+  f := LEN(s);
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    n : INT;
+  END_VAR
+  n := f();
+END_PROGRAM
+",
+    &[(0, 4)],
+);
+
+// The field's length is its declared initial value's, even though a
+// function block's string fields are not yet initialized at run time
+// (github.com/ironplc/ironplc/pull/1865), where LEN_STR read 0.
+// inst is at slot 0, n at slot 1.
+e2e_i32!(
+    end_to_end_when_len_of_constant_string_in_function_block_then_returns_length,
+    "
+FUNCTION_BLOCK fb
+  VAR_OUTPUT
+    len_out : INT;
+  END_VAR
+  VAR CONSTANT
+    s : STRING := 'abcde';
+  END_VAR
+  len_out := LEN(s);
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    inst : fb;
+    n : INT;
+  END_VAR
+  inst();
+  n := inst.len_out;
+END_PROGRAM
+",
+    &[(1, 5)],
+);
+
 /// Compiles and runs `source`, returning the i32 in variable slot `slot`.
 fn len_from(source: &str, slot: usize) -> i32 {
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());

@@ -16,18 +16,17 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use super::compile::{
-    char_width_for_string_type, finalize_function, string_region_size, CompileContext,
-    CompiledFunction, CurrentFunctionReturn, OpWidth, ParamPassing, SavedFbScope, Signedness,
-    StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo,
-    DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
+    finalize_function, string_region_size, CompileContext, CompiledFunction, CurrentFunctionReturn,
+    OpWidth, ParamPassing, SavedFbScope, Signedness, StringParamInfo, StringReturnInfo,
+    StringVarInfo, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
+    WIDE_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{
     debug_type_for_decl, debug_type_for_return, emit_function_local_prologue, map_var_section,
+    register_string_variable,
 };
-use super::compile_stmt::{
-    compile_body, compile_statements, resolve_string_max_length, resolve_string_spec_max_length,
-};
+use super::compile_stmt::{compile_body, compile_statements, resolve_string_spec_max_length};
 use super::type_info::{decl_type_info, resolve_type_name};
 use crate::emit::Emitter;
 
@@ -181,25 +180,7 @@ pub(crate) fn compile_user_function(
                     }
                 }
                 InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = char_width_for_string_type(&string_init.width);
-
-                    let total_bytes = string_region_size(max_length, char_width);
-                    let data_offset =
-                        crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
-
-                    if max_length > ctx.max_string_capacity {
-                        ctx.max_string_capacity = max_length;
-                    }
-
-                    ctx.string_vars.insert(
-                        id.clone(),
-                        StringVarInfo {
-                            data_offset,
-                            max_length,
-                            char_width,
-                        },
-                    );
+                    register_string_variable(ctx, decl, id, string_init)?;
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
                     crate::compile_reference::register_reference_variable(
@@ -233,25 +214,7 @@ pub(crate) fn compile_user_function(
                     }
                 }
                 InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = char_width_for_string_type(&string_init.width);
-
-                    let total_bytes = string_region_size(max_length, char_width);
-                    let data_offset =
-                        crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
-
-                    if max_length > ctx.max_string_capacity {
-                        ctx.max_string_capacity = max_length;
-                    }
-
-                    ctx.string_vars.insert(
-                        id.clone(),
-                        StringVarInfo {
-                            data_offset,
-                            max_length,
-                            char_width,
-                        },
-                    );
+                    register_string_variable(ctx, decl, id, string_init)?;
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
                     crate::compile_reference::register_reference_variable(
@@ -310,6 +273,7 @@ pub(crate) fn compile_user_function(
                     data_offset,
                     max_length,
                     char_width,
+                    constant_length: None,
                 },
             );
             Some(StringReturnInfo {
@@ -596,25 +560,7 @@ pub(crate) fn compile_user_function_block(
                     )?;
                 }
                 InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = char_width_for_string_type(&string_init.width);
-
-                    let total_bytes = string_region_size(max_length, char_width);
-                    let data_offset =
-                        crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
-
-                    if max_length > ctx.max_string_capacity {
-                        ctx.max_string_capacity = max_length;
-                    }
-
-                    ctx.string_vars.insert(
-                        id.clone(),
-                        StringVarInfo {
-                            data_offset,
-                            max_length,
-                            char_width,
-                        },
-                    );
+                    register_string_variable(ctx, decl, id, string_init)?;
                 }
                 _ => {}
             }

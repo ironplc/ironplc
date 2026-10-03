@@ -10,7 +10,7 @@ use ironplc_container::debug_section::{
 use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
     ConstantKind, FunctionReturnType, InitialValueAssignmentKind, ReferenceInitialValue,
-    SpecificationKind, TypeName, VarDecl, VariableType,
+    SpecificationKind, StringInitializer, TypeName, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -25,6 +25,7 @@ use super::compile::{
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
 use super::compile_stmt::resolve_string_max_length;
+use super::string_constant::declared_constant_length;
 use crate::emit::Emitter;
 
 /// Assigns variable table indices and type info for all variable declarations.
@@ -79,26 +80,12 @@ pub(crate) fn assign_variables(
                     }
                 }
                 InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = char_width_for_string_type(&string_init.width);
-
-                    // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
-                    let total_bytes = string_region_size(max_length, char_width);
-                    let data_offset =
-                        crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
-
-                    if max_length > ctx.max_string_capacity {
-                        ctx.max_string_capacity = max_length;
-                    }
-
-                    ctx.string_vars.insert(
-                        id.clone(),
-                        StringVarInfo {
-                            data_offset,
-                            max_length,
-                            char_width,
-                        },
-                    );
+                    let StringVarInfo {
+                        data_offset,
+                        max_length,
+                        char_width,
+                        ..
+                    } = register_string_variable(ctx, decl, id, string_init)?;
                     ctx.debug_string_layouts.push(StringLayoutEntry {
                         var_index: index,
                         data_offset,
@@ -280,6 +267,40 @@ pub(crate) fn assign_variables(
         }
     }
     Ok(())
+}
+
+/// Registers a STRING/WSTRING declaration: reserves its data region slot
+/// (`[max_length: u16][cur_length: u16][data]`), raises the temp buffer
+/// capacity to hold it, and records it in `ctx.string_vars`.
+///
+/// Every scope that declares a string -- a program or the globals, a
+/// function's parameters and locals, a function block's fields -- registers
+/// it here, so what `StringVarInfo` knows about a declaration is worked out
+/// in one place.
+pub(crate) fn register_string_variable(
+    ctx: &mut CompileContext,
+    decl: &VarDecl,
+    id: &Id,
+    string_init: &StringInitializer,
+) -> Result<StringVarInfo, Diagnostic> {
+    let max_length = resolve_string_max_length(string_init)?;
+    let char_width = char_width_for_string_type(&string_init.width);
+
+    let total_bytes = string_region_size(max_length, char_width);
+    let data_offset = crate::data_region::reserve(ctx, total_bytes, &string_init.span())?;
+
+    if max_length > ctx.max_string_capacity {
+        ctx.max_string_capacity = max_length;
+    }
+
+    let info = StringVarInfo {
+        data_offset,
+        max_length,
+        char_width,
+        constant_length: declared_constant_length(decl, string_init, max_length),
+    };
+    ctx.string_vars.insert(id.clone(), info.clone());
+    Ok(info)
 }
 
 /// Maps a DSL VariableType to the debug section var_section encoding.
