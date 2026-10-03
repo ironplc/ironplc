@@ -499,6 +499,11 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_enum_base_type,
 
+    "Allow hex/binary/octal literals (16#FF, 2#1010) as the bounds of a subrange type or an array dimension",
+    "--allow-radix-subrange-bounds",
+    [Rusty, Codesys, TwinCat],
+    allow_radix_subrange_bounds,
+
     policies {
         "What STRING_TO_<numeric> treats as convertible when the string has non-numeric characters",
         "--policy-string-to-num-non-numeric",

@@ -1,0 +1,41 @@
+=====
+P4073
+=====
+
+.. problem-summary:: P4073
+
+This error occurs when a bound of a subrange type or of an array dimension
+is a hex, binary, or octal literal (e.g. ``16#FF``, ``2#1010``, ``8#17``)
+without the ``--allow-radix-subrange-bounds`` compiler flag.
+
+The IEC 61131-3 standard grammar (Annex B) defines
+``subrange ::= signed_integer '..' signed_integer``, where ``signed_integer``
+is a *decimal* digit sequence, so a radix bound is an extension. A bound of a
+``CASE`` subrange label is gated by its own flag and reported as
+:doc:`P4041 <P4041>`.
+
+A decimal bound (``0..255``) is standard syntax and is always allowed.
+
+Example
+-------
+
+The following code will generate error P4073:
+
+.. code-block::
+
+   TYPE
+       BYTE_RANGE : INT (16#00..16#FF);
+   END_TYPE
+
+To fix this error, either write the bounds in decimal:
+
+.. code-block::
+
+   TYPE
+       BYTE_RANGE : INT (0..255);
+   END_TYPE
+
+Or enable the extension:
+
+.. |flag| replace:: ``--allow-radix-subrange-bounds``
+.. include:: /includes/enabled-by-flag.rst

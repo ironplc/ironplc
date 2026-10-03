@@ -5,12 +5,15 @@ P4041
 .. problem-summary:: P4041
 
 This error occurs when a hex, binary, or octal bit-string literal (e.g.
-``16#D012``, ``2#1010``, ``8#17``) is used as a ``CASE`` label without the
+``16#D012``, ``2#1010``, ``8#17``) is used as a ``CASE`` label, or as a bound
+of a subrange label (``16#01..16#0F:``), without the
 ``--allow-bit-string-case-labels`` compiler flag.
 
 The IEC 61131-3 standard grammar for a case label (Annex B) is
 ``case_list_element ::= subrange | signed_integer | enumerated_value``,
-where ``signed_integer`` is a *decimal* digit sequence. Radix-prefixed
+where ``signed_integer`` is a *decimal* digit sequence, and a
+``subrange`` is two of them (``signed_integer '..' signed_integer``).
+Radix-prefixed
 bit-string literals are separate productions that the standard does not
 include as case labels, so accepting them is an extension used by
 TwinCAT and CODESYS.

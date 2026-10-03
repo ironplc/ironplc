@@ -61,10 +61,25 @@ use global constants for the subrange bounds:
        Percent : INT (MIN_PERCENT .. MAX_PERCENT);
    END_TYPE
 
+Radix Bounds (Language Extension)
+---------------------------------
+
+.. include:: ../../../../includes/requires-dialect-extension.rst
+
+With the ``--allow-radix-subrange-bounds`` flag, a bound can be written in
+hex, binary, or octal:
+
+.. code-block::
+
+   TYPE
+       Byte_Range : INT (16#00 .. 16#FF);
+   END_TYPE
+
 Related Problem Codes
 ---------------------
 
 - :doc:`/reference/compiler/problems/P2024` — Subrange initial value out of bounds
+- :doc:`/reference/compiler/problems/P4073` — Radix bound without the flag
 
 See Also
 --------

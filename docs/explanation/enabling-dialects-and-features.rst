@@ -66,7 +66,8 @@ Supported Dialects
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
-   ``--allow-enum-base-type``, and ``--allow-continue``.
+   ``--allow-enum-base-type``, ``--allow-continue``, and
+   ``--allow-radix-subrange-bounds``.
 
    **Selects:** ``--policy-string-to-num-non-numeric reject`` and
    ``--policy-string-to-num-failure zero`` — RuSTy rejects a string with
@@ -101,7 +102,8 @@ Supported Dialects
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
-   ``--allow-enum-base-type``, and ``--allow-continue``.
+   ``--allow-enum-base-type``, ``--allow-continue``, and
+   ``--allow-radix-subrange-bounds``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero`` — CODESYS stops parsing at the
@@ -144,7 +146,8 @@ Supported Dialects
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``,
    ``--allow-fb-inheritance``, ``--allow-enum-explicit-values``,
-   ``--allow-enum-base-type``, and ``--allow-continue``.
+   ``--allow-enum-base-type``, ``--allow-continue``, and
+   ``--allow-radix-subrange-bounds``.
 
    **Selects:** ``--policy-string-to-num-non-numeric ignore-trailing`` and
    ``--policy-string-to-num-failure zero``, as ``codesys``.
@@ -414,9 +417,10 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    grammar for a case label permits only a subrange, a *decimal*
    ``signed_integer``, or an enumerated value; radix-prefixed literals are
    separate productions the standard does not include here. Real
-   TwinCAT/CODESYS code uses them. Without this flag, such a label produces
-   :doc:`P4041 </reference/compiler/problems/P4041>`. A plain decimal label
-   (``5:``) is standard syntax and is always allowed.
+   TwinCAT/CODESYS code uses them. The flag also allows them as the bounds
+   of a subrange label (``16#01..16#0F:``). Without this flag, such a label
+   produces :doc:`P4041 </reference/compiler/problems/P4041>`. A plain
+   decimal label (``5:``) is standard syntax and is always allowed.
 
 ``--allow-paren-string-length``
    Allow a string type's maximum length to be delimited with parentheses
@@ -431,6 +435,16 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    type can appear, including as an array element type
    (``ARRAY[1..10] OF STRING(255)``), a function return type, and a
    ``TYPE`` alias.
+
+``--allow-radix-subrange-bounds``
+   Allow a hex, binary, or octal literal (e.g. ``16#FF``, ``2#1010``,
+   ``8#17``) as a bound of a subrange type (``INT (16#00..16#FF)``) or of an
+   array dimension (``ARRAY[16#0..16#F] OF INT``). The IEC 61131-3 standard
+   grammar defines a subrange's bounds as *decimal* ``signed_integer``\ s.
+   Without this flag, such a bound produces
+   :doc:`P4073 </reference/compiler/problems/P4073>`. The bounds of a
+   ``CASE`` subrange label are allowed by ``--allow-bit-string-case-labels``
+   instead.
 
 ``--allow-struct-initializer-expressions``
    Allow a general (non-constant) expression — such as a pointer
