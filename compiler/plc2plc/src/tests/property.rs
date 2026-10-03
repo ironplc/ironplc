@@ -138,7 +138,11 @@ END_FUNCTION_BLOCK
         .unwrap_or_else(|e| panic!("Rendered output did not re-parse: {e:?}\n{rendered}"));
 
     let set = only_set_accessor(&reparsed);
-    assert_eq!(names(&set.variables), vec!["scale"], "Rendered:\n{rendered}");
+    assert_eq!(
+        names(&set.variables),
+        vec!["scale"],
+        "Rendered:\n{rendered}"
+    );
     assert_eq!(
         names(&set.implicit_variables),
         vec!["Speed"],

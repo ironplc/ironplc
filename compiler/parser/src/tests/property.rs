@@ -147,7 +147,10 @@ END_PROPERTY",
     assert!(property.get.is_none());
     let set = property.set.as_ref().unwrap();
     assert_eq!(set.variables.len(), 1);
-    assert_eq!(set.variables[0].identifier.symbolic_id(), Some(&Id::from("tmp")));
+    assert_eq!(
+        set.variables[0].identifier.symbolic_id(),
+        Some(&Id::from("tmp"))
+    );
     assert_eq!(set.implicit_variables.len(), 1);
     assert_eq!(set.all_variables().count(), 2);
 }

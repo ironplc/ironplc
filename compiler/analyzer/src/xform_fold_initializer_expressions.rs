@@ -308,7 +308,9 @@ impl Fold<Diagnostic> for InitializerFolder<'_> {
                 register_constants(&mut self.constants, &node.variables)
             }
             ScopeNode::Program(node) => register_constants(&mut self.constants, &node.variables),
-            ScopeNode::Method(node) => register_constants(&mut self.constants, node.all_variables()),
+            ScopeNode::Method(node) => {
+                register_constants(&mut self.constants, node.all_variables())
+            }
         }
 
         Ok(())
