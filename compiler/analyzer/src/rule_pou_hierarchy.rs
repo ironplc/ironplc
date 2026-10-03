@@ -199,15 +199,9 @@ impl Visitor<Infallible> for RulePouHierarchy<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_helpers::fb_inheritance_options;
     use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
-
-    fn oop_options() -> CompilerOptions {
-        CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        }
-    }
 
     rule_ctx_ok!(
         apply_when_function_calls_function_then_ok,
@@ -359,7 +353,7 @@ END_FUNCTION"
 
     rule_ctx_errn_with!(
         apply_when_function_calls_method_on_own_instance_then_reports_declaration_and_call,
-        oop_options(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
   VAR

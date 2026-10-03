@@ -1,13 +1,9 @@
-use crate::test_helpers::parse_and_resolve_types_with_options;
-use ironplc_parser::options::{CompilerOptions, Dialect};
+use crate::test_helpers::{edition3_options, parse_and_resolve_types_with_options};
+use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
-fn edition3_options() -> CompilerOptions {
-    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
-}
-
 fn ref_arithmetic_options() -> CompilerOptions {
-    let mut options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+    let mut options = edition3_options();
     options.allow_ref_arithmetic = true;
     options
 }

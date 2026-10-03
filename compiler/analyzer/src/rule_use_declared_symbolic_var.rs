@@ -225,6 +225,7 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_helpers::fb_inheritance_options;
     use crate::test_helpers::{parse_and_resolve_types_with_context, NOT_IMPLEMENTED_CODE};
 
     use super::*;
@@ -430,13 +431,6 @@ END_PROGRAM",
     // EXTENDS field inheritance.
     // ---------------------------------------------------------------------
 
-    fn opts_with_fb_inheritance() -> CompilerOptions {
-        CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        }
-    }
-
     #[test]
     fn apply_when_unqualified_inherited_field_then_ok() {
         let program = "
@@ -455,9 +449,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
+        let result = apply(&library, &context, &fb_inheritance_options());
 
         assert!(result.is_ok(), "unexpected errors: {result:?}");
     }
@@ -486,9 +480,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
+        let result = apply(&library, &context, &fb_inheritance_options());
 
         assert!(result.is_ok(), "unexpected errors: {result:?}");
     }
@@ -511,9 +505,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
+        let result = apply(&library, &context, &fb_inheritance_options());
 
         let codes: Vec<&str> = result
             .as_ref()
@@ -546,9 +540,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
+        let result = apply(&library, &context, &fb_inheritance_options());
 
         assert!(result.is_ok(), "unexpected errors: {result:?}");
     }
@@ -567,9 +561,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
+        let result = apply(&library, &context, &fb_inheritance_options());
 
         let codes: Vec<&str> = result
             .as_ref()
@@ -610,9 +604,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
+        let result = apply(&library, &context, &fb_inheritance_options());
 
         let codes: Vec<&str> = result
             .as_ref()
@@ -650,9 +644,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
+        let result = apply(&library, &context, &fb_inheritance_options());
 
         assert!(result.is_ok(), "unexpected errors: {result:?}");
     }
@@ -676,9 +670,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
+        let result = apply(&library, &context, &fb_inheritance_options());
 
         assert!(result.is_ok(), "unexpected errors: {result:?}");
     }
@@ -705,9 +699,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
+        let result = apply(&library, &context, &fb_inheritance_options());
 
         assert!(result.is_ok(), "unexpected errors: {result:?}");
     }
@@ -814,9 +808,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
+        let result = apply(&library, &context, &fb_inheritance_options());
 
         assert!(result.is_ok(), "unexpected errors: {result:?}");
     }
@@ -842,9 +836,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
+        let errors = apply(&library, &context, &fb_inheritance_options()).unwrap_err();
 
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
@@ -871,9 +865,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
+        let errors = apply(&library, &context, &fb_inheritance_options()).unwrap_err();
 
         assert_eq!(errors.len(), 1, "{errors:?}");
 
@@ -902,9 +896,9 @@ END_PROGRAM";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_fb_inheritance(),
+            &fb_inheritance_options(),
         );
-        let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
+        let errors = apply(&library, &context, &fb_inheritance_options()).unwrap_err();
 
         assert_eq!(errors.len(), 1, "{errors:?}");
 

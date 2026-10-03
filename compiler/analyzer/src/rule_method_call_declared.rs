@@ -244,17 +244,11 @@ impl RuleMethodCallDeclared<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn opts_with_fb_inheritance() -> CompilerOptions {
-        CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        }
-    }
+    use crate::test_helpers::fb_inheritance_options;
 
     rule_ok_with!(
         apply_when_method_declared_on_own_type_then_ok,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 VAR
@@ -275,7 +269,7 @@ END_PROGRAM"
 
     rule_ok_with!(
         apply_when_method_declared_on_base_via_extends_then_ok,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 METHOD Start
@@ -296,7 +290,7 @@ END_PROGRAM"
 
     rule_ok_with!(
         apply_when_method_declared_two_levels_up_extends_chain_then_ok,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 METHOD Start
@@ -320,7 +314,7 @@ END_PROGRAM"
 
     rule_err1_with!(
         apply_when_method_not_declared_anywhere_then_error,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 VAR
@@ -339,7 +333,7 @@ END_PROGRAM",
 
     rule_err1_with!(
         apply_when_method_call_has_wrong_arg_count_then_error,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD SetSpeed
@@ -361,7 +355,7 @@ END_PROGRAM",
 
     rule_errn_with!(
         apply_when_two_undeclared_methods_called_then_reports_both,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD Start
@@ -386,7 +380,7 @@ END_PROGRAM",
 
     rule_ok_with!(
         apply_when_method_with_return_type_called_in_expression_then_ok,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD IsRunning : BOOL
@@ -406,7 +400,7 @@ END_PROGRAM"
     rule_ok_with!(
         /// The value is discarded, as in CODESYS and TwinCAT.
         apply_when_method_with_return_type_called_as_statement_then_ok,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD IsRunning : BOOL
@@ -424,7 +418,7 @@ END_PROGRAM"
 
     rule_err1_with!(
         apply_when_method_without_return_type_called_in_expression_then_error,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD Start
@@ -446,7 +440,7 @@ END_PROGRAM",
         /// A method called in an argument of a statement call is in expression
         /// position, even though the outer call is not.
         apply_when_void_method_is_argument_of_statement_call_then_error,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD Start
@@ -473,7 +467,7 @@ END_PROGRAM",
         /// Arguments are checked like any other call: before method calls could
         /// appear in expressions, this rule never looked inside them.
         apply_when_undeclared_method_is_argument_then_error,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD Scaled : REAL

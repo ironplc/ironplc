@@ -122,7 +122,7 @@ impl DiagnosticVisitor for RuleLoopControlInsideLoop {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_parser::options::{CompilerOptions, Dialect};
+    use crate::test_helpers::edition3_options;
     use ironplc_problems::Problem;
 
     rule_err1!(
@@ -210,13 +210,9 @@ mod tests {
         END_PROGRAM"
     );
 
-    fn edition_3() -> CompilerOptions {
-        CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
-    }
-
     rule_err1_with!(
         apply_when_continue_in_program_body_then_p4065,
-        edition_3(),
+        edition3_options(),
         "
         PROGRAM main
             CONTINUE;
@@ -226,7 +222,7 @@ mod tests {
 
     rule_err1_with!(
         apply_when_continue_in_if_outside_loop_then_p4065,
-        edition_3(),
+        edition3_options(),
         "
         FUNCTION f : INT
         VAR x : BOOL; END_VAR
@@ -240,7 +236,7 @@ mod tests {
 
     rule_ok_with!(
         apply_when_continue_in_each_loop_then_ok,
-        edition_3(),
+        edition3_options(),
         "
         PROGRAM main
         VAR x : INT; y : BOOL; END_VAR
