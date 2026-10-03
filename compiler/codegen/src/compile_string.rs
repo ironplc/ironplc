@@ -8,9 +8,10 @@ use ironplc_container::opcode;
 use ironplc_container::CharWidth;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::{CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
+use ironplc_dsl::textual::{CompareOp, Expr, ExprKind, Function};
 
 use super::compile::{string_region_size, CompileContext, DEFAULT_OP_TYPE};
+use super::compile_call::collect_positional_args;
 use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
 use crate::string_width::{
@@ -157,17 +158,6 @@ pub(crate) fn resolve_string_arg(
     emitter.emit_str_store_var(data_offset);
 
     Ok(data_offset)
-}
-
-/// Collects positional input arguments from a function call.
-pub(crate) fn collect_positional_args(func: &Function) -> Vec<&Expr> {
-    func.param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect()
 }
 
 /// Compiles the FIND standard function call.
