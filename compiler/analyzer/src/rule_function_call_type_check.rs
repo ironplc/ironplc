@@ -59,6 +59,7 @@ use std::convert::Infallible;
 use crate::{
     intermediates::operator_function_form::operator_function_form,
     result::SemanticResult,
+    rule_string_encoding_compat,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
     symbol_environment::ScopeTracker,
@@ -169,6 +170,16 @@ impl RuleFunctionCallTypeCheck<'_> {
         let Variable::Symbolic(SymbolicVariableKind::Named(nv)) = target else {
             return;
         };
+        // A string variable of the other encoding is P4034's business;
+        // reporting it here too would give two diagnostics for one mistake.
+        if rule_string_encoding_compat::mixes_encodings(
+            target,
+            value,
+            self.context,
+            &self.scope.current(),
+        ) {
+            return;
+        }
         let Some(declared) = self.declared_type_name(&nv.name) else {
             return;
         };
@@ -1506,6 +1517,20 @@ END_VAR
     w := 'abc';
 END_PROGRAM",
         [Problem::AssignmentTypeMismatch]
+    );
+
+    // A WSTRING variable assigned to a STRING one is reported once, as
+    // P4034, by rule_string_encoding_compat.
+    rule_ok!(
+        apply_when_string_target_assigned_wstring_variable_then_left_to_encoding_rule,
+        "
+PROGRAM main
+VAR
+    s : STRING[10];
+    w : WSTRING[10];
+END_VAR
+    s := w;
+END_PROGRAM"
     );
 
     rule_ok!(
