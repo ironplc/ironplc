@@ -38,7 +38,7 @@ fn problem_count(program: &str, problem: Problem) -> usize {
             .iter()
             .all(|code| code == Problem::ConstantOverflow.code()
                 || code == Problem::RealLiteralOutOfRange.code()),
-        "expected only this rule's problems, got {codes:?}"
+        "{codes:?}"
     );
     codes.iter().filter(|code| *code == problem.code()).count()
 }
@@ -196,11 +196,7 @@ fn apply_when_case_label_beyond_every_type_then_reported_with_its_sign() {
 
     let diagnostics = diagnostics_of(&program);
 
-    assert_eq!(
-        diagnostics.len(),
-        1,
-        "expected exactly one diagnostic, got {diagnostics:?}"
-    );
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
     assert_eq!(diagnostics[0].code, Problem::ConstantOverflow.code());
     assert!(diagnostics[0]
         .described
@@ -468,7 +464,7 @@ fn apply_when_real_literal_reported_by_own_rule_then_not_reported_here(#[case] v
         .into_iter()
         .map(|d| d.code)
         .collect();
-    assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 #[rstest]

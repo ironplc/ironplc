@@ -23,7 +23,7 @@ fn problems(program: &str, options: &CompilerOptions) -> Vec<String> {
 
 fn assert_ok(program: &str) {
     let codes = problems(program, &edition3_options());
-    assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 fn assert_problem(program: &str, problem: Problem) {
@@ -339,7 +339,7 @@ y := r + 1;
 END_PROGRAM",
         &ref_arithmetic_options(),
     );
-    assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 #[test]
@@ -356,7 +356,7 @@ result := r1 > r2;
 END_PROGRAM",
         &ref_arithmetic_options(),
     );
-    assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 #[test]
@@ -373,7 +373,7 @@ result := r1 = r2;
 END_PROGRAM",
         &ref_arithmetic_options(),
     );
-    assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 // P2029: allow_ref_stack_variables suppresses REF of FUNCTION VAR_INPUT
@@ -397,7 +397,7 @@ MyFunc := 0;
 END_FUNCTION",
         &options,
     );
-    assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 // P2029: allow_ref_stack_variables suppresses REF of VAR_TEMP
@@ -420,7 +420,7 @@ r := REF(temp);
 END_FUNCTION_BLOCK",
         &options,
     );
-    assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 // P2032: allow_ref_type_punning suppresses type mismatch
@@ -441,7 +441,7 @@ r := REF(x);
 END_PROGRAM",
         &options,
     );
-    assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+    assert!(codes.is_empty(), "{codes:?}");
 }
 
 // P2032: type mismatch still fires without allow_ref_type_punning

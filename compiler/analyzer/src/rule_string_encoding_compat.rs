@@ -184,11 +184,7 @@ END_PROGRAM
 ",
         );
         let errors = result.unwrap_err();
-        assert_eq!(
-            errors.len(),
-            1,
-            "expected exactly one diagnostic, got {errors:?}"
-        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 
@@ -206,11 +202,7 @@ END_PROGRAM
 ",
         );
         let errors = result.unwrap_err();
-        assert_eq!(
-            errors.len(),
-            1,
-            "expected exactly one diagnostic, got {errors:?}"
-        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 
@@ -261,11 +253,7 @@ END_PROGRAM
 ",
         );
         let errors = result.unwrap_err();
-        assert_eq!(
-            errors.len(),
-            1,
-            "expected exactly one diagnostic, got {errors:?}"
-        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 
@@ -314,7 +302,7 @@ END_PROGRAM
 
         assert!(
             codes.contains(&Problem::StringEncodingMismatch.code().to_string()),
-            "got {codes:?}"
+            "{codes:?}"
         );
     }
 
@@ -366,11 +354,7 @@ END_FUNCTION_BLOCK
 ",
         );
         let errors = result.unwrap_err();
-        assert_eq!(
-            errors.len(),
-            1,
-            "expected exactly one diagnostic, got {errors:?}"
-        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 
@@ -410,11 +394,7 @@ END_PROGRAM
 ",
         );
         let errors = result.unwrap_err();
-        assert_eq!(
-            errors.len(),
-            1,
-            "expected exactly one diagnostic, got {errors:?}"
-        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 }

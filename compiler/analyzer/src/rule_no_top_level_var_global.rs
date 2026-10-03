@@ -107,11 +107,7 @@ mod test {
 
         let errors = apply(&lib, &context(), &CompilerOptions::default()).unwrap_err();
 
-        assert_eq!(
-            errors.len(),
-            1,
-            "expected exactly one diagnostic, got {errors:?}"
-        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].code, Problem::TopLevelVarGlobalNotAllowed.code());
     }
 
@@ -121,11 +117,7 @@ mod test {
 
         let diagnostics = apply(&lib, &context(), &CompilerOptions::default()).unwrap_err();
 
-        assert_eq!(
-            diagnostics.len(),
-            1,
-            "expected exactly one diagnostic, got {diagnostics:?}"
-        );
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
 
         assert_eq!(
             diagnostics[0].code,

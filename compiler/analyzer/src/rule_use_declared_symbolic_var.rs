@@ -875,11 +875,7 @@ END_FUNCTION_BLOCK";
         );
         let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
 
-        assert_eq!(
-            errors.len(),
-            1,
-            "expected exactly one diagnostic, got {errors:?}"
-        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
 
         assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
         assert!(errors[0].described.contains(&"property=Speed".to_owned()));
@@ -910,11 +906,7 @@ END_PROGRAM";
         );
         let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
 
-        assert_eq!(
-            errors.len(),
-            1,
-            "expected exactly one diagnostic, got {errors:?}"
-        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
 
         assert_eq!(errors[0].code, Problem::VariableUndefined.code());
 

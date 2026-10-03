@@ -276,11 +276,7 @@ END_FUNCTION";
 
         let errors = super::apply(&library, &context, &options).unwrap_err();
 
-        assert_eq!(
-            errors.len(),
-            1,
-            "expected exactly one diagnostic, got {errors:?}"
-        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].code, Problem::FunctionBlockInFunction.code());
         let start = program.find("inst").unwrap();
         let location = &errors[0].primary.location;

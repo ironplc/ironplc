@@ -193,7 +193,7 @@ mod tests {
             "a : ARRAY[1..2] OF DINT;\nb : ARRAY[1..2] OF DINT;\n",
             "a := b;\n",
         ));
-        assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     #[test]
@@ -254,7 +254,7 @@ END_VAR
 END_PROGRAM
 ",
         );
-        assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     #[test]
@@ -313,7 +313,7 @@ END_PROGRAM
     #[test]
     fn apply_when_scalar_widths_differ_then_no_diagnostic() {
         let codes = problem_codes(&program_with("a : DINT;\nb : INT;\n", "a := b;\n"));
-        assert!(codes.is_empty(), "scalars are out of scope, got {codes:?}");
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     /// A global is reached through a `VAR_EXTERNAL` redeclaration, which is
@@ -372,7 +372,7 @@ END_VAR
 END_PROGRAM
 ",
         );
-        assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     /// A function block's own declaration hides an outer one of the same
@@ -408,7 +408,7 @@ END_VAR
 END_PROGRAM
 ",
         );
-        assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     #[test]
@@ -513,7 +513,7 @@ END_VAR
 END_PROGRAM
 ",
         );
-        assert!(codes.is_empty(), "P4027 owns this case; got {codes:?}");
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     #[test]
@@ -538,7 +538,7 @@ END_VAR
 END_PROGRAM
 ",
         );
-        assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     /// Nothing but a same-typed aggregate may be assigned to an aggregate.
@@ -557,10 +557,7 @@ END_PROGRAM
             "a : ARRAY[1..2] OF DINT;\nb : ARRAY[1..5] OF DINT;\n",
             "a[1] := b[1];\n",
         ));
-        assert!(
-            codes.is_empty(),
-            "element writes are out of scope, got {codes:?}"
-        );
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     /// Analyzes `program` with methods enabled, returning the problem
@@ -609,10 +606,6 @@ END_FUNCTION_BLOCK
 ",
         );
 
-        assert_eq!(
-            codes,
-            [Problem::AggregateAssignmentTypeMismatch.code()],
-            "expected an aggregate assignment mismatch on the function block's field"
-        );
+        assert_eq!(codes, [Problem::AggregateAssignmentTypeMismatch.code()]);
     }
 }

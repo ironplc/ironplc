@@ -241,7 +241,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let codes = codes_of(program);
-        assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     #[test]
@@ -261,7 +261,7 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let codes = codes_of(program);
-        assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     #[test]

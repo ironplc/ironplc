@@ -284,11 +284,7 @@ END_PROGRAM";
         let opts = CompilerOptions::default();
         let (library, context) = crate::test_helpers::resolve_fresh_with(program, &opts);
         let errors = apply(&library, &context, &opts).unwrap_err();
-        assert_eq!(
-            errors.len(),
-            1,
-            "expected exactly one diagnostic, got {errors:?}"
-        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].code, Problem::StringLiteralCharOutOfRange.code());
         let rendered = format!("{:?}", errors[0]);
         assert!(rendered.contains("U+7B49"), "{rendered}");

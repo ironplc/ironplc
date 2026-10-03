@@ -261,7 +261,7 @@ mod tests {
 
     fn assert_bit_access_ok(program: &str) {
         let codes = problems_with(program, &CompilerOptions::default());
-        assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     fn assert_bit_access_err(program: &str) {

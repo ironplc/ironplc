@@ -89,11 +89,7 @@ mod test {
             },
         );
         let diagnostics = result.unwrap_err();
-        assert_eq!(
-            diagnostics.len(),
-            1,
-            "expected exactly one diagnostic, got {diagnostics:?}"
-        );
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
         assert_eq!(
             diagnostics[0].code,
             ironplc_problems::Problem::CStyleComment.code()
