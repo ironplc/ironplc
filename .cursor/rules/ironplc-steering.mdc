@@ -17,6 +17,7 @@ alwaysApply: true
 - `specs/steering/iec-61131-3-compliance.md` — analyzer / standard compliance
 - `specs/steering/plcopen-xml-module.md` — `compiler/sources/src/xml/`
 - `specs/steering/syntax-support-guide.md` — parser, codegen, plc2plc
+- `specs/steering/rule-writing-guide.md` — analyzer and parser `rule_*.rs`
 - `specs/steering/problem-code-management.md` — diagnostics, `compiler/problems/`
 - `specs/steering/extension-testing-requirements.md` — `integrations/vscode/`
 - `specs/steering/common-tasks.md` — `just` recipes and CI expectations

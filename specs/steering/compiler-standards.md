@@ -8,7 +8,8 @@ testing, error handling, performance, and Rust-specific rules.
 > structure and pipeline, see [compiler-architecture.md](compiler-architecture.md).
 > For problem-code mechanics, see
 > [problem-code-management.md](problem-code-management.md). For adding syntax, see
-> [syntax-support-guide.md](syntax-support-guide.md). For build/test commands and
+> [syntax-support-guide.md](syntax-support-guide.md); for writing a rule, see
+> [rule-writing-guide.md](rule-writing-guide.md). For build/test commands and
 > the pre-PR CI gate, see [common-tasks.md](common-tasks.md).
 
 ## Applies To
