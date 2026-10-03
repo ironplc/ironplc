@@ -301,7 +301,13 @@ pub fn resolve_types(
 
     // Resolve expression types using the function environment.
     library = run_reverting_on_error(library, &mut diagnostics, |lib| {
-        xform_resolve_expr_types::apply(lib, &mut type_environment, &function_environment, options)
+        xform_resolve_expr_types::apply(
+            lib,
+            &symbol_environment,
+            &mut type_environment,
+            &function_environment,
+            options,
+        )
     });
 
     // Fold constant binary and unary expressions.
