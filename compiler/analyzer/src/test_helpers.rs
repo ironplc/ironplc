@@ -96,8 +96,23 @@ pub fn rule_diagnostics(
     program: &str,
     options: &ironplc_parser::options::CompilerOptions,
 ) -> Vec<ironplc_dsl::diagnostic::Diagnostic> {
-    let (library, context) = parse_and_resolve_types_with_options(program, options);
-    rule(&library, &context, options).err().unwrap_or_default()
+    rule_diagnostics_with(rule, program, options, options)
+}
+
+/// As [`rule_diagnostics`], resolving `program` under `resolve_options` and
+/// running `rule` under `rule_options`: for a rule that rejects, by its own
+/// option, a construct the parser only accepts with that option on.
+#[cfg(test)]
+pub fn rule_diagnostics_with(
+    rule: Rule,
+    program: &str,
+    resolve_options: &ironplc_parser::options::CompilerOptions,
+    rule_options: &ironplc_parser::options::CompilerOptions,
+) -> Vec<ironplc_dsl::diagnostic::Diagnostic> {
+    let (library, context) = parse_and_resolve_types_with_options(program, resolve_options);
+    rule(&library, &context, rule_options)
+        .err()
+        .unwrap_or_default()
 }
 
 /// As [`rule_diagnostics`], returning only the problem codes, in order.
