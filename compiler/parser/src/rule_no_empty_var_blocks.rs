@@ -81,91 +81,67 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 
 #[cfg(test)]
 mod test {
-    use crate::test_rule_helpers::{result_codes, token};
+    use crate::test_rule_helpers::token;
+    use ironplc_problems::Problem;
 
-    use crate::{options::CompilerOptions, rule_no_empty_var_blocks::apply, token::TokenType};
+    use crate::{options::CompilerOptions, token::TokenType};
 
-    #[test]
-    fn apply_when_empty_var_block_and_not_allowed_then_error() {
-        let tokens = vec![token(TokenType::Var, ""), token(TokenType::EndVar, "")];
+    token_rule_err!(
+        apply_when_empty_var_block_and_not_allowed_then_error,
+        vec![token(TokenType::Var, ""), token(TokenType::EndVar, "")],
+        [Problem::EmptyVarBlock],
+        CompilerOptions {
+            allow_empty_var_blocks: false,
+            ..CompilerOptions::default()
+        }
+    );
 
-        let result = apply(
-            &tokens,
-            &CompilerOptions {
-                allow_empty_var_blocks: false,
-                ..CompilerOptions::default()
-            },
-        );
-        let codes = result_codes(&result);
-        assert_eq!(codes, [ironplc_problems::Problem::EmptyVarBlock.code()]);
-    }
+    token_rule_ok!(
+        apply_when_empty_var_block_and_allowed_then_ok,
+        vec![token(TokenType::Var, ""), token(TokenType::EndVar, "")],
+        CompilerOptions {
+            allow_empty_var_blocks: true,
+            ..CompilerOptions::default()
+        }
+    );
 
-    #[test]
-    fn apply_when_empty_var_block_and_allowed_then_ok() {
-        let tokens = vec![token(TokenType::Var, ""), token(TokenType::EndVar, "")];
-
-        let result = apply(
-            &tokens,
-            &CompilerOptions {
-                allow_empty_var_blocks: true,
-                ..CompilerOptions::default()
-            },
-        );
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_var_with_qualifier_empty_and_not_allowed_then_error() {
-        let tokens = vec![
+    token_rule_err!(
+        apply_when_var_with_qualifier_empty_and_not_allowed_then_error,
+        vec![
             token(TokenType::Var, ""),
             token(TokenType::Whitespace, ""),
             token(TokenType::Constant, ""),
             token(TokenType::Whitespace, ""),
             token(TokenType::EndVar, ""),
-        ];
+        ],
+        [Problem::EmptyVarBlock],
+        CompilerOptions {
+            allow_empty_var_blocks: false,
+            ..CompilerOptions::default()
+        }
+    );
 
-        let result = apply(
-            &tokens,
-            &CompilerOptions {
-                allow_empty_var_blocks: false,
-                ..CompilerOptions::default()
-            },
-        );
-        let codes = result_codes(&result);
-        assert_eq!(codes, [ironplc_problems::Problem::EmptyVarBlock.code()]);
-    }
+    token_rule_err!(
+        apply_when_empty_var_input_and_not_allowed_then_error,
+        vec![token(TokenType::VarInput, ""), token(TokenType::EndVar, "")],
+        [Problem::EmptyVarBlock],
+        CompilerOptions {
+            allow_empty_var_blocks: false,
+            ..CompilerOptions::default()
+        }
+    );
 
-    #[test]
-    fn apply_when_empty_var_input_and_not_allowed_then_error() {
-        let tokens = vec![token(TokenType::VarInput, ""), token(TokenType::EndVar, "")];
-
-        let result = apply(
-            &tokens,
-            &CompilerOptions {
-                allow_empty_var_blocks: false,
-                ..CompilerOptions::default()
-            },
-        );
-        let codes = result_codes(&result);
-        assert_eq!(codes, [ironplc_problems::Problem::EmptyVarBlock.code()]);
-    }
-
-    #[test]
-    fn apply_when_non_empty_var_block_then_ok() {
-        let tokens = vec![
+    token_rule_ok!(
+        apply_when_non_empty_var_block_then_ok,
+        vec![
             token(TokenType::Var, ""),
             token(TokenType::Whitespace, ""),
             token(TokenType::Identifier, ""),
             token(TokenType::EndVar, ""),
-        ];
-
-        let result = apply(
-            &tokens,
-            &CompilerOptions {
-                allow_empty_var_blocks: false,
-                ..CompilerOptions::default()
-            },
-        );
-        assert!(result.is_ok());
-    }
+        ],
+        CompilerOptions {
+            allow_empty_var_blocks: false,
+            ..CompilerOptions::default()
+        }
+    );
 }
