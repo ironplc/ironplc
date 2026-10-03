@@ -85,8 +85,10 @@ the **exact list of problems** it reports, written as `Problem` variants.
 5. **Message text** is asserted only when the text is the feature (a
    "did you mean" hint, the named type), and always together with the code
    assertion, never instead of it.
-6. **Parameterise with `#[rstest]`**, using the same helper as the macros so
-   a case and a one-liner assert identically. Property tests are not needed:
+6. **Parameterise with `#[rstest]`** where one program template varies by a
+   value. Existing parameterised tests keep their own scaffolds; what they
+   assert must still be exact. A new one can call the helper the macros
+   call, so a case and a one-liner assert identically. Property tests are not needed:
    rule inputs are programs, and boundary values are enumerable as cases
    (as `rule_constant_range/tests.rs` does).
 7. **Coverage per rule.** Every rule has at least one ok test and one test
@@ -146,7 +148,7 @@ rule_err!(
 );
 ```
 
-Or, as an `#[rstest]` case, calling the helper the macros call:
+A new `#[rstest]` test can call the helper the macros call:
 
 ```rust
 #[rstest]
@@ -182,13 +184,44 @@ Three choices fold the variants away:
   twin.
 
 `rule_err!` keeps its name but changes meaning, from "any error" to "exactly
-these problems". Its old uses are all rewritten (Core PR 1) before the new
-macro takes the name (Core PR 2), and the new form requires a `[…]` list, so
+these problems". Its old uses are all rewritten (Phase 1) before the new
+macro takes the name (Phase 2), and the new form requires a `[…]` list, so
 any old-style invocation that was missed fails to compile.
 
 The parser token rules take `(&[Token], &CompilerOptions)`, so they get the
 same helper and three macros over tokens in `parser/src/`; the standard is the
 same.
+
+## Phasing
+
+The work comes in two phases, one PR each, and each leaves the tree better
+on its own. Each PR is a series of commits in the order of its tasks below,
+so it can be reviewed commit by commit.
+
+**Phase 1: strengthen the weak tests, with the macros as they are.** No macro
+or helper is added, renamed or removed. Every test that asserts less than an
+exact result is rewritten to assert one, using the existing exact macros
+(`rule_err1`, `rule_errn`, `rule_err1_at` and their `ctx_`/`_with` forms) or,
+in a hand-written body, an exact list of `Problem` codes. The phase ends with a
+first version of the conventions meta-test, so the gains cannot regress while
+Phase 2 is pending. If Phase 2 never happens, the tests are still sound.
+
+**Phase 2: migrate to the three macros.** The helpers, the three macros, the
+removal of the old 21 and of the empty-context scaffold, and the final
+meta-test. Hand-written single tests move onto the macros where they fit.
+`#[rstest]` tests stay as they are: Phase 1 already made them exact.
+
+Phase 2 puts its prefactor (the helpers) in the same PR as the core change,
+as its first commit, rather than in a PR of its own as
+[development-standards.md](../steering/development-standards.md#development-process)
+asks. This was chosen deliberately to keep one PR per phase. That first
+commit must still pass `cd compiler && just` with no test edited.
+
+An exact assertion can expose a rule that reports a problem twice or reports
+the wrong code. When it does, the test asserts the correct result and the
+rule is fixed in its own PR first, or an issue is opened and the test is left
+as it was until then, citing the issue. A test is never made exact around a
+wrong result.
 
 ## Enforcement
 
@@ -219,6 +252,19 @@ naming file and line, when it finds:
 The parser crate gets the same test over `parser/src/rule_*.rs`, without the
 context check.
 
+The meta-test lands in two versions. **At the end of Phase 1** it carries the
+first three checks, plus two that stand in for what Phase 2 makes
+impossible to write:
+
+| Phase 1 check | Catches | Replaced in Phase 2 by |
+|---|---|---|
+| `rule_err!(`, `rule_ctx_err!(`, `rule_err_code`, `rule_ctx_err_code` (and `_with` forms) | weak one-liners | their deletion (compile time) |
+| an empty-context macro (`rule_ok!`, `rule_err1!`, `rule_errn!`, `rule_err1_at!`, `_with` forms) in a file whose `apply` takes `context:` rather than `_context:` | a rule that reads the context, tested against an empty one | deleting the empty-context family, plus the `SemanticContextBuilder::new()` check |
+
+**At the end of Phase 2** these two are dropped (the first would otherwise
+reject the new `rule_err!`) and the last two rows of the table above are
+added.
+
 It runs under `cargo test`, so `just`, `just test` and `just coverage` all
 enforce it, on every platform, with no new CI step. Text matching is enough
 here because the patterns are distinctive. If it proves brittle, parse the
@@ -245,12 +291,15 @@ message links to it.
 
 ## Prefactoring
 
-The helpers are the prefactor. Adding `assert_rule` and `assert_rule_at`,
-and re-expressing the `rule_ctx_ok`, `rule_ctx_err1` and `rule_ctx_errn`
-macros (and their `_with` forms) over `assert_rule`, changes no test's
-behaviour: each of those macros already asserts an exact result, which is
-what `assert_rule` asserts. Every test must pass unchanged. The weak and
-empty-context macros are left alone until the core PRs remove them.
+**Phase 1: none needed.** It edits only test bodies, using macros and helpers
+that already exist.
+
+**Phase 2: the helpers, as the PR's first commit.** Adding `assert_rule` and
+`assert_rule_at`, and re-expressing the `rule_ctx_ok`, `rule_ctx_err1` and
+`rule_ctx_errn` macros (and their `_with` forms) over `assert_rule`, changes
+no test's behaviour: each of those macros already asserts an exact result,
+which is what `assert_rule` asserts. Every test must pass unchanged at that
+commit.
 
 ## Design doc reference
 
@@ -272,72 +321,78 @@ None. Testing convention only; the outcome lands in the steering files.
 
 ## Tasks
 
-### Prefactor PR: shared assertion helpers
+- [ ] Open a tracking issue listing the two PRs and link it here
 
-- [ ] Add `Rule`, `assert_rule` and `assert_rule_at` to `test_helpers.rs`
-- [ ] Re-express `rule_ctx_ok`, `rule_ctx_err1`, `rule_ctx_errn` and their
-      `_with` forms over `assert_rule`
-- [ ] `cd compiler && just` passes with no test edited
+### Phase 1 PR: strengthen the weak tests
 
-### Core PR 1: make every assertion exact, in the right context
+The macros stay as they are. Each file keeps its own scaffold; only what its
+tests assert changes.
 
-These edits change what tests assert, so they come before the rename.
-
-- [ ] Rewrite the 38 weak-macro uses as `rule_err1`/`rule_errn` (or the `ctx_`
-      form) with the exact problems the rule reports:
-      `rule_function_block_invocation`, `rule_var_decl_const_initialized`,
-      `rule_decl_struct_element_unique_names`, `rule_enumeration_values_unique`,
-      `rule_program_task_definition_exists`, `rule_task_names_unique`,
-      `rule_var_decl_const_not_fb`, `rule_case_bit_string_label`,
-      `rule_function_call_type_check`, `rule_function_call_declared`,
-      `rule_use_declared_symbolic_var`,
+- [ ] **Commit: exact one-liners.** Rewrite the 38 weak-macro uses as
+      `rule_err1`/`rule_errn` (or the `ctx_` form) with the exact problems
+      the rule reports: `rule_function_block_invocation`,
+      `rule_var_decl_const_initialized`, `rule_decl_struct_element_unique_names`,
+      `rule_enumeration_values_unique`, `rule_program_task_definition_exists`,
+      `rule_task_names_unique`, `rule_var_decl_const_not_fb`,
+      `rule_case_bit_string_label`, `rule_function_call_type_check`,
+      `rule_function_call_declared`, `rule_use_declared_symbolic_var`,
       `rule_var_decl_global_const_requires_external_const`,
-      `rule_loop_control_inside_loop`
-- [ ] Move the empty-context tests of the two rules that read the context to
-      the resolved context: `rule_var_decl_const_initialized` (8),
-      `rule_pou_hierarchy` (1, via `assert_rule_at`)
-- [ ] Delete `rule_err`, `rule_ctx_err`, `rule_err_code`, `rule_ctx_err_code`
-      and their `_with` forms
+      `rule_loop_control_inside_loop`. The weak macros stay defined but unused
+- [ ] **Commit: right context.** Move the empty-context tests of the two rules
+      that read the context to the `rule_ctx_*` macros:
+      `rule_var_decl_const_initialized` (8) and `rule_pou_hierarchy` (1). The
+      latter is an `_at` test and there is no `rule_ctx_err1_at`, so it
+      becomes a hand-written body asserting code and label, as in
+      `rule_condition_type.rs`, until Phase 2 folds it into `rule_err_at!`
+- [ ] **Commit: `Problem` codes.** String codes → `Problem` variants, exact
+      lists: `rule_assignment_aggregate_type_compat`,
+      `rule_unsupported_extension`, `rule_use_declared_symbolic_var`,
+      `rule_function_block_call_unsupported`
+- [ ] **Commit: exact hand-written tests.** `.is_err()` → exact codes:
+      `rule_no_top_level_var_global`, `rule_stdlib_type_redefinition`,
+      `rule_string_encoding_compat`, `rule_var_decl_const_initialized`,
+      `rule_use_declared_symbolic_var`, `rule_var_decl_initializer_type_compat`,
+      and the 4 parser token rules. `rule_member_qualifier_invalid`: assert
+      codes, keeping the message only where it is the feature
+- [ ] **Commit: rule, not pipeline.** `rule_ref_to/tests.rs` and
+      `rule_bit_and_partial_access_range`: from the full pipeline and "any
+      diagnostic" to their own `apply` with exact codes (pipeline cases that
+      need more than one rule move to `spec_conformance`)
+- [ ] **Commit: first meta-test.** Add `rule_test_conventions.rs` (analyzer)
+      and its parser twin with the Phase 1 checks; each check first shown to
+      fail on a seeded violation, then pass on the tree
+- [ ] **Commit: steering.** "Rule tests" section in `compiler-standards.md`
+      stating the standard; point the `compiler-architecture.md` paragraph at it
+- [ ] `cd compiler && just` passes
 
-### Core PR 2: collapse to three macros
+### Phase 2 PR: migrate the macros
 
-Mechanical: after Core PR 1 only rules that ignore the context still use the
-empty-context macros, so moving them to the resolved context changes no
-result. One commit per old macro, each a search-and-replace.
-
-- [ ] Add `rule_ok!`, `rule_err!` (with its list) and `rule_err_at!` over the
-      helpers, each with an optional trailing options argument
-- [ ] `rule_ok`, `rule_ok_with`, `rule_ctx_ok`, `rule_ctx_ok_with` (188 uses) → `rule_ok!`
-- [ ] `rule_err1`, `rule_err1_with`, `rule_ctx_err1`, `rule_ctx_err1_with` (69, plus
-      the Core PR 1 rewrites) → `rule_err!(…, [P])`
-- [ ] `rule_errn`, `rule_errn_with`, `rule_ctx_errn`, `rule_ctx_errn_with` (19, plus
-      the Core PR 1 rewrites) → `rule_err!(…, [P, P, …])`
-- [ ] `rule_err1_at` (36) → `rule_err_at!`
-- [ ] Delete the old macros and `resolve_fresh_with`
-
-### Core PR 3: hand-written and `#[rstest]` bodies onto the helpers
-
-- [ ] `rule_assignment_aggregate_type_compat`, `rule_unsupported_extension`,
-      `rule_use_declared_symbolic_var`, `rule_function_block_call_unsupported`:
-      string codes → `Problem` variants, exact lists
-- [ ] `rule_member_qualifier_invalid`: assert codes; keep the message only
-      where it is the feature
-- [ ] `rule_ref_to/tests.rs`, `rule_bit_and_partial_access_range`: from the
-      full pipeline to `apply` with exact codes (pipeline cases that need
-      more than one rule move to `spec_conformance`)
-- [ ] `rule_constant_range/tests.rs`, `rule_condition_type`,
-      `rule_case_selector_type`, `rule_function_call_in_out_argument`,
-      `rule_function_call_type_check` (+ `composite_tests.rs`),
-      `rule_use_declared_enumerated_value`, `rule_no_top_level_var_global`,
-      `rule_stdlib_type_redefinition`, `rule_string_encoding_compat`,
-      `rule_string_literal_char_range`, `rule_var_decl_initializer_type_compat`,
-      `rule_operator_operand_type_check`, `rule_struct_initializer_expression_allowed`,
-      `rule_mixed_located_var_declarations`: drop the private scaffolds, call
-      `assert_rule` / `assert_rule_at` or the macros
-- [ ] Parser token rules (5 files): token helper, the three macros, exact codes
-
-### Core PR 4: enforcement and steering
-
-- [ ] Add `rule_test_conventions.rs` (analyzer) and its parser twin; each check
-      first shown to fail on a seeded violation, then pass on the tree
-- [ ] "Rule tests" section in `compiler-standards.md`; update `compiler-architecture.md`
+- [ ] **Commit: helpers (prefactor).** Add `Rule`, `assert_rule` and
+      `assert_rule_at` to `test_helpers.rs`; re-express `rule_ctx_ok`,
+      `rule_ctx_err1`, `rule_ctx_errn` and their `_with` forms over
+      `assert_rule`. `cd compiler && just` passes with no test edited
+- [ ] **Commit: delete the weak macros** (unused since Phase 1) and their
+      meta-test check, freeing the `rule_err` name
+- [ ] **Commit: add the three macros.** `rule_ok!`, `rule_err!` (with its
+      list) and `rule_err_at!` over the helpers, each with an optional
+      trailing options argument
+- [ ] **One commit per old macro family**, each a search-and-replace. After
+      Phase 1 only rules that ignore the context still use the empty-context
+      macros, so moving them to the resolved context changes no result:
+  - `rule_ok`, `rule_ok_with`, `rule_ctx_ok`, `rule_ctx_ok_with` (188 uses) → `rule_ok!`
+  - `rule_err1`, `rule_err1_with`, `rule_ctx_err1`, `rule_ctx_err1_with` (69,
+    plus the Phase 1 rewrites) → `rule_err!(…, [P])`
+  - `rule_errn`, `rule_errn_with`, `rule_ctx_errn`, `rule_ctx_errn_with` (19,
+    plus the Phase 1 rewrites) → `rule_err!(…, [P, P, …])`
+  - `rule_err1_at` (36), and the hand-written `rule_pou_hierarchy` test → `rule_err_at!`
+- [ ] **Commit: delete the old macros** and `resolve_fresh_with`
+- [ ] **Commit: single hand-written tests onto the macros** where one fits
+      (a plain `#[test]` whose body is resolve, apply, assert codes). Tests
+      that assert a message or label beyond the macro's, and all `#[rstest]`
+      tests, stay as they are
+- [ ] **Commit: parser token rules.** Token helper and the three macros for the
+      5 parser files
+- [ ] **Commit: final meta-test and steering.** Switch the meta-test to the
+      Phase 2 checks; update the "Rule tests" section in
+      `compiler-standards.md` to the three macros
+- [ ] `cd compiler && just` passes
