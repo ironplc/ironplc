@@ -235,10 +235,9 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    #[test]
-    #[ignore = "flaky test - needs to be fixed"]
-    fn apply_when_var_init_valid_enum_value_through_alias_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_var_init_valid_enum_value_through_alias_then_ok,
+        "
 TYPE
 LEVEL : (CRITICAL) := CRITICAL;
 LEVEL_ALIAS : LEVEL;
@@ -249,11 +248,25 @@ VAR_INPUT
 NAME : LEVEL_ALIAS := CRITICAL;
 END_VAR
 
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let codes = codes_of(program);
-        assert!(codes.is_empty(), "{codes:?}");
-    }
+    rule_err!(
+        apply_when_var_init_undefined_enum_value_through_alias_then_error,
+        "
+TYPE
+LEVEL : (CRITICAL) := CRITICAL;
+LEVEL_ALIAS : LEVEL;
+END_TYPE
+
+FUNCTION_BLOCK LOGGER
+VAR_INPUT
+NAME : LEVEL_ALIAS := FATAL;
+END_VAR
+
+END_FUNCTION_BLOCK",
+        [Problem::EnumValueNotDefined]
+    );
 
     #[test]
     fn apply_when_two_enums_share_value_then_each_value_defined() {
