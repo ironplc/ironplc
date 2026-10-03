@@ -487,6 +487,22 @@ pub(crate) fn compile_user_function(
     })
 }
 
+/// The fields of a function block in the order of its instance's data
+/// region: inputs first, then outputs, then locals, each in declaration
+/// order. The VM's copy-in/copy-out on `FB_CALL` follows the same order, so
+/// every place that numbers the fields has to use this one.
+pub(crate) fn fb_fields_in_layout_order(fb_decl: &FunctionBlockDeclaration) -> Vec<&VarDecl> {
+    [VariableType::Input, VariableType::Output, VariableType::Var]
+        .iter()
+        .flat_map(|kind| {
+            fb_decl
+                .variables
+                .iter()
+                .filter(move |decl| decl.var_type == *kind)
+        })
+        .collect()
+}
+
 /// Compiles a single user-defined function block body.
 ///
 /// Saves and restores the context's variable mappings so that FB-local
@@ -506,24 +522,7 @@ pub(crate) fn compile_user_function_block(
 ) -> Result<(CompiledFunction, SavedFbScope), Diagnostic> {
     let fb_name = fb_decl.name.name.to_string().to_uppercase();
 
-    // Collect fields in a stable order: inputs first, then outputs, then locals.
-    // This matches the data-region layout used by the VM's copy-in/copy-out.
-    let mut field_decls: Vec<&VarDecl> = Vec::new();
-    for decl in &fb_decl.variables {
-        if decl.var_type == VariableType::Input {
-            field_decls.push(decl);
-        }
-    }
-    for decl in &fb_decl.variables {
-        if decl.var_type == VariableType::Output {
-            field_decls.push(decl);
-        }
-    }
-    for decl in &fb_decl.variables {
-        if decl.var_type == VariableType::Var {
-            field_decls.push(decl);
-        }
-    }
+    let field_decls = fb_fields_in_layout_order(fb_decl);
 
     // Save the program's variable mappings.
     let saved_variables = std::mem::take(&mut ctx.variables);

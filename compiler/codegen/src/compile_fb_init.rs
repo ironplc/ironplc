@@ -90,6 +90,29 @@ pub(crate) fn compile_fb_field_store(
     Ok(true)
 }
 
+/// Emits the initial values that the type of the user-defined function block
+/// instance `instance_name` declares for its fields (`VAR a : INT := 5;`).
+///
+/// They are emitted before the instance's own member initializers, which
+/// therefore override them. A standard-library block declares none here: its
+/// intrinsic owns its layout.
+pub(crate) fn emit_fb_type_field_defaults(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    instance_name: &Id,
+    fb_type_name: &str,
+) -> Result<(), Diagnostic> {
+    let defaults = ctx
+        .user_fb_types
+        .get(fb_type_name)
+        .map(|fb_type| fb_type.field_defaults.clone())
+        .unwrap_or_default();
+    for (field, value) in &defaults {
+        compile_fb_field_store(emitter, ctx, instance_name, field, value)?;
+    }
+    Ok(())
+}
+
 /// Emits the member initializers of a function block instance declaration
 /// (`timer : TON := (PT := T#100MS);`).
 ///
