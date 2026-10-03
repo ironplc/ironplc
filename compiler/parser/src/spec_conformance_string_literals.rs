@@ -15,6 +15,7 @@ use std::convert::Infallible;
 use dsl::common::CharacterStringLiteral;
 use dsl::core::FileId;
 use dsl::visitor::Visitor;
+use ironplc_problems::Problem;
 use rstest::rstest;
 use spec_test_macro::spec_test;
 
@@ -125,5 +126,8 @@ fn parser_spec_req_sl_010_four_hex_digits() {
 fn parser_spec_req_sl_020_undefined_escape_is_p0012(#[case] literal: &str) {
     let source = format!("PROGRAM main VAR s : WSTRING; END_VAR s := {literal}; END_PROGRAM");
     let result = parse_program(&source, &FileId::default(), &CompilerOptions::default());
-    assert_eq!("P0012", result.unwrap_err().code);
+    assert_eq!(
+        result.unwrap_err().code,
+        Problem::InvalidStringEscape.code()
+    );
 }

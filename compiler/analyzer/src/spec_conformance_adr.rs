@@ -77,7 +77,7 @@ END_PROGRAM";
         codes
             .iter()
             .any(|c| c.as_str() == Problem::FunctionCallUndeclared.code()),
-        "expected P4017 (FunctionCallUndeclared), got {codes:?}"
+        "{codes:?}"
     );
 }
 
@@ -98,7 +98,7 @@ END_PROGRAM";
         codes
             .iter()
             .any(|c| c.as_str() == Problem::RefOperandNotVariable.code()),
-        "expected P2028 (RefOperandNotVariable), got {codes:?}"
+        "{codes:?}"
     );
 }
 
@@ -117,7 +117,7 @@ END_PROGRAM";
         codes
             .iter()
             .any(|c| c.as_str() == Problem::RefOperandNotVariable.code()),
-        "ADR of a literal: expected P2028, got {codes:?}"
+        "ADR of a literal: {codes:?}"
     );
 
     // A call result is not addressable either — including a nested ADR.
@@ -133,7 +133,7 @@ END_PROGRAM";
         codes
             .iter()
             .any(|c| c.as_str() == Problem::RefOperandNotVariable.code()),
-        "ADR of a call result: expected P2028, got {codes:?}"
+        "ADR of a call result: {codes:?}"
     );
 }
 
@@ -154,7 +154,7 @@ END_PROGRAM";
         codes
             .iter()
             .any(|c| c.as_str() == Problem::RefOfArrayElement.code()),
-        "ADR of an array element: expected P2030, got {codes:?}"
+        "ADR of an array element: {codes:?}"
     );
 
     let struct_field = "TYPE MyStruct : STRUCT field : INT; END_STRUCT; END_TYPE
@@ -170,7 +170,7 @@ END_PROGRAM";
         codes
             .iter()
             .any(|c| c.as_str() == Problem::RefOperandNotVariable.code()),
-        "ADR of a struct field: expected P2028, got {codes:?}"
+        "ADR of a struct field: {codes:?}"
     );
 }
 
@@ -191,7 +191,7 @@ END_PROGRAM";
         codes
             .iter()
             .any(|c| c.as_str() == Problem::ReferenceTypeMismatch.code()),
-        "expected P2032 (ReferenceTypeMismatch), got {codes:?}"
+        "{codes:?}"
     );
 }
 
@@ -213,6 +213,6 @@ END_FUNCTION_BLOCK";
         codes
             .iter()
             .any(|c| c.as_str() == Problem::RefOfEphemeralVariable.code()),
-        "expected P2029 (RefOfEphemeralVariable), got {codes:?}"
+        "{codes:?}"
     );
 }
