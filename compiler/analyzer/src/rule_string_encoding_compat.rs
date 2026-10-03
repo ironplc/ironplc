@@ -43,7 +43,7 @@ use crate::intermediate_type::IntermediateType;
 use crate::result::SemanticResult;
 use crate::rule_support::{run_rule, DiagnosticVisitor};
 use crate::semantic_context::SemanticContext;
-use crate::symbol_environment::ScopeTracker;
+use crate::symbol_environment::{ScopeKind, ScopeTracker};
 use crate::variable_type;
 use ironplc_container::CharWidth;
 use ironplc_parser::options::CompilerOptions;
@@ -79,32 +79,57 @@ impl DiagnosticVisitor for RuleStringEncodingCompat<'_> {
     }
 }
 
+/// The declared encoding of `var` when it is a simple named string variable
+/// in `scope`.
+fn named_variable_encoding(
+    var: &Variable,
+    context: &SemanticContext,
+    scope: &ScopeKind,
+) -> Option<StringType> {
+    let Variable::Symbolic(SymbolicVariableKind::Named(named)) = var else {
+        return None;
+    };
+    match variable_type::declared(&named.name, context, scope)? {
+        IntermediateType::String { char_width, .. } => Some(match char_width {
+            CharWidth::Narrow => StringType::String,
+            CharWidth::Wide => StringType::WString,
+        }),
+        _ => None,
+    }
+}
+
+/// The declared encoding of `expr` when it is a simple named string
+/// variable. Literals and complex expressions return `None`.
+fn expr_string_encoding(
+    expr: &Expr,
+    context: &SemanticContext,
+    scope: &ScopeKind,
+) -> Option<StringType> {
+    match &expr.kind {
+        ExprKind::Variable(var) => named_variable_encoding(var, context, scope),
+        _ => None,
+    }
+}
+
+/// Whether `target := value` assigns a named string variable of one
+/// encoding to one of the other: the assignment this rule reports as
+/// P4034. Other rules use it to leave that assignment to this one.
+pub(crate) fn mixes_encodings(
+    target: &Variable,
+    value: &Expr,
+    context: &SemanticContext,
+    scope: &ScopeKind,
+) -> bool {
+    matches!(
+        (
+            named_variable_encoding(target, context, scope),
+            expr_string_encoding(value, context, scope),
+        ),
+        (Some(target), Some(value)) if target != value
+    )
+}
+
 impl RuleStringEncodingCompat<'_> {
-    /// Returns the declared string encoding of a simple named variable, if
-    /// it is a string variable in scope.
-    fn named_variable_encoding(&self, var: &Variable) -> Option<StringType> {
-        let Variable::Symbolic(SymbolicVariableKind::Named(named)) = var else {
-            return None;
-        };
-        match variable_type::declared(&named.name, self.context, &self.scope.current())? {
-            IntermediateType::String { char_width, .. } => Some(match char_width {
-                CharWidth::Narrow => StringType::String,
-                CharWidth::Wide => StringType::WString,
-            }),
-            _ => None,
-        }
-    }
-
-    /// Returns the declared string encoding of an expression when it is a
-    /// simple named string variable. Literals and complex expressions
-    /// return `None`.
-    fn expr_string_encoding(&self, expr: &Expr) -> Option<StringType> {
-        match &expr.kind {
-            ExprKind::Variable(var) => self.named_variable_encoding(var),
-            _ => None,
-        }
-    }
-
     fn report(
         &mut self,
         span: ironplc_dsl::core::SourceSpan,
@@ -135,8 +160,9 @@ impl Visitor<Infallible> for RuleStringEncodingCompat<'_> {
     }
 
     fn visit_assignment(&mut self, node: &Assignment) -> Result<Self::Value, Infallible> {
-        let target_enc = self.named_variable_encoding(&node.target);
-        let value_enc = self.expr_string_encoding(&node.value);
+        let scope = self.scope.current();
+        let target_enc = named_variable_encoding(&node.target, self.context, &scope);
+        let value_enc = expr_string_encoding(&node.value, self.context, &scope);
         if let (Some(target_enc), Some(value_enc)) = (target_enc, value_enc) {
             if target_enc != value_enc {
                 self.report(node.span(), &target_enc, &value_enc);
@@ -146,8 +172,9 @@ impl Visitor<Infallible> for RuleStringEncodingCompat<'_> {
     }
 
     fn visit_compare_expr(&mut self, node: &CompareExpr) -> Result<Self::Value, Infallible> {
-        let left_enc = self.expr_string_encoding(&node.left);
-        let right_enc = self.expr_string_encoding(&node.right);
+        let scope = self.scope.current();
+        let left_enc = expr_string_encoding(&node.left, self.context, &scope);
+        let right_enc = expr_string_encoding(&node.right, self.context, &scope);
         if let (Some(left_enc), Some(right_enc)) = (left_enc, right_enc) {
             if left_enc != right_enc {
                 self.report(node.left.span(), &left_enc, &right_enc);
@@ -275,12 +302,7 @@ END_PROGRAM
             .iter()
             .map(|d| d.code.clone())
             .collect();
-        // Not exact: the pipeline also reports P4035 for the same assignment,
-        // from rule_function_call_type_check.
-        assert!(
-            codes.contains(&Problem::StringEncodingMismatch.code().to_string()),
-            "{codes:?}"
-        );
+        assert_eq!(codes, [Problem::StringEncodingMismatch.code()]);
     }
 
     rule_ok!(
