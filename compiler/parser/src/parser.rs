@@ -440,8 +440,10 @@ parser! {
         .with_position(i.span.clone())
     }
     // We want to be more flexible on identifiers for variable names
-    // because it is common to use variable names that are reserved names
-    rule variable_identifier() -> Id = identifier() / t:tok(TokenType::Step) { Id::from(t.text.as_str()) } / t:tok(TokenType::On) { Id::from(t.text.as_str()) } / t:tok(TokenType::REdge) { Id::from(t.text.as_str()) } / t:tok(TokenType::FEdge) { Id::from(t.text.as_str()) }
+    // because it is common to use variable names that are reserved names.
+    // The keyword keeps its position like any other identifier, so a
+    // diagnostic about the name points at it rather than at 1:1.
+    rule variable_identifier() -> Id = identifier() / t:(tok(TokenType::Step) / tok(TokenType::On) / tok(TokenType::REdge) / tok(TokenType::FEdge)) { Id::from(t.text.as_str()).with_position(t.span.clone()) }
     rule type_name() -> TypeName = i:identifier() { TypeName::from_id(&i) } / generic_type_name()
 
     // B.1.3.2 Generic data types - used for polymorphic function signatures
@@ -2100,7 +2102,9 @@ parser! {
           let span = call.span();
           Expr::new(ExprKind::MethodCall(call)).with_span(span)
         }
-      / id:identifier() _ !(tok(TokenType::LeftParen) / tok(TokenType::LeftBracket) / tok(TokenType::Period) / tok(TokenType::Caret)) {
+      // `variable_identifier`, not `identifier`: a keyword accepted as a
+      // name (`On` of `TYPE M : (Off, On)`) may be an enumerated value too.
+      / id:variable_identifier() _ !(tok(TokenType::LeftParen) / tok(TokenType::LeftBracket) / tok(TokenType::Period) / tok(TokenType::Caret)) {
         Expr::new(ExprKind::LateBound(LateBound{ value: id }))
       }
       / variable:variable() {
