@@ -682,6 +682,7 @@ fn method_decl(name: &str) -> ironplc_dsl::common::MethodDeclaration {
         qualifiers: Default::default(),
         name: Id::from(name),
         return_type: None,
+        implicit_variables: vec![],
         variables: vec![],
         edge_variables: vec![],
         body: vec![],

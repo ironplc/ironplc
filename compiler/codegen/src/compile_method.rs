@@ -123,7 +123,7 @@ fn compile_user_method(
     let mut num_params: u16 = 0;
 
     // First pass: input-compatible parameters (VAR_INPUT and VAR_IN_OUT).
-    for decl in &method.variables {
+    for decl in method.all_variables() {
         if !decl.var_type.is_input_compatible() {
             continue;
         }
@@ -140,7 +140,7 @@ fn compile_user_method(
     }
 
     // Second pass: local variables (VAR, VAR_TEMP).
-    for decl in &method.variables {
+    for decl in method.all_variables() {
         if !decl.var_type.is_local() {
             continue;
         }

@@ -6,6 +6,8 @@
 //! would differ.
 
 use super::common::*;
+use dsl::common::{Library, LibraryElementKind, MethodDeclaration, VarDecl};
+use ironplc_analyzer::stages::analyze;
 use rstest::rstest;
 
 #[rstest]
@@ -58,6 +60,23 @@ END_PROPERTY
 END_FUNCTION_BLOCK
 "
 )]
+#[case::set_with_var_input(
+    "
+FUNCTION_BLOCK FB_Motor
+VAR
+    _speed : REAL;
+END_VAR
+PROPERTY Speed : REAL
+SET
+VAR_INPUT
+    scale : REAL;
+END_VAR
+    _speed := Speed * scale;
+END_SET
+END_PROPERTY
+END_FUNCTION_BLOCK
+"
+)]
 #[case::interleaved_with_methods(
     "
 FUNCTION_BLOCK FB_Motor
@@ -84,4 +103,64 @@ fn write_to_string_when_property_then_round_trips(#[case] source: &str) {
         ..CompilerOptions::default()
     };
     assert_round_trips(source, &options);
+}
+
+/// Issue #1957: after the full analyzer pipeline, the SET accessor's
+/// implicit input stays out of the rendering and its own `VAR_INPUT` stays
+/// in, so parsing the rendering gives back the same accessor variables.
+#[test]
+fn write_to_string_when_analyzed_set_declares_var_input_then_renders_only_declared() {
+    let source = "
+FUNCTION_BLOCK FB_Motor
+VAR
+    _speed : REAL;
+END_VAR
+PROPERTY Speed : REAL
+SET
+VAR_INPUT
+    scale : REAL;
+END_VAR
+    _speed := Speed * scale;
+END_SET
+END_PROPERTY
+END_FUNCTION_BLOCK
+";
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    let library = parse_program(source, &FileId::default(), &options).unwrap();
+    let (library, context) = analyze(&[&library], &options).unwrap();
+    assert!(!context.has_diagnostics(), "{:?}", context.diagnostics());
+
+    let rendered = write_to_string(&library).unwrap();
+    let reparsed = parse_program(&rendered, &FileId::default(), &options)
+        .unwrap_or_else(|e| panic!("Rendered output did not re-parse: {e:?}\n{rendered}"));
+
+    let set = only_set_accessor(&reparsed);
+    assert_eq!(names(&set.variables), vec!["scale"], "Rendered:\n{rendered}");
+    assert_eq!(
+        names(&set.implicit_variables),
+        vec!["Speed"],
+        "Rendered:\n{rendered}"
+    );
+}
+
+fn only_set_accessor(library: &Library) -> &MethodDeclaration {
+    let fb = library
+        .elements
+        .iter()
+        .find_map(|element| match element {
+            LibraryElementKind::FunctionBlockDeclaration(fb) => Some(fb),
+            _ => None,
+        })
+        .unwrap();
+    fb.properties[0].set.as_ref().unwrap()
+}
+
+fn names(variables: &[VarDecl]) -> Vec<String> {
+    variables
+        .iter()
+        .map(|v| v.identifier.symbolic_id().unwrap().to_string())
+        .collect()
 }

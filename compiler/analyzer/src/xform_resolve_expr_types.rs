@@ -712,7 +712,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
                 node.variables.iter().for_each(|v| self.insert(v));
             }
             ScopeNode::Method(node) => {
-                node.variables.iter().for_each(|v| self.insert(v));
+                node.all_variables().for_each(|v| self.insert(v));
                 // Only a method that declares a return type has a result
                 // variable; see `rule_use_declared_symbolic_var`, which
                 // rejects the assignment for one that does not.

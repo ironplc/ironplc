@@ -1100,6 +1100,7 @@ name = "ironplc-plc2plc"
 version = "0.247.0"
 dependencies = [
  "dsl_macro_derive",
+ "ironplc-analyzer",
  "ironplc-dsl",
  "ironplc-parser",
  "ironplc-spec-requirements-gen",

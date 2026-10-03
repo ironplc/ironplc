@@ -1093,8 +1093,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
     // OOP extension: PROPERTY ... END_PROPERTY. Each accessor is a
     // `MethodDeclaration`, but renders as `GET`/`SET` without a method
-    // header, and the SET accessor without the implicit input that holds
-    // the assigned value (see `PropertyDeclaration`).
+    // header. The SET accessor's implicit input that holds the assigned
+    // value is not rendered: it is in `implicit_variables`, not
+    // `variables` (see `PropertyDeclaration`).
     fn visit_property_declaration(
         &mut self,
         node: &PropertyDeclaration,
@@ -1116,11 +1117,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         if let Some(set) = &node.set {
             self.write_ws("SET");
             self.newline();
-            self.render_callable_body(
-                node.set_declared_variables(),
-                &set.edge_variables,
-                &set.body,
-            )?;
+            self.render_callable_body(&set.variables, &set.edge_variables, &set.body)?;
             self.write_ws("END_SET");
             self.newline();
         }
