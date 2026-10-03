@@ -162,9 +162,8 @@ Two further consequences:
 6. **Analysis output can still hold a broken program.** The `Library` remains
    source faithful, apart from the decisions the analyzer records in it
    (ADR-0056), and remains able to hold a broken program.
-7. **Deliverable in behaviour-preserving steps.** Once the end-to-end tests
-   name variables rather than slots (see [Testing](#9-testing)), they pass
-   unchanged at every step.
+7. **Deliverable in behaviour-preserving steps.** The existing end-to-end
+   tests pass unchanged at every step.
 
 ## Scope
 
@@ -1083,18 +1082,15 @@ Nothing is deleted before its last reader has moved to the lowered program.
 
 ## 9. Testing
 
-**The end-to-end suite is the regression net, once it names variables.**
-`compiler/codegen/tests/it` compiles source and asserts variable values after a
-run (over 140 `end_to_end_*` files). Today the assertions find a variable by
-its VM slot index (`bufs.vars[idx]` in `common/mod.rs`), and some depend on
-the order slots are allocated in: `end_to_end_mixed_located_var_declarations.rs`
-relies on plain variables being allocated before located ones. That ties the
-suite to the bytecode backend's layout, which this design rebuilds, and it
-rules out running the suite on a second backend, which has no slots. So before
-anything else changes, a prefactor makes the helpers find each variable by its
-source name, through the variable names of the debug section. From then on the
-tests say nothing about how the compiler is structured, and a step that needs
-one edited is not behaviour preserving.
+**The end-to-end suite is the regression net.** `compiler/codegen/tests/it`
+compiles source and asserts variable values after a run.
+
+**REQ-LOW-codegen-131** The end-to-end helpers identify a variable by its
+source name, not by its slot index.
+
+So the tests say nothing about how the compiler is structured, and they hold
+across this change without edits. A step that needs one edited is not
+behaviour preserving.
 
 **Lowering is tested on the tree.** A decision in
 [Decisions](#4-decisions) is asserted by lowering a small program and
@@ -1186,8 +1182,6 @@ Two constraints follow for whoever adds one:
 
 This section constrains the order of work; it is not a work breakdown.
 
-- The end-to-end helpers name variables, not slots, before anything else
-  changes (see [Testing](#9-testing)).
 - The analyzer records each decision in the first table of
   [Decisions](#4-decisions), and each check only codegen makes moves to an
   analyzer rule, before lowering covers a construct that depends on it. This
