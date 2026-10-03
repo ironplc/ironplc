@@ -10,14 +10,10 @@ use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 use spec_test_macro::spec_test;
 
-use crate::common::{
-    assert_run_f32, assert_run_f64, assert_run_i32, assert_run_i32_with, assert_run_i64,
-    assert_run_i64_with,
-};
+use crate::common::{assert_run, assert_run_with, datetime, time, Duration};
 
 /// REQ-AO-codegen-002: `dt + t` (here `stamp + t`) converts the duration from milliseconds to
-/// seconds, as `ADD_DT_TIME` does. 2000-01-01-00:00:00 is 946684800 seconds
-/// since the epoch.
+/// seconds, as `ADD_DT_TIME` does.
 #[spec_test(REQ_AO_codegen_002)]
 #[rstest]
 #[case::operator("stamp + t")]
@@ -34,7 +30,7 @@ PROGRAM main
   result := {expr};
 END_PROGRAM"
     );
-    assert_run_i32(&source, &[(0, 946_688_400)]);
+    assert_run(&source, &[(0, datetime!(2000-01-01 1:00))]);
 }
 
 /// REQ-AO-codegen-003: `t * r` with a `REAL` factor promotes to floating
@@ -55,7 +51,7 @@ PROGRAM main
   result := {expr};
 END_PROGRAM"
     );
-    assert_run_i32(&source, &[(0, 1500)]);
+    assert_run(&source, &[(0, Duration::milliseconds(1500))]);
 }
 
 /// REQ-AO-codegen-004: `d1 - d2` on `DATE` is a `TIME` in milliseconds.
@@ -75,25 +71,29 @@ PROGRAM main
   result := {expr};
 END_PROGRAM"
     );
-    assert_run_i32(&source, &[(0, 86_400_000)]);
+    assert_run(&source, &[(0, Duration::days(1))]);
 }
 
 /// REQ-AO-codegen-005: the long forms compute at 64 bits, and a short
 /// operand is widened by its signedness.
 #[spec_test(REQ_AO_codegen_005)]
 #[rstest]
-// 60 days in milliseconds does not fit in 32 bits.
-#[case::beyond_32_bits("LTIME", "lt30d + lt30d", 5_184_000_000)]
+// 60 days does not fit a 32-bit TIME.
+#[case::beyond_32_bits("LTIME", "lt30d + lt30d", Duration::days(60))]
 // A negative short TIME is sign-extended: 2h + (-5s).
-#[case::short_time_sign_extended("LTIME", "lt2h + t", 7_195_000)]
-#[case::short_time_on_left("LTIME", "t + lt2h", 7_195_000)]
+#[case::short_time_sign_extended(
+    "LTIME",
+    "lt2h + t",
+    Duration::hours(2) - Duration::seconds(5)
+)]
+#[case::short_time_on_left("LTIME", "t + lt2h", Duration::hours(2) - Duration::seconds(5))]
 // A DATE_AND_TIME past 2038 does not fit in an i32; it is zero-extended.
-#[case::short_date_zero_extended("LTIME", "ldt_late - dt_late", 3_600_000)]
-#[case::long_scaled_by_real("LTIME", "lt2h * r", 10_800_000)]
+#[case::short_date_zero_extended("LTIME", "ldt_late - dt_late", Duration::hours(1))]
+#[case::long_scaled_by_real("LTIME", "lt2h * r", Duration::hours(3))]
 fn end_to_end_req_ao_005_when_long_form_then_computes_at_64_bits(
     #[case] result_type: &str,
     #[case] expr: &str,
-    #[case] expected: i64,
+    #[case] expected: Duration,
 ) {
     let source = format!(
         "
@@ -110,7 +110,7 @@ PROGRAM main
   result := {expr};
 END_PROGRAM"
     );
-    assert_run_i64_with(
+    assert_run_with(
         &source,
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
         &[(0, expected)],
@@ -121,17 +121,29 @@ END_PROGRAM"
 /// computing what the operator expression folded from the left computes.
 #[spec_test(REQ_AO_codegen_009)]
 #[rstest]
-#[case::add_times("TIME", "ADD(t1, t2, t3)", 6000)]
-#[case::add_times_operator("TIME", "t1 + t2 + t3", 6000)]
-// TIME_OF_DAY + TIME + TIME: 10:00:00 + 1s + 2s.
-#[case::add_tod("TIME_OF_DAY", "ADD(clock, t1, t2)", 36_003_000)]
-#[case::mul_time("TIME", "MUL(t1, d, d)", 9000)]
+#[case::add_times("ADD(t1, t2, t3)", Duration::seconds(6))]
+#[case::add_times_operator("t1 + t2 + t3", Duration::seconds(6))]
+#[case::mul_time("MUL(t1, d, d)", Duration::seconds(9))]
 fn end_to_end_req_ao_009_when_extensible_call_on_times_then_folds(
-    #[case] result_type: &str,
     #[case] expr: &str,
-    #[case] expected: i32,
+    #[case] expected: Duration,
 ) {
-    let source = format!(
+    assert_run(&extensible_call_program("TIME", expr), &[(0, expected)]);
+}
+
+/// REQ-AO-codegen-009 for a `TIME_OF_DAY`: 10:00:00 + 1s + 2s.
+#[spec_test(REQ_AO_codegen_009)]
+fn end_to_end_req_ao_009_when_extensible_call_on_tod_then_folds() {
+    assert_run(
+        &extensible_call_program("TIME_OF_DAY", "ADD(clock, t1, t2)"),
+        &[(0, time!(10:00:03))],
+    );
+}
+
+/// A program assigning `expr` to `result` of `result_type`, with operands of
+/// `TIME`, `TIME_OF_DAY` and `DINT`.
+fn extensible_call_program(result_type: &str, expr: &str) -> String {
+    format!(
         "
 PROGRAM main
   VAR
@@ -144,15 +156,14 @@ PROGRAM main
   END_VAR
   result := {expr};
 END_PROGRAM"
-    );
-    assert_run_i32(&source, &[(0, expected)]);
+    )
 }
 
 /// REQ-AO-codegen-007: operands of different widths compute at the result
 /// type, the narrower one converted first.
 #[spec_test(REQ_AO_codegen_007)]
 fn end_to_end_req_ao_007_when_int_plus_real_then_adds_as_real() {
-    assert_run_f32(
+    assert_run::<f32>(
         "
 PROGRAM main
   VAR
@@ -170,7 +181,7 @@ END_PROGRAM",
 /// zero-extended before the 64-bit add.
 #[spec_test(REQ_AO_codegen_007)]
 fn end_to_end_req_ao_007_when_udint_plus_lint_then_adds_at_64_bits() {
-    assert_run_i64(
+    assert_run::<i64>(
         "
 PROGRAM main
   VAR
@@ -189,7 +200,7 @@ END_PROGRAM",
 /// wraps to 1410065408.
 #[spec_test(REQ_AO_codegen_008)]
 fn end_to_end_req_ao_008_when_dint_product_assigned_to_lint_then_wraps_at_32_bits() {
-    assert_run_i64(
+    assert_run::<i64>(
         "
 PROGRAM main
   VAR
@@ -207,7 +218,7 @@ END_PROGRAM",
 /// target's signedness.
 #[spec_test(REQ_AO_codegen_010)]
 fn end_to_end_req_ao_010_when_udint_quotient_assigned_to_dint_then_divides_unsigned() {
-    assert_run_i32(
+    assert_run::<i32>(
         "
 PROGRAM main
   VAR
@@ -239,14 +250,14 @@ PROGRAM main
   x := {expr};
 END_PROGRAM"
     );
-    assert_run_f32(&source, &[(0, 4.5)]);
+    assert_run::<f32>(&source, &[(0, 4.5)]);
 }
 
 /// REQ-AO-codegen-011: an extensible call widens step by step: INT + REAL is
 /// REAL, and REAL + LREAL is LREAL.
 #[spec_test(REQ_AO_codegen_011)]
 fn end_to_end_req_ao_011_when_add_call_widens_per_step_then_computes_at_widest() {
-    assert_run_f64(
+    assert_run::<f64>(
         "
 PROGRAM main
   VAR
@@ -265,7 +276,7 @@ END_PROGRAM",
 /// string's width: `BYTE#255 + 1` wraps to 0.
 #[test]
 fn end_to_end_when_byte_plus_one_under_codesys_then_wraps() {
-    assert_run_i32_with(
+    assert_run_with::<i32>(
         "
 PROGRAM main
   VAR

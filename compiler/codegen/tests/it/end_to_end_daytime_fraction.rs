@@ -9,7 +9,7 @@
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
-use crate::common::{assert_run_i64_with, parse_and_run};
+use crate::common::{assert_run_with, datetime, parse_and_run, time, PrimitiveDateTime, Time};
 
 fn edition3() -> CompilerOptions {
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
@@ -140,7 +140,7 @@ PROGRAM main
   a := a;
 END_PROGRAM
 ",
-    36_000_250
+    time!(10:00:00.25)
 )]
 #[case::ltime_of_day_assignment(
     "
@@ -151,8 +151,16 @@ PROGRAM main
   a := LTIME_OF_DAY#23:59:59.999;
 END_PROGRAM
 ",
-    86_399_999
+    time!(23:59:59.999)
 )]
+fn end_to_end_when_long_time_of_day_literal_has_fraction_then_stored_at_type_unit(
+    #[case] source: &str,
+    #[case] expected: Time,
+) {
+    assert_run_with(source, &edition3(), &[(0, expected)]);
+}
+
+#[rstest]
 #[case::ldt_fraction_truncated(
     "
 PROGRAM main
@@ -162,7 +170,7 @@ PROGRAM main
   d := d;
 END_PROGRAM
 ",
-    1_704_189_600
+    datetime!(2024-01-02 10:00)
 )]
 #[case::ldate_and_time_fraction_truncated(
     "
@@ -173,11 +181,11 @@ PROGRAM main
   d := LDATE_AND_TIME#2024-01-02-10:00:00.75;
 END_PROGRAM
 ",
-    1_704_189_600
+    datetime!(2024-01-02 10:00)
 )]
-fn end_to_end_when_long_daytime_literal_has_fraction_then_stored_at_type_unit(
+fn end_to_end_when_long_date_and_time_literal_has_fraction_then_stored_at_type_unit(
     #[case] source: &str,
-    #[case] expected: i64,
+    #[case] expected: PrimitiveDateTime,
 ) {
-    assert_run_i64_with(source, &edition3(), &[(0, expected)]);
+    assert_run_with(source, &edition3(), &[(0, expected)]);
 }

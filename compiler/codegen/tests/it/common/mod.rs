@@ -15,6 +15,12 @@ use ironplc_parser::parse_program;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::FaultContext;
 pub use ironplc_vm::VmBuffers;
+// Date and time types and macros for writing temporal expectations.
+pub use time::macros::{date, datetime, time};
+pub use time::{Date, Duration, PrimitiveDateTime, Time};
+
+mod slot_value;
+pub use slot_value::{NearSlotValue, SlotValue};
 
 /// Per-instruction bytecode builders.
 ///
@@ -768,113 +774,87 @@ pub fn drive_fb(source: &str, options: &CompilerOptions, steps: &[FbStep]) {
     });
 }
 
-/// Runs `source` with default options and asserts each `(var_index, expected)`
-/// pair against the corresponding `vars[i].as_i32()` slot after one scan.
+/// Runs `source` for one scan and calls `check(index, actual, expected)` for
+/// each `(index, expected)` pair.
 ///
-/// This is the workhorse helper for the `end_to_end_*.rs` integer tests:
-/// it collapses the recurring 3-line scaffold (`let source ...; let (_c, bufs)
-/// = parse_and_run(...); assert_eq!(...)`) into a single call so that each
-/// `#[test] fn` becomes one statement. Reduces duplicate AST mass enough that
-/// `cargo dupes` no longer flags the tests as a group.
-pub fn assert_run_i32(source: &str, asserts: &[(usize, i32)]) {
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    for (idx, expected) in asserts {
-        assert_eq!(bufs.vars[*idx].as_i32(), *expected, "vars[{idx}] mismatch");
+/// Every assertion helper below goes through this function, so it is the one
+/// place that reads a variable after a scan.
+fn check_each<T: SlotValue>(
+    source: &str,
+    options: &CompilerOptions,
+    asserts: &[(usize, T)],
+    check: impl Fn(usize, T, T),
+) {
+    let (container, bufs) = parse_and_run(source, options);
+    for &(idx, expected) in asserts {
+        let tag = slot_value::type_tag(&container, idx);
+        check(idx, T::from_slot(bufs.vars[idx], tag), expected);
     }
 }
 
-/// Same as [`assert_run_i32`] but reads slots as i64. Use for LINT/ULINT or
-/// any value whose magnitude exceeds 32 bits.
-pub fn assert_run_i64(source: &str, asserts: &[(usize, i64)]) {
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    for (idx, expected) in asserts {
-        assert_eq!(bufs.vars[*idx].as_i64(), *expected, "vars[{idx}] mismatch");
-    }
+/// Runs `source` with `options` and asserts that each `(var_index, expected)`
+/// pair matches `vars[var_index]` read as `T` after one scan.
+///
+/// This is the workhorse helper for the `end_to_end_*.rs` tests: it collapses
+/// the recurring 3-line scaffold (`let source ...; let (_c, bufs) =
+/// parse_and_run(...); assert_eq!(...)`) into a single call so that each
+/// `#[test] fn` becomes one statement. Floating-point values use exact bit
+/// equality, so tests must choose inputs that produce deterministic results;
+/// use [`assert_run_near`] otherwise.
+///
+/// Name `T` explicitly (`assert_run_with::<f32>`): an unsuffixed float
+/// literal in `asserts` would otherwise default to `f64`.
+pub fn assert_run_with<T: SlotValue>(
+    source: &str,
+    options: &CompilerOptions,
+    asserts: &[(usize, T)],
+) {
+    check_each(source, options, asserts, |idx, actual, expected| {
+        assert_eq!(actual, expected, "vars[{idx}] mismatch");
+    });
 }
 
-/// Like [`assert_run_i32`] but with explicit [`CompilerOptions`]. Use when a
-/// test requires a non-default dialect flag (e.g. `allow_partial_access_syntax`).
-pub fn assert_run_i32_with(source: &str, options: &CompilerOptions, asserts: &[(usize, i32)]) {
-    let (_c, bufs) = parse_and_run(source, options);
-    for (idx, expected) in asserts {
-        assert_eq!(bufs.vars[*idx].as_i32(), *expected, "vars[{idx}] mismatch");
-    }
+/// [`assert_run_with`] with default [`CompilerOptions`].
+pub fn assert_run<T: SlotValue>(source: &str, asserts: &[(usize, T)]) {
+    assert_run_with(source, &CompilerOptions::default(), asserts);
 }
 
-/// Like [`assert_run_i64`] but with explicit [`CompilerOptions`].
-pub fn assert_run_i64_with(source: &str, options: &CompilerOptions, asserts: &[(usize, i64)]) {
-    let (_c, bufs) = parse_and_run(source, options);
-    for (idx, expected) in asserts {
-        assert_eq!(bufs.vars[*idx].as_i64(), *expected, "vars[{idx}] mismatch");
-    }
+/// Like [`assert_run`] but asserts each value is within `tolerance` of the
+/// expected value. Use when arithmetic (pow, transcendentals) produces values
+/// that can't be represented exactly.
+pub fn assert_run_near<T: NearSlotValue>(source: &str, tolerance: T, asserts: &[(usize, T)]) {
+    check_each(
+        source,
+        &CompilerOptions::default(),
+        asserts,
+        |idx, actual, expected| {
+            assert!(
+                actual.distance(expected) < tolerance,
+                "vars[{idx}]: expected {expected}, got {actual}"
+            );
+        },
+    );
 }
 
-/// Like [`assert_run_f32`] but with explicit [`CompilerOptions`].
-pub fn assert_run_f32_with(source: &str, options: &CompilerOptions, asserts: &[(usize, f32)]) {
-    let (_c, bufs) = parse_and_run(source, options);
-    for (idx, expected) in asserts {
-        assert_eq!(bufs.vars[*idx].as_f32(), *expected, "vars[{idx}] mismatch");
-    }
-}
-
-/// Like [`assert_run_f64`] but with explicit [`CompilerOptions`].
-pub fn assert_run_f64_with(source: &str, options: &CompilerOptions, asserts: &[(usize, f64)]) {
-    let (_c, bufs) = parse_and_run(source, options);
-    for (idx, expected) in asserts {
-        assert_eq!(bufs.vars[*idx].as_f64(), *expected, "vars[{idx}] mismatch");
-    }
-}
-
-/// Same as [`assert_run_i32`] but reads slots as f32 (REAL). Uses exact bit
-/// equality so tests must choose inputs that produce deterministic results.
-pub fn assert_run_f32(source: &str, asserts: &[(usize, f32)]) {
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    for (idx, expected) in asserts {
-        assert_eq!(bufs.vars[*idx].as_f32(), *expected, "vars[{idx}] mismatch");
-    }
-}
-
-/// Same as [`assert_run_i32`] but reads slots as f64 (LREAL). Uses exact bit
-/// equality so tests must choose inputs that produce deterministic results.
-pub fn assert_run_f64(source: &str, asserts: &[(usize, f64)]) {
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    for (idx, expected) in asserts {
-        assert_eq!(bufs.vars[*idx].as_f64(), *expected, "vars[{idx}] mismatch");
-    }
-}
-
-/// Like [`assert_run_f32`] but asserts each value is within `tolerance` of
-/// the expected value. Use when arithmetic (pow, transcendentals) produces
-/// values that can't be represented exactly in f32.
-pub fn assert_run_f32_near(source: &str, tolerance: f32, asserts: &[(usize, f32)]) {
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    for (idx, expected) in asserts {
-        let actual = bufs.vars[*idx].as_f32();
-        assert!(
-            (actual - *expected).abs() < tolerance,
-            "vars[{idx}]: expected {expected}, got {actual}"
-        );
-    }
-}
-
-/// Like [`assert_run_f64`] but asserts each value is within `tolerance` of
-/// the expected value.
-pub fn assert_run_f64_near(source: &str, tolerance: f64, asserts: &[(usize, f64)]) {
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    for (idx, expected) in asserts {
-        let actual = bufs.vars[*idx].as_f64();
-        assert!(
-            (actual - *expected).abs() < tolerance,
-            "vars[{idx}]: expected {expected}, got {actual}"
-        );
-    }
+/// Declares a `#[test] fn` like [`e2e_i32`], with the expected type inferred
+/// from the values. Use it when they are typed, such as
+/// `Duration::seconds(5)` or `date!(2024-01-01)`; an unsuffixed number would
+/// default to `i32` or `f64`.
+macro_rules! e2e {
+    ($(#[$meta:meta])* $name:ident, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run($source, $asserts);
+        }
+    };
 }
 
 /// Declares a `#[test] fn` that asserts an IEC 61131-3 program produces the
 /// given i32 var values.
 ///
 /// The macro form (vs writing the `#[test] fn` body directly as
-/// `{ assert_run_i32(...); }`) matters for code duplication: without it,
+/// `{ assert_run::<i32>(...); }`) matters for code duplication: without it,
 /// every short 6-line body gets regrouped by `cargo dupes` as a new
 /// exact-duplicate set. A macro invocation is opaque to the detector, so
 /// each test becomes a single token and no new group forms.
@@ -891,7 +871,7 @@ macro_rules! e2e_i32 {
         $(#[$meta])*
         #[test]
         fn $name() {
-            $crate::common::assert_run_i32($source, $asserts);
+            $crate::common::assert_run::<i32>($source, $asserts);
         }
     };
 }
@@ -902,7 +882,7 @@ macro_rules! e2e_i64 {
         $(#[$meta])*
         #[test]
         fn $name() {
-            $crate::common::assert_run_i64($source, $asserts);
+            $crate::common::assert_run::<i64>($source, $asserts);
         }
     };
 }
@@ -915,7 +895,7 @@ macro_rules! e2e_i32_with {
         $(#[$meta])*
         #[test]
         fn $name() {
-            $crate::common::assert_run_i32_with($source, &$opts, $asserts);
+            $crate::common::assert_run_with::<i32>($source, &$opts, $asserts);
         }
     };
 }
@@ -926,7 +906,7 @@ macro_rules! e2e_i64_with {
         $(#[$meta])*
         #[test]
         fn $name() {
-            $crate::common::assert_run_i64_with($source, &$opts, $asserts);
+            $crate::common::assert_run_with::<i64>($source, &$opts, $asserts);
         }
     };
 }
@@ -937,7 +917,7 @@ macro_rules! e2e_f32_with {
         $(#[$meta])*
         #[test]
         fn $name() {
-            $crate::common::assert_run_f32_with($source, &$opts, $asserts);
+            $crate::common::assert_run_with::<f32>($source, &$opts, $asserts);
         }
     };
 }
@@ -948,7 +928,7 @@ macro_rules! e2e_f64_with {
         $(#[$meta])*
         #[test]
         fn $name() {
-            $crate::common::assert_run_f64_with($source, &$opts, $asserts);
+            $crate::common::assert_run_with::<f64>($source, &$opts, $asserts);
         }
     };
 }
@@ -959,7 +939,7 @@ macro_rules! e2e_f32 {
         $(#[$meta])*
         #[test]
         fn $name() {
-            $crate::common::assert_run_f32($source, $asserts);
+            $crate::common::assert_run::<f32>($source, $asserts);
         }
     };
 }
@@ -970,7 +950,7 @@ macro_rules! e2e_f64 {
         $(#[$meta])*
         #[test]
         fn $name() {
-            $crate::common::assert_run_f64($source, $asserts);
+            $crate::common::assert_run::<f64>($source, $asserts);
         }
     };
 }
@@ -982,7 +962,7 @@ macro_rules! e2e_f32_near {
         $(#[$meta])*
         #[test]
         fn $name() {
-            $crate::common::assert_run_f32_near($source, $tol, $asserts);
+            $crate::common::assert_run_near::<f32>($source, $tol, $asserts);
         }
     };
 }
@@ -993,7 +973,7 @@ macro_rules! e2e_f64_near {
         $(#[$meta])*
         #[test]
         fn $name() {
-            $crate::common::assert_run_f64_near($source, $tol, $asserts);
+            $crate::common::assert_run_near::<f64>($source, $tol, $asserts);
         }
     };
 }
