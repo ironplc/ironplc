@@ -9,7 +9,7 @@
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
-use crate::common::{assert_run_i64_with, parse_and_run};
+use crate::common::{assert_run_with, parse_and_run};
 
 fn edition3() -> CompilerOptions {
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
@@ -179,5 +179,5 @@ fn end_to_end_when_long_daytime_literal_has_fraction_then_stored_at_type_unit(
     #[case] source: &str,
     #[case] expected: i64,
 ) {
-    assert_run_i64_with(source, &edition3(), &[(0, expected)]);
+    assert_run_with::<i64>(source, &edition3(), &[(0, expected)]);
 }

@@ -11,7 +11,7 @@
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
-use crate::common::assert_run_i64_with;
+use crate::common::assert_run_with;
 
 #[rstest]
 // LDATE#2024-01-01: 19723 days * 86400 = 1704067200 seconds since epoch.
@@ -101,7 +101,7 @@ END_PROGRAM
     1_704_067_200
 )]
 fn end_to_end_ldate(#[case] source: &str, #[case] index: usize, #[case] expected: i64) {
-    assert_run_i64_with(
+    assert_run_with::<i64>(
         source,
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
         &[(index, expected)],

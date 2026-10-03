@@ -3,7 +3,7 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::assert_run_i32_with;
+use crate::common::assert_run_with;
 
 e2e_i32!(
     end_to_end_when_case_matches_first_arm_then_executes_body,
@@ -220,5 +220,5 @@ END_PROGRAM
 "
     );
 
-    assert_run_i32_with(&source, &opts_with_bit_string_case_labels(), &[(0, 1)]);
+    assert_run_with::<i32>(&source, &opts_with_bit_string_case_labels(), &[(0, 1)]);
 }

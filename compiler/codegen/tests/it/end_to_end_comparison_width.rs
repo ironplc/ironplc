@@ -10,7 +10,7 @@ use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 use spec_test_macro::spec_test;
 
-use crate::common::assert_run_i64_with;
+use crate::common::assert_run_with;
 
 /// A program assigning `expr` to `result`, the first variable (index 0).
 ///
@@ -61,7 +61,7 @@ END_PROGRAM
 }
 
 fn assert_result(expr: &str, expected: i64) {
-    assert_run_i64_with(
+    assert_run_with::<i64>(
         &program(expr),
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
         &[(0, expected)],

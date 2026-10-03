@@ -8,7 +8,7 @@
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
-use crate::common::assert_run_i64_with;
+use crate::common::assert_run_with;
 
 /// A program assigning `expr` to `result` of `result_type`, the first
 /// variable (index 0), with operands of every long and short temporal type.
@@ -72,7 +72,7 @@ fn end_to_end_when_long_typed_time_function_then_computes_at_64_bits(
     #[case] expr: &str,
     #[case] expected: i64,
 ) {
-    assert_run_i64_with(
+    assert_run_with::<i64>(
         &program(result_type, expr),
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
         &[(0, expected)],

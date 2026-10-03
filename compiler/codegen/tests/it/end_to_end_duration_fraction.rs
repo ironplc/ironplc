@@ -14,7 +14,7 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::assert_run_i32_with;
+use crate::common::assert_run_with;
 
 #[rstest]
 // 1.5 days = 36 hours = 129,600,000 ms.
@@ -49,7 +49,7 @@ END_PROGRAM
 "
     );
 
-    assert_run_i32_with(
+    assert_run_with::<i32>(
         &source,
         &CompilerOptions::default(),
         &[(0, expected_milliseconds)],
