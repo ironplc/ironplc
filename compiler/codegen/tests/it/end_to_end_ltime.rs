@@ -8,10 +8,9 @@
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
-use crate::common::assert_run_with;
+use crate::common::{assert_run_with, Duration};
 
 #[rstest]
-// LTIME#100ms stored as 100 ms (i64).
 #[case::assignment_ms(
     "
 PROGRAM main
@@ -22,9 +21,8 @@ PROGRAM main
 END_PROGRAM
 ",
     0,
-    100
+    Duration::milliseconds(100)
 )]
-// LTIME#5s stored as 5000 ms.
 #[case::seconds_to_ms(
     "
 PROGRAM main
@@ -35,7 +33,7 @@ PROGRAM main
 END_PROGRAM
 ",
     0,
-    5000
+    Duration::seconds(5)
 )]
 // Addition of two LTIME values (100ms + 200ms = 300ms).
 #[case::addition(
@@ -52,7 +50,7 @@ PROGRAM main
 END_PROGRAM
 ",
     2,
-    300
+    Duration::milliseconds(300)
 )]
 // Comparison of two LTIME values (5s > 3s is TRUE).
 #[case::comparison(
@@ -73,10 +71,10 @@ PROGRAM main
 END_PROGRAM
 ",
     2,
-    1
+    Duration::milliseconds(1)
 )]
-fn end_to_end_ltime(#[case] source: &str, #[case] index: usize, #[case] expected: i64) {
-    assert_run_with::<i64>(
+fn end_to_end_ltime(#[case] source: &str, #[case] index: usize, #[case] expected: Duration) {
+    assert_run_with(
         source,
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
         &[(index, expected)],

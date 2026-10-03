@@ -14,29 +14,28 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::assert_run_with;
+use crate::common::{assert_run_with, Duration};
 
 #[rstest]
-// 1.5 days = 36 hours = 129,600,000 ms.
-#[case::half_day("T#1.5d", 129_600_000)]
-// 1.5 hours = 90 minutes = 5,400,000 ms.
-#[case::half_hour("T#1.5h", 5_400_000)]
-// 1.5 minutes = 90 seconds = 90,000 ms.
-#[case::half_minute("T#1.5m", 90_000)]
-// 1.5 seconds = 1,500 ms.
-#[case::half_second("T#1.5s", 1_500)]
+// 1.5 days = 36 hours.
+#[case::half_day("T#1.5d", Duration::hours(36))]
+// 1.5 hours = 90 minutes.
+#[case::half_hour("T#1.5h", Duration::minutes(90))]
+// 1.5 minutes = 90 seconds.
+#[case::half_minute("T#1.5m", Duration::seconds(90))]
+#[case::half_second("T#1.5s", Duration::milliseconds(1500))]
 // 1.5 milliseconds truncates to the millisecond the storage counts in.
-#[case::half_millisecond("T#1.5ms", 1)]
+#[case::half_millisecond("T#1.5ms", Duration::milliseconds(1))]
 // A whole unit is unchanged: the fraction is zero.
-#[case::whole_day("T#1d", 86_400_000)]
-#[case::whole_hour("T#1h", 3_600_000)]
-#[case::whole_minute("T#1m", 60_000)]
+#[case::whole_day("T#1d", Duration::days(1))]
+#[case::whole_hour("T#1h", Duration::hours(1))]
+#[case::whole_minute("T#1m", Duration::minutes(1))]
 // The smallest fraction each unit can carry still scales by the unit.
-#[case::quarter_day("T#0.25d", 21_600_000)]
-#[case::tenth_hour("T#0.1h", 360_000)]
+#[case::quarter_day("T#0.25d", Duration::hours(6))]
+#[case::tenth_hour("T#0.1h", Duration::minutes(6))]
 fn end_to_end_when_duration_has_a_fractional_unit_then_scales_by_the_unit(
     #[case] literal: &str,
-    #[case] expected_milliseconds: i32,
+    #[case] expected: Duration,
 ) {
     let source = format!(
         "
@@ -49,9 +48,5 @@ END_PROGRAM
 "
     );
 
-    assert_run_with::<i32>(
-        &source,
-        &CompilerOptions::default(),
-        &[(0, expected_milliseconds)],
-    );
+    assert_run_with(&source, &CompilerOptions::default(), &[(0, expected)]);
 }

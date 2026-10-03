@@ -4,8 +4,6 @@
 #![allow(unused_macros)]
 #![allow(clippy::result_large_err)]
 
-use std::fmt::{Debug, Display};
-
 use ironplc_analyzer::SemanticContext;
 use ironplc_codegen::compile;
 use ironplc_container::Container;
@@ -16,8 +14,13 @@ use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::FaultContext;
-use ironplc_vm::Slot;
 pub use ironplc_vm::VmBuffers;
+// Date and time types and macros for writing temporal expectations.
+pub use time::macros::{date, datetime, time};
+pub use time::{Date, Duration, PrimitiveDateTime, Time};
+
+mod slot_value;
+pub use slot_value::{NearSlotValue, SlotValue};
 
 /// Per-instruction bytecode builders.
 ///
@@ -771,28 +774,6 @@ pub fn drive_fb(source: &str, options: &CompilerOptions, steps: &[FbStep]) {
     });
 }
 
-/// A Rust type that an end-to-end assertion reads out of a variable slot.
-///
-/// The type decides how the slot's bits are interpreted, so a test states
-/// it once (`assert_run::<f32>`) rather than choosing a reader per slot.
-pub trait SlotValue: Copy + PartialOrd + Debug + Display {
-    fn from_slot(slot: Slot) -> Self;
-    /// The absolute difference between `self` and `other`, for
-    /// [`assert_run_near`].
-    fn distance(self, other: Self) -> Self;
-}
-
-macro_rules! impl_slot_value {
-    ($($t:ty => $read:ident),*) => {$(
-        impl SlotValue for $t {
-            fn from_slot(slot: Slot) -> Self { slot.$read() }
-            fn distance(self, other: Self) -> Self { (self - other).abs() }
-        }
-    )*};
-}
-
-impl_slot_value!(i32 => as_i32, i64 => as_i64, f32 => as_f32, f64 => as_f64);
-
 /// Runs `source` for one scan and calls `check(index, actual, expected)` for
 /// each `(index, expected)` pair.
 ///
@@ -804,9 +785,10 @@ fn check_each<T: SlotValue>(
     asserts: &[(usize, T)],
     check: impl Fn(usize, T, T),
 ) {
-    let (_c, bufs) = parse_and_run(source, options);
+    let (container, bufs) = parse_and_run(source, options);
     for &(idx, expected) in asserts {
-        check(idx, T::from_slot(bufs.vars[idx]), expected);
+        let tag = slot_value::type_tag(&container, idx);
+        check(idx, T::from_slot(bufs.vars[idx], tag), expected);
     }
 }
 
@@ -840,7 +822,7 @@ pub fn assert_run<T: SlotValue>(source: &str, asserts: &[(usize, T)]) {
 /// Like [`assert_run`] but asserts each value is within `tolerance` of the
 /// expected value. Use when arithmetic (pow, transcendentals) produces values
 /// that can't be represented exactly.
-pub fn assert_run_near<T: SlotValue>(source: &str, tolerance: T, asserts: &[(usize, T)]) {
+pub fn assert_run_near<T: NearSlotValue>(source: &str, tolerance: T, asserts: &[(usize, T)]) {
     check_each(
         source,
         &CompilerOptions::default(),
@@ -852,6 +834,20 @@ pub fn assert_run_near<T: SlotValue>(source: &str, tolerance: T, asserts: &[(usi
             );
         },
     );
+}
+
+/// Declares a `#[test] fn` like [`e2e_i32`], with the expected type inferred
+/// from the values. Use it when they are typed, such as
+/// `Duration::seconds(5)` or `date!(2024-01-01)`; an unsuffixed number would
+/// default to `i32` or `f64`.
+macro_rules! e2e {
+    ($(#[$meta:meta])* $name:ident, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run($source, $asserts);
+        }
+    };
 }
 
 /// Declares a `#[test] fn` that asserts an IEC 61131-3 program produces the
