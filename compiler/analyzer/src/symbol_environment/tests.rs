@@ -834,3 +834,44 @@ fn visible_variables_when_inherited_then_listed_once_nearest_first() {
 
     assert_eq!(names, vec!["speed", "limit"]);
 }
+
+fn self_types(env: &SymbolEnvironment, scope: &ScopeKind) -> (Option<String>, Option<String>) {
+    let name = |kind| env.self_type(scope, kind).map(|t: TypeName| t.to_string());
+    (name(SelfRefKind::This), name(SelfRefKind::Super))
+}
+
+#[test]
+fn self_type_when_method_of_derived_block_then_block_and_base() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "Base", None);
+    function_block(&mut env, "Derived", Some("Base"));
+    let method = ScopeKind::Named(ScopePath::new(vec![Id::from("Derived"), Id::from("M")]));
+
+    assert_eq!(
+        (Some("Derived".to_string()), Some("Base".to_string())),
+        self_types(&env, &method)
+    );
+}
+
+#[test]
+fn self_type_when_block_without_base_then_super_none() {
+    let mut env = SymbolEnvironment::new();
+    function_block(&mut env, "Base", None);
+
+    assert_eq!(
+        (Some("Base".to_string()), None),
+        self_types(&env, &ScopeKind::Named(Id::from("Base").into()))
+    );
+}
+
+#[test]
+fn self_type_when_program_or_global_then_none() {
+    let mut env = SymbolEnvironment::new();
+    global(&mut env, "main", SymbolKind::Program).unwrap();
+
+    assert_eq!(
+        (None, None),
+        self_types(&env, &ScopeKind::Named(Id::from("main").into()))
+    );
+    assert_eq!((None, None), self_types(&env, &ScopeKind::Global));
+}

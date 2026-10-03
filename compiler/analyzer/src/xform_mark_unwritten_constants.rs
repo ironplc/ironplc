@@ -162,12 +162,9 @@ impl WriteCollector<'_> {
                 }
             }
             _ => self
-                .scope
-                .unit()
-                .and_then(|unit| {
-                    self.function_blocks
-                        .declaring_block(&TypeName { name: unit.clone() }, name)
-                })
+                .symbol_environment
+                .self_type(&self.current_scope(), SelfRefKind::This)
+                .and_then(|block| self.function_blocks.declaring_block(&block, name))
                 .map(|block| unit_scope(&block.name.name))
                 .unwrap_or(ScopeKind::Global),
         }
