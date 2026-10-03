@@ -261,7 +261,7 @@ mod test {
 
     use super::*;
 
-    rule_err1!(
+    rule_ctx_err1!(
         apply_when_const_simple_type_missing_initializer_then_error,
         "
 FUNCTION_BLOCK LOGGER
@@ -273,7 +273,7 @@ END_FUNCTION_BLOCK",
         Problem::ConstantMustHaveInitializer
     );
 
-    rule_err1!(
+    rule_ctx_err1!(
         apply_when_const_enum_type_missing_initializer_then_error,
         "
 TYPE
@@ -289,7 +289,7 @@ END_FUNCTION_BLOCK",
         Problem::ConstantMustHaveInitializer
     );
 
-    rule_err1!(
+    rule_ctx_err1!(
         apply_when_const_enum_values_type_missing_initializer_then_error,
         "
 FUNCTION_BLOCK LOGGER
@@ -301,7 +301,7 @@ END_FUNCTION_BLOCK",
         Problem::ConstantMustHaveInitializer
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_const_enum_values_type_has_initializer_then_ok,
         "
 FUNCTION_BLOCK LOGGER
@@ -312,7 +312,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_const_simple_external_type_missing_initializer_then_ok,
         "
 TYPE
@@ -327,7 +327,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_const_simple_has_initializer_then_ok,
         "
 FUNCTION_BLOCK LOGGER
@@ -528,7 +528,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_err1!(
+    rule_ctx_err1!(
         apply_when_const_array_type_missing_initializer_then_error,
         "
 FUNCTION_BLOCK LOGGER
@@ -540,7 +540,7 @@ END_FUNCTION_BLOCK",
         Problem::ConstantMustHaveInitializer
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_const_array_type_has_initializer_then_ok,
         "
 FUNCTION_BLOCK LOGGER
