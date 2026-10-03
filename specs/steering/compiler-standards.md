@@ -85,14 +85,21 @@ problems the rule reports**:
   `Diagnostic` constructors build them; compare against
   `test_helpers::NOT_IMPLEMENTED_CODE` instead.
 - **Use the context the rule sees.** A rule whose `apply` reads its `context`
-  is tested with the `rule_ctx_*` macros (or
-  `parse_and_resolve_types_with_options`); the `rule_*` macros hand it an
-  empty one.
+  is tested with the `rule_ctx_*` macros (or the helpers below); the `rule_*`
+  macros hand it an empty one.
 - **One-liners**: `rule_ok!`, `rule_err1!` (exactly one problem),
   `rule_errn!` (exactly n of one problem), `rule_err1_at!` (one problem,
   labelled at the given text), and their `ctx_`/`_with` forms in
   `analyzer/src/test_macros.rs`. `rule_err!`, `rule_ctx_err!` and the
   `_code` forms assert less and are not used.
+- **Hand-written and `#[rstest]` bodies** use the shared helpers in
+  `analyzer/src/test_helpers.rs` rather than their own setup:
+  `rule_codes(apply, program, &options)` and `rule_diagnostics(...)` resolve
+  the program and run the rule against the resolved context; compare with
+  `codes(&[Problem::…])`, or `diagnostic_codes(&diagnostics)` when the test
+  also checks a message. `fb_inheritance_options()` and `edition3_options()`
+  build the common options. Parser token rules use `token` and
+  `result_codes` in `parser/src/test_rule_helpers.rs`.
 - **Messages and labels** are asserted only when they are the feature (a
   "did you mean" hint, the location of the offending text), and alongside
   the code, never instead of it.

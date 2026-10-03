@@ -199,15 +199,10 @@ impl Visitor<Infallible> for RulePouHierarchy<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_helpers::fb_inheritance_options;
+    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
     use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
-
-    fn oop_options() -> CompilerOptions {
-        CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        }
-    }
 
     rule_ctx_ok!(
         apply_when_function_calls_function_then_ok,
@@ -271,13 +266,12 @@ FUNCTION Caller : BOOL
   Caller := FALSE;
 END_FUNCTION";
         let options = CompilerOptions::default();
-        let (library, context) =
-            crate::test_helpers::parse_and_resolve_types_with_options(program, &options);
+        let errors = rule_diagnostics(super::apply, program, &options);
 
-        let errors = super::apply(&library, &context, &options).unwrap_err();
-
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert_eq!(errors[0].code, Problem::FunctionBlockInFunction.code());
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::FunctionBlockInFunction.code()]
+        );
         let start = program.find("inst").unwrap();
         let location = &errors[0].primary.location;
         assert_eq!(
@@ -359,7 +353,7 @@ END_FUNCTION"
 
     rule_ctx_errn_with!(
         apply_when_function_calls_method_on_own_instance_then_reports_declaration_and_call,
-        oop_options(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
   VAR

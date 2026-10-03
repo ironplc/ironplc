@@ -106,17 +106,11 @@ pub fn apply(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn opts_with_fb_inheritance() -> CompilerOptions {
-        CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        }
-    }
+    use crate::test_helpers::fb_inheritance_options;
 
     rule_err1_with!(
         apply_when_derived_redeclares_base_field_same_type_then_error,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 VAR
@@ -134,7 +128,7 @@ END_FUNCTION_BLOCK",
 
     rule_err1_with!(
         apply_when_derived_redeclares_base_field_different_type_then_error,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 VAR
@@ -152,7 +146,7 @@ END_FUNCTION_BLOCK",
 
     rule_ok_with!(
         apply_when_derived_has_no_field_collision_then_ok,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 VAR
@@ -169,7 +163,7 @@ END_FUNCTION_BLOCK"
 
     rule_err1_with!(
         apply_when_grandparent_field_collision_then_error,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_A
 VAR
@@ -193,7 +187,7 @@ END_FUNCTION_BLOCK",
 
     rule_ok_with!(
         apply_when_no_extends_then_ok,
-        opts_with_fb_inheritance(),
+        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Plain
 VAR

@@ -144,25 +144,19 @@ impl Visitor<Infallible> for RuleDeclaredEnumeratedValues<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_helpers::parse_and_resolve_types_with_options;
+    use crate::test_helpers::diagnostic_codes;
+    use crate::test_helpers::{rule_codes, rule_diagnostics};
     use ironplc_dsl::diagnostic::Diagnostic;
     use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
 
     /// The diagnostics this rule reports for `program` under default options.
     fn diagnostics_of(program: &str) -> Vec<Diagnostic> {
-        let options = CompilerOptions::default();
-        let (library, context) = parse_and_resolve_types_with_options(program, &options);
-        super::apply(&library, &context, &options)
-            .err()
-            .unwrap_or_default()
+        rule_diagnostics(super::apply, program, &CompilerOptions::default())
     }
 
     fn codes_of(program: &str) -> Vec<String> {
-        diagnostics_of(program)
-            .into_iter()
-            .map(|d| d.code)
-            .collect()
+        rule_codes(super::apply, program, &CompilerOptions::default())
     }
 
     #[test]
@@ -181,7 +175,7 @@ END_FUNCTION_BLOCK";
 
         let diagnostics = diagnostics_of(program);
 
-        let codes: Vec<&str> = diagnostics.iter().map(|d| d.code.as_str()).collect();
+        let codes = diagnostic_codes(&diagnostics);
         assert_eq!(codes, [Problem::EnumValueNotDefined.code(); 2]);
         let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
         assert!(

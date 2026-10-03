@@ -1,4 +1,5 @@
-use crate::test_helpers::parse_and_resolve_types_with_options;
+use crate::test_helpers::diagnostic_codes;
+use crate::test_helpers::rule_diagnostics;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
@@ -18,11 +19,7 @@ fn real_out_of_range_count(program: &str) -> usize {
 
 /// The diagnostics this rule reports for `program` under default options.
 fn diagnostics_of(program: &str) -> Vec<Diagnostic> {
-    let options = CompilerOptions::default();
-    let (library, context) = parse_and_resolve_types_with_options(program, &options);
-    super::apply(&library, &context, &options)
-        .err()
-        .unwrap_or_default()
+    rule_diagnostics(super::apply, program, &CompilerOptions::default())
 }
 
 /// How many `problem` diagnostics this rule reports for `program`. Every
@@ -196,8 +193,10 @@ fn apply_when_case_label_beyond_every_type_then_reported_with_its_sign() {
 
     let diagnostics = diagnostics_of(&program);
 
-    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
-    assert_eq!(diagnostics[0].code, Problem::ConstantOverflow.code());
+    assert_eq!(
+        diagnostic_codes(&diagnostics),
+        [Problem::ConstantOverflow.code()]
+    );
     assert!(diagnostics[0]
         .described
         .contains(&"value=340282366920938463463374607431768211455".to_owned()));

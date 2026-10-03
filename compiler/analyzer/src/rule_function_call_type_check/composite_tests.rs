@@ -2,7 +2,7 @@
 //! structure, an enumeration -- used where a type is required. See
 //! `value_type`.
 
-use crate::test_helpers::parse_and_resolve_types_with_context;
+use crate::test_helpers::rule_codes;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 use rstest::rstest;
@@ -49,11 +49,7 @@ END_VAR
   {body}
 END_PROGRAM"
     );
-    let (library, context) = parse_and_resolve_types_with_context(&program);
-    match super::apply(&library, &context, &CompilerOptions::default()) {
-        Ok(()) => vec![],
-        Err(diagnostics) => diagnostics.into_iter().map(|d| d.code).collect(),
-    }
+    rule_codes(super::apply, &program, &CompilerOptions::default())
 }
 
 #[rstest]

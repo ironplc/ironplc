@@ -1,33 +1,23 @@
-use crate::test_helpers::parse_and_resolve_types_with_options;
-use ironplc_parser::options::{CompilerOptions, Dialect};
+use crate::test_helpers::{edition3_options, rule_codes};
+use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
-fn edition3_options() -> CompilerOptions {
-    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
-}
-
 fn ref_arithmetic_options() -> CompilerOptions {
-    let mut options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+    let mut options = edition3_options();
     options.allow_ref_arithmetic = true;
     options
 }
 
-/// The problem codes this rule reports for `program` under `options`.
-fn problems(program: &str, options: &CompilerOptions) -> Vec<String> {
-    let (library, context) = parse_and_resolve_types_with_options(program, options);
-    match super::apply(&library, &context, options) {
-        Ok(()) => vec![],
-        Err(diagnostics) => diagnostics.into_iter().map(|d| d.code).collect(),
-    }
-}
-
 fn assert_ok(program: &str) {
-    let codes = problems(program, &edition3_options());
+    let codes = rule_codes(super::apply, program, &edition3_options());
     assert!(codes.is_empty(), "{codes:?}");
 }
 
 fn assert_problem(program: &str, problem: Problem) {
-    assert_eq!(problems(program, &edition3_options()), [problem.code()]);
+    assert_eq!(
+        rule_codes(super::apply, program, &edition3_options()),
+        [problem.code()]
+    );
 }
 
 // P2036: No nested REF_TO
@@ -294,7 +284,8 @@ END_PROGRAM",
 // --allow-ref-arithmetic tests: negative (flag not set)
 #[test]
 fn arithmetic_when_ref_arithmetic_not_allowed_then_error() {
-    let codes = problems(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : INT;
@@ -310,7 +301,8 @@ END_PROGRAM",
 
 #[test]
 fn compare_when_ordering_without_ref_arithmetic_then_error() {
-    let codes = problems(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : INT;
@@ -328,7 +320,8 @@ END_PROGRAM",
 // --allow-ref-arithmetic tests: positive (flag set)
 #[test]
 fn arithmetic_when_ref_arithmetic_allowed_then_ok() {
-    let codes = problems(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : INT;
@@ -344,7 +337,8 @@ END_PROGRAM",
 
 #[test]
 fn compare_when_ordering_with_ref_arithmetic_allowed_then_ok() {
-    let codes = problems(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : INT;
@@ -361,7 +355,8 @@ END_PROGRAM",
 
 #[test]
 fn compare_when_equality_with_ref_arithmetic_allowed_then_ok() {
-    let codes = problems(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : INT;
@@ -384,7 +379,8 @@ fn ref_when_allow_ref_stack_variables_and_function_var_input_then_ok() {
         allow_ref_stack_variables: true,
         ..CompilerOptions::default()
     };
-    let codes = problems(
+    let codes = rule_codes(
+        super::apply,
         "FUNCTION MyFunc : INT
 VAR_INPUT
 inVal : INT;
@@ -408,7 +404,8 @@ fn ref_when_allow_ref_stack_variables_and_var_temp_then_ok() {
         allow_ref_stack_variables: true,
         ..CompilerOptions::default()
     };
-    let codes = problems(
+    let codes = rule_codes(
+        super::apply,
         "FUNCTION_BLOCK FB1
 VAR_TEMP
 temp : INT;
@@ -431,7 +428,8 @@ fn assign_when_allow_ref_type_punning_and_types_incompatible_then_ok() {
         allow_ref_type_punning: true,
         ..CompilerOptions::default()
     };
-    let codes = problems(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : REAL;
@@ -447,7 +445,8 @@ END_PROGRAM",
 // P2032: type mismatch still fires without allow_ref_type_punning
 #[test]
 fn assign_when_no_allow_ref_type_punning_and_types_incompatible_then_error() {
-    let codes = problems(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : REAL;
@@ -468,7 +467,8 @@ fn assign_when_allow_ref_stack_variables_only_and_types_incompatible_then_error(
         allow_ref_stack_variables: true,
         ..CompilerOptions::default()
     };
-    let codes = problems(
+    let codes = rule_codes(
+        super::apply,
         "PROGRAM Main
 VAR
 x : REAL;

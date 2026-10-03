@@ -234,7 +234,7 @@ impl Visitor<Infallible> for RuleBitAndPartialAccessRange<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_helpers::parse_and_resolve_types_with_options;
+    use crate::test_helpers::{codes, rule_codes};
     use ironplc_parser::options::CompilerOptions;
     use rstest::rstest;
     use spec_test_macro::spec_test;
@@ -246,17 +246,8 @@ mod tests {
     /// The one problem an out-of-range access reports.
     const OUT_OF_RANGE: &[Problem] = &[Problem::BitAccessOutOfRange];
 
-    /// The problem codes this rule reports for `program` under `opts`.
     fn problems_with(program: &str, opts: &CompilerOptions) -> Vec<String> {
-        let (library, context) = parse_and_resolve_types_with_options(program, opts);
-        match apply(&library, &context, opts) {
-            Ok(()) => vec![],
-            Err(diagnostics) => diagnostics.into_iter().map(|d| d.code).collect(),
-        }
-    }
-
-    fn codes(problems: &[Problem]) -> Vec<&str> {
-        problems.iter().map(|p| p.code()).collect()
+        rule_codes(apply, program, opts)
     }
 
     fn assert_bit_access_ok(program: &str) {

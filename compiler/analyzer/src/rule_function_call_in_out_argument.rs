@@ -321,7 +321,8 @@ impl Visitor<Infallible> for RuleFunctionCallInOutArgument<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::rule_codes;
+    use crate::test_helpers::{diagnostic_codes, edition3_options, rule_diagnostics};
     use rstest::rstest;
 
     const INC: &str = "
@@ -342,7 +343,7 @@ END_VAR
 END_FUNCTION
 ";
 
-    fn apply_to_call(vars: &str, call: &str) -> SemanticResult {
+    fn apply_to_call(vars: &str, call: &str) -> Vec<Diagnostic> {
         let program = format!(
             "{INC}
 PROGRAM main
@@ -353,8 +354,7 @@ END_VAR
     result := {call};
 END_PROGRAM"
         );
-        let (library, context) = parse_and_resolve_types_with_context(&program);
-        apply(&library, &context, &CompilerOptions::default())
+        rule_diagnostics(apply, &program, &CompilerOptions::default())
     }
 
     #[rstest]
@@ -366,8 +366,8 @@ END_PROGRAM"
         #[case] vars: &str,
         #[case] call: &str,
     ) {
-        let result = apply_to_call(vars, call);
-        assert!(result.is_ok(), "{result:?}");
+        let diagnostics = apply_to_call(vars, call);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     #[rstest]
@@ -378,11 +378,10 @@ END_PROGRAM"
         #[case] vars: &str,
         #[case] call: &str,
     ) {
-        let errors = apply_to_call(vars, call).unwrap_err();
-        assert_eq!(errors.len(), 1, "{errors:?}");
+        let errors = apply_to_call(vars, call);
         assert_eq!(
-            errors[0].code,
-            Problem::FunctionCallInOutArgNotVariable.code()
+            diagnostic_codes(&errors),
+            [Problem::FunctionCallInOutArgNotVariable.code()]
         );
         assert!(errors[0].described.contains(&"parameter=data".to_owned()));
     }
@@ -395,11 +394,10 @@ END_PROGRAM"
         #[case] vars: &str,
         #[case] actual: &str,
     ) {
-        let errors = apply_to_call(vars, "INC(1, x)").unwrap_err();
-        assert_eq!(errors.len(), 1, "{errors:?}");
+        let errors = apply_to_call(vars, "INC(1, x)");
         assert_eq!(
-            errors[0].code,
-            Problem::FunctionCallInOutArgTypeMismatch.code()
+            diagnostic_codes(&errors),
+            [Problem::FunctionCallInOutArgTypeMismatch.code()]
         );
         assert!(
             errors[0].described.contains(&format!("actual={actual}")),
@@ -409,10 +407,9 @@ END_PROGRAM"
     }
 
     /// Runs the rule on `INC` plus `caller`, a POU that calls it.
-    fn apply_to_caller(caller: &str) -> SemanticResult {
+    fn apply_to_caller(caller: &str) -> Vec<Diagnostic> {
         let program = format!("{INC}\n{caller}");
-        let (library, context) = parse_and_resolve_types_with_context(&program);
-        apply(&library, &context, &CompilerOptions::default())
+        rule_diagnostics(apply, &program, &CompilerOptions::default())
     }
 
     #[rstest]
@@ -435,8 +432,8 @@ END_PROGRAM"
 PROGRAM main VAR fb : Inner; r : DINT; END_VAR r := INC(1, fb.i); END_PROGRAM"
     )]
     fn apply_when_in_out_argument_provably_writable_then_ok(#[case] caller: &str) {
-        let result = apply_to_caller(caller);
-        assert!(result.is_ok(), "{result:?}");
+        let diagnostics = apply_to_caller(caller);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     #[rstest]
@@ -463,15 +460,17 @@ PROGRAM main VAR fb : Inner; r : DINT; END_VAR r := INC(1, fb.q); END_PROGRAM"
 PROGRAM main VAR fb : Inner; r : DINT; END_VAR r := INC(1, fb.l); END_PROGRAM"
     )]
     fn apply_when_in_out_argument_not_provably_writable_then_p4059(#[case] caller: &str) {
-        let errors = apply_to_caller(caller).unwrap_err();
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert_eq!(errors[0].code, Problem::InOutArgNotWritable.code());
+        let errors = apply_to_caller(caller);
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::InOutArgNotWritable.code()]
+        );
         assert!(errors[0].described.contains(&"parameter=data".to_owned()));
     }
 
     #[test]
     fn apply_when_in_out_argument_is_constant_global_then_p4059() {
-        let result = apply_to_caller(
+        let diagnostics = apply_to_caller(
             "PROGRAM main
 VAR_EXTERNAL CONSTANT g : DINT; END_VAR
 VAR r : DINT; END_VAR
@@ -485,8 +484,8 @@ CONFIGURATION config
     END_RESOURCE
 END_CONFIGURATION",
         );
-        let errors = result.unwrap_err();
-        let codes: Vec<&str> = errors.iter().map(|d| d.code.as_str()).collect();
+        let errors = diagnostics;
+        let codes = diagnostic_codes(&errors);
         assert_eq!(codes, [Problem::InOutArgNotWritable.code()], "{errors:?}");
     }
 
@@ -494,8 +493,6 @@ END_CONFIGURATION",
     // function write a DINT over the reference.
     #[test]
     fn apply_when_in_out_argument_is_reference_then_type_mismatch() {
-        let options =
-            CompilerOptions::from_dialect(ironplc_parser::options::Dialect::Iec61131_3Ed3);
         let program = format!(
             "{INC}
 PROGRAM main
@@ -504,14 +501,8 @@ VAR x : DINT; p : REF_TO DINT; r : DINT; END_VAR
     r := INC(1, p);
 END_PROGRAM"
         );
-        let (library, context) =
-            crate::test_helpers::parse_and_resolve_types_with_options(&program, &options);
-        let errors = apply(&library, &context, &options).unwrap_err();
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert_eq!(
-            errors[0].code,
-            Problem::FunctionCallInOutArgTypeMismatch.code()
-        );
+        let codes = rule_codes(apply, &program, &edition3_options());
+        assert_eq!(codes, [Problem::FunctionCallInOutArgTypeMismatch.code()]);
     }
 
     #[test]
@@ -519,12 +510,10 @@ END_PROGRAM"
         let errors = apply_to_caller(
             "FUNCTION TOGGLE : BOOL VAR_IN_OUT b : BOOL; END_VAR TOGGLE := b; END_FUNCTION
 PROGRAM main VAR w : WORD; r : BOOL; END_VAR r := TOGGLE(w.3); END_PROGRAM",
-        )
-        .unwrap_err();
-        assert_eq!(errors.len(), 1, "{errors:?}");
+        );
         assert_eq!(
-            errors[0].code,
-            Problem::FunctionCallInOutArgNotVariable.code()
+            diagnostic_codes(&errors),
+            [Problem::FunctionCallInOutArgNotVariable.code()]
         );
     }
 
@@ -546,13 +535,9 @@ END_VAR
 END_PROGRAM"
     );
 
-    fn apply_to_caller_ed3(caller: &str) -> SemanticResult {
-        let options =
-            CompilerOptions::from_dialect(ironplc_parser::options::Dialect::Iec61131_3Ed3);
+    fn apply_to_caller_ed3(caller: &str) -> Vec<Diagnostic> {
         let program = format!("{INC}\n{caller}");
-        let (library, context) =
-            crate::test_helpers::parse_and_resolve_types_with_options(&program, &options);
-        apply(&library, &context, &options)
+        rule_diagnostics(apply, &program, &edition3_options())
     }
 
     #[rstest]
@@ -566,17 +551,18 @@ END_PROGRAM"
         "FUNCTION_BLOCK FB VAR f : DINT; r : DINT; END_VAR METHOD M r := INC(1, f); END_METHOD END_FUNCTION_BLOCK"
     )]
     fn apply_when_in_out_argument_in_method_provably_writable_then_ok(#[case] caller: &str) {
-        let result = apply_to_caller_ed3(caller);
-        assert!(result.is_ok(), "{:?}", result.err());
+        let diagnostics = apply_to_caller_ed3(caller);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     #[test]
     fn apply_when_in_out_argument_is_method_input_then_p4059() {
         let errors = apply_to_caller_ed3(
             "FUNCTION_BLOCK FB VAR r : DINT; END_VAR METHOD M VAR_INPUT i : DINT; END_VAR r := INC(1, i); END_METHOD END_FUNCTION_BLOCK",
-        )
-        .unwrap_err();
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert_eq!(errors[0].code, Problem::InOutArgNotWritable.code());
+        );
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::InOutArgNotWritable.code()]
+        );
     }
 }

@@ -154,7 +154,8 @@ impl Visitor<Infallible> for RuleCaseSelectorType<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::diagnostic_codes;
+    use crate::test_helpers::rule_diagnostics;
     use rstest::rstest;
 
     /// A program whose only `CASE` selects on `sel`, declared as
@@ -175,10 +176,7 @@ END_PROGRAM"
     }
 
     fn diagnostics_for(program: &str) -> Vec<Diagnostic> {
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        apply(&library, &context, &CompilerOptions::default())
-            .err()
-            .unwrap_or_default()
+        rule_diagnostics(apply, program, &CompilerOptions::default())
     }
 
     #[rstest]
@@ -215,8 +213,10 @@ END_PROGRAM"
     fn apply_when_selector_is_not_integer_then_p4053(#[case] declared_type: &str) {
         let diagnostics = diagnostics_for(&program_selecting_on(declared_type));
 
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
-        assert_eq!(diagnostics[0].code, Problem::CaseSelectorTypeInvalid.code());
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::CaseSelectorTypeInvalid.code()]
+        );
     }
 
     rule_ctx_ok!(

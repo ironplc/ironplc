@@ -182,14 +182,11 @@ impl Visitor<Infallible> for RuleTemporalLiteralRange {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_parser::options::{CompilerOptions, Dialect};
+    use crate::test_helpers::edition3_options;
     use ironplc_problems::Problem;
 
-    /// The options the 64-bit members need: `LTIME`, `LDATE`, `LTOD` and `LDT`
-    /// are Edition 3 keywords, and are identifiers without them.
-    fn edition3() -> CompilerOptions {
-        CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
-    }
+    // The 64-bit members need Edition 3: `LTIME`, `LDATE`, `LTOD` and `LDT`
+    // are Edition 3 keywords, and are identifiers without them.
 
     // --- The 32-bit boundary, from both sides ---
     //
@@ -316,7 +313,7 @@ END_PROGRAM",
 
     rule_ok_with!(
         apply_when_ldate_is_past_the_32_bit_ceiling_then_ok,
-        edition3(),
+        edition3_options(),
         "
 PROGRAM main
 VAR
@@ -327,7 +324,7 @@ END_PROGRAM"
 
     rule_ok_with!(
         apply_when_ldt_is_past_the_32_bit_ceiling_then_ok,
-        edition3(),
+        edition3_options(),
         "
 PROGRAM main
 VAR
@@ -338,7 +335,7 @@ END_PROGRAM"
 
     rule_ok_with!(
         apply_when_ltime_is_past_the_32_bit_ceiling_then_ok,
-        edition3(),
+        edition3_options(),
         "
 PROGRAM main
 VAR
@@ -351,7 +348,7 @@ END_PROGRAM"
     // unsigned at both widths.
     rule_err1_with!(
         apply_when_ldate_is_before_epoch_then_error,
-        edition3(),
+        edition3_options(),
         "
 PROGRAM main
 VAR
@@ -440,7 +437,7 @@ END_PROGRAM"
     // can be out of range.
     rule_ok_with!(
         apply_when_time_of_day_is_end_of_day_then_ok,
-        edition3(),
+        edition3_options(),
         "
 PROGRAM main
 VAR

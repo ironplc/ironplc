@@ -122,6 +122,8 @@ impl Visitor<Infallible> for RuleStringLiteralCharRange {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::diagnostic_codes;
+    use crate::test_helpers::rule_diagnostics;
     use ironplc_parser::options::CompilerOptions;
 
     rule_ok!(
@@ -231,12 +233,11 @@ END_VAR
     r := '最终检测' = '一终检测';
 END_PROGRAM";
         let opts = CompilerOptions::default();
-        let (library, context) = crate::test_helpers::resolve_fresh_with(program, &opts);
-        let errors = apply(&library, &context, &opts).unwrap_err();
-        assert_eq!(errors.len(), 2, "{errors:?}");
-        assert!(errors
-            .iter()
-            .all(|d| d.code == Problem::StringLiteralCharOutOfRange.code()));
+        let errors = rule_diagnostics(apply, program, &opts);
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::StringLiteralCharOutOfRange.code(); 2]
+        );
     }
 
     rule_ok!(
@@ -282,10 +283,11 @@ END_VAR
     s := '等';
 END_PROGRAM";
         let opts = CompilerOptions::default();
-        let (library, context) = crate::test_helpers::resolve_fresh_with(program, &opts);
-        let errors = apply(&library, &context, &opts).unwrap_err();
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert_eq!(errors[0].code, Problem::StringLiteralCharOutOfRange.code());
+        let errors = rule_diagnostics(apply, program, &opts);
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::StringLiteralCharOutOfRange.code()]
+        );
         let rendered = format!("{:?}", errors[0]);
         assert!(rendered.contains("U+7B49"), "{rendered}");
         assert!(errors[0].help().iter().any(|h| h.contains("WSTRING")));

@@ -310,6 +310,7 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
 
     rule_ctx_ok!(
         apply_when_mod_of_integer_variables_then_ok,
@@ -539,7 +540,12 @@ END_PROGRAM",
 
     #[test]
     fn apply_when_add_of_byte_with_flag_then_ok() {
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_context(
+        let options = CompilerOptions {
+            allow_bit_string_arithmetic: true,
+            ..CompilerOptions::default()
+        };
+        let diagnostics = rule_diagnostics(
+            apply,
             "
 PROGRAM main
 VAR
@@ -547,17 +553,15 @@ VAR
 END_VAR
     b := b + 1;
 END_PROGRAM",
+            &options,
         );
-        let options = CompilerOptions {
-            allow_bit_string_arithmetic: true,
-            ..CompilerOptions::default()
-        };
-        assert!(apply(&library, &context, &options).is_ok());
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     #[test]
     fn apply_when_call_fails_then_diagnostic_names_function_and_failing_step() {
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_context(
+        let errors = rule_diagnostics(
+            apply,
             "
 PROGRAM main
 VAR
@@ -566,9 +570,12 @@ VAR
 END_VAR
     t := MUL(t, r, t);
 END_PROGRAM",
+            &CompilerOptions::default(),
         );
-        let errors = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
-        assert_eq!(errors.len(), 1);
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::OperatorOperandTypeMismatch.code()]
+        );
         let described = &errors[0].described;
         assert!(
             described.contains(&"operator=MUL".to_owned()),
@@ -583,7 +590,8 @@ END_PROGRAM",
 
     #[test]
     fn apply_when_mod_of_real_then_diagnostic_names_operator_and_types() {
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_context(
+        let errors = rule_diagnostics(
+            apply,
             "
 PROGRAM main
 VAR
@@ -592,9 +600,12 @@ VAR
 END_VAR
     d := d MOD r;
 END_PROGRAM",
+            &CompilerOptions::default(),
         );
-        let errors = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
-        assert_eq!(errors.len(), 1);
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::OperatorOperandTypeMismatch.code()]
+        );
         let described = &errors[0].described;
         assert!(
             described.contains(&"operator=MOD".to_owned()),

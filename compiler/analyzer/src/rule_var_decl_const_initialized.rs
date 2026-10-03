@@ -257,7 +257,7 @@ impl<'a> RuleConstantVarsInitialized<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::{diagnostic_codes, rule_codes, rule_diagnostics};
 
     use super::*;
 
@@ -407,21 +407,14 @@ VAR CONSTANT
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
-
-        assert_eq!(codes, [Problem::ConstantMustHaveInitializer.code()]);
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        // Check that the error mentions the missing field 'y'
-        assert!(errors[0].described.iter().any(|s| s.contains("y")));
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::ConstantMustHaveInitializer.code()]
+        );
+        // The error names the missing field 'y'.
+        assert!(diagnostics[0].described.iter().any(|s| s.contains("y")));
     }
 
     #[test]
@@ -440,15 +433,7 @@ VAR CONSTANT
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = rule_codes(apply, program, &CompilerOptions::default());
 
         // One for each of the x and y fields.
         assert_eq!(codes, [Problem::ConstantMustHaveInitializer.code(); 2]);

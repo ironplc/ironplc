@@ -107,8 +107,7 @@ impl Visitor<Infallible> for RuleMixedLocatedVarDeclarations {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
+    use crate::test_helpers::rule_diagnostics;
 
     use super::*;
 
@@ -183,11 +182,9 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &opts_with_flag());
+        let diagnostics = rule_diagnostics(apply, program, &opts_with_flag());
 
-        assert!(result.is_ok());
+        assert!(diagnostics.is_empty());
     }
 
     rule_ok!(
