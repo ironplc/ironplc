@@ -21,3 +21,41 @@ END_PROGRAM
     };
     assert_round_trips(source, &options);
 }
+
+#[test]
+fn write_to_string_when_initializer_is_bare_constant_name_then_round_trips() {
+    // One declaration per block: the renderer writes each declaration in a
+    // block of its own, so a shared block would not re-parse to the same AST.
+    let source = "
+TYPE
+    Color : (Red, Green);
+END_TYPE
+TYPE
+    S : STRUCT
+        f : UDINT := C;
+    END_STRUCT;
+END_TYPE
+VAR_GLOBAL CONSTANT
+    C : UDINT := 1;
+END_VAR
+VAR_GLOBAL CONSTANT
+    D : UDINT := C;
+END_VAR
+VAR_GLOBAL
+    g : Color := Green;
+END_VAR
+VAR_GLOBAL
+    h : Color := Color#Red;
+END_VAR
+FUNCTION_BLOCK FB_A
+VAR
+    x : UDINT := C;
+END_VAR
+VAR
+    y AT %MD0 : UDINT := D;
+END_VAR
+END_FUNCTION_BLOCK
+";
+    let options = CompilerOptions::from_dialect(Dialect::TwinCat);
+    assert_round_trips(source, &options);
+}

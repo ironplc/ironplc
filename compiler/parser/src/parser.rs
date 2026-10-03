@@ -735,24 +735,45 @@ parser! {
         }),
       }
     }
-    rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {
-      // A bare literal parses as ExprKind::Const via expression() too (it's
-      // one of its own alternatives), so this single rule handles both the
-      // standard literal-only case and the constant-expression dialect
-      // extension (e.g. PI/180.0) without ambiguity — trying constant()
-      // first and falling back to expression() doesn't work here because
-      // constant() greedily matches a leading literal and stops, without
-      // backtracking, leaving a trailing operator unconsumed. See
-      // allow_constant_initializer_expressions and
-      // xform_fold_initializer_expressions, which folds SimpleExpr back to
-      // Simple or diagnoses it.
-      resolve_initializer_expr(type_name, e)
-    } / type_name:simple_specification() {
+    rule simple_spec_init() -> InitialValueAssignmentKind = simple_spec_init__with_value() / type_name:simple_specification() {
       InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name,
         initial_value: None,
       })
     }
+    // `T := e` for a simple specification. A bare literal parses as
+    // ExprKind::Const via expression() too (it's one of its own
+    // alternatives), so this single rule handles both the standard
+    // literal-only case and the constant-expression dialect extension
+    // (e.g. PI/180.0) without ambiguity — trying constant() first and
+    // falling back to expression() doesn't work here because constant()
+    // greedily matches a leading literal and stops, without backtracking,
+    // leaving a trailing operator unconsumed. See
+    // allow_constant_initializer_expressions and
+    // xform_fold_initializer_expressions, which folds SimpleExpr back to
+    // Simple or diagnoses it.
+    //
+    // An elementary type is a keyword, so a bare identifier after it can
+    // only name a constant. After a user type name it may as well be an
+    // enumeration value, so it is recorded for the type resolver to decide
+    // (ADR-0050) -- as is a qualified `T#Value`, which expression() does not
+    // take. Rejecting the bare identifier in the expression alternative,
+    // rather than matching it first as an enumerated value, is what keeps
+    // `T := T#Value` from stopping after its first identifier.
+    rule simple_spec_init__with_value() -> InitialValueAssignmentKind =
+      et:elementary_type_name() _ tok(TokenType::Assignment) _ e:expression() {
+        resolve_initializer_expr(et.into(), e)
+      }
+      / type_name:simple_type_name() _ tok(TokenType::Assignment) _ e:expression() {?
+        if matches!(e.kind, ExprKind::LateBound(_)) {
+          Err("ambiguous with enumerated value initializer")
+        } else {
+          Ok(resolve_initializer_expr(type_name, e))
+        }
+      }
+      / type_name:simple_type_name() _ tok(TokenType::Assignment) _ value:enumerated_value() {
+        late_resolved_or_enumerated(type_name, value)
+      }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
     rule simple_spec_init__with_constant() -> InitialValueAssignmentKind = type_name:simple_specification() _ tok(TokenType::Assignment) _ constant:constant() {
       InitialValueAssignmentKind::Simple(SimpleInitializer {
@@ -962,30 +983,11 @@ parser! {
     //
     // There is still value in trying to disambiguate early because it allows us to use
     // the parser definitions.
-    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {?
-      // A bare literal parses as ExprKind::Const via expression() too (it's
-      // one of its own alternatives), so this handles both the standard
-      // literal-only case and the constant-expression extension
-      // (e.g. PI/180.0) — see allow_constant_initializer_expressions and
-      // xform_fold_initializer_expressions, which folds SimpleExpr back to
-      // Simple or diagnoses it.
-      //
-      // A bare identifier (no operators) is rejected here (backtracking to
-      // the enumerated_specification alternative below) because `simple
-      //_specification` also matches an enum type name, and `identifier :=
-      // identifier` is inherently ambiguous between "simple type with a
-      // constant-expression initializer referencing a variable" and "enum
-      // type with an enum value default" — the latter interpretation must
-      // still win, matching pre-existing disambiguation behavior.
-      if matches!(e.kind, ExprKind::Variable(_) | ExprKind::LateBound(_)) {
-        Err("ambiguous with enumerated value initializer")
-      } else {
-        Ok(resolve_initializer_expr(s, e))
-      }
-    } / spec:enumerated_specification() _ tok(TokenType::Assignment) _ init:enumerated_value() {
+    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = simple_spec_init__with_value()
+    / spec:enumerated_specification() _ tok(TokenType::Assignment) _ init:enumerated_value() {
       // An inline enumeration is unambiguous. A named type with a value is
-      // only unambiguous when the value is qualified; a bare identifier may
-      // as well be a named constant for an alias, so the resolver decides.
+      // already taken by simple_spec_init__with_value above; it is handled
+      // the same way here only because the match must name it.
       match spec {
         SpecificationKind::Named(name) => late_resolved_or_enumerated(name, init),
         SpecificationKind::Inline(values) => {

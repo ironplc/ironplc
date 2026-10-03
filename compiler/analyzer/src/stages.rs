@@ -264,7 +264,7 @@ pub fn resolve_types(
     // transformed library must be kept even when diagnostics are present —
     // reverting would leak `SimpleExpr` nodes to later passes.
     library = run_best_effort(library, &mut diagnostics, |lib| {
-        xform_fold_initializer_expressions::apply(lib, options)
+        xform_fold_initializer_expressions::apply(lib, &type_environment, options)
     });
 
     // Rewrite integer 0/1 initializers on BOOL variables to boolean literals.

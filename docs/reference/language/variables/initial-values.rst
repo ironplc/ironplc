@@ -41,6 +41,36 @@ Example
 If no initial value is specified, the variable is initialized to the
 default value of its type (typically zero or empty).
 
+Named Constants (Language Extension)
+------------------------------------
+
+.. include:: ../../../includes/requires-dialect-extension.rst
+
+The standard allows only a literal as an initial value. With
+``--allow-constant-initializer-expressions``, an initial value can also
+be the name of a constant, or an expression over constants and literals.
+The compiler replaces it with the value it denotes.
+
+.. playground::
+   :allows: constant-initializer-expressions
+
+   PROGRAM main
+       VAR CONSTANT
+           L : DINT := -3;
+       END_VAR
+       VAR
+           x : DINT := L;
+       END_VAR
+   END_PROGRAM
+
+The name must be that of a variable declared ``CONSTANT``
+(:doc:`P4038 </reference/compiler/problems/P4038>` otherwise), and the
+constant's type must be one that can be assigned to the variable
+(:doc:`P4022 </reference/compiler/problems/P4022>` otherwise): an ``INT``
+constant can initialize a ``LINT`` but a ``UDINT`` constant cannot
+initialize an ``INT``. For a variable of an enumerated type, a bare name
+is one of the type's values.
+
 See Also
 --------
 
