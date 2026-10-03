@@ -87,6 +87,8 @@ impl DiagnosticVisitor for RuleTaskNamesUnique {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_problems::Problem;
+
     rule_ok!(
         apply_when_task_names_unique_then_return_ok,
         "
@@ -99,7 +101,7 @@ mod tests {
         END_CONFIGURATION"
     );
 
-    rule_err!(
+    rule_err1!(
         apply_when_task_names_duplicated_then_return_error,
         "
         CONFIGURATION config
@@ -108,7 +110,8 @@ mod tests {
                TASK my_task(INTERVAL := T#200ms,PRIORITY := 2);
                PROGRAM instance1 WITH my_task : plc_prg;
             END_RESOURCE
-        END_CONFIGURATION"
+        END_CONFIGURATION",
+        Problem::DuplicateTaskName
     );
 
     rule_ok!(

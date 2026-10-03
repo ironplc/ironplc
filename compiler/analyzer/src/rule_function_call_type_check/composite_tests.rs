@@ -66,6 +66,8 @@ END_PROGRAM"
 #[case::abs_of_structure("n := ABS(r);")]
 #[case::structure_for_array_parameter("n := TAKES_ARR(r);")]
 fn apply_when_composite_argument_for_other_type_then_p4026(#[case] body: &str) {
+    // Not exact: the ABS cases also report P4027, because expression typing
+    // narrows ABS's ANY_NUM return to the composite argument's type.
     assert!(problem_codes(body).contains(&Problem::FunctionCallArgTypeMismatch.code().to_string()));
 }
 

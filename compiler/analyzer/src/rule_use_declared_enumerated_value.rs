@@ -144,10 +144,26 @@ impl Visitor<Infallible> for RuleDeclaredEnumeratedValues<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_helpers::parse_and_resolve_types_with_options;
+    use ironplc_dsl::diagnostic::Diagnostic;
+    use ironplc_parser::options::CompilerOptions;
+    use ironplc_problems::Problem;
 
-    use crate::stages::analyze;
-    use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::CompilerOptions, parse_program};
+    /// The diagnostics this rule reports for `program` under default options.
+    fn diagnostics_of(program: &str) -> Vec<Diagnostic> {
+        let options = CompilerOptions::default();
+        let (library, context) = parse_and_resolve_types_with_options(program, &options);
+        super::apply(&library, &context, &options)
+            .err()
+            .unwrap_or_default()
+    }
+
+    fn codes_of(program: &str) -> Vec<String> {
+        diagnostics_of(program)
+            .into_iter()
+            .map(|d| d.code)
+            .collect()
+    }
 
     #[test]
     fn apply_when_two_undefined_enum_values_then_reports_both() {
@@ -163,15 +179,11 @@ B : LEVEL := FATAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let (_library, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
+        let diagnostics = diagnostics_of(program);
 
-        let reported: Vec<&String> = context
-            .diagnostics()
-            .iter()
-            .flat_map(|d| &d.described)
-            .collect();
+        let codes: Vec<&str> = diagnostics.iter().map(|d| d.code.as_str()).collect();
+        assert_eq!(codes, [Problem::EnumValueNotDefined.code(); 2]);
+        let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
         assert!(
             reported.iter().any(|d| d.as_str() == "value=CRITICAL"),
             "expected CRITICAL, got {reported:?}"
@@ -196,12 +208,7 @@ B : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
-
-        let (_library, context) = result.unwrap();
-        assert!(context.has_diagnostics());
+        assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
     }
 
     #[test]
@@ -217,12 +224,7 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
-
-        let (_library, context) = result.unwrap();
-        assert!(context.has_diagnostics());
+        assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
     }
 
     #[test]
@@ -238,11 +240,8 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
-
-        assert!(result.is_ok());
+        let codes = codes_of(program);
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     #[test]
@@ -261,19 +260,8 @@ END_VAR
 
 END_FUNCTION_BLOCK";
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    /// The diagnostics of analyzing `program` under default options.
-    fn diagnostics_of(program: &str) -> Vec<ironplc_dsl::diagnostic::Diagnostic> {
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let (_library, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
-        context.diagnostics().to_vec()
+        let codes = codes_of(program);
+        assert!(codes.is_empty(), "{codes:?}");
     }
 
     #[test]

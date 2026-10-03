@@ -261,7 +261,7 @@ mod test {
 
     use super::*;
 
-    rule_err!(
+    rule_ctx_err1!(
         apply_when_const_simple_type_missing_initializer_then_error,
         "
 FUNCTION_BLOCK LOGGER
@@ -269,10 +269,11 @@ VAR CONSTANT
 ResetCounterValue : INT;
 END_VAR
 
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer
     );
 
-    rule_err!(
+    rule_ctx_err1!(
         apply_when_const_enum_type_missing_initializer_then_error,
         "
 TYPE
@@ -284,10 +285,11 @@ VAR CONSTANT
 ResetCounterValue : LOGLEVEL;
 END_VAR
 
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer
     );
 
-    rule_err!(
+    rule_ctx_err1!(
         apply_when_const_enum_values_type_missing_initializer_then_error,
         "
 FUNCTION_BLOCK LOGGER
@@ -295,10 +297,11 @@ VAR CONSTANT
 ResetCounterValue : (INFO, WARN);
 END_VAR
 
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_const_enum_values_type_has_initializer_then_ok,
         "
 FUNCTION_BLOCK LOGGER
@@ -309,7 +312,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_const_simple_external_type_missing_initializer_then_ok,
         "
 TYPE
@@ -324,7 +327,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_const_simple_has_initializer_then_ok,
         "
 FUNCTION_BLOCK LOGGER
@@ -407,7 +410,14 @@ END_FUNCTION_BLOCK";
         let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context, &CompilerOptions::default());
 
-        assert!(result.is_err());
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+
+        assert_eq!(codes, [Problem::ConstantMustHaveInitializer.code()]);
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
         // Check that the error mentions the missing field 'y'
@@ -433,10 +443,15 @@ END_FUNCTION_BLOCK";
         let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context, &CompilerOptions::default());
 
-        assert!(result.is_err());
-        let errors = result.unwrap_err();
-        // Should have errors for both x and y fields
-        assert_eq!(errors.len(), 2);
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+
+        // One for each of the x and y fields.
+        assert_eq!(codes, [Problem::ConstantMustHaveInitializer.code(); 2]);
     }
 
     // Non-constant structures don't require initialization
@@ -481,7 +496,7 @@ END_FUNCTION_BLOCK"
 
     // When a nested structure's type has fields without defaults,
     // the outer const should require initialization
-    rule_ctx_err!(
+    rule_ctx_err1!(
         apply_when_const_nested_struct_inner_missing_defaults_then_error,
         "
 TYPE
@@ -498,7 +513,8 @@ FUNCTION_BLOCK MAIN
 VAR CONSTANT
     myOuter : Outer;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer
     );
 
     // Test deeply nested structures where all fields have defaults
@@ -524,7 +540,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_err!(
+    rule_ctx_err1!(
         apply_when_const_array_type_missing_initializer_then_error,
         "
 FUNCTION_BLOCK LOGGER
@@ -532,10 +548,11 @@ VAR CONSTANT
 ResetCounterValue : ARRAY[1..10] OF INT;
 END_VAR
 
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer
     );
 
-    rule_ok!(
+    rule_ctx_ok!(
         apply_when_const_array_type_has_initializer_then_ok,
         "
 FUNCTION_BLOCK LOGGER

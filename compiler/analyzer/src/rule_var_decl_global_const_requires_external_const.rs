@@ -149,7 +149,9 @@ impl Visitor<Infallible> for RuleExternalGlobalConst<'_> {
 
 #[cfg(test)]
 mod test {
-    rule_ctx_err!(
+    use ironplc_problems::Problem;
+
+    rule_ctx_err1!(
         apply_when_global_const_external_not_const_then_error,
         "
 CONFIGURATION config
@@ -166,7 +168,8 @@ FUNCTION_BLOCK func
     VAR_EXTERNAL
         ResetCounterValue : INT;
     END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::VariableMustBeConst
     );
 
     rule_ctx_ok!(

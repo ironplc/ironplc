@@ -183,8 +183,8 @@ PROGRAM main
 END_PROGRAM
 ",
         );
-        assert!(result.is_err());
         let errors = result.unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 
@@ -201,11 +201,9 @@ PROGRAM main
 END_PROGRAM
 ",
         );
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err()[0].code,
-            Problem::StringEncodingMismatch.code()
-        );
+        let errors = result.unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 
     #[test]
@@ -254,11 +252,9 @@ PROGRAM main
 END_PROGRAM
 ",
         );
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err()[0].code,
-            Problem::StringEncodingMismatch.code()
-        );
+        let errors = result.unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 
     #[test]
@@ -293,11 +289,21 @@ PROGRAM main
 END_PROGRAM
 ",
         );
+        // rule-test-conventions: allow(pipeline) -- shows the rule is wired into analyze
         let (_lib, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
-        assert!(context
+        let codes: Vec<_> = context
             .diagnostics()
             .iter()
-            .any(|d| d.code == Problem::StringEncodingMismatch.code()));
+            .map(|d| d.code.clone())
+            .collect();
+        // Not exact: the pipeline also reports P4035 for the same assignment,
+
+        // from rule_function_call_type_check.
+
+        assert!(
+            codes.contains(&Problem::StringEncodingMismatch.code().to_string()),
+            "{codes:?}"
+        );
     }
 
     fn check_ed3(source: &str) -> SemanticResult {
@@ -347,10 +353,9 @@ FUNCTION_BLOCK FB
 END_FUNCTION_BLOCK
 ",
         );
-        assert_eq!(
-            result.unwrap_err()[0].code,
-            Problem::StringEncodingMismatch.code()
-        );
+        let errors = result.unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 
     #[test]
@@ -388,9 +393,8 @@ PROGRAM main
 END_PROGRAM
 ",
         );
-        assert_eq!(
-            result.unwrap_err()[0].code,
-            Problem::StringEncodingMismatch.code()
-        );
+        let errors = result.unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].code, Problem::StringEncodingMismatch.code());
     }
 }

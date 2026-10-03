@@ -253,9 +253,11 @@ PROGRAM main
 END_PROGRAM"
     );
 
-    rule_err1_at!(
-        apply_when_function_declares_function_block_instance_then_error_at_declaration,
-        "
+    // A hand-written `rule_err1_at!`: this rule reads the symbol environment,
+    // and that macro hands it an empty context.
+    #[test]
+    fn apply_when_function_declares_function_block_instance_then_error_at_declaration() {
+        let program = "
 FUNCTION_BLOCK Callee
   VAR_INPUT
     IN1 : BOOL;
@@ -267,10 +269,22 @@ FUNCTION Caller : BOOL
     inst : Callee;
   END_VAR
   Caller := FALSE;
-END_FUNCTION",
-        Problem::FunctionBlockInFunction,
-        "inst"
-    );
+END_FUNCTION";
+        let options = CompilerOptions::default();
+        let (library, context) =
+            crate::test_helpers::parse_and_resolve_types_with_options(program, &options);
+
+        let errors = super::apply(&library, &context, &options).unwrap_err();
+
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].code, Problem::FunctionBlockInFunction.code());
+        let start = program.find("inst").unwrap();
+        let location = &errors[0].primary.location;
+        assert_eq!(
+            (location.start, location.end),
+            (start, start + "inst".len())
+        );
+    }
 
     // The declaration and the invocation are each reported, so both the
     // cause and the call site are marked.

@@ -99,6 +99,8 @@ impl DiagnosticVisitor for RuleStructElementNamesUnique {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_problems::Problem;
+
     rule_ok!(
         apply_when_structure_has_unique_names_then_ok,
         "
@@ -109,7 +111,7 @@ TYPE
 END_TYPE"
     );
 
-    rule_err!(
+    rule_err1!(
         apply_when_structure_has_duplicated_names_then_error,
         "
 TYPE
@@ -117,6 +119,7 @@ TYPE
         NAME: BOOL;
         NAME: BOOL;
     END_STRUCT;
-END_TYPE"
+END_TYPE",
+        Problem::StructureDuplicatedElement
     );
 }

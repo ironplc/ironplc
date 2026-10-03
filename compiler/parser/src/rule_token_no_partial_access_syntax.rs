@@ -75,7 +75,16 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        assert!(result.is_err());
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert_eq!(
+            codes,
+            [ironplc_problems::Problem::PartialAccessSyntaxDisabled.code()]
+        );
     }
 
     #[test]
@@ -103,7 +112,16 @@ mod test {
                 ..CompilerOptions::default()
             },
         );
-        assert!(result.is_err());
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert_eq!(
+            codes,
+            [ironplc_problems::Problem::PartialAccessSyntaxDisabled.code()]
+        );
     }
 
     #[test]

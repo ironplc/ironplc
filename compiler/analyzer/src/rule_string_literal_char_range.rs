@@ -284,6 +284,8 @@ END_PROGRAM";
         let opts = CompilerOptions::default();
         let (library, context) = crate::test_helpers::resolve_fresh_with(program, &opts);
         let errors = apply(&library, &context, &opts).unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].code, Problem::StringLiteralCharOutOfRange.code());
         let rendered = format!("{:?}", errors[0]);
         assert!(rendered.contains("U+7B49"), "{rendered}");
         assert!(errors[0].help().iter().any(|h| h.contains("WSTRING")));
@@ -302,12 +304,13 @@ VAR
 END_VAR
 END_PROGRAM",
         );
+        // rule-test-conventions: allow(pipeline) -- shows the rule is wired into analyze
         let (_lib, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
-        let count = context
+        let codes: Vec<_> = context
             .diagnostics()
             .iter()
-            .filter(|d| d.code == Problem::StringLiteralCharOutOfRange.code())
-            .count();
-        assert_eq!(count, 2);
+            .map(|d| d.code.clone())
+            .collect();
+        assert_eq!(codes, [Problem::StringLiteralCharOutOfRange.code(); 2]);
     }
 }

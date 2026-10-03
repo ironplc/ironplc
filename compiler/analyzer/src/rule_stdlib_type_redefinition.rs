@@ -94,7 +94,6 @@ END_FUNCTION_BLOCK";
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&input, &context, &CompilerOptions::default());
 
-        assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(1, err.len());
         assert_eq!(Problem::StdlibTypeRedefinition.code(), err[0].code);
@@ -131,7 +130,6 @@ END_FUNCTION_BLOCK";
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&input, &context, &CompilerOptions::default());
 
-        assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(1, err.len());
         assert_eq!(Problem::StdlibTypeRedefinition.code(), err[0].code);

@@ -486,12 +486,8 @@ CONFIGURATION config
 END_CONFIGURATION",
         );
         let errors = result.unwrap_err();
-        assert!(
-            errors
-                .iter()
-                .any(|e| e.code == Problem::InOutArgNotWritable.code()),
-            "{errors:?}"
-        );
+        let codes: Vec<&str> = errors.iter().map(|d| d.code.as_str()).collect();
+        assert_eq!(codes, [Problem::InOutArgNotWritable.code()], "{errors:?}");
     }
 
     // A reference is not the type it references: binding it would let the

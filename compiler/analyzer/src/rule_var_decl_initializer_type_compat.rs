@@ -331,7 +331,13 @@ END_PROGRAM";
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
         let (library, context) = parse_and_resolve_types_with_options(program, &options);
         let result = apply(&library, &context, &options);
-        assert!(result.is_err());
+        let codes: Vec<&str> = result
+            .as_ref()
+            .unwrap_err()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert_eq!(codes, [Problem::InitializerTypeMismatch.code()]);
 
         let errors = result.unwrap_err();
         assert_eq!(1, errors.len());

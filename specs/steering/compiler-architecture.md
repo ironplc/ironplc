@@ -127,8 +127,9 @@ needs, add it to the environment, where every rule then has it, rather than
 working around it in the rule.
 
 Test such a rule against the context resolution builds, with the
-`rule_ctx_*` macros in `test_macros.rs`. The `rule_*` macros pass an empty
-context.
+`rule_ctx_*` macros in `test_macros.rs`; the `rule_*` macros pass an empty
+context. See [Rule Tests](compiler-standards.md#rule-tests) for what a rule
+test asserts.
 
 ## Testing Architecture
 
