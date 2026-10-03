@@ -79,9 +79,10 @@ impl Visitor<Infallible> for RuleFunctionBlockCallUnsupported {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::diagnostic_codes;
+    use crate::test_helpers::rule_diagnostics;
 
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::{parse_and_resolve_types, NOT_IMPLEMENTED_CODE};
+    use crate::test_helpers::NOT_IMPLEMENTED_CODE;
 
     #[test]
     fn apply_when_fb_call_style_init_then_reports_not_implemented() {
@@ -98,13 +99,8 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let input = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, NOT_IMPLEMENTED_CODE);
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
+        assert_eq!(diagnostic_codes(&diagnostics), [NOT_IMPLEMENTED_CODE]);
     }
 
     rule_ok!(

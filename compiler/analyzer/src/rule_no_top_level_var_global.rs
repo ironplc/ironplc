@@ -78,6 +78,7 @@ pub fn apply(
 
 #[cfg(test)]
 mod test {
+    use crate::test_helpers::diagnostic_codes;
     use ironplc_dsl::core::FileId;
     use ironplc_parser::{options::CompilerOptions, parse_program};
 
@@ -107,8 +108,10 @@ mod test {
 
         let errors = apply(&lib, &context(), &CompilerOptions::default()).unwrap_err();
 
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert_eq!(errors[0].code, Problem::TopLevelVarGlobalNotAllowed.code());
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::TopLevelVarGlobalNotAllowed.code()]
+        );
     }
 
     #[test]
@@ -117,11 +120,9 @@ mod test {
 
         let diagnostics = apply(&lib, &context(), &CompilerOptions::default()).unwrap_err();
 
-        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
-
         assert_eq!(
-            diagnostics[0].code,
-            Problem::TopLevelVarGlobalNotAllowed.code()
+            diagnostic_codes(&diagnostics),
+            [Problem::TopLevelVarGlobalNotAllowed.code()]
         );
 
         assert!(!diagnostics[0].help().is_empty());

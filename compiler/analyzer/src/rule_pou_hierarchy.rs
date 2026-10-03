@@ -200,6 +200,7 @@ impl Visitor<Infallible> for RulePouHierarchy<'_> {
 #[cfg(test)]
 mod tests {
     use crate::test_helpers::fb_inheritance_options;
+    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
     use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
 
@@ -265,13 +266,12 @@ FUNCTION Caller : BOOL
   Caller := FALSE;
 END_FUNCTION";
         let options = CompilerOptions::default();
-        let (library, context) =
-            crate::test_helpers::parse_and_resolve_types_with_options(program, &options);
+        let errors = rule_diagnostics(super::apply, program, &options);
 
-        let errors = super::apply(&library, &context, &options).unwrap_err();
-
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert_eq!(errors[0].code, Problem::FunctionBlockInFunction.code());
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::FunctionBlockInFunction.code()]
+        );
         let start = program.find("inst").unwrap();
         let location = &errors[0].primary.location;
         assert_eq!(

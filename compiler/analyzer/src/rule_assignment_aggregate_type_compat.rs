@@ -165,22 +165,12 @@ impl Visitor<Infallible> for RuleAggregateAssignment<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_helpers::parse_and_resolve_types_with_options;
+    use crate::test_helpers::{fb_inheritance_options, rule_codes};
     use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
 
-    /// Runs this rule over `program` under `options`, returning the problem
-    /// codes it reported.
-    fn problem_codes_with(program: &str, options: &CompilerOptions) -> Vec<String> {
-        let (library, context) = parse_and_resolve_types_with_options(program, options);
-        match super::apply(&library, &context, options) {
-            Ok(()) => vec![],
-            Err(diagnostics) => diagnostics.into_iter().map(|d| d.code).collect(),
-        }
-    }
-
     fn problem_codes(program: &str) -> Vec<String> {
-        problem_codes_with(program, &CompilerOptions::default())
+        rule_codes(super::apply, program, &CompilerOptions::default())
     }
 
     fn program_with(declarations: &str, body: &str) -> String {
@@ -563,11 +553,7 @@ END_PROGRAM
     /// Analyzes `program` with methods enabled, returning the problem
     /// codes it reported.
     fn problem_codes_with_methods(program: &str) -> Vec<String> {
-        let options = CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        };
-        problem_codes_with(program, &options)
+        rule_codes(super::apply, program, &fb_inheritance_options())
     }
 
     /// A method's local belongs to the method. Before the traversal

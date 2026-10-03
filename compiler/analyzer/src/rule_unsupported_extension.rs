@@ -118,10 +118,11 @@ impl Visitor<Infallible> for RuleUnsupportedExtension {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::diagnostic_codes;
     use crate::test_helpers::fb_inheritance_options;
+    use crate::test_helpers::rule_diagnostics;
 
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::{parse_and_resolve_types_with_options, NOT_IMPLEMENTED_CODE};
+    use crate::test_helpers::NOT_IMPLEMENTED_CODE;
 
     rule_ok!(
         apply_when_plain_function_block_then_ok,
@@ -161,14 +162,8 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &fb_inheritance_options());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &fb_inheritance_options());
-
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
     }
 
     #[rstest::rstest]
@@ -188,14 +183,8 @@ END_METHOD
 END_FUNCTION_BLOCK"
         );
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(&program, &fb_inheritance_options());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &fb_inheritance_options());
-
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
+        let errors = rule_diagnostics(apply, &program, &fb_inheritance_options());
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
     }
 
     #[test]
@@ -207,14 +196,8 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &fb_inheritance_options());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &fb_inheritance_options());
-
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
     }
 
     #[test]
@@ -226,15 +209,9 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &fb_inheritance_options());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &fb_inheritance_options());
-
-        let errors = result.unwrap_err();
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
         // One diagnostic for the whole FB, not one per clause.
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
     }
 
     #[test]
@@ -243,14 +220,8 @@ END_FUNCTION_BLOCK";
 INTERFACE I_Drivable
 END_INTERFACE";
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &fb_inheritance_options());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &fb_inheritance_options());
-
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
     }
 
     #[test]
@@ -265,12 +236,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &fb_inheritance_options());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &fb_inheritance_options());
-
-        let errors = result.unwrap_err();
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
         // One for the INTERFACE declaration, one for the FB's IMPLEMENTS
         // clause (EXTENDS alone wouldn't flag, but IMPLEMENTS still does).
         assert_eq!(errors.len(), 2);

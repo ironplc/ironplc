@@ -299,7 +299,8 @@ mod composite_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::{codes, fb_inheritance_options, rule_codes};
+    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
     use rstest::rstest;
 
     rule_ctx_ok!(
@@ -445,9 +446,8 @@ END_VAR
     result := {function}(a, b);
 END_PROGRAM"
         );
-        let (library, context) = parse_and_resolve_types_with_context(&program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok(), "{result:?}");
+        let diagnostics = rule_diagnostics(apply, &program, &CompilerOptions::default());
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     rule_ctx_errn!(
@@ -530,10 +530,11 @@ VAR
 END_VAR
     result := Scale(total, s);
 END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let errors = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert_eq!(errors[0].code, Problem::FunctionCallArgTypeMismatch.code());
+        let errors = rule_diagnostics(apply, program, &CompilerOptions::default());
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::FunctionCallArgTypeMismatch.code()]
+        );
         assert!(
             errors[0].described.contains(&"parameter=factor".to_owned()),
             "{:?}",
@@ -1153,7 +1154,7 @@ VAR
 END_VAR
     result := TAKES_INT(y);
 END_PROGRAM",
-        true
+        ACCEPTED
     )]
     #[case::literal_zero_to_byte_param_ok(
         "
@@ -1170,7 +1171,7 @@ VAR
 END_VAR
     result := TAKES_BYTE(0);
 END_PROGRAM",
-        true
+        ACCEPTED
     )]
     #[case::byte_return_to_int_var_ok(
         "
@@ -1188,7 +1189,7 @@ VAR
 END_VAR
     result := GET_BYTE(y);
 END_PROGRAM",
-        true
+        ACCEPTED
     )]
     // Integer → bit-string is allowed only for the UDINT ↔ DWORD pair, which
     // ElementaryTypeName::can_widen_cross_family_to carves out at equal width.
@@ -1208,7 +1209,7 @@ VAR
 END_VAR
     result := TAKES_DWORD(y);
 END_PROGRAM",
-        true
+        ACCEPTED
     )]
     // INT → BYTE is not that pair, so it stays an error even with the flag.
     #[case::int_arg_to_byte_param_error(
@@ -1227,21 +1228,19 @@ VAR
 END_VAR
     result := TAKES_BYTE(y);
 END_PROGRAM",
-        false
+        ARG_MISMATCH
     )]
     fn apply_when_cross_family_flags_on_call_then_matches_expectation(
         #[case] program: &str,
-        #[case] expect_ok: bool,
+        #[case] expected: &[Problem],
     ) {
-        let (library, context) = parse_and_resolve_types_with_context(program);
         let opts = CompilerOptions {
             allow_cross_family_widening: true,
             allow_cross_family_conversion: true,
             allow_int_literal_to_bit_string: true,
             ..CompilerOptions::default()
         };
-        let result = apply(&library, &context, &opts);
-        assert_eq!(result.is_ok(), expect_ok);
+        assert_eq!(rule_codes(apply, program, &opts), codes(expected));
     }
 
     /// One program per cross-family rule. Each is accepted under exactly one
@@ -1294,6 +1293,10 @@ END_VAR
     result := TAKES_BYTE(0);
 END_PROGRAM";
 
+    const ACCEPTED: &[Problem] = &[];
+    const ARG_MISMATCH: &[Problem] = &[Problem::FunctionCallArgTypeMismatch];
+    const ASSIGNMENT_MISMATCH: &[Problem] = &[Problem::AssignmentTypeMismatch];
+
     fn only(flag: &str) -> CompilerOptions {
         let mut opts = CompilerOptions::default();
         match flag {
@@ -1307,26 +1310,24 @@ END_PROGRAM";
     }
 
     #[rstest]
-    #[case::widening_under_widening(WIDENING_PROGRAM, "widening", true)]
-    #[case::widening_under_conversion(WIDENING_PROGRAM, "conversion", false)]
-    #[case::widening_under_literal(WIDENING_PROGRAM, "literal", false)]
-    #[case::conversion_under_widening(CONVERSION_PROGRAM, "widening", false)]
-    #[case::conversion_under_conversion(CONVERSION_PROGRAM, "conversion", true)]
-    #[case::conversion_under_literal(CONVERSION_PROGRAM, "literal", false)]
-    #[case::literal_under_widening(LITERAL_PROGRAM, "widening", false)]
-    #[case::literal_under_conversion(LITERAL_PROGRAM, "conversion", false)]
-    #[case::literal_under_literal(LITERAL_PROGRAM, "literal", true)]
-    #[case::widening_under_none(WIDENING_PROGRAM, "none", false)]
-    #[case::conversion_under_none(CONVERSION_PROGRAM, "none", false)]
-    #[case::literal_under_none(LITERAL_PROGRAM, "none", false)]
+    #[case::widening_under_widening(WIDENING_PROGRAM, "widening", ACCEPTED)]
+    #[case::widening_under_conversion(WIDENING_PROGRAM, "conversion", ARG_MISMATCH)]
+    #[case::widening_under_literal(WIDENING_PROGRAM, "literal", ARG_MISMATCH)]
+    #[case::conversion_under_widening(CONVERSION_PROGRAM, "widening", ARG_MISMATCH)]
+    #[case::conversion_under_conversion(CONVERSION_PROGRAM, "conversion", ACCEPTED)]
+    #[case::conversion_under_literal(CONVERSION_PROGRAM, "literal", ARG_MISMATCH)]
+    #[case::literal_under_widening(LITERAL_PROGRAM, "widening", ARG_MISMATCH)]
+    #[case::literal_under_conversion(LITERAL_PROGRAM, "conversion", ARG_MISMATCH)]
+    #[case::literal_under_literal(LITERAL_PROGRAM, "literal", ACCEPTED)]
+    #[case::widening_under_none(WIDENING_PROGRAM, "none", ARG_MISMATCH)]
+    #[case::conversion_under_none(CONVERSION_PROGRAM, "none", ARG_MISMATCH)]
+    #[case::literal_under_none(LITERAL_PROGRAM, "none", ARG_MISMATCH)]
     fn apply_when_one_cross_family_flag_on_then_only_its_rule_is_accepted(
         #[case] program: &str,
         #[case] flag: &str,
-        #[case] expect_ok: bool,
+        #[case] expected: &[Problem],
     ) {
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &only(flag));
-        assert_eq!(result.is_ok(), expect_ok, "program under flag {flag:?}");
+        assert_eq!(rule_codes(apply, program, &only(flag)), codes(expected));
     }
 
     rule_ctx_err1!(
@@ -1596,7 +1597,7 @@ VAR
 END_VAR
     dwFromUdint := udValue;
 END_PROGRAM",
-        true
+        ACCEPTED
     )]
     #[case::udint_target_assigned_dword_var_ok(
         "
@@ -1607,7 +1608,7 @@ VAR
 END_VAR
     udFromDword := dwValue;
 END_PROGRAM",
-        true
+        ACCEPTED
     )]
     // Signed integer, equal width -- not part of the verified exception, must
     // stay rejected even with the flag on.
@@ -1620,21 +1621,19 @@ VAR
 END_VAR
     dwFromDint := diValue;
 END_PROGRAM",
-        false
+        ASSIGNMENT_MISMATCH
     )]
     fn apply_when_cross_family_flags_on_assignment_then_matches_expectation(
         #[case] program: &str,
-        #[case] expect_ok: bool,
+        #[case] expected: &[Problem],
     ) {
-        let (library, context) = parse_and_resolve_types_with_context(program);
         let opts = CompilerOptions {
             allow_cross_family_widening: true,
             allow_cross_family_conversion: true,
             allow_int_literal_to_bit_string: true,
             ..CompilerOptions::default()
         };
-        let result = apply(&library, &context, &opts);
-        assert_eq!(result.is_ok(), expect_ok);
+        assert_eq!(rule_codes(apply, program, &opts), codes(expected));
     }
 
     rule_ctx_err1!(
@@ -1667,14 +1666,8 @@ END_PROGRAM"
     // METHOD scoping.
     // ---------------------------------------------------------------------
 
-    fn apply_with_methods(program: &str) -> crate::result::SemanticResult {
-        let options = CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        };
-        let (library, context) =
-            crate::test_helpers::parse_and_resolve_types_with_options(program, &options);
-        super::apply(&library, &context, &options)
+    fn apply_with_methods(program: &str) -> Vec<String> {
+        rule_codes(super::apply, program, &fb_inheritance_options())
     }
 
     /// A method's local belongs to the method. It used to be recorded
@@ -1684,7 +1677,7 @@ END_PROGRAM"
     /// `REAL` from `A`.
     #[test]
     fn apply_when_method_local_shadows_field_then_sibling_method_uses_field_type() {
-        let errors = apply_with_methods(
+        let codes = apply_with_methods(
             "
 FUNCTION_BLOCK FB_Motor
 VAR
@@ -1700,23 +1693,16 @@ METHOD B
     v := 2.5;
 END_METHOD
 END_FUNCTION_BLOCK",
-        )
-        .unwrap_err();
-
-        let codes: Vec<&str> = errors.iter().map(|d| d.code.as_str()).collect();
-
-        assert_eq!(
-            codes,
-            [Problem::AssignmentTypeMismatch.code()],
-            "expected an assignment type mismatch on the INT field, got {errors:?}"
         );
+
+        assert_eq!(codes, [Problem::AssignmentTypeMismatch.code()]);
     }
 
     /// A method's locals are still checked against their own declared
     /// types once they live in the method's own scope.
     #[test]
     fn apply_when_method_local_assigned_wrong_type_then_error() {
-        let errors = apply_with_methods(
+        let codes = apply_with_methods(
             "
 FUNCTION_BLOCK FB_Motor
 METHOD A
@@ -1727,10 +1713,7 @@ END_VAR
     b := i;
 END_METHOD
 END_FUNCTION_BLOCK",
-        )
-        .unwrap_err();
-
-        let codes: Vec<&str> = errors.iter().map(|d| d.code.as_str()).collect();
+        );
 
         assert_eq!(codes, [Problem::AssignmentTypeMismatch.code()]);
     }
@@ -1753,7 +1736,7 @@ END_VAR
 END_METHOD
 END_FUNCTION_BLOCK",
         )
-        .is_ok());
+        .is_empty());
     }
 
     // ---------------------------------------------------------------------
@@ -1785,7 +1768,7 @@ END_FUNCTION"
 
     #[test]
     fn apply_when_method_result_assigned_wrong_type_then_error() {
-        let errors = apply_with_methods(
+        let codes = apply_with_methods(
             "
 FUNCTION_BLOCK FB_Motor
 METHOD GetFlag : BOOL
@@ -1795,10 +1778,7 @@ END_VAR
     GetFlag := n;
 END_METHOD
 END_FUNCTION_BLOCK",
-        )
-        .unwrap_err();
-
-        let codes: Vec<&str> = errors.iter().map(|d| d.code.as_str()).collect();
+        );
 
         assert_eq!(codes, [Problem::AssignmentTypeMismatch.code()]);
     }
@@ -1816,7 +1796,7 @@ END_VAR
 END_METHOD
 END_FUNCTION_BLOCK",
         )
-        .is_ok());
+        .is_empty());
     }
 
     /// A method with no return type has no result variable, so its name
@@ -1836,6 +1816,6 @@ END_VAR
 END_METHOD
 END_FUNCTION_BLOCK",
         )
-        .is_ok());
+        .is_empty());
     }
 }

@@ -133,6 +133,15 @@ pub fn rule_codes(
         .collect()
 }
 
+/// The codes of `diagnostics`, in order.
+#[cfg(test)]
+pub fn diagnostic_codes(diagnostics: &[ironplc_dsl::diagnostic::Diagnostic]) -> Vec<&str> {
+    diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.code.as_str())
+        .collect()
+}
+
 /// The codes of `problems`, in order, to compare with [`rule_codes`].
 #[cfg(test)]
 pub fn codes(problems: &[ironplc_problems::Problem]) -> Vec<&str> {

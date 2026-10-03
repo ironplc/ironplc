@@ -159,7 +159,7 @@ impl Visitor<Infallible> for RuleInitializerTypeCompat<'_> {
 
 #[cfg(test)]
 mod test {
-    use crate::test_helpers::parse_and_resolve_types_with_options;
+    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
 
     use super::*;
     use ironplc_parser::options::{CompilerOptions, Dialect};
@@ -299,9 +299,8 @@ END_VAR
 END_PROGRAM";
 
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
-        let (library, context) = parse_and_resolve_types_with_options(program, &options);
-        let result = apply(&library, &context, &options);
-        assert!(result.is_ok());
+        let diagnostics = rule_diagnostics(apply, program, &options);
+        assert!(diagnostics.is_empty());
     }
 
     #[test]
@@ -314,9 +313,8 @@ END_VAR
 END_PROGRAM";
 
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
-        let (library, context) = parse_and_resolve_types_with_options(program, &options);
-        let result = apply(&library, &context, &options);
-        assert!(result.is_ok());
+        let diagnostics = rule_diagnostics(apply, program, &options);
+        assert!(diagnostics.is_empty());
     }
 
     #[test]
@@ -329,18 +327,10 @@ END_VAR
 END_PROGRAM";
 
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
-        let (library, context) = parse_and_resolve_types_with_options(program, &options);
-        let result = apply(&library, &context, &options);
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
-        assert_eq!(codes, [Problem::InitializerTypeMismatch.code()]);
-
-        let errors = result.unwrap_err();
-        assert_eq!(1, errors.len());
-        assert_eq!(Problem::InitializerTypeMismatch.code(), errors[0].code);
+        let diagnostics = rule_diagnostics(apply, program, &options);
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::InitializerTypeMismatch.code()]
+        );
     }
 }

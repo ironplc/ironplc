@@ -89,6 +89,7 @@ impl Visitor<Infallible> for RuleStructInitializerExpression {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
 
     fn opts_ref_to() -> CompilerOptions {
         CompilerOptions {
@@ -184,11 +185,12 @@ END_PROGRAM";
     #[test]
     fn apply_when_struct_init_is_unary_expression_then_label_covers_the_operator() {
         let opts = CompilerOptions::default();
-        let (library, context) = crate::test_helpers::resolve_fresh_with(UNARY_SOURCE, &opts);
+        let errors = rule_diagnostics(apply, UNARY_SOURCE, &opts);
 
-        let errors = apply(&library, &context, &opts).unwrap_err();
-
-        assert_eq!(errors.len(), 1, "expected one diagnostic, got {errors:?}");
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::StructInitializerExpressionNotAllowed.code()]
+        );
         let location = &errors[0].primary.location;
         assert_eq!("-g", &UNARY_SOURCE[location.start..location.end]);
     }
@@ -251,10 +253,12 @@ VAR
 END_VAR
 END_PROGRAM";
         let opts = CompilerOptions::default();
-        let (library, context) = crate::test_helpers::resolve_fresh_with(PROGRAM, &opts);
-        let diagnostics = super::apply(&library, &context, &opts).unwrap_err();
+        let diagnostics = rule_diagnostics(apply, PROGRAM, &opts);
 
-        assert_eq!(1, diagnostics.len());
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::StructInitializerExpressionNotAllowed.code()]
+        );
         let location = &diagnostics[0].primary.location;
         assert_eq!(
             "1 + 1",

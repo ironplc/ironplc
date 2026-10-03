@@ -144,7 +144,7 @@ impl Visitor<Infallible> for RuleConditionType<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::{rule_codes, rule_diagnostics};
     use rstest::rstest;
 
     /// A program with variables `c` of `declared_type`, `b : BOOL`,
@@ -165,17 +165,11 @@ END_PROGRAM"
     }
 
     fn diagnostics_for(program: &str) -> Vec<Diagnostic> {
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        apply(&library, &context, &CompilerOptions::default())
-            .err()
-            .unwrap_or_default()
+        rule_diagnostics(apply, program, &CompilerOptions::default())
     }
 
     fn codes_for(program: &str) -> Vec<String> {
-        diagnostics_for(program)
-            .into_iter()
-            .map(|diagnostic| diagnostic.code)
-            .collect()
+        rule_codes(apply, program, &CompilerOptions::default())
     }
 
     fn p4072() -> String {

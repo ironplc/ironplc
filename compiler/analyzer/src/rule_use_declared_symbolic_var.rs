@@ -226,7 +226,8 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
 #[cfg(test)]
 mod tests {
     use crate::test_helpers::fb_inheritance_options;
-    use crate::test_helpers::{parse_and_resolve_types_with_context, NOT_IMPLEMENTED_CODE};
+    use crate::test_helpers::NOT_IMPLEMENTED_CODE;
+    use crate::test_helpers::{diagnostic_codes, rule_codes, rule_diagnostics};
 
     use super::*;
 
@@ -241,21 +242,13 @@ END_VAR
 TRIG := TRIG0.A;
 END_FUNCTION_BLOCK";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
-
-        assert_eq!(codes, [Problem::VariableUndefined.code()]);
-        assert!(result
-            .unwrap_err()
-            .first()
-            .unwrap()
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code()]
+        );
+        assert!(diagnostics[0]
             .described
             .contains(&"variable=TRIG".to_owned()))
     }
@@ -325,19 +318,13 @@ END_VAR
 conter := 1;
 END_FUNCTION_BLOCK";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
-
-        assert_eq!(codes, [Problem::VariableUndefined.code()]);
-        let errors = result.unwrap_err();
-        let error = errors.first().unwrap();
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code()]
+        );
+        let error = &diagnostics[0];
         assert!(error.described.contains(&"variable=conter".to_owned()));
         assert!(error.described.contains(&"did you mean=counter".to_owned()));
     }
@@ -353,19 +340,13 @@ END_VAR
 completely_different := 1;
 END_FUNCTION_BLOCK";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
-
-        assert_eq!(codes, [Problem::VariableUndefined.code()]);
-        let errors = result.unwrap_err();
-        let error = errors.first().unwrap();
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code()]
+        );
+        let error = &diagnostics[0];
         assert!(error
             .described
             .contains(&"variable=completely_different".to_owned()));
@@ -407,11 +388,9 @@ END_PROGRAM";
             allow_system_uptime_global: true,
             ..CompilerOptions::default()
         };
-        let (library, context) =
-            crate::test_helpers::parse_and_resolve_types_with_options(program, &options);
-        let result = apply(&library, &context, &options);
+        let diagnostics = rule_diagnostics(apply, program, &options);
 
-        assert!(result.is_ok());
+        assert!(diagnostics.is_empty());
     }
 
     rule_ctx_err1!(
@@ -447,13 +426,9 @@ END_VAR
 bRunning := bEnabled;
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
-        );
-        let result = apply(&library, &context, &fb_inheritance_options());
+        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     #[test]
@@ -478,13 +453,9 @@ END_VAR
 c := a AND b;
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
-        );
-        let result = apply(&library, &context, &fb_inheritance_options());
+        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     #[test]
@@ -503,18 +474,7 @@ END_VAR
 bRunning := bNotDeclaredAnywhere;
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
-        );
-        let result = apply(&library, &context, &fb_inheritance_options());
-
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
+        let codes = rule_codes(apply, program, &fb_inheritance_options());
 
         assert_eq!(codes, [Problem::VariableUndefined.code()]);
     }
@@ -538,13 +498,9 @@ METHOD GetSpeed : REAL
 END_METHOD
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
-        );
-        let result = apply(&library, &context, &fb_inheritance_options());
+        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     /// A method with no return type has no result to assign, so its name
@@ -559,24 +515,13 @@ METHOD DoThing
 END_METHOD
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
+        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
+
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code()]
         );
-        let result = apply(&library, &context, &fb_inheritance_options());
-
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
-
-        assert_eq!(codes, [Problem::VariableUndefined.code()]);
-        assert!(result
-            .unwrap_err()
-            .first()
-            .unwrap()
+        assert!(diagnostics[0]
             .described
             .contains(&"variable=DoThing".to_owned()));
     }
@@ -602,24 +547,13 @@ METHOD Other
 END_METHOD
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
+        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
+
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code()]
         );
-        let result = apply(&library, &context, &fb_inheritance_options());
-
-        let codes: Vec<&str> = result
-            .as_ref()
-            .unwrap_err()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
-
-        assert_eq!(codes, [Problem::VariableUndefined.code()]);
-        assert!(result
-            .unwrap_err()
-            .first()
-            .unwrap()
+        assert!(diagnostics[0]
             .described
             .contains(&"variable=newSpeed".to_owned()));
     }
@@ -642,13 +576,9 @@ END_VAR
 END_METHOD
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
-        );
-        let result = apply(&library, &context, &fb_inheritance_options());
+        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     /// Nesting reaches the whole `EXTENDS` chain, not just the immediately
@@ -668,13 +598,9 @@ METHOD Enable
 END_METHOD
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
-        );
-        let result = apply(&library, &context, &fb_inheritance_options());
+        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     /// Sibling scopes, so the same name in two methods is two variables
@@ -697,13 +623,9 @@ END_VAR
 END_METHOD
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
-        );
-        let result = apply(&library, &context, &fb_inheritance_options());
+        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     /// Reproduces issue #1566: the rule used to abort at the first undefined
@@ -719,12 +641,12 @@ END_VAR
   x := UNDECLARED_TWO;
 END_PROGRAM";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let diagnostics = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        let codes: Vec<&str> = diagnostics.iter().map(|d| d.code.as_str()).collect();
-
-        assert_eq!(codes, [Problem::VariableUndefined.code(); 2]);
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code(); 2]
+        );
 
         let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
         assert!(
@@ -760,12 +682,12 @@ END_VAR
   y := BBB_ONE;
 END_PROGRAM";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let diagnostics = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        let codes: Vec<&str> = diagnostics.iter().map(|d| d.code.as_str()).collect();
-
-        assert_eq!(codes, [Problem::VariableUndefined.code(); 2]);
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code(); 2]
+        );
 
         let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
         assert!(
@@ -806,13 +728,9 @@ END_SET
 END_PROPERTY
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
-        );
-        let result = apply(&library, &context, &fb_inheritance_options());
+        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     /// Reading a property by its bare name in the function block body is a
@@ -834,14 +752,9 @@ END_GET
 END_PROPERTY
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
-        );
-        let errors = apply(&library, &context, &fb_inheritance_options()).unwrap_err();
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
         assert!(errors[0].described.contains(&"property=Running".to_owned()));
     }
 
@@ -863,15 +776,9 @@ END_SET
 END_PROPERTY
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
-        );
-        let errors = apply(&library, &context, &fb_inheritance_options()).unwrap_err();
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert_eq!(errors.len(), 1, "{errors:?}");
-
-        assert_eq!(errors[0].code, NOT_IMPLEMENTED_CODE);
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
         assert!(errors[0].described.contains(&"property=Speed".to_owned()));
     }
 
@@ -894,15 +801,12 @@ END_VAR
 y := Speed;
 END_PROGRAM";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &fb_inheritance_options(),
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
+
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::VariableUndefined.code()]
         );
-        let errors = apply(&library, &context, &fb_inheritance_options()).unwrap_err();
-
-        assert_eq!(errors.len(), 1, "{errors:?}");
-
-        assert_eq!(errors[0].code, Problem::VariableUndefined.code());
 
         assert!(errors[0].described.contains(&"variable=Speed".to_owned()));
     }

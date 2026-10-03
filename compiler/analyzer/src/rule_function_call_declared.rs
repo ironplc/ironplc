@@ -152,6 +152,7 @@ impl Visitor<Infallible> for RuleFunctionCallDeclared<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::rule_diagnostics;
     use rstest::rstest;
 
     rule_ctx_ok!(
@@ -594,10 +595,8 @@ END_VAR
     result := {call};
 END_PROGRAM"
         );
-        let (library, context) =
-            crate::test_helpers::parse_and_resolve_types_with_context(&program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok(), "{result:?}");
+        let diagnostics = rule_diagnostics(apply, &program, &CompilerOptions::default());
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     rule_ctx_err1!(

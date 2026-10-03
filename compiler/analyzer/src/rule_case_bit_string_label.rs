@@ -86,8 +86,7 @@ impl Visitor<Infallible> for RuleCaseBitStringLabel {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
+    use crate::test_helpers::rule_diagnostics;
 
     use super::*;
 
@@ -126,11 +125,9 @@ CASE x OF
 END_CASE;
 END_FUNCTION_BLOCK";
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &opts_with_flag());
+        let diagnostics = rule_diagnostics(apply, program, &opts_with_flag());
 
-        assert!(result.is_ok());
+        assert!(diagnostics.is_empty());
     }
 
     #[test]
@@ -147,11 +144,7 @@ CASE x OF
 END_CASE;
 END_FUNCTION_BLOCK";
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        let diagnostics = result.unwrap_err();
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
         assert_eq!(diagnostics.len(), 2);
     }
 
