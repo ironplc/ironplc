@@ -109,10 +109,10 @@ END_FUNCTION_BLOCK";
         Problem::MemberQualifierNotAllowed
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_fb_qualifier_and_flag_enabled_then_ok,
-        opts_flag(),
-        SOURCE
+        SOURCE,
+        opts_flag()
     );
 
     // The label points at the qualifier, not at the whole declaration.

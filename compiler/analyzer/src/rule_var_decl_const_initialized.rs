@@ -301,7 +301,7 @@ END_FUNCTION_BLOCK",
         Problem::ConstantMustHaveInitializer
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_enum_values_type_has_initializer_then_ok,
         "
 FUNCTION_BLOCK LOGGER
@@ -312,7 +312,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_simple_external_type_missing_initializer_then_ok,
         "
 TYPE
@@ -327,7 +327,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_simple_has_initializer_then_ok,
         "
 FUNCTION_BLOCK LOGGER
@@ -340,7 +340,7 @@ END_FUNCTION_BLOCK"
 
     // Tests for const structure initialization
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_struct_all_fields_have_defaults_then_ok,
         "
 TYPE
@@ -357,7 +357,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_struct_missing_defaults_but_explicitly_initialized_then_ok,
         "
 TYPE
@@ -374,7 +374,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_struct_partial_defaults_with_remaining_initialized_then_ok,
         "
 TYPE
@@ -440,7 +440,7 @@ END_FUNCTION_BLOCK";
     }
 
     // Non-constant structures don't require initialization
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_non_const_struct_missing_initialization_then_ok,
         "
 TYPE
@@ -459,7 +459,7 @@ END_FUNCTION_BLOCK"
 
     // When a nested structure's type has all fields with defaults,
     // the outer struct field should be considered as having a default
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_nested_struct_inner_has_all_defaults_then_ok,
         "
 TYPE
@@ -503,7 +503,7 @@ END_FUNCTION_BLOCK",
     );
 
     // Test deeply nested structures where all fields have defaults
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_deeply_nested_struct_all_have_defaults_then_ok,
         "
 TYPE
@@ -537,7 +537,7 @@ END_FUNCTION_BLOCK",
         Problem::ConstantMustHaveInitializer
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_array_type_has_initializer_then_ok,
         "
 FUNCTION_BLOCK LOGGER

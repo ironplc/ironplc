@@ -123,10 +123,10 @@ END_TYPE";
         Problem::EnumBaseTypeNotAllowed
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_enum_base_type_and_flag_enabled_then_ok,
-        opts_flag(),
-        SOURCE
+        SOURCE,
+        opts_flag()
     );
 
     // The label has to name the declaration that carries the suffix, or the

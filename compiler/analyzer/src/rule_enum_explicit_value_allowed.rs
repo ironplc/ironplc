@@ -114,10 +114,10 @@ END_TYPE";
         Problem::EnumExplicitValueNotAllowed
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_enum_explicit_values_and_flag_enabled_then_ok,
-        opts_flag(),
-        SOURCE
+        SOURCE,
+        opts_flag()
     );
 
     // The label has to name the member that carries the value, or the user

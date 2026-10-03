@@ -312,7 +312,7 @@ mod tests {
     use super::*;
     use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_mod_of_integer_variables_then_ok,
         "
 PROGRAM main
@@ -325,7 +325,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_mod_of_integer_variable_and_literal_then_ok,
         "
 PROGRAM main
@@ -337,7 +337,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_mod_of_typed_integer_literals_then_ok,
         "
 PROGRAM main
@@ -348,7 +348,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// The operand type is a subrange, which the predicate cannot judge, so
         /// the rule leaves it alone rather than reporting it.
         apply_when_mod_of_subrange_variable_then_ok,
@@ -366,7 +366,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// `+` on two TIME operands is the typed overload ADD_TIME.
         apply_when_add_of_time_variables_then_ok,
         "
@@ -473,7 +473,7 @@ END_PROGRAM",
         Problem::OperatorOperandTypeMismatch
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_sub_of_dates_then_ok,
         "
 PROGRAM main
@@ -501,7 +501,7 @@ END_PROGRAM",
         Problem::OperatorOperandTypeMismatch
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_add_call_on_times_then_ok,
         "
 PROGRAM main
@@ -512,7 +512,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// MOD has no overloads, so its function form is left to the
         /// function-call rule.
         apply_when_mod_call_on_real_then_not_this_rule,
@@ -647,7 +647,7 @@ END_PROGRAM
 
     // --- The bit-string operators (AND, OR, XOR, NOT) ---
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_and_of_bit_string_variables_then_ok,
         "
 PROGRAM main
@@ -660,7 +660,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_or_of_word_variables_then_ok,
         "
 PROGRAM main
@@ -673,7 +673,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_xor_of_bool_variables_then_ok,
         "
 PROGRAM main
@@ -686,7 +686,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_not_of_bool_variable_then_ok,
         "
 PROGRAM main
@@ -698,7 +698,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_not_of_bit_string_variable_then_ok,
         "
 PROGRAM main
@@ -710,7 +710,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// The operands are comparison results, which are BOOL, so the
         /// familiar `a > 0 AND a < 10` stays accepted.
         apply_when_and_of_comparison_results_then_ok,
@@ -724,7 +724,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// Relational operators are declared ANY_ELEMENTARY and this rule
         /// deliberately does not hold them to it, so an integer comparison
         /// stays accepted.

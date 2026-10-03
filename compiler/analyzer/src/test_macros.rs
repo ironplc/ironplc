@@ -31,31 +31,29 @@
 //! `apply` is referenced as `super::apply`, which resolves to the owning rule's
 //! function at each invocation site (the macros are invoked inside `rule_X::tests`).
 
-// --- Fresh-context family (options-parameterised) ---------------------------
+// --- The three rule-test macros ---------------------------------------------
 
-/// A rule test that expects `Ok` under `$opts` (used for both resolution and apply).
-macro_rules! rule_ok_with {
-    ($(#[$m:meta])* $name:ident, $opts:expr, $program:expr $(,)?) => {
+/// A rule test that expects the rule to report no problems for `$program`,
+/// under `$opts` (default options when omitted).
+macro_rules! rule_ok {
+    ($(#[$m:meta])* $name:ident, $program:expr, $opts:expr $(,)?) => {
         $(#[$m])*
         #[test]
         fn $name() {
-            let opts = $opts;
-            let (library, context) = $crate::test_helpers::resolve_fresh_with($program, &opts);
-            assert!(super::apply(&library, &context, &opts).is_ok());
+            let codes = $crate::test_helpers::rule_codes(super::apply, $program, &$opts);
+            assert!(codes.is_empty(), "{codes:?}");
         }
     };
-}
-
-/// A rule test that expects `Ok` under default options.
-macro_rules! rule_ok {
     ($(#[$m:meta])* $name:ident, $program:expr $(,)?) => {
-        rule_ok_with!(
+        rule_ok!(
             $(#[$m])* $name,
-            ironplc_parser::options::CompilerOptions::default(),
-            $program
+            $program,
+            ironplc_parser::options::CompilerOptions::default()
         );
     };
 }
+
+// --- Fresh-context family (options-parameterised) ---------------------------
 
 /// A rule test that expects exactly one diagnostic, with `$problem`'s code,
 /// under `$opts`.

@@ -149,7 +149,7 @@ END_CONFIGURATION
         format!("{CONFIG}{pou}")
     }
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_program_uses_var_external_then_ok,
         &with_config(
             "
@@ -270,7 +270,7 @@ END_PROGRAM",
 
     // Hiding in a function block compiles correctly and is relied on by
     // user code that redeclares a library constant, so it stays allowed.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_block_var_named_like_global_then_ok,
         &with_config(
             "
@@ -288,7 +288,7 @@ END_PROGRAM"
         )
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_var_named_like_global_then_ok,
         &with_config(
             "

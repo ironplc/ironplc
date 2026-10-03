@@ -311,37 +311,37 @@ END_PROGRAM",
     //     problem: each of these was reported before the literal carried the
     //     type its prefix named.
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_ldate_is_past_the_32_bit_ceiling_then_ok,
-        edition3_options(),
         "
 PROGRAM main
 VAR
     d : LDATE := LDATE#2200-01-01;
 END_VAR
-END_PROGRAM"
+END_PROGRAM",
+        edition3_options()
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_ldt_is_past_the_32_bit_ceiling_then_ok,
-        edition3_options(),
         "
 PROGRAM main
 VAR
     d : LDT := LDT#2200-01-01-00:00:00;
 END_VAR
-END_PROGRAM"
+END_PROGRAM",
+        edition3_options()
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_ltime_is_past_the_32_bit_ceiling_then_ok,
-        edition3_options(),
         "
 PROGRAM main
 VAR
     t : LTIME := LTIME#30d;
 END_VAR
-END_PROGRAM"
+END_PROGRAM",
+        edition3_options()
     );
 
     // A 64-bit date is still bounded below by the epoch: the count is
@@ -435,15 +435,15 @@ END_PROGRAM"
 
     // A time of day is bounded by construction at either width, so neither
     // can be out of range.
-    rule_ok_with!(
+    rule_ok!(
         apply_when_time_of_day_is_end_of_day_then_ok,
-        edition3_options(),
         "
 PROGRAM main
 VAR
     t : TIME_OF_DAY := TOD#23:59:59;
     l : LTIME_OF_DAY := LTOD#23:59:59;
 END_VAR
-END_PROGRAM"
+END_PROGRAM",
+        edition3_options()
     );
 }

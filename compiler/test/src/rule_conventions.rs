@@ -224,8 +224,6 @@ const WEAK_MACROS: &[&str] = &[
 ];
 
 const EMPTY_CONTEXT: &[&str] = &[
-    "rule_ok!(",
-    "rule_ok_with!(",
     "rule_err1!(",
     "rule_err1_with!(",
     "rule_errn!(",
@@ -396,14 +394,20 @@ mod tests {
 
     #[test]
     fn check_when_fresh_macro_and_rule_reads_context_then_empty_context() {
-        let rule = rule(APPLY_READS_CONTEXT, "    rule_ok!(name, \"\");");
+        let rule = rule(
+            APPLY_READS_CONTEXT,
+            "    rule_err1!(name, \"\", Problem::X);",
+        );
 
         assert_eq!(found(&rule), vec![Convention::EmptyContext]);
     }
 
     #[test]
     fn check_when_fresh_macro_and_rule_ignores_context_then_no_violations() {
-        let rule = rule(APPLY_IGNORES_CONTEXT, "    rule_ok!(name, \"\");");
+        let rule = rule(
+            APPLY_IGNORES_CONTEXT,
+            "    rule_err1!(name, \"\", Problem::X);",
+        );
 
         assert_eq!(found(&rule), vec![]);
     }

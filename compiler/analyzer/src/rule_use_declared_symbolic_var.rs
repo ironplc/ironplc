@@ -253,7 +253,7 @@ END_FUNCTION_BLOCK";
             .contains(&"variable=TRIG".to_owned()))
     }
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_block_all_symbol_declared_then_ok,
         "
 FUNCTION_BLOCK LOGGER
@@ -266,7 +266,7 @@ TRIG := TRIG0;
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_all_symbol_declared_then_ok,
         "
 FUNCTION LOGGER : REAL
@@ -279,7 +279,7 @@ TRIG := TRIG0;
 END_FUNCTION"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_program_all_symbol_declared_then_ok,
         "
 PROGRAM LOGGER
@@ -292,7 +292,7 @@ TRIG := TRIG0;
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_assign_enum_variant_then_ok,
         "
 TYPE
@@ -356,7 +356,7 @@ END_FUNCTION_BLOCK";
             .any(|d| d.starts_with("did you mean")));
     }
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_enum_value_in_comparison_then_ok,
         "
 TYPE
@@ -851,7 +851,7 @@ END_PROGRAM
         Problem::VariableUndefined
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_global_used_through_external_then_ok,
         &format!(
             "{CONFIG_WITH_GLOBAL}
@@ -867,15 +867,14 @@ END_PROGRAM"
         )
     );
 
-    rule_ctx_ok_with!(
+    rule_ok!(
         apply_when_top_level_globals_allowed_and_global_used_directly_then_ok,
-        top_level_globals(),
-        &format!("{PROGRAM_USING_GLOBAL}{CONFIG_WITH_GLOBAL}")
+        &format!("{PROGRAM_USING_GLOBAL}{CONFIG_WITH_GLOBAL}"),
+        top_level_globals()
     );
 
-    rule_ctx_ok_with!(
+    rule_ok!(
         apply_when_top_level_global_used_directly_then_ok,
-        top_level_globals(),
         "
 VAR_GLOBAL
   g : INT;
@@ -885,6 +884,7 @@ VAR
   x : INT;
 END_VAR
   x := g;
-END_PROGRAM"
+END_PROGRAM",
+        top_level_globals()
     );
 }

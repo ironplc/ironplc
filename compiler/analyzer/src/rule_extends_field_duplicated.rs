@@ -144,9 +144,8 @@ END_FUNCTION_BLOCK",
         Problem::ExtendsFieldNameDuplicated
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_derived_has_no_field_collision_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 VAR
@@ -158,7 +157,8 @@ FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
 VAR
     derivedState : BOOL;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
     );
 
     rule_err1_with!(
@@ -185,14 +185,14 @@ END_FUNCTION_BLOCK",
         Problem::ExtendsFieldNameDuplicated
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_no_extends_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Plain
 VAR
     x : INT;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
     );
 }

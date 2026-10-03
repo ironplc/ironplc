@@ -234,9 +234,8 @@ mod tests {
         Problem::ContinueOutsideLoop
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_continue_in_each_loop_then_ok,
-        edition3_options(),
         "
         PROGRAM main
         VAR x : INT; y : BOOL; END_VAR
@@ -250,6 +249,7 @@ mod tests {
                 END_REPEAT;
                 CONTINUE;
             END_FOR;
-        END_PROGRAM"
+        END_PROGRAM",
+        edition3_options()
     );
 }

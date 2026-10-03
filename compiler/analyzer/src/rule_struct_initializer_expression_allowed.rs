@@ -115,10 +115,10 @@ mod tests {
         Problem::StructInitializerExpressionNotAllowed
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_struct_init_expression_and_flag_enabled_then_ok,
-        opts_ref_to_and_flag(),
-        SOURCE
+        SOURCE,
+        opts_ref_to_and_flag()
     );
 
     // A struct initializer whose value is an ordinary constant parses as
@@ -195,13 +195,13 @@ END_PROGRAM";
         assert_eq!("-g", &UNARY_SOURCE[location.start..location.end]);
     }
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_struct_init_is_bare_variable_and_flag_enabled_then_ok,
+        BARE_VARIABLE_SOURCE,
         CompilerOptions {
             allow_struct_initializer_expressions: true,
             ..CompilerOptions::default()
-        },
-        BARE_VARIABLE_SOURCE
+        }
     );
 
     // A bare identifier naming an enumeration value is standard syntax and

@@ -254,7 +254,7 @@ END_PROGRAM"
         assert_eq!(codes_for(&program), vec![p4072(), p4072(), p4072()]);
     }
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// An alias of `BOOL` resolves to `BOOL`.
         apply_when_condition_is_alias_of_bool_then_ok,
         "
@@ -271,7 +271,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_condition_is_bool_function_result_then_ok,
         "
 FUNCTION is_high : BOOL
@@ -290,7 +290,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_condition_is_function_block_bool_output_then_ok,
         "
 PROGRAM main
@@ -303,7 +303,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// A condition the analyzer did not type is left to the rule that
         /// failed to type it.
         apply_when_condition_is_untyped_then_ok,

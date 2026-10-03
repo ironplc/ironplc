@@ -517,7 +517,7 @@ PROGRAM main VAR w : WORD; r : BOOL; END_VAR r := TOGGLE(w.3); END_PROGRAM",
         );
     }
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_input_only_function_with_expression_then_ok,
         "
 FUNCTION SQ : DINT

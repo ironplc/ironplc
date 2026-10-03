@@ -172,7 +172,7 @@ END_FUNCTION_BLOCK",
         Problem::VariableMustBeConst
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_local_const_shares_name_with_plain_global_then_ok,
         "
 CONFIGURATION config
@@ -201,7 +201,7 @@ PROGRAM plc_prg
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_global_const_external_const_then_ok,
         "
 CONFIGURATION config

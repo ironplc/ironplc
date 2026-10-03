@@ -155,7 +155,7 @@ mod tests {
     use crate::test_helpers::rule_diagnostics;
     use rstest::rstest;
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_stdlib_function_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -167,7 +167,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_user_function_called_then_ok,
         "
 FUNCTION ADD_INTS : INT
@@ -223,7 +223,7 @@ END_FUNCTION_BLOCK",
         Problem::FunctionCallWrongArgCount
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_abs_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -235,7 +235,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_sqrt_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -247,7 +247,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_min_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -260,7 +260,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_max_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -273,7 +273,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_limit_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -301,7 +301,7 @@ END_FUNCTION_BLOCK",
         Problem::FunctionCallWrongArgCount
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_expt_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -314,7 +314,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_mux_called_with_3_args_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -327,7 +327,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_mux_called_with_5_args_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -355,7 +355,7 @@ END_FUNCTION_BLOCK",
         Problem::FunctionCallWrongArgCount
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_mux_called_with_17_args_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -433,7 +433,7 @@ END_FUNCTION_BLOCK",
 
     // Note: MOD is excluded because the parser treats it as a keyword (the MOD operator).
     // MOD(a, b) requires parser changes to allow keywords in function call position.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_arithmetic_function_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -449,7 +449,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_comparison_function_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -467,7 +467,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bit_string_conversion_called_then_ok,
         "
 FUNCTION_BLOCK CALLER
@@ -492,7 +492,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_shl_with_byte_to_word_conversion_then_ok,
         "
 FUNCTION MY_SHIFT : WORD
@@ -533,7 +533,7 @@ END_PROGRAM",
         Problem::FunctionCallMixedArgTypes
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_call_named_with_output_then_ok,
         "
 FUNCTION F : INT

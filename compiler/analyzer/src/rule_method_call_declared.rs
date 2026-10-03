@@ -246,9 +246,8 @@ mod tests {
     use super::*;
     use crate::test_helpers::fb_inheritance_options;
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_method_declared_on_own_type_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 VAR
@@ -264,12 +263,12 @@ VAR
     m : FB_Motor;
 END_VAR
 m.Start();
-END_PROGRAM"
+END_PROGRAM",
+        fb_inheritance_options()
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_method_declared_on_base_via_extends_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 METHOD Start
@@ -285,12 +284,12 @@ VAR
     m : FB_Derived;
 END_VAR
 m.Start();
-END_PROGRAM"
+END_PROGRAM",
+        fb_inheritance_options()
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_method_declared_two_levels_up_extends_chain_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Base
 METHOD Start
@@ -309,7 +308,8 @@ VAR
     m : FB_Derived;
 END_VAR
 m.Start();
-END_PROGRAM"
+END_PROGRAM",
+        fb_inheritance_options()
     );
 
     rule_err1_with!(
@@ -378,9 +378,8 @@ END_PROGRAM",
     // Method calls in expression position.
     // ---------------------------------------------------------------------
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_method_with_return_type_called_in_expression_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD IsRunning : BOOL
@@ -394,13 +393,13 @@ VAR
     b : BOOL;
 END_VAR
 b := m.IsRunning();
-END_PROGRAM"
+END_PROGRAM",
+        fb_inheritance_options()
     );
 
-    rule_ok_with!(
+    rule_ok!(
         /// The value is discarded, as in CODESYS and TwinCAT.
         apply_when_method_with_return_type_called_as_statement_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 METHOD IsRunning : BOOL
@@ -413,7 +412,8 @@ VAR
     m : FB_Motor;
 END_VAR
 m.IsRunning();
-END_PROGRAM"
+END_PROGRAM",
+        fb_inheritance_options()
     );
 
     rule_err1_with!(

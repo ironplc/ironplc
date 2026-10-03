@@ -136,9 +136,8 @@ END_FUNCTION_BLOCK"
 
     // Plain EXTENDS (no IMPLEMENTS, not ABSTRACT) no longer flags --
     // field inheritance through the EXTENDS chain is fully resolved.
-    rule_ok_with!(
+    rule_ok!(
         apply_when_plain_extends_then_ok,
-        fb_inheritance_options(),
         "
 FUNCTION_BLOCK FB_Motor
 VAR
@@ -150,7 +149,8 @@ FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
 VAR
     bTurbo : BOOL;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
     );
 
     #[test]

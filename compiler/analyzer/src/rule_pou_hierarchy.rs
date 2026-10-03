@@ -204,7 +204,7 @@ mod tests {
     use ironplc_parser::options::CompilerOptions;
     use ironplc_problems::Problem;
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_calls_function_then_ok,
         "
 FUNCTION Double : INT
@@ -222,7 +222,7 @@ FUNCTION Twice : INT
 END_FUNCTION"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_program_and_function_block_declare_and_invoke_function_blocks_then_ok,
         "
 FUNCTION_BLOCK Callee
@@ -339,7 +339,7 @@ END_FUNCTION",
 
     // Ed.3 permits a function block instance as VAR_IN_OUT of a function:
     // the state stays the caller's.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_declares_function_block_as_in_out_then_ok,
         "
 FUNCTION Delayed : BOOL
@@ -376,7 +376,7 @@ END_FUNCTION",
     );
 
     // An instance the function never declared is P4012's to report.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_invokes_undeclared_instance_then_not_this_rule,
         "
 FUNCTION Delayed : BOOL

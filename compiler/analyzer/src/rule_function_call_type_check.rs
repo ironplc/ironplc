@@ -303,7 +303,7 @@ mod tests {
     use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
     use rstest::rstest;
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_matching_types_then_ok,
         "
 FUNCTION ADD_INTS : INT
@@ -324,7 +324,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_int_arg_to_real_param_lossless_then_ok,
         "
 FUNCTION DOUBLE_REAL : REAL
@@ -363,7 +363,7 @@ END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_stdlib_arg_matches_param_then_ok,
         "
 PROGRAM main
@@ -393,7 +393,7 @@ END_PROGRAM",
 
     // Integer widening still applies to a standard-library return
     // (ADR-0029, ADR-0031): INT_TO_DINT yields DINT, which fits a LINT.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_stdlib_return_widens_to_target_then_ok,
         "
 PROGRAM main
@@ -408,7 +408,7 @@ END_PROGRAM"
     // A generic return type is narrowed by `xform_resolve_expr_types` before
     // this rule runs, so ADD over INT arguments is an INT return and not a
     // false P4027 against the ANY_NUM the signature declares.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_stdlib_generic_return_resolves_to_target_then_ok,
         "
 PROGRAM main
@@ -467,7 +467,7 @@ END_PROGRAM",
 
     // An extensible call is checked past its declared parameters, so the
     // third input of ADD is checked like the first two (#1618).
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_extensible_call_third_arg_matches_then_ok,
         "
 PROGRAM main
@@ -544,7 +544,7 @@ END_PROGRAM";
 
     // NOT(x) parses as the unary operator; the named-argument spelling is the
     // one that reaches the function signature.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_not_function_form_on_word_then_ok,
         "
 PROGRAM main
@@ -597,7 +597,7 @@ END_PROGRAM",
         Problem::FunctionCallReturnTypeMismatch
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_nested_function_call_types_match_then_ok,
         "
 FUNCTION DOUBLE : INT
@@ -616,7 +616,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_all_args_match_then_ok,
         "
 FUNCTION ADD3 : DINT
@@ -639,7 +639,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_return_type_matches_then_ok,
         "
 FUNCTION GET_REAL : REAL
@@ -658,7 +658,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bare_literal_arg_to_int_param_then_ok,
         "
 FUNCTION ADD_ONE : INT
@@ -676,7 +676,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bare_literal_arg_to_sint_param_then_ok,
         "
 FUNCTION INC : SINT
@@ -694,7 +694,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bare_real_literal_arg_to_lreal_param_then_ok,
         "
 FUNCTION DBL : LREAL
@@ -716,7 +716,7 @@ END_PROGRAM"
     // literal case above, this argument is a typed REAL variable, not
     // an untyped ANY_REAL literal -- a separate code path through
     // ElementaryTypeName::can_widen_to()).
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_typed_real_var_arg_to_lreal_param_then_ok,
         "
 FUNCTION DBL : LREAL
@@ -797,7 +797,7 @@ END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bare_int_literal_arg_to_real_param_then_ok,
         "
 FUNCTION TAKES_REAL : REAL
@@ -816,7 +816,7 @@ END_PROGRAM
 "
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bare_int_literal_arg_to_lreal_param_then_ok,
         "
 FUNCTION TAKES_LREAL : LREAL
@@ -837,7 +837,7 @@ END_PROGRAM
 
     // --- Implicit integer widening tests (ADR-0029) ---
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_sint_arg_to_int_param_then_ok,
         "
 FUNCTION TAKES_INT : INT
@@ -856,7 +856,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_int_arg_to_dint_param_then_ok,
         "
 FUNCTION TAKES_DINT : DINT
@@ -875,7 +875,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_sint_arg_to_lint_param_then_ok,
         "
 FUNCTION TAKES_LINT : LINT
@@ -894,7 +894,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_usint_arg_to_uint_param_then_ok,
         "
 FUNCTION TAKES_UINT : UINT
@@ -913,7 +913,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_usint_arg_to_int_param_then_ok,
         "
 FUNCTION TAKES_INT : INT
@@ -932,7 +932,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_uint_arg_to_dint_param_then_ok,
         "
 FUNCTION TAKES_DINT : DINT
@@ -951,7 +951,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_sint_return_to_dint_var_then_ok,
         "
 FUNCTION GET_SINT : SINT
@@ -1032,7 +1032,7 @@ END_PROGRAM",
 
     // --- Integration tests for new widening cases ---
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_int_arg_to_real_param_then_ok,
         "
 FUNCTION TAKES_REAL : REAL
@@ -1071,7 +1071,7 @@ END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_byte_arg_to_word_param_then_ok,
         "
 FUNCTION TAKES_WORD : WORD
@@ -1393,7 +1393,7 @@ END_PROGRAM";
         );
     }
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_stdlib_sin_arg_is_real_then_ok,
         "
 PROGRAM main
@@ -1419,7 +1419,7 @@ END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_correct_conversion_function_arg_then_ok,
         "
 PROGRAM main
@@ -1432,7 +1432,7 @@ END_PROGRAM"
     );
 
     // ABS accepts ANY_NUM; a bare integer literal is accepted.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_stdlib_int_literal_arg_to_real_param_then_ok,
         "
 PROGRAM main
@@ -1445,7 +1445,7 @@ END_PROGRAM"
 
     // Call arguments go through the same resolved type, so a wide literal
     // reaches a WSTRING parameter and a narrow one does not.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_wstring_parameter_given_wide_literal_then_ok,
         "
 FUNCTION wide_len : INT
@@ -1486,7 +1486,7 @@ END_PROGRAM",
 
     // A character-string literal is typed by its delimiter (IEC 61131-3
     // Table 5), so each spelling belongs to exactly one of the two targets.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_wstring_target_assigned_wide_literal_then_ok,
         "
 PROGRAM main
@@ -1509,7 +1509,7 @@ END_PROGRAM",
         Problem::AssignmentTypeMismatch
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_string_target_assigned_narrow_literal_then_ok,
         "
 PROGRAM main
@@ -1559,7 +1559,7 @@ END_PROGRAM",
     );
 
     // INT widens losslessly to REAL, so this assignment is valid.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_real_target_assigned_int_var_then_ok,
         "
 PROGRAM main
@@ -1571,7 +1571,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_matching_assignment_then_ok,
         "
 PROGRAM main
@@ -1655,7 +1655,7 @@ END_PROGRAM",
     );
 
     // Temporal short/long widths are treated as one family.
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_ltime_target_assigned_time_var_then_ok,
         "
 PROGRAM main
@@ -1760,7 +1760,7 @@ END_FUNCTION",
         Problem::AssignmentTypeMismatch,
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_result_assigned_correct_type_then_ok,
         "
 FUNCTION GetN : INT
