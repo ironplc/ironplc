@@ -97,7 +97,8 @@ The prototype already shows things worth seeing:
   `LREAL` parameter is a constant `REAL` converted to `LREAL`, where the
   same literal assigned to an `LREAL` is an `LREAL`. Codegen loads the `REAL`
   constant and converts it at run time (`compile_expr.rs`), so the parameter
-  receives `0.10000000149011612`, not `0.1` (checked on the VM).
+  receives `0.10000000149011612`, not `0.1` (checked on the VM; filed as
+  [#2109](https://github.com/ironplc/ironplc/issues/2109)).
 - **Two literals compared are still undecided**, `? ANY_INT`, so codegen
   still decides their type (the step after
   [#2110](https://github.com/ironplc/ironplc/pull/2110)).
@@ -136,6 +137,10 @@ analyzer.
   `0.5 (* CONSTANT REAL -> LREAL *)`. `CONSTANT` says the value is known
   when compiling. It does not say that codegen converts it then, and today it
   does not.
+- **A `CONSTANT FROM -> TO` comment is a conversion that could be removed.**
+  The compiler knows the value, so it could give the literal the type `TO`
+  and emit no widening or narrowing at run time. Searching the output for
+  `CONSTANT` followed by `->` lists every such conversion.
 - A unary operation and a dereference are parenthesised, so the operand's
   comment and the operator's do not sit side by side (`NOT flag (* BOOL *)
   (* BOOL *)` is ambiguous).
@@ -275,10 +280,12 @@ Not part of this plan:
 - Split `plc2plc/src/renderer.rs` below the 1000-line limit.
 - Golden-file tests of `xform_insert_implicit_conversions` built on the
   annotated rendering, in place of tests that walk to a single node.
-- Give an untyped literal argument the parameter's type instead of converting
-  its default type at run time, so `Pass(0.1)` on an `LREAL` parameter passes
-  `0.1`. This changes generated code, so it is a correction of its own, not
-  part of recording what codegen does today.
+- [#2109](https://github.com/ironplc/ironplc/issues/2109): give an untyped
+  literal argument the parameter's type instead of converting its default
+  type at run time, so `Pass(0.1)` on an `LREAL` parameter passes `0.1`.
+- Remove the other conversions of constants that the annotated output shows
+  (`CONSTANT FROM -> TO`), each as its own correction, since each one changes
+  generated code.
 
 ## Open questions
 
