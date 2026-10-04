@@ -2,8 +2,7 @@
 //! any other BOOL assignment, but codegen has no lowering for "write only
 //! when true, otherwise leave unchanged" yet -- it refuses explicitly
 //! rather than emit the unconditional store a naive fallthrough would
-//! produce. Mirrors `compile_this_super.rs`'s
-//! `compile_when_self_ref_then_not_implemented`.
+//! produce.
 
 use crate::common::try_parse_and_compile;
 use ironplc_parser::options::CompilerOptions;

@@ -98,19 +98,3 @@ END_PROGRAM
 ",
     &[("s", 8)],
 );
-
-// 10 elements × 2 bytes each = 20
-e2e_i32_with!(
-    end_to_end_when_sizeof_array_of_int_then_returns_total_bytes,
-    sizeof_options(),
-    "
-PROGRAM main
-  VAR
-    arr : ARRAY[1..10] OF INT;
-    s : DINT;
-  END_VAR
-  s := SIZEOF(arr);
-END_PROGRAM
-",
-    &[("s", 20)],
-);

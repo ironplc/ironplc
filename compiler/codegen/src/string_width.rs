@@ -35,8 +35,6 @@ use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, Function, SymbolicVariableKind, Variable};
 
-use ironplc_problems::Problem;
-
 use super::call_args::collect_positional_args;
 use super::compile::{
     char_width_for_string_type, emit_string_literal_load, CompileContext, DEFAULT_OP_TYPE,
@@ -368,10 +366,10 @@ pub(crate) fn string_operand_capacity(ctx: &CompileContext, expr: &Expr) -> u16 
 ///
 /// Operands that do not agree have no encoding they can share. That is a
 /// program error -- `CONCAT(s, w)` mixing a `STRING` and a `WSTRING`, or
-/// `w = 'abc'` comparing one against a `STRING` literal -- and is reported as
-/// P4034 rather than emitted for the VM to trap on one scan later. Analysis
-/// reports it first (`rule_string_encoding_compat`), so this is the fallback
-/// for a caller that compiles without analysis.
+/// `w = 'abc'` comparing one against a `STRING` literal -- that analysis
+/// reports (`rule_string_encoding_compat`, P4034), so reaching here with one
+/// is a compiler bug. It is an internal error rather than bytecode for the VM
+/// to trap on one scan later.
 pub(crate) fn resolve_operand_char_width(
     ctx: &CompileContext,
     operands: &[&Expr],
@@ -413,10 +411,9 @@ pub(crate) fn resolve_operand_char_width(
 ///
 /// Any other expression carries an encoding of its own, and one that is not
 /// `char_width` has no valid bytecode for the store the caller is about to
-/// emit -- so that is P4034 too. Analysis reports it first
-/// (`rule_string_encoding_compat`); this is the fallback. An encoding codegen
-/// cannot work out is left to the destination, which is the one that decides
-/// the store.
+/// emit. Analysis reports that too (`rule_string_encoding_compat`), so it is
+/// an internal error here. An encoding codegen cannot work out is left to the
+/// destination, which is the one that decides the store.
 pub(crate) fn compile_string_value(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -450,17 +447,19 @@ fn operand_span(operand: &Expr, operation: &SourceSpan) -> SourceSpan {
     }
 }
 
-/// Builds the P4034 diagnostic for two string encodings that cannot be
-/// reconciled.
+/// The error for two string encodings that cannot be reconciled. Analysis
+/// rejects every STRING/WSTRING mix (P4034, or P4026 for a function
+/// argument), so reaching codegen with one is a compiler bug.
+#[track_caller]
 pub(crate) fn encoding_mismatch(
     expected: CharWidth,
     actual: CharWidth,
     span: &SourceSpan,
 ) -> Diagnostic {
-    Diagnostic::problem(
-        Problem::StringEncodingMismatch,
-        Label::span(span.clone(), "String operand"),
-    )
+    Diagnostic::internal_error_at(Label::span(
+        span.clone(),
+        "String operand of an encoding the operation does not share",
+    ))
     .with_context("expected", &type_name_for(expected).to_string())
     .with_context("found", &type_name_for(actual).to_string())
 }

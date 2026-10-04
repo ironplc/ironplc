@@ -863,7 +863,8 @@ fn compile_string_conversion(
         }
         StringConversion::StringToNum { target } => {
             // STRING_TO_* parses Latin-1 digits, so a WSTRING argument has no
-            // conversion -- P4034 rather than an encoding-mismatch trap.
+            // conversion. Analysis rejects one (P4026), so it is an internal
+            // error rather than an encoding-mismatch trap.
             let data_offset = resolve_string_arg(emitter, ctx, args[0], span, NARROW_CHAR_WIDTH)?;
             let pool_index = ctx.add_i32_constant(data_offset as i32);
             emitter.emit_load_const_i32(pool_index);

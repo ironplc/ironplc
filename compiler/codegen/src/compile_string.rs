@@ -139,8 +139,8 @@ pub(crate) fn resolve_string_arg(
     // (STRING_TO_INT, which parses Latin-1, is the case that reaches here) has
     // no bytecode to emit rather than a slot to reuse. Analysis reports such an
     // argument first, as one whose type does not match its parameter
-    // (`rule_function_call_type_check`, P4026); this is the fallback for a
-    // caller that compiles without analysis.
+    // (`rule_function_call_type_check`, P4026), so reaching here is a compiler
+    // bug.
     if let ExprKind::Variable(variable) = &arg.kind {
         if let Some(var_name) = resolve_variable_name(variable) {
             if let Some(info) = ctx.string_vars.get(var_name) {
