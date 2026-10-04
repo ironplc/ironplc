@@ -18,7 +18,7 @@ PROGRAM main
   y := x - 3;
 END_PROGRAM
 ",
-    &[(0, 10), (1, 7)],
+    &[("x", 10), ("y", 7)],
 );
 
 e2e_i32!(
@@ -31,7 +31,7 @@ PROGRAM main
   result := 3 - 10;
 END_PROGRAM
 ",
-    &[(0, -7)],
+    &[("result", -7)],
 );
 
 e2e_i32!(
@@ -44,7 +44,7 @@ PROGRAM main
   result := 100 - 30 - 20 - 10;
 END_PROGRAM
 ",
-    &[(0, 40)],
+    &[("result", 40)],
 );
 
 e2e_i32!(
@@ -57,7 +57,7 @@ PROGRAM main
   result := 10 + 5 - 3;
 END_PROGRAM
 ",
-    &[(0, 12)],
+    &[("result", 12)],
 );
 
 e2e_i32!(
@@ -74,7 +74,7 @@ PROGRAM main
   c := a - b;
 END_PROGRAM
 ",
-    &[(0, 100), (1, 30), (2, 70)],
+    &[("a", 100), ("b", 30), ("c", 70)],
 );
 
 e2e_i32!(
@@ -87,7 +87,7 @@ PROGRAM main
   x := 42 - 0;
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("x", 42)],
 );
 
 e2e_i32!(
@@ -100,7 +100,7 @@ PROGRAM main
   x := 0 - 7;
 END_PROGRAM
 ",
-    &[(0, -7)],
+    &[("x", -7)],
 );
 
 #[test]
@@ -139,5 +139,5 @@ PROGRAM main
   x := 10 - -5;
 END_PROGRAM
 ",
-    &[(0, 15)],
+    &[("x", 15)],
 );

@@ -74,7 +74,14 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, 1), (1, 2), (2, 5), (3, 6), (4, 60), (5, 1)],
+    &[
+        ("len1", 1),
+        ("len2", 2),
+        ("len3", 5),
+        ("sum_a", 6),
+        ("sum_b", 60),
+        ("same", 1)
+    ],
 );
 
 // The array of structures sits inside a nested structure, as in the reported
@@ -128,7 +135,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(0, 14), (1, 6)],
+    &[("r", 14), ("flags", 6)],
 );
 
 // The array is a variable in its own right. The elements never written read
@@ -158,7 +165,7 @@ PROGRAM main
   others := LEN(arr[1].name) + LEN(arr[3].name);
 END_PROGRAM
 ",
-    &[(0, 5), (1, 0)],
+    &[("r", 5), ("others", 0)],
 );
 
 // Multi-dimensional, with two STRING fields in the element: the flat element
@@ -199,7 +206,7 @@ PROGRAM main
   r3 := LEN(h.grid[2, 0].tag);
 END_PROGRAM
 ",
-    &[(0, 2), (1, 4), (2, 1)],
+    &[("r1", 2), ("r2", 4), ("r3", 1)],
 );
 
 // WSTRING field: wide elements, one structure apart. The store produces the
@@ -237,7 +244,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, 4), (1, 1)],
+    &[("r", 4), ("same", 1)],
 );
 
 // The descriptor counts elements, so an index one past the end traps even

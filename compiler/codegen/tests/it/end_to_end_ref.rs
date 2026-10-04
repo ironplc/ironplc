@@ -21,7 +21,7 @@ PROGRAM main
   value := r^;
 END_PROGRAM
 ",
-    &[(2, 42)],
+    &[("value", 42)],
 );
 
 // counter (var[0]) should be 99 after writing through ref
@@ -37,7 +37,7 @@ PROGRAM main
   r^ := 99;
 END_PROGRAM
 ",
-    &[(0, 99)],
+    &[("counter", 99)],
 );
 
 #[test]
@@ -114,7 +114,7 @@ PROGRAM main
   result := r2^;
 END_PROGRAM
 ",
-    &[(0, 55), (3, 55)],
+    &[("counter", 55), ("result", 55)],
 );
 
 // NULL check with IF prevents dereference.
@@ -133,7 +133,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(1, 0)],
+    &[("value", 0)],
 );
 
 // REF_TO with REF(var) initializer should not be NULL.
@@ -152,7 +152,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(2, 1)],
+    &[("is_not_null", 1)],
 );
 
 // Reassign a reference to point to a different variable.
@@ -174,7 +174,7 @@ PROGRAM main
   result2 := r^;
 END_PROGRAM
 ",
-    &[(3, 10), (4, 20)],
+    &[("result1", 10), ("result2", 20)],
 );
 
 // --- REF_TO in FUNCTION context tests ---
@@ -199,7 +199,7 @@ PROGRAM main
   result := READ_REF(PT := REF(b));
 END_PROGRAM
 ",
-    &[(1, 42)],
+    &[("result", 42)],
 );
 
 // b (var[0]) should be 99 after write through ref
@@ -223,7 +223,7 @@ PROGRAM main
   result := WRITE_REF(PT := REF(b));
 END_PROGRAM
 ",
-    &[(0, 99)],
+    &[("b", 99)],
 );
 
 // REF_TO local variables in a function should default to NULL.
@@ -250,7 +250,7 @@ PROGRAM main
   result := CHECK_NULL(PT := REF(b));
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("result", 1)],
 );
 
 // Verifies that REF_TO works with different types (BYTE, DWORD)
@@ -278,7 +278,7 @@ PROGRAM main
   result := TEST(PT := REF(b));
 END_PROGRAM
 ",
-    &[(0, 1)],
+    &[("result", 1)],
 );
 
 // Verifies that PT^[0] syntax (dereference + array subscript) actually
@@ -307,7 +307,7 @@ END_VAR
     check := arr[0];
 END_PROGRAM
 ",
-    &[(1, 1), (2, 42)],
+    &[("result", 1), ("check", 42)],
 );
 
 // Verifies that a local REF_TO ARRAY variable (not a parameter) can be used
@@ -339,7 +339,7 @@ END_VAR
     check := arr[0];
 END_PROGRAM
 ",
-    &[(1, 1), (2, 77)],
+    &[("result", 1), ("check", 77)],
 );
 
 #[test]
@@ -400,7 +400,7 @@ END_VAR
     found := b > BYTE#0;
 END_PROGRAM
 ",
-    &[(1, 42), (2, 1)],
+    &[("b", 42), ("found", 1)],
 );
 
 // Verifies that PT^[0] syntax (dereference + array subscript) works
@@ -427,7 +427,7 @@ END_VAR
     check := arr[0];
 END_PROGRAM
 ",
-    &[(2, 42)],
+    &[("check", 42)],
 );
 
 // Verifies that a local REF_TO ARRAY variable inside a FUNCTION_BLOCK
@@ -458,5 +458,5 @@ END_VAR
     check := arr[0];
 END_PROGRAM
 ",
-    &[(2, 99)],
+    &[("check", 99)],
 );

@@ -21,7 +21,7 @@ PROGRAM main
   y := ADD(x, 32);
 END_PROGRAM
 ",
-    &[(0, 10), (1, 42)],
+    &[("x", 10), ("y", 42)],
 );
 
 e2e_i32!(
@@ -34,7 +34,7 @@ PROGRAM main
   result := SUB(10, 3);
 END_PROGRAM
 ",
-    &[(0, 7)],
+    &[("result", 7)],
 );
 
 e2e_i32!(
@@ -47,7 +47,7 @@ PROGRAM main
   result := MUL(6, 7);
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("result", 42)],
 );
 
 e2e_i32!(
@@ -60,7 +60,7 @@ PROGRAM main
   result := DIV(20, 4);
 END_PROGRAM
 ",
-    &[(0, 5)],
+    &[("result", 5)],
 );
 
 // --- Comparison functions ---
@@ -77,7 +77,7 @@ PROGRAM main
   false_result := GT(5, 10);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("true_result", 1), ("false_result", 0)],
 );
 
 e2e_i32!(
@@ -94,7 +94,7 @@ PROGRAM main
   false_result := GE(5, 10);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 1), (2, 0)],
+    &[("true_result", 1), ("equal_result", 1), ("false_result", 0)],
 );
 
 e2e_i32!(
@@ -109,7 +109,7 @@ PROGRAM main
   false_result := EQ(5, 10);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("true_result", 1), ("false_result", 0)],
 );
 
 e2e_i32!(
@@ -124,7 +124,7 @@ PROGRAM main
   false_result := LE(10, 5);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("true_result", 1), ("false_result", 0)],
 );
 
 e2e_i32!(
@@ -139,7 +139,7 @@ PROGRAM main
   false_result := LT(5, 5);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("true_result", 1), ("false_result", 0)],
 );
 
 e2e_i32!(
@@ -154,7 +154,7 @@ PROGRAM main
   false_result := NE(5, 5);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("true_result", 1), ("false_result", 0)],
 );
 
 e2e_i32!(
@@ -167,7 +167,7 @@ PROGRAM main
   result := MOD(10, 3);
 END_PROGRAM
 ",
-    &[(0, 1)],
+    &[("result", 1)],
 );
 
 e2e_i32!(
@@ -182,7 +182,7 @@ PROGRAM main
   false_result := AND(TRUE, FALSE);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("true_result", 1), ("false_result", 0)],
 );
 
 e2e_i32!(
@@ -197,7 +197,7 @@ PROGRAM main
   false_result := OR(FALSE, FALSE);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("true_result", 1), ("false_result", 0)],
 );
 
 e2e_i32!(
@@ -212,7 +212,7 @@ PROGRAM main
   false_result := XOR(TRUE, TRUE);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("true_result", 1), ("false_result", 0)],
 );
 
 // NOT(x) parses as unary NOT applied to parenthesized expression (x).
@@ -229,7 +229,7 @@ PROGRAM main
   false_result := NOT(TRUE);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("true_result", 1), ("false_result", 0)],
 );
 
 // --- Assignment function ---
@@ -246,7 +246,7 @@ PROGRAM main
   result := MOVE(x);
 END_PROGRAM
 ",
-    &[(0, 42), (1, 42)],
+    &[("x", 42), ("result", 42)],
 );
 
 // --- Bitwise boolean functions on bit strings (#1567) ---
@@ -263,7 +263,7 @@ PROGRAM main
   result := AND(a, b);
 END_PROGRAM
 ",
-    &[(2, 0x30)],
+    &[("result", 0x30)],
 );
 
 e2e_i32!(
@@ -278,7 +278,7 @@ PROGRAM main
   result := OR(a, b);
 END_PROGRAM
 ",
-    &[(2, 0xFC)],
+    &[("result", 0xFC)],
 );
 
 e2e_i32!(
@@ -293,7 +293,7 @@ PROGRAM main
   result := XOR(a, b);
 END_PROGRAM
 ",
-    &[(2, 0xCC)],
+    &[("result", 0xCC)],
 );
 
 e2e_i32!(
@@ -307,7 +307,7 @@ PROGRAM main
   result := NOT(IN := a);
 END_PROGRAM
 ",
-    &[(1, 0x0F0F)],
+    &[("result", 0x0F0F)],
 );
 
 e2e_i32!(
@@ -324,5 +324,5 @@ PROGRAM main
   not_b := NOT(IN := b);
 END_PROGRAM
 ",
-    &[(2, 0), (3, 1)],
+    &[("not_a", 0), ("not_b", 1)],
 );

@@ -50,7 +50,7 @@ PROGRAM main
   ff := b AND_THEN b;
 END_PROGRAM
 ",
-    &[(2, 1), (3, 0), (4, 0), (5, 0)],
+    &[("tt", 1), ("tf", 0), ("ft", 0), ("ff", 0)],
 );
 
 // var layout: a=0, b=1, tt=2, tf=3, ft=4, ff=5
@@ -73,7 +73,7 @@ PROGRAM main
   ff := b OR_ELSE b;
 END_PROGRAM
 ",
-    &[(2, 1), (3, 1), (4, 1), (5, 0)],
+    &[("tt", 1), ("tf", 1), ("ft", 1), ("ff", 0)],
 );
 
 // The motivating case from the design document: the right operand dereferences
@@ -92,7 +92,7 @@ PROGRAM main
   guarded := r <> NULL AND_THEN r^ = 99;
 END_PROGRAM
 ",
-    &[(1, 0)],
+    &[("guarded", 0)],
 );
 
 #[test]
@@ -129,7 +129,7 @@ PROGRAM main
   guarded := r = NULL OR_ELSE r^ = 99;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("guarded", 1)],
 );
 
 // When the left operand does not decide the answer, the right operand runs --
@@ -148,7 +148,7 @@ PROGRAM main
   guarded := r <> NULL AND_THEN r^ = 99;
 END_PROGRAM
 ",
-    &[(2, 1)],
+    &[("guarded", 1)],
 );
 
 // var layout: x=0, taken=1
@@ -169,7 +169,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("taken", 1)],
 );
 
 // OR_ELSE binds at OR precedence and AND_THEN at AND precedence, so this is
@@ -189,7 +189,7 @@ PROGRAM main
   result := a OR_ELSE b AND_THEN c;
 END_PROGRAM
 ",
-    &[(3, 1)],
+    &[("result", 1)],
 );
 
 // Nesting a short-circuit expression inside another one exercises the branch
@@ -210,7 +210,7 @@ PROGRAM main
   result := (a AND_THEN b) OR_ELSE (c AND_THEN d);
 END_PROGRAM
 ",
-    &[(4, 1)],
+    &[("result", 1)],
 );
 
 #[test]

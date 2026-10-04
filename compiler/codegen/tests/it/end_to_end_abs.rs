@@ -12,7 +12,7 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ",
-    &[(0, 42), (1, 42)],
+    &[("x", 42), ("y", 42)],
 );
 
 e2e_i32!(
@@ -27,5 +27,5 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ",
-    &[(0, -7), (1, 7)],
+    &[("x", -7), ("y", 7)],
 );

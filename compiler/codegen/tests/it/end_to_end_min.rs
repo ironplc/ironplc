@@ -10,7 +10,7 @@ PROGRAM main
   y := MIN(10, 3);
 END_PROGRAM
 ",
-    &[(0, 3)],
+    &[("y", 3)],
 );
 
 e2e_i32!(
@@ -25,5 +25,5 @@ PROGRAM main
   y := MIN(x, 100);
 END_PROGRAM
 ",
-    &[(0, 5), (1, 5)],
+    &[("x", 5), ("y", 5)],
 );

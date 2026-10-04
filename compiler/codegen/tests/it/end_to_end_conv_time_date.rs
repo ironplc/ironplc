@@ -70,5 +70,5 @@ PROGRAM main
   result := TIME_TO_REAL(t);
 END_PROGRAM
 ",
-    &[(1, 5000.0)],
+    &[("result", 5000.0)],
 );

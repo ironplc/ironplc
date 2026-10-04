@@ -17,7 +17,7 @@ PROGRAM main
   r := i;
 END_PROGRAM
 ",
-    &[(0, -3.0)],
+    &[("r", -3.0)],
 );
 
 e2e_f64!(
@@ -31,7 +31,7 @@ PROGRAM main
   l := d;
 END_PROGRAM
 ",
-    &[(0, 7.0)],
+    &[("l", 7.0)],
 );
 
 e2e_f64!(
@@ -45,7 +45,7 @@ PROGRAM main
   l := u;
 END_PROGRAM
 ",
-    &[(0, 5.0)],
+    &[("l", 5.0)],
 );
 
 e2e_f64!(
@@ -59,7 +59,7 @@ PROGRAM main
   l := r;
 END_PROGRAM
 ",
-    &[(0, 1.5)],
+    &[("l", 1.5)],
 );
 
 #[test]
@@ -90,5 +90,5 @@ PROGRAM main
   r := a[1];
 END_PROGRAM
 ",
-    &[(0, -3.0)],
+    &[("r", -3.0)],
 );

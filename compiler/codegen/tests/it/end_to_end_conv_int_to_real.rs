@@ -13,7 +13,7 @@ PROGRAM main
   y := INT_TO_REAL(x);
 END_PROGRAM
 ",
-    &[(1, 42.0)],
+    &[("y", 42.0)],
 );
 
 e2e_f64_near!(
@@ -29,7 +29,7 @@ PROGRAM main
   y := DINT_TO_LREAL(x);
 END_PROGRAM
 ",
-    &[(1, -100.0)],
+    &[("y", -100.0)],
 );
 
 e2e_f32_near!(
@@ -45,7 +45,7 @@ PROGRAM main
   y := SINT_TO_REAL(x);
 END_PROGRAM
 ",
-    &[(1, -7.0)],
+    &[("y", -7.0)],
 );
 
 e2e_f64_near!(
@@ -61,7 +61,7 @@ PROGRAM main
   y := LINT_TO_LREAL(x);
 END_PROGRAM
 ",
-    &[(1, 123456789.0)],
+    &[("y", 123456789.0)],
 );
 
 e2e_f32_near!(
@@ -77,5 +77,5 @@ PROGRAM main
   y := UINT_TO_REAL(x);
 END_PROGRAM
 ",
-    &[(1, 40000.0)],
+    &[("y", 40000.0)],
 );

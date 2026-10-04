@@ -8,7 +8,7 @@
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
-use crate::common::{assert_run_with, Duration, SlotValue};
+use crate::common::{assert_run_with, Duration, FromValue};
 
 #[rstest]
 #[case::assignment_ms(
@@ -20,7 +20,7 @@ PROGRAM main
   t := LTIME#100ms;
 END_PROGRAM
 ",
-    0,
+    "t",
     Duration::milliseconds(100)
 )]
 #[case::seconds_to_ms(
@@ -32,7 +32,7 @@ PROGRAM main
   t := LTIME#5s;
 END_PROGRAM
 ",
-    0,
+    "t",
     Duration::seconds(5)
 )]
 // Addition of two LTIME values (100ms + 200ms = 300ms).
@@ -49,11 +49,11 @@ PROGRAM main
   c := a + b;
 END_PROGRAM
 ",
-    2,
+    "c",
     Duration::milliseconds(300)
 )]
-fn end_to_end_ltime(#[case] source: &str, #[case] index: usize, #[case] expected: Duration) {
-    assert_ed3(source, index, expected);
+fn end_to_end_ltime(#[case] source: &str, #[case] name: &str, #[case] expected: Duration) {
+    assert_ed3(source, name, expected);
 }
 
 // Comparison of two LTIME values (5s > 3s is TRUE).
@@ -76,15 +76,15 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-        2,
+        "result",
         1_i64,
     );
 }
 
-fn assert_ed3<T: SlotValue>(source: &str, index: usize, expected: T) {
+fn assert_ed3<T: FromValue>(source: &str, name: &str, expected: T) {
     assert_run_with(
         source,
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-        &[(index, expected)],
+        &[(name, expected)],
     );
 }

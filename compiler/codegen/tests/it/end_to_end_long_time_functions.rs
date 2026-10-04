@@ -9,7 +9,7 @@ use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
 use crate::common::{
-    assert_run_with, datetime, time, Duration, PrimitiveDateTime, SlotValue, Time,
+    assert_run_with, datetime, time, Duration, FromValue, PrimitiveDateTime, Time,
 };
 
 /// A program assigning `expr` to `result` of `result_type`, the first
@@ -44,11 +44,11 @@ END_PROGRAM
 }
 
 /// Asserts that `result`, of `result_type`, holds `expected` after `expr`.
-fn assert_long<T: SlotValue>(result_type: &str, expr: &str, expected: T) {
+fn assert_long<T: FromValue>(result_type: &str, expr: &str, expected: T) {
     assert_run_with(
         &program(result_type, expr),
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-        &[(0, expected)],
+        &[("result", expected)],
     );
 }
 

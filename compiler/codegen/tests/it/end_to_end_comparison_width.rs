@@ -64,7 +64,7 @@ fn assert_result(expr: &str, expected: i64) {
     assert_run_with::<i64>(
         &program(expr),
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-        &[(0, expected)],
+        &[("result", expected)],
     );
 }
 

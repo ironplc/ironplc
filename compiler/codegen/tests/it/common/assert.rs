@@ -3,29 +3,28 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use super::run::parse_and_run;
-use super::slot_value::{self, NearSlotValue, SlotValue};
+use super::snapshot::Snapshot;
+use super::value::{FromValue, NearValue};
 
-/// Runs `source` for one scan and calls `check(index, actual, expected)` for
-/// each `(index, expected)` pair.
+/// Runs `source` for one scan and calls `check(name, actual, expected)` for
+/// each `(name, expected)` pair.
 ///
 /// Every assertion helper below goes through this function, so it is the one
 /// place that reads a variable after a scan.
-fn check_each<T: SlotValue>(
+fn check_each<T: FromValue>(
     source: &str,
     options: &CompilerOptions,
-    asserts: &[(usize, T)],
-    check: impl Fn(usize, T, T),
+    asserts: &[(&str, T)],
+    check: impl Fn(&str, T, T),
 ) {
-    let (container, bufs) = parse_and_run(source, options);
-    for &(idx, expected) in asserts {
-        let tag = slot_value::type_tag(&container, idx);
-        check(idx, T::from_slot(bufs.vars[idx], tag), expected);
+    let snapshot = Snapshot::run(source, options);
+    for &(name, expected) in asserts {
+        check(name, snapshot.read_as(name), expected);
     }
 }
 
-/// Runs `source` with `options` and asserts that each `(var_index, expected)`
-/// pair matches `vars[var_index]` read as `T` after one scan.
+/// Runs `source` with `options` and asserts that each `(name, expected)` pair
+/// matches the variable `name` read as `T` after one scan.
 ///
 /// This is the workhorse helper for the `end_to_end_*.rs` tests: it collapses
 /// the recurring 3-line scaffold (`let source ...; let (_c, bufs) =
@@ -36,33 +35,33 @@ fn check_each<T: SlotValue>(
 ///
 /// Name `T` explicitly (`assert_run_with::<f32>`): an unsuffixed float
 /// literal in `asserts` would otherwise default to `f64`.
-pub fn assert_run_with<T: SlotValue>(
+pub fn assert_run_with<T: FromValue>(
     source: &str,
     options: &CompilerOptions,
-    asserts: &[(usize, T)],
+    asserts: &[(&str, T)],
 ) {
-    check_each(source, options, asserts, |idx, actual, expected| {
-        assert_eq!(actual, expected, "vars[{idx}] mismatch");
+    check_each(source, options, asserts, |name, actual, expected| {
+        assert_eq!(actual, expected, "`{name}` mismatch");
     });
 }
 
 /// [`assert_run_with`] with default [`CompilerOptions`].
-pub fn assert_run<T: SlotValue>(source: &str, asserts: &[(usize, T)]) {
+pub fn assert_run<T: FromValue>(source: &str, asserts: &[(&str, T)]) {
     assert_run_with(source, &CompilerOptions::default(), asserts);
 }
 
 /// Like [`assert_run`] but asserts each value is within `tolerance` of the
 /// expected value. Use when arithmetic (pow, transcendentals) produces values
 /// that can't be represented exactly.
-pub fn assert_run_near<T: NearSlotValue>(source: &str, tolerance: T, asserts: &[(usize, T)]) {
+pub fn assert_run_near<T: NearValue>(source: &str, tolerance: T, asserts: &[(&str, T)]) {
     check_each(
         source,
         &CompilerOptions::default(),
         asserts,
-        |idx, actual, expected| {
+        |name, actual, expected| {
             assert!(
                 actual.distance(expected) < tolerance,
-                "vars[{idx}]: expected {expected}, got {actual}"
+                "`{name}`: expected {expected}, got {actual}"
             );
         },
     );

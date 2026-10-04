@@ -96,7 +96,7 @@ PROGRAM main
   x := STRING_TO_REAL(s);
 END_PROGRAM
 ",
-    &[(1, 2.5)],
+    &[("x", 2.5)],
 );
 
 #[test]

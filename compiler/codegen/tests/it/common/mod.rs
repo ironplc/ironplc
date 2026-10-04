@@ -3,7 +3,9 @@
 //! - [`bc`]: per-instruction bytecode builders and `assert_bytecode!`
 //! - `run`: parse, compile and run a program, and drive function blocks
 //! - `assert`: single-scan assertion helpers and the `e2e!` / `e2e_*!` macros
-//! - `slot_value`: reading a typed value out of a variable slot
+//! - `snapshot`: reading a program's variables by name after a scan
+//! - `value`: the [`Value`] a test observes, and typed expectations
+//! - `slot_value`: decoding a VM slot into a [`Value`]
 //!
 //! Everything tests use is re-exported here, so they name it as
 //! `crate::common::<item>`.
@@ -18,11 +20,14 @@ pub mod bc;
 mod assert;
 mod run;
 mod slot_value;
+mod snapshot;
+mod value;
 
 pub use assert::*;
 pub use ironplc_vm::VmBuffers;
 pub use run::*;
-pub use slot_value::SlotValue;
+pub use snapshot::Snapshot;
+pub use value::{FromValue, Value};
 // Date and time types and macros for writing temporal expectations.
 pub use time::macros::{date, datetime, time};
 pub use time::{Date, Duration, PrimitiveDateTime, Time};

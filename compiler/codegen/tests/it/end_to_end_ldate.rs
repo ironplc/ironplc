@@ -12,14 +12,14 @@ use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
 use crate::common::{
-    assert_run_with, date, datetime, time, Date, PrimitiveDateTime, SlotValue, Time,
+    assert_run_with, date, datetime, time, Date, FromValue, PrimitiveDateTime, Time,
 };
 
-fn assert_ed3<T: SlotValue>(source: &str, index: usize, expected: T) {
+fn assert_ed3<T: FromValue>(source: &str, name: &str, expected: T) {
     assert_run_with(
         source,
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-        &[(index, expected)],
+        &[(name, expected)],
     );
 }
 
@@ -36,7 +36,7 @@ END_PROGRAM
     date!(2024-01-01)
 )]
 fn end_to_end_ldate(#[case] source: &str, #[case] expected: Date) {
-    assert_ed3(source, 0, expected);
+    assert_ed3(source, "d", expected);
 }
 
 #[rstest]
@@ -64,7 +64,7 @@ END_PROGRAM
     time!(18:00)
 )]
 fn end_to_end_ltod(#[case] source: &str, #[case] expected: Time) {
-    assert_ed3(source, 0, expected);
+    assert_ed3(source, "t", expected);
 }
 
 #[rstest]
@@ -92,7 +92,7 @@ END_PROGRAM
     datetime!(2024-01-01 0:00)
 )]
 fn end_to_end_ldt(#[case] source: &str, #[case] expected: PrimitiveDateTime) {
-    assert_ed3(source, 0, expected);
+    assert_ed3(source, "my_dt", expected);
 }
 
 // LDATE comparison (2024-06-15 > 2024-01-01 is TRUE).
@@ -115,7 +115,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-        2,
+        "result",
         1_i64,
     );
 }

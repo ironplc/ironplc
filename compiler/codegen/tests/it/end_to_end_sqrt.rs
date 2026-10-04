@@ -17,7 +17,7 @@ PROGRAM main
   y := SQRT(x);
 END_PROGRAM
 ",
-    &[(1, 3.0)],
+    &[("y", 3.0)],
 );
 
 e2e_f32_near!(
@@ -33,7 +33,7 @@ PROGRAM main
   y := SQRT(x);
 END_PROGRAM
 ",
-    &[(1, 0.0)],
+    &[("y", 0.0)],
 );
 
 #[test]
@@ -67,7 +67,7 @@ PROGRAM main
   y := SQRT(x);
 END_PROGRAM
 ",
-    &[(1, std::f64::consts::SQRT_2)],
+    &[("y", std::f64::consts::SQRT_2)],
 );
 
 #[test]

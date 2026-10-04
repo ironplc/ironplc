@@ -30,7 +30,7 @@ PROGRAM main
   result := {expr};
 END_PROGRAM"
     );
-    assert_run(&source, &[(0, datetime!(2000-01-01 1:00))]);
+    assert_run(&source, &[("result", datetime!(2000-01-01 1:00))]);
 }
 
 /// REQ-AO-codegen-003: `t * r` with a `REAL` factor promotes to floating
@@ -51,7 +51,7 @@ PROGRAM main
   result := {expr};
 END_PROGRAM"
     );
-    assert_run(&source, &[(0, Duration::milliseconds(1500))]);
+    assert_run(&source, &[("result", Duration::milliseconds(1500))]);
 }
 
 /// REQ-AO-codegen-004: `d1 - d2` on `DATE` is a `TIME` in milliseconds.
@@ -71,7 +71,7 @@ PROGRAM main
   result := {expr};
 END_PROGRAM"
     );
-    assert_run(&source, &[(0, Duration::days(1))]);
+    assert_run(&source, &[("result", Duration::days(1))]);
 }
 
 /// REQ-AO-codegen-005: the long forms compute at 64 bits, and a short
@@ -113,7 +113,7 @@ END_PROGRAM"
     assert_run_with(
         &source,
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-        &[(0, expected)],
+        &[("result", expected)],
     );
 }
 
@@ -128,7 +128,10 @@ fn end_to_end_req_ao_009_when_extensible_call_on_times_then_folds(
     #[case] expr: &str,
     #[case] expected: Duration,
 ) {
-    assert_run(&extensible_call_program("TIME", expr), &[(0, expected)]);
+    assert_run(
+        &extensible_call_program("TIME", expr),
+        &[("result", expected)],
+    );
 }
 
 /// REQ-AO-codegen-009 for a `TIME_OF_DAY`: 10:00:00 + 1s + 2s.
@@ -136,7 +139,7 @@ fn end_to_end_req_ao_009_when_extensible_call_on_times_then_folds(
 fn end_to_end_req_ao_009_when_extensible_call_on_tod_then_folds() {
     assert_run(
         &extensible_call_program("TIME_OF_DAY", "ADD(clock, t1, t2)"),
-        &[(0, time!(10:00:03))],
+        &[("result", time!(10:00:03))],
     );
 }
 
@@ -173,7 +176,7 @@ PROGRAM main
   END_VAR
   x := i + r;
 END_PROGRAM",
-        &[(0, 4.5)],
+        &[("x", 4.5)],
     );
 }
 
@@ -191,7 +194,7 @@ PROGRAM main
   END_VAR
   x := u + l;
 END_PROGRAM",
-        &[(0, 4_000_000_001)],
+        &[("x", 4_000_000_001)],
     );
 }
 
@@ -210,7 +213,7 @@ PROGRAM main
   END_VAR
   l := d1 * d2;
 END_PROGRAM",
-        &[(0, 1_410_065_408)],
+        &[("l", 1_410_065_408)],
     );
 }
 
@@ -228,7 +231,7 @@ PROGRAM main
   END_VAR
   d := u1 / u2;
 END_PROGRAM",
-        &[(0, 2_000_000_000)],
+        &[("d", 2_000_000_000)],
     );
 }
 
@@ -250,7 +253,7 @@ PROGRAM main
   x := {expr};
 END_PROGRAM"
     );
-    assert_run::<f32>(&source, &[(0, 4.5)]);
+    assert_run::<f32>(&source, &[("x", 4.5)]);
 }
 
 /// REQ-AO-codegen-011: an extensible call widens step by step: INT + REAL is
@@ -268,7 +271,7 @@ PROGRAM main
   END_VAR
   x := ADD(i, r, lr);
 END_PROGRAM",
-        &[(0, 6.75)],
+        &[("x", 6.75)],
     );
 }
 
@@ -285,6 +288,6 @@ PROGRAM main
   b := b + 1;
 END_PROGRAM",
         &CompilerOptions::from_dialect(Dialect::Codesys),
-        &[(0, 0)],
+        &[("b", 0)],
     );
 }

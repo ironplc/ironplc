@@ -12,7 +12,7 @@ PROGRAM main
   y := TRUNC(x);
 END_PROGRAM
 ",
-    &[(1, 3)],
+    &[("y", 3)],
 );
 
 e2e_i32!(
@@ -27,7 +27,7 @@ PROGRAM main
   y := TRUNC(x);
 END_PROGRAM
 ",
-    &[(1, -3)],
+    &[("y", -3)],
 );
 
 e2e_i32!(
@@ -42,7 +42,7 @@ PROGRAM main
   y := TRUNC(x);
 END_PROGRAM
 ",
-    &[(1, 0)],
+    &[("y", 0)],
 );
 
 e2e_i64!(
@@ -57,7 +57,7 @@ PROGRAM main
   y := TRUNC(x);
 END_PROGRAM
 ",
-    &[(1, 99)],
+    &[("y", 99)],
 );
 
 e2e_i64!(
@@ -72,5 +72,5 @@ PROGRAM main
   y := TRUNC(x);
 END_PROGRAM
 ",
-    &[(1, -99)],
+    &[("y", -99)],
 );

@@ -33,7 +33,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(0, 11), (1, 25)],
+    &[("i", 11), ("sum", 25)],
 );
 
 // sum = 10 + 8 + 7 + 5 + 4 + 2 + 1 = 37 (multiples of 3 skipped).
@@ -54,7 +54,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(0, 0), (1, 37)],
+    &[("i", 0), ("sum", 37)],
 );
 
 // A narrow control variable and a variable bound: the unfused head.
@@ -77,7 +77,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(0, 6), (2, 12)],
+    &[("i", 6), ("sum", 12)],
 );
 
 // `i < 10` is fused. odd counts 1, 3, 5, 7, 9.
@@ -99,7 +99,7 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ",
-    &[(0, 10), (1, 5)],
+    &[("i", 10), ("odd", 5)],
 );
 
 e2e_i32_with!(
@@ -121,7 +121,7 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ",
-    &[(0, 10), (1, 5)],
+    &[("i", 10), ("odd", 5)],
 );
 
 // The last iteration continues (i = 10 is even), so `CONTINUE` must test
@@ -145,7 +145,7 @@ PROGRAM main
   END_REPEAT;
 END_PROGRAM
 ",
-    &[(0, 10), (1, 5)],
+    &[("i", 10), ("odd", 5)],
 );
 
 e2e_i32_with!(
@@ -168,7 +168,7 @@ PROGRAM main
   END_REPEAT;
 END_PROGRAM
 ",
-    &[(0, 10), (1, 5)],
+    &[("i", 10), ("odd", 5)],
 );
 
 // Only the inner loop continues: inner = 3 * 3, outer = 3.
@@ -194,7 +194,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(2, 9), (3, 3)],
+    &[("inner", 9), ("outer", 3)],
 );
 
 // sum = 1 + 3 + 5 + 7; EXIT at 9.
@@ -218,7 +218,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(0, 9), (1, 16)],
+    &[("i", 9), ("sum", 16)],
 );
 
 e2e_i32_with!(
@@ -238,7 +238,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(1, 5)],
+    &[("sum", 5)],
 );
 
 #[test]

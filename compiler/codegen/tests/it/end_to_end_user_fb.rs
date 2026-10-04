@@ -29,7 +29,7 @@ PROGRAM main
   fb(x := 7, y => result);
 END_PROGRAM
 ",
-    &[(1, 21)],
+    &[("result", 21)],
 );
 
 e2e_i32!(
@@ -49,7 +49,7 @@ PROGRAM main
   fb(x := 7, y => result);
 END_PROGRAM
 ",
-    &[(1, 14)],
+    &[("result", 14)],
 );
 
 #[test]
@@ -183,7 +183,7 @@ PROGRAM main
   result := fb.y;
 END_PROGRAM
 ",
-    &[(1, 14)],
+    &[("result", 14)],
 );
 
 #[test]
@@ -251,7 +251,7 @@ PROGRAM main
   result := fb.y;
 END_PROGRAM
 ",
-    &[(1, 14)],
+    &[("result", 14)],
 );
 
 #[test]

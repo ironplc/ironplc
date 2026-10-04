@@ -13,7 +13,7 @@ PROGRAM main
   y := SIN(x);
 END_PROGRAM
 ",
-    &[(1, 0.0)],
+    &[("y", 0.0)],
 );
 
 e2e_f64_near!(
@@ -29,7 +29,7 @@ PROGRAM main
   y := SIN(x);
 END_PROGRAM
 ",
-    &[(1, 1.0)],
+    &[("y", 1.0)],
 );
 
 e2e_f32_near!(
@@ -45,7 +45,7 @@ PROGRAM main
   y := COS(x);
 END_PROGRAM
 ",
-    &[(1, 1.0)],
+    &[("y", 1.0)],
 );
 
 e2e_f64_near!(
@@ -61,7 +61,7 @@ PROGRAM main
   y := COS(x);
 END_PROGRAM
 ",
-    &[(1, -1.0)],
+    &[("y", -1.0)],
 );
 
 e2e_f32_near!(
@@ -77,7 +77,7 @@ PROGRAM main
   y := TAN(x);
 END_PROGRAM
 ",
-    &[(1, 0.0)],
+    &[("y", 0.0)],
 );
 
 e2e_f64_near!(
@@ -93,7 +93,7 @@ PROGRAM main
   y := TAN(x);
 END_PROGRAM
 ",
-    &[(1, 1.0)],
+    &[("y", 1.0)],
 );
 
 e2e_f32_near!(
@@ -109,7 +109,7 @@ PROGRAM main
   y := ASIN(x);
 END_PROGRAM
 ",
-    &[(1, 0.0)],
+    &[("y", 0.0)],
 );
 
 e2e_f64_near!(
@@ -125,7 +125,7 @@ PROGRAM main
   y := ASIN(x);
 END_PROGRAM
 ",
-    &[(1, std::f64::consts::FRAC_PI_2)],
+    &[("y", std::f64::consts::FRAC_PI_2)],
 );
 
 e2e_f32_near!(
@@ -141,7 +141,7 @@ PROGRAM main
   y := ACOS(x);
 END_PROGRAM
 ",
-    &[(1, 0.0)],
+    &[("y", 0.0)],
 );
 
 e2e_f64_near!(
@@ -157,7 +157,7 @@ PROGRAM main
   y := ACOS(x);
 END_PROGRAM
 ",
-    &[(1, std::f64::consts::FRAC_PI_2)],
+    &[("y", std::f64::consts::FRAC_PI_2)],
 );
 
 e2e_f32_near!(
@@ -173,7 +173,7 @@ PROGRAM main
   y := ATAN(x);
 END_PROGRAM
 ",
-    &[(1, 0.0)],
+    &[("y", 0.0)],
 );
 
 e2e_f64_near!(
@@ -189,5 +189,5 @@ PROGRAM main
   y := ATAN(x);
 END_PROGRAM
 ",
-    &[(1, std::f64::consts::FRAC_PI_4)],
+    &[("y", std::f64::consts::FRAC_PI_4)],
 );

@@ -17,7 +17,6 @@ use crate::common::{parse_and_run, read_string, string_offset};
 
 // --- The reported reproducer ---
 
-// i is variable slot 2, n is slot 3 (s and t live in the data region).
 e2e_i32!(
     end_to_end_when_concat_in_for_loop_then_runs_every_iteration,
     "
@@ -30,7 +29,7 @@ PROGRAM main
   n := LEN(t);
 END_PROGRAM
 ",
-    &[(3, 6)],
+    &[("n", 6)],
 );
 
 e2e_i32!(
@@ -45,7 +44,7 @@ PROGRAM main
   n := LEN(t);
 END_PROGRAM
 ",
-    &[(3, 6)],
+    &[("n", 6)],
 );
 
 // --- The other loop forms ---
@@ -64,7 +63,7 @@ PROGRAM main
   n := LEN(t);
 END_PROGRAM
 ",
-    &[(3, 3)],
+    &[("n", 3)],
 );
 
 e2e_i32!(
@@ -82,7 +81,7 @@ PROGRAM main
   n := LEN(t);
 END_PROGRAM
 ",
-    &[(3, 2)],
+    &[("n", 2)],
 );
 
 // --- Accumulating into the same variable across iterations ---
@@ -200,7 +199,7 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ",
-    &[(1, 5)],
+    &[("i", 5)],
 );
 
 // --- Numeric-to-string conversion in a loop ---

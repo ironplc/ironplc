@@ -9,31 +9,31 @@ use crate::common::{date, datetime, time, Duration};
 e2e!(
     add_time_when_two_durations_then_returns_sum,
     "PROGRAM main VAR x : TIME; END_VAR x := ADD_TIME(T#2s, T#3s); END_PROGRAM",
-    &[(0, Duration::seconds(5))],
+    &[("x", Duration::seconds(5))],
 );
 
 e2e!(
     sub_time_when_two_durations_then_returns_difference,
     "PROGRAM main VAR x : TIME; END_VAR x := SUB_TIME(T#5s, T#2s); END_PROGRAM",
-    &[(0, Duration::seconds(3))],
+    &[("x", Duration::seconds(3))],
 );
 
 e2e!(
     add_tod_time_when_duration_added_then_offsets_tod,
     "PROGRAM main VAR x : TIME_OF_DAY; END_VAR x := ADD_TOD_TIME(TOD#12:00:00, T#1h); END_PROGRAM",
-    &[(0, time!(13:00))],
+    &[("x", time!(13:00))],
 );
 
 e2e!(
     sub_tod_time_when_duration_subtracted_then_offsets_tod,
     "PROGRAM main VAR x : TIME_OF_DAY; END_VAR x := SUB_TOD_TIME(TOD#14:00:00, T#1h); END_PROGRAM",
-    &[(0, time!(13:00))],
+    &[("x", time!(13:00))],
 );
 
 e2e!(
     sub_tod_tod_when_two_tods_then_returns_duration,
     "PROGRAM main VAR x : TIME; END_VAR x := SUB_TOD_TOD(TOD#14:00:00, TOD#12:00:00); END_PROGRAM",
-    &[(0, Duration::hours(2))],
+    &[("x", Duration::hours(2))],
 );
 
 // =============================================================================
@@ -43,19 +43,19 @@ e2e!(
 e2e!(
     add_dt_time_when_adding_duration_then_offsets_datetime,
     "PROGRAM main VAR x : DATE_AND_TIME; END_VAR x := ADD_DT_TIME(DT#2000-01-01-00:00:00, T#1h); END_PROGRAM",
-    &[(0, datetime!(2000-01-01 1:00))],
+    &[("x", datetime!(2000-01-01 1:00))],
 );
 
 e2e!(
     sub_dt_time_when_subtracting_duration_then_offsets_datetime,
     "PROGRAM main VAR x : DATE_AND_TIME; END_VAR x := SUB_DT_TIME(DT#2000-01-01-01:00:00, T#1h); END_PROGRAM",
-    &[(0, datetime!(2000-01-01 0:00))],
+    &[("x", datetime!(2000-01-01 0:00))],
 );
 
 e2e!(
     concat_date_tod_when_date_and_tod_then_returns_dt,
     "PROGRAM main VAR x : DATE_AND_TIME; END_VAR x := CONCAT_DATE_TOD(D#2000-01-01, TOD#12:00:00); END_PROGRAM",
-    &[(0, datetime!(2000-01-01 12:00))],
+    &[("x", datetime!(2000-01-01 12:00))],
 );
 
 // =============================================================================
@@ -65,25 +65,25 @@ e2e!(
 e2e!(
     dt_to_date_when_datetime_then_returns_date,
     "PROGRAM main VAR x : DATE; END_VAR x := DT_TO_DATE(DT#2000-01-01-12:00:00); END_PROGRAM",
-    &[(0, date!(2000 - 01 - 01))],
+    &[("x", date!(2000 - 01 - 01))],
 );
 
 e2e!(
     dt_to_tod_when_datetime_then_returns_tod,
     "PROGRAM main VAR x : TIME_OF_DAY; END_VAR x := DT_TO_TOD(DT#2000-01-01-12:00:00); END_PROGRAM",
-    &[(0, time!(12:00))],
+    &[("x", time!(12:00))],
 );
 
 e2e!(
     date_and_time_to_date_when_datetime_then_returns_date,
     "PROGRAM main VAR x : DATE; END_VAR x := DATE_AND_TIME_TO_DATE(DT#2000-01-01-12:00:00); END_PROGRAM",
-    &[(0, date!(2000-01-01))],
+    &[("x", date!(2000-01-01))],
 );
 
 e2e!(
     date_and_time_to_time_of_day_when_datetime_then_returns_tod,
     "PROGRAM main VAR x : TIME_OF_DAY; END_VAR x := DATE_AND_TIME_TO_TIME_OF_DAY(DT#2000-01-01-12:00:00); END_PROGRAM",
-    &[(0, time!(12:00))],
+    &[("x", time!(12:00))],
 );
 
 // =============================================================================
@@ -93,13 +93,13 @@ e2e!(
 e2e!(
     sub_dt_dt_when_two_datetimes_then_returns_duration_ms,
     "PROGRAM main VAR x : TIME; END_VAR x := SUB_DT_DT(DT#2000-01-01-01:00:00, DT#2000-01-01-00:00:00); END_PROGRAM",
-    &[(0, Duration::hours(1))],
+    &[("x", Duration::hours(1))],
 );
 
 e2e!(
     sub_date_date_when_two_dates_then_returns_duration_ms,
     "PROGRAM main VAR x : TIME; END_VAR x := SUB_DATE_DATE(D#2000-01-02, D#2000-01-01); END_PROGRAM",
-    &[(0, Duration::days(1))],
+    &[("x", Duration::days(1))],
 );
 
 // =============================================================================
@@ -109,23 +109,23 @@ e2e!(
 e2e!(
     mul_time_when_integer_multiplier_then_scales,
     "PROGRAM main VAR x : TIME; END_VAR x := MUL_TIME(T#2s, 3); END_PROGRAM",
-    &[(0, Duration::seconds(6))],
+    &[("x", Duration::seconds(6))],
 );
 
 e2e!(
     mul_time_when_real_multiplier_then_scales_and_truncates,
     "PROGRAM main VAR x : TIME; END_VAR x := MUL_TIME(T#3s, REAL#1.5); END_PROGRAM",
-    &[(0, Duration::milliseconds(4500))],
+    &[("x", Duration::milliseconds(4500))],
 );
 
 e2e!(
     div_time_when_integer_divisor_then_divides,
     "PROGRAM main VAR x : TIME; END_VAR x := DIV_TIME(T#6s, 3); END_PROGRAM",
-    &[(0, Duration::seconds(2))],
+    &[("x", Duration::seconds(2))],
 );
 
 e2e!(
     div_time_when_real_divisor_then_divides,
     "PROGRAM main VAR x : TIME; END_VAR x := DIV_TIME(T#5s, REAL#2.5); END_PROGRAM",
-    &[(0, Duration::seconds(2))],
+    &[("x", Duration::seconds(2))],
 );

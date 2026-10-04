@@ -29,7 +29,7 @@ END_VAR
     result := 42;
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("result", 42)],
 );
 
 // var layout: inst=0 (struct), out=1
@@ -59,5 +59,5 @@ END_VAR
     out := inst.result;
 END_PROGRAM
 ",
-    &[(1, 42)],
+    &[("out", 42)],
 );

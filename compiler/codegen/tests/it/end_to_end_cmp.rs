@@ -12,7 +12,7 @@ PROGRAM main
   y := x = 5;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 1)],
+    &[("x", 5), ("y", 1)],
 );
 
 e2e_i32!(
@@ -27,7 +27,7 @@ PROGRAM main
   y := x <> 3;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 1)],
+    &[("x", 5), ("y", 1)],
 );
 
 e2e_i32!(
@@ -42,7 +42,7 @@ PROGRAM main
   y := x < 5;
 END_PROGRAM
 ",
-    &[(0, 3), (1, 1)],
+    &[("x", 3), ("y", 1)],
 );
 
 e2e_i32!(
@@ -57,7 +57,7 @@ PROGRAM main
   y := x <= 5;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 1)],
+    &[("x", 5), ("y", 1)],
 );
 
 e2e_i32!(
@@ -72,7 +72,7 @@ PROGRAM main
   y := x > 5;
 END_PROGRAM
 ",
-    &[(0, 7), (1, 1)],
+    &[("x", 7), ("y", 1)],
 );
 
 e2e_i32!(
@@ -87,7 +87,7 @@ PROGRAM main
   y := x >= 5;
 END_PROGRAM
 ",
-    &[(0, 3), (1, 0)],
+    &[("x", 3), ("y", 0)],
 );
 
 // -2.5 < 0.0 is TRUE (1); 3.5 < 0.0 is FALSE (0)
@@ -106,7 +106,7 @@ PROGRAM main
   pos := x < 0.0;
 END_PROGRAM
 ",
-    &[(1, 1), (2, 0)],
+    &[("neg", 1), ("pos", 0)],
 );
 
 e2e_i32!(
@@ -121,7 +121,7 @@ PROGRAM main
   result := x > 0.0;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("result", 1)],
 );
 
 // 72 >= 65 is TRUE
@@ -137,7 +137,7 @@ PROGRAM main
   result := c >= BYTE#65;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("result", 1)],
 );
 
 // 72 <= 90 is TRUE
@@ -153,7 +153,7 @@ PROGRAM main
   result := c <= BYTE#90;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("result", 1)],
 );
 
 // 50 > 65 is FALSE
@@ -169,7 +169,7 @@ PROGRAM main
   result := c > BYTE#65;
 END_PROGRAM
 ",
-    &[(1, 0)],
+    &[("result", 0)],
 );
 
 // 200 < 100 is FALSE (unsigned comparison)
@@ -185,7 +185,7 @@ PROGRAM main
   result := c < BYTE#100;
 END_PROGRAM
 ",
-    &[(1, 0)],
+    &[("result", 0)],
 );
 
 // 'H' (72) is uppercase; 'a' (97) is not uppercase
@@ -208,7 +208,7 @@ PROGRAM main
   no := IS_UPPERCASE(c := BYTE#97);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("yes", 1), ("no", 0)],
 );
 
 e2e_i64!(

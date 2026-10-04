@@ -41,7 +41,7 @@ PROGRAM main
     result := o.id;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("result", 1)],
 );
 
 e2e_i32!(
@@ -75,7 +75,7 @@ PROGRAM main
     result := o.middle.factor;
 END_PROGRAM
 ",
-    &[(1, 0)],
+    &[("result", 0)],
 );
 
 // Combines struct field reads with array store/load to verify both
@@ -103,7 +103,7 @@ PROGRAM main
     result_reading := readings[3];
 END_PROGRAM
 ",
-    &[(2, 7), (3, 7)],
+    &[("result_id", 7), ("result_reading", 7)],
 );
 
 #[test]
@@ -179,7 +179,7 @@ PROGRAM main
     r1 := root.val1;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("r1", 1)],
 );
 
 // Uses struct field values to drive array computation.
@@ -213,7 +213,7 @@ PROGRAM main
     END_FOR;
 END_PROGRAM
 ",
-    &[(2, 45)],
+    &[("sum", 45)],
 );
 
 // Two independent struct instances alongside an array, verifying
@@ -244,7 +244,7 @@ PROGRAM main
     distances[3] := r1 + r2;
 END_PROGRAM
 ",
-    &[(3, 30), (4, 70)],
+    &[("r1", 30), ("r2", 70)],
 );
 
 // 2D array alongside a struct to verify data region coexistence.
@@ -271,7 +271,7 @@ PROGRAM main
     result_cell := matrix[2, 2];
 END_PROGRAM
 ",
-    &[(2, 100), (3, 105)],
+    &[("result_high", 100), ("result_cell", 105)],
 );
 
 #[test]
@@ -387,7 +387,7 @@ PROGRAM main
     r4 := line.end_pt.y;
 END_PROGRAM
 ",
-    &[(1, 10), (2, 20), (3, 30), (4, 40)],
+    &[("r1", 10), ("r2", 20), ("r3", 30), ("r4", 40)],
 );
 
 // Only some inner fields are explicitly initialized; the rest
@@ -425,7 +425,7 @@ PROGRAM main
     rtag := o.tag;
 END_PROGRAM
 ",
-    &[(1, 0), (2, 42), (3, 0), (4, 7)],
+    &[("ra", 0), ("rb", 42), ("rc", 0), ("rtag", 7)],
 );
 
 // Tests struct field assignment (store), which was added in PR #799.
@@ -452,7 +452,7 @@ PROGRAM main
     result_count := c.count;
 END_PROGRAM
 ",
-    &[(1, 10), (2, 1)],
+    &[("result_total", 10), ("result_count", 1)],
 );
 
 #[test]
@@ -536,7 +536,7 @@ PROGRAM main
     END_FOR;
 END_PROGRAM
 ",
-    &[(2, 45), (4, 5), (5, 3)],
+    &[("sum", 45), ("n", 5), ("mult", 3)],
 );
 
 // 2D array alongside nested struct with explicit init values.
@@ -570,5 +570,5 @@ PROGRAM main
     result_cell := matrix[2, 2];
 END_PROGRAM
 ",
-    &[(2, 100), (3, 105)],
+    &[("result_high", 100), ("result_cell", 105)],
 );

@@ -17,7 +17,7 @@ PROGRAM main
   y := x MOD 5;
 END_PROGRAM
 ",
-    &[(0, 12), (1, 2)],
+    &[("x", 12), ("y", 2)],
 );
 
 // (100 MOD 7) MOD 3 = 2 MOD 3 = 2
@@ -31,7 +31,7 @@ PROGRAM main
   x := 100 MOD 7 MOD 3;
 END_PROGRAM
 ",
-    &[(0, 2)],
+    &[("x", 2)],
 );
 
 #[test]
