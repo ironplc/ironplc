@@ -301,7 +301,7 @@ fn compile_operator_form(
         FormOf::Not => {
             let args = collect_positional_args(func);
             let [term] = args.as_slice() else {
-                return Err(Diagnostic::todo_with_span(func.name.span()));
+                return Err(wrong_arg_count(func));
             };
             compile_expr(emitter, ctx, term, op_type)?;
             emit_not(emitter, ctx, op_type, term)
@@ -320,10 +320,10 @@ pub(crate) fn compile_left_fold(
 ) -> Result<(), Diagnostic> {
     let args = collect_positional_args(func);
     let [first, rest @ ..] = args.as_slice() else {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     };
     if rest.is_empty() {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
     compile_expr(emitter, ctx, first, op_type)?;
     for arg in rest {
@@ -337,7 +337,7 @@ pub(crate) fn compile_left_fold(
 fn extract_two_positional_args(func: &Function) -> Result<(&Expr, &Expr), Diagnostic> {
     match collect_positional_args(func).as_slice() {
         [in1, in2] => Ok((in1, in2)),
-        _ => Err(Diagnostic::todo_with_span(func.name.span())),
+        _ => Err(wrong_arg_count(func)),
     }
 }
 
@@ -354,7 +354,7 @@ fn compile_dt_to_date(
     let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let op_type = (OpWidth::W32, Signedness::Unsigned);
@@ -384,7 +384,7 @@ fn compile_dt_to_tod(
     let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let op_type = (OpWidth::W32, Signedness::Unsigned);
@@ -416,7 +416,7 @@ fn compile_move(
     let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     compile_expr(emitter, ctx, args[0], op_type)?;
@@ -439,7 +439,7 @@ fn compile_trunc(
     let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     // Determine the argument's float type from its resolved type.
@@ -484,7 +484,7 @@ fn compile_sizeof(
     let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     // Check if the argument is a variable that maps to an array.
@@ -527,7 +527,7 @@ fn compile_bcd_to_int(
     let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let arg_op_type = op_type(ctx, args[0])?;
@@ -558,7 +558,7 @@ fn compile_int_to_bcd(
     let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let arg_op_type = op_type(ctx, args[0])?;
@@ -600,13 +600,13 @@ fn compile_mux(
 
     // Must have at least 3 args (K + 2 IN values)
     if args.len() < 3 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let num_inputs = (args.len() - 1) as u16; // subtract K
 
     if num_inputs > opcode::builtin::MUX_MAX_INPUTS {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let base = match op_type.0 {
@@ -627,6 +627,17 @@ fn compile_mux(
 
     emitter.emit_builtin(func_id);
     Ok(())
+}
+
+/// The error for a call whose argument count its signature does not allow.
+/// Analysis rejects such a call (`rule_function_call_declared`), so reaching
+/// codegen with one is a compiler bug.
+#[track_caller]
+pub(crate) fn wrong_arg_count(func: &Function) -> Diagnostic {
+    Diagnostic::internal_error_at(Label::span(
+        func.name.span(),
+        "Call has an argument count its signature does not allow",
+    ))
 }
 
 /// Collects positional input arguments from a function call.
@@ -658,7 +669,7 @@ fn compile_type_conversion(
     let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     compile_expr(emitter, ctx, args[0], source_op_type)?;
@@ -671,7 +682,10 @@ fn compile_type_conversion(
             OpWidth::W32 => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_BOOL),
             OpWidth::W64 => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_BOOL),
             _ => {
-                return Err(Diagnostic::todo_with_span(func.name.span()));
+                return Err(Diagnostic::internal_error_at(Label::span(
+                    func.name.span(),
+                    "Boolean conversion from a source that is not 32 or 64 bits wide",
+                )));
             }
         }
     } else {
@@ -892,7 +906,7 @@ fn compile_string_conversion(
 ) -> Result<(), Diagnostic> {
     let args = collect_positional_args(func);
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     match conv {
@@ -905,7 +919,10 @@ fn compile_string_conversion(
                 (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::CONV_U32_TO_STR,
                 (OpWidth::F32, _) => opcode::builtin::CONV_F32_TO_STR,
                 _ => {
-                    return Err(Diagnostic::todo_with_span(func.name.span()));
+                    return Err(Diagnostic::internal_error_at(Label::span(
+                        func.name.span(),
+                        "Number-to-string conversion from a type with no conversion opcode",
+                    )));
                 }
             };
             emitter.emit_builtin(func_id);

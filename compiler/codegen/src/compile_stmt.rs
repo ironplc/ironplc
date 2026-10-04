@@ -214,8 +214,9 @@ fn compile_statement(
                 } = &field_type
                 {
                     let char_width = *char_width;
+                    // `walk_struct_chain` found this structure variable above.
                     let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-                        Diagnostic::not_implemented(Label::span(
+                        Diagnostic::internal_error_at(Label::span(
                             structured.span(),
                             format!("Variable '{}' is not a structure", root_name),
                         ))
@@ -442,31 +443,18 @@ fn compile_statement(
             }
             Ok(())
         }
-        // Analysis reports an EXIT or CONTINUE outside a loop first
-        // (`rule_loop_control_inside_loop`, P4021 and P4065); these are the
-        // fallback for a caller that compiles without analysis.
+        // Analysis rejects an EXIT or CONTINUE outside a loop
+        // (`rule_loop_control_inside_loop`, P4021 and P4065).
         StmtKind::Exit(span) => {
             let label = ctx.current_loop_exit().ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::ExitOutsideLoop,
-                    Label::span(
-                        span.clone(),
-                        "EXIT must be inside a FOR, WHILE, or REPEAT loop",
-                    ),
-                )
+                Diagnostic::internal_error_at(Label::span(span.clone(), "EXIT outside a loop"))
             })?;
             emitter.emit_jmp(label);
             Ok(())
         }
         StmtKind::Continue(span) => {
             let label = ctx.current_loop_next().ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::ContinueOutsideLoop,
-                    Label::span(
-                        span.clone(),
-                        "CONTINUE must be inside a FOR, WHILE, or REPEAT loop",
-                    ),
-                )
+                Diagnostic::internal_error_at(Label::span(span.clone(), "CONTINUE outside a loop"))
             })?;
             emitter.emit_jmp(label);
             Ok(())
@@ -891,26 +879,16 @@ fn resolve_signed_integer_ref(sir: &SignedIntegerRef) -> Result<&SignedInteger, 
 /// Converts a `SignedInteger` AST node to an `i32` value.
 ///
 /// Its one use is the bounds of an inline array. Analysis reports a bound that
-/// a `DINT` cannot hold first (`rule_range_limits`, P2024), so this is the
-/// fallback for a caller that compiles without analysis.
+/// a `DINT` cannot hold (`rule_range_limits`, P2024), so one that reaches here
+/// is a compiler bug.
 pub(crate) fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
-    if si.is_neg {
-        let unsigned = si.value.value as i128;
-        let signed = -unsigned;
-        i32::try_from(signed).map_err(|_| {
-            Diagnostic::problem(
-                Problem::ConstantOverflow,
-                Label::span(si.value.span(), "Integer literal"),
-            )
-            .with_context("value", &signed.to_string())
-        })
+    let value = if si.is_neg {
+        -(si.value.value as i128)
     } else {
-        i32::try_from(si.value.value).map_err(|_| {
-            Diagnostic::problem(
-                Problem::ConstantOverflow,
-                Label::span(si.value.span(), "Integer literal"),
-            )
-            .with_context("value", &si.value.value.to_string())
-        })
-    }
+        si.value.value as i128
+    };
+    i32::try_from(value).map_err(|_| {
+        Diagnostic::internal_error_at(Label::span(si.value.span(), "Integer literal"))
+            .with_context("value", &value.to_string())
+    })
 }

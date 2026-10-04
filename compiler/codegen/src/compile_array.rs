@@ -333,8 +333,9 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
                         "STRING array descriptor not registered for field",
                     ))
                 })?;
+        // Allocated for every structure that has a STRING-array descriptor.
         let scratch = struct_info.scratch_var_index.ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
+            Diagnostic::internal_error_at(Label::span(
                 structured.field.span(),
                 "Scratch variable not allocated for struct",
             ))

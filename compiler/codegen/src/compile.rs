@@ -2070,7 +2070,7 @@ END_PROGRAM
     }
 
     #[test]
-    fn compile_when_exit_outside_loop_then_p4021_error() {
+    fn compile_when_exit_outside_loop_then_internal_error() {
         let source = "
 PROGRAM main
   VAR
@@ -2090,7 +2090,8 @@ END_PROGRAM
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, Problem::ExitOutsideLoop.code());
+        // Analysis reports it first, as P4021 (`rule_loop_control_inside_loop`).
+        assert_eq!(diagnostic.code, "P9998");
     }
 
     #[test]
