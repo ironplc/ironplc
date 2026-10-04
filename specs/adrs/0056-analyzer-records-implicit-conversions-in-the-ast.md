@@ -134,3 +134,12 @@ Assignments and function arguments are still converted by codegen, and so is
 the conversion of an arithmetic result to the type of its context; each moves
 to the pass in its own change. The decision above is unchanged.
 
+### Assignments (postscript)
+
+The pass also records the conversion of an assigned value to the type its
+target is stored as, where codegen converts it: a variable or an arithmetic
+result of another operation width. The conversions a variable or an arithmetic
+result makes to the type of its context stay in codegen until arguments, the
+remaining context, record them too, since the same code serves both. The
+decision above is unchanged.
+

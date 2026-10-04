@@ -23,23 +23,30 @@
 //! it cannot settle is left as it is.
 
 mod arithmetic;
+mod assignment;
 
 use std::convert::Infallible;
 
 use ironplc_dsl::common::Library;
 use ironplc_dsl::fold::Fold;
-use ironplc_dsl::textual::{CompareExpr, Expr, ExprKind, Function, ParamAssignmentKind};
+use ironplc_dsl::scope::ScopeNode;
+use ironplc_dsl::textual::{
+    Assignment, CompareExpr, Expr, ExprKind, Function, ParamAssignmentKind,
+};
 use ironplc_dsl::type_id::TypeId;
 use ironplc_parser::options::CompilerOptions;
 
 use crate::intermediates::comparison_operand::comparison_operand_type;
 use crate::intermediates::conversion_target::{concrete, ConversionTarget};
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
-use crate::type_environment::TypeEnvironment;
+use crate::semantic_context::SemanticContext;
+use crate::symbol_environment::ScopeTracker;
 
-pub fn apply(lib: Library, types: &TypeEnvironment, options: &CompilerOptions) -> Library {
+pub fn apply(lib: Library, context: &SemanticContext, options: &CompilerOptions) -> Library {
     let mut inserter = ImplicitConversions {
-        conversions: ConversionTarget::new(types),
+        conversions: ConversionTarget::new(context.types()),
+        context,
+        scope: ScopeTracker::default(),
         options,
     };
     let Ok(lib) = inserter.fold_library(lib);
@@ -48,6 +55,10 @@ pub fn apply(lib: Library, types: &TypeEnvironment, options: &CompilerOptions) -
 
 struct ImplicitConversions<'a> {
     conversions: ConversionTarget<'a>,
+    context: &'a SemanticContext,
+    /// Where the traversal is, to look an assignment's target up in the
+    /// symbol environment.
+    scope: ScopeTracker,
     options: &'a CompilerOptions,
 }
 
@@ -91,6 +102,21 @@ fn is_comparison_form(function: &Function) -> bool {
 }
 
 impl Fold<Infallible> for ImplicitConversions<'_> {
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
+        self.scope.enter(&node);
+        Ok(())
+    }
+
+    fn exit_scope(&mut self) {
+        self.scope.exit();
+    }
+
+    fn fold_assignment(&mut self, node: Assignment) -> Result<Assignment, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.record_assignment_value(&mut node);
+        Ok(node)
+    }
+
     fn fold_expr(&mut self, node: Expr) -> Result<Expr, Infallible> {
         let mut node = node.recurse_fold(self)?;
         match &mut node.kind {
