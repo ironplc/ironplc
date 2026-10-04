@@ -21,6 +21,7 @@ mod test_macros;
 
 mod call_assignment_check;
 mod callee_resolution;
+mod clean_analysis;
 mod constant_folding;
 mod enumerated_value_type;
 pub mod enumeration_members;
@@ -115,6 +116,7 @@ mod intermediates;
 pub mod extractors;
 
 // Re-export public types for external use
+pub use clean_analysis::CleanAnalysis;
 pub use function_environment::{
     FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
 };

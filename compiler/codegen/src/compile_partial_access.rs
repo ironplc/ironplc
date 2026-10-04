@@ -61,9 +61,10 @@ impl<'ast> PartialAccess<'ast> {
     /// at `base_width`.
     ///
     /// Bits are selected from an integer or bit-string value. The analyzer
-    /// does not yet reject a `REAL` or `LREAL` base, so a partial access of
-    /// one is refused here rather than masking a float as an integer. A bit
-    /// access of one has always been compiled at 32 bits, and still is.
+    /// rejects a `REAL` or `LREAL` base (P4069), so a float base reaches here
+    /// only when analysis was skipped. A partial access of one is refused
+    /// rather than masking a float as an integer. A bit access of one has
+    /// always been compiled at 32 bits, and still is.
     fn integer_width(&self, base_width: OpWidth) -> Result<OpWidth, Diagnostic> {
         match base_width {
             OpWidth::W32 | OpWidth::W64 => Ok(base_width),
