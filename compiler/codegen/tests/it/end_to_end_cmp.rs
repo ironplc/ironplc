@@ -211,7 +211,7 @@ END_PROGRAM
     &[("yes", 1), ("no", 0)],
 );
 
-e2e_i64!(
+e2e!(
     /// An `IF` condition comparing a variable with a literal is fused into
     /// one `CMP_BR_*` only when the literal fits an `i64`. A `ULINT` literal
     /// above `i64::MAX` does not, so the condition is compiled the ordinary
@@ -233,5 +233,5 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, -1), (1, 1), (2, 0)],
+    &[("x", u64::MAX), ("hit", 1), ("miss", 0)],
 );
