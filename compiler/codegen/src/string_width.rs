@@ -369,7 +369,9 @@ pub(crate) fn string_operand_capacity(ctx: &CompileContext, expr: &Expr) -> u16 
 /// Operands that do not agree have no encoding they can share. That is a
 /// program error -- `CONCAT(s, w)` mixing a `STRING` and a `WSTRING`, or
 /// `w = 'abc'` comparing one against a `STRING` literal -- and is reported as
-/// P4034 rather than emitted for the VM to trap on one scan later.
+/// P4034 rather than emitted for the VM to trap on one scan later. Analysis
+/// reports it first (`rule_string_encoding_compat`), so this is the fallback
+/// for a caller that compiles without analysis.
 pub(crate) fn resolve_operand_char_width(
     ctx: &CompileContext,
     operands: &[&Expr],
@@ -403,16 +405,18 @@ pub(crate) fn resolve_operand_char_width(
 /// the encoding of a literal written into it, rather than being compared
 /// against it.
 ///
-/// Where the analyzer type-checks the destination -- a simple named assignment
-/// target or a function parameter -- a literal that reaches here already
-/// spells the destination's encoding, because a mismatch is P4035 or P4026
-/// first. The destination still decides for the targets the analyzer does not
-/// check, such as an array element or a structure field.
+/// Analysis rejects a literal whose delimiter spells the other encoding from
+/// its destination -- P4035 for a named variable, P4026 for a function
+/// parameter, P4034 for an array element or a structure field -- so a literal
+/// that reaches here spells the destination's encoding unless the caller
+/// compiled without analysis. The destination decides then.
 ///
 /// Any other expression carries an encoding of its own, and one that is not
 /// `char_width` has no valid bytecode for the store the caller is about to
-/// emit -- so that is P4034 too. An encoding codegen cannot work out is left
-/// to the destination, which is the one that decides the store.
+/// emit -- so that is P4034 too. Analysis reports it first
+/// (`rule_string_encoding_compat`); this is the fallback. An encoding codegen
+/// cannot work out is left to the destination, which is the one that decides
+/// the store.
 pub(crate) fn compile_string_value(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
