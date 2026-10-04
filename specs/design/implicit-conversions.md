@@ -103,6 +103,26 @@ An assignment stores its value at the type of its target. The pass records the c
 
 The target of a dereference (`r^ := d`), a function block field (`timer.PT := t`), and a directly represented variable (`%QW0 := w`) are not recorded yet, and neither is a function block output stored by a call (`fb(OUT => x)`), which codegen stores at the field's operation type without a conversion.
 
+### Arguments
+
+A call to a user-defined function passes each input by value at the operation width of its parameter. The pass records the conversion of an argument of another width to the type its parameter is passed as, and codegen compiles the argument at the parameter's width without choosing a conversion. It records what codegen did before it, including two choices a later change may correct: a parameter whose type is not elementary (an alias, a subrange, an enumeration) is passed as a `DINT`, the default slot type, and an untyped literal is operated at its default type (`DINT` or `REAL`, ADR-0028) and then converted.
+
+**REQ-IC-analyzer-040** An argument whose operation width differs from its parameter's is wrapped in an `ImplicitConversion` to the parameter's type: the `DINT` of `f(d)` with an `LINT` parameter is converted to `LINT`, whatever kind of expression the argument is.
+
+**REQ-IC-analyzer-041** An argument of its parameter's operation width is not converted: the `SINT` of `f(s)` with an `INT` parameter is not wrapped.
+
+**REQ-IC-analyzer-042** An untyped literal argument takes its parameter's type when its default type has the parameter's width, and is otherwise its default type converted to the parameter's: the `1` of `f(1)` with an `INT` parameter is an `INT`, with an `LINT` one a `DINT` converted to `LINT`.
+
+**REQ-IC-analyzer-043** A parameter whose type is not elementary is passed as a `DINT`: an argument of an alias of `LINT` to a parameter of that alias is converted to `DINT`.
+
+**REQ-IC-analyzer-044** A named argument is converted as a positional one is.
+
+**REQ-IC-analyzer-045** The arguments of a standard function, and of a `VAR_IN_OUT` parameter, are not converted.
+
+**REQ-IC-codegen-001** An argument narrower than its parameter is widened by its own signedness: a `UDINT` above `i32::MAX` passed to an `LINT` parameter keeps its value.
+
+The arguments of a function block call and of a method call are not recorded yet: codegen compiles them at the field's or parameter's operation type, and a variable or an arithmetic result converts itself to it, as it does for any context that records nothing.
+
 ## Codegen
 
 An `ImplicitConversion` compiles its operand at the operand's own type and
@@ -114,8 +134,9 @@ convert.
 
 ## Out of scope
 
-- Function arguments are still converted by codegen, and so is a value in a
-  context other than an assignment or an operand.
+- A value in a context that records nothing -- a function block or method
+  argument, the operand of a negation, a condition, a subscript -- is still
+  converted by codegen.
 - Codegen still converts a variable or an arithmetic result to the type of
   its context where nothing recorded it, so its own conversion is removed
   only once every context records it.

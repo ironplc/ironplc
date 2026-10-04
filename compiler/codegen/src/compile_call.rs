@@ -23,7 +23,7 @@ use super::compile_builtin::{compile_numeric, compile_shift_rotate};
 use super::compile_comparison::compile_comparison;
 use super::compile_expr::{
     compile_expr, emit_compare_op, emit_mod, emit_mul, emit_not, emit_sub, emit_truncation,
-    op_type, op_type_from_expr, storage_bits,
+    op_type, storage_bits,
 };
 use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
@@ -195,8 +195,10 @@ fn compile_user_function_call(
                 let zero_idx = ctx.add_i32_constant(0);
                 emitter.emit_load_const_i32(zero_idx);
             }
+            // The analyzer converted an argument of another width to the
+            // parameter's type (ADR-0056).
             ParamPassing::Value(param_op_type) => {
-                compile_value_arg(emitter, ctx, arg, param_op_type)?;
+                compile_expr(emitter, ctx, arg, param_op_type)?;
             }
             ParamPassing::Reference => compile_reference_arg(emitter, ctx, arg)?,
         }
@@ -265,39 +267,6 @@ fn compile_reference_arg(
         emitter.emit_load_const_i64(pool_index);
     }
     Ok(())
-}
-
-/// Compiles an argument passed by value to a parameter of `param_op_type`.
-///
-/// When implicit integer widening crosses OpWidth boundaries (e.g. INT [W32]
-/// -> LINT [W64]), compiles the argument at its natural width and then emits
-/// a conversion opcode.
-fn compile_value_arg(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    arg: &Expr,
-    param_op_type: OpType,
-) -> Result<(), Diagnostic> {
-    let arg_natural = op_type_from_expr(ctx, arg);
-
-    match arg_natural {
-        Some(arg_op) if arg_op.0 != param_op_type.0 => {
-            compile_expr(emitter, ctx, arg, arg_op)?;
-            let source = VarTypeInfo {
-                op_width: arg_op.0,
-                signedness: arg_op.1,
-                storage_bits: 0,
-            };
-            let target = VarTypeInfo {
-                op_width: param_op_type.0,
-                signedness: param_op_type.1,
-                storage_bits: 0,
-            };
-            emit_conversion_opcode(emitter, &source, &target);
-            Ok(())
-        }
-        _ => compile_expr(emitter, ctx, arg, param_op_type),
-    }
 }
 
 /// Compiles the function form of an operator as the operator itself.

@@ -33,9 +33,7 @@ impl<'a> ConversionTarget<'a> {
         match operand.expr_type {
             Some(ExprType::Literal(_)) => operand.expr_type = Some(ExprType::Concrete(target)),
             Some(ExprType::Concrete(own)) if self.needs_conversion(own, target) => {
-                let placeholder = Expr::new(ExprKind::Null(operand.span.clone()));
-                let inner = std::mem::replace(operand, placeholder);
-                *operand = Expr::implicit_conversion(inner, target);
+                wrap(operand, target);
             }
             Some(ExprType::Concrete(_) | ExprType::Null) | None => {}
         }
@@ -91,6 +89,13 @@ impl<'a> ConversionTarget<'a> {
     pub(crate) fn name_of(&self, id: TypeId) -> Option<TypeName> {
         operand_type_name(self.types, &ExprType::Concrete(id))
     }
+}
+
+/// Wraps `operand` in an [`ExprKind::ImplicitConversion`] to `target`.
+pub(crate) fn wrap(operand: &mut Expr, target: TypeId) {
+    let placeholder = Expr::new(ExprKind::Null(operand.span.clone()));
+    let inner = std::mem::replace(operand, placeholder);
+    *operand = Expr::implicit_conversion(inner, target);
 }
 
 /// The type of `expr` when it is a value of one concrete type.

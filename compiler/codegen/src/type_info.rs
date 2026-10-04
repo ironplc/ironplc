@@ -127,21 +127,7 @@ fn reference_type_info() -> VarTypeInfo {
 /// a `REAL`. Generic types reach codegen for expressions like `5 + 5` where no
 /// concrete type context was available during type resolution.
 fn literal_type_info(generic: &GenericTypeName) -> Option<VarTypeInfo> {
-    let elementary = match generic {
-        GenericTypeName::AnyInt | GenericTypeName::AnyNum | GenericTypeName::AnyMagnitude => {
-            ElementaryTypeName::DINT
-        }
-        GenericTypeName::AnyReal => ElementaryTypeName::REAL,
-        // No untyped literal has one of these categories, so none has a
-        // default to operate at.
-        GenericTypeName::Any
-        | GenericTypeName::AnyDerived
-        | GenericTypeName::AnyElementary
-        | GenericTypeName::AnyBit
-        | GenericTypeName::AnyString
-        | GenericTypeName::AnyDate => return None,
-    };
-    var_type_info(ironplc_analyzer::elementary_type(&elementary.into())?)
+    elementary_type_info(&ironplc_analyzer::literal_default_type(generic)?)
 }
 
 /// Maps an IEC 61131-3 type name to its `VarTypeInfo`.

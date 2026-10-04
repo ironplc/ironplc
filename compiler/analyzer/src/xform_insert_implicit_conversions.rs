@@ -22,6 +22,7 @@
 //! checks the operands the program wrote. It reports nothing: a comparison
 //! it cannot settle is left as it is.
 
+mod argument;
 mod arithmetic;
 mod assignment;
 
@@ -139,6 +140,7 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
 
     fn fold_function(&mut self, node: Function) -> Result<Function, Infallible> {
         let mut node = node.recurse_fold(self)?;
+        self.record_argument_conversions(&mut node);
         if is_comparison_form(&node) {
             // The comparison forms are binary, and the named-argument pass
             // made every input positional; any other shape is one a rule
