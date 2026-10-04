@@ -925,7 +925,7 @@ fn compile_program_with_functions(
         let fb_func_id = fb_type.function_id;
         fb_type.var_offset = field_var_off;
 
-        let (compiled, saved_scope) = compile_user_function_block(
+        let (compiled, program_scope) = compile_user_function_block(
             fb_decl,
             fb_func_id,
             field_var_off,
@@ -953,13 +953,7 @@ fn compile_program_with_functions(
         compiled_methods.extend(methods);
 
         // Now restore the program-level view for the next FB type.
-        ctx.variables = saved_scope.variables;
-        ctx.var_types = saved_scope.var_types;
-        ctx.string_vars = saved_scope.string_vars;
-        ctx.array_vars = saved_scope.array_vars;
-        ctx.struct_vars = saved_scope.struct_vars;
-        ctx.struct_array_vars = saved_scope.struct_array_vars;
-        ctx.fb_instances = saved_scope.fb_instances;
+        ctx.swap_scope(program_scope);
     }
 
     let total_variables = var_offset;
@@ -1277,25 +1271,9 @@ pub(crate) struct UserFunctionInfo {
     pub(crate) max_stack_depth: u16,
 }
 
-/// Snapshot of the program-level variable-mapping state, captured by
-/// `compile_user_function_block` before it repopulates `CompileContext`
-/// for a single FB type's own body (and, in the same scope, that type's
-/// methods -- OOP extension, ADR-0041 Phase 1). The caller restores from
-/// this once *both* the body and its methods have been compiled, since
-/// method bodies need the type's field mappings to still be visible in
-/// `ctx.variables` after the FB body compile returns.
-pub(crate) struct SavedFbScope {
-    pub(crate) variables: HashMap<Id, VarIndex>,
-    pub(crate) var_types: HashMap<Id, VarTypeInfo>,
-    pub(crate) string_vars: HashMap<Id, StringVarInfo>,
-    pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
-    pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
-    pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
-    pub(crate) fb_instances: HashMap<Id, FbInstanceInfo>,
-}
-
 /// Tracks state during compilation of a single program.
 /// Metadata for a function block instance variable.
+#[derive(Clone)]
 pub(crate) struct FbInstanceInfo {
     /// Variable table index holding the data region offset.
     pub(crate) var_index: VarIndex,
