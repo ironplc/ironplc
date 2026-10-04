@@ -50,16 +50,19 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
-    intermediates::inherited_fields::collect_inherited_fields, result::SemanticResult,
+    intermediates::inherited_fields::collect_inherited_fields,
+    result::SemanticResult,
     semantic_context::SemanticContext,
+    symbol_environment::{ScopeKind, ScopePath, SymbolKind},
 };
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: &Library,
-    _context: &SemanticContext,
+    context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
+    let symbols = context.symbols();
     let inherited = collect_inherited_fields(lib);
     let mut diagnostics = vec![];
 
@@ -70,6 +73,11 @@ pub fn apply(
         let Some(inherited_fields) = inherited.get(&fb.name) else {
             continue;
         };
+        let base_scope = fb
+            .oop
+            .as_ref()
+            .and_then(|oop| oop.base.as_ref())
+            .map(|base| ScopeKind::Named(ScopePath::from(base.name.clone())));
 
         for own_field in &fb.variables {
             let Some(own_id) = own_field.identifier.symbolic_id() else {
@@ -93,6 +101,20 @@ pub fn apply(
                         ),
                     ),
                 ));
+            } else if let Some(property) = base_scope
+                .as_ref()
+                .and_then(|scope| symbols.find(own_id, scope))
+                .filter(|symbol| symbol.kind == SymbolKind::Property)
+            {
+                // `find` walks the `EXTENDS` chain, so a property of any
+                // ancestor is found.
+                diagnostics.push(Diagnostic::problem(
+                    Problem::ExtendsFieldNameDuplicated,
+                    Label::span(
+                        own_id.span(),
+                        format!("Field '{own_id}' is already declared as a property in a base function block"),
+                    ),
+                ).with_secondary(Label::span(property.span.clone(), "Property declared here")));
             }
         }
     }
@@ -182,6 +204,71 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK",
         [Problem::ExtendsFieldNameDuplicated],
+        fb_inheritance_options()
+    );
+
+    rule_err_at!(
+        apply_when_derived_variable_has_name_of_base_property_then_error,
+        "
+FUNCTION_BLOCK FB_PosDerived EXTENDS FB_PosBase
+VAR
+    Position : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_PosBase
+PROPERTY Position : INT
+GET
+    Position := 1;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK",
+        Problem::ExtendsFieldNameDuplicated,
+        "Position",
+        fb_inheritance_options()
+    );
+
+    rule_err!(
+        apply_when_derived_variable_has_name_of_grandparent_property_then_error,
+        "
+FUNCTION_BLOCK FB_A
+PROPERTY Position : INT
+GET
+    Position := 1;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_B EXTENDS FB_A
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_C EXTENDS FB_B
+VAR
+    Position : INT;
+END_VAR
+END_FUNCTION_BLOCK",
+        [Problem::ExtendsFieldNameDuplicated],
+        fb_inheritance_options()
+    );
+
+    rule_ok!(
+        apply_when_derived_property_has_name_of_base_property_then_ok,
+        "
+FUNCTION_BLOCK FB_PosBase
+PROPERTY Position : INT
+GET
+    Position := 1;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_PosDerived EXTENDS FB_PosBase
+PROPERTY Position : INT
+GET
+    Position := 2;
+END_GET
+END_PROPERTY
+END_FUNCTION_BLOCK",
         fb_inheritance_options()
     );
 
