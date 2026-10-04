@@ -222,3 +222,31 @@ END_PROGRAM
 
     assert_run_with::<i32>(&source, &opts_with_bit_string_case_labels(), &[("y", 1)]);
 }
+
+/// A label on a signed 64-bit selector is narrowed to the selector's width as
+/// a signed value, so one beyond 32 bits, a negative one, and a negative
+/// subrange each match the selector value they name.
+#[rstest]
+#[case::beyond_32_bits("5000000000", "5000000000")]
+#[case::negative("-5000000000", "-5000000000")]
+#[case::negative_subrange("-5000000000", "-6000000000..-4000000000")]
+fn end_to_end_when_case_label_on_lint_selector_then_matches(
+    #[case] selector_value: &str,
+    #[case] label: &str,
+) {
+    let source = format!(
+        "
+PROGRAM main
+  VAR
+    y : DINT;
+    x : LINT := {selector_value};
+  END_VAR
+  CASE x OF
+    {label}: y := 1;
+  END_CASE;
+END_PROGRAM
+"
+    );
+
+    assert_run_with::<i32>(&source, &CompilerOptions::default(), &[("y", 1)]);
+}

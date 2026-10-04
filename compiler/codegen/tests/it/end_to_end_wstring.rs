@@ -494,3 +494,32 @@ END_PROGRAM
     // 200 iterations, truncated to the declared 32 code units.
     assert_eq!(snapshot.read("ws"), "x".repeat(32));
 }
+
+// Storing into a WSTRING element of an array field of a structure produces
+// the value at the element's wide encoding. It used to be produced narrow,
+// which trapped V9014 (encoding mismatch) on the store. The element is read
+// back through LEN and a comparison: assigning it to a WSTRING variable is
+// rejected until #2104 is fixed, because analysis types it as a STRING.
+e2e_i32!(
+    wstring_when_struct_wstring_array_field_written_then_reads_back,
+    "
+TYPE Holder : STRUCT
+  names : ARRAY[1..2] OF WSTRING[10];
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    r : DINT;
+    same : DINT;
+    h : Holder;
+  END_VAR
+  h.names[2] := \"wide\";
+  r := LEN(h.names[2]);
+  IF h.names[2] = \"wide\" THEN
+    same := 1;
+  END_IF;
+END_PROGRAM
+",
+    &[("r", 4), ("same", 1)],
+);
