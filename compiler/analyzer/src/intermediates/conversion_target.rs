@@ -88,7 +88,7 @@ impl<'a> ConversionTarget<'a> {
             .map(|attributes| &attributes.representation)
     }
 
-    fn name_of(&self, id: TypeId) -> Option<TypeName> {
+    pub(crate) fn name_of(&self, id: TypeId) -> Option<TypeName> {
         operand_type_name(self.types, &ExprType::Concrete(id))
     }
 }
