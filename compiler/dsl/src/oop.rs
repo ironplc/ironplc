@@ -33,6 +33,11 @@ pub struct MethodDeclaration {
     /// `PRIVATE` or `PUBLIC FINAL`. Metadata only (ADR-0041).
     #[recurse(ignore)]
     pub qualifiers: MemberQualifiers,
+    /// Which accessor of a property this method is, or `None` for a
+    /// method declared with `METHOD`. An accessor is named after its
+    /// property, so this is what tells GET and SET apart.
+    #[recurse(ignore)]
+    pub accessor: Option<Accessor>,
     pub name: Id,
     pub return_type: Option<FunctionReturnType>,
     /// Variables the method has without the source declaring them: the
@@ -59,6 +64,13 @@ pub struct MethodDeclaration {
     pub body: Vec<StmtKind>,
     #[located(position)]
     pub span: SourceSpan,
+}
+
+/// The accessor of a property that a [`MethodDeclaration`] stands for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Accessor {
+    Get,
+    Set,
 }
 
 impl MethodDeclaration {
@@ -124,6 +136,7 @@ impl PropertyDeclaration {
     ) -> MethodDeclaration {
         MethodDeclaration {
             qualifiers: MemberQualifiers::default(),
+            accessor: Some(Accessor::Get),
             name: name.clone(),
             return_type: Some(property_type.clone()),
             implicit_variables: vec![],
@@ -167,6 +180,7 @@ impl PropertyDeclaration {
         };
         MethodDeclaration {
             qualifiers: MemberQualifiers::default(),
+            accessor: Some(Accessor::Set),
             name: name.clone(),
             return_type: None,
             implicit_variables: vec![value],
