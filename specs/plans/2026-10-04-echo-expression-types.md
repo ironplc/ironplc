@@ -5,7 +5,9 @@
 `ironplcc echo --types` writes the analyzed program as Structured Text with a
 comment after every expression naming the type the analyzer recorded for it,
 and every implicit conversion as `FROM -> TO`, so the type annotation on the
-AST can be inspected by reading it.
+AST can be inspected by reading it. A value the compiler knows (a literal) is
+marked `CONSTANT`, and a type the analyzer left for codegen to decide is
+marked `?`.
 
 ## Background
 
@@ -28,8 +30,8 @@ recorded.
 
 ## What it looks like
 
-Produced by a throwaway prototype on `main` at 9dbb7e5 (declarations
-omitted):
+Produced by a throwaway prototype on `main` at 9dbb7e5, in the format this
+plan proposes (declarations omitted):
 
 ```
 FUNCTION Scale : LREAL
@@ -60,36 +62,47 @@ renders as
 ```
 Scale := ( raw (* DINT -> LREAL *) * gain (* LREAL *) ) (* LREAL *) ;
 ...
-count := ( count (* INT *) + 1 (* INT *) ) (* INT *) ;
+count := ( count (* INT *) + 1 (* CONSTANT INT *) ) (* INT *) ;
 flag := ( big (* LINT *) > total (* DINT -> LINT *) ) (* BOOL *) ;
 level := count (* INT -> REAL *) ;
-out := Scale ( total (* DINT *) , 0.5 (* REAL -> LREAL *) ) (* LREAL *) ;
-FOR i := 1 (* INT *) TO 4 (* INT *) DO
+out := Scale ( total (* DINT *) , 0.5 (* CONSTANT REAL -> LREAL *) ) (* LREAL *) ;
+FOR i := 1 (* CONSTANT INT *) TO 4 (* CONSTANT INT *) DO
    arr[ i (* INT *) ] := MAX ( arr[ i (* INT *) ] (* INT *) , count (* INT *) ) (* INT *) ;
 END_FOR ;
-IF ( ( NOT flag (* BOOL *) ) (* BOOL *) AND ( total (* DINT *) < 10 (* DINT *) ) (* BOOL *) ) (* BOOL *) THEN
+IF ( ( NOT flag (* BOOL *) ) (* BOOL *) AND ( total (* DINT *) < 10 (* CONSTANT DINT *) ) (* BOOL *) ) (* BOOL *) THEN
    big := ( ABS ( big (* LINT *) ) (* LINT *) + total (* DINT -> LINT *) ) (* LINT *) ;
 END_IF ;
 ```
 
-and, from a second program:
+and, from two more programs:
 
 ```
-c := Green (* Color *) ;
-v := ( ( r (* REF_TO INT *)^ ) (* INT *) + 1 (* INT *) ) (* INT *) ;
-b := ( 1 (* ANY_INT *) < 2 (* ANY_INT *) ) (* BOOL *) ;
-name := CONCAT ( name (* STRING *) , 'abc' (* STRING *) ) (* STRING *) ;
-v := 12 (* INT *) ;
+c := Green (* CONSTANT Color *) ;
+b := ( c (* Color *) = Red (* CONSTANT Color *) ) (* BOOL *) ;
+v := ( ( r (* REF_TO INT *)^ ) (* INT *) + 1 (* CONSTANT INT *) ) (* INT *) ;
+b := ( 1 (* CONSTANT ? ANY_INT *) < 2 (* CONSTANT ? ANY_INT *) ) (* BOOL *) ;
+name := CONCAT ( name (* STRING *) , 'abc' (* CONSTANT STRING *) ) (* STRING *) ;
+v := 12 (* CONSTANT INT *) ;
+
+via_param := Pass ( 0.1 (* CONSTANT REAL -> LREAL *) ) (* LREAL *) ;
+direct := 0.1 (* CONSTANT LREAL *) ;
 ```
 
 The output is still Structured Text: the prototype's output re-parses, and
 `ironplcc check` accepts it.
 
-The prototype already shows things worth seeing: the `0.5` literal passed to
-an `LREAL` parameter is a `REAL` converted to `LREAL`; a comparison of two
-literals is still `ANY_INT` (the step after
-[#2110](https://github.com/ironplc/ironplc/pull/2110)); a `STRING[20]` variable's
-expression type is `STRING`; and `v := INT#5 + 7` was folded to `12`.
+The prototype already shows things worth seeing:
+
+- **A literal argument is converted at run time.** The `0.1` passed to an
+  `LREAL` parameter is a constant `REAL` converted to `LREAL`, where the
+  same literal assigned to an `LREAL` is an `LREAL`. Codegen loads the `REAL`
+  constant and converts it at run time (`compile_expr.rs`), so the parameter
+  receives `0.10000000149011612`, not `0.1` (checked on the VM).
+- **Two literals compared are still undecided**, `? ANY_INT`, so codegen
+  still decides their type (the step after
+  [#2110](https://github.com/ironplc/ironplc/pull/2110)).
+- A `STRING[20]` variable's expression type is `STRING`.
+- `v := INT#5 + 7` was folded to the constant `12`.
 
 ## Architecture
 
@@ -104,10 +117,25 @@ analyzer.
 `write_to_string` output is unchanged byte for byte. With one:
 
 - After each expression, write `(* T *)`, where `T` comes from `expr_type`:
-  `Concrete(id)` is `type_name(id)`; `Literal(category)` is the category as
-  the standard spells it (`ANY_INT`); `Null` is `NULL`; no type is `?`.
+  `Concrete(id)` is `type_name(id)` and `Null` is `NULL`.
+- **A literal is marked `CONSTANT`.** A literal (`ExprKind::Const`, including
+  one constant folding produced), an enumerated value and `NULL` have values
+  the compiler knows, so their comment starts with `CONSTANT`:
+  `1 (* CONSTANT INT *)`. A variable, a call or an operation produces its value
+  at run time and has no prefix. A variable declared `CONSTANT` has no prefix
+  either: codegen loads it at run time, and constant folding substitutes only
+  literals.
+- **An undecided type is marked `?`.** An expression with no type is
+  `(* ? *)`. One whose type is still a generic category is `(* ? ANY_INT *)`:
+  the analyzer has not decided its type, so codegen does, which is what
+  [#2050](https://github.com/ironplc/ironplc/issues/2050) removes. Once #2050
+  is done no literal should be left at a category, and searching the output
+  for `(* ?` or `? ANY_` finds what is still undecided.
 - An `ImplicitConversion` is written as its operand without the operand's own
-  comment, then `(* FROM -> TO *)`.
+  comment, then `(* FROM -> TO *)`. A converted literal keeps its prefix:
+  `0.5 (* CONSTANT REAL -> LREAL *)`. `CONSTANT` says the value is known
+  when compiling. It does not say that codegen converts it then, and today it
+  does not.
 - A unary operation and a dereference are parenthesised, so the operand's
   comment and the operator's do not sit side by side (`NOT flag (* BOOL *)
   (* BOOL *)` is ambiguous).
@@ -158,7 +186,9 @@ uses a compatibility library can be analyzed.
 | A tree dump (`clang -ast-dump` style) of node kind, span and `TypeId` | Complete, but not Structured Text; it can be added later as a second view if one is needed |
 | Write conversions as explicit functions (`DINT_TO_LINT(total)`) | Hides the fact that the conversion is implicit, and a subrange, alias or reference target has no conversion function |
 | Editor inlay hints through the language server | The best view for everyday editing, but larger, and its output cannot be diffed or put in a test. The annotated rendering is also what a VS Code command could show (see Follow-ups) |
-| Annotate only compound expressions, not variables and literals | Less noise, but a literal's type is one of the things most worth seeing (`0.5 (* REAL -> LREAL *)`) |
+| Annotate only compound expressions, not variables and literals | Less noise, but a literal's type is one of the things most worth seeing (`0.1 (* CONSTANT REAL -> LREAL *)`) |
+| Mark variables as well as literals | A variable's type is fixed by its declaration, but its value is loaded at run time, and `CONSTANT` on it would read as the ST keyword, a constant variable. An unprefixed comment already means "computed at run time" |
+| Write a generic category as an ordinary type (`(* ANY_INT *)`) | A literal left at a category is one whose type codegen still decides. Writing it like any other type hides the work #2050 has left |
 
 ## Design doc
 
@@ -168,8 +198,8 @@ That document has no requirement IDs yet. The new section adds:
 
 - **REQ-ETR-plc2plc-001** The annotated rendering writes `(* T *)` after every expression, where `T` is the type recorded for it.
 - **REQ-ETR-plc2plc-002** An implicit conversion is written as its operand followed by `(* FROM -> TO *)`, and the operand has no comment of its own.
-- **REQ-ETR-plc2plc-003** An untyped literal's type is written as its generic category (`ANY_INT`), and `NULL`'s as `NULL`.
-- **REQ-ETR-plc2plc-004** An expression with no recorded type is annotated `(* ? *)`.
+- **REQ-ETR-plc2plc-003** A literal, an enumerated value and `NULL` are annotated with `CONSTANT` before the type, and no other expression is: `1 (* CONSTANT INT *)` but `count (* INT *)`.
+- **REQ-ETR-plc2plc-004** An expression whose type the analyzer did not decide is annotated with `?`: `(* ? *)` with no recorded type, and `(* ? ANY_INT *)` at a generic category.
 - **REQ-ETR-plc2plc-005** A unary operation and a dereference are parenthesised in the annotated rendering.
 - **REQ-ETR-plc2plc-006** The annotated rendering re-parses to the same library as the plain rendering of the same library.
 - **REQ-ETR-analyzer-001** `spelling` writes an elementary type in upper case, a named type by its declared name, and an anonymous type by its shape.
@@ -215,8 +245,11 @@ One core change PR.
 - [ ] plc2plc tests, analyzing the source with `ironplc_analyzer::stages::analyze` (already a dev-dependency):
   - [ ] `write_to_string_with_types_when_binary_expr_then_comment_after_operands_and_result`
   - [ ] `write_to_string_with_types_when_implicit_conversion_then_comment_shows_from_and_to`
-  - [ ] `write_to_string_with_types_when_untyped_literal_then_comment_shows_category`
-  - [ ] `write_to_string_with_types_when_unresolved_then_question_mark`
+  - [ ] `write_to_string_with_types_when_literal_or_enumerated_value_then_constant_prefix`
+  - [ ] `write_to_string_with_types_when_variable_then_no_prefix`
+  - [ ] `write_to_string_with_types_when_converted_literal_then_constant_prefix_and_from_and_to`
+  - [ ] `write_to_string_with_types_when_generic_category_then_question_mark_and_category`
+  - [ ] `write_to_string_with_types_when_no_type_then_question_mark`
   - [ ] `write_to_string_with_types_when_unary_or_deref_then_parenthesised`
   - [ ] Golden file for a program covering each expression kind, re-parsed and compared with the plain rendering
 - [ ] Design section and conformance tests for each REQ-ETR requirement
@@ -242,6 +275,10 @@ Not part of this plan:
 - Split `plc2plc/src/renderer.rs` below the 1000-line limit.
 - Golden-file tests of `xform_insert_implicit_conversions` built on the
   annotated rendering, in place of tests that walk to a single node.
+- Give an untyped literal argument the parameter's type instead of converting
+  its default type at run time, so `Pass(0.1)` on an `LREAL` parameter passes
+  `0.1`. This changes generated code, so it is a correction of its own, not
+  part of recording what codegen does today.
 
 ## Open questions
 
