@@ -187,6 +187,73 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
+    fn apply_when_two_enumerations_in_one_block_then_ok_on_every_run() {
+        // Each analysis builds its hash maps with fresh random keys, so a
+        // result that depends on hash iteration order shows up within a
+        // few runs (issue #1945).
+        let program = "
+TYPE A1 : (P, Q, R); A2 : (S0, S1); END_TYPE
+PROGRAM main
+VAR st : A2 := S1; pt : A1 := R; END_VAR
+END_PROGRAM";
+
+        for _ in 0..32 {
+            assert_eq!(codes_of(program), Vec::<String>::new());
+        }
+    }
+
+    #[test]
+    fn apply_when_two_enumerations_declare_same_value_then_each_accepts_it() {
+        let program = "
+TYPE A : (X, Y); B : (X, Z); END_TYPE
+PROGRAM main
+VAR a : A := X; b : B := X; END_VAR
+END_PROGRAM";
+
+        assert_eq!(codes_of(program), Vec::<String>::new());
+    }
+
+    #[test]
+    fn apply_when_value_of_other_enumeration_then_enum_value_not_defined() {
+        let program = "
+TYPE A : (X, Y); B : (X, Z); END_TYPE
+PROGRAM main
+VAR a : A := Z; END_VAR
+END_PROGRAM";
+
+        assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
+    }
+
+    #[test]
+    fn apply_when_value_of_enumeration_with_equal_representation_then_enum_value_not_defined_on_every_run(
+    ) {
+        // Every enumeration has the same representation, so neither is an
+        // alias of the other, whichever order the types are visited in.
+        let program = "
+TYPE A1 : (P, Q, R); A2 : (S0, S1); END_TYPE
+PROGRAM main
+VAR b : A2 := P; END_VAR
+END_PROGRAM";
+
+        for _ in 0..32 {
+            assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
+        }
+    }
+
+    #[test]
+    fn apply_when_alias_chain_then_values_of_declaring_enumeration() {
+        let program = "
+TYPE LEVEL : (INFO, WARN); LEVEL1 : LEVEL; LEVEL2 : LEVEL1; END_TYPE
+PROGRAM main
+VAR ok : LEVEL2 := WARN; bad : LEVEL2 := FATAL; END_VAR
+END_PROGRAM";
+
+        for _ in 0..32 {
+            assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
+        }
+    }
+
+    #[test]
     fn apply_when_multiple_enum_values_with_one_undefined_then_error() {
         let program = "
 TYPE
