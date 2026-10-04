@@ -20,7 +20,7 @@ e2e_i32!(
        live := a + a;
        folded := 200;
      END_PROGRAM",
-    &[(0, -56), (1, -56)],
+    &[("live", -56), ("folded", -56)],
 );
 
 // USINT: 150 + 150 = 300, wrapped to u8 = 44.
@@ -32,7 +32,7 @@ e2e_i32!(
        live := a + a;
        folded := 300;
      END_PROGRAM",
-    &[(0, 44), (1, 44)],
+    &[("live", 44), ("folded", 44)],
 );
 
 // INT: 20000 + 20000 = 40000, wrapped to i16 = -25536.
@@ -44,7 +44,7 @@ e2e_i32!(
        live := a + a;
        folded := 40000;
      END_PROGRAM",
-    &[(0, -25536), (1, -25536)],
+    &[("live", -25536), ("folded", -25536)],
 );
 
 // UINT: 40000 + 40000 = 80000, wrapped to u16 = 14464.
@@ -56,7 +56,7 @@ e2e_i32!(
        live := a + a;
        folded := 80000;
      END_PROGRAM",
-    &[(0, 14464), (1, 14464)],
+    &[("live", 14464), ("folded", 14464)],
 );
 
 // A constant already inside the narrow range keeps its value: the fold drops
@@ -70,7 +70,7 @@ e2e_i32!(
        i := 32767;
        w := WORD#16#FFFF;
      END_PROGRAM",
-    &[(0, -128), (1, 255), (2, 32767), (3, 65535)],
+    &[("s", -128), ("u", 255), ("i", 32767), ("w", 65535)],
 );
 
 // Structure field initialization is constant loads too, and the narrow
@@ -85,7 +85,7 @@ e2e_i32!(
        a := m.speed;
        b := m.fault;
      END_PROGRAM",
-    &[(1, 100), (2, -3)],
+    &[("a", 100), ("b", -3)],
 );
 
 e2e_i32!(
@@ -96,5 +96,5 @@ e2e_i32!(
        a := m.speed;
        b := m.fault;
      END_PROGRAM",
-    &[(1, 0), (2, 0)],
+    &[("a", 0), ("b", 0)],
 );

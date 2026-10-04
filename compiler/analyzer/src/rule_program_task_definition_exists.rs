@@ -91,6 +91,8 @@ impl DiagnosticVisitor for RuleProgramTaskDefinitionExists {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_problems::Problem;
+
     rule_err!(
         apply_when_task_not_defined_then_return_error,
         "
@@ -98,7 +100,8 @@ mod tests {
             RESOURCE resource1 ON PLC
                PROGRAM plc_task_instance WITH plc_task : plc_prg;
             END_RESOURCE
-        END_CONFIGURATION"
+        END_CONFIGURATION",
+        [Problem::ProgramMissingTaskConfig]
     );
 
     rule_ok!(
@@ -110,5 +113,17 @@ mod tests {
                PROGRAM plc_task_instance WITH plc_task : plc_prg;
             END_RESOURCE
         END_CONFIGURATION"
+    );
+
+    rule_err_at!(
+        apply_when_task_not_defined_then_error_at_task_name,
+        "
+        CONFIGURATION config
+            RESOURCE resource1 ON PLC
+               PROGRAM instance WITH missing_task : plc_prg;
+            END_RESOURCE
+        END_CONFIGURATION",
+        Problem::ProgramMissingTaskConfig,
+        "missing_task"
     );
 }

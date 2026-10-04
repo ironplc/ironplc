@@ -118,16 +118,11 @@ impl Visitor<Infallible> for RuleUnsupportedExtension {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::diagnostic_codes;
+    use crate::test_helpers::fb_inheritance_options;
+    use crate::test_helpers::rule_diagnostics;
 
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types_with_options;
-
-    fn opts_with_fb_inheritance() -> CompilerOptions {
-        CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        }
-    }
+    use crate::test_helpers::NOT_IMPLEMENTED_CODE;
 
     rule_ok!(
         apply_when_plain_function_block_then_ok,
@@ -141,9 +136,8 @@ END_FUNCTION_BLOCK"
 
     // Plain EXTENDS (no IMPLEMENTS, not ABSTRACT) no longer flags --
     // field inheritance through the EXTENDS chain is fully resolved.
-    rule_ok_with!(
+    rule_ok!(
         apply_when_plain_extends_then_ok,
-        opts_with_fb_inheritance(),
         "
 FUNCTION_BLOCK FB_Motor
 VAR
@@ -155,7 +149,8 @@ FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
 VAR
     bTurbo : BOOL;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
     );
 
     #[test]
@@ -167,17 +162,8 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
-
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
-        // (must be constructed via Diagnostic::not_implemented), so assert on
-        // the stable code string rather than referencing the variant.
-        assert_eq!("P9999", errors[0].code);
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
     }
 
     #[rstest::rstest]
@@ -197,17 +183,8 @@ END_METHOD
 END_FUNCTION_BLOCK"
         );
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(&program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
-
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
-        // (must be constructed via Diagnostic::not_implemented), so assert on
-        // the stable code string rather than referencing the variant.
-        assert_eq!("P9999", errors[0].code);
+        let errors = rule_diagnostics(apply, &program, &fb_inheritance_options());
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
     }
 
     #[test]
@@ -219,17 +196,8 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
-
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
-        // (must be constructed via Diagnostic::not_implemented), so assert on
-        // the stable code string rather than referencing the variant.
-        assert_eq!("P9999", errors[0].code);
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
     }
 
     #[test]
@@ -241,18 +209,9 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
-
-        let errors = result.unwrap_err();
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
         // One diagnostic for the whole FB, not one per clause.
-        assert_eq!(errors.len(), 1);
-        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
-        // (must be constructed via Diagnostic::not_implemented), so assert on
-        // the stable code string rather than referencing the variant.
-        assert_eq!("P9999", errors[0].code);
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
     }
 
     #[test]
@@ -261,17 +220,8 @@ END_FUNCTION_BLOCK";
 INTERFACE I_Drivable
 END_INTERFACE";
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
-
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
-        // (must be constructed via Diagnostic::not_implemented), so assert on
-        // the stable code string rather than referencing the variant.
-        assert_eq!("P9999", errors[0].code);
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
     }
 
     #[test]
@@ -286,12 +236,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
-
-        let errors = result.unwrap_err();
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
         // One for the INTERFACE declaration, one for the FB's IMPLEMENTS
         // clause (EXTENDS alone wouldn't flag, but IMPLEMENTS still does).
         assert_eq!(errors.len(), 2);

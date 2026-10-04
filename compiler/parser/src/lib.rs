@@ -2,6 +2,12 @@
 #![allow(clippy::result_large_err)]
 extern crate ironplc_dsl as dsl;
 
+// Declared before the rule modules so the token-rule test macros are in scope
+// for their inline `#[cfg(test)] mod test`.
+#[cfg(test)]
+#[macro_use]
+mod test_rule_macros;
+
 pub mod declarations;
 mod lexer;
 pub mod options;
@@ -29,6 +35,10 @@ use preprocessor::preprocess;
 use token::Token;
 use xform_tokens::insert_keyword_statement_terminators;
 
+#[cfg(test)]
+mod test_rule_conventions;
+#[cfg(test)]
+mod test_rule_helpers;
 #[cfg(test)]
 mod tests;
 

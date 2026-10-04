@@ -121,7 +121,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_untyped_literal_exceeds_lreal_then_error,
         "
 PROGRAM main
@@ -134,7 +134,7 @@ END_PROGRAM",
         "1.0E400"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_negative_literal_exceeds_lreal_then_error,
         "
 PROGRAM main
@@ -146,7 +146,7 @@ END_PROGRAM",
         "1.0E400"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_lreal_prefixed_literal_exceeds_lreal_then_error,
         "
 PROGRAM main
@@ -168,7 +168,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_real_prefixed_literal_exceeds_real_then_error,
         "
 PROGRAM main

@@ -32,7 +32,7 @@ use std::convert::Infallible;
 
 use crate::{
     function_environment::{FunctionEnvironment, FunctionSignature},
-    intermediate_type::IntermediateFunctionParameter,
+    semantic_type::SemanticFunctionParameter,
     symbol_environment::{
         duplicate_declaration, ScopeKind, ScopeTracker, SymbolEnvironment, SymbolInfo, SymbolKind,
     },
@@ -265,7 +265,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
                 _ => continue,
             };
 
-            parameters.push(IntermediateFunctionParameter {
+            parameters.push(SemanticFunctionParameter {
                 name: param_name,
                 param_type,
                 is_input: var_decl.var_type == VariableType::Input,
@@ -426,12 +426,8 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
         // Add each enumeration value
         if let ironplc_dsl::common::SpecificationKind::Inline(values) = &node.spec_init.spec {
             for value in &values.values {
-                let result = self.symbol_env.insert_enumeration_value(
-                    &value.value,
-                    &node.type_name,
-                    &ScopeKind::Global,
-                );
-                self.record(result);
+                self.symbol_env
+                    .insert_enumeration_value(&value.value, &node.type_name);
             }
         }
 
@@ -596,7 +592,7 @@ END_FUNCTION";
         // Check function is in function environment with correct signature
         let func_sig = function_env.get(&Id::from("ADD_INTS")).unwrap();
         assert_eq!(func_sig.name.original(), "ADD_INTS");
-        // Return type is now stored as TypeName, not resolved IntermediateType
+        // Return type is now stored as TypeName, not resolved SemanticType
         assert_eq!(
             func_sig.return_type,
             Some(FunctionReturnType::Named(TypeName::from("INT")))

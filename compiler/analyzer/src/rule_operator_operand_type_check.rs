@@ -310,8 +310,9 @@ impl Visitor<Infallible> for RuleOperatorOperandTypeCheck<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_mod_of_integer_variables_then_ok,
         "
 PROGRAM main
@@ -324,7 +325,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_mod_of_integer_variable_and_literal_then_ok,
         "
 PROGRAM main
@@ -336,7 +337,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_mod_of_typed_integer_literals_then_ok,
         "
 PROGRAM main
@@ -347,7 +348,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// The operand type is a subrange, which the predicate cannot judge, so
         /// the rule leaves it alone rather than reporting it.
         apply_when_mod_of_subrange_variable_then_ok,
@@ -365,7 +366,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// `+` on two TIME operands is the typed overload ADD_TIME.
         apply_when_add_of_time_variables_then_ok,
         "
@@ -379,7 +380,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         /// An arithmetic expression is reported once, not once per operand.
         apply_when_mod_of_real_variables_then_p4049_once,
         "
@@ -391,10 +392,10 @@ VAR
 END_VAR
     r3 := r1 MOD r2;
 END_PROGRAM",
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_mod_of_integer_variable_by_real_literal_then_p4049,
         "
 PROGRAM main
@@ -403,10 +404,10 @@ VAR
 END_VAR
     d := d MOD 2.0;
 END_PROGRAM",
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_mod_of_lreal_variable_by_integer_literal_then_p4049,
         "
 PROGRAM main
@@ -415,10 +416,10 @@ VAR
 END_VAR
     l := l MOD 2;
 END_PROGRAM",
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         /// Real literals are not folded for MOD, so the rule sees them.
         apply_when_mod_of_real_literals_then_p4049_once,
         "
@@ -428,10 +429,10 @@ VAR
 END_VAR
     r := 7.5 MOD 2.0;
 END_PROGRAM",
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_mod_nested_in_larger_expression_then_p4049,
         "
 PROGRAM main
@@ -441,10 +442,10 @@ VAR
 END_VAR
     d := 1 + (d MOD (r * 2.0));
 END_PROGRAM",
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         /// No overload multiplies two durations.
         apply_when_mul_of_time_variables_then_p4049,
         "
@@ -455,10 +456,10 @@ VAR
 END_VAR
     t1 := t1 * t2;
 END_PROGRAM",
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         /// DINT does not widen losslessly to REAL, nor REAL to DINT.
         apply_when_add_of_dint_and_real_then_p4049,
         "
@@ -469,10 +470,10 @@ VAR
 END_VAR
     r := r + d;
 END_PROGRAM",
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_sub_of_dates_then_ok,
         "
 PROGRAM main
@@ -485,7 +486,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err_at!(
         /// The function form is folded from the left and reported at the
         /// step that fails: TIME + REAL.
         apply_when_add_call_on_time_and_real_then_p4049,
@@ -497,10 +498,10 @@ VAR
 END_VAR
     t := ADD(t, t, r);
 END_PROGRAM",
-        Problem::OperatorOperandTypeMismatch
-    );
+        Problem::OperatorOperandTypeMismatch,
+        "ADD");
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_add_call_on_times_then_ok,
         "
 PROGRAM main
@@ -511,7 +512,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// MOD has no overloads, so its function form is left to the
         /// function-call rule.
         apply_when_mod_call_on_real_then_not_this_rule,
@@ -524,7 +525,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         /// Bit-string arithmetic needs --allow-bit-string-arithmetic.
         apply_when_add_of_byte_without_flag_then_p4049,
         "
@@ -534,12 +535,17 @@ VAR
 END_VAR
     b := b + 1;
 END_PROGRAM",
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch]
     );
 
     #[test]
     fn apply_when_add_of_byte_with_flag_then_ok() {
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_context(
+        let options = CompilerOptions {
+            allow_bit_string_arithmetic: true,
+            ..CompilerOptions::default()
+        };
+        let diagnostics = rule_diagnostics(
+            apply,
             "
 PROGRAM main
 VAR
@@ -547,17 +553,15 @@ VAR
 END_VAR
     b := b + 1;
 END_PROGRAM",
+            &options,
         );
-        let options = CompilerOptions {
-            allow_bit_string_arithmetic: true,
-            ..CompilerOptions::default()
-        };
-        assert!(apply(&library, &context, &options).is_ok());
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     #[test]
     fn apply_when_call_fails_then_diagnostic_names_function_and_failing_step() {
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_context(
+        let errors = rule_diagnostics(
+            apply,
             "
 PROGRAM main
 VAR
@@ -566,9 +570,12 @@ VAR
 END_VAR
     t := MUL(t, r, t);
 END_PROGRAM",
+            &CompilerOptions::default(),
         );
-        let errors = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
-        assert_eq!(errors.len(), 1);
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::OperatorOperandTypeMismatch.code()]
+        );
         let described = &errors[0].described;
         assert!(
             described.contains(&"operator=MUL".to_owned()),
@@ -583,7 +590,8 @@ END_PROGRAM",
 
     #[test]
     fn apply_when_mod_of_real_then_diagnostic_names_operator_and_types() {
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_context(
+        let errors = rule_diagnostics(
+            apply,
             "
 PROGRAM main
 VAR
@@ -592,9 +600,12 @@ VAR
 END_VAR
     d := d MOD r;
 END_PROGRAM",
+            &CompilerOptions::default(),
         );
-        let errors = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
-        assert_eq!(errors.len(), 1);
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::OperatorOperandTypeMismatch.code()]
+        );
         let described = &errors[0].described;
         assert!(
             described.contains(&"operator=MOD".to_owned()),
@@ -624,16 +635,19 @@ END_VAR
 END_PROGRAM
 ",
         );
+        // rule-test-conventions: allow(pipeline) -- shows the rule is wired into analyze
         let (_lib, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
-        assert!(context
+        let codes: Vec<_> = context
             .diagnostics()
             .iter()
-            .any(|d| d.code == Problem::OperatorOperandTypeMismatch.code()));
+            .map(|d| d.code.clone())
+            .collect();
+        assert_eq!(codes, [Problem::OperatorOperandTypeMismatch.code()]);
     }
 
     // --- The bit-string operators (AND, OR, XOR, NOT) ---
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_and_of_bit_string_variables_then_ok,
         "
 PROGRAM main
@@ -646,7 +660,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_or_of_word_variables_then_ok,
         "
 PROGRAM main
@@ -659,7 +673,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_xor_of_bool_variables_then_ok,
         "
 PROGRAM main
@@ -672,7 +686,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_not_of_bool_variable_then_ok,
         "
 PROGRAM main
@@ -684,7 +698,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_not_of_bit_string_variable_then_ok,
         "
 PROGRAM main
@@ -696,7 +710,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// The operands are comparison results, which are BOOL, so the
         /// familiar `a > 0 AND a < 10` stays accepted.
         apply_when_and_of_comparison_results_then_ok,
@@ -710,7 +724,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// Relational operators are declared ANY_ELEMENTARY and this rule
         /// deliberately does not hold them to it, so an integer comparison
         /// stays accepted.
@@ -726,7 +740,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_errn!(
+    rule_err!(
         /// Without this the operands are lowered to the *logical* opcode and
         /// `d1 AND d2` silently computes a truthiness: 10 AND 3 yields 1
         /// rather than 2.
@@ -740,11 +754,10 @@ VAR
 END_VAR
     d3 := d1 AND d2;
 END_PROGRAM",
-        2,
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch; 2]
     );
 
-    rule_ctx_errn!(
+    rule_err!(
         apply_when_or_of_integer_variables_then_p4049_per_operand,
         "
 PROGRAM main
@@ -755,11 +768,10 @@ VAR
 END_VAR
     d3 := d1 OR d2;
 END_PROGRAM",
-        2,
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch; 2]
     );
 
-    rule_ctx_errn!(
+    rule_err!(
         apply_when_xor_of_integer_variables_then_p4049_per_operand,
         "
 PROGRAM main
@@ -770,11 +782,10 @@ VAR
 END_VAR
     d3 := d1 XOR d2;
 END_PROGRAM",
-        2,
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch; 2]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         /// `NOT` over an integer reached `BOOL_NOT`, so `NOT d1` with
         /// `d1 := 10` yielded 0 rather than -11.
         apply_when_not_of_integer_variable_then_p4049,
@@ -786,10 +797,10 @@ VAR
 END_VAR
     d2 := NOT d1;
 END_PROGRAM",
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_and_of_real_variable_then_p4049,
         "
 PROGRAM main
@@ -800,6 +811,6 @@ VAR
 END_VAR
     c := b AND r > 1.0 AND r;
 END_PROGRAM",
-        Problem::OperatorOperandTypeMismatch
+        [Problem::OperatorOperandTypeMismatch]
     );
 }

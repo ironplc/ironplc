@@ -4,10 +4,9 @@
 //! These tests verify that the full pipeline (parse → analyze → compile → VM)
 //! handles complex, multi-level nesting of data types correctly.
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, parse_and_run_rounds, read_string};
+use crate::common::{run_scans, Snapshot};
 
 e2e_i32!(
     end_to_end_when_three_level_nested_struct_then_leaf_field_correct,
@@ -41,7 +40,7 @@ PROGRAM main
     result := o.id;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("result", 1)],
 );
 
 e2e_i32!(
@@ -75,12 +74,11 @@ PROGRAM main
     result := o.middle.factor;
 END_PROGRAM
 ",
-    &[(1, 0)],
+    &[("result", 0)],
 );
 
 // Combines struct field reads with array store/load to verify both
 // data region types coexist without interference.
-// sensor=0, readings=1, result_id=2, result_reading=3
 e2e_i32!(
     end_to_end_when_struct_field_read_and_array_store_then_roundtrips,
     "
@@ -103,7 +101,7 @@ PROGRAM main
     result_reading := readings[3];
 END_PROGRAM
 ",
-    &[(2, 7), (3, 7)],
+    &[("result_id", 7), ("result_reading", 7)],
 );
 
 #[test]
@@ -133,12 +131,10 @@ PROGRAM main
     result := data.y;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // label=0, data=1, result=2
-    assert_eq!(bufs.vars[2].as_i32(), 99);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i32>("result"), 99);
     // String at start of data region (declared first)
-    let s = read_string(&bufs.data_region, 0);
-    assert_eq!(s, "sensor-1");
+    assert_eq!(snapshot.read("label"), "sensor-1");
 }
 
 e2e_i32!(
@@ -179,12 +175,11 @@ PROGRAM main
     r1 := root.val1;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("r1", 1)],
 );
 
 // Uses struct field values to drive array computation.
 // data = [3, 6, 9, 12, 15], sum = 45
-// cfg=0, data=1, sum=2, i=3, mult=4
 e2e_i32!(
     end_to_end_when_nested_struct_field_used_in_array_loop_then_correct_sum,
     "
@@ -213,12 +208,11 @@ PROGRAM main
     END_FOR;
 END_PROGRAM
 ",
-    &[(2, 45)],
+    &[("sum", 45)],
 );
 
 // Two independent struct instances alongside an array, verifying
 // no data region interference between allocations.
-// p1=0, p2=1, distances=2, r1=3, r2=4
 e2e_i32!(
     end_to_end_when_two_structs_and_array_then_no_interference,
     "
@@ -244,11 +238,10 @@ PROGRAM main
     distances[3] := r1 + r2;
 END_PROGRAM
 ",
-    &[(3, 30), (4, 70)],
+    &[("r1", 30), ("r2", 70)],
 );
 
 // 2D array alongside a struct to verify data region coexistence.
-// cal=0, matrix=1, result_high=2, result_cell=3
 e2e_i32!(
     end_to_end_when_2d_array_and_struct_then_both_correct,
     "
@@ -271,7 +264,7 @@ PROGRAM main
     result_cell := matrix[2, 2];
 END_PROGRAM
 ",
-    &[(2, 100), (3, 105)],
+    &[("result_high", 100), ("result_cell", 105)],
 );
 
 #[test]
@@ -300,16 +293,15 @@ PROGRAM main
     END_IF;
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
-        // ctr=0, history=1, scan=2, lim=3
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1);
+    run_scans(source, &CompilerOptions::default(), |session| {
+        session.scan(0).unwrap();
+        assert_eq!(session.read("scan"), 1);
 
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 2);
+        session.scan(0).unwrap();
+        assert_eq!(session.read("scan"), 2);
 
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 3);
+        session.scan(0).unwrap();
+        assert_eq!(session.read("scan"), 3);
     });
 }
 
@@ -344,18 +336,15 @@ PROGRAM main
     total := values[1] + values[2] + values[3] + values[4];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // label=0, meta=1, values=2, ver=3, ch=4, total=5
-    assert_eq!(bufs.vars[3].as_i32(), 2); // ver
-    assert_eq!(bufs.vars[4].as_i32(), 5); // ch
-    assert_eq!(bufs.vars[5].as_i32(), 24); // 2+5+7+10
-    let s = read_string(&bufs.data_region, 0);
-    assert_eq!(s, "data-log");
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i32>("ver"), 2); // ver
+    assert_eq!(snapshot.read_as::<i32>("ch"), 5); // ch
+    assert_eq!(snapshot.read_as::<i32>("total"), 24); // 2+5+7+10
+    assert_eq!(snapshot.read("label"), "data-log");
 }
 
 // Verifies nested struct initialization: inner fields receive
 // explicit values rather than being silently default-initialized.
-// line=0, r1=1, r2=2, r3=3, r4=4
 e2e_i32!(
     end_to_end_when_nested_struct_init_then_inner_fields_initialized,
     "
@@ -387,12 +376,11 @@ PROGRAM main
     r4 := line.end_pt.y;
 END_PROGRAM
 ",
-    &[(1, 10), (2, 20), (3, 30), (4, 40)],
+    &[("r1", 10), ("r2", 20), ("r3", 30), ("r4", 40)],
 );
 
 // Only some inner fields are explicitly initialized; the rest
 // should be default-initialized to zero.
-// o=0, ra=1, rb=2, rc=3, rtag=4
 e2e_i32!(
     end_to_end_when_nested_struct_partial_init_then_unspecified_fields_zero,
     "
@@ -425,11 +413,10 @@ PROGRAM main
     rtag := o.tag;
 END_PROGRAM
 ",
-    &[(1, 0), (2, 42), (3, 0), (4, 7)],
+    &[("ra", 0), ("rb", 42), ("rc", 0), ("rtag", 7)],
 );
 
 // Tests struct field assignment (store), which was added in PR #799.
-// c=0, result_total=1, result_count=2
 e2e_i32!(
     end_to_end_when_struct_field_store_then_value_updated,
     "
@@ -452,7 +439,7 @@ PROGRAM main
     result_count := c.count;
 END_PROGRAM
 ",
-    &[(1, 10), (2, 1)],
+    &[("result_total", 10), ("result_count", 1)],
 );
 
 #[test]
@@ -482,22 +469,20 @@ PROGRAM main
     END_IF;
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
-        // acc=0, history=1, scan=2
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1); // scan=1
+    run_scans(source, &CompilerOptions::default(), |session| {
+        session.scan(0).unwrap();
+        assert_eq!(session.read("scan"), 1); // scan=1
 
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 2); // scan=2
+        session.scan(0).unwrap();
+        assert_eq!(session.read("scan"), 2); // scan=2
 
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 3); // scan=3
+        session.scan(0).unwrap();
+        assert_eq!(session.read("scan"), 3); // scan=3
     });
 }
 
 // Combines 3-level nested struct init with array loop computation.
 // data = [3, 6, 9, 12, 15], sum of first 5 = 45
-// dev=0, data=1, sum=2, i=3, n=4, mult=5
 e2e_i32!(
     end_to_end_when_deeply_nested_init_and_array_loop_then_correct_result,
     "
@@ -536,11 +521,10 @@ PROGRAM main
     END_FOR;
 END_PROGRAM
 ",
-    &[(2, 45), (4, 5), (5, 3)],
+    &[("sum", 45), ("n", 5), ("mult", 3)],
 );
 
 // 2D array alongside nested struct with explicit init values.
-// cal=0, matrix=1, result_high=2, result_cell=3
 e2e_i32!(
     end_to_end_when_2d_array_and_nested_struct_init_then_both_correct,
     "
@@ -570,5 +554,5 @@ PROGRAM main
     result_cell := matrix[2, 2];
 END_PROGRAM
 ",
-    &[(2, 100), (3, 105)],
+    &[("result_high", 100), ("result_cell", 105)],
 );

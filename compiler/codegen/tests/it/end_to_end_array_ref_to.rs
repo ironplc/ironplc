@@ -4,7 +4,6 @@
 use crate::common::parse_and_compile;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 
-// x is at var index 1 (data is var 0, x is var 1)
 e2e_i32_with!(
     end_to_end_when_array_of_ref_to_declared_then_compiles_and_runs,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -16,10 +15,9 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ",
-    &[(1, 42)],
+    &[("x", 42)],
 );
 
-// val=0, refs=1, result=2
 e2e_i32_with!(
     end_to_end_when_array_of_ref_to_store_ref_then_roundtrips,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -34,7 +32,7 @@ PROGRAM main
   result := refs[0]^;
 END_PROGRAM
 ",
-    &[(2, 77)],
+    &[("result", 77)],
 );
 
 #[test]

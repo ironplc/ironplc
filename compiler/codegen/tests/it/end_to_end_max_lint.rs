@@ -14,5 +14,5 @@ PROGRAM main
   result := MAX(a, b);
 END_PROGRAM
 ",
-    &[(2, 10_000_000_000)],
+    &[("result", 10_000_000_000)],
 );

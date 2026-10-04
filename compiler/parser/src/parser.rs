@@ -267,21 +267,38 @@ enum DurationUnit {
     Days,
 }
 
+/// One `number unit` part of a duration literal.
+struct IntervalPart {
+    value: FixedPoint,
+    unit: DurationUnit,
+    /// Whether the number was written with a fraction (`1.0`), whatever its
+    /// value.
+    is_fixed_point: bool,
+}
+
 /// Sums the parts of a duration literal (REQ-TL-021): the units must be in
 /// strictly descending magnitude, which also rules out a repeated unit, and
-/// only the last part may have a fractional value.
+/// only the last part may be written as a fixed-point number.
 fn combine_interval_parts(
-    first: (FixedPoint, DurationUnit),
-    rest: Vec<(FixedPoint, DurationUnit)>,
+    first: IntervalPart,
+    rest: Vec<IntervalPart>,
 ) -> Result<DurationLiteral, &'static str> {
     let last = rest.len();
     let mut total: Option<DurationLiteral> = None;
     let mut previous: Option<DurationUnit> = None;
-    for (index, (value, unit)) in std::iter::once(first).chain(rest).enumerate() {
+    for (
+        index,
+        IntervalPart {
+            value,
+            unit,
+            is_fixed_point,
+        },
+    ) in std::iter::once(first).chain(rest).enumerate()
+    {
         if previous.is_some_and(|p| unit >= p) {
             return Err("duration units in descending order");
         }
-        if index < last && value.femptos != 0 {
+        if index < last && is_fixed_point {
             return Err("an integer before the last duration unit");
         }
         previous = Some(unit);
@@ -577,7 +594,13 @@ parser! {
     rule interval() -> DurationLiteral = first:interval_part() rest:(contextual_keyword("_")? p:interval_part() { p })* {?
       combine_interval_parts(first, rest)
     }
-    rule interval_part() -> (FixedPoint, DurationUnit) = n:fixed_point() u:duration_unit() { (n, u) }
+    rule interval_part() -> IntervalPart =
+      fp:tok(TokenType::FixedPoint) unit:duration_unit() {?
+        Ok(IntervalPart { value: FixedPoint::parse(fp.text.as_str())?, unit, is_fixed_point: true })
+      }
+      / i:integer() unit:duration_unit() {
+        IntervalPart { value: i.into(), unit, is_fixed_point: false }
+      }
     // `ms` must come before `m`, or `100ms` would read as minutes.
     rule duration_unit() -> DurationUnit =
       contextual_keyword("ms") { DurationUnit::Milliseconds }
@@ -1574,6 +1597,7 @@ parser! {
         qualifiers,
         name,
         return_type: rt,
+        implicit_variables: vec![],
         variables,
         edge_variables,
         body: body.unwrap_or_default(),

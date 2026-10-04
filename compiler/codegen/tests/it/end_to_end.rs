@@ -17,12 +17,10 @@
 //! - end_to_end_float.rs (REAL/LREAL floating-point type tests)
 //! - end_to_end_bitstring.rs (BYTE/WORD/DWORD/LWORD bit string type tests)
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::{parse_and_compile, parse_and_run, VmBuffers};
-use ironplc_vm::Vm;
+use crate::common::{run_scans, Snapshot};
 
 #[rstest]
 #[case::simple_assignment("DINT", "x := 42;", 42)]
@@ -46,9 +44,9 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
 
-    assert_eq!(bufs.vars[0].as_i64(), expected);
+    assert_eq!(snapshot.read_as::<i64>("x"), expected);
 }
 
 #[test]
@@ -63,10 +61,10 @@ PROGRAM main
   y := x;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(bufs.vars[0].as_i32(), 7);
-    assert_eq!(bufs.vars[1].as_i32(), 7);
+    assert_eq!(snapshot.read_as::<i32>("x"), 7);
+    assert_eq!(snapshot.read_as::<i32>("y"), 7);
 }
 
 #[test]
@@ -80,10 +78,10 @@ PROGRAM main
   y := y + x;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(bufs.vars[0].as_i32(), 10);
-    assert_eq!(bufs.vars[1].as_i32(), 42);
+    assert_eq!(snapshot.read_as::<i32>("x"), 10);
+    assert_eq!(snapshot.read_as::<i32>("y"), 42);
 }
 
 #[test]
@@ -97,11 +95,11 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(bufs.vars[0].as_i32(), 5);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-    assert_eq!(bufs.vars[2].as_i32(), 15);
+    assert_eq!(snapshot.read_as::<i32>("a"), 5);
+    assert_eq!(snapshot.read_as::<i32>("b"), 0);
+    assert_eq!(snapshot.read_as::<i32>("c"), 15);
 }
 
 #[test]
@@ -114,21 +112,14 @@ PROGRAM main
   x := 99;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = Vm::new()
-        .load(&container, &mut bufs)
-        .unwrap()
-        .start()
-        .unwrap();
-
     // Run multiple scans - result should be the same each time
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 99);
+    run_scans(source, &CompilerOptions::default(), |session| {
+        session.scan(0).unwrap();
+        assert_eq!(session.read("x"), 99);
 
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 99);
-    assert_eq!(vm.scan_count(), 2);
+        session.scan(0).unwrap();
+        assert_eq!(session.read("x"), 99);
+    });
 }
 
 #[test]
@@ -143,23 +134,17 @@ PROGRAM main
   x := x + 1;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = Vm::new()
-        .load(&container, &mut bufs)
-        .unwrap()
-        .start()
-        .unwrap();
+    run_scans(source, &CompilerOptions::default(), |session| {
+        // After scan 1: x = 10 + 1 = 11
+        session.scan(0).unwrap();
+        assert_eq!(session.read("x"), 11);
 
-    // After scan 1: x = 10 + 1 = 11
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 11);
+        // After scan 2: x = 11 + 1 = 12 (NOT 11, which would mean re-init)
+        session.scan(0).unwrap();
+        assert_eq!(session.read("x"), 12);
 
-    // After scan 2: x = 11 + 1 = 12 (NOT 11, which would mean re-init)
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 12);
-
-    // After scan 3: x = 12 + 1 = 13
-    vm.run_round(0).unwrap();
-    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 13);
+        // After scan 3: x = 12 + 1 = 13
+        session.scan(0).unwrap();
+        assert_eq!(session.read("x"), 13);
+    });
 }

@@ -1,11 +1,13 @@
-use crate::enumeration_values::EnumerationValues;
 use indexmap::IndexMap;
 use ironplc_dsl::common::{DeclarationQualifier, TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::scope::ScopeNode;
+use ironplc_dsl::textual::SelfRefKind;
 use ironplc_dsl::type_id::TypeId;
 use ironplc_problems::Problem;
+
+use crate::enumeration_values::EnumerationValues;
 
 /// A scope's position in the nesting tree: the chain of declaration
 /// names from the library root.
@@ -129,8 +131,6 @@ pub enum SymbolKind {
     /// Constant declaration
     #[allow(unused)]
     Constant,
-    /// Enumeration value
-    EnumerationValue,
     /// Structure element
     StructureElement,
     /// Edge variable (rising/falling edge)
@@ -157,11 +157,6 @@ pub struct SymbolInfo {
     /// environment. `None` for symbols that are not variables and for a
     /// variable whose type the analyzer could not resolve.
     pub type_id: Option<TypeId>,
-    /// For enumeration values, the type name of the enumeration
-    /// TODO this should probably be a new struct that is a TypeRef
-    /// so that we can distinguish between the actual place of the declaration
-    /// and a reference to the declaration.
-    pub enum_type: Option<TypeName>,
     /// The variable type qualifier (VAR, VAR_INPUT, VAR_OUTPUT, etc.)
     pub variable_type: Option<VariableType>,
     /// The qualifier the declaration was written with (CONSTANT, RETAIN,
@@ -192,7 +187,6 @@ impl SymbolInfo {
             visibility_scope: scope,
             is_external: false,
             type_id: None,
-            enum_type: None,
             variable_type: None,
             qualifier: None,
             address: None,
@@ -222,12 +216,6 @@ impl SymbolInfo {
 
     pub fn with_external(mut self, is_external: bool) -> Self {
         self.is_external = is_external;
-        self
-    }
-
-    /// Set the enumeration type for enumeration value symbols
-    pub fn with_enum_type(mut self, enum_type: TypeName) -> Self {
-        self.enum_type = Some(enum_type);
         self
     }
 
@@ -349,9 +337,13 @@ pub struct SymbolEnvironment {
     global_symbols: IndexMap<Id, SymbolInfo>,
     /// Scoped symbols (variables within functions, function blocks, etc.)
     scoped_symbols: IndexMap<ScopeKind, IndexMap<Id, SymbolInfo>>,
-    /// The values of each enumeration type, which the name-keyed tables
-    /// above cannot hold when two enumerations share a value name.
-    enumerations: EnumerationValues,
+    /// The values of each enumeration type, in declaration order, and the
+    /// enumeration each alias names.
+    ///
+    /// Kept apart from the named symbols: an enumeration value is always
+    /// read through its type (`Colors#Red`), and two enumerations, or an
+    /// enumeration and a variable, may use the same name.
+    enumeration_values: EnumerationValues,
 }
 
 impl SymbolEnvironment {
@@ -359,7 +351,7 @@ impl SymbolEnvironment {
         Self {
             global_symbols: IndexMap::new(),
             scoped_symbols: IndexMap::new(),
-            enumerations: EnumerationValues::default(),
+            enumeration_values: EnumerationValues::default(),
         }
     }
 
@@ -464,35 +456,15 @@ impl SymbolEnvironment {
         Ok(())
     }
 
-    /// Insert an enumeration value with its type information
-    pub fn insert_enumeration_value(
-        &mut self,
-        name: &Id,
-        enum_type: &TypeName,
-        scope: &ScopeKind,
-    ) -> Result<(), Diagnostic> {
-        self.enumerations.insert(enum_type, name);
-        let symbol_info = SymbolInfo::new(SymbolKind::EnumerationValue, scope.clone(), name.span())
-            .with_enum_type(enum_type.clone());
-
-        match scope {
-            ScopeKind::Global => {
-                self.global_symbols.insert(name.clone(), symbol_info);
-            }
-            ScopeKind::Named(_) => {
-                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
-
-                scope_symbols.insert(name.clone(), symbol_info);
-            }
-        }
-
-        Ok(())
+    /// Records `name` as a value of the enumeration type `enum_type`.
+    pub fn insert_enumeration_value(&mut self, name: &Id, enum_type: &TypeName) {
+        self.enumeration_values.insert(enum_type, name);
     }
 
     /// Records that the enumeration `alias` is declared as an alias of
     /// `base`, so it has the values of `base`.
     pub fn insert_enumeration_alias(&mut self, alias: &TypeName, base: &TypeName) {
-        self.enumerations.insert_alias(alias, base);
+        self.enumeration_values.insert_alias(alias, base);
     }
 
     /// Finds a symbol visible from the given scope.
@@ -507,6 +479,32 @@ impl SymbolEnvironment {
         self.visible_scopes(scope)
             .iter()
             .find_map(|scope| self.symbols_in(scope)?.get(name))
+    }
+
+    /// The function block `THIS^` or `SUPER^` names from `scope`.
+    ///
+    /// Inside a function block's body, its methods and its property
+    /// accessors, `THIS^` names that block and `SUPER^` the block it
+    /// `EXTENDS`. `None` outside a function block (in a program or a
+    /// function), and for `SUPER^` in a block that extends nothing.
+    pub fn self_type(&self, scope: &ScopeKind, kind: SelfRefKind) -> Option<TypeName> {
+        let ScopeKind::Named(path) = scope else {
+            return None;
+        };
+        let unit = &path.segments()[0];
+        let block = self.function_block(unit)?;
+        match kind {
+            SelfRefKind::This => Some(TypeName::from_id(unit)),
+            SelfRefKind::Super => block.extends.clone(),
+        }
+    }
+
+    /// The symbol of the function block named `name`, or `None` when
+    /// `name` is not a function block.
+    fn function_block(&self, name: &Id) -> Option<&SymbolInfo> {
+        self.global_symbols
+            .get(name)
+            .filter(|info| info.kind == SymbolKind::FunctionBlock)
     }
 
     /// The scopes a name is looked up in from `scope`, innermost first:
@@ -524,9 +522,7 @@ impl SymbolEnvironment {
             let mut seen = vec![segments[0].clone()];
             let mut unit = &segments[0];
             while let Some(base) = self
-                .global_symbols
-                .get(unit)
-                .filter(|info| info.kind == SymbolKind::FunctionBlock)
+                .function_block(unit)
                 .and_then(|info| info.extends.as_ref())
             {
                 if seen.contains(&base.name) {
@@ -617,7 +613,7 @@ impl SymbolEnvironment {
     /// Iterate over every symbol in the environment: the global symbols
     /// first, followed by every scoped symbol across all named scopes.
     #[cfg(test)]
-    fn all_symbols(&self) -> impl Iterator<Item = (&Id, &SymbolInfo)> {
+    pub(crate) fn all_symbols(&self) -> impl Iterator<Item = (&Id, &SymbolInfo)> {
         self.global_symbols
             .iter()
             .chain(self.scoped_symbols.values().flat_map(|scope| scope.iter()))
@@ -627,7 +623,7 @@ impl SymbolEnvironment {
     /// declaration order; for an alias, the values of the enumeration it
     /// names.
     pub fn get_enumeration_values_for_type(&self, enum_type: &TypeName) -> Vec<&Id> {
-        self.enumerations.values_of(enum_type)
+        self.enumeration_values.values_of(enum_type)
     }
 }
 
@@ -642,7 +638,6 @@ impl std::fmt::Debug for SymbolEnvironment {
         f.debug_struct("SymbolEnvironment")
             .field("global_symbols", &self.global_symbols)
             .field("scoped_symbols", &self.scoped_symbols)
-            .field("enumerations", &self.enumerations)
             .finish()
     }
 }

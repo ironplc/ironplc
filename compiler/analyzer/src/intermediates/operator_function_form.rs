@@ -6,14 +6,16 @@
 //! other standard function. What sets them apart is that each one *is* an
 //! operator: it accepts what the operator accepts and compiles to what the
 //! operator compiles to. [`OPERATOR_FUNCTION_FORMS`] states each of them
-//! once, as a row, and both the analyzer (through [`signatures`]) and
-//! codegen (through [`operator_function_form`]) read the row.
+//! once, as a row. The analyzer reads the row through [`signatures`] and
+//! [`operator_function_form`]; codegen reads the operator column through the
+//! [`Intrinsic::Operator`] each signature names.
 
 use ironplc_dsl::common::TypeName;
 use ironplc_dsl::textual::{CompareOp, Operator};
 
 use super::stdlib_function::input_param;
 use crate::function_environment::FunctionSignature;
+use crate::intrinsic::Intrinsic;
 
 /// The operator a standard function is the function form of.
 #[derive(Debug, Clone, PartialEq)]
@@ -266,19 +268,24 @@ impl OperatorFunctionForm {
     /// return type unless the row says the result is `BOOL`.
     pub(crate) fn signature(&self) -> FunctionSignature {
         let operand = |name: &str| input_param(name, self.operands);
+        let intrinsic = Intrinsic::Operator(self.operator.clone());
         let return_type = match self.result {
             FormResult::Operand => self.operand_type(),
             FormResult::Bool => TypeName::from("BOOL"),
         };
         match self.arity {
-            Arity::Unary => FunctionSignature::stdlib(self.name, return_type, vec![operand("IN")]),
+            Arity::Unary => {
+                FunctionSignature::stdlib(self.name, intrinsic, return_type, vec![operand("IN")])
+            }
             Arity::Binary => FunctionSignature::stdlib(
                 self.name,
+                intrinsic,
                 return_type,
                 vec![operand("IN1"), operand("IN2")],
             ),
             Arity::Extensible => FunctionSignature::stdlib_extensible(
                 self.name,
+                intrinsic,
                 return_type,
                 vec![operand("IN1"), operand("IN2")],
                 None,

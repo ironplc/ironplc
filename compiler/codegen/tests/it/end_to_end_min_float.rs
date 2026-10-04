@@ -13,7 +13,7 @@ PROGRAM main
   y := MIN(x, 3.0);
 END_PROGRAM
 ",
-    &[(1, 3.0)],
+    &[("y", 3.0)],
 );
 
 e2e_f32_near!(
@@ -29,7 +29,7 @@ PROGRAM main
   y := MIN(x, 8.0);
 END_PROGRAM
 ",
-    &[(1, 2.0)],
+    &[("y", 2.0)],
 );
 
 e2e_f64_near!(
@@ -45,5 +45,5 @@ PROGRAM main
   y := MIN(x, 3.0);
 END_PROGRAM
 ",
-    &[(1, 3.0)],
+    &[("y", 3.0)],
 );

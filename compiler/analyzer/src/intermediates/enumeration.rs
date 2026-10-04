@@ -1,4 +1,4 @@
-use crate::intermediate_type::{ByteSized, IntermediateType};
+use crate::semantic_type::{ByteSized, SemanticType};
 use crate::type_environment::TypeAttributes;
 use ironplc_dsl::common::*;
 use ironplc_dsl::diagnostic::*;
@@ -52,7 +52,7 @@ fn byte_sized_for_underlying_type(type_name: ElementaryTypeName) -> ByteSized {
     }
 }
 
-/// Try to create the intermediate type information for the enumerated
+/// Try to create the semantic type information for the enumerated
 /// values initializer.
 ///
 /// This function determines how many bytes are needed to represent the
@@ -67,8 +67,8 @@ pub fn try_from_values(
     if let Some(type_name) = underlying_type_override {
         return Ok(TypeAttributes::new(
             enumerated_values.values_span(),
-            IntermediateType::Enumeration {
-                underlying_type: Box::new(IntermediateType::Int {
+            SemanticType::Enumeration {
+                underlying_type: Box::new(SemanticType::Int {
                     size: byte_sized_for_underlying_type(type_name),
                 }),
             },
@@ -80,11 +80,11 @@ pub fn try_from_values(
     let max_value = resolved.into_iter().max().unwrap_or(0);
     let range = max_value.max(0) as u128 + 1;
     let underlying_type = if range <= 256 {
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B8,
         }
     } else if range <= 65_536 {
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B16,
         }
     } else {
@@ -99,7 +99,7 @@ pub fn try_from_values(
 
     Ok(TypeAttributes::new(
         enumerated_values.values_span(),
-        IntermediateType::Enumeration {
+        SemanticType::Enumeration {
             underlying_type: Box::new(underlying_type),
         },
     ))

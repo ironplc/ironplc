@@ -1,10 +1,8 @@
 //! End-to-end integration tests for the SUB operator.
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_compile, VmBuffers};
-use ironplc_vm::Vm;
+use crate::common::run_scans;
 
 e2e_i32!(
     end_to_end_when_sub_expression_then_variable_has_difference,
@@ -18,7 +16,7 @@ PROGRAM main
   y := x - 3;
 END_PROGRAM
 ",
-    &[(0, 10), (1, 7)],
+    &[("x", 10), ("y", 7)],
 );
 
 e2e_i32!(
@@ -31,7 +29,7 @@ PROGRAM main
   result := 3 - 10;
 END_PROGRAM
 ",
-    &[(0, -7)],
+    &[("result", -7)],
 );
 
 e2e_i32!(
@@ -44,7 +42,7 @@ PROGRAM main
   result := 100 - 30 - 20 - 10;
 END_PROGRAM
 ",
-    &[(0, 40)],
+    &[("result", 40)],
 );
 
 e2e_i32!(
@@ -57,7 +55,7 @@ PROGRAM main
   result := 10 + 5 - 3;
 END_PROGRAM
 ",
-    &[(0, 12)],
+    &[("result", 12)],
 );
 
 e2e_i32!(
@@ -74,7 +72,7 @@ PROGRAM main
   c := a - b;
 END_PROGRAM
 ",
-    &[(0, 100), (1, 30), (2, 70)],
+    &[("a", 100), ("b", 30), ("c", 70)],
 );
 
 e2e_i32!(
@@ -87,7 +85,7 @@ PROGRAM main
   x := 42 - 0;
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("x", 42)],
 );
 
 e2e_i32!(
@@ -100,7 +98,7 @@ PROGRAM main
   x := 0 - 7;
 END_PROGRAM
 ",
-    &[(0, -7)],
+    &[("x", -7)],
 );
 
 #[test]
@@ -113,19 +111,12 @@ PROGRAM main
   count := count - 1;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = Vm::new()
-        .load(&container, &mut bufs)
-        .unwrap()
-        .start()
-        .unwrap();
-
-    for _ in 0..5 {
-        vm.run_round(0).unwrap();
-    }
-
-    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), -5);
+    run_scans(source, &CompilerOptions::default(), |session| {
+        for _ in 0..5 {
+            session.scan(0).unwrap();
+        }
+        assert_eq!(session.read("count"), -5);
+    });
 }
 
 // 10 - (-5) = 15
@@ -139,5 +130,5 @@ PROGRAM main
   x := 10 - -5;
 END_PROGRAM
 ",
-    &[(0, 15)],
+    &[("x", 15)],
 );

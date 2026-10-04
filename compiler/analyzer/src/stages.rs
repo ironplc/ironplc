@@ -15,7 +15,7 @@ use crate::{
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
-    rule_abstract_not_instantiated, rule_assignment_aggregate_type_compat,
+    rule_abstract_not_instantiated, rule_array_index_range, rule_assignment_aggregate_type_compat,
     rule_bit_and_partial_access_range, rule_case_bit_string_label, rule_case_selector_type,
     rule_condition_type, rule_constant_range, rule_decl_struct_element_unique_names,
     rule_enum_base_type_allowed, rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
@@ -301,7 +301,13 @@ pub fn resolve_types(
 
     // Resolve expression types using the function environment.
     library = run_reverting_on_error(library, &mut diagnostics, |lib| {
-        xform_resolve_expr_types::apply(lib, &mut type_environment, &function_environment, options)
+        xform_resolve_expr_types::apply(
+            lib,
+            &symbol_environment,
+            &mut type_environment,
+            &function_environment,
+            options,
+        )
     });
 
     // Fold constant binary and unary expressions.
@@ -399,6 +405,7 @@ pub(crate) fn semantic(
         rule_mixed_located_var_declarations::apply,
         rule_pou_hierarchy::apply,
         rule_bit_and_partial_access_range::apply,
+        rule_array_index_range::apply,
         rule_case_bit_string_label::apply,
         rule_case_selector_type::apply,
         rule_condition_type::apply,

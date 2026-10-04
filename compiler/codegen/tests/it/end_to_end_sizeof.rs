@@ -21,7 +21,7 @@ PROGRAM main
   s := SIZEOF(x);
 END_PROGRAM
 ",
-    &[(1, 2)],
+    &[("s", 2)],
 );
 
 e2e_i32_with!(
@@ -36,7 +36,7 @@ PROGRAM main
   s := SIZEOF(x);
 END_PROGRAM
 ",
-    &[(1, 4)],
+    &[("s", 4)],
 );
 
 e2e_i32_with!(
@@ -51,7 +51,7 @@ PROGRAM main
   s := SIZEOF(y);
 END_PROGRAM
 ",
-    &[(1, 4)],
+    &[("s", 4)],
 );
 
 e2e_i32_with!(
@@ -66,7 +66,7 @@ PROGRAM main
   s := SIZEOF(b);
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("s", 1)],
 );
 
 e2e_i32_with!(
@@ -81,7 +81,7 @@ PROGRAM main
   s := SIZEOF(r);
 END_PROGRAM
 ",
-    &[(1, 4)],
+    &[("s", 4)],
 );
 
 e2e_i32_with!(
@@ -96,7 +96,7 @@ PROGRAM main
   s := SIZEOF(r);
 END_PROGRAM
 ",
-    &[(1, 8)],
+    &[("s", 8)],
 );
 
 // 10 elements × 2 bytes each = 20
@@ -112,5 +112,5 @@ PROGRAM main
   s := SIZEOF(arr);
 END_PROGRAM
 ",
-    &[(1, 20)],
+    &[("s", 20)],
 );

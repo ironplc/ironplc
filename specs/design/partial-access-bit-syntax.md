@@ -12,8 +12,9 @@ bytecode as the existing short form.
 The same syntax family also selects wider slices: `x.%Bn` (byte), `x.%Wn`
 (word), `x.%Dn` (double word) and `x.%Ln` (long word). Those forms return a
 bit-string view of the underlying data rather than a `BOOL`, so they have their
-own AST node and codegen path; see [Multi-Byte Partial
-Access](#multi-byte-partial-access) below.
+own AST node; see [Multi-Byte Partial Access](#multi-byte-partial-access)
+below. Codegen compiles every form through one path, in which a bit access is
+the one-bit case of a slice.
 
 The motivating case is a rusty program the compiler rejects with P0003:
 
@@ -167,9 +168,12 @@ variable keeps all 64 bits, an `LWORD` literal is not range-checked as a
 32-bit constant), and a 32-bit slice accepts a literal with its top bit set
 (`DWORD#16#FFFFFFFF`) as a bit pattern.
 
-**REQ-PAB-codegen-132** Reads and writes of a slice work on array elements
-(`arr[0].%B2`) and structured fields (`s.value.%B2`) with the same semantics as
-on a plain variable.
+**REQ-PAB-codegen-132** Reads and writes of a bit or a slice have the same
+semantics as on a plain variable when the base is an array element
+(`arr[0].%B2`), a structured field (`s.value.%B2`), an element of an array in
+a structure (`s.vals[1].%B2`), a field of a structure in an array
+(`es[1].value.%B2`), an element reached through a reference (`p^[1].%B2`), or
+a `VAR_IN_OUT` parameter.
 
 ### Feature Gating
 
@@ -226,6 +230,7 @@ requirement; a parametrized table names the cases that cover each.
 | REQ-PAB-codegen-130  | `partial_access_when_narrow_result_then_expected` (`byte_0_of_dword`, `byte_3_of_dword`, `word_1_of_dword`, `dword_1_of_lword`), `partial_access_when_wide_result_then_expected` (`lword_0_of_lword`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
 | REQ-PAB-codegen-131  | `partial_access_when_narrow_result_then_expected` (`write_byte_1_of_dword`, `write_dword_0_of_dword`), `partial_access_when_wide_result_then_expected` (`write_word_1_of_lword`, `write_dword_1_of_lword`, `write_lword_0_of_lword`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
 | REQ-PAB-codegen-132  | `partial_access_when_narrow_result_then_expected` (`write_byte_3_of_array_element`, `write_byte_2_of_struct_field`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
+| REQ-PAB-codegen-132  | `partial_access_when_write_32_bit_base_then_only_selected_bits_change`, `partial_access_when_write_64_bit_base_then_only_selected_bits_change`, `partial_access_when_read_32_bit_base_then_selected_bits`, `partial_access_when_read_64_bit_base_then_selected_bits`, `partial_access_when_base_is_in_out_then_caller_variable_changes`, `partial_access_when_base_is_element_through_reference_then_referenced_array_changes`, `partial_access_when_base_is_array_in_array_of_structures_then_element_width` | `compiler/codegen/tests/it/end_to_end_partial_access_bases.rs` | e2e |
 | REQ-PAB-codegen-133  | `partial_access_when_wide_result_then_expected` (`write_dword_0_of_lword`, `write_lword_0_of_lword`, `write_lword_0_of_lword_from_variable`) | `compiler/codegen/tests/it/end_to_end_partial_access.rs` | e2e |
 | REQ-PAB-parser-140  | `apply_when_partial_access_byte_and_flag_off_then_error`                        | `compiler/parser/src/rule_token_no_partial_access_syntax.rs` (tests mod) | negative |
 | REQ-PAB-parser-141  | `options_spec_req_pab_141_vendor_dialects_enable_partial_access_syntax`       | `compiler/parser/src/options.rs` (tests mod)                      | options     |

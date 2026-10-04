@@ -66,7 +66,9 @@ use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNo
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
-use ironplc_analyzer::{FunctionEnvironment, IntermediateType, SemanticContext, TypeEnvironment};
+use ironplc_analyzer::{
+    FunctionEnvironment, Intrinsic, SemanticContext, SemanticType, TypeEnvironment,
+};
 
 use crate::emit::Emitter;
 
@@ -674,9 +676,9 @@ pub(crate) fn finalize_function(
 ) -> Result<FinalizedFunction, Diagnostic> {
     let raw_line_map = emitter.take_line_map();
     let (optimized, offset_map) =
-        crate::optimize::optimize(emitter.unpatched_code(), &mut ctx.constants);
+        crate::optimize::optimize(emitter.unpatched_code()?, &mut ctx.constants);
     emitter.apply_optimized(optimized, &offset_map);
-    let bytecode = emitter.bytecode().to_vec();
+    let bytecode = emitter.bytecode()?.to_vec();
     let max_stack_depth = emitter.max_stack_depth();
     let max_temp_depth = emitter.max_temp_depth();
     let line_map =
@@ -728,6 +730,7 @@ fn compile_program_with_functions(
     ctx.enum_map = enum_map;
     ctx.types = crate::type_info::type_representations(types);
     ctx.operand_names = crate::type_info::operand_names(types);
+    ctx.intrinsics = crate::compile_call::intrinsics_by_name(functions);
     ctx.string_to_num = string_to_num;
     ctx.compiler_options = compiler_options;
     let mut builder = ContainerBuilder::new();
@@ -910,11 +913,17 @@ fn compile_program_with_functions(
     let mut compiled_methods: Vec<CompiledFunction> = Vec::new();
     for fb_decl in fb_decls {
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
-        let fb_func_id = ctx.user_fb_types[&fb_name].function_id;
         let field_var_off = var_offset.raw();
 
         // Update the var_offset in the registered type info.
-        ctx.user_fb_types.get_mut(&fb_name).unwrap().var_offset = field_var_off;
+        let fb_type = ctx.user_fb_types.get_mut(&fb_name).ok_or_else(|| {
+            Diagnostic::internal_error_at(Label::span(
+                fb_decl.name.span(),
+                "Function block was not registered before its body was compiled",
+            ))
+        })?;
+        let fb_func_id = fb_type.function_id;
+        fb_type.var_offset = field_var_off;
 
         let (compiled, saved_scope) = compile_user_function_block(
             fb_decl,
@@ -1374,10 +1383,15 @@ pub(crate) struct CompileContext {
     pub(crate) enum_map: crate::compile_enum::EnumOrdinalMap,
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
-    pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, IntermediateType>,
+    pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
     /// The name the arithmetic overloads know a value of each type by.
     /// See [`crate::type_info::expr_operand_name`].
     pub(crate) operand_names: HashMap<ironplc_dsl::type_id::TypeId, ironplc_dsl::common::TypeName>,
+    /// The operation each standard function stands for, by name, as the
+    /// analyzer's function environment states it. A call of a name that is
+    /// not here is a call of a user-defined function.
+    /// See [`crate::compile_call::intrinsics_by_name`].
+    pub(crate) intrinsics: HashMap<Id, Intrinsic>,
     /// The behavior policies `STRING_TO_<numeric>` calls select their
     /// builtin by (ADR-0049).
     pub(crate) string_to_num: StringToNumPolicies,
@@ -1474,6 +1488,7 @@ impl CompileContext {
             enum_map: crate::compile_enum::EnumOrdinalMap::default(),
             types: HashMap::new(),
             operand_names: HashMap::new(),
+            intrinsics: HashMap::new(),
             string_to_num: StringToNumPolicies::default(),
             compiler_options: CompilerOptions::default(),
             current_function_return: None,
@@ -1514,6 +1529,13 @@ impl CompileContext {
     /// loading or storing it directly would be wrong. Sites that handle one
     /// ask [`Self::in_out_ref_slot`] first; every other site reaches here
     /// and is refused.
+    ///
+    /// A name with no slot is not an undeclared variable: analysis reports
+    /// that first (`rule_use_declared_symbolic_var`, P4007). It is one
+    /// analysis accepts and codegen does not yet give storage to, such as a
+    /// variable inherited through `EXTENDS` or a `RESOURCE`'s `VAR_GLOBAL`, so
+    /// it is reported as not implemented rather than as a mistake in the
+    /// program.
     pub(crate) fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
         if self.in_out_params.contains(name) {
             return Err(Diagnostic::not_implemented(Label::span(
@@ -1522,10 +1544,10 @@ impl CompileContext {
             )));
         }
         self.variables.get(name).copied().ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::VariableUndefined,
-                Label::span(name.span(), "Variable reference"),
-            )
+            Diagnostic::not_implemented(Label::span(
+                name.span(),
+                "Variable that code generation does not yet give storage to",
+            ))
             .with_context("variable", &name.to_string())
         })
     }
@@ -2061,7 +2083,7 @@ END_PROGRAM
     }
 
     #[test]
-    fn compile_when_exit_outside_loop_then_p4021_error() {
+    fn compile_when_exit_outside_loop_then_internal_error() {
         let source = "
 PROGRAM main
   VAR
@@ -2081,7 +2103,8 @@ END_PROGRAM
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, Problem::ExitOutsideLoop.code());
+        // Analysis reports it first, as P4021 (`rule_loop_control_inside_loop`).
+        assert_eq!(diagnostic.code, "P9998");
     }
 
     #[test]
@@ -2117,7 +2140,7 @@ PROGRAM main
   VAR
     x : BYTE;
   END_VAR
-  x := 42;
+  x := BYTE#42;
 END_PROGRAM
 ";
         let (library, context) = parse(source);

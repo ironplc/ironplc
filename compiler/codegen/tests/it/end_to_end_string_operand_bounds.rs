@@ -11,12 +11,11 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, read_string};
+use crate::common::Snapshot;
 
-/// Compiles and runs `source`, returning the i32 in variable slot `slot`.
-fn run_i32(source: &str, slot: usize) -> i32 {
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    bufs.vars[slot].as_i32()
+/// Compiles and runs `source`, returning the value of `name` as an i32.
+fn run_i32(source: &str, name: &str) -> i32 {
+    Snapshot::run(source, &CompilerOptions::default()).read_as::<i32>(name)
 }
 
 /// A value of `len` code units, all the same character.
@@ -24,7 +23,6 @@ fn repeated(len: usize) -> String {
     "a".repeat(len)
 }
 
-// c128 is at slot 0, n at slot 1.
 #[test]
 fn end_to_end_when_len_of_nested_concat_then_returns_full_result_length() {
     let source = format!(
@@ -40,10 +38,9 @@ END_PROGRAM
         half = repeated(128),
     );
 
-    assert_eq!(run_i32(&source, 1), 256);
+    assert_eq!(run_i32(&source, "n"), 256);
 }
 
-// w128 is at slot 0, n at slot 1.
 #[test]
 fn end_to_end_when_len_of_nested_wide_concat_then_returns_full_result_length() {
     let source = format!(
@@ -59,10 +56,9 @@ END_PROGRAM
         half = repeated(128),
     );
 
-    assert_eq!(run_i32(&source, 1), 256);
+    assert_eq!(run_i32(&source, "n"), 256);
 }
 
-// c128 is at slot 0, c256 at slot 1, eq at slot 2, ne at slot 3.
 #[test]
 fn end_to_end_when_comparing_variable_with_nested_concat_then_equal() {
     let source = format!(
@@ -82,14 +78,14 @@ END_PROGRAM
         half = repeated(128),
     );
 
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
 
-    assert_eq!(bufs.vars[2].as_i32(), 1, "eq");
-    assert_eq!(bufs.vars[3].as_i32(), 0, "ne");
+    assert_eq!(snapshot.read_as::<i32>("eq"), 1, "eq");
+    assert_eq!(snapshot.read_as::<i32>("ne"), 0, "ne");
 }
 
-// s is at slot 0, n at slot 1. The only declared string is STRING[10], so
-// nothing but the literal itself can make room for its 300 code units.
+// The only declared string is STRING[10], so nothing but the literal itself
+// can make room for its 300 code units.
 #[test]
 fn end_to_end_when_len_of_literal_longer_than_every_declaration_then_returns_its_length() {
     let source = format!(
@@ -106,10 +102,9 @@ END_PROGRAM
         value = repeated(300),
     );
 
-    assert_eq!(run_i32(&source, 1), 300);
+    assert_eq!(run_i32(&source, "n"), 300);
 }
 
-// s is at slot 0, same at slot 1.
 #[test]
 fn end_to_end_when_comparing_variable_with_long_literal_then_equal() {
     let source = format!(
@@ -125,11 +120,10 @@ END_PROGRAM
         value = repeated(300),
     );
 
-    assert_eq!(run_i32(&source, 1), 1);
+    assert_eq!(run_i32(&source, "same"), 1);
 }
 
-// lines is at slot 0, n at slot 1. The 'z' sits at position 257, past the
-// default capacity.
+// The 'z' sits at position 257, past the default capacity.
 #[test]
 fn end_to_end_when_find_in_long_array_element_then_returns_position_past_default() {
     let source = format!(
@@ -146,7 +140,7 @@ END_PROGRAM
         prefix = repeated(256),
     );
 
-    assert_eq!(run_i32(&source, 1), 257);
+    assert_eq!(run_i32(&source, "n"), 257);
 }
 
 // A wider temporary changes nothing about the destination: a literal
@@ -165,13 +159,13 @@ END_PROGRAM
         value = repeated(300),
     );
 
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
 
-    assert_eq!(read_string(&bufs.data_region, 0), repeated(10));
+    assert_eq!(snapshot.read("s"), repeated(10));
 }
 
-// c128 is at slot 0, n at slot 1. The call's temporary takes the function's
-// declared return capacity, so the 256-unit result is not cut to the default.
+// The call's temporary takes the function's declared return capacity, so the
+// 256-unit result is not cut to the default.
 #[test]
 fn end_to_end_when_len_of_user_function_result_then_returns_declared_result_length() {
     let source = format!(
@@ -194,5 +188,5 @@ END_PROGRAM
         half = repeated(128),
     );
 
-    assert_eq!(run_i32(&source, 1), 256);
+    assert_eq!(run_i32(&source, "n"), 256);
 }

@@ -6,7 +6,7 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::{drive_fb, FbStep, FbStep::*};
+use crate::common::{drive_fb, expect, pulse, run, write, FbStep};
 
 const CTUD_PROGRAM: &str = "
 PROGRAM main
@@ -38,25 +38,25 @@ END_PROGRAM
 
 #[rstest]
 // CV=0, PV=3: QU = (0 >= 3) FALSE, QD = (0 <= 0) TRUE.
-#[case::not_triggered(CTUD_PROGRAM, &[Run(0), Expect(5, 0), Expect(6, 1)])]
+#[case::not_triggered(CTUD_PROGRAM, &[run(0), expect("qu_out", 0), expect("qd_out", 1)])]
 // Three up-counts reach PV: CV=3, QU TRUE.
 #[case::counts_up(CTUD_PROGRAM, &[
-    Pulse { var: 1, n: 3, time_base: 0 },
-    Expect(7, 3), Expect(5, 1),
+    pulse("cu_in", 3, 0),
+    expect("cv_out", 3), expect("qu_out", 1),
 ])]
 // One down-count from 0: CV=-1, QD TRUE.
 #[case::counts_down(CTUD_PROGRAM, &[
-    Write(2, 1), Run(0), Expect(7, -1), Expect(6, 1),
+    write("cd_in", 1), run(0), expect("cv_out", -1), expect("qd_out", 1),
 ])]
 // Reset zeroes CV after two up-counts.
 #[case::reset(CTUD_PROGRAM, &[
-    Pulse { var: 1, n: 2, time_base: 0 }, Expect(7, 2),
-    Write(3, 1), Run(4), Expect(7, 0),
+    pulse("cu_in", 2, 0), expect("cv_out", 2),
+    write("reset", 1), run(4), expect("cv_out", 0),
 ])]
 // Load sets CV=PV=3.
-#[case::load(CTUD_PROGRAM, &[Write(4, 1), Run(0), Expect(7, 3)])]
+#[case::load(CTUD_PROGRAM, &[write("load", 1), run(0), expect("cv_out", 3)])]
 // CTUD_DINT variant compiles and runs; one up-count reaches PV=1.
-#[case::dint_variant(CTUD_DINT_PROGRAM, &[Run(0), Expect(1, 1), Expect(2, 1)])]
+#[case::dint_variant(CTUD_DINT_PROGRAM, &[run(0), expect("qu_out", 1), expect("cv_out", 1)])]
 fn end_to_end_fb_ctud(#[case] source: &str, #[case] steps: &[FbStep]) {
     drive_fb(source, &CompilerOptions::default(), steps);
 }

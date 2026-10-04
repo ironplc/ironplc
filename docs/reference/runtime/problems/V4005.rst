@@ -13,18 +13,23 @@ Example
 
 The following code will generate error V4005:
 
-.. code-block::
+.. playground::
 
    PROGRAM Main
    VAR
        values : ARRAY[1..5] OF INT;
+       i : INT;
        result : INT;
    END_VAR
-   result := values[6];  (* Error: index 6 is out of bounds for ARRAY[1..5] *)
+   i := 6;
+   result := values[i];  (* Error: index 6 is out of bounds for ARRAY[1..5] *)
    END_PROGRAM
 
 The array ``values`` has valid indices 1 through 5, but index 6 is outside
-that range.
+that range. The index is worked out while the program runs, so the program
+compiles and stops when it reaches the access. A constant index outside the
+array is reported when the program is compiled, as
+:doc:`P2027 </reference/compiler/problems/P2027>`.
 
 To fix this error, ensure the index is within the declared bounds of the array:
 

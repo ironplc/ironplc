@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf};
 
 pub mod fixtures;
+pub mod rule_conventions;
 
 /// Extracts the inner value from a tuple enum variant, panicking with a
 /// descriptive message if the variant does not match.
@@ -32,7 +33,7 @@ macro_rules! cast {
 /// ```ignore
 /// let (element_type, dimensions) = cast_struct!(
 ///     attrs.representation,
-///     IntermediateType::Array { element_type, dimensions }
+///     SemanticType::Array { element_type, dimensions }
 /// );
 /// ```
 #[macro_export]

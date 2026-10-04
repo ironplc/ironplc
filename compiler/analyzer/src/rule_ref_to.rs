@@ -120,13 +120,29 @@ impl RuleRefTo<'_> {
             .unwrap_or(false)
     }
 
-    /// Returns the id of the declared type of the simple named variable
-    /// `var`, when it is a reference type.
+    /// Returns the id of the type of the value `kind` names: the declared
+    /// type of a variable, and the element type of an array element.
+    ///
+    /// A field access has no answer: a field's type is known by its
+    /// representation only, so it has no id to give.
+    fn value_type_id(&self, kind: &SymbolicVariableKind) -> Option<TypeId> {
+        match kind {
+            SymbolicVariableKind::Named(named) => self.symbol(&named.name)?.type_id,
+            SymbolicVariableKind::Array(array) => self
+                .type_environment
+                .element_type(self.value_type_id(&array.subscripted_variable)?),
+            _ => None,
+        }
+    }
+
+    /// Returns the id of the type of the value `var` names, when it is a
+    /// reference type: a reference variable, or an element of an array of
+    /// references.
     fn reference_type_id(&self, var: &Variable) -> Option<TypeId> {
-        let Variable::Symbolic(SymbolicVariableKind::Named(named)) = var else {
+        let Variable::Symbolic(kind) = var else {
             return None;
         };
-        let type_id = self.symbol(&named.name)?.type_id?;
+        let type_id = self.value_type_id(kind)?;
         self.type_environment
             .get_by_id(type_id)?
             .representation
@@ -134,7 +150,7 @@ impl RuleRefTo<'_> {
             .then_some(type_id)
     }
 
-    /// Returns true if the variable is declared as REF_TO.
+    /// Returns true if the value the variable names is a reference.
     fn is_variable_reference(&self, var: &Variable) -> bool {
         self.reference_type_id(var).is_some()
     }
@@ -158,7 +174,7 @@ impl RuleRefTo<'_> {
             | ExprKind::Deref(_)
             | ExprKind::ImplicitConversion(_) => matches!(
                 self.type_environment.representation_of_expr(expr),
-                Some(crate::intermediate_type::IntermediateType::Reference { .. })
+                Some(crate::semantic_type::SemanticType::Reference { .. })
             ),
         }
     }

@@ -118,7 +118,10 @@ fn collect_constants(lib: &Library) -> ScopedTable<'static, Id, ConstantKind> {
 /// second time from this table. Shadowing an outer scope's constant (e.g.
 /// a function-local constant with the same name as a global) is unaffected,
 /// since that lives in a different scope entirely.
-fn register_constants(constants: &mut ScopedTable<Id, ConstantKind>, decls: &[VarDecl]) {
+fn register_constants<'a>(
+    constants: &mut ScopedTable<Id, ConstantKind>,
+    decls: impl IntoIterator<Item = &'a VarDecl>,
+) {
     for decl in decls {
         if decl.qualifier != DeclarationQualifier::Constant {
             continue;
@@ -299,13 +302,16 @@ impl Fold<Diagnostic> for InitializerFolder<'_> {
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
         self.constants.enter();
 
-        let variables = match node {
-            ScopeNode::Function(node) => &node.variables,
-            ScopeNode::FunctionBlock(node) => &node.variables,
-            ScopeNode::Program(node) => &node.variables,
-            ScopeNode::Method(node) => &node.variables,
-        };
-        register_constants(&mut self.constants, variables);
+        match node {
+            ScopeNode::Function(node) => register_constants(&mut self.constants, &node.variables),
+            ScopeNode::FunctionBlock(node) => {
+                register_constants(&mut self.constants, &node.variables)
+            }
+            ScopeNode::Program(node) => register_constants(&mut self.constants, &node.variables),
+            ScopeNode::Method(node) => {
+                register_constants(&mut self.constants, node.all_variables())
+            }
+        }
 
         Ok(())
     }
