@@ -380,16 +380,15 @@ fn struct_array_element_field<'ctx, 'ast>(
 
     // A composite value has no single-slot load or store, and the appended
     // strides above assume one slot per innermost element.
-    let element_op_type =
-        crate::compile_struct::resolve_field_op_type(&value_type).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
-                field.span(),
-                format!(
-                    "Field '{}' of an array-of-struct element is composite (nested struct or array)",
-                    field
-                ),
-            ))
-        })?;
+    if crate::compile_struct::resolve_field_op_type(&value_type).is_none() {
+        return Err(Diagnostic::not_implemented(Label::span(
+            field.span(),
+            format!(
+                "Field '{}' of an array-of-struct element is composite (nested struct or array)",
+                field
+            ),
+        )));
+    }
 
     let combined_offset = base_slot_offset
         .checked_add(leaf_slot_offset.raw())
@@ -403,7 +402,6 @@ fn struct_array_element_field<'ctx, 'ast>(
         field_slot_offset: SlotIndex::new(combined_offset),
         dimensions,
         subscripts,
-        element_op_type,
         element_type: value_type,
     })
 }
