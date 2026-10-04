@@ -37,7 +37,8 @@ Each function form is one row of the table in
 `compiler/analyzer/src/intermediates/operator_function_form.rs`: the function
 name, the operator it is a form of, the category every operand has, and whether
 the result is the operand type or `BOOL`. The analyzer derives the signature
-from the row, and codegen asks the row which operator to compile the call as.
+from the row, and the signature's `Intrinsic::Operator` carries the row's
+operator to codegen, which compiles the call as that operator.
 Neither side keeps a second copy, so the function form cannot accept a narrower
 set of operands than its operator, or compile to something other than it.
 

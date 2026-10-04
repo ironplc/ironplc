@@ -66,7 +66,9 @@ use ironplc_parser::options::{CompilerOptions, StringToNumFailure, StringToNumNo
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
-use ironplc_analyzer::{FunctionEnvironment, IntermediateType, SemanticContext, TypeEnvironment};
+use ironplc_analyzer::{
+    FunctionEnvironment, IntermediateType, Intrinsic, SemanticContext, TypeEnvironment,
+};
 
 use crate::emit::Emitter;
 
@@ -728,6 +730,7 @@ fn compile_program_with_functions(
     ctx.enum_map = enum_map;
     ctx.types = crate::type_info::type_representations(types);
     ctx.operand_names = crate::type_info::operand_names(types);
+    ctx.intrinsics = crate::compile_call::intrinsics_by_name(functions);
     ctx.string_to_num = string_to_num;
     ctx.compiler_options = compiler_options;
     let mut builder = ContainerBuilder::new();
@@ -1371,6 +1374,11 @@ pub(crate) struct CompileContext {
     /// The name the arithmetic overloads know a value of each type by.
     /// See [`crate::type_info::expr_operand_name`].
     pub(crate) operand_names: HashMap<ironplc_dsl::type_id::TypeId, ironplc_dsl::common::TypeName>,
+    /// The operation each standard function stands for, by name, as the
+    /// analyzer's function environment states it. A call of a name that is
+    /// not here is a call of a user-defined function.
+    /// See [`crate::compile_call::intrinsics_by_name`].
+    pub(crate) intrinsics: HashMap<Id, Intrinsic>,
     /// The behavior policies `STRING_TO_<numeric>` calls select their
     /// builtin by (ADR-0049).
     pub(crate) string_to_num: StringToNumPolicies,
@@ -1467,6 +1475,7 @@ impl CompileContext {
             enum_map: crate::compile_enum::EnumOrdinalMap::default(),
             types: HashMap::new(),
             operand_names: HashMap::new(),
+            intrinsics: HashMap::new(),
             string_to_num: StringToNumPolicies::default(),
             compiler_options: CompilerOptions::default(),
             current_function_return: None,

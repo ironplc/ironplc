@@ -1,13 +1,14 @@
 //! Function call compilation for IEC 61131-3 code generation.
 //!
 //! Contains standard library function dispatch, user-defined function calls,
-//! builtin lookup, type conversions, time functions, and shift/rotate operations.
-//! Separated from compile.rs to keep module sizes within the 1000-line guideline.
+//! type conversions and time functions. Separated from compile.rs to keep
+//! module sizes within the 1000-line guideline.
 
 use std::collections::HashMap;
 
-use ironplc_analyzer::{operator_function_form, FormOf};
+use ironplc_analyzer::{FormOf, FunctionEnvironment, Intrinsic, StringFunction};
 use ironplc_container::opcode;
+use ironplc_dsl::common::ElementaryTypeName;
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
@@ -19,6 +20,7 @@ use super::compile::{
     DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
 use super::compile_arith::compile_arith_fold;
+use super::compile_builtin::{compile_numeric, compile_shift_rotate};
 use super::compile_comparison::compile_comparison;
 use super::compile_expr::{
     compile_expr, emit_compare_op, emit_mod, emit_mul, emit_not, emit_sub, emit_truncation,
@@ -29,204 +31,90 @@ use super::compile_string::{
     compile_mid, compile_replace, compile_right, resolve_string_arg,
 };
 use super::compile_time_arith::{compile_time_arith, time_arith_for, Operand};
-use super::type_info::resolve_type_name;
+use super::type_info::elementary_type_info;
 use crate::emit::Emitter;
 
-/// Builds the opcode for a builtin defined across all four operation widths
-/// (both integer widths and both float widths), independent of signedness.
+/// Returns the operation each standard function in `functions` stands for,
+/// by name.
 ///
-/// Used for the identically-shaped EXPT/ABS/SEL arms of [`lookup_builtin`].
-macro_rules! numeric_builtin {
-    ($op_width:expr, $i32_op:path, $i64_op:path, $f32_op:path, $f64_op:path) => {
-        Some(match $op_width {
-            OpWidth::W32 => $i32_op,
-            OpWidth::W64 => $i64_op,
-            OpWidth::F32 => $f32_op,
-            OpWidth::F64 => $f64_op,
-        })
-    };
+/// Codegen recognizes a standard function only through this table, built
+/// from the signatures the analyzer resolved calls against, never by its
+/// spelling.
+pub(crate) fn intrinsics_by_name(functions: &FunctionEnvironment) -> HashMap<Id, Intrinsic> {
+    functions
+        .iter()
+        .filter_map(|(_, signature)| Some((signature.name.clone(), signature.intrinsic.clone()?)))
+        .collect()
 }
 
-/// Builds the opcode for a builtin whose integer variants distinguish
-/// signedness but whose float variants do not.
+/// Compiles a function call.
 ///
-/// Used for the identically-shaped MIN/MAX/LIMIT arms of [`lookup_builtin`].
-macro_rules! signed_numeric_builtin {
-    ($op_width:expr, $signedness:expr,
-     $i32_op:path, $u32_op:path, $i64_op:path, $u64_op:path,
-     $f32_op:path, $f64_op:path) => {
-        Some(match ($op_width, $signedness) {
-            (OpWidth::W32, Signedness::Signed) => $i32_op,
-            (OpWidth::W32, Signedness::Unsigned) => $u32_op,
-            (OpWidth::W64, Signedness::Signed) => $i64_op,
-            (OpWidth::W64, Signedness::Unsigned) => $u64_op,
-            (OpWidth::F32, _) => $f32_op,
-            (OpWidth::F64, _) => $f64_op,
-        })
-    };
-}
-
-/// Builds the opcode for a float-only (transcendental) builtin. The integer
-/// operation widths have no variant and yield `None`.
-///
-/// Used for the many identically-shaped SQRT/LN/.../ATAN2 arms of
-/// [`lookup_builtin`].
-macro_rules! float_builtin {
-    ($op_width:expr, $f32_op:path, $f64_op:path) => {
-        match $op_width {
-            OpWidth::F32 => Some($f32_op),
-            OpWidth::F64 => Some($f64_op),
-            OpWidth::W32 | OpWidth::W64 => None,
-        }
-    };
-}
-
-/// Returns the builtin opcode for a named standard library function, if known.
-///
-/// The `op_width` selects the correct width variant and `signedness` selects
-/// the signed/unsigned variant for functions that distinguish them.
-///
-/// The arms delegate to the `*_builtin!` macros above, which each capture one
-/// recurring arm shape (all-widths, signed/unsigned, float-only). The opcode
-/// identifiers are still written verbatim per arm — the workspace has no
-/// `paste` crate to concatenate them, and spelling them out keeps every opcode
-/// greppable — while the macros remove the ~55 lines of duplicated `match`
-/// scaffolding the arms would otherwise repeat.
-pub(crate) fn lookup_builtin(name: &str, op_width: OpWidth, signedness: Signedness) -> Option<u16> {
-    use opcode::builtin;
-    match name.to_uppercase().as_str() {
-        "EXPT" => numeric_builtin!(
-            op_width,
-            builtin::EXPT_I32,
-            builtin::EXPT_I64,
-            builtin::EXPT_F32,
-            builtin::EXPT_F64
-        ),
-        "ABS" => numeric_builtin!(
-            op_width,
-            builtin::ABS_I32,
-            builtin::ABS_I64,
-            builtin::ABS_F32,
-            builtin::ABS_F64
-        ),
-        "SEL" => numeric_builtin!(
-            op_width,
-            builtin::SEL_I32,
-            builtin::SEL_I64,
-            builtin::SEL_F32,
-            builtin::SEL_F64
-        ),
-        "MIN" => signed_numeric_builtin!(
-            op_width,
-            signedness,
-            builtin::MIN_I32,
-            builtin::MIN_U32,
-            builtin::MIN_I64,
-            builtin::MIN_U64,
-            builtin::MIN_F32,
-            builtin::MIN_F64
-        ),
-        "MAX" => signed_numeric_builtin!(
-            op_width,
-            signedness,
-            builtin::MAX_I32,
-            builtin::MAX_U32,
-            builtin::MAX_I64,
-            builtin::MAX_U64,
-            builtin::MAX_F32,
-            builtin::MAX_F64
-        ),
-        "LIMIT" => signed_numeric_builtin!(
-            op_width,
-            signedness,
-            builtin::LIMIT_I32,
-            builtin::LIMIT_U32,
-            builtin::LIMIT_I64,
-            builtin::LIMIT_U64,
-            builtin::LIMIT_F32,
-            builtin::LIMIT_F64
-        ),
-        "SQRT" => float_builtin!(op_width, builtin::SQRT_F32, builtin::SQRT_F64),
-        "LN" => float_builtin!(op_width, builtin::LN_F32, builtin::LN_F64),
-        "LOG" => float_builtin!(op_width, builtin::LOG_F32, builtin::LOG_F64),
-        "EXP" => float_builtin!(op_width, builtin::EXP_F32, builtin::EXP_F64),
-        "SIN" => float_builtin!(op_width, builtin::SIN_F32, builtin::SIN_F64),
-        "COS" => float_builtin!(op_width, builtin::COS_F32, builtin::COS_F64),
-        "TAN" => float_builtin!(op_width, builtin::TAN_F32, builtin::TAN_F64),
-        "ASIN" => float_builtin!(op_width, builtin::ASIN_F32, builtin::ASIN_F64),
-        "ACOS" => float_builtin!(op_width, builtin::ACOS_F32, builtin::ACOS_F64),
-        "ATAN" => float_builtin!(op_width, builtin::ATAN_F32, builtin::ATAN_F64),
-        "ATAN2" => float_builtin!(op_width, builtin::ATAN2_F32, builtin::ATAN2_F64),
-        // Compiler intrinsics (reserved `__` namespace): real-preserving
-        // truncation and floating modulo, ANY_REAL with the width selecting
-        // the F32/F64 builtin variant.
-        "__TRUNC" => float_builtin!(op_width, builtin::TRUNC_F32, builtin::TRUNC_F64),
-        "__MOD" => float_builtin!(op_width, builtin::MOD_F32, builtin::MOD_F64),
-        _ => None,
-    }
-}
-
-/// Compiles a standard library function call.
-///
-/// Dispatches shift/rotate functions to a width-aware handler, and other
-/// known builtins to the generic lookup path.
+/// A standard function compiles as the operation its signature names; any
+/// other function is a user-defined one.
 pub(crate) fn compile_function_call(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let name = func.name.lower_case();
-    // A function form of an operator (ADD, GT, AND, NOT, ...) compiles as
-    // the operator it is a form of; the analyzer's table says which.
-    if let Some(form) = operator_function_form(name.as_str()) {
-        return compile_operator_form(emitter, ctx, func, op_type, &form.operator);
+    if let Some(intrinsic) = ctx.intrinsics.get(&func.name).cloned() {
+        return compile_intrinsic(emitter, ctx, func, op_type, intrinsic);
     }
-    // A typed time or date function (ADD_TIME, SUB_DATE_DATE, ...) compiles
-    // as the instruction sequence for the units of its operands.
-    if let Some((arith, width)) = time_arith_for(name.as_str()) {
-        let (in1, in2) = extract_two_positional_args(func)?;
-        return compile_time_arith(emitter, ctx, arith, width, Operand::Expr(in1), in2);
-    }
-    match name.as_str() {
-        "shl" | "shr" | "rol" | "ror" => {
-            compile_shift_rotate(emitter, ctx, func, op_type, name.as_str())
+    let Some(func_info) = ctx.user_functions.get(func.name.lower_case()).cloned() else {
+        return Err(Diagnostic::todo_with_span(func.name.span()));
+    };
+    compile_user_function_call(emitter, ctx, func, &func_info)
+}
+
+/// Compiles a call to a standard function as the operation `intrinsic`.
+///
+/// The match has an arm for every operation, so a standard function the
+/// analyzer adds does not compile until it has one here.
+fn compile_intrinsic(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    op_type: OpType,
+    intrinsic: Intrinsic,
+) -> Result<(), Diagnostic> {
+    match intrinsic {
+        // A function form of an operator (ADD, GT, AND, NOT, ...) compiles
+        // as the operator it is a form of.
+        Intrinsic::Operator(operator) => {
+            compile_operator_form(emitter, ctx, func, op_type, &operator)
         }
-        "mux" => compile_mux(emitter, ctx, func, op_type),
+        Intrinsic::Numeric(function) => compile_numeric(emitter, ctx, func, function, op_type),
+        Intrinsic::BitShift(shift) => compile_shift_rotate(emitter, ctx, func, op_type, shift),
+        Intrinsic::Mux => compile_mux(emitter, ctx, func, op_type),
         // Assignment function (equivalent to := operator)
-        "move" => compile_move(emitter, ctx, func, op_type),
-        // Truncation function
-        "trunc" => compile_trunc(emitter, ctx, func, op_type),
+        Intrinsic::Move => compile_move(emitter, ctx, func, op_type),
+        Intrinsic::Trunc => compile_trunc(emitter, ctx, func, op_type),
+        Intrinsic::BcdToInt => compile_bcd_to_int(emitter, ctx, func, op_type),
+        Intrinsic::IntToBcd => compile_int_to_bcd(emitter, ctx, func, op_type),
         // SIZEOF operator (extension)
-        "sizeof" => compile_sizeof(emitter, ctx, func),
-        // BCD conversion functions
-        "bcd_to_int" => compile_bcd_to_int(emitter, ctx, func, op_type),
-        "int_to_bcd" => compile_int_to_bcd(emitter, ctx, func, op_type),
-        // String functions
-        "len" => compile_len(emitter, ctx, func),
-        "find" => compile_find(emitter, ctx, func),
-        "replace" => compile_replace(emitter, ctx, func),
-        "insert" => compile_insert(emitter, ctx, func),
-        "delete" => compile_delete(emitter, ctx, func),
-        "left" => compile_left(emitter, ctx, func),
-        "right" => compile_right(emitter, ctx, func),
-        "mid" => compile_mid(emitter, ctx, func),
-        "concat" => compile_concat(emitter, ctx, func),
-        // Time functions: datetime decomposition
-        "dt_to_date" | "date_and_time_to_date" => compile_dt_to_date(emitter, ctx, func),
-        "dt_to_tod" | "date_and_time_to_time_of_day" => compile_dt_to_tod(emitter, ctx, func),
-        _ => {
-            // Check user-defined functions first.
-            if let Some(func_info) = ctx.user_functions.get(name.as_str()).cloned() {
-                compile_user_function_call(emitter, ctx, func, &func_info)
-            } else if let Some(conv) = parse_string_conversion(name) {
-                compile_string_conversion(emitter, ctx, func, conv)
-            } else if let Some((source, target)) = parse_type_conversion(name) {
-                compile_type_conversion(emitter, ctx, func, source, target)
-            } else {
-                compile_generic_builtin(emitter, ctx, func, op_type)
-            }
+        Intrinsic::Sizeof => compile_sizeof(emitter, ctx, func),
+        Intrinsic::String(StringFunction::Len) => compile_len(emitter, ctx, func),
+        Intrinsic::String(StringFunction::Find) => compile_find(emitter, ctx, func),
+        Intrinsic::String(StringFunction::Replace) => compile_replace(emitter, ctx, func),
+        Intrinsic::String(StringFunction::Insert) => compile_insert(emitter, ctx, func),
+        Intrinsic::String(StringFunction::Delete) => compile_delete(emitter, ctx, func),
+        Intrinsic::String(StringFunction::Left) => compile_left(emitter, ctx, func),
+        Intrinsic::String(StringFunction::Right) => compile_right(emitter, ctx, func),
+        Intrinsic::String(StringFunction::Mid) => compile_mid(emitter, ctx, func),
+        Intrinsic::String(StringFunction::Concat) => compile_concat(emitter, ctx, func),
+        Intrinsic::Conversion { source, target } => {
+            compile_conversion(emitter, ctx, func, &source, &target)
         }
+        // A typed time or date function (ADD_TIME, SUB_DATE_DATE, ...)
+        // compiles as the instruction sequence for the units of its operands.
+        Intrinsic::Time { function, long } => {
+            let (arith, width) = time_arith_for(function, long);
+            let (in1, in2) = extract_two_positional_args(func)?;
+            compile_time_arith(emitter, ctx, arith, width, Operand::Expr(in1), in2)
+        }
+        // Time functions: datetime decomposition
+        Intrinsic::DtToDate => compile_dt_to_date(emitter, ctx, func),
+        Intrinsic::DtToTod => compile_dt_to_tod(emitter, ctx, func),
     }
 }
 
@@ -378,45 +266,6 @@ fn compile_value_arg(
         }
         _ => compile_expr(emitter, ctx, arg, param_op_type),
     }
-}
-
-/// Compiles a generic builtin function call via `lookup_builtin`.
-///
-/// All arguments are compiled with the same `op_type` and the function ID
-/// is looked up by name.
-fn compile_generic_builtin(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    let func_name = func.name.original().to_uppercase();
-
-    let func_id = lookup_builtin(&func_name, op_type.0, op_type.1)
-        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))?;
-
-    let expected_args = opcode::builtin::arg_count(func_id) as usize;
-
-    let args = collect_positional_args(func);
-
-    if args.len() != expected_args {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
-    }
-
-    let is_sel = func_name == "SEL";
-    for (i, arg) in args.iter().enumerate() {
-        // SEL's first argument (G) is always a BOOL/integer selector,
-        // even when the remaining arguments are float.
-        let arg_op_type = if is_sel && i == 0 {
-            DEFAULT_OP_TYPE
-        } else {
-            op_type
-        };
-        compile_expr(emitter, ctx, arg, arg_op_type)?;
-    }
-
-    emitter.emit_builtin(func_id);
-    Ok(())
 }
 
 /// Compiles the function form of an operator as the operator itself.
@@ -797,7 +646,7 @@ pub(crate) fn collect_positional_args(func: &Function) -> Vec<&Expr> {
 /// target types. The argument is compiled with the source type's OpType,
 /// then a conversion opcode (if needed) transforms the value to the target
 /// representation.
-pub(crate) fn compile_type_conversion(
+fn compile_type_conversion(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
@@ -891,61 +740,6 @@ pub(crate) fn emit_conversion_opcode(
         // Same float width (shouldn't happen, but handle gracefully)
         (F32, _, F32, _) | (F64, _, F64, _) => {}
     }
-}
-
-/// Compiles a bit shift or rotate function call (SHL, SHR, ROL, ROR).
-///
-/// Expects two positional arguments: IN (value) and N (shift count).
-/// Emits the appropriate BUILTIN opcode based on function name and operand width.
-/// For ROL/ROR on narrow types (BYTE, WORD), emits width-specific builtins
-/// to ensure bits wrap correctly within the narrow type.
-fn compile_shift_rotate(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    op_type: OpType,
-    name: &str,
-) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
-    }
-
-    // Compile IN (value) with the inferred op_type
-    compile_expr(emitter, ctx, args[0], op_type)?;
-    // Compile N (shift count) — always as i32 for W32, i64 for W64
-    let n_op_type = match op_type.0 {
-        OpWidth::W64 => (OpWidth::W64, Signedness::Signed),
-        _ => DEFAULT_OP_TYPE,
-    };
-    compile_expr(emitter, ctx, args[1], n_op_type)?;
-
-    // Determine storage bits for narrow-type ROL/ROR selection
-    let bits = storage_bits(ctx, args[0])?;
-
-    let func_id = match (name, op_type.0) {
-        ("shl", OpWidth::W64) => opcode::builtin::SHL_I64,
-        ("shl", _) => opcode::builtin::SHL_I32,
-        ("shr", OpWidth::W64) => opcode::builtin::SHR_I64,
-        ("shr", _) => opcode::builtin::SHR_I32,
-        ("rol", OpWidth::W64) => opcode::builtin::ROL_I64,
-        ("rol", _) => match bits {
-            8 => opcode::builtin::ROL_U8,
-            16 => opcode::builtin::ROL_U16,
-            _ => opcode::builtin::ROL_I32,
-        },
-        ("ror", OpWidth::W64) => opcode::builtin::ROR_I64,
-        ("ror", _) => match bits {
-            8 => opcode::builtin::ROR_U8,
-            16 => opcode::builtin::ROR_U16,
-            _ => opcode::builtin::ROR_I32,
-        },
-        _ => return Err(Diagnostic::todo_with_span(func.name.span())),
-    };
-
-    emitter.emit_builtin(func_id);
-    Ok(())
 }
 
 // --- FB type helpers and string conversion (moved from compile.rs) ---
@@ -1051,49 +845,46 @@ fn edge_trig_fb_fields() -> HashMap<String, u8> {
     fields
 }
 
-/// Checks if a function name is a type conversion (e.g., "int_to_real").
-pub(crate) fn parse_type_conversion(name: &str) -> Option<(VarTypeInfo, VarTypeInfo)> {
-    let upper = name.to_uppercase();
-    let parts: Vec<&str> = upper.splitn(2, "_TO_").collect();
-    if parts.len() != 2 {
-        return None;
+/// Compiles a call to the conversion from `source` to `target`.
+///
+/// A conversion to or from `STRING` goes through the data region; any
+/// other is a numeric conversion between operation types.
+fn compile_conversion(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    source: &ElementaryTypeName,
+    target: &ElementaryTypeName,
+) -> Result<(), Diagnostic> {
+    let type_info = |elementary: &ElementaryTypeName| {
+        elementary_type_info(elementary).ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))
+    };
+    match (source, target) {
+        (_, ElementaryTypeName::STRING) => {
+            let source = type_info(source)?;
+            compile_string_conversion(emitter, ctx, func, StringConversion::NumToString { source })
+        }
+        (ElementaryTypeName::STRING, _) => {
+            let target = type_info(target)?;
+            compile_string_conversion(emitter, ctx, func, StringConversion::StringToNum { target })
+        }
+        _ => {
+            let (source, target) = (type_info(source)?, type_info(target)?);
+            compile_type_conversion(emitter, ctx, func, source, target)
+        }
     }
-    let source = resolve_type_name(&Id::from(parts[0]))?;
-    let target = resolve_type_name(&Id::from(parts[1]))?;
-    Some((source, target))
 }
 
 /// Describes a string ↔ numeric conversion direction.
-pub(crate) enum StringConversion {
+enum StringConversion {
     /// Numeric → STRING (e.g., INT_TO_STRING, DWORD_TO_STRING).
     NumToString { source: VarTypeInfo },
     /// STRING → Numeric (e.g., STRING_TO_INT, STRING_TO_REAL).
     StringToNum { target: VarTypeInfo },
 }
 
-/// Checks if a function name is a string conversion (e.g., "int_to_string").
-///
-/// Returns `Some(StringConversion)` if the name matches `*_TO_STRING` or
-/// `STRING_TO_*` and the non-string part is a recognized type name.
-pub(crate) fn parse_string_conversion(name: &str) -> Option<StringConversion> {
-    let upper = name.to_uppercase();
-    let parts: Vec<&str> = upper.splitn(2, "_TO_").collect();
-    if parts.len() != 2 {
-        return None;
-    }
-    if parts[1] == "STRING" {
-        let source = resolve_type_name(&Id::from(parts[0]))?;
-        Some(StringConversion::NumToString { source })
-    } else if parts[0] == "STRING" {
-        let target = resolve_type_name(&Id::from(parts[1]))?;
-        Some(StringConversion::StringToNum { target })
-    } else {
-        None
-    }
-}
-
 /// Compiles a string ↔ numeric conversion function call.
-pub(crate) fn compile_string_conversion(
+fn compile_string_conversion(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
@@ -1175,98 +966,5 @@ pub(crate) fn compile_string_conversion(
             emitter.emit_builtin(func_id);
             Ok(())
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn lookup_builtin_when_all_width_numeric_then_selects_by_width() {
-        // EXPT/ABS/SEL are defined for every op width, independent of sign.
-        // An unsigned ABS never reaches code generation: the analyzer
-        // removes it (`xform_remove_unsigned_abs`).
-        assert_eq!(
-            lookup_builtin("ABS", OpWidth::W32, Signedness::Signed),
-            Some(opcode::builtin::ABS_I32)
-        );
-        assert_eq!(
-            lookup_builtin("ABS", OpWidth::W64, Signedness::Signed),
-            Some(opcode::builtin::ABS_I64)
-        );
-        assert_eq!(
-            lookup_builtin("EXPT", OpWidth::F32, Signedness::Signed),
-            Some(opcode::builtin::EXPT_F32)
-        );
-        assert_eq!(
-            lookup_builtin("SEL", OpWidth::F64, Signedness::Signed),
-            Some(opcode::builtin::SEL_F64)
-        );
-    }
-
-    #[test]
-    fn lookup_builtin_when_signed_numeric_then_selects_by_width_and_sign() {
-        assert_eq!(
-            lookup_builtin("MIN", OpWidth::W32, Signedness::Signed),
-            Some(opcode::builtin::MIN_I32)
-        );
-        assert_eq!(
-            lookup_builtin("MIN", OpWidth::W32, Signedness::Unsigned),
-            Some(opcode::builtin::MIN_U32)
-        );
-        assert_eq!(
-            lookup_builtin("MAX", OpWidth::W64, Signedness::Unsigned),
-            Some(opcode::builtin::MAX_U64)
-        );
-        // Float variants ignore signedness.
-        assert_eq!(
-            lookup_builtin("LIMIT", OpWidth::F32, Signedness::Unsigned),
-            Some(opcode::builtin::LIMIT_F32)
-        );
-        assert_eq!(
-            lookup_builtin("LIMIT", OpWidth::F64, Signedness::Signed),
-            Some(opcode::builtin::LIMIT_F64)
-        );
-    }
-
-    #[test]
-    fn lookup_builtin_when_float_only_and_float_width_then_selects_variant() {
-        assert_eq!(
-            lookup_builtin("SIN", OpWidth::F32, Signedness::Signed),
-            Some(opcode::builtin::SIN_F32)
-        );
-        assert_eq!(
-            lookup_builtin("ATAN2", OpWidth::F64, Signedness::Signed),
-            Some(opcode::builtin::ATAN2_F64)
-        );
-    }
-
-    #[test]
-    fn lookup_builtin_when_float_only_and_integer_width_then_none() {
-        assert_eq!(
-            lookup_builtin("SIN", OpWidth::W32, Signedness::Signed),
-            None
-        );
-        assert_eq!(
-            lookup_builtin("SQRT", OpWidth::W64, Signedness::Unsigned),
-            None
-        );
-    }
-
-    #[test]
-    fn lookup_builtin_when_case_insensitive_then_matches() {
-        assert_eq!(
-            lookup_builtin("sin", OpWidth::F32, Signedness::Signed),
-            Some(opcode::builtin::SIN_F32)
-        );
-    }
-
-    #[test]
-    fn lookup_builtin_when_unknown_name_then_none() {
-        assert_eq!(
-            lookup_builtin("NOT_A_BUILTIN", OpWidth::F32, Signedness::Signed),
-            None
-        );
     }
 }

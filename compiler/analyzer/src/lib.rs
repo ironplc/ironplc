@@ -24,6 +24,7 @@ mod callee_resolution;
 mod constant_folding;
 mod function_environment;
 pub mod intermediate_type;
+mod intrinsic;
 mod result;
 mod rule_abstract_not_instantiated;
 mod rule_assignment_aggregate_type_compat;
@@ -118,9 +119,8 @@ pub use intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, typed_overload, FoldFailure, Overload,
 };
 pub use intermediates::enumeration::resolve_ordinal_values;
-pub use intermediates::operator_function_form::{
-    operator_function_form, FormOf, OperatorFunctionForm,
-};
+pub use intermediates::operator_function_form::FormOf;
+pub use intrinsic::{BitShift, Intrinsic, NumericFunction, StringFunction, TimeFunction};
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use type_attributes::TypeAttributes;
 pub use type_category::TypeCategory;

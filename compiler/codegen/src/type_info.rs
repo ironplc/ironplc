@@ -152,9 +152,18 @@ pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
     // Try as elementary type first (the common case), then as a generic
     // type naming an untyped literal.
     match ElementaryTypeName::try_from(name) {
-        Ok(elementary) => var_type_info(ironplc_analyzer::elementary_type(&elementary.into())?),
+        Ok(elementary) => elementary_type_info(&elementary),
         Err(()) => literal_type_info(&GenericTypeName::try_from(name).ok()?),
     }
+}
+
+/// Maps an elementary type to its `VarTypeInfo`.
+///
+/// Returns `None` for STRING and WSTRING, which are handled separately.
+pub(crate) fn elementary_type_info(elementary: &ElementaryTypeName) -> Option<VarTypeInfo> {
+    var_type_info(ironplc_analyzer::elementary_type(
+        &elementary.clone().into(),
+    )?)
 }
 
 /// Projects what a type *is* onto how this backend operates on it.
