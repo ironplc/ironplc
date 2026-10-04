@@ -10,6 +10,37 @@ address, store". They become one sequence: resolve a `Place`, `compile_expr` at
 that hands the backend a place directly, so the change must preserve behaviour
 and the emitted bytecode must not change.
 
+## Why
+
+ADR-0056 sets the direction: backends lower, they do not decide. #2103 moved
+the conversion of an assigned value into the analyzer. What codegen still does
+for an assignment is lowering: compute the target's address and narrow the
+value to fit the slot. Each kind of target does that in its own code today, so
+nothing makes two stores into the same type agree. On `main`, with `x`, `y`
+and `a` all `SINT` and `a = 100`:
+
+- `y := a + a` stores -56.
+- `p^ := a + a`, with `p : REF_TO SINT` pointing at `x`, stores 200.
+
+This prefactor makes the lowering a property of the target:
+
+- **Store sequences:** the six hand-written ones in the assignment arms become
+  one, `Place::emit_store`. Bit and partial access already use it.
+- **Truncation call sites in codegen:** 16 become 11. The six in the
+  assignment arms go. The guarded arm of equivalence check 5 keeps one.
+- **`compile_stmt.rs`:** about 886 lines become about 600.
+- **New kinds of target** are added once, in `Place`, instead of once per arm.
+- **A store becomes a place plus a value**, which later work needs before it
+  can hand the backend a place.
+
+Limits: it changes no behaviour and fixes nothing, including `p^ :=`. It
+leaves the read side, STRING stores, FB fields and whole-aggregate copies
+alone. It also leaves the eight truncation sites outside assignment
+statements (initial values, the FOR variable, call results). The payoff
+depends on the follow-ups: routing loads through `Place`, then moving `p^ :=`,
+the FOR variable, initial values and FB outputs onto it. Each difference like
+the one above then becomes an explicit decision.
+
 ## Architecture
 
 Line numbers are as of `30dc88a`. Since `7951b20`, the only change to these
@@ -112,6 +143,11 @@ comment gains a sentence saying assignment targets use it too.
   single slot. `compile_reference.rs` registers a reference-to-array with
   `is_string_element: false`, so neither today's code nor `Place` treats the
   element as a STRING. The bytecode is the same before and after.
+- `p^ := v` does not narrow the value to the referenced type. With
+  `p : REF_TO SINT` and `a : SINT := 100`, `p^ := a + a` leaves 200 in the
+  `SINT`, where `y := a + a` stores -56. The dereference arm compiles the
+  value at `DEFAULT_OP_TYPE` and stores with `STORE_INDIRECT` without
+  truncating. The arm is out of scope here, so its bytecode is unchanged.
 
 ## Characterization tests
 
