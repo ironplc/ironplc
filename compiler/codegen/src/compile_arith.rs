@@ -21,9 +21,9 @@
 //! The function form folds its inputs from the left the same way. See
 //! `specs/design/arithmetic-operator-overloads.md`.
 
-use ironplc_analyzer::{resolve_arithmetic_overload, typed_overload, Overload};
+use ironplc_analyzer::{resolve_arithmetic_overload, typed_overload, Intrinsic, Overload};
 use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
-use ironplc_dsl::core::{Located, SourceSpan};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{BinaryExpr, Expr, Function, Operator};
 
@@ -161,8 +161,8 @@ fn typed_step(
     }
 }
 
-/// Compiles the typed overload `name` over `left` and `right` through its
-/// routine.
+/// Compiles the typed overload `name` over `left` and `right` through the
+/// routine of the time function its signature names.
 fn compile_typed(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -171,14 +171,16 @@ fn compile_typed(
     right: &Expr,
     span: SourceSpan,
 ) -> Result<(), Diagnostic> {
-    // Every typed name the analyzer answers with has a routine; a test pins
-    // it for both widths of every overload.
-    let Some((arith, width)) = time_arith_for(&name.to_ascii_lowercase()) else {
+    // Every typed name the analyzer answers with is registered as a time
+    // function; a test pins it for both widths of every overload.
+    let Some(Intrinsic::Time { function, long }) = ctx.intrinsics.get(&Id::from(name)).cloned()
+    else {
         return Err(Diagnostic::internal_error_at(Label::span(
             span,
-            format!("No routine for the typed overload {name}"),
+            format!("No time function for the typed overload {name}"),
         )));
     };
+    let (arith, width) = time_arith_for(function, long);
     compile_time_arith(emitter, ctx, arith, width, left, right)
 }
 

@@ -2,8 +2,12 @@
 //!
 //! This module defines the standard library functions specified in
 //! IEC 61131-3 Section 2.5.1, including:
-//! - Type conversion functions (INT_TO_REAL, REAL_TO_INT, etc.)
 //! - Numeric functions (ABS, SQRT, MIN, MAX, LIMIT)
+//!
+//! The type conversion functions (INT_TO_REAL, REAL_TO_INT, etc.) are in
+//! `stdlib_conversion_function` and the time and date functions in
+//! `stdlib_time_function`. Each signature names the [`Intrinsic`] it stands
+//! for.
 //!
 //! These functions are automatically available in the function environment
 //! and do not need to be declared by the user.
@@ -14,7 +18,9 @@ use ironplc_dsl::core::Id;
 use crate::function_environment::FunctionSignature;
 use crate::intermediate_type::IntermediateFunctionParameter;
 use crate::intermediates::operator_function_form;
+use crate::intermediates::stdlib_conversion_function;
 use crate::intermediates::stdlib_time_function;
+use crate::intrinsic::{BitShift, Intrinsic, NumericFunction, StringFunction};
 
 /// Helper to create an input parameter.
 pub(super) fn input_param(name: &str, param_type_name: &str) -> IntermediateFunctionParameter {
@@ -26,346 +32,6 @@ pub(super) fn input_param(name: &str, param_type_name: &str) -> IntermediateFunc
         is_inout: false,
         is_reference: false,
     }
-}
-
-/// Creates a type conversion function signature.
-///
-/// Type conversion functions follow the naming convention `<SOURCE>_TO_<TARGET>`
-/// and take a single input parameter of the source type, returning the target type.
-fn build_conversion_function(source_name: &str, target_name: &str) -> FunctionSignature {
-    let name = format!("{}_TO_{}", source_name, target_name);
-    FunctionSignature::stdlib(
-        &name,
-        TypeName::from(target_name),
-        vec![input_param("IN", source_name)],
-    )
-}
-
-// =============================================================================
-// Type Conversion Function Definitions (IEC 61131-3 Section 2.5.1.5)
-// =============================================================================
-
-/// Signed integer type names for conversion functions.
-const SIGNED_INT_TYPES: &[&str] = &["SINT", "INT", "DINT", "LINT"];
-
-/// Unsigned integer type names for conversion functions.
-const UNSIGNED_INT_TYPES: &[&str] = &["USINT", "UINT", "UDINT", "ULINT"];
-
-/// Real (floating-point) type names for conversion functions.
-const REAL_TYPES: &[&str] = &["REAL", "LREAL"];
-
-/// All integer type names (signed + unsigned) for BOOL conversion targets.
-const ALL_INT_TYPES: &[&str] = &[
-    "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT",
-];
-
-/// Bit string type names (excluding BOOL) for conversion functions.
-const BIT_STRING_TYPES: &[&str] = &["BYTE", "WORD", "DWORD", "LWORD"];
-
-/// All time and date type names (including short aliases) for conversion functions.
-///
-/// Includes both canonical names (TIME_OF_DAY, DATE_AND_TIME) and their
-/// short aliases (TOD, DT) since function lookup is by exact name.
-const ALL_TIME_DATE_TYPES: &[&str] = &[
-    "TIME",
-    "LTIME",
-    "DATE",
-    "LDATE",
-    "TOD",
-    "TIME_OF_DAY",
-    "LTOD",
-    "LTIME_OF_DAY",
-    "DT",
-    "DATE_AND_TIME",
-    "LDT",
-    "LDATE_AND_TIME",
-];
-
-/// Integer, real, and bit string type names that time/date types convert to/from.
-const TIME_DATE_TARGETS: &[&str] = &[
-    "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "REAL", "LREAL", "BYTE",
-    "WORD", "DWORD", "LWORD",
-];
-
-/// Generates all integer-to-integer conversion functions.
-///
-/// Creates functions like INT_TO_DINT, DINT_TO_INT, SINT_TO_LINT, etc.
-fn get_int_to_int_conversions() -> Vec<FunctionSignature> {
-    let mut functions = Vec::new();
-
-    // All signed integer types
-    for source_name in SIGNED_INT_TYPES {
-        for target_name in SIGNED_INT_TYPES {
-            if source_name != target_name {
-                functions.push(build_conversion_function(source_name, target_name));
-            }
-        }
-    }
-
-    // All unsigned integer types
-    for source_name in UNSIGNED_INT_TYPES {
-        for target_name in UNSIGNED_INT_TYPES {
-            if source_name != target_name {
-                functions.push(build_conversion_function(source_name, target_name));
-            }
-        }
-    }
-
-    // Signed to unsigned conversions
-    for source_name in SIGNED_INT_TYPES {
-        for target_name in UNSIGNED_INT_TYPES {
-            functions.push(build_conversion_function(source_name, target_name));
-        }
-    }
-
-    // Unsigned to signed conversions
-    for source_name in UNSIGNED_INT_TYPES {
-        for target_name in SIGNED_INT_TYPES {
-            functions.push(build_conversion_function(source_name, target_name));
-        }
-    }
-
-    functions
-}
-
-/// Generates all integer-to-real conversion functions.
-///
-/// Creates functions like INT_TO_REAL, DINT_TO_LREAL, UINT_TO_REAL, etc.
-fn get_int_to_real_conversions() -> Vec<FunctionSignature> {
-    let mut functions = Vec::new();
-
-    // Signed integer to real
-    for source_name in SIGNED_INT_TYPES {
-        for target_name in REAL_TYPES {
-            functions.push(build_conversion_function(source_name, target_name));
-        }
-    }
-
-    // Unsigned integer to real
-    for source_name in UNSIGNED_INT_TYPES {
-        for target_name in REAL_TYPES {
-            functions.push(build_conversion_function(source_name, target_name));
-        }
-    }
-
-    functions
-}
-
-/// Generates all real-to-integer conversion functions.
-///
-/// Creates functions like REAL_TO_INT, LREAL_TO_DINT, REAL_TO_UINT, etc.
-fn get_real_to_int_conversions() -> Vec<FunctionSignature> {
-    let mut functions = Vec::new();
-
-    // Real to signed integer
-    for source_name in REAL_TYPES {
-        for target_name in SIGNED_INT_TYPES {
-            functions.push(build_conversion_function(source_name, target_name));
-        }
-    }
-
-    // Real to unsigned integer
-    for source_name in REAL_TYPES {
-        for target_name in UNSIGNED_INT_TYPES {
-            functions.push(build_conversion_function(source_name, target_name));
-        }
-    }
-
-    functions
-}
-
-/// Generates all real-to-real conversion functions.
-///
-/// Creates functions like REAL_TO_LREAL, LREAL_TO_REAL.
-fn get_real_to_real_conversions() -> Vec<FunctionSignature> {
-    let mut functions = Vec::new();
-
-    for source_name in REAL_TYPES {
-        for target_name in REAL_TYPES {
-            if source_name != target_name {
-                functions.push(build_conversion_function(source_name, target_name));
-            }
-        }
-    }
-
-    functions
-}
-
-/// Generates BOOL-to-integer conversion functions.
-///
-/// Creates functions like BOOL_TO_SINT, BOOL_TO_INT, BOOL_TO_DINT, etc.
-/// FALSE converts to 0, TRUE converts to 1.
-fn get_bool_to_int_conversions() -> Vec<FunctionSignature> {
-    ALL_INT_TYPES
-        .iter()
-        .map(|target| build_conversion_function("BOOL", target))
-        .collect()
-}
-
-/// Generates integer-to-BOOL conversion functions.
-///
-/// Creates functions like SINT_TO_BOOL, INT_TO_BOOL, DINT_TO_BOOL, etc.
-/// 0 converts to FALSE, any non-zero value converts to TRUE.
-fn get_int_to_bool_conversions() -> Vec<FunctionSignature> {
-    ALL_INT_TYPES
-        .iter()
-        .map(|source| build_conversion_function(source, "BOOL"))
-        .collect()
-}
-
-// =============================================================================
-// Bit String Type Conversion Functions (IEC 61131-3 Section 2.5.1.5)
-// =============================================================================
-
-/// Generates bit-string-to-bit-string conversion functions.
-///
-/// Creates functions like BYTE_TO_WORD, WORD_TO_DWORD, DWORD_TO_LWORD, etc.
-fn get_bit_string_to_bit_string_conversions() -> Vec<FunctionSignature> {
-    let mut functions = Vec::new();
-
-    for source_name in BIT_STRING_TYPES {
-        for target_name in BIT_STRING_TYPES {
-            if source_name != target_name {
-                functions.push(build_conversion_function(source_name, target_name));
-            }
-        }
-    }
-
-    functions
-}
-
-/// Generates bit-string-to-integer conversion functions.
-///
-/// Creates functions like BYTE_TO_INT, WORD_TO_DINT, DWORD_TO_LINT, etc.
-fn get_bit_string_to_int_conversions() -> Vec<FunctionSignature> {
-    let mut functions = Vec::new();
-
-    for source_name in BIT_STRING_TYPES {
-        for target_name in ALL_INT_TYPES {
-            functions.push(build_conversion_function(source_name, target_name));
-        }
-    }
-
-    functions
-}
-
-/// Generates integer-to-bit-string conversion functions.
-///
-/// Creates functions like INT_TO_BYTE, DINT_TO_WORD, LINT_TO_DWORD, etc.
-fn get_int_to_bit_string_conversions() -> Vec<FunctionSignature> {
-    let mut functions = Vec::new();
-
-    for source_name in ALL_INT_TYPES {
-        for target_name in BIT_STRING_TYPES {
-            functions.push(build_conversion_function(source_name, target_name));
-        }
-    }
-
-    functions
-}
-
-/// Generates BOOL-to-bit-string and bit-string-to-BOOL conversion functions.
-///
-/// Creates functions like BOOL_TO_BYTE, BYTE_TO_BOOL, etc.
-fn get_bool_bit_string_conversions() -> Vec<FunctionSignature> {
-    let mut functions = Vec::new();
-
-    for bit_type in BIT_STRING_TYPES {
-        functions.push(build_conversion_function("BOOL", bit_type));
-        functions.push(build_conversion_function(bit_type, "BOOL"));
-    }
-
-    functions
-}
-
-/// Generates bit-string-to-real and real-to-bit-string conversion functions.
-///
-/// Creates functions like BYTE_TO_REAL, REAL_TO_BYTE, etc.
-fn get_bit_string_real_conversions() -> Vec<FunctionSignature> {
-    let mut functions = Vec::new();
-
-    for bit_type in BIT_STRING_TYPES {
-        for real_type in REAL_TYPES {
-            functions.push(build_conversion_function(bit_type, real_type));
-            functions.push(build_conversion_function(real_type, bit_type));
-        }
-    }
-
-    functions
-}
-
-// =============================================================================
-// Time/Date Type Conversion Functions (IEC 61131-3 Section 2.5.1.5)
-// =============================================================================
-
-/// Generates time/date type conversion functions.
-///
-/// Creates bidirectional conversions between all time/date types (TIME, DATE,
-/// TOD, DT and their long and alias forms) and integer, real, and bit string
-/// types. For example: TIME_TO_DWORD, DWORD_TO_TIME, DATE_TO_UDINT, etc.
-fn get_time_date_conversions() -> Vec<FunctionSignature> {
-    let mut functions = Vec::new();
-
-    for time_type in ALL_TIME_DATE_TYPES {
-        for target_type in TIME_DATE_TARGETS {
-            functions.push(build_conversion_function(time_type, target_type));
-            functions.push(build_conversion_function(target_type, time_type));
-        }
-    }
-
-    functions
-}
-
-// =============================================================================
-// String Conversion Function Definitions (IEC 61131-3 Section 2.5.1.5)
-// =============================================================================
-
-/// Numeric types that convert to STRING (W32 signed).
-const SIGNED_INT_TO_STRING_TYPES: &[&str] = &["SINT", "INT", "DINT"];
-
-/// Numeric types that convert to STRING (W32 unsigned / bit-string).
-const UNSIGNED_INT_TO_STRING_TYPES: &[&str] = &["USINT", "UINT", "UDINT", "BYTE", "WORD", "DWORD"];
-
-/// Integer and bit-string types that can be parsed from STRING. A bit-string
-/// target converts as the unsigned integer of its width.
-const STRING_TO_INT_TYPES: &[&str] = &[
-    "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "BYTE", "WORD", "DWORD",
-    "LWORD",
-];
-
-/// Returns string ↔ numeric conversion function definitions.
-///
-/// Covers all W32 numeric types: signed integers (SINT, INT, DINT),
-/// unsigned integers and bit-strings (USINT, UINT, UDINT, BYTE, WORD, DWORD),
-/// and REAL. Each type gets a *_TO_STRING function, and a subset gets
-/// STRING_TO_* functions.
-fn get_string_conversion_functions() -> Vec<FunctionSignature> {
-    let mut functions = Vec::new();
-
-    // Signed integer → STRING
-    for source in SIGNED_INT_TO_STRING_TYPES {
-        functions.push(build_conversion_function(source, "STRING"));
-    }
-
-    // Unsigned integer / bit-string → STRING
-    for source in UNSIGNED_INT_TO_STRING_TYPES {
-        functions.push(build_conversion_function(source, "STRING"));
-    }
-
-    // REAL → STRING
-    functions.push(build_conversion_function("REAL", "STRING"));
-
-    // STRING → integer and bit-string types
-    for target in STRING_TO_INT_TYPES {
-        functions.push(build_conversion_function("STRING", target));
-    }
-
-    // STRING → real types
-    for target in REAL_TYPES {
-        functions.push(build_conversion_function("STRING", target));
-    }
-
-    functions
 }
 
 // =============================================================================
@@ -383,30 +49,35 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
         // ABS: absolute value (ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "ABS",
+            Intrinsic::Numeric(NumericFunction::Abs),
             TypeName::from("ANY_NUM"),
             vec![input_param("IN", "ANY_NUM")],
         ),
         // SQRT: square root (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "SQRT",
+            Intrinsic::Numeric(NumericFunction::Sqrt),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // MIN: minimum of two values (ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "MIN",
+            Intrinsic::Numeric(NumericFunction::Min),
             TypeName::from("ANY_NUM"),
             vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
         ),
         // MAX: maximum of two values (ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "MAX",
+            Intrinsic::Numeric(NumericFunction::Max),
             TypeName::from("ANY_NUM"),
             vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
         ),
         // LIMIT: clamp value to range (ANY_NUM, ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "LIMIT",
+            Intrinsic::Numeric(NumericFunction::Limit),
             TypeName::from("ANY_NUM"),
             vec![
                 input_param("MN", "ANY_NUM"),
@@ -417,6 +88,7 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
         // SEL: binary selection (BOOL, ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "SEL",
+            Intrinsic::Numeric(NumericFunction::Sel),
             TypeName::from("ANY_NUM"),
             vec![
                 input_param("G", "BOOL"),
@@ -427,60 +99,70 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
         // LN: natural logarithm (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "LN",
+            Intrinsic::Numeric(NumericFunction::Ln),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // LOG: base-10 logarithm (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "LOG",
+            Intrinsic::Numeric(NumericFunction::Log),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // EXP: natural exponential (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "EXP",
+            Intrinsic::Numeric(NumericFunction::Exp),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // SIN: sine (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "SIN",
+            Intrinsic::Numeric(NumericFunction::Sin),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // COS: cosine (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "COS",
+            Intrinsic::Numeric(NumericFunction::Cos),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // TAN: tangent (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "TAN",
+            Intrinsic::Numeric(NumericFunction::Tan),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // ASIN: arc sine (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "ASIN",
+            Intrinsic::Numeric(NumericFunction::Asin),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // ACOS: arc cosine (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "ACOS",
+            Intrinsic::Numeric(NumericFunction::Acos),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // ATAN: arc tangent (ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "ATAN",
+            Intrinsic::Numeric(NumericFunction::Atan),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         // ATAN2: two-argument arc tangent (ANY_REAL, ANY_REAL -> ANY_REAL)
         FunctionSignature::stdlib(
             "ATAN2",
+            Intrinsic::Numeric(NumericFunction::Atan2),
             TypeName::from("ANY_REAL"),
             vec![
                 input_param("IN1", "ANY_REAL"),
@@ -490,6 +172,7 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
         // EXPT: exponentiation (ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "EXPT",
+            Intrinsic::Numeric(NumericFunction::Expt),
             TypeName::from("ANY_NUM"),
             vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
         ),
@@ -514,6 +197,7 @@ fn get_selection_functions() -> Vec<FunctionSignature> {
         // MUX supports K + 2..16 IN values = 3..17 total input arguments
         FunctionSignature::stdlib_extensible(
             "MUX",
+            Intrinsic::Mux,
             TypeName::from("ANY_NUM"),
             vec![
                 input_param("K", "ANY_INT"),
@@ -539,6 +223,7 @@ fn get_assignment_functions() -> Vec<FunctionSignature> {
         // MOVE: assignment (ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "MOVE",
+            Intrinsic::Move,
             TypeName::from("ANY_NUM"),
             vec![input_param("IN", "ANY_NUM")],
         ),
@@ -556,6 +241,7 @@ fn get_assignment_functions() -> Vec<FunctionSignature> {
 fn get_trunc_function() -> Vec<FunctionSignature> {
     vec![FunctionSignature::stdlib(
         "TRUNC",
+        Intrinsic::Trunc,
         TypeName::from("ANY_INT"),
         vec![input_param("IN", "ANY_REAL")],
     )]
@@ -573,11 +259,13 @@ fn get_bcd_functions() -> Vec<FunctionSignature> {
     vec![
         FunctionSignature::stdlib(
             "BCD_TO_INT",
+            Intrinsic::BcdToInt,
             TypeName::from("ANY_INT"),
             vec![input_param("IN", "ANY_BIT")],
         ),
         FunctionSignature::stdlib(
             "INT_TO_BCD",
+            Intrinsic::IntToBcd,
             TypeName::from("ANY_BIT"),
             vec![input_param("IN", "ANY_INT")],
         ),
@@ -597,21 +285,25 @@ fn get_bitshift_functions() -> Vec<FunctionSignature> {
     vec![
         FunctionSignature::stdlib(
             "SHL",
+            Intrinsic::BitShift(BitShift::Shl),
             TypeName::from("ANY_BIT"),
             vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
         ),
         FunctionSignature::stdlib(
             "SHR",
+            Intrinsic::BitShift(BitShift::Shr),
             TypeName::from("ANY_BIT"),
             vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
         ),
         FunctionSignature::stdlib(
             "ROL",
+            Intrinsic::BitShift(BitShift::Rol),
             TypeName::from("ANY_BIT"),
             vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
         ),
         FunctionSignature::stdlib(
             "ROR",
+            Intrinsic::BitShift(BitShift::Ror),
             TypeName::from("ANY_BIT"),
             vec![input_param("IN", "ANY_BIT"), input_param("N", "ANY_INT")],
         ),
@@ -626,12 +318,14 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // LEN: current length of a string (ANY_STRING -> INT)
         FunctionSignature::stdlib(
             "LEN",
+            Intrinsic::String(StringFunction::Len),
             TypeName::from("INT"),
             vec![input_param("IN", "ANY_STRING")],
         ),
         // FIND: find first occurrence of IN2 within IN1 (ANY_STRING, ANY_STRING -> INT)
         FunctionSignature::stdlib(
             "FIND",
+            Intrinsic::String(StringFunction::Find),
             TypeName::from("INT"),
             vec![
                 input_param("IN1", "ANY_STRING"),
@@ -642,6 +336,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
         FunctionSignature::stdlib(
             "REPLACE",
+            Intrinsic::String(StringFunction::Replace),
             TypeName::from("ANY_STRING"),
             vec![
                 input_param("IN1", "ANY_STRING"),
@@ -654,6 +349,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_STRING, ANY_INT -> ANY_STRING)
         FunctionSignature::stdlib(
             "INSERT",
+            Intrinsic::String(StringFunction::Insert),
             TypeName::from("ANY_STRING"),
             vec![
                 input_param("IN1", "ANY_STRING"),
@@ -665,6 +361,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
         FunctionSignature::stdlib(
             "DELETE",
+            Intrinsic::String(StringFunction::Delete),
             TypeName::from("ANY_STRING"),
             vec![
                 input_param("IN1", "ANY_STRING"),
@@ -676,6 +373,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_INT -> ANY_STRING)
         FunctionSignature::stdlib(
             "LEFT",
+            Intrinsic::String(StringFunction::Left),
             TypeName::from("ANY_STRING"),
             vec![input_param("IN", "ANY_STRING"), input_param("L", "ANY_INT")],
         ),
@@ -683,6 +381,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_INT -> ANY_STRING)
         FunctionSignature::stdlib(
             "RIGHT",
+            Intrinsic::String(StringFunction::Right),
             TypeName::from("ANY_STRING"),
             vec![input_param("IN", "ANY_STRING"), input_param("L", "ANY_INT")],
         ),
@@ -690,6 +389,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_INT, ANY_INT -> ANY_STRING)
         FunctionSignature::stdlib(
             "MID",
+            Intrinsic::String(StringFunction::Mid),
             TypeName::from("ANY_STRING"),
             vec![
                 input_param("IN", "ANY_STRING"),
@@ -701,6 +401,7 @@ fn get_string_functions() -> Vec<FunctionSignature> {
         // (ANY_STRING, ANY_STRING -> ANY_STRING)
         FunctionSignature::stdlib(
             "CONCAT",
+            Intrinsic::String(StringFunction::Concat),
             TypeName::from("ANY_STRING"),
             vec![
                 input_param("IN1", "ANY_STRING"),
@@ -721,26 +422,8 @@ fn get_string_functions() -> Vec<FunctionSignature> {
 pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     let mut functions = Vec::new();
 
-    // Type conversion functions
-    functions.extend(get_int_to_int_conversions());
-    functions.extend(get_int_to_real_conversions());
-    functions.extend(get_real_to_int_conversions());
-    functions.extend(get_real_to_real_conversions());
-    functions.extend(get_bool_to_int_conversions());
-    functions.extend(get_int_to_bool_conversions());
-
-    // Bit string type conversion functions
-    functions.extend(get_bit_string_to_bit_string_conversions());
-    functions.extend(get_bit_string_to_int_conversions());
-    functions.extend(get_int_to_bit_string_conversions());
-    functions.extend(get_bool_bit_string_conversions());
-    functions.extend(get_bit_string_real_conversions());
-
-    // Time/date type conversion functions
-    functions.extend(get_time_date_conversions());
-
-    // String conversion functions
-    functions.extend(get_string_conversion_functions());
+    // Type conversion functions (IEC 61131-3 Section 2.5.1.5)
+    functions.extend(stdlib_conversion_function::get_conversion_functions());
 
     // Numeric functions
     functions.extend(get_numeric_functions());
@@ -812,11 +495,13 @@ pub fn get_compiler_intrinsic_functions() -> Vec<FunctionSignature> {
     vec![
         FunctionSignature::stdlib(
             "__TRUNC",
+            Intrinsic::Numeric(NumericFunction::TruncReal),
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
         FunctionSignature::stdlib(
             "__MOD",
+            Intrinsic::Numeric(NumericFunction::ModReal),
             TypeName::from("ANY_REAL"),
             vec![
                 input_param("IN1", "ANY_REAL"),
@@ -839,6 +524,7 @@ pub fn get_compiler_intrinsic_functions() -> Vec<FunctionSignature> {
 pub fn get_sizeof_function() -> FunctionSignature {
     FunctionSignature::stdlib(
         "SIZEOF",
+        Intrinsic::Sizeof,
         TypeName::from("ANY_INT"),
         vec![input_param("IN", "ANY")],
     )
@@ -847,126 +533,11 @@ pub fn get_sizeof_function() -> FunctionSignature {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_dsl::common::FunctionReturnType;
+    use crate::intermediates::operator_function_form::FormOf;
+    use crate::intrinsic::TimeFunction;
+    use ironplc_dsl::common::{ElementaryTypeName, FunctionReturnType};
+    use ironplc_dsl::textual::Operator;
     use rstest::rstest;
-
-    #[rstest]
-    #[case::sint("STRING_TO_SINT", "SINT")]
-    #[case::int("STRING_TO_INT", "INT")]
-    #[case::dint("STRING_TO_DINT", "DINT")]
-    #[case::usint("STRING_TO_USINT", "USINT")]
-    #[case::uint("STRING_TO_UINT", "UINT")]
-    #[case::udint("STRING_TO_UDINT", "UDINT")]
-    #[case::byte("STRING_TO_BYTE", "BYTE")]
-    #[case::word("STRING_TO_WORD", "WORD")]
-    #[case::dword("STRING_TO_DWORD", "DWORD")]
-    #[case::lint("STRING_TO_LINT", "LINT")]
-    #[case::ulint("STRING_TO_ULINT", "ULINT")]
-    #[case::lword("STRING_TO_LWORD", "LWORD")]
-    #[case::real("STRING_TO_REAL", "REAL")]
-    #[case::lreal("STRING_TO_LREAL", "LREAL")]
-    fn get_string_conversion_functions_when_string_to_integer_then_registered_with_target_return(
-        #[case] name: &str,
-        #[case] target: &str,
-    ) {
-        let functions = get_string_conversion_functions();
-        let sig = functions
-            .iter()
-            .find(|f| f.name.original() == name)
-            .unwrap();
-        assert_eq!(sig.parameters.len(), 1);
-        assert_eq!(sig.parameters[0].param_type, TypeName::from("STRING"));
-        assert_eq!(
-            sig.return_type,
-            Some(FunctionReturnType::Named(TypeName::from(target)))
-        );
-    }
-
-    #[test]
-    fn build_conversion_function_when_called_then_has_correct_signature() {
-        let sig = build_conversion_function("INT", "REAL");
-
-        assert_eq!(sig.name.original(), "INT_TO_REAL");
-        assert!(sig.is_stdlib());
-        assert_eq!(sig.parameters.len(), 1);
-        assert_eq!(sig.parameters[0].name.original(), "IN");
-        assert!(sig.parameters[0].is_input);
-        // Parameter type is now TypeName, not IntermediateType
-        assert_eq!(sig.parameters[0].param_type, TypeName::from("INT"));
-        // Return type is now TypeName, not IntermediateType
-        assert_eq!(
-            sig.return_type,
-            Some(FunctionReturnType::Named(TypeName::from("REAL")))
-        );
-    }
-
-    #[test]
-    fn get_int_to_int_conversions_contains_expected_functions() {
-        let functions = get_int_to_int_conversions();
-
-        // Check some specific conversions exist
-        assert!(functions.iter().any(|f| f.name.original() == "INT_TO_DINT"));
-        assert!(functions.iter().any(|f| f.name.original() == "DINT_TO_INT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "SINT_TO_LINT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "UINT_TO_UDINT"));
-        assert!(functions.iter().any(|f| f.name.original() == "INT_TO_UINT"));
-        assert!(functions.iter().any(|f| f.name.original() == "UINT_TO_INT"));
-
-        // Self-conversions should not exist
-        assert!(!functions.iter().any(|f| f.name.original() == "INT_TO_INT"));
-        assert!(!functions
-            .iter()
-            .any(|f| f.name.original() == "DINT_TO_DINT"));
-    }
-
-    #[test]
-    fn get_int_to_real_conversions_contains_expected_functions() {
-        let functions = get_int_to_real_conversions();
-
-        assert!(functions.iter().any(|f| f.name.original() == "INT_TO_REAL"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "INT_TO_LREAL"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "DINT_TO_REAL"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "UINT_TO_REAL"));
-    }
-
-    #[test]
-    fn get_real_to_int_conversions_contains_expected_functions() {
-        let functions = get_real_to_int_conversions();
-
-        assert!(functions.iter().any(|f| f.name.original() == "REAL_TO_INT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "LREAL_TO_INT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "REAL_TO_DINT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "LREAL_TO_UINT"));
-    }
-
-    #[test]
-    fn get_real_to_real_conversions_contains_expected_functions() {
-        let functions = get_real_to_real_conversions();
-
-        assert_eq!(functions.len(), 2);
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "REAL_TO_LREAL"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "LREAL_TO_REAL"));
-    }
 
     #[test]
     fn get_numeric_functions_when_called_then_contains_all_functions() {
@@ -1102,168 +673,6 @@ mod tests {
     }
 
     #[test]
-    fn get_bool_to_int_conversions_when_called_then_contains_all_targets() {
-        let functions = get_bool_to_int_conversions();
-
-        assert_eq!(functions.len(), 8);
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "BOOL_TO_SINT"));
-        assert!(functions.iter().any(|f| f.name.original() == "BOOL_TO_INT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "BOOL_TO_DINT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "BOOL_TO_LINT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "BOOL_TO_USINT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "BOOL_TO_UINT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "BOOL_TO_UDINT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "BOOL_TO_ULINT"));
-    }
-
-    #[test]
-    fn get_bool_to_int_conversions_when_called_then_has_correct_signature() {
-        let functions = get_bool_to_int_conversions();
-        let bool_to_int = functions
-            .iter()
-            .find(|f| f.name.original() == "BOOL_TO_INT")
-            .unwrap();
-
-        assert_eq!(bool_to_int.input_parameter_count(), 1);
-        assert_eq!(bool_to_int.parameters[0].name.original(), "IN");
-        assert_eq!(bool_to_int.parameters[0].param_type, TypeName::from("BOOL"));
-        assert_eq!(
-            bool_to_int.return_type,
-            Some(FunctionReturnType::Named(TypeName::from("INT")))
-        );
-        assert!(bool_to_int.is_stdlib());
-    }
-
-    #[test]
-    fn get_int_to_bool_conversions_when_called_then_contains_all_sources() {
-        let functions = get_int_to_bool_conversions();
-
-        assert_eq!(functions.len(), 8);
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "SINT_TO_BOOL"));
-        assert!(functions.iter().any(|f| f.name.original() == "INT_TO_BOOL"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "DINT_TO_BOOL"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "LINT_TO_BOOL"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "USINT_TO_BOOL"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "UINT_TO_BOOL"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "UDINT_TO_BOOL"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "ULINT_TO_BOOL"));
-    }
-
-    #[test]
-    fn get_int_to_bool_conversions_when_called_then_has_correct_signature() {
-        let functions = get_int_to_bool_conversions();
-        let int_to_bool = functions
-            .iter()
-            .find(|f| f.name.original() == "INT_TO_BOOL")
-            .unwrap();
-
-        assert_eq!(int_to_bool.input_parameter_count(), 1);
-        assert_eq!(int_to_bool.parameters[0].name.original(), "IN");
-        assert_eq!(int_to_bool.parameters[0].param_type, TypeName::from("INT"));
-        assert_eq!(
-            int_to_bool.return_type,
-            Some(FunctionReturnType::Named(TypeName::from("BOOL")))
-        );
-        assert!(int_to_bool.is_stdlib());
-    }
-
-    #[test]
-    fn get_bit_string_to_bit_string_conversions_when_called_then_contains_expected() {
-        let functions = get_bit_string_to_bit_string_conversions();
-
-        assert_eq!(functions.len(), 12);
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "BYTE_TO_WORD"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "WORD_TO_BYTE"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "DWORD_TO_LWORD"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "LWORD_TO_BYTE"));
-    }
-
-    #[test]
-    fn get_bit_string_to_bit_string_conversions_when_called_then_has_correct_signature() {
-        let functions = get_bit_string_to_bit_string_conversions();
-        let byte_to_word = functions
-            .iter()
-            .find(|f| f.name.original() == "BYTE_TO_WORD")
-            .unwrap();
-
-        assert_eq!(byte_to_word.input_parameter_count(), 1);
-        assert_eq!(byte_to_word.parameters[0].name.original(), "IN");
-        assert_eq!(
-            byte_to_word.parameters[0].param_type,
-            TypeName::from("BYTE")
-        );
-        assert_eq!(
-            byte_to_word.return_type,
-            Some(FunctionReturnType::Named(TypeName::from("WORD")))
-        );
-        assert!(byte_to_word.is_stdlib());
-    }
-
-    #[test]
-    fn get_bit_string_to_int_conversions_when_called_then_contains_expected() {
-        let functions = get_bit_string_to_int_conversions();
-
-        assert_eq!(functions.len(), 32);
-        assert!(functions.iter().any(|f| f.name.original() == "BYTE_TO_INT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "WORD_TO_DINT"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "DWORD_TO_UINT"));
-    }
-
-    #[test]
-    fn get_int_to_bit_string_conversions_when_called_then_contains_expected() {
-        let functions = get_int_to_bit_string_conversions();
-
-        assert_eq!(functions.len(), 32);
-        assert!(functions.iter().any(|f| f.name.original() == "INT_TO_BYTE"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "DINT_TO_WORD"));
-        assert!(functions
-            .iter()
-            .any(|f| f.name.original() == "UINT_TO_DWORD"));
-    }
-
-    #[test]
     fn get_assignment_functions_when_move_then_has_one_input() {
         let functions = get_assignment_functions();
         let move_fn = functions
@@ -1322,6 +731,43 @@ mod tests {
         let functions = get_all_stdlib_functions();
         assert!(functions.iter().any(|f| f.name.original() == "__TRUNC"));
         assert!(functions.iter().any(|f| f.name.original() == "__MOD"));
+    }
+
+    /// Every family of standard function names its intrinsic, so codegen
+    /// never has to recognize a function by its spelling.
+    #[rstest]
+    #[case::numeric("ABS", Intrinsic::Numeric(NumericFunction::Abs))]
+    #[case::compiler_intrinsic("__MOD", Intrinsic::Numeric(NumericFunction::ModReal))]
+    #[case::bit_shift("ROR", Intrinsic::BitShift(BitShift::Ror))]
+    #[case::string("CONCAT", Intrinsic::String(StringFunction::Concat))]
+    #[case::selection("MUX", Intrinsic::Mux)]
+    #[case::bcd("INT_TO_BCD", Intrinsic::IntToBcd)]
+    #[case::operator_form("ADD", Intrinsic::Operator(FormOf::Arithmetic(Operator::Add)))]
+    #[case::conversion(
+        "INT_TO_REAL",
+        Intrinsic::Conversion {
+            source: ElementaryTypeName::INT,
+            target: ElementaryTypeName::REAL,
+        }
+    )]
+    #[case::time(
+        "SUB_LTIME",
+        Intrinsic::Time { function: TimeFunction::SubTime, long: true }
+    )]
+    fn get_all_stdlib_functions_when_registered_then_names_its_intrinsic(
+        #[case] name: &str,
+        #[case] intrinsic: Intrinsic,
+    ) {
+        let sig = get_all_stdlib_functions()
+            .into_iter()
+            .find(|f| f.name == Id::from(name));
+
+        assert_eq!(sig.and_then(|sig| sig.intrinsic), Some(intrinsic));
+    }
+
+    #[test]
+    fn get_sizeof_function_when_called_then_names_sizeof() {
+        assert_eq!(get_sizeof_function().intrinsic, Some(Intrinsic::Sizeof));
     }
 
     #[test]
