@@ -222,7 +222,7 @@ fn compile_numeric_fold(
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     let Some((first, rest)) = args.split_first() else {
-        return Ok(());
+        return Err(Diagnostic::internal_error());
     };
     let mut left = Operand::Expr(first);
     for (arg, natural) in rest.iter().zip(steps) {

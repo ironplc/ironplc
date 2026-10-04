@@ -138,11 +138,13 @@ fn compile_user_function_call(
     // STRING parameters are copied into the function's data region before CALL;
     // a dummy zero is pushed for the stack pop count.
     for (i, arg) in args.iter().enumerate() {
-        let passing = func_info
-            .params
-            .get(i)
-            .cloned()
-            .unwrap_or(ParamPassing::Value(DEFAULT_OP_TYPE));
+        // Analysis rejects a call with more arguments than parameters.
+        let passing = func_info.params.get(i).cloned().ok_or_else(|| {
+            Diagnostic::internal_error_at(Label::span(
+                func.name.span(),
+                "Call has more arguments than the function has parameters",
+            ))
+        })?;
         match passing {
             ParamPassing::String(str_info) => {
                 // Copy the string argument into the function's parameter space.

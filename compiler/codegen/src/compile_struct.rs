@@ -384,7 +384,10 @@ pub(crate) fn allocate_struct_variable(
     })?;
 
     let IntermediateType::Structure { fields } = struct_type else {
-        unreachable!("resolve_struct_type guarantees Structure variant");
+        return Err(Diagnostic::internal_error_at(Label::span(
+            span.clone(),
+            "Structure type did not resolve to a structure",
+        )));
     };
 
     // Compute total slots.
