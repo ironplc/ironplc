@@ -22,14 +22,14 @@ use super::compile::{
     DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_expr::{
-    compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
-    condition_op_type, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, emit_load_var,
-    emit_store_var, emit_truncation, extract_bit_access_target, extract_partial_access_target,
-    op_type, resolve_variable, resolve_variable_name, try_classify_cmp, variable_span,
+    compile_expr, condition_op_type, emit_classified_cmp_br, emit_eq, emit_ge, emit_le,
+    emit_load_var, emit_store_var, emit_truncation, op_type, resolve_variable,
+    resolve_variable_name, try_classify_cmp, variable_span,
 };
 use super::compile_fb_init::{compile_fb_field_store, resolve_fb_field_op_type};
 use super::compile_loop::{compile_for, compile_repeat, compile_while};
 use super::compile_method::compile_method_call_statement;
+use super::compile_partial_access::{compile_partial_access_assignment, PartialAccess};
 use crate::emit::Emitter;
 use crate::string_width::compile_string_value;
 
@@ -154,19 +154,10 @@ fn compile_statement(
                 return Ok(());
             }
 
-            // Check if the target is a bit access variable (read-modify-write).
-            if let Some(bit_access) = extract_bit_access_target(&assignment.target) {
-                return compile_bit_access_assignment(emitter, ctx, bit_access, &assignment.value);
-            }
-
-            // Check if the target is a partial access variable (read-modify-write).
-            if let Some(partial_access) = extract_partial_access_target(&assignment.target) {
-                return compile_partial_access_assignment(
-                    emitter,
-                    ctx,
-                    partial_access,
-                    &assignment.value,
-                );
+            // A bit or partial access target replaces bits of its base
+            // (read-modify-write).
+            if let Some(access) = PartialAccess::of(&assignment.target) {
+                return compile_partial_access_assignment(emitter, ctx, &access, &assignment.value);
             }
 
             // Check if the target is a structured variable (struct field write).
