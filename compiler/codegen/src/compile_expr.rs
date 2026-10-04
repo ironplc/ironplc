@@ -1781,16 +1781,15 @@ fn named_variable_name(kind: &ExprKind) -> Option<&Id> {
 }
 
 /// Returns the `i64` value of an `ExprKind` that is a compile-time integer
-/// literal (positive, negative, or unary-negated). Returns `None` otherwise.
-fn constant_i64(kind: &ExprKind) -> Option<i64> {
+/// literal (positive, negative, or unary-negated). Returns `None` for any
+/// other expression, and for a literal outside the `i64` range.
+pub(crate) fn constant_i64(kind: &ExprKind) -> Option<i64> {
     match kind {
-        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-            signed_integer_to_i64(&lit.value).ok()
-        }
+        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => signed_integer_to_i64(&lit.value),
         ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => match &unary.term.kind {
-            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => signed_integer_to_i64(&lit.value)
-                .ok()
-                .and_then(i64::checked_neg),
+            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
+                signed_integer_to_i64(&lit.value).and_then(i64::checked_neg)
+            }
             _ => None,
         },
         _ => None,
@@ -1816,26 +1815,17 @@ fn compare_op_to_cmp_op(op: &CompareOp) -> Option<u8> {
     }
 }
 
-/// Converts a `SignedInteger` AST node to an `i64` value.
-pub(crate) fn signed_integer_to_i64(si: &SignedInteger) -> Result<i64, Diagnostic> {
+/// Converts a `SignedInteger` AST node to an `i64` value, or `None` when it
+/// is outside the `i64` range.
+///
+/// A caller is looking for a constant to fuse into a comparison or to bound a
+/// `FOR` loop with, and compiles the expression the ordinary way when there is
+/// none, so a literal that does not fit is not a problem to report here.
+fn signed_integer_to_i64(si: &SignedInteger) -> Option<i64> {
     if si.is_neg {
-        let unsigned = si.value.value as i128;
-        let signed = -unsigned;
-        i64::try_from(signed).map_err(|_| {
-            Diagnostic::problem(
-                Problem::ConstantOverflow,
-                Label::span(si.value.span(), "Integer literal"),
-            )
-            .with_context("value", &signed.to_string())
-        })
+        i64::try_from(-(si.value.value as i128)).ok()
     } else {
-        i64::try_from(si.value.value).map_err(|_| {
-            Diagnostic::problem(
-                Problem::ConstantOverflow,
-                Label::span(si.value.span(), "Integer literal"),
-            )
-            .with_context("value", &si.value.value.to_string())
-        })
+        i64::try_from(si.value.value).ok()
     }
 }
 
