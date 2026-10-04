@@ -343,6 +343,9 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
 mod composite_tests;
 
 #[cfg(test)]
+mod string_encoding_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_helpers::{codes, fb_inheritance_options, rule_codes};
