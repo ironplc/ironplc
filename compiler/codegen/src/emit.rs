@@ -6,6 +6,7 @@ use std::collections::HashSet;
 
 use ironplc_container::opcode;
 use ironplc_container::{CharWidth, FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex};
+use ironplc_dsl::diagnostic::Diagnostic;
 
 use crate::optimize::OffsetMap;
 
@@ -979,9 +980,9 @@ impl Emitter {
     /// optimizer runs on the un-patched bytes, so it must be given
     /// [`Self::unpatched_code`] and its result handed back through
     /// [`Self::apply_optimized`] before this is called.
-    pub fn bytecode(&mut self) -> &[u8] {
-        self.patch_jumps();
-        &self.bytecode
+    pub fn bytecode(&mut self) -> Result<&[u8], Diagnostic> {
+        self.patch_jumps()?;
+        Ok(&self.bytecode)
     }
 
     /// Returns the emitted bytes with their jump operands still unresolved,
@@ -991,16 +992,16 @@ impl Emitter {
     /// every bound label: a label that is bound but never jumped to
     /// constrains nothing, and protecting its position would needlessly
     /// block a peephole there.
-    pub(crate) fn unpatched_code(&self) -> UnpatchedCode<'_> {
+    pub(crate) fn unpatched_code(&self) -> Result<UnpatchedCode<'_>, Diagnostic> {
         let jump_targets = self
             .patches
             .iter()
-            .map(|patch| self.labels[patch.label.0].expect("label must be bound before optimizing"))
-            .collect();
-        UnpatchedCode {
+            .map(|patch| self.bound_label(patch.label))
+            .collect::<Result<_, _>>()?;
+        Ok(UnpatchedCode {
             bytecode: &self.bytecode,
             jump_targets,
-        }
+        })
     }
 
     /// Replaces the emitted bytes with the optimizer's output, moving every
@@ -1068,10 +1069,9 @@ impl Emitter {
     }
 
     /// Resolves all pending jump patches by computing relative offsets.
-    fn patch_jumps(&mut self) {
-        for patch in self.patches.drain(..) {
-            let label_pos =
-                self.labels[patch.label.0].expect("label must be bound before patching");
+    fn patch_jumps(&mut self) -> Result<(), Diagnostic> {
+        for patch in std::mem::take(&mut self.patches) {
+            let label_pos = self.bound_label(patch.label)?;
             // Offset is relative to the byte after the i16 operand
             let patch_offset = patch.patch_offset();
             let next_pc = patch_offset + 2;
@@ -1080,6 +1080,17 @@ impl Emitter {
             self.bytecode[patch_offset] = bytes[0];
             self.bytecode[patch_offset + 1] = bytes[1];
         }
+        Ok(())
+    }
+
+    /// The position a jump's label was bound to. A jump to a label that was
+    /// never bound is a bug in the code that emitted it.
+    fn bound_label(&self, label: Label) -> Result<usize, Diagnostic> {
+        self.labels
+            .get(label.0)
+            .copied()
+            .flatten()
+            .ok_or_else(Diagnostic::internal_error)
     }
 
     fn push_stack(&mut self, count: u16) {
@@ -1126,7 +1137,10 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0);
 
-        assert_eq!(em.bytecode(), &[opcode::LOAD_CONST_I32, 0x00, 0x00]);
+        assert_eq!(
+            em.bytecode().unwrap(),
+            &[opcode::LOAD_CONST_I32, 0x00, 0x00]
+        );
     }
 
     #[test]
@@ -1134,7 +1148,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_var_i32(VarIndex::new(1));
 
-        assert_eq!(em.bytecode(), &[opcode::LOAD_VAR_I32, 0x01, 0x00]);
+        assert_eq!(em.bytecode().unwrap(), &[opcode::LOAD_VAR_I32, 0x01, 0x00]);
     }
 
     #[test]
@@ -1145,7 +1159,7 @@ mod tests {
         em.emit_store_var_i32(VarIndex::new(0));
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1165,7 +1179,7 @@ mod tests {
         em.emit_add_i32();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1186,7 +1200,7 @@ mod tests {
         em.emit_sub_i32();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1219,7 +1233,7 @@ mod tests {
         em.emit_mul_i32();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1252,7 +1266,7 @@ mod tests {
         em.emit_div_i32();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1285,7 +1299,7 @@ mod tests {
         em.emit_mod_i32();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1317,7 +1331,7 @@ mod tests {
         em.emit_neg_i32();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[opcode::LOAD_VAR_I32, 0x00, 0x00, opcode::NEG_I32]
         );
     }
@@ -1338,7 +1352,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_ret_void();
 
-        assert_eq!(em.bytecode(), &[opcode::RET_VOID]);
+        assert_eq!(em.bytecode().unwrap(), &[opcode::RET_VOID]);
     }
 
     #[test]
@@ -1363,7 +1377,10 @@ mod tests {
         em.emit_load_const_i32(256);
 
         // 256 in little-endian u16 is [0x00, 0x01]
-        assert_eq!(em.bytecode(), &[opcode::LOAD_CONST_I32, 0x00, 0x01]);
+        assert_eq!(
+            em.bytecode().unwrap(),
+            &[opcode::LOAD_CONST_I32, 0x00, 0x01]
+        );
     }
 
     #[test]
@@ -1375,7 +1392,7 @@ mod tests {
 
         // LOAD_CONST pool:0, LOAD_CONST pool:1, BUILTIN 0x0340
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1434,7 +1451,7 @@ mod tests {
         em.emit_eq_i32();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1467,7 +1484,7 @@ mod tests {
         em.emit_ne_i32();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1500,7 +1517,7 @@ mod tests {
         em.emit_lt_i32();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1533,7 +1550,7 @@ mod tests {
         em.emit_le_i32();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1566,7 +1583,7 @@ mod tests {
         em.emit_gt_i32();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1599,7 +1616,7 @@ mod tests {
         em.emit_ge_i32();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1632,7 +1649,7 @@ mod tests {
         em.emit_bool_and();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1664,7 +1681,7 @@ mod tests {
         em.emit_bool_or();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1696,7 +1713,7 @@ mod tests {
         em.emit_bool_xor();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1727,7 +1744,7 @@ mod tests {
         em.emit_bool_not();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[opcode::LOAD_VAR_I32, 0x00, 0x00, opcode::BOOL_NOT]
         );
     }
@@ -1748,7 +1765,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_true();
 
-        assert_eq!(em.bytecode(), &[opcode::LOAD_TRUE]);
+        assert_eq!(em.bytecode().unwrap(), &[opcode::LOAD_TRUE]);
     }
 
     #[test]
@@ -1765,7 +1782,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_false();
 
-        assert_eq!(em.bytecode(), &[opcode::LOAD_FALSE]);
+        assert_eq!(em.bytecode().unwrap(), &[opcode::LOAD_FALSE]);
     }
 
     #[test]
@@ -1785,7 +1802,7 @@ mod tests {
         em.bind_label(label);
 
         // JMP with offset 0 (target is immediately after the instruction)
-        assert_eq!(em.bytecode(), &[opcode::JMP, 0x00, 0x00]);
+        assert_eq!(em.bytecode().unwrap(), &[opcode::JMP, 0x00, 0x00]);
     }
 
     #[test]
@@ -1811,7 +1828,7 @@ mod tests {
 
         // LOAD_CONST_I32 pool:0, JMP_IF_NOT offset:0
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1843,7 +1860,7 @@ mod tests {
 
         // LOAD_CONST pool:0, LOAD_CONST pool:1, CALL func:2 var_offset:5
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1878,7 +1895,7 @@ mod tests {
         em.emit_ret();
 
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[opcode::LOAD_VAR_I32, 0x00, 0x00, opcode::RET]
         );
     }
@@ -1894,7 +1911,7 @@ mod tests {
 
         // JMP offset should be 3 (skip over the LOAD_CONST_I32 which is 3 bytes)
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[opcode::JMP, 0x03, 0x00, opcode::LOAD_CONST_I32, 0x00, 0x00]
         );
     }
@@ -1907,7 +1924,7 @@ mod tests {
 
         // LOAD_CONST pool:0, LOAD_ARRAY var:3 desc:7
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1940,7 +1957,7 @@ mod tests {
 
         // LOAD_CONST pool:0, LOAD_CONST pool:1, STORE_ARRAY var:5 desc:2
         assert_eq!(
-            em.bytecode(),
+            em.bytecode().unwrap(),
             &[
                 opcode::LOAD_CONST_I32,
                 0x00,
@@ -1972,7 +1989,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_dup();
 
-        assert_eq!(em.bytecode(), &[opcode::DUP]);
+        assert_eq!(em.bytecode().unwrap(), &[opcode::DUP]);
         assert_eq!(em.max_stack_depth(), 1);
     }
 
@@ -1981,7 +1998,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_swap();
 
-        assert_eq!(em.bytecode(), &[opcode::SWAP]);
+        assert_eq!(em.bytecode().unwrap(), &[opcode::SWAP]);
         assert_eq!(em.max_stack_depth(), 0);
     }
 
@@ -1990,7 +2007,7 @@ mod tests {
         let mut default_em: Emitter = Default::default();
         let mut new_em = Emitter::new();
 
-        assert_eq!(default_em.bytecode(), new_em.bytecode());
+        assert_eq!(default_em.bytecode().unwrap(), new_em.bytecode().unwrap());
         assert_eq!(default_em.max_stack_depth(), new_em.max_stack_depth());
     }
 
@@ -2224,5 +2241,27 @@ mod tests {
         em.emit_str_store_var(0);
 
         assert_eq!(em.max_temp_depth(), 1);
+    }
+
+    #[test]
+    fn bytecode_when_jump_label_never_bound_then_internal_error() {
+        let mut em = Emitter::new();
+        let label = em.create_label();
+        em.emit_jmp(label);
+
+        let diagnostic = em.bytecode().unwrap_err();
+
+        assert_eq!(diagnostic.code, "P9998");
+    }
+
+    #[test]
+    fn unpatched_code_when_jump_label_never_bound_then_internal_error() {
+        let mut em = Emitter::new();
+        let label = em.create_label();
+        em.emit_jmp(label);
+
+        let diagnostic = em.unpatched_code().err().unwrap();
+
+        assert_eq!(diagnostic.code, "P9998");
     }
 }

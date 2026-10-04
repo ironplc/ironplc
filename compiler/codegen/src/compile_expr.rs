@@ -1732,12 +1732,11 @@ pub(crate) fn emit_classified_cmp_br(
     classified: ClassifiedCmp,
     branch_when_true: bool,
     target: crate::emit::Label,
-) {
+) -> Result<(), Diagnostic> {
     let cmp_op_byte = if branch_when_true {
         classified.cmp_op_byte
     } else {
-        opcode::cmp_op::negate(classified.cmp_op_byte)
-            .expect("classified cmp_op must be a valid comparison code")
+        opcode::cmp_op::negate(classified.cmp_op_byte).ok_or_else(Diagnostic::internal_error)?
     };
     match classified.op_width {
         OpWidth::W32 => emitter.emit_cmp_br_i32(
@@ -1752,10 +1751,9 @@ pub(crate) fn emit_classified_cmp_br(
             classified.const_idx,
             target,
         ),
-        OpWidth::F32 | OpWidth::F64 => {
-            unreachable!("classify_with_named rejects float widths")
-        }
+        OpWidth::F32 | OpWidth::F64 => return Err(Diagnostic::internal_error()),
     }
+    Ok(())
 }
 
 /// Strips parenthesised-expression wrappers from an `ExprKind`.

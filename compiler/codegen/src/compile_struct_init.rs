@@ -57,12 +57,9 @@ fn emit_default_for_field(
 /// Handles constant expressions (integer/real/boolean literals) and
 /// enumerated values from `StructInitialValueAssignmentKind`.
 ///
-/// Note the `Array`/`Structure` arm returns `Ok(())` without pushing a value.
-/// For a well-typed program that arm is unreachable -- `op_type` is `None` for
-/// a struct- or array-typed field, so those go through the recursion in
-/// `initialize_struct_fields` instead. It is reached only when the initializer
-/// does not match the field's type, where pushing nothing leaves the caller's
-/// unconditional store unbalanced.
+/// An `Array` or `Structure` initializer is an internal error here: `op_type`
+/// is `None` for a struct- or array-typed field, so those go through the
+/// recursion in `initialize_struct_fields` and never reach this function.
 fn compile_struct_field_init(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -81,12 +78,7 @@ fn compile_struct_field_init(
             Ok(())
         }
         StructInitialValueAssignmentKind::Array(_)
-        | StructInitialValueAssignmentKind::Structure(_) => {
-            // Unreachable for a well-typed program: see the note on this
-            // function. Nested structures are handled by the recursion in
-            // `initialize_struct_fields`, not here.
-            Ok(())
-        }
+        | StructInitialValueAssignmentKind::Structure(_) => Err(Diagnostic::internal_error()),
         StructInitialValueAssignmentKind::Expression(expr) => {
             // A general (possibly non-constant) expression, e.g.
             // `pDevice^.Delta` -- `ironplcc check` fully supports this;

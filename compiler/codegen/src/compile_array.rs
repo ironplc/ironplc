@@ -422,12 +422,16 @@ pub(crate) fn array_spec_from_inline(
         .ranges
         .iter()
         .map(|range| {
-            let lower = super::compile_stmt::signed_integer_to_i32(
-                range.start.as_signed_integer().unwrap(),
-            )?;
-            let upper =
-                super::compile_stmt::signed_integer_to_i32(range.end.as_signed_integer().unwrap())?;
-            Ok((lower, upper))
+            let (Some(start), Some(end)) = (
+                range.start.as_signed_integer(),
+                range.end.as_signed_integer(),
+            ) else {
+                return Err(Diagnostic::internal_error());
+            };
+            Ok((
+                super::compile_stmt::signed_integer_to_i32(start)?,
+                super::compile_stmt::signed_integer_to_i32(end)?,
+            ))
         })
         .collect::<Result<Vec<_>, Diagnostic>>()?;
     let (string_max_len, string_char_width) = match &subranges.type_name {
@@ -806,7 +810,7 @@ pub(crate) fn flatten_array_initial_values(
                     }
                     None => {
                         let zero = ConstantKind::integer_literal("0")
-                            .expect("literal '0' is always valid");
+                            .map_err(|_| Diagnostic::internal_error())?;
                         for _ in 0..count {
                             result.push(zero.clone());
                         }

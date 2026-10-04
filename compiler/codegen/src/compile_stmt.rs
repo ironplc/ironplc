@@ -568,7 +568,7 @@ fn compile_if(
     // JMP_IF_NOT with a single `CMP_BR_*` using the negated comparison.
     let next_label = emitter.create_label();
     if let Some(classified) = try_classify_cmp(ctx, &if_stmt.expr) {
-        emit_classified_cmp_br(emitter, classified, false, next_label);
+        emit_classified_cmp_br(emitter, classified, false, next_label)?;
     } else {
         let cond_type = condition_op_type(ctx, &if_stmt.expr)?;
         compile_expr(emitter, ctx, &if_stmt.expr, cond_type)?;
@@ -579,8 +579,8 @@ fn compile_if(
     compile_stmts(emitter, ctx, &if_stmt.body)?;
 
     // If there are more branches, jump to end.
-    if needs_end_label {
-        emitter.emit_jmp(end_label.unwrap());
+    if let Some(end) = end_label {
+        emitter.emit_jmp(end);
     }
 
     emitter.bind_label(next_label);
@@ -589,7 +589,7 @@ fn compile_if(
     for elsif in &if_stmt.else_ifs {
         let elsif_next = emitter.create_label();
         if let Some(classified) = try_classify_cmp(ctx, &elsif.expr) {
-            emit_classified_cmp_br(emitter, classified, false, elsif_next);
+            emit_classified_cmp_br(emitter, classified, false, elsif_next)?;
         } else {
             let elsif_op_type = condition_op_type(ctx, &elsif.expr)?;
             compile_expr(emitter, ctx, &elsif.expr, elsif_op_type)?;
@@ -598,7 +598,9 @@ fn compile_if(
 
         compile_stmts(emitter, ctx, &elsif.body)?;
 
-        emitter.emit_jmp(end_label.unwrap());
+        // `end_label` exists whenever there is an ELSIF clause.
+        let end = end_label.ok_or_else(Diagnostic::internal_error)?;
+        emitter.emit_jmp(end);
 
         emitter.bind_label(elsif_next);
     }

@@ -676,9 +676,9 @@ pub(crate) fn finalize_function(
 ) -> Result<FinalizedFunction, Diagnostic> {
     let raw_line_map = emitter.take_line_map();
     let (optimized, offset_map) =
-        crate::optimize::optimize(emitter.unpatched_code(), &mut ctx.constants);
+        crate::optimize::optimize(emitter.unpatched_code()?, &mut ctx.constants);
     emitter.apply_optimized(optimized, &offset_map);
-    let bytecode = emitter.bytecode().to_vec();
+    let bytecode = emitter.bytecode()?.to_vec();
     let max_stack_depth = emitter.max_stack_depth();
     let max_temp_depth = emitter.max_temp_depth();
     let line_map =
@@ -913,11 +913,17 @@ fn compile_program_with_functions(
     let mut compiled_methods: Vec<CompiledFunction> = Vec::new();
     for fb_decl in fb_decls {
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
-        let fb_func_id = ctx.user_fb_types[&fb_name].function_id;
         let field_var_off = var_offset.raw();
 
         // Update the var_offset in the registered type info.
-        ctx.user_fb_types.get_mut(&fb_name).unwrap().var_offset = field_var_off;
+        let fb_type = ctx.user_fb_types.get_mut(&fb_name).ok_or_else(|| {
+            Diagnostic::internal_error_at(Label::span(
+                fb_decl.name.span(),
+                "Function block was not registered before its body was compiled",
+            ))
+        })?;
+        let fb_func_id = fb_type.function_id;
+        fb_type.var_offset = field_var_off;
 
         let (compiled, saved_scope) = compile_user_function_block(
             fb_decl,
