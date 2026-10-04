@@ -13,7 +13,7 @@ use ironplc_problems::Problem;
 use ironplc_analyzer::semantic_type::{ArrayDimension, ByteSized, SemanticType};
 use ironplc_container::{CharWidth, ContainerBuilder, SlotIndex, VarIndex};
 
-use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
+use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
 use super::compile_expr::compile_expr;
 use crate::emit::Emitter;
 
@@ -106,9 +106,8 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
         dimensions: Vec<DimensionInfo>,
         /// Subscript expressions.
         subscripts: Vec<&'ast Expr>,
-        /// Element op type for compile_expr width.
-        element_op_type: OpType,
-        /// Element semantic type for truncation on store.
+        /// Element semantic type, which decides the type the element is
+        /// loaded and stored at.
         element_type: SemanticType,
     },
     /// STRING array element within a struct field — see [`StructStringElement`].
@@ -368,14 +367,12 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         ));
     }
 
-    let element_op_type =
-        crate::compile_struct::resolve_field_op_type(element_type).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
-                    structured.field.span(),
-                    "Array element type is not a primitive (nested struct/array elements not supported)",
-                ),
-            )
-        })?;
+    if crate::compile_struct::resolve_field_op_type(element_type).is_none() {
+        return Err(Diagnostic::not_implemented(Label::span(
+            structured.field.span(),
+            "Array element type is not a primitive (nested struct/array elements not supported)",
+        )));
+    }
 
     let dimensions = dimensions_from_semantic_type(array_dims);
 
@@ -385,7 +382,6 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         field_slot_offset: slot_offset,
         dimensions,
         subscripts,
-        element_op_type,
         element_type: element_type.as_ref().clone(),
     })
 }

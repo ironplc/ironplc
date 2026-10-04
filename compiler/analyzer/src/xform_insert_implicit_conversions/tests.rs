@@ -446,12 +446,6 @@ fn apply_when_negation_assigned_to_wider_target_then_unchanged() {
     assert_eq!(assigned_values(&source), vec!["DINT"]);
 }
 
-#[test]
-fn apply_when_literal_assigned_then_unchanged() {
-    let source = arithmetic_program("LINT", "", "1");
-    assert_eq!(assigned_values(&source), vec!["ANY_INT"]);
-}
-
 #[spec_test(REQ_IC_analyzer_034)]
 #[test]
 fn apply_when_array_element_and_structure_field_targets_then_converted_to_their_types() {
@@ -585,4 +579,97 @@ fn apply_when_standard_function_or_in_out_parameter_then_arguments_unchanged() {
         r := ABS(d); s := g(d); END_PROGRAM";
     assert_eq!(call_arguments(source, "ABS"), vec!["DINT"]);
     assert_eq!(call_arguments(source, "g"), vec!["DINT"]);
+}
+
+/// The type of every literal in `source`, which must be free of
+/// diagnostics, in source order.
+fn literal_types(source: &str) -> Vec<String> {
+    literal_types_with(source, &CompilerOptions::default())
+}
+
+/// [`literal_types`] under `options`.
+fn literal_types_with(source: &str, options: &CompilerOptions) -> Vec<String> {
+    struct Literals<'a> {
+        types: &'a TypeEnvironment,
+        literals: Vec<String>,
+    }
+    impl Visitor<Infallible> for Literals<'_> {
+        type Value = ();
+        fn visit_expr(&mut self, node: &Expr) -> Result<(), Infallible> {
+            if let ExprKind::Const(_) = node.kind {
+                self.literals.push(describe(self.types, node));
+            }
+            node.recurse_visit(self)
+        }
+    }
+    let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
+    let (library, context) = analyze(&[&library], options).unwrap();
+    assert!(
+        !context.has_diagnostics(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics()
+    );
+    let mut visitor = Literals {
+        types: context.types(),
+        literals: vec![],
+    };
+    let Ok(()) = visitor.walk(&library);
+    visitor.literals
+}
+
+#[spec_test(REQ_IC_analyzer_050)]
+#[test]
+fn apply_when_literal_assigned_then_takes_target_type() {
+    let source = arithmetic_program("LINT", "", "1");
+    assert_eq!(literal_types(&source), vec!["LINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_051)]
+#[test]
+fn apply_when_literal_under_negation_and_parentheses_then_takes_context_type() {
+    let source = arithmetic_program("LINT", "", "-(1)");
+    assert_eq!(literal_types(&source), vec!["LINT"]);
+}
+
+#[test]
+fn apply_when_literal_operand_of_typed_arithmetic_then_takes_operation_type() {
+    let source = arithmetic_program("LINT", "d : DINT;", "d + -1");
+    assert_eq!(literal_types(&source), vec!["DINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_053)]
+#[test]
+fn apply_when_for_loop_then_bounds_and_step_take_control_type() {
+    let source = "PROGRAM main VAR i : INT; END_VAR
+        FOR i := 1 TO 10 BY 2 DO i := i; END_FOR; END_PROGRAM";
+    assert_eq!(literal_types(source), vec!["INT", "INT", "INT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_054)]
+#[test]
+fn apply_when_function_block_input_then_takes_field_type_or_default() {
+    let source = "FUNCTION_BLOCK Acc VAR_INPUT n : LINT; END_VAR END_FUNCTION_BLOCK
+        PROGRAM main VAR a : Acc; c : CTU; END_VAR
+        a(n := 1); c(CU := TRUE, PV := 5); END_PROGRAM";
+    assert_eq!(literal_types(source), vec!["LINT", "BOOL", "DINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_055)]
+#[test]
+fn apply_when_dereferenced_target_then_literal_takes_default_type() {
+    let source = "PROGRAM main VAR l : LINT; r : REF_TO LINT; END_VAR
+        r := REF(l); r^ := 5; END_PROGRAM";
+    let options = CompilerOptions {
+        allow_ref_to: true,
+        ..CompilerOptions::default()
+    };
+    assert_eq!(literal_types_with(source, &options), vec!["DINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_056)]
+#[test]
+fn apply_when_subrange_target_then_literal_takes_base_type() {
+    let source = "TYPE Small : LINT (0..10); END_TYPE
+        PROGRAM main VAR s : Small; END_VAR s := 3; END_PROGRAM";
+    assert_eq!(literal_types(source), vec!["LINT"]);
 }

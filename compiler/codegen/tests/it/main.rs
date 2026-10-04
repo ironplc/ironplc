@@ -60,6 +60,7 @@ mod end_to_end_array_of_struct_string;
 mod end_to_end_array_ref_to;
 mod end_to_end_array_string;
 mod end_to_end_array_string_paren_length;
+mod end_to_end_assignment_targets;
 mod end_to_end_atan2;
 mod end_to_end_bcd;
 mod end_to_end_bit_access;
