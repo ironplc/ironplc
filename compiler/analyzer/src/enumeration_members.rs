@@ -20,8 +20,8 @@
 use ironplc_dsl::common::EnumeratedValue;
 use ironplc_dsl::core::Id;
 
-use crate::intermediate_type::IntermediateType;
 use crate::intermediates::enumeration::resolve_ordinal_values;
+use crate::semantic_type::SemanticType;
 
 /// One member of an enumeration.
 #[derive(Debug, Clone)]
@@ -39,7 +39,7 @@ pub struct EnumerationMember {
 /// chain ends at, and that enumeration's default unless it declares its own.
 ///
 /// The members take no part in comparing two
-/// [`IntermediateType`](crate::intermediate_type::IntermediateType)s, so
+/// [`SemanticType`](crate::semantic_type::SemanticType)s, so
 /// `PartialEq` is always true. A type is identified by its `TypeId`
 /// (ADR-0055); comparing representations compares their shapes, as it did
 /// before the members were recorded.
@@ -130,11 +130,11 @@ impl EnumerationMembers {
     }
 }
 
-impl IntermediateType {
+impl SemanticType {
     /// The members of an enumeration type; `None` for any other type.
     pub fn enumeration_members(&self) -> Option<&EnumerationMembers> {
         match self {
-            IntermediateType::Enumeration { members, .. } => Some(members),
+            SemanticType::Enumeration { members, .. } => Some(members),
             _ => None,
         }
     }

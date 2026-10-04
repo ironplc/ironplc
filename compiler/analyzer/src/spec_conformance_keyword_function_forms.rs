@@ -400,7 +400,7 @@ END_PROGRAM"
     assert_eq!(
         codes,
         vec![p4026],
-        "{function}(a, a, s): expected P4026 for the third input only"
+        "{function}(a, a, s): only the third input"
     );
 }
 

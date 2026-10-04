@@ -1,5 +1,5 @@
 use crate::enumeration_members::EnumerationMembers;
-use crate::intermediate_type::{ByteSized, IntermediateType};
+use crate::semantic_type::{ByteSized, SemanticType};
 use crate::type_environment::TypeAttributes;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Id;
@@ -54,7 +54,7 @@ fn byte_sized_for_underlying_type(type_name: ElementaryTypeName) -> ByteSized {
     }
 }
 
-/// Try to create the intermediate type information for the enumerated
+/// Try to create the semantic type information for the enumerated
 /// values initializer.
 ///
 /// This function determines how many bytes are needed to represent the
@@ -74,8 +74,8 @@ pub fn try_from_values(
     if let Some(type_name) = underlying_type_override {
         return Ok(TypeAttributes::new(
             enumerated_values.values_span(),
-            IntermediateType::Enumeration {
-                underlying_type: Box::new(IntermediateType::Int {
+            SemanticType::Enumeration {
+                underlying_type: Box::new(SemanticType::Int {
                     size: byte_sized_for_underlying_type(type_name),
                 }),
                 members,
@@ -88,11 +88,11 @@ pub fn try_from_values(
     let max_value = resolved.into_iter().max().unwrap_or(0);
     let range = max_value.max(0) as u128 + 1;
     let underlying_type = if range <= 256 {
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B8,
         }
     } else if range <= 65_536 {
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B16,
         }
     } else {
@@ -107,7 +107,7 @@ pub fn try_from_values(
 
     Ok(TypeAttributes::new(
         enumerated_values.values_span(),
-        IntermediateType::Enumeration {
+        SemanticType::Enumeration {
             underlying_type: Box::new(underlying_type),
             members,
         },
@@ -119,7 +119,7 @@ pub fn try_from_values(
 /// when it declares one.
 pub fn alias_of(base: &TypeAttributes, default: Option<&Id>) -> TypeAttributes {
     let mut alias = base.clone();
-    if let (Some(default), IntermediateType::Enumeration { members, .. }) =
+    if let (Some(default), SemanticType::Enumeration { members, .. }) =
         (default, &mut alias.representation)
     {
         *members = std::mem::take(members).with_default(default);
@@ -382,7 +382,7 @@ END_TYPE
         id: ironplc_dsl::type_id::TypeId,
     ) -> (Vec<(String, i64)>, i64) {
         let attributes = types.get_by_id(id).unwrap();
-        let crate::intermediate_type::IntermediateType::Enumeration { members, .. } =
+        let crate::semantic_type::SemanticType::Enumeration { members, .. } =
             &attributes.representation
         else {
             panic!("not an enumeration");

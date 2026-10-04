@@ -122,6 +122,8 @@ impl Visitor<Infallible> for RuleStringLiteralCharRange {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::diagnostic_codes;
+    use crate::test_helpers::rule_diagnostics;
     use ironplc_parser::options::CompilerOptions;
 
     rule_ok!(
@@ -134,7 +136,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_string_literal_above_latin1_then_p4052_at_literal,
         "PROGRAM main
 VAR
@@ -156,7 +158,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_wstring_literal_above_bmp_then_p4052_at_literal,
         "PROGRAM main
 VAR
@@ -168,7 +170,7 @@ END_PROGRAM",
         "\"😀\""
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_string_initializer_above_latin1_then_p4052_at_literal,
         "PROGRAM main
 VAR
@@ -179,7 +181,7 @@ END_PROGRAM",
         "'等'"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_string_type_declaration_default_above_latin1_then_p4052_at_literal,
         "TYPE
     T : STRING[5] := '等';
@@ -198,7 +200,7 @@ END_TYPE",
 END_TYPE"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_array_of_string_initializer_element_above_latin1_then_p4052_at_literal,
         "PROGRAM main
 VAR
@@ -209,7 +211,7 @@ END_PROGRAM",
         "'等'"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_string_literal_in_comparison_then_p4052_at_literal,
         "PROGRAM main
 VAR
@@ -231,12 +233,11 @@ END_VAR
     r := '最终检测' = '一终检测';
 END_PROGRAM";
         let opts = CompilerOptions::default();
-        let (library, context) = crate::test_helpers::resolve_fresh_with(program, &opts);
-        let errors = apply(&library, &context, &opts).unwrap_err();
-        assert_eq!(errors.len(), 2, "{errors:?}");
-        assert!(errors
-            .iter()
-            .all(|d| d.code == Problem::StringLiteralCharOutOfRange.code()));
+        let errors = rule_diagnostics(apply, program, &opts);
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::StringLiteralCharOutOfRange.code(); 2]
+        );
     }
 
     rule_ok!(
@@ -249,7 +250,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_string_literal_has_several_bad_chars_then_one_diagnostic,
         "PROGRAM main
 VAR
@@ -261,7 +262,7 @@ END_PROGRAM",
         "'等等'"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_prefixed_string_literal_above_latin1_then_label_covers_prefix,
         "PROGRAM main
 VAR
@@ -282,8 +283,11 @@ END_VAR
     s := '等';
 END_PROGRAM";
         let opts = CompilerOptions::default();
-        let (library, context) = crate::test_helpers::resolve_fresh_with(program, &opts);
-        let errors = apply(&library, &context, &opts).unwrap_err();
+        let errors = rule_diagnostics(apply, program, &opts);
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::StringLiteralCharOutOfRange.code()]
+        );
         let rendered = format!("{:?}", errors[0]);
         assert!(rendered.contains("U+7B49"), "{rendered}");
         assert!(errors[0].help().iter().any(|h| h.contains("WSTRING")));
@@ -302,12 +306,13 @@ VAR
 END_VAR
 END_PROGRAM",
         );
+        // rule-test-conventions: allow(pipeline) -- shows the rule is wired into analyze
         let (_lib, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
-        let count = context
+        let codes: Vec<_> = context
             .diagnostics()
             .iter()
-            .filter(|d| d.code == Problem::StringLiteralCharOutOfRange.code())
-            .count();
-        assert_eq!(count, 2);
+            .map(|d| d.code.clone())
+            .collect();
+        assert_eq!(codes, [Problem::StringLiteralCharOutOfRange.code(); 2]);
     }
 }

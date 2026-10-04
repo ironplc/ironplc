@@ -22,14 +22,14 @@ use super::compile::{
     DEFAULT_STRING_MAX_LENGTH,
 };
 use super::compile_expr::{
-    compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
-    condition_op_type, emit_classified_cmp_br, emit_eq, emit_ge, emit_le, emit_load_var,
-    emit_store_var, emit_truncation, extract_bit_access_target, extract_partial_access_target,
-    op_type, resolve_variable, resolve_variable_name, try_classify_cmp, variable_span,
+    compile_expr, condition_op_type, emit_classified_cmp_br, emit_eq, emit_ge, emit_le,
+    emit_load_var, emit_store_var, emit_truncation, op_type, resolve_variable,
+    resolve_variable_name, try_classify_cmp, variable_span,
 };
 use super::compile_fb_init::{compile_fb_field_store, resolve_fb_field_op_type};
 use super::compile_loop::{compile_for, compile_repeat, compile_while};
 use super::compile_method::compile_method_call_statement;
+use super::compile_partial_access::{compile_partial_access_assignment, PartialAccess};
 use crate::emit::Emitter;
 use crate::string_width::compile_string_value;
 
@@ -154,19 +154,10 @@ fn compile_statement(
                 return Ok(());
             }
 
-            // Check if the target is a bit access variable (read-modify-write).
-            if let Some(bit_access) = extract_bit_access_target(&assignment.target) {
-                return compile_bit_access_assignment(emitter, ctx, bit_access, &assignment.value);
-            }
-
-            // Check if the target is a partial access variable (read-modify-write).
-            if let Some(partial_access) = extract_partial_access_target(&assignment.target) {
-                return compile_partial_access_assignment(
-                    emitter,
-                    ctx,
-                    partial_access,
-                    &assignment.value,
-                );
+            // A bit or partial access target replaces bits of its base
+            // (read-modify-write).
+            if let Some(access) = PartialAccess::of(&assignment.target) {
+                return compile_partial_access_assignment(emitter, ctx, &access, &assignment.value);
             }
 
             // Check if the target is a structured variable (struct field write).
@@ -208,14 +199,14 @@ fn compile_statement(
                         &structured.field,
                         0,
                     )?;
-                if let ironplc_analyzer::intermediate_type::IntermediateType::String {
-                    char_width,
-                    ..
+                if let ironplc_analyzer::semantic_type::SemanticType::String {
+                    char_width, ..
                 } = &field_type
                 {
                     let char_width = *char_width;
+                    // `walk_struct_chain` found this structure variable above.
                     let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-                        Diagnostic::not_implemented(Label::span(
+                        Diagnostic::internal_error_at(Label::span(
                             structured.span(),
                             format!("Variable '{}' is not a structure", root_name),
                         ))
@@ -442,28 +433,18 @@ fn compile_statement(
             }
             Ok(())
         }
+        // Analysis rejects an EXIT or CONTINUE outside a loop
+        // (`rule_loop_control_inside_loop`, P4021 and P4065).
         StmtKind::Exit(span) => {
             let label = ctx.current_loop_exit().ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::ExitOutsideLoop,
-                    Label::span(
-                        span.clone(),
-                        "EXIT must be inside a FOR, WHILE, or REPEAT loop",
-                    ),
-                )
+                Diagnostic::internal_error_at(Label::span(span.clone(), "EXIT outside a loop"))
             })?;
             emitter.emit_jmp(label);
             Ok(())
         }
         StmtKind::Continue(span) => {
             let label = ctx.current_loop_next().ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::ContinueOutsideLoop,
-                    Label::span(
-                        span.clone(),
-                        "CONTINUE must be inside a FOR, WHILE, or REPEAT loop",
-                    ),
-                )
+                Diagnostic::internal_error_at(Label::span(span.clone(), "CONTINUE outside a loop"))
             })?;
             emitter.emit_jmp(label);
             Ok(())
@@ -565,7 +546,7 @@ fn compile_if(
     // JMP_IF_NOT with a single `CMP_BR_*` using the negated comparison.
     let next_label = emitter.create_label();
     if let Some(classified) = try_classify_cmp(ctx, &if_stmt.expr) {
-        emit_classified_cmp_br(emitter, classified, false, next_label);
+        emit_classified_cmp_br(emitter, classified, false, next_label)?;
     } else {
         let cond_type = condition_op_type(ctx, &if_stmt.expr)?;
         compile_expr(emitter, ctx, &if_stmt.expr, cond_type)?;
@@ -576,8 +557,8 @@ fn compile_if(
     compile_stmts(emitter, ctx, &if_stmt.body)?;
 
     // If there are more branches, jump to end.
-    if needs_end_label {
-        emitter.emit_jmp(end_label.unwrap());
+    if let Some(end) = end_label {
+        emitter.emit_jmp(end);
     }
 
     emitter.bind_label(next_label);
@@ -586,7 +567,7 @@ fn compile_if(
     for elsif in &if_stmt.else_ifs {
         let elsif_next = emitter.create_label();
         if let Some(classified) = try_classify_cmp(ctx, &elsif.expr) {
-            emit_classified_cmp_br(emitter, classified, false, elsif_next);
+            emit_classified_cmp_br(emitter, classified, false, elsif_next)?;
         } else {
             let elsif_op_type = condition_op_type(ctx, &elsif.expr)?;
             compile_expr(emitter, ctx, &elsif.expr, elsif_op_type)?;
@@ -595,7 +576,9 @@ fn compile_if(
 
         compile_stmts(emitter, ctx, &elsif.body)?;
 
-        emitter.emit_jmp(end_label.unwrap());
+        // `end_label` exists whenever there is an ELSIF clause.
+        let end = end_label.ok_or_else(Diagnostic::internal_error)?;
+        emitter.emit_jmp(end);
 
         emitter.bind_label(elsif_next);
     }
@@ -719,9 +702,10 @@ impl CaseSelector<'_> {
 ///
 /// A label is a value, not a bit pattern: `16#FFFFFFFF` and `4294967295` are
 /// the same label, and both narrow to the selector's width by the value they
-/// state. Analysis rejects a label outside the selector's type (P2026), so a
-/// value that does not fit here comes from a selector analysis could not
-/// type, such as an untyped literal, and is reported the same way.
+/// state. Analysis rejects a label outside the selector's type
+/// (`rule_constant_range`, P2026), so a value that does not fit here comes
+/// from a selector analysis could not type, such as an untyped literal
+/// (`CASE 5 OF ...`), and is reported the same way.
 struct CaseLabelValue<'a> {
     is_neg: bool,
     magnitude: &'a Integer,
@@ -834,7 +818,6 @@ fn non_integer_case_selector(selector_expr: &Expr) -> Diagnostic {
     ))
 }
 
-/// Converts a `SignedInteger` AST node to an `i32` value.
 /// Extracts the max length from a `StringInitializer`, returning a
 /// not-implemented diagnostic if the length is an unresolved constant reference.
 pub(crate) fn resolve_string_max_length(
@@ -887,24 +870,19 @@ fn resolve_signed_integer_ref(sir: &SignedIntegerRef) -> Result<&SignedInteger, 
     }
 }
 
+/// Converts a `SignedInteger` AST node to an `i32` value.
+///
+/// Its one use is the bounds of an inline array. Analysis reports a bound that
+/// a `DINT` cannot hold (`rule_range_limits`, P2024), so one that reaches here
+/// is a compiler bug.
 pub(crate) fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
-    if si.is_neg {
-        let unsigned = si.value.value as i128;
-        let signed = -unsigned;
-        i32::try_from(signed).map_err(|_| {
-            Diagnostic::problem(
-                Problem::ConstantOverflow,
-                Label::span(si.value.span(), "Integer literal"),
-            )
-            .with_context("value", &signed.to_string())
-        })
+    let value = if si.is_neg {
+        -(si.value.value as i128)
     } else {
-        i32::try_from(si.value.value).map_err(|_| {
-            Diagnostic::problem(
-                Problem::ConstantOverflow,
-                Label::span(si.value.span(), "Integer literal"),
-            )
-            .with_context("value", &si.value.value.to_string())
-        })
-    }
+        si.value.value as i128
+    };
+    i32::try_from(value).map_err(|_| {
+        Diagnostic::internal_error_at(Label::span(si.value.span(), "Integer literal"))
+            .with_context("value", &value.to_string())
+    })
 }

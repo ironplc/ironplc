@@ -206,7 +206,7 @@ mod tests {
     use crate::function_environment::{
         FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
     };
-    use crate::intermediate_type::IntermediateFunctionParameter;
+    use crate::semantic_type::SemanticFunctionParameter;
     use crate::test_helpers::{parse_and_resolve_types, parse_only};
     use ironplc_dsl::common::{FunctionReturnType, TypeName};
     use ironplc_dsl::core::Id;
@@ -233,7 +233,7 @@ mod tests {
     fn signature_of(name: &str, params: Vec<(&str, &str)>) -> FunctionSignature {
         let parameters = params
             .into_iter()
-            .map(|(pname, ptype)| IntermediateFunctionParameter {
+            .map(|(pname, ptype)| SemanticFunctionParameter {
                 name: Id::from(pname),
                 param_type: TypeName::from(ptype),
                 is_input: true,
@@ -663,7 +663,7 @@ END_PROGRAM
     fn env_with_inout_function(name: &str, params: Vec<(&str, &str, bool)>) -> FunctionEnvironment {
         let parameters = params
             .into_iter()
-            .map(|(pname, ptype, is_inout)| IntermediateFunctionParameter {
+            .map(|(pname, ptype, is_inout)| SemanticFunctionParameter {
                 name: Id::from(pname),
                 param_type: TypeName::from(ptype),
                 is_input: !is_inout,

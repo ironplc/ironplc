@@ -1,12 +1,10 @@
 //! End-to-end integration tests for array support.
 //! Compiles ST programs with arrays and runs them through the VM.
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run_rounds;
+use crate::common::run_scans;
 
-// x is at var index 1 (arr is var 0, x is var 1)
 e2e_i32!(
     end_to_end_when_array_store_and_load_then_roundtrips,
     "
@@ -19,10 +17,9 @@ PROGRAM main
   x := arr[3];
 END_PROGRAM
 ",
-    &[(1, 42)],
+    &[("x", 42)],
 );
 
-// sum is var index 1 (arr=0, sum=1, i=2)
 e2e_i32!(
     end_to_end_when_array_sum_loop_then_computes_correct_sum,
     "
@@ -43,7 +40,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(1, 150)],
+    &[("sum", 150)],
 );
 
 e2e_i32!(
@@ -57,7 +54,7 @@ PROGRAM main
   x := arr[2];
 END_PROGRAM
 ",
-    &[(1, 20)],
+    &[("x", 20)],
 );
 
 e2e_i32!(
@@ -74,7 +71,7 @@ PROGRAM main
   x := arr[1];
 END_PROGRAM
 ",
-    &[(1, 200000)],
+    &[("x", 200000)],
 );
 
 e2e_i32!(
@@ -93,10 +90,9 @@ PROGRAM main
   x := arr[0];
 END_PROGRAM
 ",
-    &[(1, 300)],
+    &[("x", 300)],
 );
 
-// arr=0, a=1, b=2, c=3
 e2e_i32!(
     end_to_end_when_array_multiple_independent_stores_then_no_interference,
     "
@@ -115,7 +111,7 @@ PROGRAM main
   c := arr[3];
 END_PROGRAM
 ",
-    &[(1, 11), (2, 22), (3, 33)],
+    &[("a", 11), ("b", 22), ("c", 33)],
 );
 
 // Multi-scan test: array state must persist across VM rounds, so it drives the
@@ -136,18 +132,18 @@ PROGRAM main
   x := arr[1];
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
+    run_scans(source, &CompilerOptions::default(), |session| {
         // First scan: sets arr[1] = 99
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 99);
+        session.scan(0).unwrap();
+        assert_eq!(session.read("x"), 99);
 
         // Second scan: arr[1] should still be 99
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 99);
+        session.scan(0).unwrap();
+        assert_eq!(session.read("x"), 99);
     });
 }
 
-// arr=0, x=1, y=2; arr[1] = first of 3(10); arr[4] = first of 3(20)
+// arr[1] = first of 3(10); arr[4] = first of 3(20)
 e2e_i32!(
     end_to_end_when_array_with_repeated_init_then_values_set,
     "
@@ -161,7 +157,7 @@ PROGRAM main
   y := arr[4];
 END_PROGRAM
 ",
-    &[(1, 10), (2, 20)],
+    &[("x", 10), ("y", 20)],
 );
 
 e2e_i32!(
@@ -176,7 +172,7 @@ PROGRAM main
   x := matrix[2, 3];
 END_PROGRAM
 ",
-    &[(1, 42)],
+    &[("x", 42)],
 );
 
 e2e_i32!(
@@ -200,5 +196,5 @@ END_VAR
     result := MY_FUNC(x := arg);
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("result", 42)],
 );

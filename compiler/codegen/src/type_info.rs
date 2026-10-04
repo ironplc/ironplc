@@ -14,7 +14,7 @@ use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{Expr, ExprType};
 use ironplc_dsl::type_id::TypeId;
 
-use ironplc_analyzer::intermediate_type::IntermediateType;
+use ironplc_analyzer::semantic_type::SemanticType;
 use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
@@ -22,7 +22,7 @@ use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
 /// What every type in the environment is, by id, so codegen can ask what an
 /// expression's type is from its `expr_type` alone. Anonymous types are
 /// included: they have no name to look up.
-pub(crate) fn type_representations(types: &TypeEnvironment) -> HashMap<TypeId, IntermediateType> {
+pub(crate) fn type_representations(types: &TypeEnvironment) -> HashMap<TypeId, SemanticType> {
     types
         .iter_ids()
         .map(|(id, attributes)| (id, attributes.representation.clone()))
@@ -78,7 +78,7 @@ pub(crate) fn decl_type_info(ctx: &CompileContext, decl: &VarDecl) -> Option<Var
 pub(crate) fn expr_representation<'a>(
     ctx: &'a CompileContext,
     expr: &Expr,
-) -> Option<&'a IntermediateType> {
+) -> Option<&'a SemanticType> {
     match expr.expr_type.as_ref()? {
         ExprType::Concrete(id) => ctx.types.get(id),
         ExprType::Literal(_) | ExprType::Null => None,
@@ -89,27 +89,27 @@ pub(crate) fn expr_representation<'a>(
 /// operates as a `DINT` (REQ-EN-codegen-003); a subrange operates as its base
 /// type; a reference is a 64-bit address, as a reference field is (see
 /// `compile_struct::var_type_info_for_field`).
-fn operand_type_info(representation: &IntermediateType) -> Option<VarTypeInfo> {
+fn operand_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
     match representation {
-        IntermediateType::Enumeration { .. } => Some(crate::compile_enum::enum_var_type_info()),
-        IntermediateType::Subrange { base_type, .. } => var_type_info(base_type),
-        IntermediateType::Reference { .. } => Some(reference_type_info()),
-        IntermediateType::Bool
-        | IntermediateType::Int { .. }
-        | IntermediateType::UInt { .. }
-        | IntermediateType::Real { .. }
-        | IntermediateType::Bytes { .. }
-        | IntermediateType::Time { .. }
-        | IntermediateType::Date { .. }
-        | IntermediateType::TimeOfDay { .. }
-        | IntermediateType::DateAndTime { .. } => var_type_info(representation),
+        SemanticType::Enumeration { .. } => Some(crate::compile_enum::enum_var_type_info()),
+        SemanticType::Subrange { base_type, .. } => var_type_info(base_type),
+        SemanticType::Reference { .. } => Some(reference_type_info()),
+        SemanticType::Bool
+        | SemanticType::Int { .. }
+        | SemanticType::UInt { .. }
+        | SemanticType::Real { .. }
+        | SemanticType::Bytes { .. }
+        | SemanticType::Time { .. }
+        | SemanticType::Date { .. }
+        | SemanticType::TimeOfDay { .. }
+        | SemanticType::DateAndTime { .. } => var_type_info(representation),
         // Not operated on as a single value: a string lives in the data
         // region, and an aggregate or a POU is never an operand.
-        IntermediateType::String { .. }
-        | IntermediateType::Structure { .. }
-        | IntermediateType::Array { .. }
-        | IntermediateType::FunctionBlock { .. }
-        | IntermediateType::Function { .. } => None,
+        SemanticType::String { .. }
+        | SemanticType::Structure { .. }
+        | SemanticType::Array { .. }
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Function { .. } => None,
     }
 }
 
@@ -152,9 +152,18 @@ pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
     // Try as elementary type first (the common case), then as a generic
     // type naming an untyped literal.
     match ElementaryTypeName::try_from(name) {
-        Ok(elementary) => var_type_info(ironplc_analyzer::elementary_type(&elementary.into())?),
+        Ok(elementary) => elementary_type_info(&elementary),
         Err(()) => literal_type_info(&GenericTypeName::try_from(name).ok()?),
     }
+}
+
+/// Maps an elementary type to its `VarTypeInfo`.
+///
+/// Returns `None` for STRING and WSTRING, which are handled separately.
+pub(crate) fn elementary_type_info(elementary: &ElementaryTypeName) -> Option<VarTypeInfo> {
+    var_type_info(ironplc_analyzer::elementary_type(
+        &elementary.clone().into(),
+    )?)
 }
 
 /// Projects what a type *is* onto how this backend operates on it.
@@ -175,12 +184,12 @@ pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
 /// Returns `None` for types this backend does not operate on arithmetically
 /// (STRING and WSTRING, which are handled through the data region, and the
 /// composite types).
-fn var_type_info(representation: &IntermediateType) -> Option<VarTypeInfo> {
+fn var_type_info(representation: &SemanticType) -> Option<VarTypeInfo> {
     // BOOL is the exception the doc comment above refers to: it holds one bit
     // of value in a byte of footprint, so the analyzer's byte-granular size
     // cannot state it. The value 1 also marks BOOL for the conversion path,
     // which tests an operand for zero rather than keeping its low bit.
-    if matches!(representation, IntermediateType::Bool) {
+    if matches!(representation, SemanticType::Bool) {
         return Some(VarTypeInfo {
             op_width: OpWidth::W32,
             signedness: Signedness::Signed,
@@ -192,30 +201,30 @@ fn var_type_info(representation: &IntermediateType) -> Option<VarTypeInfo> {
     // epoch, and a bit string is a pattern rather than a magnitude, so
     // neither is.
     let signedness = match representation {
-        IntermediateType::Int { .. }
-        | IntermediateType::Real { .. }
-        | IntermediateType::Time { .. } => Signedness::Signed,
-        IntermediateType::UInt { .. }
-        | IntermediateType::Bytes { .. }
-        | IntermediateType::Date { .. }
-        | IntermediateType::TimeOfDay { .. }
-        | IntermediateType::DateAndTime { .. } => Signedness::Unsigned,
+        SemanticType::Int { .. } | SemanticType::Real { .. } | SemanticType::Time { .. } => {
+            Signedness::Signed
+        }
+        SemanticType::UInt { .. }
+        | SemanticType::Bytes { .. }
+        | SemanticType::Date { .. }
+        | SemanticType::TimeOfDay { .. }
+        | SemanticType::DateAndTime { .. } => Signedness::Unsigned,
         // BOOL is handled above; the rest are not elementary.
-        IntermediateType::Bool
-        | IntermediateType::String { .. }
-        | IntermediateType::Enumeration { .. }
-        | IntermediateType::Structure { .. }
-        | IntermediateType::Array { .. }
-        | IntermediateType::Subrange { .. }
-        | IntermediateType::FunctionBlock { .. }
-        | IntermediateType::Function { .. }
-        | IntermediateType::Reference { .. } => return None,
+        SemanticType::Bool
+        | SemanticType::String { .. }
+        | SemanticType::Enumeration { .. }
+        | SemanticType::Structure { .. }
+        | SemanticType::Array { .. }
+        | SemanticType::Subrange { .. }
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Function { .. }
+        | SemanticType::Reference { .. } => return None,
     };
 
     let storage_bits = u8::try_from(representation.size_in_bytes()? * 8).ok()?;
     let op_width = match representation {
-        IntermediateType::Real { .. } if storage_bits <= 32 => OpWidth::F32,
-        IntermediateType::Real { .. } => OpWidth::F64,
+        SemanticType::Real { .. } if storage_bits <= 32 => OpWidth::F32,
+        SemanticType::Real { .. } => OpWidth::F64,
         _ if storage_bits <= 32 => OpWidth::W32,
         _ => OpWidth::W64,
     };
@@ -355,8 +364,8 @@ END_PROGRAM
 
     #[test]
     fn operand_type_info_when_reference_then_64_bit_address() {
-        let info = operand_type_info(&IntermediateType::Reference {
-            target_type: Box::new(IntermediateType::Bool),
+        let info = operand_type_info(&SemanticType::Reference {
+            target_type: Box::new(SemanticType::Bool),
         })
         .unwrap();
 

@@ -14,7 +14,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ",
-    &[(0, 1)],
+    &[("x", 1)],
 );
 
 e2e_i32!(
@@ -30,7 +30,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ",
-    &[(0, 75)],
+    &[("x", 75)],
 );
 
 e2e_i32!(
@@ -47,7 +47,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("x", 42)],
 );
 
 e2e_i32!(
@@ -66,7 +66,7 @@ PROGRAM main
   y := x + 5;
 END_PROGRAM
 ",
-    &[(0, 10), (1, 15)],
+    &[("x", 10), ("y", 15)],
 );
 
 // Alias inherits the lower bound from the base subrange type
@@ -84,7 +84,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ",
-    &[(0, 1)],
+    &[("x", 1)],
 );
 
 // Nested alias resolves to the original subrange; default = 10
@@ -103,7 +103,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ",
-    &[(0, 10)],
+    &[("x", 10)],
 );
 
 e2e_i32!(
@@ -120,7 +120,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("x", 42)],
 );
 
 // Default value for unsigned subrange is the lower bound (10)
@@ -137,7 +137,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ",
-    &[(0, 10)],
+    &[("x", 10)],
 );
 
 // A subrange of a 64-bit base compares at 64 bits: the literal fits ULINT,
@@ -157,7 +157,7 @@ PROGRAM main
   IF x > 4000000000 THEN d := 1; ELSE d := 2; END_IF;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("d", 1)],
 );
 
 // A CASE selector of a 64-bit subrange matches a label above the i32 range.
@@ -180,5 +180,5 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("d", 1)],
 );

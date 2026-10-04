@@ -28,22 +28,21 @@
 //! destination rather than checked against it, which is
 //! [`compile_string_value`].
 
-use ironplc_analyzer::IntermediateType;
+use ironplc_analyzer::{Intrinsic, SemanticType, StringFunction};
 use ironplc_container::CharWidth;
-use ironplc_dsl::common::ConstantKind;
+use ironplc_dsl::common::{ConstantKind, ElementaryTypeName};
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, Function, SymbolicVariableKind, Variable};
 
 use ironplc_problems::Problem;
 
+use super::call_args::collect_positional_args;
 use super::compile::{
     char_width_for_string_type, emit_string_literal_load, CompileContext, DEFAULT_OP_TYPE,
     DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
 };
-use super::compile_call::{parse_string_conversion, StringConversion};
 use super::compile_expr::{compile_expr, variable_span};
-use super::compile_string::collect_positional_args;
 use crate::emit::Emitter;
 
 /// What a string-valued expression is, before any bytecode runs.
@@ -209,16 +208,16 @@ fn access_root(kind: &SymbolicVariableKind) -> &SymbolicVariableKind {
 /// not fit a `u16`, which is not a length any slot can be given: the analyzer
 /// rejects it before codegen sees the field, and answering `None` here keeps
 /// an unreachable case from silently wrapping to a small capacity.
-fn string_shape_of(field_type: &IntermediateType) -> Option<StringShape> {
+fn string_shape_of(field_type: &SemanticType) -> Option<StringShape> {
     match field_type {
-        IntermediateType::String {
+        SemanticType::String {
             char_width,
             max_len,
         } => Some(StringShape {
             char_width: *char_width,
             max_length: max_len.and_then(|len| u16::try_from(len).ok()),
         }),
-        IntermediateType::Array { element_type, .. } => string_shape_of(element_type),
+        SemanticType::Array { element_type, .. } => string_shape_of(element_type),
         _ => None,
     }
 }
@@ -234,15 +233,44 @@ fn string_shape_of(field_type: &IntermediateType) -> Option<StringShape> {
 /// that yields a string is a `*_TO_STRING` conversion, which renders a
 /// number as Latin-1 and states no length of its own.
 ///
-/// That is the whole set: `compile_function_call` routes every other name
-/// to a numeric conversion or a generic builtin, none of which leaves a
-/// string. A call outside the set in a string position is a compiler defect
-/// -- the analyzer typed it as a string and codegen does not know how -- so
-/// it is reported as one, naming the call, rather than sized at a guess.
+/// That is the whole set: no other standard function yields a string. A
+/// call outside the set in a string position is a compiler defect -- the
+/// analyzer typed it as a string and codegen does not know how -- so it is
+/// reported as one, naming the call, rather than sized at a guess.
 fn function_shape(ctx: &CompileContext, func: &Function) -> Result<StringShape, Diagnostic> {
-    let name = func.name.lower_case();
-    match name.as_str() {
-        "concat" | "insert" | "replace" => {
+    match ctx.intrinsics.get(&func.name) {
+        Some(Intrinsic::String(function)) => string_function_shape(ctx, func, *function),
+        Some(Intrinsic::Conversion {
+            target: ElementaryTypeName::STRING,
+            ..
+        }) => Ok(StringShape {
+            char_width: NARROW_CHAR_WIDTH,
+            max_length: None,
+        }),
+        Some(_) => Err(yields_no_string(func)),
+        None => match ctx
+            .user_functions
+            .get(func.name.lower_case())
+            .and_then(|info| info.return_string_info.as_ref())
+        {
+            Some(info) => Ok(StringShape {
+                char_width: info.char_width,
+                max_length: Some(info.max_length),
+            }),
+            None => Err(yields_no_string(func)),
+        },
+    }
+}
+
+/// Returns the shape of the result of a call to the standard string
+/// function `function`, as [`function_shape`] describes.
+fn string_function_shape(
+    ctx: &CompileContext,
+    func: &Function,
+    function: StringFunction,
+) -> Result<StringShape, Diagnostic> {
+    match function {
+        StringFunction::Concat | StringFunction::Insert | StringFunction::Replace => {
             let args = collect_positional_args(func);
             let Some(first) = args.first() else {
                 return Err(unknown_string_encoding(
@@ -260,36 +288,29 @@ fn function_shape(ctx: &CompileContext, func: &Function) -> Result<StringShape, 
                 max_length: Some(bound_or_default(first).saturating_add(second)),
             })
         }
-        "left" | "right" | "mid" | "delete" => match collect_positional_args(func).first() {
+        StringFunction::Left
+        | StringFunction::Right
+        | StringFunction::Mid
+        | StringFunction::Delete => match collect_positional_args(func).first() {
             Some(first) => string_expr_shape(ctx, first),
             None => Err(unknown_string_encoding(
                 func.name.span(),
                 "a string function call with no arguments",
             )),
         },
-        _ => {
-            if let Some(info) = ctx
-                .user_functions
-                .get(name.as_str())
-                .and_then(|info| info.return_string_info.as_ref())
-            {
-                return Ok(StringShape {
-                    char_width: info.char_width,
-                    max_length: Some(info.max_length),
-                });
-            }
-            match parse_string_conversion(name.as_str()) {
-                Some(StringConversion::NumToString { .. }) => Ok(StringShape {
-                    char_width: NARROW_CHAR_WIDTH,
-                    max_length: None,
-                }),
-                _ => Err(unknown_string_encoding(
-                    func.name.span(),
-                    &format!("a call of {name}, which yields no string"),
-                )),
-            }
-        }
+        StringFunction::Len | StringFunction::Find => Err(yields_no_string(func)),
     }
+}
+
+/// Reports that a call in a string position yields no string.
+fn yields_no_string(func: &Function) -> Diagnostic {
+    unknown_string_encoding(
+        func.name.span(),
+        &format!(
+            "a call of {}, which yields no string",
+            func.name.lower_case()
+        ),
+    )
 }
 
 /// The bound an operand contributes to a call's result: its own, or the
@@ -348,7 +369,9 @@ pub(crate) fn string_operand_capacity(ctx: &CompileContext, expr: &Expr) -> u16 
 /// Operands that do not agree have no encoding they can share. That is a
 /// program error -- `CONCAT(s, w)` mixing a `STRING` and a `WSTRING`, or
 /// `w = 'abc'` comparing one against a `STRING` literal -- and is reported as
-/// P4034 rather than emitted for the VM to trap on one scan later.
+/// P4034 rather than emitted for the VM to trap on one scan later. Analysis
+/// reports it first (`rule_string_encoding_compat`), so this is the fallback
+/// for a caller that compiles without analysis.
 pub(crate) fn resolve_operand_char_width(
     ctx: &CompileContext,
     operands: &[&Expr],
@@ -382,16 +405,18 @@ pub(crate) fn resolve_operand_char_width(
 /// the encoding of a literal written into it, rather than being compared
 /// against it.
 ///
-/// Where the analyzer type-checks the destination -- a simple named assignment
-/// target or a function parameter -- a literal that reaches here already
-/// spells the destination's encoding, because a mismatch is P4035 or P4026
-/// first. The destination still decides for the targets the analyzer does not
-/// check, such as an array element or a structure field.
+/// Analysis rejects a literal whose delimiter spells the other encoding from
+/// its destination -- P4035 for a named variable, P4026 for a function
+/// parameter, P4034 for an array element or a structure field -- so a literal
+/// that reaches here spells the destination's encoding unless the caller
+/// compiled without analysis. The destination decides then.
 ///
 /// Any other expression carries an encoding of its own, and one that is not
 /// `char_width` has no valid bytecode for the store the caller is about to
-/// emit -- so that is P4034 too. An encoding codegen cannot work out is left
-/// to the destination, which is the one that decides the store.
+/// emit -- so that is P4034 too. Analysis reports it first
+/// (`rule_string_encoding_compat`); this is the fallback. An encoding codegen
+/// cannot work out is left to the destination, which is the one that decides
+/// the store.
 pub(crate) fn compile_string_value(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -458,6 +483,8 @@ mod tests {
 
     use super::*;
     use crate::compile::StringVarInfo;
+    use crate::compile_call::intrinsics_by_name;
+    use ironplc_analyzer::FunctionEnvironmentBuilder;
 
     /// A narrow literal of `len` code units.
     fn literal(len: usize) -> Expr {
@@ -484,15 +511,27 @@ mod tests {
         }))
     }
 
-    /// A `*_TO_STRING` conversion call, which no function table knows.
+    /// A `*_TO_STRING` conversion call.
     fn conversion() -> Expr {
         call("int_to_string", vec![literal(0)])
+    }
+
+    /// A context that knows the standard functions, as one compiling an
+    /// analyzed program does.
+    fn context() -> CompileContext {
+        let mut ctx = CompileContext::new();
+        ctx.intrinsics = intrinsics_by_name(
+            &FunctionEnvironmentBuilder::new()
+                .with_stdlib_functions()
+                .build(),
+        );
+        ctx
     }
 
     /// A context that declares one narrow string variable `s` of capacity
     /// `max_length`.
     fn context_with_string(max_length: u16) -> CompileContext {
-        let mut ctx = CompileContext::new();
+        let mut ctx = context();
         ctx.string_vars.insert(
             Id::from("s"),
             StringVarInfo {
@@ -512,7 +551,7 @@ mod tests {
         #[case] len: usize,
         #[case] expected: u16,
     ) {
-        let ctx = CompileContext::new();
+        let ctx = context();
 
         let shape = string_expr_shape(&ctx, &literal(len)).unwrap();
 
@@ -527,7 +566,7 @@ mod tests {
 
     #[test]
     fn string_expr_shape_when_wide_literal_then_wide_with_its_length() {
-        let ctx = CompileContext::new();
+        let ctx = context();
 
         let shape = string_expr_shape(&ctx, &wide_literal(300)).unwrap();
 
@@ -542,7 +581,7 @@ mod tests {
 
     #[test]
     fn string_expr_shape_when_parenthesized_then_inner_shape() {
-        let ctx = CompileContext::new();
+        let ctx = context();
         let expr = Expr::new(ExprKind::Expression(Box::new(literal(7))));
 
         let shape = string_expr_shape(&ctx, &expr).unwrap();
@@ -571,7 +610,7 @@ mod tests {
     #[case::insert("insert")]
     #[case::replace("replace")]
     fn string_expr_shape_when_joining_function_then_bound_is_sum_of_both(#[case] name: &str) {
-        let ctx = CompileContext::new();
+        let ctx = context();
         let expr = call(name, vec![literal(128), literal(128)]);
 
         let shape = string_expr_shape(&ctx, &expr).unwrap();
@@ -585,7 +624,7 @@ mod tests {
     #[case::mid("mid")]
     #[case::delete("delete")]
     fn string_expr_shape_when_shortening_function_then_bound_is_first_argument(#[case] name: &str) {
-        let ctx = CompileContext::new();
+        let ctx = context();
         let expr = call(name, vec![literal(300), literal(5)]);
 
         let shape = string_expr_shape(&ctx, &expr).unwrap();
@@ -606,7 +645,7 @@ mod tests {
 
     #[test]
     fn string_expr_shape_when_concat_of_wide_literals_then_wide() {
-        let ctx = CompileContext::new();
+        let ctx = context();
         let expr = call("concat", vec![wide_literal(3), wide_literal(4)]);
 
         let shape = string_expr_shape(&ctx, &expr).unwrap();
@@ -622,7 +661,7 @@ mod tests {
 
     #[test]
     fn string_expr_shape_when_concat_operand_states_no_bound_then_default_is_added() {
-        let ctx = CompileContext::new();
+        let ctx = context();
         let expr = call("concat", vec![literal(10), conversion()]);
 
         let shape = string_expr_shape(&ctx, &expr).unwrap();
@@ -632,7 +671,7 @@ mod tests {
 
     #[test]
     fn string_expr_shape_when_sum_exceeds_header_capacity_then_saturates() {
-        let ctx = CompileContext::new();
+        let ctx = context();
         let expr = call("concat", vec![literal(40_000), literal(40_000)]);
 
         let shape = string_expr_shape(&ctx, &expr).unwrap();
@@ -646,7 +685,7 @@ mod tests {
     fn string_expr_shape_when_string_function_has_no_arguments_then_internal_error(
         #[case] name: &str,
     ) {
-        let ctx = CompileContext::new();
+        let ctx = context();
         let expr = call(name, vec![]);
 
         let diagnostic = string_expr_shape(&ctx, &expr).unwrap_err();
@@ -656,7 +695,7 @@ mod tests {
 
     #[test]
     fn string_expr_shape_when_conversion_then_narrow_with_no_bound() {
-        let ctx = CompileContext::new();
+        let ctx = context();
 
         let shape = string_expr_shape(&ctx, &conversion()).unwrap();
 
@@ -671,14 +710,14 @@ mod tests {
 
     #[test]
     fn string_operand_capacity_when_long_literal_then_its_length() {
-        let ctx = CompileContext::new();
+        let ctx = context();
 
         assert_eq!(string_operand_capacity(&ctx, &literal(300)), 300);
     }
 
     #[test]
     fn string_operand_capacity_when_no_bound_then_default() {
-        let ctx = CompileContext::new();
+        let ctx = context();
 
         assert_eq!(
             string_operand_capacity(&ctx, &conversion()),
@@ -697,7 +736,7 @@ mod tests {
         // string argument is a string. Should it happen anyway, it stops the
         // compile and says which call it could not size, rather than passing
         // a guessed capacity down to a silent truncation at run time.
-        let ctx = CompileContext::new();
+        let ctx = context();
 
         let diagnostic = string_expr_shape(&ctx, &call(name, vec![literal(1)])).unwrap_err();
 

@@ -11,7 +11,7 @@
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_vm::error::Trap;
 
-use crate::common::{parse_and_run, parse_and_try_run};
+use crate::common::{parse_and_try_run, Snapshot};
 
 /// Options enabling the short-circuit operators and nothing else.
 fn short_circuit_options() -> CompilerOptions {
@@ -30,7 +30,6 @@ fn short_circuit_ref_options() -> CompilerOptions {
     }
 }
 
-// var layout: a=0, b=1, tt=2, tf=3, ft=4, ff=5
 e2e_i32_with!(
     end_to_end_when_and_then_then_matches_and_truth_table,
     short_circuit_options(),
@@ -50,10 +49,9 @@ PROGRAM main
   ff := b AND_THEN b;
 END_PROGRAM
 ",
-    &[(2, 1), (3, 0), (4, 0), (5, 0)],
+    &[("tt", 1), ("tf", 0), ("ft", 0), ("ff", 0)],
 );
 
-// var layout: a=0, b=1, tt=2, tf=3, ft=4, ff=5
 e2e_i32_with!(
     end_to_end_when_or_else_then_matches_or_truth_table,
     short_circuit_options(),
@@ -73,13 +71,12 @@ PROGRAM main
   ff := b OR_ELSE b;
 END_PROGRAM
 ",
-    &[(2, 1), (3, 1), (4, 1), (5, 0)],
+    &[("tt", 1), ("tf", 1), ("ft", 1), ("ff", 0)],
 );
 
 // The motivating case from the design document: the right operand dereferences
 // a null reference, so eager evaluation traps. Reaching the end of the scan
 // with guarded = FALSE is the proof that the right operand never ran.
-// var layout: r=0, guarded=1
 e2e_i32_with!(
     end_to_end_when_and_then_guards_null_deref_then_right_operand_not_evaluated,
     short_circuit_ref_options(),
@@ -92,7 +89,7 @@ PROGRAM main
   guarded := r <> NULL AND_THEN r^ = 99;
 END_PROGRAM
 ",
-    &[(1, 0)],
+    &[("guarded", 0)],
 );
 
 #[test]
@@ -116,7 +113,6 @@ END_PROGRAM
 
 // The dual: OR_ELSE stops at a TRUE left operand, so the dereference is
 // likewise never reached.
-// var layout: r=0, guarded=1
 e2e_i32_with!(
     end_to_end_when_or_else_guards_null_deref_then_right_operand_not_evaluated,
     short_circuit_ref_options(),
@@ -129,12 +125,11 @@ PROGRAM main
   guarded := r = NULL OR_ELSE r^ = 99;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("guarded", 1)],
 );
 
 // When the left operand does not decide the answer, the right operand runs --
 // including the dereference the guard was protecting.
-// var layout: target=0, r=1, guarded=2
 e2e_i32_with!(
     end_to_end_when_and_then_guard_passes_then_right_operand_evaluated,
     short_circuit_ref_options(),
@@ -148,10 +143,9 @@ PROGRAM main
   guarded := r <> NULL AND_THEN r^ = 99;
 END_PROGRAM
 ",
-    &[(2, 1)],
+    &[("guarded", 1)],
 );
 
-// var layout: x=0, taken=1
 e2e_i32_with!(
     end_to_end_when_and_then_is_if_condition_then_branches_on_short_circuit_result,
     short_circuit_options(),
@@ -169,12 +163,11 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("taken", 1)],
 );
 
 // OR_ELSE binds at OR precedence and AND_THEN at AND precedence, so this is
 // `a OR_ELSE (b AND_THEN c)`: TRUE regardless of b and c.
-// var layout: a=0, b=1, c=2, result=3
 e2e_i32_with!(
     end_to_end_when_short_circuit_operators_nested_then_precedence_holds,
     short_circuit_options(),
@@ -189,12 +182,11 @@ PROGRAM main
   result := a OR_ELSE b AND_THEN c;
 END_PROGRAM
 ",
-    &[(3, 1)],
+    &[("result", 1)],
 );
 
 // Nesting a short-circuit expression inside another one exercises the branch
 // merge the emitter has to keep the operand stack balanced across.
-// var layout: a=0, b=1, c=2, d=3, result=4
 e2e_i32_with!(
     end_to_end_when_short_circuit_operands_are_short_circuits_then_stack_balances,
     short_circuit_options(),
@@ -210,7 +202,7 @@ PROGRAM main
   result := (a AND_THEN b) OR_ELSE (c AND_THEN d);
 END_PROGRAM
 ",
-    &[(4, 1)],
+    &[("result", 1)],
 );
 
 #[test]
@@ -229,9 +221,9 @@ PROGRAM main
   result := b OR_ELSE a;
 END_PROGRAM
 ";
-    crate::common::parse_and_run_rounds(source, &short_circuit_options(), |vm| {
+    crate::common::run_scans(source, &short_circuit_options(), |session| {
         for round in 0..64 {
-            vm.run_round(round).unwrap();
+            session.scan(round).unwrap();
         }
     });
 }
@@ -257,8 +249,8 @@ PROGRAM main
   outside := IN_RANGE(-1);
 END_PROGRAM
 ";
-    let (_container, bufs) = parse_and_run(source, &short_circuit_options());
+    let snapshot = Snapshot::run(source, &short_circuit_options());
 
-    assert_eq!(bufs.vars[0].as_i32(), 1, "IN_RANGE(10)");
-    assert_eq!(bufs.vars[1].as_i32(), 0, "IN_RANGE(-1)");
+    assert_eq!(snapshot.read_as::<i32>("inside"), 1, "IN_RANGE(10)");
+    assert_eq!(snapshot.read_as::<i32>("outside"), 0, "IN_RANGE(-1)");
 }

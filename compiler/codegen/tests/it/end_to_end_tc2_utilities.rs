@@ -7,21 +7,19 @@
 //! equality — the spec's fixed-point formatting is deterministic, digit for
 //! digit.
 
-use crate::common::read_string;
 use ironplc_analyzer::stages::analyze;
-use ironplc_codegen::compile;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
 use ironplc_sources::libraries::{LibraryName, LibraryRegistry};
-use ironplc_vm::test_support::load_and_start;
-use ironplc_vm::VmBuffers;
+
+use crate::common::{Snapshot, Value};
 
 /// Activates the bundled `Tc2_Utilities`, analyzes it merged ahead of
 /// `source`, compiles, and runs one scan cycle. The full activate → analyze →
 /// codegen → VM-run path the acceptance criteria require.
-fn run_with_tc2_utilities(source: &str) -> VmBuffers {
+fn run_with_tc2_utilities(source: &str) -> Snapshot {
     let options = CompilerOptions::default();
     let compat = LibraryRegistry::bundled()
         .load(&LibraryName::from("Tc2_Utilities"))
@@ -36,29 +34,16 @@ fn run_with_tc2_utilities(source: &str) -> VmBuffers {
         context.diagnostics()
     );
 
-    let codegen_options = ironplc_codegen::CodegenOptions::from(&options);
-    let container = compile(
-        &analyzed,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
-    .unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).expect("VM load must not trap");
-        vm.run_round(0).expect("VM run must not trap");
-    }
-    bufs
+    Snapshot::run_analyzed(&analyzed, &context, &options)
 }
 
 /// Formats one call `LREAL_TO_FMTSTR(x, <precision>, <round>)` where `x` is
 /// an LREAL assigned from `value_expr`, and returns the resulting string
-/// (`s`, the first and only STRING variable, at data offset 0). Routing the
-/// input through an LREAL variable keeps the value in binary64 — a bare real
-/// literal in argument position would resolve as REAL (binary32) — and lets
-/// a vector construct its input arithmetically (infinity, NaN).
-fn fmt(value_expr: &str, precision: i32, round: bool) -> String {
+/// (`s`). Routing the input through an LREAL variable keeps the value in
+/// binary64 — a bare real literal in argument position would resolve as REAL
+/// (binary32) — and lets a vector construct its input arithmetically
+/// (infinity, NaN).
+fn fmt(value_expr: &str, precision: i32, round: bool) -> Value {
     let round = if round { "TRUE" } else { "FALSE" };
     let source = format!(
         "PROGRAM main
@@ -71,8 +56,7 @@ END_VAR
 END_PROGRAM
 "
     );
-    let bufs = run_with_tc2_utilities(&source);
-    read_string(&bufs.data_region, 0)
+    run_with_tc2_utilities(&source).read("s")
 }
 
 // ---------------------------------------------------------------------------
@@ -153,8 +137,8 @@ END_VAR
     s := LREAL_TO_FMTSTR(-zero, 2, TRUE);
 END_PROGRAM
 ";
-    let bufs = run_with_tc2_utilities(source);
-    assert_eq!(read_string(&bufs.data_region, 0), "0.00");
+    let snapshot = run_with_tc2_utilities(source);
+    assert_eq!(snapshot.read("s"), "0.00");
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +212,6 @@ END_VAR
     s := LREAL_TO_FMTSTR(in := x, iPrecision := 2, bRound := TRUE);
 END_PROGRAM
 ";
-    let bufs = run_with_tc2_utilities(source);
-    assert_eq!(read_string(&bufs.data_region, 0), "123.46");
+    let snapshot = run_with_tc2_utilities(source);
+    assert_eq!(snapshot.read("s"), "123.46");
 }

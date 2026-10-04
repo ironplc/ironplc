@@ -41,7 +41,7 @@ The IronPLC compiler follows a traditional multi-stage compilation pipeline:
 
 ### Naming Conventions
 - `xform_*` modules handle transformations
-- `intermediate_*` modules define data structures
+- `semantic_*` modules define data structures
 - `*_environment` modules manage symbol tables and contexts
 - Use descriptive names that reflect the module's purpose
 
@@ -102,6 +102,35 @@ half-transformed node. A declaration the pass could not transform is left in a
 state later passes already handle — unchanged, or normalized to a placeholder —
 and nothing the author wrote is dropped from it.
 
+### Name and Type Lookup
+
+**A rule looks a name up in the environments; it never builds a table of its
+own.** Resolution builds one answer to "what does this name declare, and what is
+its type", and every rule reads that answer:
+
+- `SymbolEnvironment::find(name, scope)` (`symbol_environment.rs`) resolves a
+  name from a scope: the enclosing scopes innermost first, then the function
+  blocks the outermost one `EXTENDS`, then the global scope. Its `SymbolInfo`
+  carries the variable's section, declared qualifier, address and `type_id`. A
+  function's or method's own name is its `ResultVariable`.
+- `ScopeTracker` names the scope a visitor is in. Feed it from `enter_scope`
+  and `exit_scope`, and pass `current()` to `find`.
+- `variable_type::declared` gives a name's declared `SemanticType`, and
+  `variable_type::of` walks a reference such as `s.field[i]` to the element it
+  names. `TypeEnvironment::get_by_id` answers for any `type_id`.
+
+A rule that copies declarations into a `HashMap` or `ScopedTable` of its own as
+it walks gets the scoping wrong in ways the environment already gets right: it
+sees only what it has visited so far, lets one method's locals leak into the
+next, or misses an inherited field. When the environment lacks something a rule
+needs, add it to the environment, where every rule then has it, rather than
+working around it in the rule.
+
+Test such a rule against the context resolution builds: the `rule_ok!`,
+`rule_err!` and `rule_err_at!` macros in `test_macros.rs`, and the helpers in
+`test_helpers.rs`, all do. See [Rule Tests](compiler-standards.md#rule-tests)
+for what a rule test asserts.
+
 ## Testing Architecture
 
 ### Test Organization
@@ -146,8 +175,9 @@ test is redundant for *behavior*.
 | `end_to_end_<op>.rs` | Runtime assertions — the primary behavioral layer | `end_to_end_add.rs`, `end_to_end_div.rs` |
 | `end_to_end.rs` | General infrastructure tests (assignment, scan behavior) | — |
 | `wire_format.rs` | **Backwards-compatibility guard**: pins every opcode's byte value + a completeness test | — |
-| `compile_<op>.rs` | Bytecode assertions — **only for structure end-to-end cannot localize** (jump/branch offsets, struct/array/frame offsets, operand widths, peephole) | `compile_loops.rs`, `compile_struct.rs`, `compile_array.rs` |
-| `common/mod.rs` | Shared helpers (`parse`, `parse_and_run`, `VmBuffers`) | — |
+| `compile_<op>.rs` | Bytecode assertions — **only for structure end-to-end cannot localize** (jump/branch offsets, struct/array/frame offsets, operand widths, peephole), and variable layout | `compile_loops.rs`, `compile_struct.rs`, `compile_system_uptime.rs` |
+| `vm_api_<api>.rs` | The VM's embedder API, which addresses variables by slot; slots are looked up by name with `vm_var_index` | `vm_api_write_variable_raw.rs` |
+| `common/` | Shared helpers: the `e2e!`/`e2e_*!` macros, `assert_run`, `Snapshot`, `run_scans`, `drive_fb`, `parse` | — |
 
 **The one thing end-to-end cannot catch is a consistent opcode *renumber*** (the
 compiler emits and the VM reads the new value, so a from-source compile+run still
@@ -168,11 +198,16 @@ use common::parse;
 use ironplc_codegen::compile;
 ```
 
-Template for a new end-to-end test file:
+Template for a new end-to-end test file (variables are read by name, see
+[End-to-End Test Observation](../design/end-to-end-test-observation.md)):
 ```rust
 //! End-to-end integration tests for the <OP> operator.
-mod common;
-use common::parse_and_run;
+
+e2e_i32!(
+    end_to_end_when_<op>_then_<result>,
+    "PROGRAM main VAR x : DINT; END_VAR x := <expression>; END_PROGRAM",
+    &[("x", <expected>)],
+);
 ```
 
 #### What stays inline
@@ -215,9 +250,10 @@ For information on running tests, coverage analysis, and debugging tools, see [c
 ### Adding New Analysis Passes
 1. Create focused modules under 1000 lines
 2. Use consistent transformation patterns
-3. Integrate with existing error handling
-4. Add appropriate test coverage
-5. Document the analysis purpose and scope
+3. Look names and types up in the environments (see [Name and Type Lookup](#name-and-type-lookup))
+4. Integrate with existing error handling
+5. Add appropriate test coverage
+6. Document the analysis purpose and scope
 
 ### Adding New Problem Codes
 Follow the established problem code lifecycle:

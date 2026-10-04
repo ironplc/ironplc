@@ -91,9 +91,9 @@ END_PROPERTY",
     assert_eq!(set.name, Id::from("Speed"));
     assert_eq!(set.return_type, None);
     assert_eq!(set.body.len(), 1);
-    assert!(property.set_declared_variables().is_empty());
-    assert_eq!(set.variables.len(), 1);
-    let value = &set.variables[0];
+    assert!(set.variables.is_empty());
+    assert_eq!(set.implicit_variables.len(), 1);
+    let value = &set.implicit_variables[0];
     assert_eq!(value.identifier.symbolic_id(), Some(&Id::from("Speed")));
     assert_eq!(value.var_type, VariableType::Input);
     assert_eq!(
@@ -145,10 +145,14 @@ END_PROPERTY",
 
     let property = &fb.properties[0];
     assert!(property.get.is_none());
-    let declared = property.set_declared_variables();
-    assert_eq!(declared.len(), 1);
-    assert_eq!(declared[0].identifier.symbolic_id(), Some(&Id::from("tmp")));
-    assert_eq!(property.set.as_ref().unwrap().variables.len(), 2);
+    let set = property.set.as_ref().unwrap();
+    assert_eq!(set.variables.len(), 1);
+    assert_eq!(
+        set.variables[0].identifier.symbolic_id(),
+        Some(&Id::from("tmp"))
+    );
+    assert_eq!(set.implicit_variables.len(), 1);
+    assert_eq!(set.all_variables().count(), 2);
 }
 
 #[test]
@@ -164,10 +168,10 @@ END_PROPERTY",
     );
 
     let set = fb.properties[0].set.as_ref().unwrap();
-    let InitialValueAssignmentKind::String(string) = &set.variables[0].initializer else {
+    let InitialValueAssignmentKind::String(string) = &set.implicit_variables[0].initializer else {
         panic!(
             "expected a STRING input, got {:?}",
-            set.variables[0].initializer
+            set.implicit_variables[0].initializer
         );
     };
     assert_eq!(string.width, StringType::String);

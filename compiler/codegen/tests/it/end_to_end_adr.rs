@@ -12,7 +12,7 @@ use ironplc_parser::parse_program;
 use ironplc_problems::Problem;
 use ironplc_vm::error::Trap;
 
-use crate::common::{parse_and_run, parse_and_try_run};
+use crate::common::{parse_and_try_run, Snapshot};
 
 /// The minimal flag set for `ADR`: the pointer type plus the operator,
 /// deliberately without `allow_ref_to` (as in the `twincat` dialect).
@@ -28,14 +28,14 @@ fn adr_options() -> CompilerOptions {
 /// binding a pointer to one of its own members and reading it back through
 /// `^`. The member value is assigned
 /// in the body because declared initial values are not yet applied to user
-/// FB instance fields (a pre-existing gap unrelated to `ADR`).
-///
-/// var layout: point=0, then the FB body's slots pNumber=1, iNumber1=2,
-/// iNumber2=3.
+/// FB instance fields (a pre-existing gap unrelated to `ADR`). The members
+/// are outputs, so the program can copy them into variables a test reads.
 const GOAL_EXAMPLE: &str = "
 FUNCTION_BLOCK FB_Point
 VAR
    pNumber : POINTER TO INT;
+END_VAR
+VAR_OUTPUT
    iNumber1 : INT;
    iNumber2 : INT;
 END_VAR
@@ -47,20 +47,23 @@ END_FUNCTION_BLOCK
 PROGRAM main
 VAR
     point : FB_Point;
+    number1 : INT;
+    number2 : INT;
 END_VAR
     point();
+    number1 := point.iNumber1;
+    number2 := point.iNumber2;
 END_PROGRAM
 ";
 
 #[test]
 fn end_to_end_when_adr_goal_example_then_deref_yields_value() {
-    let (_c, bufs) = parse_and_run(GOAL_EXAMPLE, &adr_options());
-    assert_eq!(bufs.vars[2].as_i32(), 5);
-    assert_eq!(bufs.vars[3].as_i32(), 5);
+    let snapshot = Snapshot::run(GOAL_EXAMPLE, &adr_options());
+    assert_eq!(snapshot.read_as::<i32>("number1"), 5);
+    assert_eq!(snapshot.read_as::<i32>("number2"), 5);
 }
 
 // Store-through: writing `p^ := v` updates the addressed variable.
-// var layout: x=0, p=1, v=2
 e2e_i32_with!(
     end_to_end_when_adr_store_through_then_target_updated,
     adr_options(),
@@ -75,12 +78,11 @@ END_VAR
     p^ := v;
 END_PROGRAM
 ",
-    &[(0, 99)],
+    &[("x", 99)],
 );
 
 // Two instances of one FB: ADR inside each call addresses that call's own
 // member value, so each instance's output reflects its own input.
-// var layout: inst1=0, inst2=1, r1=2, r2=3, then the FB body's slots.
 e2e_i32_with!(
     end_to_end_when_adr_in_two_fb_instances_then_each_addresses_own_member,
     adr_options(),
@@ -112,12 +114,11 @@ END_VAR
     inst2(x := 9, y => r2);
 END_PROGRAM
 ",
-    &[(2, 7), (3, 9)],
+    &[("r1", 7), ("r2", 9)],
 );
 
 // NULL guard: the guarded dereference only runs once the pointer is bound.
 // NULL is the allow_ref_to keyword, as in the codesys dialect.
-// var layout: x=0, p=1, y=2
 e2e_i32_with!(
     end_to_end_when_adr_null_guard_then_deref_only_when_bound,
     CompilerOptions {
@@ -140,7 +141,7 @@ END_VAR
     END_IF;
 END_PROGRAM
 ",
-    &[(2, 42)],
+    &[("y", 42)],
 );
 
 #[test]
@@ -194,13 +195,13 @@ fn end_to_end_when_twincat_dialect_then_goal_example_runs() {
     // The pure twincat preset enables the whole Goal example with no
     // explicit flags — and without any REF_TO/REF()/NULL keywords.
     let options = CompilerOptions::from_dialect(Dialect::TwinCat);
-    let (_c, bufs) = parse_and_run(GOAL_EXAMPLE, &options);
-    assert_eq!(bufs.vars[3].as_i32(), 5);
+    let snapshot = Snapshot::run(GOAL_EXAMPLE, &options);
+    assert_eq!(snapshot.read_as::<i32>("number2"), 5);
 }
 
 #[test]
 fn end_to_end_when_codesys_dialect_then_goal_example_runs() {
     let options = CompilerOptions::from_dialect(Dialect::Codesys);
-    let (_c, bufs) = parse_and_run(GOAL_EXAMPLE, &options);
-    assert_eq!(bufs.vars[3].as_i32(), 5);
+    let snapshot = Snapshot::run(GOAL_EXAMPLE, &options);
+    assert_eq!(snapshot.read_as::<i32>("number2"), 5);
 }

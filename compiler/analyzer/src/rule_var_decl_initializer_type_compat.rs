@@ -33,10 +33,10 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::{ByteSized, IntermediateType},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::{ByteSized, SemanticType},
     type_environment::TypeEnvironment,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -78,46 +78,46 @@ fn fits_width(width: TemporalWidth, size: &ByteSized) -> bool {
     }
 }
 
-fn is_compatible(constant: &ConstantKind, target: &IntermediateType) -> bool {
+fn is_compatible(constant: &ConstantKind, target: &SemanticType) -> bool {
     match target {
-        IntermediateType::Bool => matches!(constant, ConstantKind::Boolean(_)),
-        IntermediateType::Int { .. } | IntermediateType::UInt { .. } => {
+        SemanticType::Bool => matches!(constant, ConstantKind::Boolean(_)),
+        SemanticType::Int { .. } | SemanticType::UInt { .. } => {
             matches!(
                 constant,
                 ConstantKind::IntegerLiteral(_) | ConstantKind::BitStringLiteral(_)
             )
         }
-        IntermediateType::Real { .. } => {
+        SemanticType::Real { .. } => {
             matches!(
                 constant,
                 ConstantKind::RealLiteral(_) | ConstantKind::IntegerLiteral(_)
             )
         }
-        IntermediateType::Bytes { .. } => {
+        SemanticType::Bytes { .. } => {
             matches!(
                 constant,
                 ConstantKind::IntegerLiteral(_) | ConstantKind::BitStringLiteral(_)
             )
         }
-        IntermediateType::String { .. } => matches!(constant, ConstantKind::CharacterString(_)),
+        SemanticType::String { .. } => matches!(constant, ConstantKind::CharacterString(_)),
         // A temporal literal names its own member of the family, so the size
         // is compared as well as the kind: `TIME#` initializes an `LTIME`
         // because the short member widens, while `LTIME#` does not initialize
         // a `TIME` -- the long member exists to hold what the short one
         // cannot.
-        IntermediateType::Time { size } => {
+        SemanticType::Time { size } => {
             matches!(constant, ConstantKind::Duration(lit) if fits_width(lit.width, size))
         }
-        IntermediateType::Date { size } => {
+        SemanticType::Date { size } => {
             matches!(constant, ConstantKind::Date(lit) if fits_width(lit.width, size))
         }
-        IntermediateType::TimeOfDay { size } => {
+        SemanticType::TimeOfDay { size } => {
             matches!(constant, ConstantKind::TimeOfDay(lit) if fits_width(lit.width, size))
         }
-        IntermediateType::DateAndTime { size } => {
+        SemanticType::DateAndTime { size } => {
             matches!(constant, ConstantKind::DateAndTime(lit) if fits_width(lit.width, size))
         }
-        IntermediateType::Subrange { base_type, .. } => is_compatible(constant, base_type),
+        SemanticType::Subrange { base_type, .. } => is_compatible(constant, base_type),
         // Complex types (Enumeration, Structure, Array, FunctionBlock, Function)
         // use different InitialValueAssignmentKind variants, not Simple.
         _ => true,
@@ -159,13 +159,13 @@ impl Visitor<Infallible> for RuleInitializerTypeCompat<'_> {
 
 #[cfg(test)]
 mod test {
-    use crate::test_helpers::parse_and_resolve_types_with_options;
+    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
 
     use super::*;
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use ironplc_problems::Problem;
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_int_var_with_integer_literal_then_ok,
         "
 PROGRAM main
@@ -175,7 +175,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_real_var_with_real_literal_then_ok,
         "
 PROGRAM main
@@ -185,7 +185,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_real_var_with_integer_literal_then_ok,
         "
 PROGRAM main
@@ -195,7 +195,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_bool_var_with_boolean_literal_then_ok,
         "
 PROGRAM main
@@ -205,7 +205,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_no_initializer_then_ok,
         "
 PROGRAM main
@@ -215,7 +215,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_uint_var_with_integer_literal_then_ok,
         "
 PROGRAM main
@@ -225,7 +225,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_int_var_with_negative_integer_literal_then_ok,
         "
 PROGRAM main
@@ -235,7 +235,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_real_var_with_negative_real_literal_then_ok,
         "
 PROGRAM main
@@ -245,7 +245,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_int_var_with_real_literal_then_error,
         "
 PROGRAM main
@@ -253,10 +253,10 @@ VAR
     dummy : INT := 10.0;
 END_VAR
 END_PROGRAM",
-        Problem::InitializerTypeMismatch
+        [Problem::InitializerTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err_at!(
         apply_when_bool_var_with_integer_literal_then_error,
         "
 PROGRAM main
@@ -264,10 +264,11 @@ VAR
     x : BOOL := 1;
 END_VAR
 END_PROGRAM",
-        Problem::InitializerTypeMismatch
+        Problem::InitializerTypeMismatch,
+        "x"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_real_var_with_boolean_literal_then_error,
         "
 PROGRAM main
@@ -275,10 +276,10 @@ VAR
     x : REAL := TRUE;
 END_VAR
 END_PROGRAM",
-        Problem::InitializerTypeMismatch
+        [Problem::InitializerTypeMismatch]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_int_var_with_string_literal_then_error,
         "
 PROGRAM main
@@ -286,7 +287,7 @@ VAR
     x : INT := 'hello';
 END_VAR
 END_PROGRAM",
-        Problem::InitializerTypeMismatch
+        [Problem::InitializerTypeMismatch]
     );
 
     #[test]
@@ -299,9 +300,8 @@ END_VAR
 END_PROGRAM";
 
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
-        let (library, context) = parse_and_resolve_types_with_options(program, &options);
-        let result = apply(&library, &context, &options);
-        assert!(result.is_ok());
+        let diagnostics = rule_diagnostics(apply, program, &options);
+        assert!(diagnostics.is_empty());
     }
 
     #[test]
@@ -314,9 +314,8 @@ END_VAR
 END_PROGRAM";
 
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
-        let (library, context) = parse_and_resolve_types_with_options(program, &options);
-        let result = apply(&library, &context, &options);
-        assert!(result.is_ok());
+        let diagnostics = rule_diagnostics(apply, program, &options);
+        assert!(diagnostics.is_empty());
     }
 
     #[test]
@@ -329,12 +328,10 @@ END_VAR
 END_PROGRAM";
 
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
-        let (library, context) = parse_and_resolve_types_with_options(program, &options);
-        let result = apply(&library, &context, &options);
-        assert!(result.is_err());
-
-        let errors = result.unwrap_err();
-        assert_eq!(1, errors.len());
-        assert_eq!(Problem::InitializerTypeMismatch.code(), errors[0].code);
+        let diagnostics = rule_diagnostics(apply, program, &options);
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::InitializerTypeMismatch.code()]
+        );
     }
 }

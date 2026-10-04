@@ -4,7 +4,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 e2e_f32!(
     end_to_end_when_int_assigned_to_real_then_converted,
@@ -17,7 +17,7 @@ PROGRAM main
   r := i;
 END_PROGRAM
 ",
-    &[(0, -3.0)],
+    &[("r", -3.0)],
 );
 
 e2e_f64!(
@@ -31,7 +31,7 @@ PROGRAM main
   l := d;
 END_PROGRAM
 ",
-    &[(0, 7.0)],
+    &[("l", 7.0)],
 );
 
 e2e_f64!(
@@ -45,7 +45,7 @@ PROGRAM main
   l := u;
 END_PROGRAM
 ",
-    &[(0, 5.0)],
+    &[("l", 5.0)],
 );
 
 e2e_f64!(
@@ -59,7 +59,7 @@ PROGRAM main
   l := r;
 END_PROGRAM
 ",
-    &[(0, 1.5)],
+    &[("l", 1.5)],
 );
 
 #[test]
@@ -73,8 +73,8 @@ PROGRAM main
   l := u;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i64(), 4_000_000_000);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i64>("l"), 4_000_000_000);
 }
 
 e2e_f32!(
@@ -90,5 +90,5 @@ PROGRAM main
   r := a[1];
 END_PROGRAM
 ",
-    &[(0, -3.0)],
+    &[("r", -3.0)],
 );

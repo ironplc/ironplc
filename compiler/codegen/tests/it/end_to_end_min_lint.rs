@@ -14,5 +14,5 @@ PROGRAM main
   result := MIN(a, b);
 END_PROGRAM
 ",
-    &[(2, -5_000_000_000)],
+    &[("result", -5_000_000_000)],
 );

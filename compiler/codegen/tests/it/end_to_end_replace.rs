@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, read_string, string_offset};
+use crate::common::Snapshot;
 use proptest::prelude::*;
 
 /// Generates printable ASCII strings safe for IEC 61131-3 string literals.
@@ -31,12 +31,9 @@ PROGRAM main
   result := REPLACE(s1, s2, 5, 7);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // Offsets are STRING_HEADER_BYTES-relative (see string_offset): s1 at 0,
-    // s2 after s1, result after s2.
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello Earth");
+    assert_eq!(snapshot.read("result"), "Hello Earth");
 }
 
 #[test]
@@ -51,12 +48,11 @@ PROGRAM main
   result := REPLACE(s1, s2, 1, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
     // Full result would be AB + XXXXX + DE = ABXXXXXDE (9 chars).
     // But result is STRING[6], so it truncates to 'ABXXXX' (6 chars).
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABXXXX");
+    assert_eq!(snapshot.read("result"), "ABXXXX");
 }
 
 // --- Property test: REPLACE(s1, s2, n, p) == replace n chars of s1 from
@@ -97,8 +93,7 @@ PROGRAM main
 END_PROGRAM
 "
         );
-        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-        let result_offset = string_offset(&[254, 254]);
-        prop_assert_eq!(read_string(&bufs.data_region, result_offset), expected);
+        let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+        prop_assert_eq!(snapshot.read("result"), expected);
     }
 }

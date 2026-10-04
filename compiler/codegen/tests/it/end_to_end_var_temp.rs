@@ -22,7 +22,7 @@ PROGRAM main
   result := add_doubled(3, 4);
 END_PROGRAM
 ",
-    &[(0, 14)],
+    &[("result", 14)],
 );
 
 e2e_i32!(
@@ -48,5 +48,5 @@ PROGRAM main
   result := compute(4);
 END_PROGRAM
 ",
-    &[(0, 15)],
+    &[("result", 15)],
 );

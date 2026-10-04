@@ -25,7 +25,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::*;
 
-use crate::intermediate_type::IntermediateType;
+use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeEnvironment;
 
 pub fn apply(lib: Library, type_environment: &TypeEnvironment) -> Result<Library, Vec<Diagnostic>> {
@@ -51,7 +51,7 @@ impl UnsignedAbsRemover<'_> {
             return None;
         };
         match self.type_environment.representation_of_expr(&input.expr)? {
-            IntermediateType::UInt { .. } => Some(input.expr.clone()),
+            SemanticType::UInt { .. } => Some(input.expr.clone()),
             _ => None,
         }
     }

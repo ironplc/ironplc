@@ -20,8 +20,8 @@ use ironplc_dsl::common::{TypeName, VariableType};
 use ironplc_dsl::core::Id;
 
 use crate::function_environment::FunctionSignature;
-use crate::intermediate_type::IntermediateType;
 use crate::semantic_context::SemanticContext;
+use crate::semantic_type::SemanticType;
 use crate::symbol_environment::{ScopeKind, SymbolEnvironment, SymbolInfo, SymbolKind};
 use crate::type_attributes::TypeAttributes;
 
@@ -105,17 +105,17 @@ impl TypeSymbolKind {
     }
 }
 
-impl From<&IntermediateType> for TypeSymbolKind {
-    fn from(intermediate: &IntermediateType) -> Self {
-        match intermediate {
-            IntermediateType::Enumeration { .. } => TypeSymbolKind::Enumeration,
-            IntermediateType::Structure { .. } => TypeSymbolKind::Structure,
-            IntermediateType::Array { .. } => TypeSymbolKind::Array,
-            IntermediateType::Subrange { .. } => TypeSymbolKind::Subrange,
-            IntermediateType::String { .. } => TypeSymbolKind::String,
-            IntermediateType::Reference { .. } => TypeSymbolKind::Reference,
-            IntermediateType::FunctionBlock { .. } => TypeSymbolKind::FunctionBlock,
-            IntermediateType::Function { .. } => TypeSymbolKind::Function,
+impl From<&SemanticType> for TypeSymbolKind {
+    fn from(semantic_type: &SemanticType) -> Self {
+        match semantic_type {
+            SemanticType::Enumeration { .. } => TypeSymbolKind::Enumeration,
+            SemanticType::Structure { .. } => TypeSymbolKind::Structure,
+            SemanticType::Array { .. } => TypeSymbolKind::Array,
+            SemanticType::Subrange { .. } => TypeSymbolKind::Subrange,
+            SemanticType::String { .. } => TypeSymbolKind::String,
+            SemanticType::Reference { .. } => TypeSymbolKind::Reference,
+            SemanticType::FunctionBlock { .. } => TypeSymbolKind::FunctionBlock,
+            SemanticType::Function { .. } => TypeSymbolKind::Function,
             _ => TypeSymbolKind::Alias,
         }
     }
@@ -181,7 +181,7 @@ impl<'a> FunctionSymbolView<'a> {
 /// A function parameter, augmented with its outline direction.
 #[derive(Debug, Clone, Copy)]
 pub struct ParameterView<'a> {
-    pub param: &'a crate::intermediate_type::IntermediateFunctionParameter,
+    pub param: &'a crate::semantic_type::SemanticFunctionParameter,
     pub direction: VariableDirection,
 }
 
@@ -292,10 +292,10 @@ mod tests {
     }
 
     #[test]
-    fn type_symbol_kind_from_intermediate_when_enumeration_then_enumeration() {
-        let kind = TypeSymbolKind::from(&IntermediateType::Enumeration {
-            underlying_type: Box::new(IntermediateType::Int {
-                size: crate::intermediate_type::ByteSized::B8,
+    fn type_symbol_kind_from_semantic_type_when_enumeration_then_enumeration() {
+        let kind = TypeSymbolKind::from(&SemanticType::Enumeration {
+            underlying_type: Box::new(SemanticType::Int {
+                size: crate::semantic_type::ByteSized::B8,
             }),
             members: crate::enumeration_members::EnumerationMembers::default(),
         });
@@ -303,8 +303,8 @@ mod tests {
     }
 
     #[test]
-    fn type_symbol_kind_from_intermediate_when_function_block_then_function_block() {
-        let kind = TypeSymbolKind::from(&IntermediateType::FunctionBlock {
+    fn type_symbol_kind_from_semantic_type_when_function_block_then_function_block() {
+        let kind = TypeSymbolKind::from(&SemanticType::FunctionBlock {
             name: "FB".to_string(),
             fields: vec![],
         });
@@ -412,7 +412,7 @@ mod tests {
         let has_fb_type = types.iter().any(|t| {
             matches!(
                 t.attributes.representation,
-                IntermediateType::FunctionBlock { .. }
+                SemanticType::FunctionBlock { .. }
             )
         });
         assert!(

@@ -9,7 +9,7 @@
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
-use crate::common::{assert_run_i64_with, parse_and_run};
+use crate::common::{assert_run_with, datetime, time, PrimitiveDateTime, Snapshot, Time, Value};
 
 fn edition3() -> CompilerOptions {
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
@@ -27,8 +27,8 @@ PROGRAM main
   ms := TOD_TO_DINT(a);
 END_PROGRAM
 ",
-    1,
-    36_000_250
+    "ms",
+    Value::Int(36_000_250)
 )]
 #[case::time_of_day_assignment(
     "
@@ -39,8 +39,8 @@ PROGRAM main
   a := TIME_OF_DAY#23:59:59.999;
 END_PROGRAM
 ",
-    0,
-    86_399_999
+    "a",
+    time!(23:59:59.999).into()
 )]
 // A fraction below the millisecond is truncated, as for `T#`.
 #[case::tod_sub_millisecond_truncated(
@@ -52,8 +52,8 @@ PROGRAM main
   a := a;
 END_PROGRAM
 ",
-    0,
-    36_000_000
+    "a",
+    time!(10:00).into()
 )]
 #[case::tod_constant(
     "
@@ -67,8 +67,8 @@ PROGRAM main
   a := start;
 END_PROGRAM
 ",
-    1,
-    36_000_500
+    "a",
+    time!(10:00:00.5).into()
 )]
 #[case::tod_plus_time(
     "
@@ -79,8 +79,8 @@ PROGRAM main
   a := TOD#10:00:00.250 + T#250ms;
 END_PROGRAM
 ",
-    0,
-    36_000_500
+    "a",
+    time!(10:00:00.5).into()
 )]
 // Before the fix both literals were 10:00:00, so the comparison was FALSE.
 #[case::tod_comparison(
@@ -92,11 +92,11 @@ PROGRAM main
   later := TOD#10:00:00.250 > TOD#10:00:00.100;
 END_PROGRAM
 ",
-    0,
-    1
+    "later",
+    Value::Bool(true)
 )]
-// 2024-01-02 is 1,704,153,600 s; 10h adds 36,000 s. The 0.75 s fraction is
-// below the one-second unit and is truncated.
+// The 0.75 s fraction is below the one-second unit of DATE_AND_TIME and is
+// truncated.
 #[case::dt_fraction_truncated(
     "
 PROGRAM main
@@ -106,8 +106,8 @@ PROGRAM main
   d := d;
 END_PROGRAM
 ",
-    0,
-    1_704_189_600
+    "d",
+    datetime!(2024-01-02 10:00).into()
 )]
 #[case::date_and_time_fraction_truncated(
     "
@@ -118,16 +118,15 @@ PROGRAM main
   d := DATE_AND_TIME#2024-01-02-10:00:00.75;
 END_PROGRAM
 ",
-    0,
-    1_704_189_600
+    "d",
+    datetime!(2024-01-02 10:00).into()
 )]
 fn end_to_end_when_short_daytime_literal_has_fraction_then_stored_at_type_unit(
     #[case] source: &str,
-    #[case] index: usize,
-    #[case] expected: u32,
+    #[case] name: &str,
+    #[case] expected: Value,
 ) {
-    let (_c, bufs) = parse_and_run(source, &edition3());
-    assert_eq!(bufs.vars[index].as_i32() as u32, expected);
+    assert_eq!(Snapshot::run(source, &edition3()).read(name), expected);
 }
 
 #[rstest]
@@ -140,7 +139,7 @@ PROGRAM main
   a := a;
 END_PROGRAM
 ",
-    36_000_250
+    time!(10:00:00.25)
 )]
 #[case::ltime_of_day_assignment(
     "
@@ -151,8 +150,16 @@ PROGRAM main
   a := LTIME_OF_DAY#23:59:59.999;
 END_PROGRAM
 ",
-    86_399_999
+    time!(23:59:59.999)
 )]
+fn end_to_end_when_long_time_of_day_literal_has_fraction_then_stored_at_type_unit(
+    #[case] source: &str,
+    #[case] expected: Time,
+) {
+    assert_run_with(source, &edition3(), &[("a", expected)]);
+}
+
+#[rstest]
 #[case::ldt_fraction_truncated(
     "
 PROGRAM main
@@ -162,7 +169,7 @@ PROGRAM main
   d := d;
 END_PROGRAM
 ",
-    1_704_189_600
+    datetime!(2024-01-02 10:00)
 )]
 #[case::ldate_and_time_fraction_truncated(
     "
@@ -173,11 +180,11 @@ PROGRAM main
   d := LDATE_AND_TIME#2024-01-02-10:00:00.75;
 END_PROGRAM
 ",
-    1_704_189_600
+    datetime!(2024-01-02 10:00)
 )]
-fn end_to_end_when_long_daytime_literal_has_fraction_then_stored_at_type_unit(
+fn end_to_end_when_long_date_and_time_literal_has_fraction_then_stored_at_type_unit(
     #[case] source: &str,
-    #[case] expected: i64,
+    #[case] expected: PrimitiveDateTime,
 ) {
-    assert_run_i64_with(source, &edition3(), &[(0, expected)]);
+    assert_run_with(source, &edition3(), &[("d", expected)]);
 }

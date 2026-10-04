@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::{Duration, Snapshot};
 
 #[test]
 fn end_to_end_when_time_function_declared_then_callable() {
@@ -22,8 +22,8 @@ END_PROGRAM
         allow_time_as_function_name: true,
         ..CompilerOptions::default()
     };
-    let (_c, bufs) = parse_and_run(source, &options);
+    let snapshot = Snapshot::run(source, &options);
 
-    // TIME function returns T#5s = 5000 ms
-    assert_eq!(bufs.vars[0].as_i64(), 5000);
+    // TIME function returns T#5s
+    assert_eq!(snapshot.read("t"), Duration::seconds(5));
 }

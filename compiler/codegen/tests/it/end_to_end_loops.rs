@@ -13,7 +13,7 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ",
-    &[(0, 0)],
+    &[("x", 0)],
 );
 
 // y untouched
@@ -31,7 +31,7 @@ PROGRAM main
   END_WHILE;
 END_PROGRAM
 ",
-    &[(0, 0), (1, 0)],
+    &[("x", 0), ("y", 0)],
 );
 
 e2e_i32!(
@@ -47,7 +47,7 @@ PROGRAM main
   END_REPEAT;
 END_PROGRAM
 ",
-    &[(0, 5)],
+    &[("x", 5)],
 );
 
 // Even though the condition is immediately true (0 >= 0), the body executes
@@ -66,7 +66,7 @@ PROGRAM main
   END_REPEAT;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("count", 1)],
 );
 
 // 1+2+3+4+5
@@ -83,7 +83,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(1, 15)],
+    &[("sum", 15)],
 );
 
 // 5+4+3+2+1
@@ -100,7 +100,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(1, 15)],
+    &[("sum", 15)],
 );
 
 // i=0,2,4,6,8,10 → 6 iterations
@@ -117,7 +117,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(1, 6)],
+    &[("count", 6)],
 );
 
 // FOR i := 10 TO 1 DO (positive step, from > to → no iterations). y untouched.
@@ -134,7 +134,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(1, 0)],
+    &[("y", 0)],
 );
 
 // FOR-loop TRUNC elision (specs/design/vm-performance.md §13):
@@ -154,7 +154,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(1, 100)],
+    &[("sum", 100)],
 );
 
 e2e_i32!(
@@ -170,7 +170,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(1, 10)],
+    &[("count", 10)],
 );
 
 e2e_i32!(
@@ -186,7 +186,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(1, 50)],
+    &[("count", 50)],
 );
 
 e2e_i32!(
@@ -202,5 +202,5 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(1, 100)],
+    &[("count", 100)],
 );

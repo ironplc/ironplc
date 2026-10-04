@@ -11,8 +11,8 @@
 //!
 //! The transformation succeeds when all data type declarations
 //! resolve to a declared type.
-use crate::intermediate_type::{FunctionBlockVarType, IntermediateStructField, IntermediateType};
 use crate::intermediates::*;
+use crate::semantic_type::{FunctionBlockVarType, SemanticStructField, SemanticType};
 use crate::type_environment::TypeEnvironment;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::{Id, Located};
@@ -62,7 +62,7 @@ impl TypeEnvironment {
             }))
         } else {
             match existing.representation {
-                IntermediateType::Enumeration { .. } => Ok(DataTypeDeclarationKind::Enumeration(
+                SemanticType::Enumeration { .. } => Ok(DataTypeDeclarationKind::Enumeration(
                     EnumerationDeclaration {
                         type_name: node.data_type_name,
                         spec_init: EnumeratedSpecificationInit {
@@ -72,7 +72,7 @@ impl TypeEnvironment {
                         },
                     },
                 )),
-                IntermediateType::Structure { fields: _ } => {
+                SemanticType::Structure { fields: _ } => {
                     Ok(DataTypeDeclarationKind::StructureInitialization(
                         StructureInitializationDeclaration {
                             type_name: node.base_type_name,
@@ -80,21 +80,21 @@ impl TypeEnvironment {
                         },
                     ))
                 }
-                IntermediateType::Array { .. } => {
+                SemanticType::Array { .. } => {
                     Ok(DataTypeDeclarationKind::Array(ArrayDeclaration {
                         type_name: node.data_type_name,
                         spec: SpecificationKind::Named(node.base_type_name),
                         init: vec![],
                     }))
                 }
-                IntermediateType::Subrange { .. } => {
+                SemanticType::Subrange { .. } => {
                     Ok(DataTypeDeclarationKind::Subrange(SubrangeDeclaration {
                         type_name: node.data_type_name,
                         spec: SpecificationKind::Named(node.base_type_name),
                         default: None,
                     }))
                 }
-                IntermediateType::Reference { .. } => {
+                SemanticType::Reference { .. } => {
                     // Reference type alias: treat as a simple alias
                     Ok(DataTypeDeclarationKind::Reference(
                         ironplc_dsl::common::ReferenceDeclaration {
@@ -110,21 +110,21 @@ impl TypeEnvironment {
                 // FunctionBlock and Function types are POUs (Program Organization Units),
                 // not TYPE declarations, so they should never appear in the type environment.
                 // If we reach this branch, it indicates a bug in the compiler.
-                IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. } => {
+                SemanticType::FunctionBlock { .. } | SemanticType::Function { .. } => {
                     Err(Diagnostic::internal_error())
                 }
                 // Primitive types are handled by the is_primitive() check above,
                 // so reaching this branch indicates a bug in the compiler
-                IntermediateType::Bool
-                | IntermediateType::Int { .. }
-                | IntermediateType::UInt { .. }
-                | IntermediateType::Real { .. }
-                | IntermediateType::Bytes { .. }
-                | IntermediateType::Time { .. }
-                | IntermediateType::Date { .. }
-                | IntermediateType::TimeOfDay { .. }
-                | IntermediateType::DateAndTime { .. }
-                | IntermediateType::String { .. } => Err(Diagnostic::internal_error()),
+                SemanticType::Bool
+                | SemanticType::Int { .. }
+                | SemanticType::UInt { .. }
+                | SemanticType::Real { .. }
+                | SemanticType::Bytes { .. }
+                | SemanticType::Time { .. }
+                | SemanticType::Date { .. }
+                | SemanticType::TimeOfDay { .. }
+                | SemanticType::DateAndTime { .. }
+                | SemanticType::String { .. } => Err(Diagnostic::internal_error()),
             }
         }
     }
@@ -217,10 +217,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // Handle subrange specifications like: TYPE MY_RANGE : INT (1..100); END_TYPE
                 let result = subrange::try_from(&node.type_name, spec, self)?;
                 match result {
-                    subrange::IntermediateResult::Type(attributes) => {
+                    subrange::TypeResolution::Type(attributes) => {
                         self.insert_type(&node.type_name, attributes);
                     }
-                    subrange::IntermediateResult::Alias(base_type_name) => {
+                    subrange::TypeResolution::Alias(base_type_name) => {
                         self.insert_alias(&node.type_name, &base_type_name)?;
                     }
                 }
@@ -241,10 +241,11 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // Handle array specifications like: TYPE MY_ARRAY : ARRAY [1..10] OF INT; END_TYPE
                 let result = array::try_from(&node.type_name, &array_init.spec, self)?;
                 match result {
-                    array::IntermediateResult::Type(attributes) => {
+                    array::TypeResolution::Type(attributes) => {
                         self.insert_type(&node.type_name, attributes);
+                        self.record_declared_array_element(&node.type_name, &array_init.spec);
                     }
-                    array::IntermediateResult::Alias(base_type_name) => {
+                    array::TypeResolution::Alias(base_type_name) => {
                         self.insert_alias(&node.type_name, &base_type_name)?;
                     }
                 }
@@ -324,10 +325,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
         let result = subrange::try_from(&node.type_name, &node.spec, self)?;
 
         match result {
-            subrange::IntermediateResult::Type(attributes) => {
+            subrange::TypeResolution::Type(attributes) => {
                 self.insert_type(&node.type_name, attributes);
             }
-            subrange::IntermediateResult::Alias(base_type_name) => {
+            subrange::TypeResolution::Alias(base_type_name) => {
                 self.insert_alias(&node.type_name, &base_type_name)?;
             }
         }
@@ -343,10 +344,11 @@ impl Fold<Diagnostic> for TypeEnvironment {
         let result = array::try_from(&node.type_name, &node.spec, self)?;
 
         match result {
-            array::IntermediateResult::Type(attributes) => {
+            array::TypeResolution::Type(attributes) => {
                 self.insert_type(&node.type_name, attributes);
+                self.record_declared_array_element(&node.type_name, &node.spec);
             }
-            array::IntermediateResult::Alias(base_type_name) => {
+            array::TypeResolution::Alias(base_type_name) => {
                 self.insert_alias(&node.type_name, &base_type_name)?;
             }
         }
@@ -362,7 +364,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
 
         let attrs = crate::type_attributes::TypeAttributes::new(
             node.type_name.span(),
-            IntermediateType::Reference {
+            SemanticType::Reference {
                 target_type: Box::new(target_type),
             },
         );
@@ -376,7 +378,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
     ) -> Result<FunctionBlockDeclaration, Diagnostic> {
         // Register the user-defined function block in the type environment
         // so that variable declarations like `myFb : MY_FB` resolve to
-        // IntermediateType::FunctionBlock, just like stdlib FBs.
+        // SemanticType::FunctionBlock, just like stdlib FBs.
         let mut fields = Vec::new();
         let mut current_offset = 0u32;
 
@@ -429,7 +431,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 };
                 let size = field_type.size_in_bytes().unwrap_or(0);
 
-                fields.push(IntermediateStructField {
+                fields.push(SemanticStructField {
                     name: Id::from(id.to_string().as_str()),
                     field_type,
                     offset: aligned_offset,
@@ -443,7 +445,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
 
         let attrs = crate::type_attributes::TypeAttributes::new(
             node.name.span(),
-            IntermediateType::FunctionBlock {
+            SemanticType::FunctionBlock {
                 name: node.name.name.to_string(),
                 fields,
             },
@@ -472,7 +474,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // project before this representation could matter.
         let attrs = crate::type_attributes::TypeAttributes::new(
             node.name.span(),
-            IntermediateType::Structure { fields: vec![] },
+            SemanticType::Structure { fields: vec![] },
         );
         self.insert_type(&TypeName::from_id(&node.name), attrs);
         Ok(node)
@@ -492,7 +494,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 // for the new type name being declared.
                 let existing = self.get(&lb.base_type_name);
                 if let Some(existing) = existing {
-                    if matches!(existing.representation, IntermediateType::Structure { .. }) {
+                    if matches!(existing.representation, SemanticType::Structure { .. }) {
                         // Insert the alias directly and return the transformed declaration
                         self.insert_alias(&lb.data_type_name, &lb.base_type_name)?;
                         return Ok(DataTypeDeclarationKind::StructureInitialization(
@@ -532,7 +534,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
 
 #[cfg(test)]
 mod tests {
-    use crate::intermediate_type::{ByteSized, IntermediateType};
+    use crate::semantic_type::{ByteSized, SemanticType};
     use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
 
     use super::apply;
@@ -651,16 +653,13 @@ END_TYPE
         let my_int_type = env.get(&TypeName::from("MY_INT")).unwrap();
         assert!(matches!(
             &my_int_type.representation,
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B16
             }
         ));
 
         let my_bool_type = env.get(&TypeName::from("MY_BOOL")).unwrap();
-        assert!(matches!(
-            &my_bool_type.representation,
-            IntermediateType::Bool
-        ));
+        assert!(matches!(&my_bool_type.representation, SemanticType::Bool));
     }
 
     #[test]
@@ -695,7 +694,7 @@ END_TYPE
         let my_int_type = env.get(&TypeName::from("MY_INT")).unwrap();
         assert!(matches!(
             &my_int_type.representation,
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B16
             }
         ));
@@ -731,7 +730,7 @@ END_TYPE
         let my_real_type = env.get(&TypeName::from("MY_REAL")).unwrap();
         assert!(matches!(
             &my_real_type.representation,
-            IntermediateType::Real {
+            SemanticType::Real {
                 size: ByteSized::B32
             }
         ));
@@ -749,10 +748,7 @@ END_TYPE
 
         // Verify the alias was created
         let my_bool_type = env.get(&TypeName::from("MY_BOOL")).unwrap();
-        assert!(matches!(
-            &my_bool_type.representation,
-            IntermediateType::Bool
-        ));
+        assert!(matches!(&my_bool_type.representation, SemanticType::Bool));
     }
 
     #[test]
@@ -769,7 +765,7 @@ END_TYPE
         let my_dint_type = env.get(&TypeName::from("MY_DINT")).unwrap();
         assert!(matches!(
             &my_dint_type.representation,
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B32
             }
         ));
@@ -789,7 +785,7 @@ END_TYPE
         let my_time_type = env.get(&TypeName::from("MY_TIME")).unwrap();
         assert!(matches!(
             &my_time_type.representation,
-            IntermediateType::Time { .. }
+            SemanticType::Time { .. }
         ));
     }
 
@@ -809,21 +805,18 @@ END_TYPE
         let my_int_type = env.get(&TypeName::from("MY_INT")).unwrap();
         assert!(matches!(
             &my_int_type.representation,
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B16
             }
         ));
 
         let my_bool_type = env.get(&TypeName::from("MY_BOOL")).unwrap();
-        assert!(matches!(
-            &my_bool_type.representation,
-            IntermediateType::Bool
-        ));
+        assert!(matches!(&my_bool_type.representation, SemanticType::Bool));
 
         let my_real_type = env.get(&TypeName::from("MY_REAL")).unwrap();
         assert!(matches!(
             &my_real_type.representation,
-            IntermediateType::Real {
+            SemanticType::Real {
                 size: ByteSized::B32
             }
         ));
@@ -843,7 +836,7 @@ END_TYPE
         let my_byte_type = env.get(&TypeName::from("MY_BYTE")).unwrap();
         assert!(matches!(
             &my_byte_type.representation,
-            IntermediateType::Bytes {
+            SemanticType::Bytes {
                 size: ByteSized::B8
             }
         ));
@@ -892,7 +885,7 @@ END_TYPE
         let array_type = env.get(&TypeName::from("MY_ARRAY")).unwrap();
         assert!(matches!(
             &array_type.representation,
-            IntermediateType::Array { .. }
+            SemanticType::Array { .. }
         ));
     }
 
@@ -931,10 +924,10 @@ END_TYPE
         let array_type = env.get(&TypeName::from("MY_ARRAY")).unwrap();
         assert!(matches!(
             &array_type.representation,
-            IntermediateType::Array {
+            SemanticType::Array {
                 element_type,
                 ..
-            } if matches!(**element_type, IntermediateType::Structure { .. })
+            } if matches!(**element_type, SemanticType::Structure { .. })
         ));
     }
 
@@ -953,10 +946,10 @@ END_TYPE
         let outer_type = env.get(&TypeName::from("OUTER_ARRAY")).unwrap();
         assert!(matches!(
             &outer_type.representation,
-            IntermediateType::Array {
+            SemanticType::Array {
                 element_type,
                 ..
-            } if matches!(**element_type, IntermediateType::Array { .. })
+            } if matches!(**element_type, SemanticType::Array { .. })
         ));
     }
 
@@ -978,7 +971,7 @@ END_TYPE
         let alias_type = env.get(&TypeName::from("ALIAS_RANGE")).unwrap();
         assert!(matches!(
             &base_type.representation,
-            IntermediateType::Subrange { .. }
+            SemanticType::Subrange { .. }
         ));
         assert_eq!(base_type.representation, alias_type.representation);
     }
@@ -1001,7 +994,7 @@ END_TYPE
         let top_type = env.get(&TypeName::from("TOP_RANGE")).unwrap();
         assert!(matches!(
             &base_type.representation,
-            IntermediateType::Subrange { .. }
+            SemanticType::Subrange { .. }
         ));
         assert_eq!(base_type.representation, middle_type.representation);
         assert_eq!(base_type.representation, top_type.representation);

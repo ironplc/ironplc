@@ -22,7 +22,7 @@ use ironplc_dsl::textual::{Expr, ExprType};
 use ironplc_dsl::type_id::TypeId;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::intermediate_type::IntermediateType;
+use crate::semantic_type::SemanticType;
 use crate::type_compat::are_types_compatible;
 use crate::type_environment::TypeEnvironment;
 
@@ -71,34 +71,32 @@ pub fn operand_type_name(types: &TypeEnvironment, expr_type: &ExprType) -> Optio
 fn operand_name_of(types: &TypeEnvironment, id: TypeId) -> Option<TypeName> {
     let representation = &types.get_by_id(id)?.representation;
     match representation {
-        IntermediateType::Bool
-        | IntermediateType::Int { .. }
-        | IntermediateType::UInt { .. }
-        | IntermediateType::Real { .. }
-        | IntermediateType::Bytes { .. }
-        | IntermediateType::Time { .. }
-        | IntermediateType::Date { .. }
-        | IntermediateType::TimeOfDay { .. }
-        | IntermediateType::DateAndTime { .. } => types.elementary_type_name_for(representation),
-        IntermediateType::String { char_width, .. } => {
-            Some(TypeName::from(if char_width.is_wide() {
-                "wstring"
-            } else {
-                "string"
-            }))
-        }
-        IntermediateType::Reference { .. } => operand_name_of(types, types.referenced_type(id)?),
+        SemanticType::Bool
+        | SemanticType::Int { .. }
+        | SemanticType::UInt { .. }
+        | SemanticType::Real { .. }
+        | SemanticType::Bytes { .. }
+        | SemanticType::Time { .. }
+        | SemanticType::Date { .. }
+        | SemanticType::TimeOfDay { .. }
+        | SemanticType::DateAndTime { .. } => types.elementary_type_name_for(representation),
+        SemanticType::String { char_width, .. } => Some(TypeName::from(if char_width.is_wide() {
+            "wstring"
+        } else {
+            "string"
+        })),
+        SemanticType::Reference { .. } => operand_name_of(types, types.referenced_type(id)?),
         // A named subrange is known by its name; one spelled out in place
         // (`x : INT(-100..100)`) by its base type's.
-        IntermediateType::Subrange { base_type, .. } => types
+        SemanticType::Subrange { base_type, .. } => types
             .name_of(id)
             .cloned()
             .or_else(|| types.elementary_type_name_for(base_type)),
-        IntermediateType::Enumeration { .. }
-        | IntermediateType::Structure { .. }
-        | IntermediateType::Array { .. }
-        | IntermediateType::FunctionBlock { .. }
-        | IntermediateType::Function { .. } => types.name_of(id).cloned(),
+        SemanticType::Enumeration { .. }
+        | SemanticType::Structure { .. }
+        | SemanticType::Array { .. }
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Function { .. } => types.name_of(id).cloned(),
     }
 }
 
@@ -118,11 +116,11 @@ pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
         return by_name();
     };
     match &attributes.representation {
-        IntermediateType::Array { .. }
-        | IntermediateType::Structure { .. }
-        | IntermediateType::Enumeration { .. }
-        | IntermediateType::FunctionBlock { .. } => Some(ValueType::Composite(*id)),
-        IntermediateType::Subrange { base_type, .. } => types
+        SemanticType::Array { .. }
+        | SemanticType::Structure { .. }
+        | SemanticType::Enumeration { .. }
+        | SemanticType::FunctionBlock { .. } => Some(ValueType::Composite(*id)),
+        SemanticType::Subrange { base_type, .. } => types
             .elementary_type_name_for(base_type)
             .map(ValueType::Scalar)
             .or_else(by_name),
@@ -130,18 +128,18 @@ pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
         // its own name, a string by `STRING` or `WSTRING`, a reference by
         // the name of the type it references. A function is not the type of
         // any value, so it never gets here with a name that matters.
-        IntermediateType::Bool
-        | IntermediateType::Int { .. }
-        | IntermediateType::UInt { .. }
-        | IntermediateType::Real { .. }
-        | IntermediateType::Bytes { .. }
-        | IntermediateType::Time { .. }
-        | IntermediateType::Date { .. }
-        | IntermediateType::TimeOfDay { .. }
-        | IntermediateType::DateAndTime { .. }
-        | IntermediateType::String { .. }
-        | IntermediateType::Reference { .. }
-        | IntermediateType::Function { .. } => by_name(),
+        SemanticType::Bool
+        | SemanticType::Int { .. }
+        | SemanticType::UInt { .. }
+        | SemanticType::Real { .. }
+        | SemanticType::Bytes { .. }
+        | SemanticType::Time { .. }
+        | SemanticType::Date { .. }
+        | SemanticType::TimeOfDay { .. }
+        | SemanticType::DateAndTime { .. }
+        | SemanticType::String { .. }
+        | SemanticType::Reference { .. }
+        | SemanticType::Function { .. } => by_name(),
     }
 }
 
@@ -199,7 +197,7 @@ fn composite_accepted(types: &TypeEnvironment, expected: &TypeName, id: TypeId) 
     };
     matches!(
         actual.representation,
-        IntermediateType::Array { .. } | IntermediateType::Structure { .. }
+        SemanticType::Array { .. } | SemanticType::Structure { .. }
     ) && expected.representation == actual.representation
 }
 
@@ -215,12 +213,12 @@ pub(crate) fn describe(types: &TypeEnvironment, id: TypeId) -> String {
     }
 }
 
-fn describe_representation(types: &TypeEnvironment, representation: &IntermediateType) -> String {
+fn describe_representation(types: &TypeEnvironment, representation: &SemanticType) -> String {
     if let Some(name) = types.elementary_type_name_for(representation) {
         return name.to_string().to_uppercase();
     }
     match representation {
-        IntermediateType::Array {
+        SemanticType::Array {
             element_type,
             dimensions,
         } => {
@@ -234,7 +232,7 @@ fn describe_representation(types: &TypeEnvironment, representation: &Intermediat
                 .collect();
             format!("ARRAY[{}] OF {element}", bounds.join(", "))
         }
-        IntermediateType::String {
+        SemanticType::String {
             max_len,
             char_width,
         } => {
@@ -248,43 +246,43 @@ fn describe_representation(types: &TypeEnvironment, representation: &Intermediat
                 None => keyword.to_string(),
             }
         }
-        IntermediateType::Structure { .. } => "a structure".to_string(),
-        IntermediateType::Enumeration { .. } => "an enumeration".to_string(),
-        IntermediateType::FunctionBlock { name, .. } => name.clone(),
-        IntermediateType::Reference { target_type } => {
+        SemanticType::Structure { .. } => "a structure".to_string(),
+        SemanticType::Enumeration { .. } => "an enumeration".to_string(),
+        SemanticType::FunctionBlock { name, .. } => name.clone(),
+        SemanticType::Reference { target_type } => {
             format!("REF_TO {}", describe_representation(types, target_type))
         }
-        IntermediateType::Subrange { base_type, .. } => {
+        SemanticType::Subrange { base_type, .. } => {
             format!(
                 "a subrange of {}",
                 describe_representation(types, base_type)
             )
         }
-        IntermediateType::Function { .. } => "a function".to_string(),
+        SemanticType::Function { .. } => "a function".to_string(),
         // Every elementary representation is named above; these only reach
         // here in a representation the elementary table does not list.
-        IntermediateType::Bool
-        | IntermediateType::Int { .. }
-        | IntermediateType::UInt { .. }
-        | IntermediateType::Real { .. }
-        | IntermediateType::Bytes { .. }
-        | IntermediateType::Time { .. }
-        | IntermediateType::Date { .. }
-        | IntermediateType::TimeOfDay { .. }
-        | IntermediateType::DateAndTime { .. } => "an elementary type".to_string(),
+        SemanticType::Bool
+        | SemanticType::Int { .. }
+        | SemanticType::UInt { .. }
+        | SemanticType::Real { .. }
+        | SemanticType::Bytes { .. }
+        | SemanticType::Time { .. }
+        | SemanticType::Date { .. }
+        | SemanticType::TimeOfDay { .. }
+        | SemanticType::DateAndTime { .. } => "an elementary type".to_string(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intermediate_type::{ArrayDimension, ByteSized};
+    use crate::semantic_type::{ArrayDimension, ByteSized};
     use crate::type_attributes::TypeAttributes;
     use crate::type_environment::TypeEnvironmentBuilder;
     use ironplc_container::CharWidth;
     use ironplc_dsl::core::SourceSpan;
 
-    fn anonymous(types: &mut TypeEnvironment, representation: IntermediateType) -> TypeId {
+    fn anonymous(types: &mut TypeEnvironment, representation: SemanticType) -> TypeId {
         types.insert_anonymous(TypeAttributes::new(SourceSpan::default(), representation))
     }
 
@@ -308,8 +306,8 @@ mod tests {
         let mut types = environment();
         let id = anonymous(
             &mut types,
-            IntermediateType::Array {
-                element_type: Box::new(IntermediateType::Int {
+            SemanticType::Array {
+                element_type: Box::new(SemanticType::Int {
                     size: ByteSized::B32,
                 }),
                 dimensions: vec![
@@ -327,8 +325,8 @@ mod tests {
         let mut types = environment();
         let id = anonymous(
             &mut types,
-            IntermediateType::Array {
-                element_type: Box::new(IntermediateType::String {
+            SemanticType::Array {
+                element_type: Box::new(SemanticType::String {
                     max_len: Some(8),
                     char_width: CharWidth::Wide,
                 }),
@@ -344,8 +342,8 @@ mod tests {
         let mut types = environment();
         let id = anonymous(
             &mut types,
-            IntermediateType::Enumeration {
-                underlying_type: Box::new(IntermediateType::Int {
+            SemanticType::Enumeration {
+                underlying_type: Box::new(SemanticType::Int {
                     size: ByteSized::B8,
                 }),
                 members: crate::enumeration_members::EnumerationMembers::default(),

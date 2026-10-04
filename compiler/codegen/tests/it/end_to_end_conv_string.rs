@@ -3,7 +3,7 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::{parse_and_run, read_string};
+use crate::common::Snapshot;
 
 // =========================================================================
 // <TYPE>_TO_STRING
@@ -43,8 +43,8 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-    assert_eq!(read_string(&bufs.data_region, 0), expected);
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    assert_eq!(snapshot.read("s"), expected);
 }
 
 // =========================================================================
@@ -72,8 +72,8 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), expected);
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i32>("x"), expected);
 }
 
 // =========================================================================
@@ -96,7 +96,7 @@ PROGRAM main
   x := STRING_TO_REAL(s);
 END_PROGRAM
 ",
-    &[(1, 2.5)],
+    &[("x", 2.5)],
 );
 
 #[test]
@@ -114,9 +114,9 @@ PROGRAM main
   out := CONCAT(INT_TO_STRING(i), 'x');
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
     // `out` is the first string in the data region; CONCAT's temporaries
     // follow it.
-    assert_eq!(read_string(&bufs.data_region, 0), "42x");
+    assert_eq!(snapshot.read("out"), "42x");
 }

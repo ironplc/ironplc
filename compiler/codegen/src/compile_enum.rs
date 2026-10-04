@@ -1,14 +1,14 @@
 //! Enumeration support for IEC 61131-3 code generation.
 //!
 //! The analyzer records each enumeration's members, their ordinals and its
-//! default with the type (`IntermediateType::Enumeration::members`), and
+//! default with the type (`SemanticType::Enumeration::members`), and
 //! gives every enumerated value a type. Codegen only looks an ordinal up by
 //! `(TypeId, value)`; it neither walks declarations nor numbers members.
 //!
 //! See `specs/design/enumeration-codegen.md` for the full design.
 
 use ironplc_analyzer::enumeration_members::EnumerationMembers;
-use ironplc_analyzer::{IntermediateType, TypeEnvironment};
+use ironplc_analyzer::{SemanticType, TypeEnvironment};
 use ironplc_container::debug_section::EnumDefEntry;
 use ironplc_dsl::common::{EnumeratedValue, InitialValueAssignmentKind, VarDecl};
 use ironplc_dsl::core::Located;
@@ -86,7 +86,7 @@ pub(crate) fn initial_ordinal(
 
 /// The default ordinal of a structure field of type `field_type`, when it is
 /// an enumeration.
-pub(crate) fn field_default_ordinal(field_type: &IntermediateType) -> Option<i32> {
+pub(crate) fn field_default_ordinal(field_type: &SemanticType) -> Option<i32> {
     field_type
         .enumeration_members()
         .map(|members| members.default_ordinal() as i32)

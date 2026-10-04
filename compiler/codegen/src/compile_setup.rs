@@ -15,7 +15,7 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
-use ironplc_analyzer::intermediate_type::IntermediateType;
+use ironplc_analyzer::semantic_type::SemanticType;
 use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
@@ -583,7 +583,7 @@ pub(crate) fn emit_initial_values(
                     let min_value: Option<i128> = match spec {
                         SpecificationKind::Named(type_name) => {
                             _types.get(type_name).and_then(|attrs| {
-                                if let IntermediateType::Subrange { min_value, .. } =
+                                if let SemanticType::Subrange { min_value, .. } =
                                     &attrs.representation
                                 {
                                     Some(*min_value)

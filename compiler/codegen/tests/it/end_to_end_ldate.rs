@@ -11,10 +11,19 @@
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 
-use crate::common::assert_run_i64_with;
+use crate::common::{
+    assert_run_with, date, datetime, time, Date, FromValue, PrimitiveDateTime, Time,
+};
+
+fn assert_ed3<T: FromValue>(source: &str, name: &str, expected: T) {
+    assert_run_with(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+        &[(name, expected)],
+    );
+}
 
 #[rstest]
-// LDATE#2024-01-01: 19723 days * 86400 = 1704067200 seconds since epoch.
 #[case::ldate_assignment(
     "
 PROGRAM main
@@ -24,10 +33,13 @@ PROGRAM main
   d := LDATE#2024-01-01;
 END_PROGRAM
 ",
-    0,
-    1_704_067_200
+    date!(2024-01-01)
 )]
-// LTOD#12:30:00: 12h * 3600000 + 30m * 60000 = 45000000 ms since midnight.
+fn end_to_end_ldate(#[case] source: &str, #[case] expected: Date) {
+    assert_ed3(source, "d", expected);
+}
+
+#[rstest]
 #[case::ltod_assignment(
     "
 PROGRAM main
@@ -37,10 +49,25 @@ PROGRAM main
   t := LTOD#12:30:00;
 END_PROGRAM
 ",
-    0,
-    45_000_000
+    time!(12:30)
 )]
-// LDT#2024-01-01-12:30:00: 1704067200 + 45000 = 1704112200 seconds since epoch.
+// LTIME_OF_DAY long-form type name.
+#[case::ltod_long_form(
+    "
+PROGRAM main
+  VAR
+    t : LTIME_OF_DAY;
+  END_VAR
+  t := LTOD#18:00:00;
+END_PROGRAM
+",
+    time!(18:00)
+)]
+fn end_to_end_ltod(#[case] source: &str, #[case] expected: Time) {
+    assert_ed3(source, "t", expected);
+}
+
+#[rstest]
 #[case::ldt_assignment(
     "
 PROGRAM main
@@ -50,12 +77,29 @@ PROGRAM main
   my_dt := LDT#2024-01-01-12:30:00;
 END_PROGRAM
 ",
-    0,
-    1_704_112_200
+    datetime!(2024-01-01 12:30)
 )]
-// LDATE comparison (2024-06-15 > 2024-01-01 is TRUE).
-#[case::ldate_comparison(
+// LDATE_AND_TIME long-form type name.
+#[case::ldt_long_form(
     "
+PROGRAM main
+  VAR
+    my_dt : LDATE_AND_TIME;
+  END_VAR
+  my_dt := LDT#2024-01-01-00:00:00;
+END_PROGRAM
+",
+    datetime!(2024-01-01 0:00)
+)]
+fn end_to_end_ldt(#[case] source: &str, #[case] expected: PrimitiveDateTime) {
+    assert_ed3(source, "my_dt", expected);
+}
+
+// LDATE comparison (2024-06-15 > 2024-01-01 is TRUE).
+#[test]
+fn end_to_end_ldate_comparison() {
+    assert_ed3(
+        "
 PROGRAM main
   VAR
     a : LDATE;
@@ -71,39 +115,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    2,
-    1
-)]
-// LTIME_OF_DAY long-form type name: LTOD#18:00:00 = 64800000 ms.
-#[case::ltod_long_form(
-    "
-PROGRAM main
-  VAR
-    t : LTIME_OF_DAY;
-  END_VAR
-  t := LTOD#18:00:00;
-END_PROGRAM
-",
-    0,
-    64_800_000
-)]
-// LDATE_AND_TIME long-form type name: 19723 days * 86400 = 1704067200 s.
-#[case::ldt_long_form(
-    "
-PROGRAM main
-  VAR
-    my_dt : LDATE_AND_TIME;
-  END_VAR
-  my_dt := LDT#2024-01-01-00:00:00;
-END_PROGRAM
-",
-    0,
-    1_704_067_200
-)]
-fn end_to_end_ldate(#[case] source: &str, #[case] index: usize, #[case] expected: i64) {
-    assert_run_i64_with(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-        &[(index, expected)],
+        "result",
+        1_i64,
     );
 }

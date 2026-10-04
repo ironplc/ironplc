@@ -12,6 +12,7 @@
 //! See `specs/design/enumeration-codegen.md` for the enumeration codegen spec.
 
 use ironplc_container::debug_section::iec_type_tag;
+use ironplc_container::VarIndex;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::test_support::load_and_start;
@@ -54,6 +55,26 @@ pub(crate) fn compile_and_run(source: &str) -> (ironplc_container::Container, Vm
         vm.run_round(0).unwrap();
     }
     (container, bufs)
+}
+
+/// The slot of the program or global variable `name`, from the debug
+/// section, so a test does not assume the order codegen assigns slots in.
+fn var_index(container: &ironplc_container::Container, name: &str) -> VarIndex {
+    container
+        .debug_section
+        .as_ref()
+        .and_then(|debug| debug.program_variable(name))
+        .unwrap_or_else(|| panic!("the program declares no variable `{name}`"))
+        .var_index
+}
+
+/// The value of the program or global variable `name` after a scan.
+pub(crate) fn read_i32(
+    container: &ironplc_container::Container,
+    bufs: &VmBuffers,
+    name: &str,
+) -> i32 {
+    bufs.vars[usize::from(var_index(container, name).raw())].as_i32()
 }
 
 /// Parse, analyze, and compile (no execution).
@@ -99,9 +120,9 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
+    let (container, bufs) = compile_and_run(source);
     // GREEN is ordinal 1 — the raw slot value must be 1.
-    assert_eq!(bufs.vars[0].as_i32(), 1);
+    assert_eq!(read_i32(&container, &bufs, "c"), 1);
 }
 
 /// REQ-EN-codegen-003: Enums use DINT (W32, Signed, 32-bit) at codegen level.
@@ -130,8 +151,8 @@ PROGRAM main
 END_PROGRAM
 ";
     // Initialization with enum value succeeds (no arithmetic operators used).
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 2); // HIGH = ordinal 2
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "x"), 2); // HIGH = ordinal 2
 }
 
 // ---------------------------------------------------------------------------
@@ -151,8 +172,8 @@ END_PROGRAM
 ";
     // If the variable didn't have correct VarTypeInfo, the STORE_VAR
     // would use the wrong opcode and the value would be wrong.
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 1);
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "c"), 1);
 }
 
 /// REQ-EN-codegen-011: Enum variable occupies one slot, same as any scalar integer.
@@ -169,11 +190,14 @@ PROGRAM main
   b := 42;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    // Each variable occupies one slot: a=slot 0, b=slot 1, c=slot 2.
-    assert_eq!(bufs.vars[0].as_i32(), 0); // RED
-    assert_eq!(bufs.vars[1].as_i32(), 42); // DINT
-    assert_eq!(bufs.vars[2].as_i32(), 2); // BLUE
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "a"), 0); // RED
+    assert_eq!(read_i32(&container, &bufs, "b"), 42); // DINT
+    assert_eq!(read_i32(&container, &bufs, "c"), 2); // BLUE
+                                                     // One slot each, so the declared neighbours sit in neighbouring slots.
+    let slot = |name| var_index(&container, name).raw();
+    assert_eq!(slot("b"), slot("a") + 1);
+    assert_eq!(slot("c"), slot("b") + 1);
 }
 
 /// REQ-EN-codegen-012: Debug VarNameEntry uses iec_type_tag::DINT and user type name.
@@ -210,8 +234,8 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 2); // BLUE = ordinal 2
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "c"), 2); // BLUE = ordinal 2
 }
 
 /// REQ-EN-codegen-021: No explicit init uses type declaration default.
@@ -225,9 +249,9 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
+    let (container, bufs) = compile_and_run(source);
     // Type default is MEDIUM = ordinal 1.
-    assert_eq!(bufs.vars[0].as_i32(), 1);
+    assert_eq!(read_i32(&container, &bufs, "x"), 1);
 }
 
 /// REQ-EN-codegen-022: No type default means initial ordinal is 0 (first value).
@@ -241,8 +265,8 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 0); // STOPPED = ordinal 0
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "s"), 0); // STOPPED = ordinal 0
 }
 
 /// REQ-EN-codegen-023: Function-local enum variables are re-initialized on every call.
@@ -286,8 +310,8 @@ PROGRAM main
   c := GREEN;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 1); // GREEN = ordinal 1
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "c"), 1); // GREEN = ordinal 1
 }
 
 /// REQ-EN-codegen-031: Qualified enum reference (COLOR#GREEN) resolves correctly.
@@ -340,8 +364,8 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[1].as_i32(), 42);
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "result"), 42);
 }
 
 /// REQ-EN-codegen-034: Assignment of enum value compiles to LOAD_CONST + STORE_VAR.
@@ -356,8 +380,8 @@ PROGRAM main
   x := HIGH;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 2); // HIGH = ordinal 2
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "x"), 2); // HIGH = ordinal 2
 }
 
 // ---------------------------------------------------------------------------
@@ -382,8 +406,8 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[1].as_i32(), 20);
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "result"), 20);
 }
 
 /// REQ-EN-codegen-041: Multiple enum values in a CASE arm combine with boolean OR.
@@ -403,8 +427,8 @@ PROGRAM main
   END_CASE;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[1].as_i32(), 20);
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "result"), 20);
 }
 
 // ---------------------------------------------------------------------------
@@ -430,8 +454,8 @@ PROGRAM main
   result := s.v;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[1].as_i32(), 42);
+    let (container, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&container, &bufs, "result"), 42);
 }
 
 /// REQ-EN-codegen-051: Struct field enum type gets correct op_type via resolve_field_op_type.
@@ -774,9 +798,8 @@ PROGRAM main
   y := r^;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: x=0, r=1, y=2
-    assert_eq!(bufs.vars[2].as_i32(), 42);
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    assert_eq!(read_i32(&container, &bufs, "y"), 42);
 }
 
 /// REQ-RTO-codegen-401: Writing through `^` stores to the referenced variable.
@@ -792,9 +815,9 @@ PROGRAM main
   r^ := 99;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
     // Writing through r must update x (var 0).
-    assert_eq!(bufs.vars[0].as_i32(), 99);
+    assert_eq!(read_i32(&container, &bufs, "x"), 99);
 }
 
 /// REQ-RTO-codegen-402: Dereferencing an unbound `REFERENCE TO` variable traps
@@ -829,9 +852,8 @@ PROGRAM main
   result := refs[0]^;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: val=0, refs=1, result=2
-    assert_eq!(bufs.vars[2].as_i32(), 77);
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    assert_eq!(read_i32(&container, &bufs, "result"), 77);
 }
 
 /// REQ-RTO-codegen-500: A bare read of a `REFERENCE TO` variable (no `^`)
@@ -849,9 +871,9 @@ PROGRAM main
   y := r;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: x=0, r=1, y=2. Bare `y := r` must read *through* r (== x).
-    assert_eq!(bufs.vars[2].as_i32(), 42);
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    // Bare `y := r` must read *through* r (== x).
+    assert_eq!(read_i32(&container, &bufs, "y"), 42);
 }
 
 /// REQ-RTO-codegen-501: A bare write to a `REFERENCE TO` variable (no `^`)
@@ -868,9 +890,9 @@ PROGRAM main
   r := 99;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
     // Bare `r := 99` must store *through* r, updating x (var 0).
-    assert_eq!(bufs.vars[0].as_i32(), 99);
+    assert_eq!(read_i32(&container, &bufs, "x"), 99);
 }
 
 /// REQ-RTO-codegen-503: `__ISVALIDREF(r)` is FALSE for an unbound reference and
@@ -890,10 +912,17 @@ PROGRAM main
   after := __ISVALIDREF(r);
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: x=0, r=1, before=2, after=3.
-    assert_eq!(bufs.vars[2].as_i32(), 0, "unbound reference is not valid");
-    assert_eq!(bufs.vars[3].as_i32(), 1, "bound reference is valid");
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    assert_eq!(
+        read_i32(&container, &bufs, "before"),
+        0,
+        "unbound reference is not valid"
+    );
+    assert_eq!(
+        read_i32(&container, &bufs, "after"),
+        1,
+        "bound reference is valid"
+    );
 }
 
 /// REQ-RTO-codegen-504: Two `REFERENCE TO` variables bound to the same target
@@ -914,9 +943,9 @@ PROGRAM main
   y := r2;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: x=0, r1=1, r2=2, y=3. Writing through r1 is observed through r2.
-    assert_eq!(bufs.vars[3].as_i32(), 55);
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    // Writing through r1 is observed through r2.
+    assert_eq!(read_i32(&container, &bufs, "y"), 55);
 }
 
 /// REQ-RTO-codegen-510: Arithmetic on a bare `REFERENCE TO` operand uses the
@@ -934,9 +963,9 @@ PROGRAM main
   y := r + 2;
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: x=0, r=1, y=2. `r + 2` must use r's dereferenced value (40 + 2).
-    assert_eq!(bufs.vars[2].as_i32(), 42);
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    // `r + 2` must use r's dereferenced value (40 + 2).
+    assert_eq!(read_i32(&container, &bufs, "y"), 42);
 }
 
 /// REQ-RTO-codegen-421: A reference whose target is a named array type is
@@ -957,7 +986,6 @@ PROGRAM main
   v := r^[1];
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
-    // vars: arr=0, r=1, v=2
-    assert_eq!(bufs.vars[2].as_i32(), 77);
+    let (container, bufs) = compile_and_run_with(source, &reference_to_options());
+    assert_eq!(read_i32(&container, &bufs, "v"), 77);
 }
