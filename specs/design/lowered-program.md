@@ -75,6 +75,21 @@ the conversions of a comparison in the analyzer (ADR-0056), and `a5bfad8`. The
 figures are not re-taken, because they show the shape of the problem rather
 than a target.
 
+Prefactors toward this design have since changed part of what the figures
+describe:
+
+- Standard functions are dispatched on an enum that the analyzer attaches to
+  their signatures, not on their names.
+- `collect_positional_args` is defined once.
+- `SavedFbScope` has given way to a `Scope` value.
+- Analysis now reports most of the problems only codegen found.
+- The analyzer records the conversions of arithmetic operands and of
+  assignments, as well as those of a comparison.
+- Bit and partial access compile through one addressing path.
+
+The rest of this section describes the problem as it was measured, because
+that is what the design answers.
+
 `codegen::compile` takes `(&Library, &SemanticContext, &CodegenOptions,
 &dyn SourceLookup)`. The `Library` is the
 same tree the parser built, annotated in place by the analyzer. That one type
@@ -244,14 +259,25 @@ Lowering is two new crates:
 | Crate | Depends on |
 |---|---|
 | `ironplc-ir` | `ironplc-dsl` |
-| `ironplc-analyzer` | `ironplc-dsl`, `ironplc-ir` (for `Intrinsic`), and its dependencies today |
+| `ironplc-analyzer` | `ironplc-dsl`, and its dependencies today |
 | `ironplc-lowering` | `ironplc-dsl`, `ironplc-analyzer`, `ironplc-ir` |
 | A backend | `ironplc-ir` |
 
-The analyzer depends on `ironplc-ir` because each standard function
-signature names its `Intrinsic` (REQ-LOW-analyzer-070). The enum therefore
-sits below the analyzer, where both the analyzer and every backend can name
-it, and no stage after the analyzer matches a function's name.
+The analyzer and the IR each name a built-in function with an enum of their
+own, and neither crate depends on the other:
+
+- **The analyzer's `BuiltinFunction`** says which function a call resolved to:
+  `SQRT`, `CONCAT`, `INT_TO_REAL`. Each built-in function signature carries one
+  (REQ-LOW-analyzer-070).
+- **The IR's `Intrinsic`** says which operation at which operand types:
+  `SqrtF32` or `SqrtF64` (REQ-LOW-ir-145).
+
+The analyzer knows a call's function as soon as it resolves the call, but the
+operand types only once it has recorded them. Lowering reads both, so it maps
+each call to its `Intrinsic` (REQ-LOW-lowering-147). The cost is one
+exhaustive match in lowering. In exchange, the analyzer does not depend on the
+IR, and its dispatch does not change when an operation gains an operand type.
+No stage after the analyzer matches a function's name.
 
 Rust lets a crate name only its direct dependencies. A backend whose manifest
 lists `ironplc-ir` alone cannot reach `SemanticContext`,
@@ -313,9 +339,10 @@ covers, not compared byte for byte with the one built from the `Library`.
 
 Today "codegen runs only on a clean analysis" is a run-time check written at
 each caller: `ironplc_project::compile` tests `diagnostics.is_empty()`,
-`lsp_runner.rs` tests `context.has_diagnostics()`, and the MCP server
-(`mcp/src/tools/compile.rs`, `mcp/src/runner.rs`) and the benchmarks reach
-codegen by their own routes. Every one of them moves behind the gate. Comments in codegen ("reaching here means analysis
+which also serves the MCP server and the playground, `lsp_runner.rs` tests
+`context.has_diagnostics()`, and the benchmarks and the VM command line's
+tests call codegen directly. Every one of them moves behind the gate when it
+starts to call lowering. Comments in codegen ("reaching here means analysis
 was skipped") record what happens when a caller gets it wrong.
 
 The gate makes the check a value. A clean analysis is a type that borrows the
@@ -462,10 +489,10 @@ parameter is also its first parameter (see
 The type table describes types as the language defines them. The width of an
 `INT` is part of the language; where a field sits in memory, how many slots a
 value takes and how wide a reference is are each backend's layout. Today's
-`IntermediateType` carries both: `IntermediateStructField::offset` is a byte
+`SemanticType` carries both: `SemanticStructField::offset` is a byte
 offset, `slot_count` sizes strings with the container's `string_region_size`,
 and a reference is sized as a 64-bit variable-table index. Lowering builds its
-table from `IntermediateType` and carries none of those.
+table from `SemanticType` and carries none of those.
 
 **REQ-LOW-lowering-027** The type table holds no size, offset or slot count,
 and refers to the type of every field, element, enumeration, subrange and
@@ -612,7 +639,9 @@ reference type: `x` in the body of `MyFb` is
 identity, whether it is named inside the body or as `inst.x` outside it, and
 `THIS^` is the place `this^`. A backend that runs the body of every instance
 from one copy of the code, as both targets do, receives the instance it needs
-to address.
+to address. While a function block or method body runs, `this^` is the
+working copy of its instance (see
+[Working copy of an instance](#working-copy-of-an-instance)).
 
 **REQ-LOW-lowering-030** A `Field` projection applies only to a place whose
 type is a structure, function block or program, and its index is within that
@@ -660,15 +689,56 @@ only by an argument of a call.
 
 A place says nothing about storage. Whether a variable occupies a slot, a run
 of the data region or an address in linear memory is the backend's layout.
-`ResolvedAccess` in `compile_array.rs` is the bytecode backend's answer to that
-question and stays in that backend (see
-[Existing Structures](#8-existing-structures)).
+Codegen's `Place` (`compile_place.rs`) and `ResolvedAccess` (`compile_array.rs`)
+are the bytecode backend's answer to that question, and they stay in that
+backend (see [Existing Structures](#8-existing-structures)).
 
-Fields are accessed in place. The bytecode VM realises that by copying an
-instance's fields into slots that belong to the function block type before
-running its body, and copying them back after (`compile_fn.rs`). Whether that
-copy is observably different, and what follows if it is, is an
-[open question](#open-questions).
+#### Working copy of an instance
+
+A function block or method body does not work on its instance's storage
+directly. It works on a copy, as the bytecode VM does today:
+
+- **When the body starts,** the instance's fields are copied, and `this^` is
+  that working copy for as long as the body runs. A method called on the
+  current instance, through `THIS^` or `SUPER^`, works on the same copy rather
+  than taking another.
+- **When the body returns,** the copy is written back to the instance.
+- **When the body traps,** nothing is written back. The instance keeps the
+  values its fields had before the call. So does the instance of every
+  function block or method body that called it and has not returned.
+
+A program body works on its instance directly. The bytecode VM keeps a
+program's variables in ordinary variable-table slots, so they need no copy.
+
+The VM makes the copy into slots that belong to the function block type,
+before it runs the body (`FB_CALL` and `METHOD_CALL` in `vm/src/vm.rs`), and
+writes it back in `handle_frame_return`. A backend that addresses fields in
+place gives the same result. It may skip the copy wherever it can show that
+nothing could tell the difference: the body cannot trap, and nothing reaches
+the instance's storage while the body runs.
+
+Two things follow from the copy:
+
+- **A reference into the copy.** `REF(x)` for a field of the current instance,
+  taken inside the body, refers to the working copy. It is valid only while
+  the body runs. Today the VM's references name variable-table slots, and
+  `REF(x)` names the slot that holds the copy. Whether analysis should reject
+  such a reference when it outlives the body is decided when a later design
+  lets one escape.
+- **A reference to the instance's storage.** One that reaches the instance's
+  storage while its body runs reads the values from before the body started,
+  and its writes are overwritten when the body returns. The VM cannot form such
+  a reference today: `REF(inst.x)`, and `inst.x` as the argument of a
+  `VAR_IN_OUT`, are not implemented.
+
+**REQ-LOW-codegen-037** A function block or method body reads and writes a
+working copy of its instance's fields. The copy is taken when the body starts,
+a method called on the current instance uses the same copy, and the copy is
+written back to the instance when the body returns.
+
+**REQ-LOW-codegen-038** When a trap ends the round, every instance whose
+function block or method body had started and not returned keeps the values
+its fields had before that body started.
 
 ### 3.5 Scalar expressions
 
@@ -850,9 +920,9 @@ label runs, as `compile_case` does today.
 
 `AssignBits` is the one read-modify-write statement. It exists as a node, and is
 not desugared to an `Assign` of a masked `Read`, because that would name the
-place twice and so evaluate its subscripts twice. `compile_bit_access_assignment_on_array`
-does exactly that today, emitting the flat index once for the load and again
-for the store.
+place twice and so evaluate its subscripts twice. Codegen does exactly that
+today: `Place::emit_store` (`compile_place.rs`) emits a base's address again
+for the store, rather than reusing the one emitted for the load.
 
 `For` stays a node rather than becoming a `Loop`, so that its control
 variable, bounds and step stay visible: the bytecode backend uses them to fuse
@@ -988,11 +1058,13 @@ receiver's place.
 
 `Intrinsic` is an enum with one variant per operation the compiler implements
 itself, at each set of operand types it takes: the standard functions of
-IEC 61131-3 and the extensions ADR-0042 admits. It is defined in `ironplc-ir`, below the analyzer (see
-[Position in the Pipeline](#1-position-in-the-pipeline)). The analyzer owns the
-table of standard function signatures, and each `FunctionSignature` for a
-standard function names its `Intrinsic`. Lowering copies that identity into
-the call. No stage after the analyzer matches a function's name.
+IEC 61131-3 and the extensions ADR-0042 admits. It is defined in `ironplc-ir`
+(see [Position in the Pipeline](#1-position-in-the-pipeline)). The analyzer
+owns the table of built-in function signatures, and each `FunctionSignature`
+for a built-in function names its `BuiltinFunction`: which function, not at
+which types. Lowering maps that function and the operand types the analyzer
+recorded to one `Intrinsic`. No stage after the analyzer matches a function's
+name.
 
 Each variant names one operation at one set of operand types: `SqrtF32` and
 `SqrtF64`, not `Sqrt` with the type left to the call, and `ConcatString` and
@@ -1019,8 +1091,13 @@ names.
 **REQ-LOW-ir-146** Each `StandardBlock` variant names one function block at one
 set of field types.
 
-**REQ-LOW-analyzer-070** Every standard function signature in the
-`FunctionEnvironment` identifies its `Intrinsic`.
+**REQ-LOW-analyzer-070** Every built-in function signature in the
+`FunctionEnvironment` identifies its `BuiltinFunction`.
+
+**REQ-LOW-lowering-147** Lowering maps each call of a built-in function to the
+one `Intrinsic` variant for its `BuiltinFunction` at the operand types the
+analyzer recorded, with a match that has no wildcard arm. A combination with no
+variant is P9999.
 
 **REQ-LOW-lowering-071** A call's arguments correspond one to one, in order, to
 the callee's parameters: its instance parameter, its result parameter and its
@@ -1174,7 +1251,10 @@ a null dereference, a subscript out of bounds, a string that does not convert
 or a watchdog timeout, and a backend reports each under the problem code the
 bytecode VM gives it (V4001 to V4006).
 
-What remains visible after a trap is not settled; see open question 3.
+After a trap, every variable keeps what was written to it before the trap,
+except the fields of an instance whose body was still running. Those keep the
+values they had before that body started (REQ-LOW-codegen-038; see
+[Working copy of an instance](#working-copy-of-an-instance)).
 
 The program instances of a round run one at a time, each to completion, as the
 bytecode VM's cooperative scheduler runs them (`vm/src/scheduler.rs`). The
@@ -1237,9 +1317,9 @@ today.
 
 | Decision | Made today in | Recorded as | In the lowered program |
 |---|---|---|---|
-| Type of an untyped literal | The analyzer for a comparison's operands (ADR-0056); elsewhere codegen, by threading an operation type through `compile_expr`, as predicted by `rule_constant_range` | The literal's `expr_type` | A `Const` of that type |
-| Implicit conversion | The analyzer for a comparison's operands (ADR-0056); `compile_arith::convert` and `compile_value_arg` for the rest | `ExprKind::ImplicitConversion` | `Convert` |
-| Arithmetic overload | Analyzer's `resolve_arithmetic_overload`, asked again by `compile_arith.rs` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
+| Type of an untyped literal | The analyzer for the operands of a comparison or an arithmetic operation (ADR-0056); elsewhere codegen, by threading an operation type through `compile_expr`, as predicted by `rule_constant_range` | The literal's `expr_type` | A `Const` of that type |
+| Implicit conversion | The analyzer for the operands of a comparison or an arithmetic operation, and for an assigned value (ADR-0056); `compile_value_arg` for arguments | `ExprKind::ImplicitConversion` | `Convert` |
+| Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)), with a codegen fallback for a pair without one | Its operands' conversions | A `Compare` at that type |
 | Argument order and count | `xform_named_to_positional_args`, then re-checked at 19 sites | Positional arguments | `Vec<Arg>` matched to parameters |
 
@@ -1249,7 +1329,7 @@ today.
 |---|---|---|
 | Narrowing before a store | `emit_truncation` at each store site | `Truncate` |
 | Logical or bitwise operator | `emit_not` and `compile_compare`, from `expr_is_bool` | Distinct operators |
-| Callee | Name match in `compile_function_call` and `lookup_builtin` | `Callee` |
+| Callee | The analyzer's enum on the signature (to become `BuiltinFunction`, see [Names](#names)), dispatched by `compile_intrinsic`; then `lookup_builtin` picks a `func_id` from the operation width | `Callee`, with the `Intrinsic` for the operand types (REQ-LOW-lowering-147) |
 | Argument passing mode | `ParamPassing` in `compile.rs` | `Arg` variant |
 | Variable and field identity | Nine name-keyed maps; lower-cased field names | `VarId`, `FieldIdx` |
 | Enumeration ordinal | `enum_map` | `Const` |
@@ -1353,9 +1433,10 @@ names its place once.
 language's storage widths, never from a backend's layout; for a type whose size
 codegen does not compute today, such as a structure, it is P9999.
 
-The cross product in `compile_expr.rs` disappears because access kind and base
-shape stop multiplying: a backend implements "address a place" once and "store
-bits" once.
+Codegen has already folded the cross product of access kind and base shape
+into one addressing path (`compile_place.rs`) and one bit write
+(`compile_partial_access.rs`). The lowered program keeps it folded: a backend
+implements "address a place" once and "store bits" once.
 
 ## 6. Diagnostics
 
@@ -1432,7 +1513,11 @@ today. `compile_case` compiles the selector expression again for every label it
 is compared against, and a bit or partial write to an array element emits the
 subscripts twice. Neither is visible unless the expression has a side effect,
 such as a call to a function that writes a global. Both are corrections rather
-than behaviour-preserving steps and are delivered as such.
+than behaviour-preserving steps. The lowered program makes both by
+construction: a `Case` names its selector once, and an `AssignBits` names its
+place once. While both routes exist (see
+[Delivery Constraints](#delivery-constraints)), the two routes disagree only on
+a program whose selector or subscript has a side effect.
 
 How the three targets are expected to realise the same node:
 
@@ -1462,11 +1547,12 @@ Nothing is deleted before its last reader has moved to the lowered program.
 |---|---|---|
 | `SemanticContext` | Keep | None. It is lowering's input. |
 | `TypeEnvironment`, `TypeId` | Keep | Lowering builds the lowered program's type table from it. |
-| `IntermediateType` | Keep, renamed | Renamed `SemanticType` (see [Names](#names)). Lowering reads it and does not carry `IntermediateStructField::offset`, `slot_count` or the size of a reference into the lowered program. `slot_count` moves to the bytecode backend: it sizes strings with the container's `string_region_size`, which is VM layout. |
+| `SemanticType` (formerly `IntermediateType`) | Keep | Lowering reads it and does not carry `SemanticStructField::offset`, `slot_count` or the size of a reference into the lowered program. `slot_count` moves to the bytecode backend: it sizes strings with the container's `string_region_size`, which is VM layout. |
 | `xform_insert_implicit_conversions` | Keep and extend | Records every implicit conversion and the type of every untyped literal (ADR-0056), not only those of a comparison. It is the recording pass (see [Names](#names)). |
 | `rule_constant_range` | Keep, split | Its checks of the type a literal ends up with read the recorded type and run after the recording pass; its checks against the operand types as written run before it, as today (see [Decisions](#4-decisions)). |
-| `intermediates/` | Keep | `stdlib_function.rs` gains the `Intrinsic` identity. |
-| `FunctionEnvironment` | Keep | Signatures of standard functions name their `Intrinsic`. |
+| `intermediates/` | Keep | Its signatures carry the `BuiltinFunction` identity. |
+| `FunctionEnvironment` | Keep | Signatures of built-in functions name their `BuiltinFunction` (REQ-LOW-analyzer-070). |
+| `Intrinsic` (`intrinsic.rs`) | Keep, renamed | Renamed `BuiltinFunction` (see [Names](#names)), so that `Intrinsic` names only the IR's typed enum. |
 | `SymbolEnvironment` | Keep | Supplies the declarations `VarId`s are allocated from. |
 | `Expr::expr_type`, `VarDecl::type_id`, `ExprKind::LateBound` | Keep | Lowering is their last reader. |
 
@@ -1487,9 +1573,9 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `OpWidth`, `Signedness`, `OpType` | Move to `ironplc-ir` as `ScalarType`. |
 | `VarTypeInfo` | Dissolves. Operation type is on the expression; storage width comes from the place's type. |
 | `ArrayVarInfo`, `StructVarInfo`, `StructFieldInfo`, `StructArrayVarInfo`, `FbInstanceInfo`, `UserFunctionInfo`, `UserFbTypeInfo`, `UserMethodInfo`, `StringVarInfo` | Keep in the bytecode backend's layout, without their type fields (`StructFieldInfo::op_type`, `field_op_types`, `param_op_types`, `element_var_type_info`). |
-| `ResolvedAccess` | Keep in the bytecode backend. It is that backend's addressing mode: the result of asking its layout how to reach a `Place`. |
+| `Place` (`compile_place.rs`), `ResolvedAccess` | Keep in the bytecode backend. They are that backend's addressing: the result of asking its layout how to reach a lowered `Place`. |
 | `ParamPassing` | Dissolves into `Arg`, which adds the by-value aggregate mode `ParamPassing` lacks. |
-| `SavedFbScope` | Delete. Ids do not collide across scopes, and a function block's variables are fields of its instance. |
+| `Scope` (formerly `SavedFbScope`) | Absorbed into the bytecode backend's layout. Ids do not collide across scopes, and a function block's variables are fields of its instance. While both routes exist it is how a lowered statement finds its variables' storage (see [Delivery Constraints](#delivery-constraints)). |
 | `type_info.rs`, `string_width.rs` | Move into lowering. |
 | `TimeArith`, `StringConversion`, `ShortCircuitOp` | Become desugarings, `Intrinsic` variants and an `ExprKind` respectively. |
 | `ClassifiedCmp` | Keep in the bytecode backend. The fused compare and branch is a VM optimization. |
@@ -1498,20 +1584,38 @@ Nothing is deleted before its last reader has moved to the lowered program.
 
 ### Names
 
-The analyzer calls its description of a type `IntermediateType`
+The analyzer called its description of a type `IntermediateType`
 (`intermediate_type.rs`), with `IntermediateStructField`,
-`IntermediateFunctionParameter`, `IntermediateResult` and the builders in
-`intermediates/`. The name says where the type sits, between parsing and code
-generation, rather than what it is. It also takes the word this design needs:
-the usual name for what lowering produces is an intermediate representation.
+`IntermediateFunctionParameter` and `IntermediateResult`. The name said where
+the type sits, between parsing and code generation, rather than what it is. It
+also took the word this design needs: the usual name for what lowering
+produces is an intermediate representation.
 
-These are renamed in one mechanical prefactor, before the IR exists.
-`IntermediateType` becomes `SemanticType`, and its siblings, its module and
-`intermediates/` follow. The name is `SemanticType` rather than `TypeRepr`.
-Compilers distinguish a type as it is written from a type as analysis
-understands it: Swift calls the first a `TypeRepr` and the second a `Type`,
-and rustc separates `hir::Ty`, as written, from `ty::Ty`. `IntermediateType`
-is the second kind, so `TypeRepr` would name the wrong one.
+They have been renamed, in mechanical prefactors before the IR exists:
+
+- `IntermediateType` is `SemanticType` (`semantic_type.rs`).
+- `IntermediateStructField` and `IntermediateFunctionParameter` are
+  `SemanticStructField` and `SemanticFunctionParameter`.
+- `IntermediateResult` is `TypeResolution`.
+
+The builders in `intermediates/` keep their module name.
+
+The name is `SemanticType` rather than `TypeRepr`. Compilers distinguish a
+type as it is written from a type as analysis understands it: Swift calls the
+first a `TypeRepr` and the second a `Type`, and rustc separates `hir::Ty`, as
+written, from `ty::Ty`. `SemanticType` is the second kind, so `TypeRepr` would
+name the wrong one.
+
+Two renames remain, each one mechanical prefactor:
+
+- The analyzer's enum of built-in functions, today `Intrinsic`
+  (`intrinsic.rs`), becomes `BuiltinFunction`, so that `Intrinsic` names only
+  the IR's typed enum (see
+  [Position in the Pipeline](#1-position-in-the-pipeline)).
+- ADR-0056 and the doc comment of `xform_insert_implicit_conversions` call
+  that transform "a lowering pass". The doc comment is reworded to call it the
+  recording pass, as below, and the ADR that amends ADR-0056 records the new
+  name (see [Relationship to ADR-0056](#relationship-to-adr-0056)).
 
 With the word free:
 
@@ -1797,35 +1901,96 @@ debugging. That is out of scope (see [Scope](#scope)).
 
 This section constrains the order of work; it is not a work breakdown.
 
-- The renames of [Names](#names) come first, as one mechanical prefactor.
-- The analyzer records each decision in the first table of
-  [Decisions](#4-decisions), and each check only codegen makes moves to an
-  analyzer rule, before lowering covers a construct that depends on it. This
-  continues ADR-0056's own order: arithmetic operands, assignments and
-  arguments, then literal types everywhere.
-- An error path of codegen becomes a P9998 in lowering only once it is shown
-  unreachable from a program analysis accepts (see
-  [The Clean-Analysis Gate](#2-the-clean-analysis-gate)).
-- Places and expressions refer to each other (an `Index` holds expressions and
-  a `Read` holds a place), and so do statements and expressions, so the
-  lowered program cannot grow one node kind at a time while codegen reads the
-  AST for the rest. It grows by POU instead. Declarations (types, variables,
-  fields and POU signatures) are lowered first, for the whole program, and the
-  bytecode backend builds its layout from them once. Codegen then compiles a
-  POU from its lowered form when lowering supports every construct in it, and
-  from the AST otherwise, reading the same layout through name-keyed views.
-  Both routes emit through the same layout and the same emitter.
-- While both routes exist, the end-to-end suite runs twice: once with every
-  POU compiled from the AST, and once with lowering preferred. Both runs must
-  pass, so the route being retired checks the route replacing it.
-- Each stage is behaviour preserving and is delivered as a prefactor, with the
-  two exceptions named under [Backend Contract](#7-backend-contract).
-- A minimal WebAssembly path (one `PROGRAM`, integer arithmetic, assignment) is
-  built as soon as a POU of that shape lowers. Its purpose is to show that
-  nothing in the lowered program assumes the bytecode VM, before the rest of
-  codegen migrates onto it.
-- `ironplc-codegen` drops its dependencies on `ironplc-analyzer` and
-  `ironplc-dsl` last, when the route that reads the AST is deleted.
+**Before lowering covers a construct**
+
+- **Renames.** The renames that remain in [Names](#names) each land as one
+  mechanical prefactor.
+- **Decisions recorded first.** The analyzer records each decision in the
+  first table of [Decisions](#4-decisions), and each check only codegen makes
+  moves to an analyzer rule, before lowering covers a construct that depends
+  on it. ADR-0056's own order continues: comparisons, arithmetic operands and
+  assignments are recorded; arguments come next, then literal types
+  everywhere. A statement that needs a decision the analyzer does not record
+  yet stays on the route that reads the AST.
+- **P9998 only once unreachable.** An error path of codegen becomes a P9998 in
+  lowering only once it is shown unreachable from a program analysis accepts
+  (see [The Clean-Analysis Gate](#2-the-clean-analysis-gate)).
+- **The gate arrives with lowering.** `CleanAnalysis` is created as lowering's
+  entry point (REQ-LOW-lowering-011). The codegen entry point that reads the
+  AST keeps its callers' own checks until it is deleted. Moving those callers
+  behind the gate is part of connecting lowering to `ironplc_project`, not a
+  step before it.
+
+**Growing one statement at a time**
+
+- **The unit of migration.** Places and expressions refer to each other (an
+  `Index` holds expressions and a `Read` holds a place), and so do statements
+  and expressions. So the lowered program cannot grow one node kind at a time
+  while codegen reads the AST for the rest. It grows one top-level statement
+  at a time instead:
+  1. While codegen compiles a body, it asks lowering for each top-level
+     statement, together with every statement and expression inside it.
+  2. If lowering supports all of them, codegen emits the lowered statement.
+  3. If not, lowering answers that the statement is unsupported, and codegen
+     compiles that statement from the AST.
+
+  Both routes emit into the same body through the same emitter. A POU is not
+  the unit: most POUs mix constructs, so a POU would take the new route only
+  once nearly all of lowering existed.
+- **Unsupported is not a defect.** While both routes exist, lowering offers an
+  entry point that lowers one statement of a body. That entry point tells a
+  statement it does not support yet apart from a broken invariant. An
+  unsupported statement falls back and is counted. A broken invariant is a
+  P9998, as always.
+- **Storage found by name at first.** A lowered variable carries its name and
+  its owning POU (REQ-LOW-lowering-006). So while both routes exist, the
+  bytecode backend finds a lowered variable's storage in the layout codegen
+  builds today: through the current body's `Scope`, by name. A field of the
+  current instance is found the same way, in the working copy (see
+  [Working copy of an instance](#working-copy-of-an-instance)).
+  REQ-LOW-codegen-122 and REQ-LOW-codegen-123 are met later. Once a POU's
+  statements all lower, the backend builds its layout from the POU's lowered
+  declarations, keyed by id and complete before emission. Both requirements
+  hold when the route that reads the AST is deleted.
+- **A route switch.** An option chooses the route each statement takes:
+  - `Ast`: every statement from the AST.
+  - `PreferLowered`: the lowered statement where lowering supports it.
+  - `RequireLowered`: a statement lowering does not support is an error.
+
+  A release uses `Ast` until the routes agree. Making `PreferLowered` the
+  default is a one-line change, and so is undoing it.
+
+**Checking the new route**
+
+- **The routes check each other.** While both routes exist, the end-to-end
+  helpers compile each program both ways and compare the values of its
+  variables by name (REQ-LOW-codegen-131). A disagreement fails the test. The
+  corrections named under [Backend Contract](#7-backend-contract) are the
+  exception: they differ only for a selector or subscript with a side effect,
+  and the programs that show them are listed as known differences.
+- **Progress cannot fall.** CI reports how many top-level statements of the
+  end-to-end programs took the lowered route. The number does not fall.
+- **The IR is readable from its first commit.** `ironplc-ir` writes a lowered
+  program as text from its first commit, and lowering's tests compare against
+  that text.
+- **Behaviour preserving.** Each stage is behaviour preserving and is
+  delivered as a prefactor, apart from the two corrections named under
+  [Backend Contract](#7-backend-contract). The lowered route makes those
+  corrections by construction.
+- **Target neutrality shown early.** A minimal WebAssembly path (one
+  `PROGRAM`, integer arithmetic, assignment) is built as soon as a program of
+  that shape lowers. Its purpose is to show that nothing in the lowered
+  program assumes the bytecode VM, before the rest of codegen migrates onto it.
+
+**Retiring the old route**
+
+- **Delete as you go.** Once a construct compiles under `RequireLowered`
+  across the end-to-end suite, the code that compiles it from the AST is
+  deleted. New work on a construct that lowering covers goes into lowering
+  only.
+- **Dependencies dropped last.** `ironplc-codegen` drops its dependencies on
+  `ironplc-analyzer` and `ironplc-dsl` last, when the route that reads the AST
+  is deleted.
 
 ## Alternatives Considered
 
@@ -1906,14 +2071,16 @@ does not supersede it.
 ## Decisions to Record
 
 The choice among the alternatives above is a decision, and belongs in ADRs
-that this document then cites. Eight decisions are separable:
+that this document then cites. Nine decisions are separable:
 
 1. Code generation consumes a separate, target-neutral lowered program.
 2. The analyzer makes and records every decision whose outcome can make a
    program invalid, extending ADR-0056. Lowering makes the rest, reports no
    problem with the program, and is part of `check`.
-3. A backend does not depend on the analyzer. The lowered program, with the
-   `Intrinsic` enum, is a crate of its own below the analyzer
+3. A backend does not depend on the analyzer, and the analyzer does not depend
+   on the IR. The lowered program, with its typed `Intrinsic` enum, is a crate
+   of its own. The analyzer names a built-in function with a `BuiltinFunction`
+   of its own, and lowering maps one to the other
    ([Position in the Pipeline](#1-position-in-the-pipeline)).
 4. Each lowered operation has one meaning on every target, which is the
    bytecode VM's today ([Meaning of operations](#310-meaning-of-operations)).
@@ -1928,6 +2095,10 @@ that this document then cites. Eight decisions are separable:
    type, so a combination the language does not allow cannot be written.
 8. `ENO` follows `EN`, and an error in a call traps whether or not `EN` is
    wired.
+9. A function block or method body works on a copy of its instance's fields,
+   as the bytecode VM does. A trap leaves the fields of an instance whose body
+   was running as they were before that body started
+   ([Working copy of an instance](#working-copy-of-an-instance)).
 
 ## Open Questions
 
@@ -1946,19 +2117,6 @@ that this document then cites. Eight decisions are separable:
    `Call` in each arm. What the lowered program would still need is a type for
    the fat reference, and a way for an arm to treat the instance as the
    implementer its dispatch id has established.
-3. **Aliasing an instance field.** Fields are accessed in place
-   ([Places](#34-places)), while the bytecode VM copies an instance's fields
-   into the function block type's slots for its body and back after. The two
-   agree unless something reaches an instance field by reference while that
-   instance's body runs, for example a `VAR_IN_OUT` argument or a `REF_TO`
-   bound to `inst.x` and used inside `inst`'s body or one of its methods.
-   Whether analysis rules that out, or the bytecode backend must address
-   fields in place, is open. The copy also decides what a trap leaves behind.
-   The VM copies the fields back only when the body returns
-   (`handle_frame_return`), so a trap inside the body leaves the instance's
-   fields as they were before the call. A backend that addresses fields in
-   place leaves the writes made before the trap. Whether the values written
-   before a trap are part of a round's observable behaviour is open with it.
 
 ## References
 
