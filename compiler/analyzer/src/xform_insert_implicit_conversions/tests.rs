@@ -761,3 +761,16 @@ fn apply_when_literal_argument_under_negation_then_takes_default_type_before_con
     let source = call_program("LINT", "", "-1");
     assert_eq!(literal_types(&source), vec!["DINT", "DINT"]);
 }
+
+#[test]
+fn apply_when_method_call_spelled_in_another_case_then_argument_takes_parameter_type() {
+    let source = "FUNCTION_BLOCK Acc
+        METHOD Add : LINT VAR_INPUT N : LINT; END_VAR Add := N; END_METHOD
+        END_FUNCTION_BLOCK
+        PROGRAM main VAR a : Acc; r : LINT; END_VAR r := a.ADD(n := 1); END_PROGRAM";
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    assert_eq!(literal_types_with(source, &options), vec!["LINT"]);
+}

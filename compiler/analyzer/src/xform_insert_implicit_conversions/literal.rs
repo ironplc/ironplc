@@ -42,10 +42,9 @@ use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeEnvironment;
 use crate::variable_type;
 
-/// The input parameters of each method, by function block type (upper case)
-/// and method (lower case): each parameter's name (lower case) and the type
-/// a call passes it as.
-pub(super) type MethodParameters = HashMap<(String, String), Vec<(String, Option<TypeId>)>>;
+/// The input parameters of each method, by function block type and method:
+/// each parameter's name and the type a call passes it as.
+pub(super) type MethodParameters = HashMap<(Id, Id), Vec<(Id, Option<TypeId>)>>;
 
 /// Collects the parameters of every method in `lib`, the way the code
 /// generator passes them: a parameter declared with a simple type at that
@@ -56,14 +55,13 @@ pub(super) fn method_parameters(lib: &Library, types: &TypeEnvironment) -> Metho
         let LibraryElementKind::FunctionBlockDeclaration(block) = element else {
             continue;
         };
-        let block_name = block.name.name.to_string().to_uppercase();
         for method in &block.methods {
             let inputs = method
                 .variables
                 .iter()
                 .filter(|decl| decl.var_type.is_input_compatible())
                 .filter_map(|decl| {
-                    let name = decl.identifier.symbolic_id()?.to_string().to_lowercase();
+                    let name = decl.identifier.symbolic_id()?.clone();
                     let passed = match &decl.initializer {
                         InitialValueAssignmentKind::Simple(_) => decl
                             .type_id
@@ -77,10 +75,7 @@ pub(super) fn method_parameters(lib: &Library, types: &TypeEnvironment) -> Metho
                     Some((name, passed))
                 })
                 .collect();
-            parameters.insert(
-                (block_name.clone(), method.name.to_string().to_lowercase()),
-                inputs,
-            );
+            parameters.insert((block.name.name.clone(), method.name.clone()), inputs);
         }
     }
     parameters
@@ -298,7 +293,7 @@ impl ImplicitConversions<'_> {
                     |representation| match representation {
                         SemanticType::FunctionBlock { name, .. } => self
                             .methods
-                            .get(&(name.to_uppercase(), call.method.to_string().to_lowercase())),
+                            .get(&(Id::from(name.as_str()), call.method.clone())),
                         _ => None,
                     },
                 )
@@ -316,9 +311,8 @@ impl ImplicitConversions<'_> {
                     (&mut input.expr, at)
                 }
                 ParamAssignmentKind::NamedInput(input) => {
-                    let name = input.name.to_string().to_lowercase();
                     let at = parameters
-                        .and_then(|parameters| parameters.iter().find(|(p, _)| *p == name))
+                        .and_then(|parameters| parameters.iter().find(|(p, _)| *p == input.name))
                         .and_then(|(_, at)| *at);
                     (&mut input.expr, at)
                 }
