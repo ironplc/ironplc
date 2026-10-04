@@ -11,7 +11,7 @@
 
 use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
 
-use crate::intermediate_type::IntermediateType;
+use crate::semantic_type::SemanticType;
 use crate::type_environment::elementary_type;
 
 /// The width of the word or float a numeric type is operated on in.
@@ -43,8 +43,8 @@ pub(crate) fn numeric_operation_width(type_name: &TypeName) -> Option<OperationW
     let representation = elementary_type(type_name)?;
     let bits = representation.size_in_bytes()? * 8;
     Some(match representation {
-        IntermediateType::Real { .. } if bits <= 32 => OperationWidth::F32,
-        IntermediateType::Real { .. } => OperationWidth::F64,
+        SemanticType::Real { .. } if bits <= 32 => OperationWidth::F32,
+        SemanticType::Real { .. } => OperationWidth::F64,
         _ if bits <= 32 => OperationWidth::W32,
         _ => OperationWidth::W64,
     })
