@@ -143,3 +143,13 @@ result makes to the type of its context stay in codegen until arguments, the
 remaining context, record them too, since the same code serves both. The
 decision above is unchanged.
 
+### Arguments (postscript)
+
+The pass also records the conversion of an argument to a user-defined
+function to the type its parameter is passed as, and codegen no longer
+converts an argument itself. The recording makes two existing choices visible:
+a parameter of a non-elementary type is passed as a `DINT`, and an untyped
+real literal is a `REAL` converted to an `LREAL` parameter. Correcting either
+is a change to the pass. Function block and method arguments are not recorded
+yet. The decision above is unchanged.
+

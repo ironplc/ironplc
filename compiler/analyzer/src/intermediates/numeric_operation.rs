@@ -40,14 +40,60 @@ pub(crate) fn numeric_operation_width(type_name: &TypeName) -> Option<OperationW
     if !numeric {
         return None;
     }
-    let representation = elementary_type(type_name)?;
-    let bits = representation.size_in_bytes()? * 8;
-    Some(match representation {
-        SemanticType::Real { .. } if bits <= 32 => OperationWidth::F32,
-        SemanticType::Real { .. } => OperationWidth::F64,
-        _ if bits <= 32 => OperationWidth::W32,
-        _ => OperationWidth::W64,
-    })
+    operation_width_of(elementary_type(type_name)?)
+}
+
+/// Returns the width a value of the type `representation` is operated on
+/// at: an enumeration as a 32-bit ordinal, a subrange as its base type, a
+/// reference as a 64-bit address, and an elementary type by its size.
+/// `None` for a type that is not operated on as a single value: a string,
+/// an aggregate or a POU.
+pub(crate) fn operation_width_of(representation: &SemanticType) -> Option<OperationWidth> {
+    match representation {
+        SemanticType::Enumeration { .. } | SemanticType::Bool => Some(OperationWidth::W32),
+        SemanticType::Subrange { base_type, .. } => operation_width_of(base_type),
+        SemanticType::Reference { .. } => Some(OperationWidth::W64),
+        SemanticType::Int { .. }
+        | SemanticType::UInt { .. }
+        | SemanticType::Real { .. }
+        | SemanticType::Bytes { .. }
+        | SemanticType::Time { .. }
+        | SemanticType::Date { .. }
+        | SemanticType::TimeOfDay { .. }
+        | SemanticType::DateAndTime { .. } => {
+            let bits = representation.size_in_bytes()? * 8;
+            Some(match representation {
+                SemanticType::Real { .. } if bits <= 32 => OperationWidth::F32,
+                SemanticType::Real { .. } => OperationWidth::F64,
+                _ if bits <= 32 => OperationWidth::W32,
+                _ => OperationWidth::W64,
+            })
+        }
+        SemanticType::String { .. }
+        | SemanticType::Structure { .. }
+        | SemanticType::Array { .. }
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Function { .. } => None,
+    }
+}
+
+/// The elementary type an untyped literal of the category `generic` is
+/// operated at when nothing gives it a type: `DINT` for an integer and
+/// `REAL` for a real (ADR-0028). `None` for a category no untyped literal
+/// has.
+pub fn literal_default_type(generic: &GenericTypeName) -> Option<ElementaryTypeName> {
+    match generic {
+        GenericTypeName::AnyInt | GenericTypeName::AnyNum | GenericTypeName::AnyMagnitude => {
+            Some(ElementaryTypeName::DINT)
+        }
+        GenericTypeName::AnyReal => Some(ElementaryTypeName::REAL),
+        GenericTypeName::Any
+        | GenericTypeName::AnyDerived
+        | GenericTypeName::AnyElementary
+        | GenericTypeName::AnyBit
+        | GenericTypeName::AnyString
+        | GenericTypeName::AnyDate => None,
+    }
 }
 
 #[cfg(test)]
@@ -72,6 +118,30 @@ mod tests {
             numeric_operation_width(&TypeName::from(name)),
             Some(expected)
         );
+    }
+
+    #[rstest]
+    #[case::boolean(SemanticType::Bool, OperationWidth::W32)]
+    #[case::reference(
+        SemanticType::Reference { target_type: Box::new(SemanticType::Bool) },
+        OperationWidth::W64
+    )]
+    fn operation_width_of_when_not_numeric_scalar_then_its_slot_width(
+        #[case] representation: SemanticType,
+        #[case] expected: OperationWidth,
+    ) {
+        assert_eq!(operation_width_of(&representation), Some(expected));
+    }
+
+    #[rstest]
+    #[case::int(GenericTypeName::AnyInt, Some(ElementaryTypeName::DINT))]
+    #[case::real(GenericTypeName::AnyReal, Some(ElementaryTypeName::REAL))]
+    #[case::string(GenericTypeName::AnyString, None)]
+    fn literal_default_type_when_category_then_its_default(
+        #[case] generic: GenericTypeName,
+        #[case] expected: Option<ElementaryTypeName>,
+    ) {
+        assert_eq!(literal_default_type(&generic), expected);
     }
 
     #[rstest]

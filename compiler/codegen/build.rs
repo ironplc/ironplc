@@ -18,6 +18,9 @@ fn main() {
         // Container format (`REQ-CF-codegen-*`): what the compiler writes into
         // the header. The container crate owns the rest of that doc.
         "bytecode-container-format.md",
+        // Implicit conversions (`REQ-IC-codegen-*`): compiling the recorded
+        // conversion of an argument.
+        "implicit-conversions.md",
         // The post-emission peephole optimizer (`REQ-PEEP-codegen-*`).
         "bytecode-peephole-optimizer.md",
     ]);

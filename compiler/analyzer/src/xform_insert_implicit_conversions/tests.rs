@@ -476,3 +476,113 @@ fn apply_when_subrange_target_then_converted_to_base_type() {
         PROGRAM main VAR s : Small; l : LINT; END_VAR s := l; END_PROGRAM";
     assert_eq!(assigned_values(source), vec!["LINT->DINT"]);
 }
+
+/// The inputs of every call to `name` in `source`, which must be free of
+/// diagnostics, each as [`describe`] shows it.
+fn call_arguments(source: &str, name: &str) -> Vec<String> {
+    struct Arguments<'a> {
+        types: &'a TypeEnvironment,
+        name: &'a str,
+        arguments: Vec<String>,
+    }
+    impl Visitor<Infallible> for Arguments<'_> {
+        type Value = ();
+        fn visit_function(&mut self, node: &Function) -> Result<(), Infallible> {
+            if node.name.original().eq_ignore_ascii_case(self.name) {
+                let inputs = node.param_assignment.iter().filter_map(|p| p.input_expr());
+                self.arguments
+                    .extend(inputs.map(|e| describe(self.types, e)));
+            }
+            node.recurse_visit(self)
+        }
+    }
+    let options = CompilerOptions::default();
+    let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
+    let (library, context) = analyze(&[&library], &options).unwrap();
+    assert!(
+        !context.has_diagnostics(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics()
+    );
+    let mut visitor = Arguments {
+        types: context.types(),
+        name,
+        arguments: vec![],
+    };
+    let Ok(()) = visitor.walk(&library);
+    visitor.arguments
+}
+
+/// A function `f` whose one input is of type `param`, called as `f(<args>)`
+/// from a program declaring `VAR <vars> END_VAR`.
+fn call_program(param: &str, vars: &str, args: &str) -> String {
+    format!(
+        "FUNCTION f : DINT VAR_INPUT x : {param}; END_VAR f := 0; END_FUNCTION
+        PROGRAM main VAR r : DINT; {vars} END_VAR r := f({args}); END_PROGRAM"
+    )
+}
+
+#[spec_test(REQ_IC_analyzer_040)]
+#[test]
+fn apply_when_argument_narrower_than_parameter_then_converted_to_parameter_type() {
+    let source = call_program("LINT", "d : DINT;", "d");
+    assert_eq!(call_arguments(&source, "f"), vec!["DINT->LINT"]);
+}
+
+#[test]
+fn apply_when_argument_is_negation_then_converted_to_parameter_type() {
+    let source = call_program("LINT", "d : DINT;", "-d");
+    assert_eq!(call_arguments(&source, "f"), vec!["DINT->LINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_041)]
+#[test]
+fn apply_when_argument_shares_parameter_width_then_unchanged() {
+    let source = call_program("INT", "s : SINT;", "s");
+    assert_eq!(call_arguments(&source, "f"), vec!["SINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_042)]
+#[test]
+fn apply_when_literal_argument_of_parameter_width_then_takes_parameter_type() {
+    let source = call_program("INT", "", "1");
+    assert_eq!(call_arguments(&source, "f"), vec!["INT"]);
+}
+
+#[test]
+fn apply_when_literal_argument_to_wider_parameter_then_default_type_converted() {
+    let source = call_program("LINT", "", "1");
+    assert_eq!(call_arguments(&source, "f"), vec!["DINT->LINT"]);
+}
+
+#[test]
+fn apply_when_real_literal_argument_to_lreal_parameter_then_real_converted() {
+    let source = call_program("LREAL", "", "1.5");
+    assert_eq!(call_arguments(&source, "f"), vec!["REAL->LREAL"]);
+}
+
+#[spec_test(REQ_IC_analyzer_043)]
+#[test]
+fn apply_when_parameter_type_not_elementary_then_passed_as_dint() {
+    let source = "TYPE Big : LINT; END_TYPE
+        FUNCTION f : DINT VAR_INPUT x : Big; END_VAR f := 0; END_FUNCTION
+        PROGRAM main VAR r : DINT; b : Big; END_VAR r := f(b); END_PROGRAM";
+    assert_eq!(call_arguments(source, "f"), vec!["LINT->DINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_044)]
+#[test]
+fn apply_when_named_argument_then_converted_as_positional() {
+    let source = call_program("LINT", "d : DINT;", "x := d");
+    assert_eq!(call_arguments(&source, "f"), vec!["DINT->LINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_045)]
+#[test]
+fn apply_when_standard_function_or_in_out_parameter_then_arguments_unchanged() {
+    let source = "FUNCTION g : DINT VAR_IN_OUT x : DINT; END_VAR g := x; END_FUNCTION
+        PROGRAM main VAR r : LINT; d : DINT; s : DINT; END_VAR
+        r := ABS(d); s := g(d); END_PROGRAM";
+    assert_eq!(call_arguments(source, "ABS"), vec!["DINT"]);
+    assert_eq!(call_arguments(source, "g"), vec!["DINT"]);
+}
