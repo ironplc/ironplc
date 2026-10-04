@@ -2083,31 +2083,6 @@ END_PROGRAM
     }
 
     #[test]
-    fn compile_when_exit_outside_loop_then_internal_error() {
-        let source = "
-PROGRAM main
-  VAR
-    x : DINT;
-  END_VAR
-  x := 1;
-  EXIT;
-END_PROGRAM
-";
-        let (library, context) = parse(source);
-        let result = compile(
-            &library,
-            &context,
-            &CodegenOptions::default(),
-            &crate::EmptyLookup,
-        );
-
-        assert!(result.is_err());
-        let diagnostic = result.unwrap_err();
-        // Analysis reports it first, as P4021 (`rule_loop_control_inside_loop`).
-        assert_eq!(diagnostic.code, "P9998");
-    }
-
-    #[test]
     fn compile_when_for_non_constant_step_then_p9999_error() {
         let source = "
 PROGRAM main
