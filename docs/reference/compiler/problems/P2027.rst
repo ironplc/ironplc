@@ -4,3 +4,75 @@ P2027
 
 .. problem-summary:: P2027
 
+This error occurs when an array subscript is a constant outside the indexes
+the array declares.
+
+Each dimension of an array declares the indexes of its elements.
+``ARRAY[1..5] OF INT`` has elements 1 through 5, so a subscript of 6 names an
+element the array does not have.
+
+Example
+-------
+
+The following code will generate error P2027:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           readings : ARRAY[1..5] OF INT;
+       END_VAR
+
+       readings[6] := 10;  (* Error: readings has elements 1 to 5 *)
+   END_PROGRAM
+
+To fix this error, use an index the array declares:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           readings : ARRAY[1..5] OF INT;
+       END_VAR
+
+       readings[5] := 10;
+   END_PROGRAM
+
+Or declare the array with room for the index:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           readings : ARRAY[1..6] OF INT;
+       END_VAR
+
+       readings[6] := 10;
+   END_PROGRAM
+
+Where the check applies
+-----------------------
+
+Each subscript of a multi-dimensional array is checked against its own
+dimension:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           grid : ARRAY[1..3, 0..2] OF INT;
+       END_VAR
+
+       grid[1, 3] := 0;  (* Error: the second dimension is 0 to 2 *)
+   END_PROGRAM
+
+A constant expression is checked by its value, so ``readings[3 + 3]`` is
+reported the same way as ``readings[6]``. A subscript that is worked out
+while the program runs, or that names a constant, is checked when the program
+runs instead: an index outside the array stops the program with
+:doc:`V4005 </reference/runtime/problems/V4005>`.
+
+See Also
+--------
+
+- :doc:`P2024` — an array dimension whose range is invalid
