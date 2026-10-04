@@ -1,7 +1,9 @@
 //! End-to-end integration tests for structure field read support.
 //! Compiles ST programs with struct field access and runs them through the VM.
 
-use crate::common::{parse_and_run, read_string, try_parse_and_compile};
+use crate::common::{
+    date, datetime, parse_and_run, read_string, time, try_parse_and_compile, Duration, Snapshot,
+};
 use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 
@@ -135,15 +137,13 @@ PROGRAM main
     result := s.names[2];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // s is var 0 (struct data_offset), result is var 1 (STRING in data region).
-    // The struct occupies slots for the string array: 3 * ceil((4+10)/8) = 3*2 = 6 slots = 48 bytes.
-    // result is a STRING[10] starting at data_region offset 48.
+    // Verify the writes landed in the struct's data region. Fields wait on
+    // paths, so they are read from the struct's data-region base.
+    let bufs = snapshot.buffers();
     let struct_base = bufs.vars[0].as_i32() as usize;
     let stride = STRING_HEADER_BYTES + 10;
-
-    // Verify the writes landed in the struct's data region.
     assert_eq!(read_string(&bufs.data_region, struct_base), "hello");
     assert_eq!(
         read_string(&bufs.data_region, struct_base + stride),
@@ -151,8 +151,7 @@ END_PROGRAM
     );
 
     // Verify the read-back via result.
-    let result_offset = struct_base + 6 * 8; // after struct's 6 slots
-    assert_eq!(read_string(&bufs.data_region, result_offset), "world");
+    assert_eq!(snapshot.read("result"), "world");
 }
 
 #[test]
@@ -180,18 +179,10 @@ PROGRAM main
     r2 := lang.names[2, 3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // lang struct: 2*3=6 STRING[10] elements, each 2 slots = 12 slots = 96 bytes.
-    // r1 starts at offset 96, r2 at 96 + (4+10) = 96 + 14 = not quite...
-    // r1 and r2 are STRING[10] variables, each takes STRING_HEADER_BYTES + 10 bytes.
-    let struct_base = bufs.vars[0].as_i32() as usize;
-    let struct_slots = 12; // 6 elements * 2 slots each
-    let r1_offset = struct_base + struct_slots * 8;
-    let r2_offset = r1_offset + STRING_HEADER_BYTES + 10;
-
-    assert_eq!(read_string(&bufs.data_region, r1_offset), "Tue");
-    assert_eq!(read_string(&bufs.data_region, r2_offset), "Mi");
+    assert_eq!(snapshot.read("r1"), "Tue");
+    assert_eq!(snapshot.read("r2"), "Mi");
 }
 
 #[test]
@@ -216,7 +207,7 @@ PROGRAM main
     r := lang.NAMES[2, 2];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(
+    let snapshot = Snapshot::run(
         source,
         &CompilerOptions {
             allow_top_level_var_global: true,
@@ -224,15 +215,7 @@ END_PROGRAM
         },
     );
 
-    // Global struct 'lang' is var 0 (globals come first), scratch is var 1.
-    // Program var 'r' is var 2.
-    // Struct: 6 STRING[10] elements * 2 slots = 12 slots = 96 bytes.
-    // r starts at offset 96.
-    let struct_base = bufs.vars[0].as_i32() as usize;
-    let struct_slots = 12;
-    let r_offset = struct_base + struct_slots * 8;
-
-    assert_eq!(read_string(&bufs.data_region, r_offset), "Di");
+    assert_eq!(snapshot.read("r"), "Di");
 }
 
 // --- Functions that return structs ---
@@ -287,13 +270,11 @@ PROGRAM main
     result := d.NAME;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    let bufs = snapshot.buffers();
     let struct_base = bufs.vars[0].as_i32() as usize;
     assert_eq!(read_string(&bufs.data_region, struct_base), "world");
-    // result is the second string variable; its data follows the struct data
-    // struct occupies 3 slots (2 for STRING[10] + 1 for INT) = 24 bytes
-    let result_offset = struct_base + 3 * 8;
-    assert_eq!(read_string(&bufs.data_region, result_offset), "world");
+    assert_eq!(snapshot.read("result"), "world");
 }
 
 #[test]
@@ -330,22 +311,16 @@ PROGRAM main
     result_sum := d.VALUES[1] + d.VALUES[2] + d.VALUES[3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // d is var 0 (struct), result_name is var 1 (STRING), result_sum is var 2
-    let struct_base = bufs.vars[0].as_i32() as usize;
-    // TYP is at slot 0, NAME starts at slot 1 (2 slots for STRING[10]),
-    // VALUES at slot 3 (3 DINT slots)
-    // Total struct slots: 1 + 2 + 3 = 6
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // Verify NAME field in the struct data region (slot 1 = byte offset 8)
+    // Verify NAME field in the struct data region: TYP takes the struct's
+    // first slot, so NAME starts at byte offset 8.
+    let bufs = snapshot.buffers();
+    let struct_base = bufs.vars[0].as_i32() as usize;
     assert_eq!(read_string(&bufs.data_region, struct_base + 8), "test");
 
-    // Verify result_name (STRING var after struct data)
-    let result_name_offset = struct_base + 6 * 8;
-    assert_eq!(read_string(&bufs.data_region, result_name_offset), "test");
-
-    // Verify sum of array values
-    assert_eq!(bufs.vars[2].as_i32(), 60);
+    assert_eq!(snapshot.read("result_name"), "test");
+    assert_eq!(snapshot.read_as::<i32>("result_sum"), 60);
 }
 
 // Two calls to a struct-returning function should produce independent copies.
@@ -404,11 +379,11 @@ PROGRAM main
     result := s.t;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(
+    let snapshot = Snapshot::run(
         source,
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
     );
-    assert_eq!(bufs.vars[1].as_i64(), 5_000);
+    assert_eq!(snapshot.read("result"), Duration::seconds(5));
 }
 
 // --- DATE, TOD, DT struct fields ---
@@ -428,9 +403,8 @@ PROGRAM main
     result := s.d;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // 2024-01-01 is 19723 days after 1970-01-01 = 1_704_067_200 seconds
-    assert_eq!(bufs.vars[1].as_i32() as u32, 1_704_067_200);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read("result"), date!(2024 - 01 - 01));
 }
 
 #[test]
@@ -446,9 +420,8 @@ PROGRAM main
     result := s.t;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // 12h * 3600000 + 30m * 60000 = 45_000_000 ms
-    assert_eq!(bufs.vars[1].as_i32() as u32, 45_000_000);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read("result"), time!(12:30));
 }
 
 #[test]
@@ -464,9 +437,8 @@ PROGRAM main
     result := s.v;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // 1_704_067_200 + 12*3600 + 30*60 = 1_704_112_200
-    assert_eq!(bufs.vars[1].as_i32() as u32, 1_704_112_200);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read("result"), datetime!(2024-01-01 12:30));
 }
 
 // --- Subrange struct field default value ---

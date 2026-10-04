@@ -20,7 +20,7 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::{parse_and_run, run_scans};
+use crate::common::{run_scans, Snapshot};
 
 #[rstest]
 #[case::simple_assignment("DINT", "x := 42;", 42)]
@@ -44,9 +44,9 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
 
-    assert_eq!(bufs.vars[0].as_i64(), expected);
+    assert_eq!(snapshot.read_as::<i64>("x"), expected);
 }
 
 #[test]
@@ -61,10 +61,10 @@ PROGRAM main
   y := x;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(bufs.vars[0].as_i32(), 7);
-    assert_eq!(bufs.vars[1].as_i32(), 7);
+    assert_eq!(snapshot.read_as::<i32>("x"), 7);
+    assert_eq!(snapshot.read_as::<i32>("y"), 7);
 }
 
 #[test]
@@ -78,10 +78,10 @@ PROGRAM main
   y := y + x;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(bufs.vars[0].as_i32(), 10);
-    assert_eq!(bufs.vars[1].as_i32(), 42);
+    assert_eq!(snapshot.read_as::<i32>("x"), 10);
+    assert_eq!(snapshot.read_as::<i32>("y"), 42);
 }
 
 #[test]
@@ -95,11 +95,11 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(bufs.vars[0].as_i32(), 5);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-    assert_eq!(bufs.vars[2].as_i32(), 15);
+    assert_eq!(snapshot.read_as::<i32>("a"), 5);
+    assert_eq!(snapshot.read_as::<i32>("b"), 0);
+    assert_eq!(snapshot.read_as::<i32>("c"), 15);
 }
 
 #[test]

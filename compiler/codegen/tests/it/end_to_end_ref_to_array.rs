@@ -53,7 +53,7 @@ END_PROGRAM
 );
 
 // A REF_TO whose target is a named array type behaves exactly as the inline
-// spelling (#1580). var layout: arr=0, pt=1, v=2, i=3
+// spelling (#1580).
 e2e_i32_with!(
     end_to_end_when_ref_to_named_array_type_deref_subscript_read_then_reads_element,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -74,7 +74,6 @@ END_PROGRAM
     &[("v", 77)],
 );
 
-// var layout: arr=0, pt=1, v=2
 e2e_i32_with!(
     end_to_end_when_ref_to_named_array_type_deref_subscript_write_then_writes_through_ref,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -94,7 +93,6 @@ END_PROGRAM
     &[("v", 55)],
 );
 
-// var layout: arr=0, v=1
 e2e_i32_with!(
     end_to_end_when_function_param_ref_to_named_array_type_then_reads_element,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -121,7 +119,6 @@ END_PROGRAM
     &[("v", 31)],
 );
 
-// var layout: arr=0, fb=1, check=2
 e2e_i32_with!(
     end_to_end_when_fb_local_ref_to_named_array_type_then_writes_through_ref,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -153,7 +150,7 @@ END_PROGRAM
 );
 
 // The dimensions come from the type environment, so strides must be right
-// for more than one dimension. var layout: g=0, pt=1, v=2
+// for more than one dimension.
 e2e_i32_with!(
     end_to_end_when_ref_to_named_two_dimensional_array_type_then_reads_element,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -175,7 +172,6 @@ END_PROGRAM
 
 // A named reference type whose target is itself a named array type reaches
 // codegen with the named target, so it takes the same path.
-// var layout: arr=0, pt=1, v=2
 e2e_i32_with!(
     end_to_end_when_ref_type_alias_of_named_array_type_then_reads_element,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),

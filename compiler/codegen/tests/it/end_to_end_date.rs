@@ -3,18 +3,14 @@
 //! Each test verifies the full pipeline: parse -> compile -> VM execution
 //! for datetime variables and literals. These types are IEC 61131-3
 //! Edition 2 features.
-//!
-//! - DATE: stored as u32 seconds since 1970-01-01 (industry standard)
-//! - TIME_OF_DAY (TOD): stored as u32 milliseconds since midnight
-//! - DATE_AND_TIME (DT): stored as u32 seconds since 1970-01-01
 
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::{parse_and_run, try_parse_and_compile};
+use crate::common::{date, datetime, time, try_parse_and_compile, Snapshot};
 
 #[test]
-fn end_to_end_when_date_assignment_then_value_is_seconds_since_epoch() {
+fn end_to_end_when_date_assignment_then_reads_date() {
     let source = "
 PROGRAM main
   VAR
@@ -23,13 +19,12 @@ PROGRAM main
   d := D#2024-01-01;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // 2024-01-01 is 19723 days after 1970-01-01 = 19723 * 86400 = 1704067200
-    assert_eq!(bufs.vars[0].as_i32() as u32, 1_704_067_200);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read("d"), date!(2024 - 01 - 01));
 }
 
 #[test]
-fn end_to_end_when_tod_assignment_then_value_is_milliseconds_since_midnight() {
+fn end_to_end_when_tod_assignment_then_reads_time_of_day() {
     let source = "
 PROGRAM main
   VAR
@@ -38,13 +33,12 @@ PROGRAM main
   t := TOD#12:30:00;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // 12h * 3600000 + 30m * 60000 = 45000000 ms
-    assert_eq!(bufs.vars[0].as_i32() as u32, 45_000_000);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read("t"), time!(12:30));
 }
 
 #[test]
-fn end_to_end_when_dt_assignment_then_value_is_seconds_since_epoch() {
+fn end_to_end_when_dt_assignment_then_reads_date_and_time() {
     let source = "
 PROGRAM main
   VAR
@@ -53,9 +47,8 @@ PROGRAM main
   my_dt := DT#2024-01-01-12:30:00;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // 1704067200 (date) + 12*3600 + 30*60 = 1704067200 + 45000 = 1704112200
-    assert_eq!(bufs.vars[0].as_i32() as u32, 1_704_112_200);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read("my_dt"), datetime!(2024-01-01 12:30));
 }
 
 e2e_i32!(

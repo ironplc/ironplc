@@ -93,7 +93,6 @@ END_PROGRAM
     &[("x", 300)],
 );
 
-// arr=0, a=1, b=2, c=3
 e2e_i32!(
     end_to_end_when_array_multiple_independent_stores_then_no_interference,
     "
@@ -144,7 +143,7 @@ END_PROGRAM
     });
 }
 
-// arr=0, x=1, y=2; arr[1] = first of 3(10); arr[4] = first of 3(20)
+// arr[1] = first of 3(10); arr[4] = first of 3(20)
 e2e_i32!(
     end_to_end_when_array_with_repeated_init_then_values_set,
     "

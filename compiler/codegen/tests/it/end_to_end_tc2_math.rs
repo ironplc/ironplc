@@ -8,19 +8,18 @@
 //! never trap.
 
 use ironplc_analyzer::stages::analyze;
-use ironplc_codegen::compile;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
 use ironplc_sources::libraries::{LibraryName, LibraryRegistry};
-use ironplc_vm::test_support::load_and_start;
-use ironplc_vm::VmBuffers;
+
+use crate::common::Snapshot;
 
 /// Activates the bundled `Tc2_Math`, analyzes it merged ahead of `source`,
 /// compiles, and runs one scan cycle. The full activate → analyze → codegen →
 /// VM-run path the acceptance criteria require.
-fn run_with_tc2_math(source: &str) -> VmBuffers {
+fn run_with_tc2_math(source: &str) -> Snapshot {
     let options = CompilerOptions::default();
     let compat = LibraryRegistry::bundled()
         .load(&LibraryName::from("Tc2_Math"))
@@ -35,24 +34,11 @@ fn run_with_tc2_math(source: &str) -> VmBuffers {
         context.diagnostics()
     );
 
-    let codegen_options = ironplc_codegen::CodegenOptions::from(&options);
-    let container = compile(
-        &analyzed,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
-    .unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).expect("VM load must not trap");
-        vm.run_round(0).expect("VM run must not trap");
-    }
-    bufs
+    Snapshot::run_analyzed(&analyzed, &context, &options)
 }
 
 /// Evaluates one library-function call over LREAL operands and returns
-/// `result` (var 2).
+/// `result`.
 ///
 /// Operands render via `{:?}` (uppercased), so values like `1.5e300` become
 /// the ST exponent literal `1.5E300` instead of 300 digits of integer text.
@@ -72,7 +58,7 @@ END_PROGRAM
         a = format!("{a:?}").to_uppercase(),
         b = format!("{b:?}").to_uppercase(),
     );
-    run_with_tc2_math(&source).vars[2].as_f64()
+    run_with_tc2_math(&source).read_as::<f64>("result")
 }
 
 /// The spec's approximate-comparison epsilon.

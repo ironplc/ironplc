@@ -175,8 +175,9 @@ test is redundant for *behavior*.
 | `end_to_end_<op>.rs` | Runtime assertions — the primary behavioral layer | `end_to_end_add.rs`, `end_to_end_div.rs` |
 | `end_to_end.rs` | General infrastructure tests (assignment, scan behavior) | — |
 | `wire_format.rs` | **Backwards-compatibility guard**: pins every opcode's byte value + a completeness test | — |
-| `compile_<op>.rs` | Bytecode assertions — **only for structure end-to-end cannot localize** (jump/branch offsets, struct/array/frame offsets, operand widths, peephole) | `compile_loops.rs`, `compile_struct.rs`, `compile_array.rs` |
-| `common/` | Shared helpers: the `e2e!`/`e2e_*!` macros, `assert_run`, `Snapshot`, `parse`, `parse_and_run` | — |
+| `compile_<op>.rs` | Bytecode assertions — **only for structure end-to-end cannot localize** (jump/branch offsets, struct/array/frame offsets, operand widths, peephole), and variable layout | `compile_loops.rs`, `compile_struct.rs`, `compile_system_uptime.rs` |
+| `vm_api_<api>.rs` | The VM's embedder API, which addresses variables by slot; slots are looked up by name with `vm_var_index` | `vm_api_write_variable_raw.rs` |
+| `common/` | Shared helpers: the `e2e!`/`e2e_*!` macros, `assert_run`, `Snapshot`, `run_scans`, `drive_fb`, `parse` | — |
 
 **The one thing end-to-end cannot catch is a consistent opcode *renumber*** (the
 compiler emits and the VM reads the new value, so a from-source compile+run still

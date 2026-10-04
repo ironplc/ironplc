@@ -10,7 +10,7 @@
 //! `end_to_end_bit_access.rs` covers the plain-variable and 32-bit
 //! array-element cases.
 
-use crate::common::{parse_and_run, try_parse_and_compile};
+use crate::common::{try_parse_and_compile, Snapshot};
 use ironplc_parser::options::CompilerOptions;
 
 // --- 1. Bit write on an LWORD array element: the 64-bit branch of
@@ -256,9 +256,9 @@ PROGRAM main
   x := arr[0];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &opts_with_partial_access());
+    let snapshot = Snapshot::run(source, &opts_with_partial_access());
     // x = arr[0]
-    assert_eq!(bufs.vars[1].as_i64(), 1099511627776);
+    assert_eq!(snapshot.read_as::<i64>("x"), 1099511627776);
 }
 
 // --- Sanity check: the 32-bit array-element path. This duplicates a test in

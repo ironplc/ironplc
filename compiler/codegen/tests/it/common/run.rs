@@ -57,10 +57,20 @@ pub fn try_parse_and_compile(
     options: &CompilerOptions,
 ) -> Result<Container, Diagnostic> {
     let (library, context) = parse(source, options);
+    compile_analyzed(&library, &context, options)
+}
+
+/// Compiles an analyzed library, such as user source analyzed together with a
+/// bundled library, into a Container.
+pub fn compile_analyzed(
+    library: &Library,
+    context: &SemanticContext,
+    options: &CompilerOptions,
+) -> Result<Container, Diagnostic> {
     let codegen_options = ironplc_codegen::CodegenOptions::from(options);
     compile(
-        &library,
-        &context,
+        library,
+        context,
         &codegen_options,
         &ironplc_codegen::EmptyLookup,
     )
@@ -80,22 +90,21 @@ pub fn parse_and_try_run(
     options: &CompilerOptions,
 ) -> Result<(Container, VmBuffers), FaultContext> {
     let (library, context) = parse(source, options);
-    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
-    let container = compile(
-        &library,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
-    .unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
+    let container = compile_analyzed(&library, &context, options).unwrap();
+    let bufs = run_one_scan(&container)?;
+    Ok((container, bufs))
+}
+
+/// Loads `container` and runs one scan cycle, returning `Err` on VM trap.
+pub fn run_one_scan(container: &Container) -> Result<VmBuffers, FaultContext> {
+    let mut bufs = VmBuffers::from_container(container);
     {
-        let mut vm = load_and_start(&container, &mut bufs)?;
+        let mut vm = load_and_start(container, &mut bufs)?;
         assert_stack_balanced(&vm, "after init");
         vm.run_round(0)?;
         assert_stack_balanced(&vm, "after scan round");
     }
-    Ok((container, bufs))
+    Ok(bufs)
 }
 
 /// Asserts the VM's operand stack is empty.
@@ -120,28 +129,22 @@ pub fn assert_stack_balanced(vm: &ironplc_vm::VmRunning<'_>, phase: &str) {
     );
 }
 
-/// Parses, analyzes, compiles, and runs a multi-round test scenario.
+/// Parses, analyzes, compiles, and runs a multi-round test scenario on the
+/// VM itself, for tests whose subject is the VM's API.
 ///
-/// The closure receives a mutable VM reference so it can write variables,
-/// run multiple rounds, and read back results.
+/// The closure receives the container, to find a variable's slot with
+/// [`vm_var_index`](super::vm_var_index), and a mutable VM reference so it can
+/// write variables, run multiple rounds, and read back results.
 pub fn parse_and_run_rounds(
     source: &str,
     options: &CompilerOptions,
-    f: impl FnOnce(&mut ironplc_vm::VmRunning<'_>),
+    f: impl FnOnce(&Container, &mut ironplc_vm::VmRunning<'_>),
 ) {
-    let (library, context) = parse(source, options);
-    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
-    let container = compile(
-        &library,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
-    .unwrap();
+    let container = parse_and_compile(source, options);
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = load_and_start(&container, &mut bufs).unwrap();
     assert_stack_balanced(&vm, "after init");
-    f(&mut vm);
+    f(&container, &mut vm);
     // The closure may have run any number of rounds. Each individual round
     // is covered by the `debug_assert` at the end of `VmRunning::run_round`;
     // this catches the final state even when that assertion is compiled out.
