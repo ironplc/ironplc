@@ -13,8 +13,8 @@ use ironplc_dsl::visitor::Visitor;
 use ironplc_problems::Problem;
 use log::trace;
 
-use crate::intermediate_type::IntermediateType;
 use crate::scoped_table::{ScopedTable, Value};
+use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeEnvironment;
 
 /// Derived data types declared.
@@ -151,9 +151,9 @@ impl TypeResolver<'_> {
     fn classify(&self, name: &TypeName) -> Option<ResolvedKind> {
         if let Some(attrs) = self.type_environment.get(name) {
             return Some(match &attrs.representation {
-                IntermediateType::FunctionBlock { .. } => ResolvedKind::FunctionBlock,
-                IntermediateType::Structure { .. } => ResolvedKind::Structure,
-                IntermediateType::Enumeration { .. } => ResolvedKind::Enumeration,
+                SemanticType::FunctionBlock { .. } => ResolvedKind::FunctionBlock,
+                SemanticType::Structure { .. } => ResolvedKind::Structure,
+                SemanticType::Enumeration { .. } => ResolvedKind::Enumeration,
                 _ => ResolvedKind::Other,
             });
         }

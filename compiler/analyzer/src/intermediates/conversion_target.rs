@@ -11,7 +11,7 @@ use ironplc_dsl::common::{GenericTypeName, TypeName};
 use ironplc_dsl::textual::{Expr, ExprKind, ExprType};
 use ironplc_dsl::type_id::TypeId;
 
-use crate::intermediate_type::IntermediateType;
+use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
 
@@ -64,10 +64,9 @@ impl<'a> ConversionTarget<'a> {
     /// Returns `true` when `expr` is a string, or an untyped string literal.
     pub(crate) fn is_string(&self, expr: &Expr) -> bool {
         match &expr.expr_type {
-            Some(ExprType::Concrete(id)) => matches!(
-                self.representation(*id),
-                Some(IntermediateType::String { .. })
-            ),
+            Some(ExprType::Concrete(id)) => {
+                matches!(self.representation(*id), Some(SemanticType::String { .. }))
+            }
             Some(ExprType::Literal(generic)) => *generic == GenericTypeName::AnyString,
             Some(ExprType::Null) | None => false,
         }
@@ -83,7 +82,7 @@ impl<'a> ConversionTarget<'a> {
         self.types.id_of(name)
     }
 
-    fn representation(&self, id: TypeId) -> Option<&IntermediateType> {
+    fn representation(&self, id: TypeId) -> Option<&SemanticType> {
         self.types
             .get_by_id(id)
             .map(|attributes| &attributes.representation)

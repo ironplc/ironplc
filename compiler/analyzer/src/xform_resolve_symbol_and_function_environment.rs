@@ -32,7 +32,7 @@ use std::convert::Infallible;
 
 use crate::{
     function_environment::{FunctionEnvironment, FunctionSignature},
-    intermediate_type::IntermediateFunctionParameter,
+    semantic_type::SemanticFunctionParameter,
     symbol_environment::{
         duplicate_declaration, ScopeKind, ScopeTracker, SymbolEnvironment, SymbolInfo, SymbolKind,
     },
@@ -265,7 +265,7 @@ impl<'a> Visitor<Infallible> for EnvironmentResolver<'a> {
                 _ => continue,
             };
 
-            parameters.push(IntermediateFunctionParameter {
+            parameters.push(SemanticFunctionParameter {
                 name: param_name,
                 param_type,
                 is_input: var_decl.var_type == VariableType::Input,
@@ -592,7 +592,7 @@ END_FUNCTION";
         // Check function is in function environment with correct signature
         let func_sig = function_env.get(&Id::from("ADD_INTS")).unwrap();
         assert_eq!(func_sig.name.original(), "ADD_INTS");
-        // Return type is now stored as TypeName, not resolved IntermediateType
+        // Return type is now stored as TypeName, not resolved SemanticType
         assert_eq!(
             func_sig.return_type,
             Some(FunctionReturnType::Named(TypeName::from("INT")))

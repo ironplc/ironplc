@@ -74,10 +74,10 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::IntermediateType,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::SemanticType,
     type_environment::TypeEnvironment,
     value_type,
 };
@@ -98,13 +98,13 @@ pub fn apply(
 
 /// Returns true if a `CASE` may select on a value of this type: `ANY_INT`,
 /// a subrange of one, or an enumeration.
-fn is_selectable(representation: &IntermediateType) -> bool {
+fn is_selectable(representation: &SemanticType) -> bool {
     matches!(
         representation,
-        IntermediateType::Int { .. }
-            | IntermediateType::UInt { .. }
-            | IntermediateType::Subrange { .. }
-            | IntermediateType::Enumeration { .. }
+        SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Subrange { .. }
+            | SemanticType::Enumeration { .. }
     )
 }
 

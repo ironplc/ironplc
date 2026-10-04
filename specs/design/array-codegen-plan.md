@@ -28,15 +28,15 @@ Add code generation and VM support for arrays of primitive types. This document 
 
 Four independent, zero-risk refactoring PRs that land before any array feature code. Each is independently reviewable and introduces no new behavior.
 
-### Pre-work PR 0a: Preserve Per-Dimension Bounds in `IntermediateType::Array`
+### Pre-work PR 0a: Preserve Per-Dimension Bounds in `SemanticType::Array`
 
-**Goal**: Replace the flat `size: Option<u32>` in `IntermediateType::Array` with per-dimension bounds so the codegen can recover lower/upper bounds for each dimension when resolving named array types (e.g., `TYPE MY_ARRAY : ARRAY[1..3, 1..4] OF INT; END_TYPE`).
+**Goal**: Replace the flat `size: Option<u32>` in `SemanticType::Array` with per-dimension bounds so the codegen can recover lower/upper bounds for each dimension when resolving named array types (e.g., `TYPE MY_ARRAY : ARRAY[1..3, 1..4] OF INT; END_TYPE`).
 
 This is a standalone, prerequisite change that lands before the main array codegen work.
 
 ### P0a: Add `ArrayDimension` struct
 
-**File**: `compiler/analyzer/src/intermediate_type.rs`
+**File**: `compiler/analyzer/src/semantic_type.rs`
 
 ```rust
 /// Bounds for a single dimension of an array type.
@@ -49,14 +49,14 @@ pub struct ArrayDimension {
 }
 ```
 
-### P0b: Update `IntermediateType::Array`
+### P0b: Update `SemanticType::Array`
 
-**File**: `compiler/analyzer/src/intermediate_type.rs`
+**File**: `compiler/analyzer/src/semantic_type.rs`
 
 Change:
 ```rust
 Array {
-    element_type: Box<IntermediateType>,
+    element_type: Box<SemanticType>,
     size: Option<u32>,
 }
 ```
@@ -64,19 +64,19 @@ Array {
 To:
 ```rust
 Array {
-    element_type: Box<IntermediateType>,
+    element_type: Box<SemanticType>,
     dimensions: Vec<ArrayDimension>,
 }
 ```
 
 Add a derived method:
 ```rust
-impl IntermediateType {
+impl SemanticType {
     /// Returns the total number of elements across all dimensions,
     /// or None if dimensions is empty.
     pub fn array_total_elements(&self) -> Option<u32> {
         match self {
-            IntermediateType::Array { dimensions, .. } if !dimensions.is_empty() => {
+            SemanticType::Array { dimensions, .. } if !dimensions.is_empty() => {
                 let mut total: u32 = 1;
                 for dim in dimensions {
                     // Guard: if lower > upper, this dimension is invalid.
@@ -114,7 +114,7 @@ let dimensions: Vec<ArrayDimension> = array_subranges.ranges.iter()
     .collect::<Result<Vec<_>, Diagnostic>>()?;
 
 // Then construct:
-IntermediateType::Array {
+SemanticType::Array {
     element_type: Box::new(element_type.representation.clone()),
     dimensions,
 }
@@ -126,14 +126,14 @@ The `calculate_array_size()` function can be removed (total size is derived via 
 
 ### P0d: Update all match sites
 
-Each site that destructures `IntermediateType::Array { element_type, size }` must be updated. The changes are mechanical:
+Each site that destructures `SemanticType::Array { element_type, size }` must be updated. The changes are mechanical:
 
 | File | Line(s) | Change |
 |------|---------|--------|
-| `intermediate_type.rs` | 190, 228-231 (`size_in_bytes`) | **Widen return type from `Option<u8>` to `Option<u32>`**. The current `u8` return type truncates any type larger than 255 bytes — arrays routinely exceed this (`ARRAY[1..100] OF INT` = 400 bytes). Change the method signature to `pub fn size_in_bytes(&self) -> Option<u32>`. In the Array arm, replace `elem_size.saturating_mul(array_size as u8)` with `(elem_size as u32).checked_mul(self.array_total_elements()?)`. In the Structure/FunctionBlock arms, the computation already uses `u32` internally — just remove the `> u8::MAX` guard and return `Some(total_size)` directly. For primitive type arms (Bool, Int, UInt, Real, Bytes, Time, Date), change `Some(N)` to `Some(N as u32)` or `Some(size.as_bytes() as u32)`. **Callers to update**: (1) `type_attributes.rs:44` — `size_bytes()` currently does `.map(|s| s as u32)`, simplify to just forward the `Option<u32>` directly. (2) `type_attributes.rs:107` — same change. (3) `rule_bit_and_partial_access_range.rs:88` — currently does `u128::from(bytes) * 8`, change to `bytes as u128 * 8`. (4) `intermediates/structure.rs:38` — currently does `.unwrap_or(0) as u32`, change to `.unwrap_or(0)`. (5) `intermediates/stdlib_function_block.rs:68` — same as (4). All callers already widen to `u32`; this change eliminates the lossy narrowing. |
-| `intermediate_type.rs` | 296 (`alignment_bytes`) | No change needed — already uses `{ element_type, .. }` |
-| `intermediate_type.rs` | 335-338 (`has_explicit_size`) | Change `size.is_some()` to `!dimensions.is_empty()` |
-| `intermediate_type.rs` | 147 (`is_array`) | No change needed — already uses `{ .. }` |
+| `semantic_type.rs` | 190, 228-231 (`size_in_bytes`) | **Widen return type from `Option<u8>` to `Option<u32>`**. The current `u8` return type truncates any type larger than 255 bytes — arrays routinely exceed this (`ARRAY[1..100] OF INT` = 400 bytes). Change the method signature to `pub fn size_in_bytes(&self) -> Option<u32>`. In the Array arm, replace `elem_size.saturating_mul(array_size as u8)` with `(elem_size as u32).checked_mul(self.array_total_elements()?)`. In the Structure/FunctionBlock arms, the computation already uses `u32` internally — just remove the `> u8::MAX` guard and return `Some(total_size)` directly. For primitive type arms (Bool, Int, UInt, Real, Bytes, Time, Date), change `Some(N)` to `Some(N as u32)` or `Some(size.as_bytes() as u32)`. **Callers to update**: (1) `type_attributes.rs:44` — `size_bytes()` currently does `.map(|s| s as u32)`, simplify to just forward the `Option<u32>` directly. (2) `type_attributes.rs:107` — same change. (3) `rule_bit_and_partial_access_range.rs:88` — currently does `u128::from(bytes) * 8`, change to `bytes as u128 * 8`. (4) `intermediates/structure.rs:38` — currently does `.unwrap_or(0) as u32`, change to `.unwrap_or(0)`. (5) `intermediates/stdlib_function_block.rs:68` — same as (4). All callers already widen to `u32`; this change eliminates the lossy narrowing. |
+| `semantic_type.rs` | 296 (`alignment_bytes`) | No change needed — already uses `{ element_type, .. }` |
+| `semantic_type.rs` | 335-338 (`has_explicit_size`) | Change `size.is_some()` to `!dimensions.is_empty()` |
+| `semantic_type.rs` | 147 (`is_array`) | No change needed — already uses `{ .. }` |
 | `rule_bit_and_partial_access_range.rs` | 132-135 | Change `size: None` to `dimensions: vec![]` |
 | `rule_bit_and_partial_access_range.rs` | 163 | Change `{ element_type, .. }` — already uses wildcard, no change |
 | `type_category.rs` | 34 | No change needed — already uses `{ .. }` |
@@ -143,12 +143,12 @@ Each site that destructures `IntermediateType::Array { element_type, size }` mus
 
 ### P0e: Update tests
 
-All test sites that construct `IntermediateType::Array { element_type, size: Some(N) }` must change to `IntermediateType::Array { element_type, dimensions: vec![ArrayDimension { lower: 0, upper: N-1 }] }` (or use the original bounds if the test represents a specific declaration).
+All test sites that construct `SemanticType::Array { element_type, size: Some(N) }` must change to `SemanticType::Array { element_type, dimensions: vec![ArrayDimension { lower: 0, upper: N-1 }] }` (or use the original bounds if the test represents a specific declaration).
 
 Sites that use `size: None` (dynamic/unknown-size arrays) change to `dimensions: vec![]`.
 
 Key test files:
-- `intermediate_type.rs` — tests at lines 608, 617, 686, 724, 730, 811, 958
+- `semantic_type.rs` — tests at lines 608, 617, 686, 724, 730, 811, 958
 - `intermediates/array.rs` — tests at lines 384, 406, 523
 - `intermediates/structure.rs` — tests at lines 705, 733, 768, 802, 1276, 1578
 - `type_environment.rs` — test at line 501
@@ -164,21 +164,21 @@ Add a method that the codegen can use to resolve a named array type to its dimen
 impl TypeEnvironment {
     /// Returns the array dimensions and element type for a named array type.
     /// Returns None if the type is not found or is not an array.
-    pub fn resolve_array_type(&self, type_name: &TypeName) -> Option<&IntermediateType> {
+    pub fn resolve_array_type(&self, type_name: &TypeName) -> Option<&SemanticType> {
         let attrs = self.get(type_name)?;
         match &attrs.representation {
-            it @ IntermediateType::Array { .. } => Some(it),
+            it @ SemanticType::Array { .. } => Some(it),
             _ => None,
         }
     }
 }
 ```
 
-The codegen (Step 5b) can then extract `dimensions` and `element_type` directly from the returned `IntermediateType::Array`, instead of needing to recover subranges from the AST.
+The codegen (Step 5b) can then extract `dimensions` and `element_type` directly from the returned `SemanticType::Array`, instead of needing to recover subranges from the AST.
 
 ### Impact on codegen plan
 
-With this pre-work in place, Step 5b's named-type path simplifies. Instead of `types.resolve_array_type(type_name)` returning an opaque object with `.spec_as_subranges()`, it returns `&IntermediateType::Array { element_type, dimensions }`, and `register_array_variable` can extract `DimensionInfo` directly from `dimensions`:
+With this pre-work in place, Step 5b's named-type path simplifies. Instead of `types.resolve_array_type(type_name)` returning an opaque object with `.spec_as_subranges()`, it returns `&SemanticType::Array { element_type, dimensions }`, and `register_array_variable` can extract `DimensionInfo` directly from `dimensions`:
 
 ```rust
 SpecificationKind::Named(type_name) => {
@@ -187,7 +187,7 @@ SpecificationKind::Named(type_name) => {
             Problem::NotImplemented,
             Label::span(type_name.span(), "Unknown array type"),
         ))?;
-    let IntermediateType::Array { element_type, dimensions } = array_type else {
+    let SemanticType::Array { element_type, dimensions } = array_type else {
         unreachable!("resolve_array_type guarantees Array variant");
     };
     // Convert ArrayDimension to DimensionInfo and register...
@@ -559,41 +559,41 @@ pub(crate) fn array_spec_from_inline(
 
 /// Converts a named array type (from the TypeEnvironment) to a normalized ArraySpec.
 pub(crate) fn array_spec_from_named(
-    element_type: &IntermediateType,
+    element_type: &SemanticType,
     dimensions: &[ArrayDimension],
 ) -> Result<ArraySpec, Diagnostic> {
     let dims: Vec<(i32, i32)> = dimensions.iter()
         .map(|d| (d.lower, d.upper))
         .collect();
-    let element_type_name = intermediate_type_to_name(element_type)?;
+    let element_type_name = semantic_type_to_name(element_type)?;
     Ok(ArraySpec {
         dimensions: dims,
         element_type_name,
     })
 }
 
-/// Maps an IntermediateType to the IEC 61131-3 type name (as an Id) that
+/// Maps an SemanticType to the IEC 61131-3 type name (as an Id) that
 /// `resolve_type_name()` in compile.rs can look up. Only primitive types
 /// are supported (arrays of complex types are out of scope).
-fn intermediate_type_to_name(ty: &IntermediateType) -> Result<Id, Diagnostic> {
+fn semantic_type_to_name(ty: &SemanticType) -> Result<Id, Diagnostic> {
     let name = match ty {
-        IntermediateType::Bool => "BOOL",
-        IntermediateType::Int { size: ByteSized::B8 } => "SINT",
-        IntermediateType::Int { size: ByteSized::B16 } => "INT",
-        IntermediateType::Int { size: ByteSized::B32 } => "DINT",
-        IntermediateType::Int { size: ByteSized::B64 } => "LINT",
-        IntermediateType::UInt { size: ByteSized::B8 } => "USINT",
-        IntermediateType::UInt { size: ByteSized::B16 } => "UINT",
-        IntermediateType::UInt { size: ByteSized::B32 } => "UDINT",
-        IntermediateType::UInt { size: ByteSized::B64 } => "ULINT",
-        IntermediateType::Bytes { size: ByteSized::B8 } => "BYTE",
-        IntermediateType::Bytes { size: ByteSized::B16 } => "WORD",
-        IntermediateType::Bytes { size: ByteSized::B32 } => "DWORD",
-        IntermediateType::Bytes { size: ByteSized::B64 } => "LWORD",
-        IntermediateType::Real { size: ByteSized::B32 } => "REAL",
-        IntermediateType::Real { size: ByteSized::B64 } => "LREAL",
-        IntermediateType::Time { size: ByteSized::B32 } => "TIME",
-        IntermediateType::Time { size: ByteSized::B64 } => "LTIME",
+        SemanticType::Bool => "BOOL",
+        SemanticType::Int { size: ByteSized::B8 } => "SINT",
+        SemanticType::Int { size: ByteSized::B16 } => "INT",
+        SemanticType::Int { size: ByteSized::B32 } => "DINT",
+        SemanticType::Int { size: ByteSized::B64 } => "LINT",
+        SemanticType::UInt { size: ByteSized::B8 } => "USINT",
+        SemanticType::UInt { size: ByteSized::B16 } => "UINT",
+        SemanticType::UInt { size: ByteSized::B32 } => "UDINT",
+        SemanticType::UInt { size: ByteSized::B64 } => "ULINT",
+        SemanticType::Bytes { size: ByteSized::B8 } => "BYTE",
+        SemanticType::Bytes { size: ByteSized::B16 } => "WORD",
+        SemanticType::Bytes { size: ByteSized::B32 } => "DWORD",
+        SemanticType::Bytes { size: ByteSized::B64 } => "LWORD",
+        SemanticType::Real { size: ByteSized::B32 } => "REAL",
+        SemanticType::Real { size: ByteSized::B64 } => "LREAL",
+        SemanticType::Time { size: ByteSized::B32 } => "TIME",
+        SemanticType::Time { size: ByteSized::B64 } => "LTIME",
         _ => return Err(Diagnostic::todo(file!(), line!())),
     };
     Ok(Id::from(name))
@@ -701,7 +701,7 @@ InitialValueAssignmentKind::Array(array_init) => {
                     Problem::NotImplemented,
                     Label::span(type_name.span(), "Unknown array type"),
                 ))?;
-            let IntermediateType::Array { element_type, dimensions } = array_type else {
+            let SemanticType::Array { element_type, dimensions } = array_type else {
                 unreachable!("resolve_array_type guarantees Array variant");
             };
             array_spec_from_named(element_type, dimensions)?
@@ -1279,7 +1279,7 @@ Add these verification rules for documentation purposes (verifier implementation
 ## Implementation Order
 
 ```
-Pre-work 0a: IntermediateType change   ← no dependencies, lands FIRST (high blast radius across analyzer)
+Pre-work 0a: SemanticType change   ← no dependencies, lands FIRST (high blast radius across analyzer)
 Pre-work 0b: Widen data_region_offset + DataRegionOutOfBounds(u32) ← merge after 0a to avoid rebase churn
 Pre-work 0c: Thread TypeEnvironment    ← merge after 0a to avoid rebase churn
 Pre-work 0d: Create compile_array.rs   ← merge after 0a to avoid rebase churn
@@ -1301,7 +1301,7 @@ Each PR is independently reviewable. Pre-work PRs are pure refactoring with zero
 
 | PR | Content | Scope | Dependencies |
 |----|---------|-------|-------------|
-| **PR 0a** | Pre-work: `IntermediateType` per-dimension bounds + fix `size_in_bytes()` u8 truncation (P0a-P0f) | Analyzer only | None |
+| **PR 0a** | Pre-work: `SemanticType` per-dimension bounds + fix `size_in_bytes()` u8 truncation (P0a-P0f) | Analyzer only | None |
 | **PR 0b** | Pre-work: Widen `data_region_offset` to `u32` + `StringVarInfo.data_offset` + `FbInstanceInfo.data_offset` + `Trap::DataRegionOutOfBounds` to `u32` | Codegen + VM refactoring | PR 0a (merge order) |
 | **PR 0c** | Pre-work: Thread `TypeEnvironment` through compile chain (4 function signatures) | Codegen plumbing | PR 0a (merge order) |
 | **PR 0d** | Pre-work: Create `compile_array.rs` with type stubs (`ArraySpec`, `DimensionInfo`, `ArrayVarInfo`, `ResolvedAccess`) | Structural scaffolding | PR 0a (merge order) |
@@ -1312,7 +1312,7 @@ Each PR is independently reviewable. Pre-work PRs are pure refactoring with zero
 | **PR 5** | Codegen: array access compilation + end-to-end tests (Step 7 + Step 9) | Codegen + integration | PRs 2, 4 |
 | **PR 6** | Verifier spec update (Step 10) | Docs only | None |
 
-**PR 0a should merge first** — it touches the `IntermediateType::Array` variant across 10+ files in the analyzer, so any concurrent analyzer changes would cause merge conflicts. PRs 0b-0d are independent of 0a and can be reviewed in parallel, but should merge after 0a to avoid rebase churn. PRs 1 and 2 build the "bottom half" (container format + VM). PRs 3-5 build the "top half" (codegen) incrementally. PR 6 is documentation-only.
+**PR 0a should merge first** — it touches the `SemanticType::Array` variant across 10+ files in the analyzer, so any concurrent analyzer changes would cause merge conflicts. PRs 0b-0d are independent of 0a and can be reviewed in parallel, but should merge after 0a to avoid rebase churn. PRs 1 and 2 build the "bottom half" (container format + VM). PRs 3-5 build the "top half" (codegen) incrementally. PR 6 is documentation-only.
 
 **Problem code verification**: Before starting PR 1, verify that `P2027` (compiler) and `V4005` (VM) are unallocated in `compiler/problems/resources/problem-codes.csv` and `compiler/vm/resources/problem-codes.csv` respectively.
 
@@ -1335,7 +1335,7 @@ Each PR is independently reviewable. Pre-work PRs are pure refactoring with zero
 | `compiler/vm/src/vm.rs` | Add LOAD_ARRAY and STORE_ARRAY handlers, array descriptor loading |
 | `specs/design/bytecode-container-format.md` | Update array descriptor layout (lines 157-167) to reflect `total_elements: u32` format (PR 1) |
 | `specs/design/bytecode-verifier-rules.md` | Add array verification rules |
-| `compiler/analyzer/src/intermediate_type.rs` | Widen `size_in_bytes()` return type from `Option<u8>` to `Option<u32>` (Pre-work PR 0a) |
+| `compiler/analyzer/src/semantic_type.rs` | Widen `size_in_bytes()` return type from `Option<u8>` to `Option<u32>` (Pre-work PR 0a) |
 
 ## Risks and Open Questions
 
