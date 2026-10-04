@@ -109,19 +109,22 @@ so test by test.
 compiles it correctly, and the analyzer rejects it. `ironplcc check`
 reproduces both on `main`:
 
-- `ARRAY[0..2] OF REF_TO INT` (Edition 3) or `OF REFERENCE TO INT`:
+- [#2056](https://github.com/ironplc/ironplc/issues/2056):
+  `ARRAY[0..2] OF REF_TO INT` (Edition 3) or `OF REFERENCE TO INT`:
   `refs[0] := REF(val)` reports P2032 and `refs[0]^` reports P2031.
   Tests: `end_to_end_array_ref_to::end_to_end_when_array_of_ref_to_store_ref_then_roundtrips`,
   `end_to_end_reference_to::end_to_end_when_array_of_reference_to_element_bound_then_reads`,
   `spec_conformance::codegen_spec_req_rto_420_array_of_reference_element_access`.
-- `SIZEOF(arr)` with `arr : ARRAY[1..10] OF INT` and `allow_sizeof`:
-  P4026, "expected=ANY, actual=ARRAY[1..10] OF INT".
+- [#2057](https://github.com/ironplc/ironplc/issues/2057):
+  `SIZEOF(arr)` with `arr : ARRAY[1..10] OF INT` and `allow_sizeof`:
+  P4026, "expected=ANY, actual=ARRAY[1..10] OF INT". Structures and named
+  array types are rejected the same way.
   Test: `end_to_end_sizeof::end_to_end_when_sizeof_array_of_int_then_returns_total_bytes`.
 
-Fixing these changes diagnostics, so it is not part of this work. Open one
-issue for each, then route the four tests the same way as group A, with a
-comment naming the issue, so codegen stays covered and the gate does not
-wait on the analyzer. The issue fix moves them back.
+Fixing these changes diagnostics, so it is not part of this work. Route
+the four tests the same way as group A, with a comment naming the issue, so
+codegen stays covered and the gate does not wait on the analyzer. Each
+issue's fix moves its tests back.
 
 ## Architecture
 
@@ -276,8 +279,7 @@ those changes are mechanical.
 
 ### Prefactor 1: defensive tests reach codegen before the rules
 
-- [ ] Open the two group C issues (array-of-reference element access;
-      `SIZEOF` of an array).
+- [x] Open the two group C issues: #2056, #2057.
 - [ ] Add the before-the-rules helpers (integration suite and in-crate).
 - [ ] Move the 32 group A tests and 4 group C tests onto them. No
       assertion changes.
@@ -313,5 +315,5 @@ those changes are mechanical.
 
 ### Cleanup
 
-- [ ] Close this plan PR unmerged and close #2047. The group C issues stay
+- [ ] Close this plan PR unmerged and close #2047. #2056 and #2057 stay
       open until their analyzer fixes land.
