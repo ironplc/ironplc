@@ -43,6 +43,8 @@ mod compile_fb_init;
 mod compile_fn;
 mod compile_loop;
 mod compile_method;
+mod compile_partial_access;
+mod compile_place;
 mod compile_reference;
 mod compile_setup;
 mod compile_short_circuit;

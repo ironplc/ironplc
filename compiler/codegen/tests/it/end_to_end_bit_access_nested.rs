@@ -13,9 +13,8 @@
 use crate::common::{try_parse_and_compile, Snapshot};
 use ironplc_parser::options::CompilerOptions;
 
-// --- 1. Bit write on an LWORD array element: the 64-bit branch of
-//        compile_bit_access_assignment_on_array (element_vti.op_width ==
-//        OpWidth::W64).
+// --- 1. Bit write on an LWORD array element: an array-element base whose
+//        bits are written with 64-bit operations.
 
 // x = arr[1]; arr[1] bit 40 = 2^40 = 1099511627776
 e2e_i64!(
