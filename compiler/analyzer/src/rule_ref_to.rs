@@ -174,7 +174,7 @@ impl RuleRefTo<'_> {
             | ExprKind::Deref(_)
             | ExprKind::ImplicitConversion(_) => matches!(
                 self.type_environment.representation_of_expr(expr),
-                Some(crate::intermediate_type::IntermediateType::Reference { .. })
+                Some(crate::semantic_type::SemanticType::Reference { .. })
             ),
         }
     }

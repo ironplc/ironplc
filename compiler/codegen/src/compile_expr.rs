@@ -4,7 +4,7 @@
 //! and typed opcode emission helpers. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_analyzer::IntermediateType;
+use ironplc_analyzer::SemanticType;
 use ironplc_container::{opcode, VarIndex};
 use ironplc_dsl::common::{Boolean, ConstantKind, SignedInteger};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
@@ -65,14 +65,14 @@ pub(crate) fn concrete_op_type_from_expr(ctx: &CompileContext, expr: &Expr) -> O
 
 /// Returns `true` if the expression's value is a BOOL.
 pub(crate) fn expr_is_bool(ctx: &CompileContext, expr: &Expr) -> bool {
-    matches!(expr_representation(ctx, expr), Some(IntermediateType::Bool))
+    matches!(expr_representation(ctx, expr), Some(SemanticType::Bool))
 }
 
 /// Returns `true` if the expression's value is a STRING or WSTRING.
 pub(crate) fn expr_is_string(ctx: &CompileContext, expr: &Expr) -> bool {
     matches!(
         expr_representation(ctx, expr),
-        Some(IntermediateType::String { .. })
+        Some(SemanticType::String { .. })
     )
 }
 
@@ -656,7 +656,7 @@ pub(crate) fn compile_variable_read(
             )?;
             if matches!(
                 &field_type,
-                ironplc_analyzer::intermediate_type::IntermediateType::String { .. }
+                ironplc_analyzer::semantic_type::SemanticType::String { .. }
             ) {
                 // `walk_struct_chain` found this structure variable above.
                 let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {

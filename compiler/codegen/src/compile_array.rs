@@ -10,7 +10,7 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variable};
 use ironplc_problems::Problem;
 
-use ironplc_analyzer::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
+use ironplc_analyzer::semantic_type::{ArrayDimension, ByteSized, SemanticType};
 use ironplc_container::{CharWidth, ContainerBuilder, SlotIndex, VarIndex};
 
 use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
@@ -108,8 +108,8 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
         subscripts: Vec<&'ast Expr>,
         /// Element op type for compile_expr width.
         element_op_type: OpType,
-        /// Element intermediate type for truncation on store.
-        element_type: IntermediateType,
+        /// Element semantic type for truncation on store.
+        element_type: SemanticType,
     },
     /// STRING array element within a struct field — see [`StructStringElement`].
     StructFieldStringArrayElement(StructStringElement<'ast>),
@@ -314,7 +314,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
     let (root_name, slot_offset, field_type) =
         crate::compile_struct::walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
 
-    let IntermediateType::Array {
+    let SemanticType::Array {
         element_type,
         dimensions: array_dims,
     } = &field_type
@@ -334,7 +334,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
 
     // STRING array fields use dedicated STR_LOAD/STORE_ARRAY_ELEM opcodes
     // with a scratch variable and a STRING-specific array descriptor.
-    if let IntermediateType::String { char_width, .. } = element_type.as_ref() {
+    if let SemanticType::String { char_width, .. } = element_type.as_ref() {
         let field_name = structured.field.to_string().to_lowercase();
         let &(str_desc_index, _, _) =
             struct_info
@@ -353,7 +353,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
                 "Scratch variable not allocated for struct",
             ))
         })?;
-        let dimensions = dimensions_from_intermediate(array_dims);
+        let dimensions = dimensions_from_semantic_type(array_dims);
         let field_byte_offset = slot_offset.raw() * 8;
         return Ok(ResolvedAccess::StructFieldStringArrayElement(
             StructStringElement {
@@ -377,7 +377,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
             )
         })?;
 
-    let dimensions = dimensions_from_intermediate(array_dims);
+    let dimensions = dimensions_from_semantic_type(array_dims);
 
     Ok(ResolvedAccess::StructFieldArrayElement {
         var_index: struct_info.var_index,
@@ -394,7 +394,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
 ///
 /// Strides follow row-major order: the last dimension has stride 1, each
 /// preceding dimension's stride is the product of all subsequent dimension sizes.
-pub(crate) fn dimensions_from_intermediate(dims: &[ArrayDimension]) -> Vec<DimensionInfo> {
+pub(crate) fn dimensions_from_semantic_type(dims: &[ArrayDimension]) -> Vec<DimensionInfo> {
     let sizes: Vec<u32> = dims
         .iter()
         .map(|d| (d.upper as i64 - d.lower as i64 + 1).max(0) as u32)
@@ -488,7 +488,7 @@ pub(crate) fn array_spec_for_declaration(
                     "Array type is absent from the type environment",
                 ))
             })?;
-            let IntermediateType::Array {
+            let SemanticType::Array {
                 element_type,
                 dimensions,
             } = array_type
@@ -507,23 +507,23 @@ pub(crate) fn array_spec_for_declaration(
 
 /// Converts a named array type (from the TypeEnvironment) to a normalized ArraySpec.
 ///
-/// `span` locates the declaration being compiled; the intermediate type has
+/// `span` locates the declaration being compiled; the semantic type has
 /// no span of its own.
 pub(crate) fn array_spec_from_named(
-    element_type: &IntermediateType,
+    element_type: &SemanticType,
     dimensions: &[ArrayDimension],
     span: &SourceSpan,
 ) -> Result<ArraySpec, Diagnostic> {
     let dims: Vec<(i32, i32)> = dimensions.iter().map(|d| (d.lower, d.upper)).collect();
-    let ref_to = matches!(element_type, IntermediateType::Reference { .. });
-    let inner_type = if let IntermediateType::Reference { target_type } = element_type {
+    let ref_to = matches!(element_type, SemanticType::Reference { .. });
+    let inner_type = if let SemanticType::Reference { target_type } = element_type {
         target_type.as_ref()
     } else {
         element_type
     };
-    let element_type_name = intermediate_type_to_name(inner_type, span)?;
+    let element_type_name = semantic_type_to_name(inner_type, span)?;
     let (string_max_len, string_char_width) = match inner_type {
-        IntermediateType::String {
+        SemanticType::String {
             max_len,
             char_width,
         } => {
@@ -543,61 +543,61 @@ pub(crate) fn array_spec_from_named(
     })
 }
 
-/// Maps an IntermediateType to the IEC 61131-3 type name (as an Id) that
+/// Maps an SemanticType to the IEC 61131-3 type name (as an Id) that
 /// `type_info::resolve_type_name()` can look up. Only primitive types are
 /// supported (arrays of complex types are out of scope).
-fn intermediate_type_to_name(ty: &IntermediateType, span: &SourceSpan) -> Result<Id, Diagnostic> {
+fn semantic_type_to_name(ty: &SemanticType, span: &SourceSpan) -> Result<Id, Diagnostic> {
     let name = match ty {
-        IntermediateType::Bool => "BOOL",
-        IntermediateType::Int {
+        SemanticType::Bool => "BOOL",
+        SemanticType::Int {
             size: ByteSized::B8,
         } => "SINT",
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B16,
         } => "INT",
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B32,
         } => "DINT",
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B64,
         } => "LINT",
-        IntermediateType::UInt {
+        SemanticType::UInt {
             size: ByteSized::B8,
         } => "USINT",
-        IntermediateType::UInt {
+        SemanticType::UInt {
             size: ByteSized::B16,
         } => "UINT",
-        IntermediateType::UInt {
+        SemanticType::UInt {
             size: ByteSized::B32,
         } => "UDINT",
-        IntermediateType::UInt {
+        SemanticType::UInt {
             size: ByteSized::B64,
         } => "ULINT",
-        IntermediateType::Bytes {
+        SemanticType::Bytes {
             size: ByteSized::B8,
         } => "BYTE",
-        IntermediateType::Bytes {
+        SemanticType::Bytes {
             size: ByteSized::B16,
         } => "WORD",
-        IntermediateType::Bytes {
+        SemanticType::Bytes {
             size: ByteSized::B32,
         } => "DWORD",
-        IntermediateType::Bytes {
+        SemanticType::Bytes {
             size: ByteSized::B64,
         } => "LWORD",
-        IntermediateType::Real {
+        SemanticType::Real {
             size: ByteSized::B32,
         } => "REAL",
-        IntermediateType::Real {
+        SemanticType::Real {
             size: ByteSized::B64,
         } => "LREAL",
-        IntermediateType::Time {
+        SemanticType::Time {
             size: ByteSized::B32,
         } => "TIME",
-        IntermediateType::Time {
+        SemanticType::Time {
             size: ByteSized::B64,
         } => "LTIME",
-        IntermediateType::String { .. } => "STRING",
+        SemanticType::String { .. } => "STRING",
         _ => {
             return Err(Diagnostic::not_implemented(Label::span(
                 span.clone(),

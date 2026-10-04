@@ -65,10 +65,10 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::intermediate_type::IntermediateType;
 use crate::result::SemanticResult;
 use crate::rule_support::{run_rule, DiagnosticVisitor};
 use crate::semantic_context::SemanticContext;
+use crate::semantic_type::SemanticType;
 use crate::symbol_environment::{ScopeKind, ScopeTracker};
 use crate::variable_type;
 use ironplc_container::CharWidth;
@@ -106,9 +106,9 @@ impl DiagnosticVisitor for RuleStringEncodingCompat<'_> {
 }
 
 /// The encoding of a string type, or `None` for any other type.
-fn encoding_of(representation: &IntermediateType) -> Option<StringType> {
+fn encoding_of(representation: &SemanticType) -> Option<StringType> {
     match representation {
-        IntermediateType::String { char_width, .. } => Some(match char_width {
+        SemanticType::String { char_width, .. } => Some(match char_width {
             CharWidth::Narrow => StringType::String,
             CharWidth::Wide => StringType::WString,
         }),
