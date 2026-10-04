@@ -1516,6 +1516,13 @@ impl CompileContext {
     /// loading or storing it directly would be wrong. Sites that handle one
     /// ask [`Self::in_out_ref_slot`] first; every other site reaches here
     /// and is refused.
+    ///
+    /// A name with no slot is not an undeclared variable: analysis reports
+    /// that first (`rule_use_declared_symbolic_var`, P4007). It is one
+    /// analysis accepts and codegen does not yet give storage to, such as a
+    /// variable inherited through `EXTENDS` or a `RESOURCE`'s `VAR_GLOBAL`, so
+    /// it is reported as not implemented rather than as a mistake in the
+    /// program.
     pub(crate) fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
         if self.in_out_params.contains(name) {
             return Err(Diagnostic::not_implemented(Label::span(
@@ -1524,10 +1531,10 @@ impl CompileContext {
             )));
         }
         self.variables.get(name).copied().ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::VariableUndefined,
-                Label::span(name.span(), "Variable reference"),
-            )
+            Diagnostic::not_implemented(Label::span(
+                name.span(),
+                "Variable that code generation does not yet give storage to",
+            ))
             .with_context("variable", &name.to_string())
         })
     }

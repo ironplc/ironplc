@@ -21,7 +21,7 @@ fn opts_with_fb_inheritance() -> CompilerOptions {
 }
 
 #[test]
-fn compile_when_derived_body_reads_inherited_field_then_variable_undefined() {
+fn compile_when_derived_body_reads_inherited_field_then_not_implemented() {
     let source = "
 FUNCTION_BLOCK FB_Motor
 VAR
@@ -47,7 +47,7 @@ END_PROGRAM
     let result = try_parse_and_compile(source, &opts_with_fb_inheritance());
 
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code, "P4007");
+    assert_eq!(result.unwrap_err().code, "P9999");
 }
 
 #[test]
