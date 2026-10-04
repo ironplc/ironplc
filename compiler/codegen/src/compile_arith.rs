@@ -8,20 +8,21 @@
 //! the units each type is stored in.
 //!
 //! A numeric pair computes at the width and signedness of its own result
-//! type rather than of the variable it is assigned to: each operand whose
-//! width differs is compiled at its own and converted, the operator applies
-//! at the result type, and the result is converted to the enclosing
-//! operation type. That is ADR-0001's promote-operate-truncate applied to
-//! the expression: `INT + REAL` converts the `INT` to `REAL` and adds as
-//! `REAL`, and `DINT * DINT` assigned to a `LINT` multiplies at 32 bits. An
-//! expression whose result type codegen cannot place (a literal's category,
-//! a subrange, an enumeration) compiles at the enclosing operation type as
-//! before.
+//! type rather than of the variable it is assigned to, and the result is
+//! converted to the enclosing operation type. That is ADR-0001's
+//! promote-operate-truncate applied to the expression: `INT + REAL` adds as
+//! `REAL`, and `DINT * DINT` assigned to a `LINT` multiplies at 32 bits.
 //!
-//! The function form folds its inputs from the left the same way. See
-//! `specs/design/arithmetic-operator-overloads.md`.
+//! The analyzer decided which operand converts (ADR-0056): an operand of
+//! another width arrives wrapped in an `ImplicitConversion` to the result
+//! type, and a function form of three or more inputs arrives as the calls it
+//! folds to. Both compile here as the pair of operands they are. An
+//! expression whose result type codegen cannot place (a literal's category, a
+//! subrange, an enumeration) compiles at the enclosing operation type.
+//!
+//! See `specs/design/arithmetic-operator-overloads.md`.
 
-use ironplc_analyzer::{resolve_arithmetic_overload, typed_overload, Intrinsic, Overload};
+use ironplc_analyzer::{typed_overload, Intrinsic, Overload};
 use ironplc_dsl::common::{ElementaryTypeName, GenericTypeName, TypeName};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -63,16 +64,14 @@ pub(crate) fn compile_binary_arith(
         }
     }
     if let Some(natural) = numeric_op_type(result) {
-        compile_numeric_step(
+        return compile_numeric_pair(
             emitter,
             ctx,
             &binary.op,
-            Operand::Expr(&binary.left),
-            &binary.right,
+            (&binary.left, &binary.right),
             natural,
-        )?;
-        convert(emitter, natural, op_type);
-        return Ok(());
+            op_type,
+        );
     }
     compile_expr(emitter, ctx, &binary.left, op_type)?;
     compile_expr(emitter, ctx, &binary.right, op_type)?;
@@ -94,6 +93,7 @@ pub(crate) fn compile_arith_fold(
     ctx: &mut CompileContext,
     func: &Function,
     op: &Operator,
+    result: Option<&TypeName>,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     let args = collect_positional_args(func);
@@ -113,8 +113,10 @@ pub(crate) fn compile_arith_fold(
             }
         }
     }
-    if let Some(steps) = numeric_steps(ctx, op, &args) {
-        return compile_numeric_fold(emitter, ctx, op, &args, &steps, op_type);
+    if let [left, right] = args.as_slice() {
+        if let Some(natural) = numeric_pair_op_type(ctx, result, left, right) {
+            return compile_numeric_pair(emitter, ctx, op, (left, right), natural, op_type);
+        }
     }
     compile_left_fold(emitter, ctx, func, op_type, |emitter, op_type| {
         emit_arithmetic_op(emitter, op, op_type)
@@ -184,94 +186,41 @@ fn compile_typed(
     compile_time_arith(emitter, ctx, arith, width, left, right)
 }
 
-/// Returns the operation type of each step of a numeric fold over `args`:
-/// the result type of the numeric overload that applies to the accumulated
-/// result and the next input. `None` unless there are two or more inputs and
-/// every step has a numeric result type codegen can place.
-fn numeric_steps(ctx: &CompileContext, op: &Operator, args: &[&Expr]) -> Option<Vec<OpType>> {
-    let (first, rest) = args.split_first()?;
-    if rest.is_empty() {
-        return None;
-    }
-    let mut accumulated = expr_operand_name(ctx, first);
-    let mut steps = Vec::with_capacity(rest.len());
-    for arg in rest {
-        let overload = resolve_arithmetic_overload(
-            op,
-            accumulated.as_ref(),
-            expr_operand_name(ctx, arg).as_ref(),
-            &ctx.compiler_options,
-        )?;
-        let Overload::Numeric { result } = overload else {
-            return None;
-        };
-        steps.push(numeric_op_type(Some(&result))?);
-        accumulated = Some(result);
-    }
-    Some(steps)
+/// Returns the operation type the two inputs of a call compile at: that of
+/// the call's `result` when it is numeric and each input, which the analyzer
+/// converted to it where its width differed, is a numeric type of that
+/// width. `None` for any other pair, which compiles at the enclosing
+/// operation type.
+fn numeric_pair_op_type(
+    ctx: &CompileContext,
+    result: Option<&TypeName>,
+    left: &Expr,
+    right: &Expr,
+) -> Option<OpType> {
+    let natural = numeric_op_type(result)?;
+    let at_natural = |input: &Expr| {
+        numeric_op_type(expr_operand_name(ctx, input).as_ref())
+            .is_some_and(|own| own.0 == natural.0)
+    };
+    (at_natural(left) && at_natural(right)).then_some(natural)
 }
 
-/// Compiles a numeric fold, each step at its operation type in `steps`, and
-/// converts the result to `op_type`.
-fn compile_numeric_fold(
+/// Compiles the two operands of a numeric operation at `natural`, the
+/// operation type of its result, then the operator, and converts the result
+/// to `op_type`.
+fn compile_numeric_pair(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     op: &Operator,
-    args: &[&Expr],
-    steps: &[OpType],
+    (left, right): (&Expr, &Expr),
+    natural: OpType,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let Some((first, rest)) = args.split_first() else {
-        return Ok(());
-    };
-    let mut left = Operand::Expr(first);
-    for (arg, natural) in rest.iter().zip(steps) {
-        compile_numeric_step(emitter, ctx, op, left, arg, *natural)?;
-        left = Operand::Stack(*natural);
-    }
-    if let Some(last) = steps.last() {
-        convert(emitter, *last, op_type);
-    }
-    Ok(())
-}
-
-/// Compiles one numeric step at `natural`, the operation type of its result:
-/// the left operand (compiled, or already on the stack) and `right`, each
-/// converted to `natural` when its own width differs, then the operator.
-fn compile_numeric_step(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    op: &Operator,
-    left: Operand<'_>,
-    right: &Expr,
-    natural: OpType,
-) -> Result<(), Diagnostic> {
-    match left {
-        Operand::Expr(expr) => compile_at(emitter, ctx, expr, natural)?,
-        Operand::Stack(own) => convert(emitter, own, natural),
-    }
-    compile_at(emitter, ctx, right, natural)?;
+    compile_expr(emitter, ctx, left, natural)?;
+    compile_expr(emitter, ctx, right, natural)?;
     emit_arithmetic_op(emitter, op, natural);
+    convert(emitter, natural, op_type);
     Ok(())
-}
-
-/// Compiles `operand` for an operation at `target`: at its own operation
-/// type followed by a conversion when its width differs, and at `target`
-/// otherwise (a literal takes the operation's type, as ADR-0028 types it).
-fn compile_at(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    operand: &Expr,
-    target: OpType,
-) -> Result<(), Diagnostic> {
-    match numeric_op_type(expr_operand_name(ctx, operand).as_ref()) {
-        Some(own) if own.0 != target.0 => {
-            compile_expr(emitter, ctx, operand, own)?;
-            convert(emitter, own, target);
-            Ok(())
-        }
-        _ => compile_expr(emitter, ctx, operand, target),
-    }
 }
 
 /// Emits the conversion of the value on the stack from `from` to `to`, or

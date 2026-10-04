@@ -5,6 +5,7 @@ pub mod comparison_operand;
 pub mod conversion_target;
 pub mod enumeration;
 pub mod inherited_fields;
+pub mod numeric_operation;
 pub mod operator_function_form;
 pub mod stdlib_conversion_function;
 pub mod stdlib_function;

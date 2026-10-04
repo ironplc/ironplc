@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use ironplc_analyzer::{FormOf, FunctionEnvironment, Intrinsic, StringFunction};
 use ironplc_container::opcode;
-use ironplc_dsl::common::ElementaryTypeName;
+use ironplc_dsl::common::{ElementaryTypeName, TypeName};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
@@ -55,10 +55,11 @@ pub(crate) fn compile_function_call(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
+    result: Option<&TypeName>,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     if let Some(intrinsic) = ctx.intrinsics.get(&func.name).cloned() {
-        return compile_intrinsic(emitter, ctx, func, op_type, intrinsic);
+        return compile_intrinsic(emitter, ctx, func, result, op_type, intrinsic);
     }
     let Some(func_info) = ctx.user_functions.get(func.name.lower_case()).cloned() else {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -74,6 +75,7 @@ fn compile_intrinsic(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
+    result: Option<&TypeName>,
     op_type: OpType,
     intrinsic: Intrinsic,
 ) -> Result<(), Diagnostic> {
@@ -81,7 +83,7 @@ fn compile_intrinsic(
         // A function form of an operator (ADD, GT, AND, NOT, ...) compiles
         // as the operator it is a form of.
         Intrinsic::Operator(operator) => {
-            compile_operator_form(emitter, ctx, func, op_type, &operator)
+            compile_operator_form(emitter, ctx, func, result, op_type, &operator)
         }
         Intrinsic::Numeric(function) => compile_numeric(emitter, ctx, func, function, op_type),
         Intrinsic::BitShift(shift) => compile_shift_rotate(emitter, ctx, func, op_type, shift),
@@ -282,11 +284,12 @@ fn compile_operator_form(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
+    result: Option<&TypeName>,
     op_type: OpType,
     operator: &FormOf,
 ) -> Result<(), Diagnostic> {
     match operator {
-        FormOf::Arithmetic(op) => compile_arith_fold(emitter, ctx, func, op, op_type),
+        FormOf::Arithmetic(op) => compile_arith_fold(emitter, ctx, func, op, result, op_type),
         // A comparison computes at the type of its operands, not at the
         // enclosing `op_type`, which is the type of the BOOL it yields.
         FormOf::Compare(op) if op.is_comparison() => {
