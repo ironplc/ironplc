@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use ironplc_analyzer::{FormOf, FunctionEnvironment, Intrinsic, StringFunction};
 use ironplc_container::opcode;
 use ironplc_dsl::common::ElementaryTypeName;
-use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, Function, SymbolicVariableKind, Variable};
 
@@ -86,12 +86,16 @@ fn compile_intrinsic(
         Intrinsic::BitShift(shift) => compile_shift_rotate(emitter, ctx, func, op_type, shift),
         Intrinsic::Mux => compile_mux(emitter, ctx, func, op_type),
         // Assignment function (equivalent to := operator)
-        Intrinsic::Move => compile_move(emitter, ctx, func, op_type),
-        Intrinsic::Trunc => compile_trunc(emitter, ctx, func, op_type),
-        Intrinsic::BcdToInt => compile_bcd_to_int(emitter, ctx, func, op_type),
-        Intrinsic::IntToBcd => compile_int_to_bcd(emitter, ctx, func, op_type),
+        Intrinsic::Move => compile_move(emitter, ctx, fixed_args(func)?, op_type),
+        Intrinsic::Trunc => compile_trunc(emitter, ctx, fixed_args(func)?, op_type),
+        Intrinsic::BcdToInt => {
+            compile_bcd_to_int(emitter, ctx, fixed_args(func)?, &func.name.span(), op_type)
+        }
+        Intrinsic::IntToBcd => {
+            compile_int_to_bcd(emitter, ctx, fixed_args(func)?, &func.name.span(), op_type)
+        }
         // SIZEOF operator (extension)
-        Intrinsic::Sizeof => compile_sizeof(emitter, ctx, func),
+        Intrinsic::Sizeof => compile_sizeof(emitter, ctx, fixed_args(func)?),
         Intrinsic::String(StringFunction::Len) => {
             compile_len(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
@@ -119,9 +123,14 @@ fn compile_intrinsic(
         Intrinsic::String(StringFunction::Concat) => {
             compile_concat(emitter, ctx, fixed_args(func)?, &func.name.span())
         }
-        Intrinsic::Conversion { source, target } => {
-            compile_conversion(emitter, ctx, func, &source, &target)
-        }
+        Intrinsic::Conversion { source, target } => compile_conversion(
+            emitter,
+            ctx,
+            fixed_args(func)?,
+            &func.name.span(),
+            &source,
+            &target,
+        ),
         // A typed time or date function (ADD_TIME, SUB_DATE_DATE, ...)
         // compiles as the instruction sequence for the units of its operands.
         Intrinsic::Time { function, long } => {
@@ -130,8 +139,8 @@ fn compile_intrinsic(
             compile_time_arith(emitter, ctx, arith, width, Operand::Expr(in1), in2)
         }
         // Time functions: datetime decomposition
-        Intrinsic::DtToDate => compile_dt_to_date(emitter, ctx, func),
-        Intrinsic::DtToTod => compile_dt_to_tod(emitter, ctx, func),
+        Intrinsic::DtToDate => compile_dt_to_date(emitter, ctx, fixed_args(func)?),
+        Intrinsic::DtToTod => compile_dt_to_tod(emitter, ctx, fixed_args(func)?),
     }
 }
 
@@ -318,10 +327,7 @@ fn compile_operator_form(
             })
         }
         FormOf::Not => {
-            let args = collect_positional_args(func);
-            let [term] = args.as_slice() else {
-                return Err(wrong_arg_count(func));
-            };
+            let [term] = fixed_args::<1>(func)?;
             compile_expr(emitter, ctx, term, op_type)?;
             emit_not(emitter, ctx, op_type, term)
         }
@@ -360,14 +366,8 @@ pub(crate) fn compile_left_fold(
 fn compile_dt_to_date(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func: &Function,
+    args: [&Expr; 1],
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 1 {
-        return Err(wrong_arg_count(func));
-    }
-
     let op_type = (OpWidth::W32, Signedness::Unsigned);
     // Stack: IN
     compile_expr(emitter, ctx, args[0], op_type)?;
@@ -390,14 +390,8 @@ fn compile_dt_to_date(
 fn compile_dt_to_tod(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func: &Function,
+    args: [&Expr; 1],
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 1 {
-        return Err(wrong_arg_count(func));
-    }
-
     let op_type = (OpWidth::W32, Signedness::Unsigned);
     // Stack: IN
     compile_expr(emitter, ctx, args[0], op_type)?;
@@ -421,15 +415,9 @@ fn compile_dt_to_tod(
 fn compile_move(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func: &Function,
+    args: [&Expr; 1],
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 1 {
-        return Err(wrong_arg_count(func));
-    }
-
     compile_expr(emitter, ctx, args[0], op_type)?;
     // No additional opcode needed - the value is already on the stack
 
@@ -444,15 +432,9 @@ fn compile_move(
 fn compile_trunc(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func: &Function,
+    args: [&Expr; 1],
     target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 1 {
-        return Err(wrong_arg_count(func));
-    }
-
     // Determine the argument's float type from its resolved type.
     let arg_op_type = op_type(ctx, args[0])?;
     compile_expr(emitter, ctx, args[0], arg_op_type)?;
@@ -490,14 +472,8 @@ fn compile_trunc(
 fn compile_sizeof(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func: &Function,
+    args: [&Expr; 1],
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 1 {
-        return Err(wrong_arg_count(func));
-    }
-
     // Check if the argument is a variable that maps to an array.
     let size: u32 =
         if let ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(ref named))) =
@@ -532,15 +508,10 @@ fn sizeof_from_expr_type(ctx: &CompileContext, expr: &Expr) -> Result<u32, Diagn
 fn compile_bcd_to_int(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func: &Function,
+    args: [&Expr; 1],
+    span: &SourceSpan,
     _target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 1 {
-        return Err(wrong_arg_count(func));
-    }
-
     let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(ctx, args[0])?;
     compile_expr(emitter, ctx, args[0], arg_op_type)?;
@@ -550,7 +521,7 @@ fn compile_bcd_to_int(
         16 => opcode::builtin::BCD_TO_INT_16,
         32 => opcode::builtin::BCD_TO_INT_32,
         64 => opcode::builtin::BCD_TO_INT_64,
-        _ => return Err(Diagnostic::todo_with_span(func.name.span())),
+        _ => return Err(Diagnostic::todo_with_span(span.clone())),
     };
     emitter.emit_builtin(func_id);
     Ok(())
@@ -563,15 +534,10 @@ fn compile_bcd_to_int(
 fn compile_int_to_bcd(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func: &Function,
+    args: [&Expr; 1],
+    span: &SourceSpan,
     target_op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 1 {
-        return Err(wrong_arg_count(func));
-    }
-
     let arg_op_type = op_type(ctx, args[0])?;
     let bits = storage_bits(ctx, args[0])?;
     compile_expr(emitter, ctx, args[0], arg_op_type)?;
@@ -586,7 +552,7 @@ fn compile_int_to_bcd(
             match target_op_type.0 {
                 OpWidth::W32 => opcode::builtin::INT_TO_BCD_32,
                 OpWidth::W64 => opcode::builtin::INT_TO_BCD_64,
-                _ => return Err(Diagnostic::todo_with_span(func.name.span())),
+                _ => return Err(Diagnostic::todo_with_span(span.clone())),
             }
         }
     };
@@ -649,17 +615,12 @@ fn compile_mux(
 fn compile_type_conversion(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func: &Function,
+    args: [&Expr; 1],
+    span: &SourceSpan,
     source: VarTypeInfo,
     target: VarTypeInfo,
 ) -> Result<(), Diagnostic> {
     let source_op_type: OpType = (source.op_width, source.signedness);
-
-    let args = collect_positional_args(func);
-
-    if args.len() != 1 {
-        return Err(wrong_arg_count(func));
-    }
 
     compile_expr(emitter, ctx, args[0], source_op_type)?;
 
@@ -672,7 +633,7 @@ fn compile_type_conversion(
             OpWidth::W64 => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_BOOL),
             _ => {
                 return Err(Diagnostic::internal_error_at(Label::span(
-                    func.name.span(),
+                    span.clone(),
                     "Boolean conversion from a source that is not 32 or 64 bits wide",
                 )));
             }
@@ -855,25 +816,38 @@ fn edge_trig_fb_fields() -> HashMap<String, u8> {
 fn compile_conversion(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func: &Function,
+    args: [&Expr; 1],
+    span: &SourceSpan,
     source: &ElementaryTypeName,
     target: &ElementaryTypeName,
 ) -> Result<(), Diagnostic> {
     let type_info = |elementary: &ElementaryTypeName| {
-        elementary_type_info(elementary).ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))
+        elementary_type_info(elementary).ok_or_else(|| Diagnostic::todo_with_span(span.clone()))
     };
     match (source, target) {
         (_, ElementaryTypeName::STRING) => {
             let source = type_info(source)?;
-            compile_string_conversion(emitter, ctx, func, StringConversion::NumToString { source })
+            compile_string_conversion(
+                emitter,
+                ctx,
+                args,
+                span,
+                StringConversion::NumToString { source },
+            )
         }
         (ElementaryTypeName::STRING, _) => {
             let target = type_info(target)?;
-            compile_string_conversion(emitter, ctx, func, StringConversion::StringToNum { target })
+            compile_string_conversion(
+                emitter,
+                ctx,
+                args,
+                span,
+                StringConversion::StringToNum { target },
+            )
         }
         _ => {
             let (source, target) = (type_info(source)?, type_info(target)?);
-            compile_type_conversion(emitter, ctx, func, source, target)
+            compile_type_conversion(emitter, ctx, args, span, source, target)
         }
     }
 }
@@ -890,14 +864,10 @@ enum StringConversion {
 fn compile_string_conversion(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func: &Function,
+    args: [&Expr; 1],
+    span: &SourceSpan,
     conv: StringConversion,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-    if args.len() != 1 {
-        return Err(wrong_arg_count(func));
-    }
-
     match conv {
         StringConversion::NumToString { source } => {
             let source_op_type: OpType = (source.op_width, source.signedness);
@@ -909,7 +879,7 @@ fn compile_string_conversion(
                 (OpWidth::F32, _) => opcode::builtin::CONV_F32_TO_STR,
                 _ => {
                     return Err(Diagnostic::internal_error_at(Label::span(
-                        func.name.span(),
+                        span.clone(),
                         "Number-to-string conversion from a type with no conversion opcode",
                     )));
                 }
@@ -920,8 +890,7 @@ fn compile_string_conversion(
         StringConversion::StringToNum { target } => {
             // STRING_TO_* parses Latin-1 digits, so a WSTRING argument has no
             // conversion -- P4034 rather than an encoding-mismatch trap.
-            let data_offset =
-                resolve_string_arg(emitter, ctx, args[0], &func.name.span(), NARROW_CHAR_WIDTH)?;
+            let data_offset = resolve_string_arg(emitter, ctx, args[0], span, NARROW_CHAR_WIDTH)?;
             let pool_index = ctx.add_i32_constant(data_offset as i32);
             emitter.emit_load_const_i32(pool_index);
 
@@ -954,7 +923,7 @@ fn compile_string_conversion(
                 // A 64-bit slot holds only the 64-bit value width.
                 (OpWidth::W64, _, _) => {
                     return Err(Diagnostic::internal_error_at(Label::span(
-                        func.name.span(),
+                        span.clone(),
                         "STRING_TO_* 64-bit target has no conversion",
                     )));
                 }
@@ -964,7 +933,7 @@ fn compile_string_conversion(
                 // compiler bug, not a program error.
                 (OpWidth::W32, _, _) => {
                     return Err(Diagnostic::internal_error_at(Label::span(
-                        func.name.span(),
+                        span.clone(),
                         "STRING_TO_* target has no conversion",
                     )));
                 }
