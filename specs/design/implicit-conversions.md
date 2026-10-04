@@ -81,7 +81,27 @@ An arithmetic operation computes at the type of its result (ADR-0001): `INT + RE
 
 **REQ-IC-analyzer-026** An operand that is itself arithmetic is converted by its result type: in `(i + j) * r` the `INT` result of `i + j` is converted to `REAL`.
 
-The conversion of an arithmetic result to the type of its context is recorded where the context is, which is not yet the case for an assignment or an argument.
+The conversion of an arithmetic result to the type of its context is recorded where the context is: see Assignments below. An argument's is not recorded yet.
+
+### Assignments
+
+An assignment stores its value at the type of its target. The pass records the conversion of the value to the type the target is stored as: its own elementary type, or its base type for a subrange. It records the conversions the code generator makes, and only those: a value converts to its context when it is a variable, an arithmetic operation that computes at its own result type (operator or function form), or a parenthesized one of those, and its operation width differs from the target's. Any other value is compiled at the target's width rather than converted to it, so there is nothing to record: a literal takes the target's type (ADR-0028), and a negation negates at the target's width.
+
+**REQ-IC-analyzer-030** A variable assigned to a target of another operation width is wrapped in an `ImplicitConversion` to the target's type: in `l := d` on an `LINT` and a `DINT` the `DINT` is converted to `LINT`.
+
+**REQ-IC-analyzer-031** An arithmetic value is converted from its result type: in `l := d + e` on an `LINT` and two `DINT`s the `DINT` sum is converted to `LINT`.
+
+**REQ-IC-analyzer-032** A value of the target's operation width is not converted, whatever its signedness: in `i := s` on an `INT` and a `SINT` the `SINT` is not wrapped.
+
+**REQ-IC-analyzer-033** A value computed at the target's width is not converted: the `-d` of `l := -d` and an untyped literal are left as they are.
+
+**REQ-IC-analyzer-034** An array element or structure field target converts the value to the element's or field's type.
+
+**REQ-IC-analyzer-035** A function's result assignment converts the value to the function's return type, looking the result variable up in the function's scope.
+
+**REQ-IC-analyzer-036** A subrange target converts the value to the subrange's base type.
+
+The target of a dereference (`r^ := d`), a function block field (`timer.PT := t`), and a directly represented variable (`%QW0 := w`) are not recorded yet, and neither is a function block output stored by a call (`fb(OUT => x)`), which codegen stores at the field's operation type without a conversion.
 
 ## Codegen
 
@@ -94,5 +114,8 @@ convert.
 
 ## Out of scope
 
-- Assignments and function arguments are still converted by codegen, and so
-  is the conversion of an arithmetic result to the type of its context.
+- Function arguments are still converted by codegen, and so is a value in a
+  context other than an assignment or an operand.
+- Codegen still converts a variable or an arithmetic result to the type of
+  its context where nothing recorded it, so its own conversion is removed
+  only once every context records it.

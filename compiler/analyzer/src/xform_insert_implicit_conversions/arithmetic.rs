@@ -205,7 +205,7 @@ impl ImplicitConversions<'_> {
 }
 
 /// The arithmetic operator `func` is the function form of.
-fn arithmetic_operator(func: &Function) -> Option<Operator> {
+pub(super) fn arithmetic_operator(func: &Function) -> Option<Operator> {
     match &operator_function_form(func.name.original())?.operator {
         FormOf::Arithmetic(op) => Some(op.clone()),
         FormOf::Compare(_) | FormOf::Not => None,

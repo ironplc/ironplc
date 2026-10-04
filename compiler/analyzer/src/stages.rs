@@ -73,7 +73,7 @@ pub fn analyze(
     // Record the implicit conversions the backends compile and the language
     // server shows. After the rules, so that a rule checks the operands the
     // program wrote rather than their conversions. See ADR-0056.
-    let library = xform_insert_implicit_conversions::apply(library, context.types(), options);
+    let library = xform_insert_implicit_conversions::apply(library, &context, options);
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
     // semantic analysis, but it should because the type table should influence rule checking.

@@ -134,6 +134,41 @@ fn arithmetic_operands(source: &str) -> Vec<Vec<String>> {
     visitor.operands
 }
 
+/// The value of every assignment in a library, in source order, each as
+/// [`describe`] shows it.
+struct AssignedValues<'a> {
+    types: &'a TypeEnvironment,
+    values: Vec<String>,
+}
+
+impl Visitor<Infallible> for AssignedValues<'_> {
+    type Value = ();
+
+    fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
+        self.values.push(describe(self.types, &node.value));
+        node.recurse_visit(self)
+    }
+}
+
+/// Analyzes `source`, which must be free of diagnostics, and returns the
+/// values of its assignments.
+fn assigned_values(source: &str) -> Vec<String> {
+    let options = CompilerOptions::default();
+    let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
+    let (library, context) = analyze(&[&library], &options).unwrap();
+    assert!(
+        !context.has_diagnostics(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics()
+    );
+    let mut visitor = AssignedValues {
+        types: context.types(),
+        values: vec![],
+    };
+    let Ok(()) = visitor.walk(&library);
+    visitor.values
+}
+
 /// A program declaring `VAR <vars> END_VAR` whose body is `x := <expr>;` for
 /// an `x` of type `target`.
 fn arithmetic_program(target: &str, vars: &str, expr: &str) -> String {
@@ -363,4 +398,81 @@ fn apply_when_arithmetic_operand_is_arithmetic_then_its_result_is_converted() {
         arithmetic_operands(&source),
         operands(&[&["INT->REAL", "REAL"], &["INT", "INT"]])
     );
+}
+
+#[spec_test(REQ_IC_analyzer_030)]
+#[test]
+fn apply_when_variable_assigned_to_wider_target_then_converted_to_target_type() {
+    let source = arithmetic_program("LINT", "d : DINT;", "d");
+    assert_eq!(assigned_values(&source), vec!["DINT->LINT"]);
+}
+
+#[test]
+fn apply_when_integer_assigned_to_real_target_then_converted_to_real() {
+    let source = arithmetic_program("REAL", "i : INT;", "i");
+    assert_eq!(assigned_values(&source), vec!["INT->REAL"]);
+}
+
+#[spec_test(REQ_IC_analyzer_031)]
+#[test]
+fn apply_when_arithmetic_assigned_to_wider_target_then_result_converted() {
+    let source = arithmetic_program("LINT", "d : DINT; e : DINT;", "d + e");
+    assert_eq!(assigned_values(&source), vec!["DINT->LINT"]);
+}
+
+#[test]
+fn apply_when_parenthesized_variable_assigned_to_wider_target_then_converted() {
+    let source = arithmetic_program("LINT", "d : DINT;", "(d)");
+    assert_eq!(assigned_values(&source), vec!["DINT->LINT"]);
+}
+
+#[test]
+fn apply_when_function_form_assigned_to_wider_target_then_result_converted() {
+    let source = arithmetic_program("LINT", "d : DINT; e : DINT;", "ADD(d, e)");
+    assert_eq!(assigned_values(&source), vec!["DINT->LINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_032)]
+#[test]
+fn apply_when_value_shares_target_width_then_unchanged() {
+    let source = arithmetic_program("INT", "s : SINT;", "s");
+    assert_eq!(assigned_values(&source), vec!["SINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_033)]
+#[test]
+fn apply_when_negation_assigned_to_wider_target_then_unchanged() {
+    let source = arithmetic_program("LINT", "d : DINT;", "-d");
+    assert_eq!(assigned_values(&source), vec!["DINT"]);
+}
+
+#[test]
+fn apply_when_literal_assigned_then_unchanged() {
+    let source = arithmetic_program("LINT", "", "1");
+    assert_eq!(assigned_values(&source), vec!["ANY_INT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_034)]
+#[test]
+fn apply_when_array_element_and_structure_field_targets_then_converted_to_their_types() {
+    let source = "TYPE Point : STRUCT x : LINT; END_STRUCT; END_TYPE
+        PROGRAM main VAR a : ARRAY[1..2] OF LINT; p : Point; d : DINT; END_VAR
+        a[1] := d; p.x := d; END_PROGRAM";
+    assert_eq!(assigned_values(source), vec!["DINT->LINT", "DINT->LINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_035)]
+#[test]
+fn apply_when_function_result_assigned_then_converted_to_result_type() {
+    let source = "FUNCTION widen : LINT VAR_INPUT d : DINT; END_VAR widen := d; END_FUNCTION
+        PROGRAM main VAR l : LINT; END_VAR l := widen(1); END_PROGRAM";
+    assert_eq!(assigned_values(source), vec!["DINT->LINT", "LINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_036)]
+#[test]
+fn apply_when_subrange_target_then_converted_to_base_type() {
+    let source = "TYPE Small : DINT (0..10); END_TYPE
+        PROGRAM main VAR s : Small; l : LINT; END_VAR s := l; END_PROGRAM";
+    assert_eq!(assigned_values(source), vec!["LINT->DINT"]);
 }
