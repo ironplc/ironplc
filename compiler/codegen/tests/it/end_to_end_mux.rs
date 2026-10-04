@@ -10,26 +10,26 @@ use proptest::prelude::*;
 e2e_i32!(
     end_to_end_when_mux_2_inputs_then_works,
     "PROGRAM main VAR y : DINT; END_VAR y := MUX(1, 42, 99); END_PROGRAM",
-    &[(0, 99)],
+    &[("y", 99)],
 );
 
 e2e_i32!(
     end_to_end_when_mux_4_inputs_then_works,
     "PROGRAM main VAR y : DINT; END_VAR y := MUX(3, 10, 20, 30, 40); END_PROGRAM",
-    &[(0, 40)],
+    &[("y", 40)],
 );
 
 e2e_i32!(
     end_to_end_when_mux_16_inputs_then_selects_last,
     "PROGRAM main VAR y : DINT; END_VAR y := MUX(15, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16); END_PROGRAM",
-    &[(0, 16)],
+    &[("y", 16)],
 );
 
 // K=5 is out of range (only 3 inputs), clamps to last = 30.
 e2e_i32!(
     end_to_end_when_mux_k_out_of_range_then_clamps_to_last,
     "PROGRAM main VAR y : DINT; END_VAR y := MUX(5, 10, 20, 30); END_PROGRAM",
-    &[(0, 30)],
+    &[("y", 30)],
 );
 
 // --- Property test: MUX(k, a, b, c, d) selects inputs[clamp(k, 0, 3)] ---

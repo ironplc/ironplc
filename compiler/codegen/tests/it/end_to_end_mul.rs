@@ -18,7 +18,7 @@ PROGRAM main
   y := x * 6;
 END_PROGRAM
 ",
-    &[(0, 7), (1, 42)],
+    &[("x", 7), ("y", 42)],
 );
 
 e2e_i32!(
@@ -31,7 +31,7 @@ PROGRAM main
   result := 999 * 0;
 END_PROGRAM
 ",
-    &[(0, 0)],
+    &[("result", 0)],
 );
 
 e2e_i32!(
@@ -44,7 +44,7 @@ PROGRAM main
   result := 42 * 1;
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("result", 42)],
 );
 
 e2e_i32!(
@@ -57,7 +57,7 @@ PROGRAM main
   result := 7 * -6;
 END_PROGRAM
 ",
-    &[(0, -42)],
+    &[("result", -42)],
 );
 
 e2e_i32!(
@@ -70,7 +70,7 @@ PROGRAM main
   result := -7 * -6;
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("result", 42)],
 );
 
 e2e_i32!(
@@ -83,7 +83,7 @@ PROGRAM main
   result := 2 * 3 * 4;
 END_PROGRAM
 ",
-    &[(0, 24)],
+    &[("result", 24)],
 );
 
 e2e_i32!(
@@ -100,7 +100,7 @@ PROGRAM main
   c := a * b;
 END_PROGRAM
 ",
-    &[(0, 7), (1, 6), (2, 42)],
+    &[("a", 7), ("b", 6), ("c", 42)],
 );
 
 // Multiplication has higher precedence: 2 + (3 * 4) = 14
@@ -114,7 +114,7 @@ PROGRAM main
   result := 2 + 3 * 4;
 END_PROGRAM
 ",
-    &[(0, 14)],
+    &[("result", 14)],
 );
 
 #[test]

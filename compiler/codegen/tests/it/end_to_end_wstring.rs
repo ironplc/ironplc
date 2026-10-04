@@ -126,7 +126,7 @@ END_PROGRAM
     assert_eq!(read_wstring(&bufs.data_region, 0), "world");
 }
 
-// a = var0, b = var1, eq = var2, ne = var3. BOOL true = 1, false = 0.
+// BOOL true = 1, false = 0.
 e2e_i32!(
     wstring_when_compared_equal_then_eq_true_and_ne_false,
     "
@@ -141,7 +141,7 @@ PROGRAM main
   ne := a <> b;
 END_PROGRAM
 ",
-    &[(2, 1), (3, 0)],
+    &[("eq", 1), ("ne", 0)],
 );
 
 e2e_i32!(
@@ -158,10 +158,10 @@ PROGRAM main
   ne := a <> b;
 END_PROGRAM
 ",
-    &[(2, 0), (3, 1)],
+    &[("eq", 0), ("ne", 1)],
 );
 
-// ws = var0, n = var1. LEN counts code units, not bytes.
+// LEN counts code units, not bytes.
 e2e_i32!(
     wstring_when_len_then_returns_code_unit_count,
     "
@@ -173,7 +173,7 @@ PROGRAM main
   n := LEN(ws);
 END_PROGRAM
 ",
-    &[(1, 5)],
+    &[("n", 5)],
 );
 
 #[test]
@@ -264,7 +264,7 @@ END_PROGRAM
     assert_eq!(read_wstring(&bufs.data_region, m_offset), "bcd");
 }
 
-// hay = var0, needle = var1, pos = var2. FIND is 1-based by code unit.
+// FIND is 1-based by code unit.
 e2e_i32!(
     wstring_when_find_substring_then_returns_code_unit_position,
     "
@@ -277,7 +277,7 @@ PROGRAM main
   pos := FIND(hay, needle);
 END_PROGRAM
 ",
-    &[(2, 3)],
+    &[("pos", 3)],
 );
 
 #[test]
@@ -525,7 +525,7 @@ PROGRAM main
   ne := w <> \"abd\";
 END_PROGRAM
 ",
-    &[(1, 1), (2, 1)],
+    &[("eq", 1), ("ne", 1)],
 );
 
 e2e_i32!(
@@ -539,7 +539,7 @@ PROGRAM main
   pos := FIND(hay, \"cd\");
 END_PROGRAM
 ",
-    &[(1, 3)],
+    &[("pos", 3)],
 );
 
 #[test]
@@ -576,10 +576,9 @@ PROGRAM main
   eq := arr[1] = \"one\";
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("eq", 1)],
 );
 
-// s = var0, w = var1, other = var2, same = var3, differ = var4.
 e2e_i32!(
     function_when_parameters_are_string_and_wstring_then_each_copied_at_its_own_width,
     "
@@ -605,13 +604,12 @@ PROGRAM main
   differ := same_len(s, other);
 END_PROGRAM
 ",
-    &[(3, 1), (4, 0)],
+    &[("same", 1), ("differ", 0)],
 );
 
 // A wide literal passed straight to a WSTRING parameter, with no wide variable
 // in between. The analyzer used to type every character-string literal STRING
 // and reject this call with P4026.
-// n = var0.
 e2e_i32!(
     function_when_wstring_parameter_given_wide_literal_then_runs,
     "
@@ -629,7 +627,7 @@ PROGRAM main
   n := wide_len(\"abcd\");
 END_PROGRAM
 ",
-    &[(0, 4)],
+    &[("n", 4)],
 );
 
 /// A WSTRING operation in a loop reuses one temp buffer per iteration, the
@@ -685,5 +683,5 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, 4), (1, 1)],
+    &[("r", 4), ("same", 1)],
 );

@@ -13,7 +13,7 @@ PROGRAM main
   y := LIMIT(0.0, x, 10.0);
 END_PROGRAM
 ",
-    &[(1, 5.0)],
+    &[("y", 5.0)],
 );
 
 e2e_f32_near!(
@@ -29,7 +29,7 @@ PROGRAM main
   y := LIMIT(0.0, x, 10.0);
 END_PROGRAM
 ",
-    &[(1, 0.0)],
+    &[("y", 0.0)],
 );
 
 e2e_f32_near!(
@@ -45,7 +45,7 @@ PROGRAM main
   y := LIMIT(0.0, x, 10.0);
 END_PROGRAM
 ",
-    &[(1, 10.0)],
+    &[("y", 10.0)],
 );
 
 e2e_f64_near!(
@@ -61,5 +61,5 @@ PROGRAM main
   y := LIMIT(0.0, x, 10.0);
 END_PROGRAM
 ",
-    &[(1, 0.0)],
+    &[("y", 0.0)],
 );

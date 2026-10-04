@@ -5,7 +5,6 @@ use ironplc_parser::options::CompilerOptions;
 use crate::common::parse_and_run;
 use proptest::prelude::*;
 
-// s is at variable slot 0, n is at variable slot 1.
 e2e_i32!(
     end_to_end_when_len_of_string_with_value_then_returns_length,
     "
@@ -17,7 +16,7 @@ PROGRAM main
   n := LEN(s);
 END_PROGRAM
 ",
-    &[(1, 5)],
+    &[("n", 5)],
 );
 
 e2e_i32!(
@@ -31,7 +30,7 @@ PROGRAM main
   n := LEN(s);
 END_PROGRAM
 ",
-    &[(1, 0)],
+    &[("n", 0)],
 );
 
 // Current length is 2 ('hi'), not the max length of 10.
@@ -46,7 +45,7 @@ PROGRAM main
   n := LEN(s);
 END_PROGRAM
 ",
-    &[(1, 2)],
+    &[("n", 2)],
 );
 
 e2e_i32!(
@@ -60,10 +59,10 @@ PROGRAM main
   n := LEN(s);
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("n", 1)],
 );
 
-// n is at variable slot 0. LEN accepts a literal argument directly; this is
+// LEN accepts a literal argument directly; this is
 // the example published in the LEN reference documentation.
 e2e_i32!(
     end_to_end_when_len_of_string_literal_then_returns_length,
@@ -75,7 +74,7 @@ PROGRAM main
   n := LEN('Hello');
 END_PROGRAM
 ",
-    &[(0, 5)],
+    &[("n", 5)],
 );
 
 e2e_i32!(
@@ -88,7 +87,7 @@ PROGRAM main
   n := LEN('');
 END_PROGRAM
 ",
-    &[(0, 0)],
+    &[("n", 0)],
 );
 
 // LEN of a WSTRING literal counts code units, not bytes.
@@ -102,7 +101,7 @@ PROGRAM main
   n := LEN(\"Hello\");
 END_PROGRAM
 ",
-    &[(0, 5)],
+    &[("n", 5)],
 );
 
 // Non-ASCII BMP code points are one code unit each in UTF-16LE.
@@ -116,10 +115,10 @@ PROGRAM main
   n := LEN(\"é€\");
 END_PROGRAM
 ",
-    &[(0, 2)],
+    &[("n", 2)],
 );
 
-// s is at slot 0, n at slot 1. A nested call is resolved into a temporary,
+// A nested call is resolved into a temporary,
 // so LEN(MID(...)) does not need the intermediate hoisted into a variable.
 e2e_i32!(
     end_to_end_when_len_of_nested_string_call_then_returns_length,
@@ -132,10 +131,9 @@ PROGRAM main
   n := LEN(MID(s, 3, 1));
 END_PROGRAM
 ",
-    &[(1, 3)],
+    &[("n", 3)],
 );
 
-// ws is at slot 0, n at slot 1.
 e2e_i32!(
     end_to_end_when_len_of_nested_wstring_call_then_returns_length,
     "
@@ -147,7 +145,7 @@ PROGRAM main
   n := LEN(MID(ws, 3, 1));
 END_PROGRAM
 ",
-    &[(1, 3)],
+    &[("n", 3)],
 );
 
 e2e_i32!(
@@ -160,7 +158,7 @@ PROGRAM main
   n := LEN(CONCAT('ab', 'cde'));
 END_PROGRAM
 ",
-    &[(0, 5)],
+    &[("n", 5)],
 );
 
 e2e_i32!(
@@ -173,7 +171,7 @@ PROGRAM main
   n := LEN(CONCAT(\"ab\", \"cde\"));
 END_PROGRAM
 ",
-    &[(0, 5)],
+    &[("n", 5)],
 );
 
 // --- LEN of a string reached through an aggregate --------------------------
@@ -186,7 +184,6 @@ END_PROGRAM
 // including when the element is declared wider than a bare STRING
 // (github.com/ironplc/ironplc/issues/1485).
 
-// x is at slot 0, n at slot 1.
 e2e_i32!(
     end_to_end_when_len_of_string_array_element_then_returns_element_length,
     "
@@ -198,12 +195,12 @@ PROGRAM main
   n := LEN(x[2]);
 END_PROGRAM
 ",
-    &[(1, 4)],
+    &[("n", 4)],
 );
 
 // A subscript the compiler cannot fold: the element offset is computed at run
 // time, which is the shape the fixed `data_offset` operand of `LEN_STR` could
-// never have expressed. x is at slot 0, i at slot 1, n at slot 2.
+// never have expressed.
 e2e_i32!(
     end_to_end_when_len_of_string_array_element_at_variable_subscript_then_returns_element_length,
     "
@@ -216,11 +213,11 @@ PROGRAM main
   n := LEN(x[i]);
 END_PROGRAM
 ",
-    &[(2, 4)],
+    &[("n", 4)],
 );
 
 // LEN counts code units, so a wide element answers in characters and not in
-// the bytes it occupies. x is at slot 0, n at slot 1.
+// the bytes it occupies.
 e2e_i32!(
     end_to_end_when_len_of_wstring_array_element_then_returns_code_unit_count,
     "
@@ -232,10 +229,9 @@ PROGRAM main
   n := LEN(x[2]);
 END_PROGRAM
 ",
-    &[(1, 3)],
+    &[("n", 3)],
 );
 
-// r is at slot 0, n at slot 1.
 e2e_i32!(
     end_to_end_when_len_of_string_struct_field_then_returns_field_length,
     "
@@ -254,10 +250,9 @@ PROGRAM main
   n := LEN(r.s);
 END_PROGRAM
 ",
-    &[(1, 5)],
+    &[("n", 5)],
 );
 
-// r is at slot 0, n at slot 1.
 e2e_i32!(
     end_to_end_when_len_of_wstring_struct_field_then_returns_code_unit_count,
     "
@@ -276,12 +271,11 @@ PROGRAM main
   n := LEN(r.w);
 END_PROGRAM
 ",
-    &[(1, 2)],
+    &[("n", 2)],
 );
 
 // Both aggregates at once: an array of strings reached through a structure
-// field, subscripted at run time. A structure holding an array takes two
-// variable slots, so i is at slot 2 and n at slot 3.
+// field, subscripted at run time.
 e2e_i32!(
     end_to_end_when_len_of_string_array_element_in_struct_field_then_returns_element_length,
     "
@@ -301,7 +295,7 @@ PROGRAM main
   n := LEN(r.names[i]);
 END_PROGRAM
 ",
-    &[(3, 4)],
+    &[("n", 4)],
 );
 
 /// Compiles and runs `source`, returning the i32 in variable slot `slot`.

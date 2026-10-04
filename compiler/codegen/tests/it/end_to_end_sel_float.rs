@@ -11,7 +11,7 @@ PROGRAM main
   y := SEL(0, 10.5, 20.5);
 END_PROGRAM
 ",
-    &[(0, 10.5)],
+    &[("y", 10.5)],
 );
 
 e2e_f32_near!(
@@ -25,7 +25,7 @@ PROGRAM main
   y := SEL(1, 10.5, 20.5);
 END_PROGRAM
 ",
-    &[(0, 20.5)],
+    &[("y", 20.5)],
 );
 
 e2e_f32_near!(
@@ -41,7 +41,7 @@ PROGRAM main
   y := SEL(g, 100.0, 200.0);
 END_PROGRAM
 ",
-    &[(1, 200.0)],
+    &[("y", 200.0)],
 );
 
 e2e_f64_near!(
@@ -55,7 +55,7 @@ PROGRAM main
   y := SEL(0, 10.5, 20.5);
 END_PROGRAM
 ",
-    &[(0, 10.5)],
+    &[("y", 10.5)],
 );
 
 e2e_f64_near!(
@@ -69,5 +69,5 @@ PROGRAM main
   y := SEL(1, 10.5, 20.5);
 END_PROGRAM
 ",
-    &[(0, 20.5)],
+    &[("y", 20.5)],
 );

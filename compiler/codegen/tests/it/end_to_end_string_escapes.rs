@@ -6,7 +6,6 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::{parse_and_run, read_string, string_offset};
 
-// s is at variable slot 0, n is at variable slot 1.
 e2e_i32!(
     end_to_end_when_len_of_escaped_literal_then_counts_decoded_characters,
     "
@@ -19,7 +18,7 @@ PROGRAM main
   n := LEN(s);
 END_PROGRAM
 ",
-    &[(1, 2)],
+    &[("n", 2)],
 );
 
 e2e_i32!(
@@ -32,7 +31,7 @@ PROGRAM main
   n := LEN('a$Lb$Tc$Rd$Pe$Nf$'');
 END_PROGRAM
 ",
-    &[(0, 12)],
+    &[("n", 12)],
 );
 
 e2e_i32!(
@@ -47,7 +46,7 @@ PROGRAM main
   n := LEN(w);
 END_PROGRAM
 ",
-    &[(1, 3)],
+    &[("n", 3)],
 );
 
 #[test]

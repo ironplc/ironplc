@@ -9,7 +9,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ",
-    &[(0, 1)],
+    &[("x", 1)],
 );
 
 e2e_i32!(
@@ -21,7 +21,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ",
-    &[(0, 0)],
+    &[("x", 0)],
 );
 
 e2e_i32!(
@@ -36,7 +36,7 @@ PROGRAM main
   y := x > 0 AND x < 10;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 1)],
+    &[("x", 5), ("y", 1)],
 );
 
 e2e_i32!(
@@ -51,7 +51,7 @@ PROGRAM main
   y := x > 0 AND x < 10;
 END_PROGRAM
 ",
-    &[(0, 15), (1, 0)],
+    &[("x", 15), ("y", 0)],
 );
 
 e2e_i32!(
@@ -66,7 +66,7 @@ PROGRAM main
   y := x > 10 OR x < 10;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 1)],
+    &[("x", 5), ("y", 1)],
 );
 
 e2e_i32!(
@@ -81,7 +81,7 @@ PROGRAM main
   y := x > 10 OR x < 0;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 0)],
+    &[("x", 5), ("y", 0)],
 );
 
 e2e_i32!(
@@ -96,7 +96,7 @@ PROGRAM main
   y := x > 10 XOR x < 10;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 1)],
+    &[("x", 5), ("y", 1)],
 );
 
 e2e_i32!(
@@ -111,7 +111,7 @@ PROGRAM main
   y := x > 0 XOR x < 10;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 0)],
+    &[("x", 5), ("y", 0)],
 );
 
 e2e_i32!(
@@ -126,7 +126,7 @@ PROGRAM main
   y := NOT x;
 END_PROGRAM
 ",
-    &[(0, 0), (1, 1)],
+    &[("x", 0), ("y", 1)],
 );
 
 e2e_i32!(
@@ -141,7 +141,7 @@ PROGRAM main
   y := NOT x;
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("x", 1), ("y", 0)],
 );
 
 e2e_i32!(
@@ -154,7 +154,7 @@ PROGRAM main
   y := TRUE;
 END_PROGRAM
 ",
-    &[(0, 1)],
+    &[("y", 1)],
 );
 
 e2e_i32!(
@@ -167,5 +167,5 @@ PROGRAM main
   y := FALSE;
 END_PROGRAM
 ",
-    &[(0, 0)],
+    &[("y", 0)],
 );

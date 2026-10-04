@@ -176,7 +176,7 @@ test is redundant for *behavior*.
 | `end_to_end.rs` | General infrastructure tests (assignment, scan behavior) | — |
 | `wire_format.rs` | **Backwards-compatibility guard**: pins every opcode's byte value + a completeness test | — |
 | `compile_<op>.rs` | Bytecode assertions — **only for structure end-to-end cannot localize** (jump/branch offsets, struct/array/frame offsets, operand widths, peephole) | `compile_loops.rs`, `compile_struct.rs`, `compile_array.rs` |
-| `common/mod.rs` | Shared helpers (`parse`, `parse_and_run`, `VmBuffers`) | — |
+| `common/` | Shared helpers: the `e2e!`/`e2e_*!` macros, `assert_run`, `Snapshot`, `parse`, `parse_and_run` | — |
 
 **The one thing end-to-end cannot catch is a consistent opcode *renumber*** (the
 compiler emits and the VM reads the new value, so a from-source compile+run still
@@ -197,11 +197,16 @@ use common::parse;
 use ironplc_codegen::compile;
 ```
 
-Template for a new end-to-end test file:
+Template for a new end-to-end test file (variables are read by name, see
+[End-to-End Test Observation](../design/end-to-end-test-observation.md)):
 ```rust
 //! End-to-end integration tests for the <OP> operator.
-mod common;
-use common::parse_and_run;
+
+e2e_i32!(
+    end_to_end_when_<op>_then_<result>,
+    "PROGRAM main VAR x : DINT; END_VAR x := <expression>; END_PROGRAM",
+    &[("x", <expected>)],
+);
 ```
 
 #### What stays inline

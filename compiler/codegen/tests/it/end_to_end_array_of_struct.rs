@@ -33,7 +33,7 @@ PROGRAM main
   result := arr[2].b;
 END_PROGRAM
 ",
-    &[(1, 42)],
+    &[("result", 42)],
 );
 
 // The reported repro: a BOOL field written through a literal index. Exercises
@@ -57,7 +57,7 @@ PROGRAM main
   result := BOOL_TO_DINT(Arr[1].Flag);
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("result", 1)],
 );
 
 // Writing one element must not disturb its neighbours -- this is what a wrong
@@ -88,7 +88,7 @@ PROGRAM main
   r3 := arr[3].a;
 END_PROGRAM
 ",
-    &[(1, 11), (2, 22), (3, 33)],
+    &[("r1", 11), ("r2", 22), ("r3", 33)],
 );
 
 // Distinct fields within one element must not alias -- this is what a wrong
@@ -116,7 +116,7 @@ PROGRAM main
   rb := arr[2].b;
 END_PROGRAM
 ",
-    &[(1, 7), (2, 9)],
+    &[("ra", 7), ("rb", 9)],
 );
 
 // Variable subscript exercises the runtime flat-index path rather than the
@@ -143,7 +143,7 @@ PROGRAM main
   result := arr[i].b;
 END_PROGRAM
 ",
-    &[(2, 55)],
+    &[("result", 55)],
 );
 
 // A FOR loop over the array, the shape the issue's users actually write.
@@ -170,7 +170,7 @@ PROGRAM main
   total := arr[1].a + arr[2].a + arr[3].a;
 END_PROGRAM
 ",
-    &[(2, 6)],
+    &[("total", 6)],
 );
 
 // Several element reads combined in one expression.
@@ -196,7 +196,7 @@ PROGRAM main
   total := arr[1].a + arr[2].a + arr[3].a;
 END_PROGRAM
 ",
-    &[(1, 6)],
+    &[("total", 6)],
 );
 
 // Unwritten elements read as zero: the data region starts zeroed and nothing
@@ -223,7 +223,7 @@ PROGRAM main
   r2 := arr[3].b;
 END_PROGRAM
 ",
-    &[(1, 0), (2, 0)],
+    &[("r1", 0), ("r2", 0)],
 );
 
 // --- Bounds shapes ---
@@ -253,7 +253,7 @@ PROGRAM main
   r2 := arr[2].a;
 END_PROGRAM
 ",
-    &[(1, 4), (2, 6)],
+    &[("r1", 4), ("r2", 6)],
 );
 
 // A negative lower bound must be subtracted, not ignored. The constant and
@@ -283,7 +283,7 @@ PROGRAM main
   r2 := arr[1].a;
 END_PROGRAM
 ",
-    &[(2, 8), (3, 9)],
+    &[("r1", 8), ("r2", 9)],
 );
 
 // Two-dimensional: both strides must be scaled by the element slot count.
@@ -310,7 +310,7 @@ PROGRAM main
   r2 := arr[2,3].a;
 END_PROGRAM
 ",
-    &[(1, 1), (2, 6)],
+    &[("r1", 1), ("r2", 6)],
 );
 
 // The descriptor spans `total_elements * element_slots`, so an out-of-range
@@ -376,7 +376,7 @@ PROGRAM main
   r2 := arr[2].lead;
 END_PROGRAM
 ",
-    &[(1, 1), (2, 2)],
+    &[("r1", 1), ("r2", 2)],
 );
 
 // A LINT field is a 64-bit leaf, so the load and store must be emitted at W64
@@ -401,7 +401,7 @@ PROGRAM main
   result := arr[2].big;
 END_PROGRAM
 ",
-    &[(1, 4294967296)],
+    &[("result", 4294967296)],
 );
 
 // --- Array field inside the element ---
@@ -435,7 +435,7 @@ PROGRAM main
   r3 := a[3].values[2];
 END_PROGRAM
 ",
-    &[(1, 11), (2, 14), (3, 32)],
+    &[("r1", 11), ("r2", 14), ("r3", 32)],
 );
 
 // Both subscripts variable, so the whole index is computed at runtime rather
@@ -463,7 +463,7 @@ PROGRAM main
   r := a[i].values[j];
 END_PROGRAM
 ",
-    &[(3, 55)],
+    &[("r", 55)],
 );
 
 // A scalar ahead of the array field, so the field's own offset has to be added
@@ -492,7 +492,7 @@ PROGRAM main
   rv := a[2].values[1];
 END_PROGRAM
 ",
-    &[(1, 9), (2, 21)],
+    &[("rl", 9), ("rv", 21)],
 );
 
 // Nested FOR loops over both indices, the shape that would expose a wrong
@@ -522,7 +522,7 @@ PROGRAM main
   r := a[3].values[2];
 END_PROGRAM
 ",
-    &[(3, 32)],
+    &[("r", 32)],
 );
 
 // The same shape reached through a struct field rather than a top-level
@@ -551,7 +551,7 @@ PROGRAM main
   r := h.items[2].values[3];
 END_PROGRAM
 ",
-    &[(1, 77)],
+    &[("r", 77)],
 );
 
 // --- Named array type ---
@@ -580,7 +580,7 @@ PROGRAM main
   result := arr[3].a;
 END_PROGRAM
 ",
-    &[(1, 21)],
+    &[("result", 21)],
 );
 
 // --- Neighbouring variables ---
@@ -615,7 +615,7 @@ PROGRAM main
   r3 := plain[1];
 END_PROGRAM
 ",
-    &[(3, 1), (4, 2), (5, 3)],
+    &[("r1", 1), ("r2", 2), ("r3", 3)],
 );
 
 // --- Global declaration ---
@@ -655,7 +655,7 @@ PROGRAM main
   result := devices[1].a + devices[3].b;
 END_PROGRAM
 ",
-    &[(1, 300)],
+    &[("result", 300)],
 );
 
 // A function block body sees the global through the re-inserted global
@@ -705,7 +705,7 @@ PROGRAM main
   result := reader.value;
 END_PROGRAM
 ",
-    &[(2, 17)],
+    &[("result", 17)],
 );
 
 // --- Rejected shapes ---

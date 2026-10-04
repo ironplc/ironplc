@@ -10,7 +10,7 @@ PROGRAM main
   y := SEL(0, 10, 20);
 END_PROGRAM
 ",
-    &[(0, 10)],
+    &[("y", 10)],
 );
 
 e2e_i32!(
@@ -23,7 +23,7 @@ PROGRAM main
   y := SEL(1, 10, 20);
 END_PROGRAM
 ",
-    &[(0, 20)],
+    &[("y", 20)],
 );
 
 e2e_i32!(
@@ -38,5 +38,5 @@ PROGRAM main
   y := SEL(g, 100, 200);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 200)],
+    &[("g", 1), ("y", 200)],
 );

@@ -24,7 +24,7 @@ END_VAR
     result := LDT;
 END_PROGRAM
 ",
-    &[(3, 42)],
+    &[("result", 42)],
 );
 
 // The RuSTy dialect enables REF_TO even though Edition 3 types
@@ -43,7 +43,7 @@ END_VAR
     result := r^;
 END_PROGRAM
 ",
-    &[(4, 99)],
+    &[("result", 99)],
 );
 
 // Core OSCAT scenario: LDT used as a variable name alongside REF_TO.
@@ -61,7 +61,7 @@ END_VAR
     result := r^;
 END_PROGRAM
 ",
-    &[(4, 42)],
+    &[("result", 42)],
 );
 
 #[test]
@@ -125,7 +125,7 @@ END_VAR
     result := r^;
 END_PROGRAM
 ",
-    &[(2, 99)],
+    &[("result", 99)],
 );
 
 #[test]
@@ -189,7 +189,7 @@ END_VAR
     result := x;
 END_PROGRAM
 ",
-    &[(1, 99)],
+    &[("result", 99)],
 );
 
 #[test]

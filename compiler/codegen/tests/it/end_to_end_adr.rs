@@ -75,7 +75,7 @@ END_VAR
     p^ := v;
 END_PROGRAM
 ",
-    &[(0, 99)],
+    &[("x", 99)],
 );
 
 // Two instances of one FB: ADR inside each call addresses that call's own
@@ -112,7 +112,7 @@ END_VAR
     inst2(x := 9, y => r2);
 END_PROGRAM
 ",
-    &[(2, 7), (3, 9)],
+    &[("r1", 7), ("r2", 9)],
 );
 
 // NULL guard: the guarded dereference only runs once the pointer is bound.
@@ -140,7 +140,7 @@ END_VAR
     END_IF;
 END_PROGRAM
 ",
-    &[(2, 42)],
+    &[("y", 42)],
 );
 
 #[test]

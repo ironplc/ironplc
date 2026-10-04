@@ -10,7 +10,7 @@ PROGRAM main
   result := EXPT(2, 10);
 END_PROGRAM
 ",
-    &[(0, 1024)],
+    &[("result", 1024)],
 );
 
 e2e_i32!(
@@ -23,5 +23,5 @@ PROGRAM main
   result := EXPT(5, 0);
 END_PROGRAM
 ",
-    &[(0, 1)],
+    &[("result", 1)],
 );

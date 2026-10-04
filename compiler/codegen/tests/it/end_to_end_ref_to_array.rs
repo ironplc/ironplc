@@ -38,7 +38,6 @@ END_PROGRAM
     );
 }
 
-// x is at var index 1 (data is var 0, x is var 1)
 e2e_i32_with!(
     end_to_end_when_ref_to_array_declared_then_runs,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -50,7 +49,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ",
-    &[(1, 99)],
+    &[("x", 99)],
 );
 
 // A REF_TO whose target is a named array type behaves exactly as the inline
@@ -72,7 +71,7 @@ PROGRAM main
   v := pt^[i];
 END_PROGRAM
 ",
-    &[(2, 77)],
+    &[("v", 77)],
 );
 
 // var layout: arr=0, pt=1, v=2
@@ -92,7 +91,7 @@ PROGRAM main
   v := arr[2];
 END_PROGRAM
 ",
-    &[(2, 55)],
+    &[("v", 55)],
 );
 
 // var layout: arr=0, v=1
@@ -119,7 +118,7 @@ PROGRAM main
   v := GET_ELEMENT(pt := REF(arr), i := 3);
 END_PROGRAM
 ",
-    &[(1, 31)],
+    &[("v", 31)],
 );
 
 // var layout: arr=0, fb=1, check=2
@@ -150,7 +149,7 @@ PROGRAM main
   check := arr[0];
 END_PROGRAM
 ",
-    &[(2, 99)],
+    &[("check", 99)],
 );
 
 // The dimensions come from the type environment, so strides must be right
@@ -171,7 +170,7 @@ PROGRAM main
   v := pt^[1, 2];
 END_PROGRAM
 ",
-    &[(2, 42)],
+    &[("v", 42)],
 );
 
 // A named reference type whose target is itself a named array type reaches
@@ -197,5 +196,5 @@ PROGRAM main
   v := pt^[0];
 END_PROGRAM
 ",
-    &[(2, 12)],
+    &[("v", 12)],
 );

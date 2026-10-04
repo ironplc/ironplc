@@ -18,7 +18,7 @@ PROGRAM main
   y := x + 32;
 END_PROGRAM
 ",
-    &[(0, 10), (1, 42)],
+    &[("x", 10), ("y", 42)],
 );
 
 e2e_i32!(
@@ -31,7 +31,7 @@ PROGRAM main
   result := 1 + 2 + 3;
 END_PROGRAM
 ",
-    &[(0, 6)],
+    &[("result", 6)],
 );
 
 e2e_i32!(
@@ -48,7 +48,7 @@ PROGRAM main
   c := a + b;
 END_PROGRAM
 ",
-    &[(0, 100), (1, 200), (2, 300)],
+    &[("a", 100), ("b", 200), ("c", 300)],
 );
 
 e2e_i32!(
@@ -61,7 +61,7 @@ PROGRAM main
   result := 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10;
 END_PROGRAM
 ",
-    &[(0, 55)],
+    &[("result", 55)],
 );
 
 // Multi-scan test: the counter accumulates state across VM rounds, so it drives
