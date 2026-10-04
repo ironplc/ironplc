@@ -759,7 +759,7 @@ fn reference_to_options() -> CompilerOptions {
 }
 
 /// Parse, analyze, compile, and run one scan cycle with the given options.
-fn compile_and_run_with(
+pub(crate) fn compile_and_run_with(
     source: &str,
     options: &CompilerOptions,
 ) -> (ironplc_container::Container, VmBuffers) {
