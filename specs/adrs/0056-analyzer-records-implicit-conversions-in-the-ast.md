@@ -117,3 +117,20 @@ codegen tests pass unchanged.
 * Good, because nothing changes.
 * Bad, because the language server cannot see the decision, and every backend
   repeats it.
+
+## More Information
+
+### Arithmetic operands (postscript)
+
+The pass now records the conversions of arithmetic operands too, for the
+operator expression and for the function forms `ADD`, `SUB`, `MUL`, `DIV` and
+`MOD` (see `specs/design/implicit-conversions.md`). Codegen compiles the
+recorded nodes and no longer converts an arithmetic operand itself, or asks
+the analyzer's overload resolver a second time for a numeric fold. A function
+form of three or more inputs is recorded as the nested calls it folds to,
+because each step computes at its own result type and the accumulated value is
+converted between steps, and an accumulator is not an operand a node can wrap.
+Assignments and function arguments are still converted by codegen, and so is
+the conversion of an arithmetic result to the type of its context; each moves
+to the pass in its own change. The decision above is unchanged.
+

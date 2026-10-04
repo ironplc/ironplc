@@ -252,13 +252,16 @@ An extensible call with more than two inputs (`ADD(a, b, c)`) folds from the
 left: the resolver runs on the first two inputs, then on that result and the
 third, and so on. `ADD(t1, t2, t3)` is therefore two `ADD_TIME` steps, which
 is what `t1 + t2 + t3` is, so the function form accepts exactly what the
-operator accepts (the invariant of Keyword Function Forms). Codegen folds the
-same way, asking the resolver at each step with the accumulated result type.
+operator accepts (the invariant of Keyword Function Forms). The analyzer's
+conversion pass folds the same way, asking the resolver at each step with the
+accumulated result type, and records each step as a call of its own (see
+[Implicit Conversions](implicit-conversions.md)); codegen asks the resolver
+only for the typed overloads on the time and date types.
 
-For the numeric overload, codegen calls the resolver with the compiler
-options the analyzer ran with, which it reads from the semantic context it is
-given (`SemanticContext::compiler_options`). The two passes therefore ask the
-same question with the same options and cannot disagree about a result type.
+For the numeric overload the conversion pass calls the resolver with the
+compiler options the analyzer ran with, so the type resolver and the pass ask
+the same question with the same options and cannot disagree about a result
+type.
 
 ### Type resolution
 

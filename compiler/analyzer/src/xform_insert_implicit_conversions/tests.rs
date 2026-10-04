@@ -23,16 +23,22 @@ struct ComparisonOperands<'a> {
 
 impl ComparisonOperands<'_> {
     fn describe(&self, expr: &Expr) -> String {
-        let name = |expr: &Expr| {
-            expr.expr_type
-                .as_ref()
-                .and_then(|t| operand_type_name(self.types, t))
-                .map_or("?".to_string(), |name| name.to_string().to_uppercase())
-        };
-        match &expr.kind {
-            ExprKind::ImplicitConversion(inner) => format!("{}->{}", name(inner), name(expr)),
-            _ => name(expr),
-        }
+        describe(self.types, expr)
+    }
+}
+
+/// An operand as the type it is operated at: `DINT->LINT` for a `DINT`
+/// converted to `LINT`, `LINT` for an operand operated on as it is.
+fn describe(types: &TypeEnvironment, expr: &Expr) -> String {
+    let name = |expr: &Expr| {
+        expr.expr_type
+            .as_ref()
+            .and_then(|t| operand_type_name(types, t))
+            .map_or("?".to_string(), |name| name.to_string().to_uppercase())
+    };
+    match &expr.kind {
+        ExprKind::ImplicitConversion(inner) => format!("{}->{}", name(inner), name(expr)),
+        _ => name(expr),
     }
 }
 
@@ -75,6 +81,69 @@ fn comparison_operands(source: &str) -> Vec<[String; 2]> {
     };
     let Ok(()) = visitor.walk(&library);
     visitor.operands
+}
+
+/// The operands of every arithmetic operator expression and function form in
+/// a library, in source order outermost first, each as [`describe`] shows it.
+struct ArithmeticOperands<'a> {
+    types: &'a TypeEnvironment,
+    operands: Vec<Vec<String>>,
+}
+
+impl Visitor<Infallible> for ArithmeticOperands<'_> {
+    type Value = ();
+
+    fn visit_expr(&mut self, node: &Expr) -> Result<(), Infallible> {
+        match &node.kind {
+            ExprKind::BinaryOp(binary) => {
+                let operands = [&binary.left, &binary.right];
+                self.operands
+                    .push(operands.map(|e| describe(self.types, e)).to_vec());
+            }
+            ExprKind::Function(func)
+                if ARITHMETIC_FORMS.contains(&func.name.original().as_str()) =>
+            {
+                let inputs = func.param_assignment.iter().filter_map(|p| p.input_expr());
+                self.operands
+                    .push(inputs.map(|e| describe(self.types, e)).collect());
+            }
+            _ => {}
+        }
+        node.recurse_visit(self)
+    }
+}
+
+const ARITHMETIC_FORMS: [&str; 5] = ["ADD", "SUB", "MUL", "DIV", "MOD"];
+
+/// Analyzes `source`, which must be free of diagnostics, and returns the
+/// operands of its arithmetic.
+fn arithmetic_operands(source: &str) -> Vec<Vec<String>> {
+    let options = CompilerOptions::default();
+    let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
+    let (library, context) = analyze(&[&library], &options).unwrap();
+    assert!(
+        !context.has_diagnostics(),
+        "unexpected diagnostics: {:?}",
+        context.diagnostics()
+    );
+    let mut visitor = ArithmeticOperands {
+        types: context.types(),
+        operands: vec![],
+    };
+    let Ok(()) = visitor.walk(&library);
+    visitor.operands
+}
+
+/// A program declaring `VAR <vars> END_VAR` whose body is `x := <expr>;` for
+/// an `x` of type `target`.
+fn arithmetic_program(target: &str, vars: &str, expr: &str) -> String {
+    format!("PROGRAM main VAR x : {target}; {vars} END_VAR x := {expr}; END_PROGRAM")
+}
+
+fn operands(rows: &[&[&str]]) -> Vec<Vec<String>> {
+    rows.iter()
+        .map(|row| row.iter().map(|operand| operand.to_string()).collect())
+        .collect()
 }
 
 /// A program declaring `VAR <vars> END_VAR` whose body is `b := <compare>;`.
@@ -233,4 +302,65 @@ fn apply_when_typed_literal_out_of_range_of_narrower_operand_then_rules_still_re
         .map(|d| d.code.as_str())
         .collect();
     assert_eq!(codes, vec!["P2026"]);
+}
+
+#[spec_test(REQ_IC_analyzer_020)]
+#[test]
+fn apply_when_arithmetic_operand_narrower_then_converted_to_result_type() {
+    let source = arithmetic_program("REAL", "i : INT; r : REAL;", "i + r");
+    assert_eq!(
+        arithmetic_operands(&source),
+        operands(&[&["INT->REAL", "REAL"]])
+    );
+}
+
+#[spec_test(REQ_IC_analyzer_021)]
+#[test]
+fn apply_when_arithmetic_operand_is_literal_then_literal_takes_result_type() {
+    let source = arithmetic_program("LINT", "l : LINT;", "l + 1");
+    assert_eq!(arithmetic_operands(&source), operands(&[&["LINT", "LINT"]]));
+}
+
+#[spec_test(REQ_IC_analyzer_022)]
+#[test]
+fn apply_when_arithmetic_operands_share_a_width_then_unchanged() {
+    let source = arithmetic_program("INT", "i : INT; s : SINT;", "i + s");
+    assert_eq!(arithmetic_operands(&source), operands(&[&["INT", "SINT"]]));
+}
+
+#[spec_test(REQ_IC_analyzer_023)]
+#[test]
+fn apply_when_arithmetic_pair_has_typed_overload_then_unchanged() {
+    let source = arithmetic_program("TIME", "t1 : TIME; t2 : TIME;", "t1 + t2");
+    assert_eq!(arithmetic_operands(&source), operands(&[&["TIME", "TIME"]]));
+}
+
+#[spec_test(REQ_IC_analyzer_024)]
+#[test]
+fn apply_when_function_form_then_inputs_converted_as_operator_operands() {
+    let source = arithmetic_program("REAL", "i : INT; r : REAL;", "ADD(i, r)");
+    assert_eq!(
+        arithmetic_operands(&source),
+        operands(&[&["INT->REAL", "REAL"]])
+    );
+}
+
+#[spec_test(REQ_IC_analyzer_025)]
+#[test]
+fn apply_when_fold_has_three_inputs_then_written_as_the_calls_it_folds_to() {
+    let source = arithmetic_program("LINT", "d : DINT; e : DINT; l : LINT;", "ADD(d, e, l)");
+    assert_eq!(
+        arithmetic_operands(&source),
+        operands(&[&["DINT->LINT", "LINT"], &["DINT", "DINT"]])
+    );
+}
+
+#[spec_test(REQ_IC_analyzer_026)]
+#[test]
+fn apply_when_arithmetic_operand_is_arithmetic_then_its_result_is_converted() {
+    let source = arithmetic_program("REAL", "i : INT; j : INT; r : REAL;", "(i + j) * r");
+    assert_eq!(
+        arithmetic_operands(&source),
+        operands(&[&["INT->REAL", "REAL"], &["INT", "INT"]])
+    );
 }

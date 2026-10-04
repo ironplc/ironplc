@@ -22,11 +22,13 @@
 //! checks the operands the program wrote. It reports nothing: a comparison
 //! it cannot settle is left as it is.
 
+mod arithmetic;
+
 use std::convert::Infallible;
 
 use ironplc_dsl::common::Library;
 use ironplc_dsl::fold::Fold;
-use ironplc_dsl::textual::{CompareExpr, Expr, Function, ParamAssignmentKind};
+use ironplc_dsl::textual::{CompareExpr, Expr, ExprKind, Function, ParamAssignmentKind};
 use ironplc_dsl::type_id::TypeId;
 use ironplc_parser::options::CompilerOptions;
 
@@ -89,6 +91,18 @@ fn is_comparison_form(function: &Function) -> bool {
 }
 
 impl Fold<Infallible> for ImplicitConversions<'_> {
+    fn fold_expr(&mut self, node: Expr) -> Result<Expr, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        match &mut node.kind {
+            ExprKind::BinaryOp(binary) => {
+                self.record_binary_operands(binary, node.expr_type.as_ref());
+            }
+            ExprKind::Function(_) => self.record_fold_operands(&mut node),
+            _ => {}
+        }
+        Ok(node)
+    }
+
     fn fold_compare_expr(&mut self, node: CompareExpr) -> Result<CompareExpr, Infallible> {
         let mut node = node.recurse_fold(self)?;
         if node.op.is_comparison() {

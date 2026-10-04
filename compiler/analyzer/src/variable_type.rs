@@ -95,7 +95,12 @@ pub(crate) fn of(
             // resolution, which does not exist yet. See issue #1406.
             None
         }
-        SymbolicVariableKind::Deref(deref) => of(&deref.variable, context, scope),
+        // `p^` is the variable `p` references, so it has the referenced
+        // type, not `REF_TO`.
+        SymbolicVariableKind::Deref(deref) => match of(&deref.variable, context, scope)? {
+            SemanticType::Reference { target_type } => Some(*target_type),
+            _ => None,
+        },
     }
 }
 
