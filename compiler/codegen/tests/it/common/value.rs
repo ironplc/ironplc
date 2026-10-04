@@ -85,6 +85,12 @@ impl PartialEq<&str> for Value {
     }
 }
 
+impl PartialEq<String> for Value {
+    fn eq(&self, other: &String) -> bool {
+        matches!(self, Value::Str(s) if s == other)
+    }
+}
+
 /// A Rust type that a typed assertion compares a variable's value against.
 ///
 /// The conversion is checked: a value that the type cannot hold without loss,
@@ -117,7 +123,7 @@ macro_rules! from_int {
     )*};
 }
 
-from_int!(i32, i64, u32, u64);
+from_int!(i32, i64, i128, u8, u32, u64);
 
 impl FromValue for f32 {
     fn from_value(value: &Value, tag: u8) -> Result<Self, String> {

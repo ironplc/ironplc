@@ -1,6 +1,6 @@
 //! End-to-end integration tests for bit string types (BYTE, WORD, DWORD, LWORD).
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 use ironplc_parser::options::CompilerOptions;
 
 // --- BYTE (8-bit unsigned, 0..255) ---
@@ -153,8 +153,8 @@ e2e_i32!(
 fn end_to_end_when_dword_and_then_bitwise() {
     // 0xFFFF0000 AND 0xFF00FF00 = 0xFF000000 (exceeds i32::MAX, so reinterpret as u32).
     let source = "PROGRAM main VAR x : DWORD; y : DWORD; END_VAR x := DWORD#16#FFFF0000; y := x AND DWORD#16#FF00FF00; END_PROGRAM";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as u32, 0xFF00_0000);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<u32>("y"), 0xFF00_0000);
 }
 
 // NOT 0 = 0xFFFFFFFF (as i32: -1).

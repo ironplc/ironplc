@@ -8,9 +8,9 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
-/// Compiles a one-expression LREAL program and returns `result` (var 2).
+/// Compiles a one-expression LREAL program and returns `result`.
 ///
 /// Operands render via `{:?}` (uppercased), so values like `1.5e300` become
 /// the ST exponent literal `1.5E300` instead of 300 digits of integer text.
@@ -30,11 +30,11 @@ END_PROGRAM
         a = format!("{a:?}").to_uppercase(),
         b = format!("{b:?}").to_uppercase(),
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-    bufs.vars[2].as_f64()
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    snapshot.read_as::<f64>("result")
 }
 
-/// Compiles a one-expression REAL program and returns `result` (var 2).
+/// Compiles a one-expression REAL program and returns `result`.
 fn eval_real(a: f32, b: f32, expression: &str) -> f32 {
     let source = format!(
         "PROGRAM main
@@ -49,8 +49,8 @@ END_VAR
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-    bufs.vars[2].as_f32()
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    snapshot.read_as::<f32>("result")
 }
 
 #[test]

@@ -1,6 +1,6 @@
 # Design: End-to-End Test Observation
 
-status: approved
+status: partially implemented
 date: 2026-10-03
 
 ## Overview
@@ -411,14 +411,16 @@ reads are one walk over one set of tables.
 - A path that names an aggregate rather than a leaf fails the test with a
   message that names the path's type.
 
-Until this section is in scope, the 19 aggregate-base reads in
-`end_to_end_struct.rs`, `end_to_end_array_string.rs`,
-`end_to_end_array_string_paren_length.rs` and `end_to_end_wstring.rs` keep
-their slot arithmetic. The scalar results in those files, such as `result`,
-move to names with everything else. The `read_max_length` checks on string
-headers assert representation, and they become behaviour checks instead:
-assign an over-long value and assert that it is truncated to the declared
-length.
+Until this section is in scope, the reads into structures, arrays and
+function-block instances in `end_to_end_adr.rs`, `end_to_end_array_string.rs`,
+`end_to_end_array_string_paren_length.rs`, `end_to_end_string_loop.rs`,
+`end_to_end_struct.rs` and `end_to_end_wstring.rs` keep their slot
+arithmetic. The scalar results in those files, such as `result`, move to
+names with everything else. A test that reads both gets the aggregate's
+buffers from `Snapshot::buffers`, which goes with the slot arithmetic. The
+`read_max_length` checks on string headers assert representation, and they
+become behaviour checks instead: assign an over-long value and assert that
+it is truncated to the declared length.
 
 ## 6. Tests that are not end-to-end tests
 
@@ -429,7 +431,8 @@ name through `vm_var_index(&container, name)`:
 | Test | Subject | Destination |
 |---|---|---|
 | `end_to_end_write_variable_raw.rs` | The embedder's raw read/write API | `vm_api_write_variable_raw.rs` |
-| `vm_when_uptime_enabled_then_globals_shift_by_two` | That the uptime globals take the first two slots | A `compile_*` test |
+| `vm_when_uptime_enabled_then_globals_shift_by_two` | That the uptime globals take the first two slots | `compile_system_uptime.rs` |
+| The header and byte checks in `end_to_end_wstring.rs` | That a WSTRING is stored wide, as UTF-16LE (ADR-0016) | `compile_wstring.rs`, which checks the emitted `STR_INIT` and constants |
 
 ## 7. Enforcement
 
@@ -483,6 +486,9 @@ Implementation order. Each step leaves the suite green:
    §6 moves (REQ-OBS-codegen-040 to 042, 046, 047).
 4. After the Variable Inspection Model steps 1–3, add paths (§5), delete the
    slot-keyed helpers, and add the guard test (§7).
+
+Steps 1 to 3 are implemented. Step 4 waits on the Variable Inspection
+Model.
 
 ## 9. Amendments to other documents
 

@@ -1,6 +1,6 @@
 //! End-to-end integration tests for user-defined function calls.
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 use ironplc_parser::options::CompilerOptions;
 
 e2e_i32!(
@@ -133,12 +133,12 @@ PROGRAM main
 END_PROGRAM
 ";
 
-    let (_c1, bufs1) = parse_and_run(source_without_unused, &CompilerOptions::default());
-    let (_c2, bufs2) = parse_and_run(source_with_unused, &CompilerOptions::default());
+    let snapshot1 = Snapshot::run(source_without_unused, &CompilerOptions::default());
+    let snapshot2 = Snapshot::run(source_with_unused, &CompilerOptions::default());
 
     // Both should produce 7.0
-    assert_eq!(bufs1.vars[0].as_f32(), 7.0);
-    assert_eq!(bufs2.vars[0].as_f32(), 7.0);
+    assert_eq!(snapshot1.read_as::<f32>("result"), 7.0);
+    assert_eq!(snapshot2.read_as::<f32>("result"), 7.0);
 }
 
 e2e_i32!(

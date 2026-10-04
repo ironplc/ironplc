@@ -3,7 +3,7 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 /// BCD_TO_INT decodes a packed-BCD bit string into its decimal value. Kept as
 /// a parametrized table rather than a property test (no verified Rust BCD
@@ -31,8 +31,8 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), expected);
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i32>("result"), expected);
 }
 
 /// INT_TO_BCD encodes a decimal value into a packed-BCD bit string. Each case
@@ -58,8 +58,8 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), expected);
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i32>("result"), expected);
 }
 
 #[test]
@@ -76,8 +76,8 @@ PROGRAM main
   result := BCD_TO_INT(bcd_val);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let result = bufs.vars[2].as_i32() as u8;
+    let result = snapshot.read_as::<u8>("result");
     assert_eq!(result, 73, "expected 73, got {result}");
 }

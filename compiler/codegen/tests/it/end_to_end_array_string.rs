@@ -3,7 +3,7 @@
 use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, read_string};
+use crate::common::{parse_and_run, read_string, Snapshot};
 
 #[test]
 fn array_of_string_when_assign_then_stores_value() {
@@ -44,16 +44,9 @@ PROGRAM main
   result := arr[2];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // arr is var 0, result is var 1.
-    // arr occupies 3 * (4 + 10) = 42 bytes in data region.
-    // result starts at offset 42.
-    let arr_base = bufs.vars[0].as_i32() as usize;
-    let stride = STRING_HEADER_BYTES + 10;
-    let result_offset = arr_base + 3 * stride;
-
-    assert_eq!(read_string(&bufs.data_region, result_offset), "test");
+    assert_eq!(snapshot.read("result"), "test");
 }
 
 #[test]

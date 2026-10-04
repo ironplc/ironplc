@@ -5,7 +5,7 @@
 //! overflow/wrapping, sign/zero extension, arithmetic, comparison,
 //! and unsigned semantics for each type.
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 use ironplc_parser::options::CompilerOptions;
 
 // --- SINT (8-bit signed, -128..127) ---
@@ -209,19 +209,18 @@ e2e_i32!(
 #[test]
 fn end_to_end_when_udint_division_then_unsigned() {
     // 3B / 2 = 1.5B as unsigned (would be wrong if signed: 3B as i32 is negative).
-    // Uses raw parse_and_run so the assertion can reinterpret the slot as u32.
     let source =
         "PROGRAM main VAR x : UDINT; y : UDINT; END_VAR x := 3000000000; y := x / 2; END_PROGRAM";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as u32, 1_500_000_000);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<u32>("y"), 1_500_000_000);
 }
 
 #[test]
 fn end_to_end_when_udint_modulo_then_unsigned() {
     // 3B+1 MOD 3B = 1 as unsigned (would be wrong if signed).
     let source = "PROGRAM main VAR x : UDINT; y : UDINT; END_VAR x := 3000000001; y := x MOD 3000000000; END_PROGRAM";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as u32, 1);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<u32>("y"), 1);
 }
 
 // 2B < 3B is true unsigned (3B as i32 is negative, so signed LT would say false).
