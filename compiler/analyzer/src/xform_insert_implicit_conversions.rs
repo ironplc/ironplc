@@ -25,6 +25,7 @@
 mod argument;
 mod arithmetic;
 mod assignment;
+mod literal;
 
 use std::convert::Infallible;
 
@@ -32,7 +33,7 @@ use ironplc_dsl::common::Library;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::{
-    Assignment, CompareExpr, Expr, ExprKind, Function, ParamAssignmentKind,
+    Assignment, CompareExpr, Expr, ExprKind, FbCall, For, Function, ParamAssignmentKind,
 };
 use ironplc_dsl::type_id::TypeId;
 use ironplc_parser::options::CompilerOptions;
@@ -115,6 +116,21 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
     fn fold_assignment(&mut self, node: Assignment) -> Result<Assignment, Infallible> {
         let mut node = node.recurse_fold(self)?;
         self.record_assignment_value(&mut node);
+        if let Some(at) = self.assigned_at(&node.target, node.deref) {
+            self.type_literals(&mut node.value, at);
+        }
+        Ok(node)
+    }
+
+    fn fold_for(&mut self, node: For) -> Result<For, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.type_for_literals(&mut node);
+        Ok(node)
+    }
+
+    fn fold_fb_call(&mut self, node: FbCall) -> Result<FbCall, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.type_fb_call_literals(&mut node);
         Ok(node)
     }
 

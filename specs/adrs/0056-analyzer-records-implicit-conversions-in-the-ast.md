@@ -153,3 +153,11 @@ real literal is a `REAL` converted to an `LREAL` parameter. Correcting either
 is a change to the pass. Function block and method arguments are not recorded
 yet. The decision above is unchanged.
 
+### Literals (postscript)
+
+The pass also gives an untyped literal the type its statement context compiles
+it at: an assignment's target, a `FOR` loop's control variable, a function
+block input's field. Codegen still passes a literal's type down; it reads the
+recorded type only once every context records one. The decision above is
+unchanged.
+

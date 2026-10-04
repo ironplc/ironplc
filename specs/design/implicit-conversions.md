@@ -93,7 +93,7 @@ An assignment stores its value at the type of its target. The pass records the c
 
 **REQ-IC-analyzer-032** A value of the target's operation width is not converted, whatever its signedness: in `i := s` on an `INT` and a `SINT` the `SINT` is not wrapped.
 
-**REQ-IC-analyzer-033** A value computed at the target's width is not converted: the `-d` of `l := -d` and an untyped literal are left as they are.
+**REQ-IC-analyzer-033** A value computed at the target's width is not converted: the `-d` of `l := -d` is left as it is, and an untyped literal takes the target's type (see Literals).
 
 **REQ-IC-analyzer-034** An array element or structure field target converts the value to the element's or field's type.
 
@@ -122,6 +122,24 @@ A call to a user-defined function passes each input by value at the operation wi
 **REQ-IC-codegen-001** An argument narrower than its parameter is widened by its own signedness: a `UDINT` above `i32::MAX` passed to an `LINT` parameter keeps its value.
 
 The arguments of a function block call and of a method call are not recorded yet: codegen compiles them at the field's or parameter's operation type, and a variable or an arithmetic result converts itself to it, as it does for any context that records nothing.
+
+### Literals
+
+An untyped literal has a generic type (`ANY_INT`) until a context gives it one (ADR-0028). Codegen gives it one top-down: a statement passes the type it stores at into the expression, and that type flows through a negation, parentheses and an arithmetic operation whose own type is generic until it reaches the literal. The pass records the type each literal reaches. An arithmetic operation of literals alone is folded to one literal before the pass runs. A literal operand of an arithmetic operation of a concrete type takes that type instead (`d + -1`), and a comparison operand or a function argument is typed by those constructs above.
+
+**REQ-IC-analyzer-050** An untyped literal assigned to a target takes the type the target is stored at: the `1` of `l := 1` on an `LINT` is an `LINT`.
+
+**REQ-IC-analyzer-051** The type of the context flows through a negation and parentheses: the `1` of `l := -(1)` is an `LINT`.
+
+**REQ-IC-analyzer-053** The bounds and step of a `FOR` loop take the type of its control variable.
+
+**REQ-IC-analyzer-054** A literal input of a function block call takes the type of the field it is stored in for a user-defined block, and `DINT`, the default slot type, for a standard one, which is how codegen stores it.
+
+**REQ-IC-analyzer-055** A literal assigned through a dereference takes `DINT`, the default slot type codegen stores it at.
+
+**REQ-IC-analyzer-056** A literal assigned to a subrange target takes the subrange's base type.
+
+Literals in the arguments of a standard function or a method, in a comparison of two literals, in a condition or a subscript, and in a declaration's initializer are not typed yet, and codegen still passes their type down.
 
 ## Codegen
 
