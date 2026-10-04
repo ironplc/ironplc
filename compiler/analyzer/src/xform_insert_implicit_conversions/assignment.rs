@@ -48,7 +48,7 @@ impl ImplicitConversions<'_> {
 
     /// The elementary type the target `target` is stored as, and its
     /// operation width, when it is numeric.
-    fn stored_as(&self, target: &Variable) -> Option<(TypeId, OperationWidth)> {
+    pub(super) fn stored_as(&self, target: &Variable) -> Option<(TypeId, OperationWidth)> {
         let Variable::Symbolic(kind) = target else {
             return None;
         };
