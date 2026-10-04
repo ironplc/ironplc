@@ -26,11 +26,11 @@ use crate::{
     rule_method_call_declared, rule_mixed_located_var_declarations, rule_no_top_level_var_global,
     rule_operator_operand_type_check, rule_pou_hierarchy, rule_program_task_definition_exists,
     rule_program_var_hides_global, rule_range_limits, rule_real_literal_range, rule_ref_to,
-    rule_stdlib_type_redefinition, rule_string_encoding_compat, rule_string_length_range,
-    rule_string_literal_char_range, rule_struct_initializer_expression_allowed,
-    rule_task_names_unique, rule_temporal_literal_range, rule_unsupported_extension,
-    rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
-    rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
+    rule_self_reference_context, rule_stdlib_type_redefinition, rule_string_encoding_compat,
+    rule_string_length_range, rule_string_literal_char_range,
+    rule_struct_initializer_expression_allowed, rule_task_names_unique,
+    rule_temporal_literal_range, rule_unsupported_extension, rule_use_declared_enumerated_value,
+    rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
     semantic_context::SemanticContext,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
@@ -389,6 +389,7 @@ pub(crate) fn semantic(
         rule_no_top_level_var_global::apply,
         rule_operator_operand_type_check::apply,
         rule_task_names_unique::apply,
+        rule_self_reference_context::apply,
         rule_stdlib_type_redefinition::apply,
         rule_string_encoding_compat::apply,
         rule_string_length_range::apply,
@@ -704,27 +705,28 @@ END_FUNCTION_BLOCK";
     }
 
     // ---------------------------------------------------------------------
-    // THIS^ / SUPER^ (parsed, not analyzed or executed).
+    // THIS^ / SUPER^.
     // ---------------------------------------------------------------------
 
-    /// A program using `THIS^` is rejected, and P9999 is among the reasons.
-    ///
-    /// Deliberately asserts presence rather than an exact diagnostic set:
-    /// several passes meet the construct and each says so, and pinning the
-    /// set would turn every later improvement into a test edit. What must
-    /// hold is that no pass quietly accepts it.
-    #[rstest::rstest]
-    #[case::this_field_write("    THIS^.count := 1;")]
-    #[case::super_field_read("    count := SUPER^.count;")]
-    #[case::this_method_call("    THIS^.Start();")]
-    fn analyze_when_self_ref_then_rejected_with_not_implemented(#[case] body: &str) {
+    /// Diagnostic codes of the whole analysis of `body`, written in a
+    /// method of `FB_Motor`, which `EXTENDS` `FB_Base`.
+    fn self_ref_codes(body: &str) -> Vec<String> {
         let options = CompilerOptions {
             allow_fb_inheritance: true,
             ..CompilerOptions::default()
         };
         let program = format!(
             "
-FUNCTION_BLOCK FB_Motor
+FUNCTION_BLOCK FB_Base
+VAR
+    level : INT;
+END_VAR
+METHOD Stop
+    level := 0;
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
 VAR
     count : INT;
 END_VAR
@@ -732,22 +734,42 @@ METHOD Start
     count := 1;
 END_METHOD
 METHOD Run
+VAR_INPUT
+    count : INT;
+END_VAR
 {body}
 END_METHOD
 END_FUNCTION_BLOCK"
         );
         let lib = parse_program(&program, &FileId::default(), &options).unwrap();
-        let (_library, context) = analyze(&[&lib], &options).unwrap();
+        match analyze(&[&lib], &options) {
+            Ok((_library, context)) => context
+                .diagnostics()
+                .iter()
+                .map(|d| d.code.clone())
+                .collect(),
+            Err(errors) => errors.iter().map(|d| d.code.clone()).collect(),
+        }
+    }
 
-        let codes: Vec<&str> = context
-            .diagnostics()
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect();
-        assert!(
-            codes.contains(&"P9999"),
-            "expected P9999 among diagnostics, got: {codes:?}"
-        );
+    /// Member access and method calls through `THIS^`/`SUPER^` are
+    /// analyzed: `THIS^.count` is the block's field even where the
+    /// parameter `count` shadows it, and `SUPER^` reaches the base.
+    #[rstest::rstest]
+    #[case::this_field_write("    THIS^.count := count;")]
+    #[case::this_inherited_field("    THIS^.level := 2;")]
+    #[case::super_field_read("    THIS^.count := SUPER^.level;")]
+    #[case::this_method_call("    THIS^.Start();")]
+    #[case::super_method_call("    SUPER^.Stop();")]
+    fn analyze_when_self_ref_member_then_ok(#[case] body: &str) {
+        assert_eq!(Vec::<String>::new(), self_ref_codes(body));
+    }
+
+    /// A bare `THIS^`, used as a value on its own, is not analyzed yet.
+    #[test]
+    fn analyze_when_bare_self_ref_then_not_implemented() {
+        let codes = self_ref_codes("    THIS^ := THIS^;");
+        assert!(codes.contains(&"P9999".to_string()), "{codes:?}");
     }
 
     /// The same function block without `THIS^` analyzes cleanly -- the new
