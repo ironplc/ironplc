@@ -92,15 +92,33 @@ fn compile_intrinsic(
         Intrinsic::IntToBcd => compile_int_to_bcd(emitter, ctx, func, op_type),
         // SIZEOF operator (extension)
         Intrinsic::Sizeof => compile_sizeof(emitter, ctx, func),
-        Intrinsic::String(StringFunction::Len) => compile_len(emitter, ctx, func),
-        Intrinsic::String(StringFunction::Find) => compile_find(emitter, ctx, func),
-        Intrinsic::String(StringFunction::Replace) => compile_replace(emitter, ctx, func),
-        Intrinsic::String(StringFunction::Insert) => compile_insert(emitter, ctx, func),
-        Intrinsic::String(StringFunction::Delete) => compile_delete(emitter, ctx, func),
-        Intrinsic::String(StringFunction::Left) => compile_left(emitter, ctx, func),
-        Intrinsic::String(StringFunction::Right) => compile_right(emitter, ctx, func),
-        Intrinsic::String(StringFunction::Mid) => compile_mid(emitter, ctx, func),
-        Intrinsic::String(StringFunction::Concat) => compile_concat(emitter, ctx, func),
+        Intrinsic::String(StringFunction::Len) => {
+            compile_len(emitter, ctx, fixed_args(func)?, &func.name.span())
+        }
+        Intrinsic::String(StringFunction::Find) => {
+            compile_find(emitter, ctx, fixed_args(func)?, &func.name.span())
+        }
+        Intrinsic::String(StringFunction::Replace) => {
+            compile_replace(emitter, ctx, fixed_args(func)?, &func.name.span())
+        }
+        Intrinsic::String(StringFunction::Insert) => {
+            compile_insert(emitter, ctx, fixed_args(func)?, &func.name.span())
+        }
+        Intrinsic::String(StringFunction::Delete) => {
+            compile_delete(emitter, ctx, fixed_args(func)?, &func.name.span())
+        }
+        Intrinsic::String(StringFunction::Left) => {
+            compile_left(emitter, ctx, fixed_args(func)?, &func.name.span())
+        }
+        Intrinsic::String(StringFunction::Right) => {
+            compile_right(emitter, ctx, fixed_args(func)?, &func.name.span())
+        }
+        Intrinsic::String(StringFunction::Mid) => {
+            compile_mid(emitter, ctx, fixed_args(func)?, &func.name.span())
+        }
+        Intrinsic::String(StringFunction::Concat) => {
+            compile_concat(emitter, ctx, fixed_args(func)?, &func.name.span())
+        }
         Intrinsic::Conversion { source, target } => {
             compile_conversion(emitter, ctx, func, &source, &target)
         }
