@@ -9,7 +9,9 @@ This design adds one stage between semantic analysis and code generation. The
 stage, **lowering**, turns an analyzed `Library` into a **lowered program**: a
 tree in which every decision the language makes has already been made and every
 name already refers to the thing it names. A code generator (a **backend**)
-consumes the lowered program and nothing else.
+consumes the lowered program and nothing else. The lowered program is written
+in IronPLC's **intermediate representation (IR)**, which this design defines
+(see [Names](#names)).
 
 Two things motivate it.
 
@@ -214,6 +216,8 @@ sequential function charts and the graphical languages can be lowered later.
   [Meaning of operations](#310-meaning-of-operations)).
 - Showing the power flow of a ladder diagram, or the value on each wire of a
   function block diagram, while the program runs.
+- Reporting an error in `ENO` rather than trapping (see
+  [EN and ENO](#en-and-eno)).
 
 ---
 
@@ -228,29 +232,29 @@ parse ──▶ analyze ──────────▶ gate ──▶ lower �
 
 Lowering is two new crates:
 
-- **`ironplc-lowered`** is the lowered program: its data model, the
+- **`ironplc-ir`** is the IR: its data model, the
   constructors that check it ([Invariants by construction](#39-invariants-by-construction)),
   the `Intrinsic` and `StandardBlock` enums, and the expansions a backend may
-  call instead of implementing a node (REQ-LOW-lowered-068,
-  REQ-LOW-lowered-077). It depends only on `ironplc-dsl`, for ids, source
+  call instead of implementing a node (REQ-LOW-ir-068,
+  REQ-LOW-ir-077). It depends only on `ironplc-dsl`, for ids, source
   spans and diagnostics, and re-exports what a backend needs from it.
-- **`ironplc-lowering`** is the pass that builds a lowered program from a clean
-  analysis.
+- **`ironplc-lowering`** is the pass that builds a lowered program, a program
+  in the IR, from a clean analysis.
 
 | Crate | Depends on |
 |---|---|
-| `ironplc-lowered` | `ironplc-dsl` |
-| `ironplc-analyzer` | `ironplc-dsl`, `ironplc-lowered` (for `Intrinsic`), and its dependencies today |
-| `ironplc-lowering` | `ironplc-dsl`, `ironplc-analyzer`, `ironplc-lowered` |
-| A backend | `ironplc-lowered` |
+| `ironplc-ir` | `ironplc-dsl` |
+| `ironplc-analyzer` | `ironplc-dsl`, `ironplc-ir` (for `Intrinsic`), and its dependencies today |
+| `ironplc-lowering` | `ironplc-dsl`, `ironplc-analyzer`, `ironplc-ir` |
+| A backend | `ironplc-ir` |
 
-The analyzer depends on `ironplc-lowered` because each standard function
+The analyzer depends on `ironplc-ir` because each standard function
 signature names its `Intrinsic` (REQ-LOW-analyzer-070). The enum therefore
 sits below the analyzer, where both the analyzer and every backend can name
 it, and no stage after the analyzer matches a function's name.
 
 Rust lets a crate name only its direct dependencies. A backend whose manifest
-lists `ironplc-lowered` alone cannot reach `SemanticContext`,
+lists `ironplc-ir` alone cannot reach `SemanticContext`,
 `TypeEnvironment`, any resolver or the AST, however convenient that would be
 at a given call site, and does not compile the analyzer at all. The lowered
 program carries its own type table (see
@@ -376,7 +380,7 @@ would let a `PouId` be passed where a `VarId` is expected, and the compiler
 would accept it; that mix-up is what separate ids exist to prevent. `TypeId`
 is already a newtype.
 
-**REQ-LOW-lowered-019** `VarId`, `PouId`, `FieldIdx`, `LoopId` and `TypeId` are
+**REQ-LOW-ir-019** `VarId`, `PouId`, `FieldIdx`, `LoopId` and `TypeId` are
 distinct types, so a value of one cannot be used where another is expected.
 
 **REQ-LOW-lowering-020** Two variables with the same name in different scopes
@@ -873,7 +877,7 @@ P9999, as it is today.
 `FOR` whose bound is the largest value of the control variable's type does not
 end. Both are today's behaviour, recorded rather than changed.
 
-**REQ-LOW-lowered-068** `ironplc-lowered` provides the expansion of a `For`
+**REQ-LOW-ir-068** `ironplc-ir` provides the expansion of a `For`
 into an `Assign` and a `Loop` with the same meaning, so a backend with no use
 for the bounds implements `For` by expanding it.
 
@@ -976,19 +980,44 @@ these is resolved statically, as the first phase of
 A property is sugar. Reading `inst.P` calls its `GET` accessor, and writing
 `inst.P := v` calls its `SET` accessor, each lowered as a method call on
 `inst`, so the lowered program has no property node. A call through an
-interface is open question 4.
+interface is open question 2.
 
 **REQ-LOW-lowering-076** The first parameter of a method is its instance
 parameter, and the first argument of every call to a method is a `Ref` to the
 receiver's place.
 
 `Intrinsic` is an enum with one variant per operation the compiler implements
-itself: the standard functions of IEC 61131-3 and the extensions ADR-0042
-admits. It is defined in `ironplc-lowered`, below the analyzer (see
+itself, at each set of operand types it takes: the standard functions of
+IEC 61131-3 and the extensions ADR-0042 admits. It is defined in `ironplc-ir`, below the analyzer (see
 [Position in the Pipeline](#1-position-in-the-pipeline)). The analyzer owns the
 table of standard function signatures, and each `FunctionSignature` for a
 standard function names its `Intrinsic`. Lowering copies that identity into
 the call. No stage after the analyzer matches a function's name.
+
+Each variant names one operation at one set of operand types: `SqrtF32` and
+`SqrtF64`, not `Sqrt` with the type left to the call, and `ConcatString` and
+`ConcatWString` for the two encodings. A combination the language does not
+allow, such as the square root of an integer, therefore cannot be written. That
+is Goal 2 applied to intrinsics, and the choice
+[ADR-0004](../adrs/0004-separate-type-families-over-polymorphic-opcodes.md)
+made for the VM's opcodes. With the exhaustive match of REQ-LOW-codegen-074, a
+backend that compiles handles every combination. The analyzer resolves a
+generic function such as `ADD` on `ANY_NUM` to one type before lowering sees
+it.
+
+`StandardBlock` follows the same rule: `CTU_INT` and `CTU_LINT` are different
+variants. Today codegen sends `CTU_INT`, `CTU_DINT`, `CTU_UDINT`, `CTU_LINT`
+and `CTU_ULINT` to one VM intrinsic, which reads and writes `PV` and `CV` as
+signed 32-bit values (`compile_call.rs`, `vm/src/intrinsic.rs`). With a
+variant each, a backend has to say how it implements `CtuLint`, and cannot
+inherit `CtuInt`'s width by a shared name match.
+
+**REQ-LOW-ir-145** Each `Intrinsic` variant names one operation at one set of
+operand types, and a call's arguments have exactly the types its variant
+names.
+
+**REQ-LOW-ir-146** Each `StandardBlock` variant names one function block at one
+set of field types.
 
 **REQ-LOW-analyzer-070** Every standard function signature in the
 `FunctionEnvironment` identifies its `Intrinsic`.
@@ -1019,14 +1048,14 @@ does is stated today only by the bytecode VM's own code (`vm/src/intrinsic.rs`):
 REQ-LOW-codegen-089 specifies the standard functions, not the blocks. A second
 backend would need a second implementation of all ten, which is the
 duplication this design exists to remove. So each standard block has an
-expansion in `ironplc-lowered`: lowered statements over the fields of its
+expansion in `ironplc-ir`: lowered statements over the fields of its
 instance, with its hidden state among them as synthesized fields (see
 [Synthesized state](#synthesized-state)), and `RoundTime`. The expansion is
 the block's meaning. A backend implements `Block::Standard` natively, as the
 bytecode VM keeps doing for speed, or by calling the expansion, as an LLVM
 backend would, compiling it to native code like a user block.
 
-**REQ-LOW-lowered-077** `ironplc-lowered` provides, for every
+**REQ-LOW-ir-077** `ironplc-ir` provides, for every
 `StandardBlock`, an expansion into lowered statements over the block's
 instance, so a backend can implement `Block::Standard` by expanding it.
 
@@ -1037,23 +1066,23 @@ leaves, for the same inputs and round times.
 ### 3.9 Invariants by construction
 
 The fields of `Expr`, `StrExpr`, `Place` and `Stmt` are private to
-`ironplc-lowered`. Nodes are built through its constructors, which check the
+`ironplc-ir`. Nodes are built through its constructors, which check the
 requirements above and return an internal error when one is violated. The
 constructors are public, so `ironplc-lowering` and the target-neutral passes
 of [Optimization](#10-optimization) can call them, but they are the only way
 to build a node.
 
-**REQ-LOW-lowered-080** A lowered node can be constructed only through the
-constructors of `ironplc-lowered`.
+**REQ-LOW-ir-080** A lowered node can be constructed only through the
+constructors of `ironplc-ir`.
 
-**REQ-LOW-lowered-081** A constructor that receives operands violating a
+**REQ-LOW-ir-081** A constructor that receives operands violating a
 requirement of this section returns a P9998 diagnostic that names the
 constructor; it does not build the node.
 
 This puts the invariants in one place, upstream of every backend. A backend
 relies on them without re-checking, which is what lets its matches be total.
 
-**REQ-LOW-lowering-082** `ironplc-lowered`, `ironplc-lowering` and every backend crate deny
+**REQ-LOW-lowering-082** `ironplc-ir`, `ironplc-lowering` and every backend crate deny
 `clippy::wildcard_enum_match_arm`, so a match over a lowered enum names every
 variant.
 
@@ -1145,7 +1174,7 @@ a null dereference, a subscript out of bounds, a string that does not convert
 or a watchdog timeout, and a backend reports each under the problem code the
 bytecode VM gives it (V4001 to V4006).
 
-What remains visible after a trap is not settled; see open question 6.
+What remains visible after a trap is not settled; see open question 3.
 
 The program instances of a round run one at a time, each to completion, as the
 bytecode VM's cooperative scheduler runs them (`vm/src/scheduler.rs`). The
@@ -1246,10 +1275,25 @@ operation's without one is reported as P9998.
 No analyzer rule restates a decision in order to predict its outcome. A check
 that depends on a decision reads what the analyzer recorded, and so runs after
 the pass that records it. That is what removes the type push-down from
-`rule_constant_range`. Which of that rule's checks run after the recording
-pass, and which keep checking the program as written, is an
-[open question](#open-questions): ADR-0056 found that running the pass before
-the rules changed what they saw.
+`rule_constant_range`.
+
+ADR-0056 is implemented as it stands, including its order: the recording pass
+runs after the semantic rules, so a rule sees the program as written. ADR-0056
+tried the other order and lost a diagnostic. In `DINT#300 < s` with
+`s : SINT`, `rule_constant_range` checks `DINT#300` against the type of `s`,
+and once the pass had wrapped `s` in a conversion to `DINT` the rule saw
+`DINT` and stopped reporting P2026. So `rule_constant_range` is split by what
+each check reads:
+
+- **A check of the type a literal ends up with** reads the type the recording
+  pass recorded, and runs after that pass. `x := 300` with `x : USINT` is one.
+- **A check against the operand types as written** runs before the pass, with
+  the other semantic rules. `DINT#300 < s` is one.
+
+Neither predicts a decision.
+
+**REQ-LOW-analyzer-093** Analysis reports P2026 both for `x := 300` with
+`x : USINT` and for `DINT#300 < s` with `s : SINT`.
 
 The user-facing problems codegen raises today fall into three groups:
 
@@ -1294,7 +1338,7 @@ implements it.
 | `SIZEOF(x)` | A `Const`: the bytes of `x`'s storage width, or the element bytes times the element count for an array, as codegen computes it today (`compile_sizeof`) |
 
 `FOR` is not desugared; it is the `For` node, whose expansion
-`ironplc-lowered` provides (REQ-LOW-lowered-068).
+`ironplc-ir` provides (REQ-LOW-ir-068).
 
 **REQ-LOW-lowering-100** Reading a bit or a partial access of any place lowers
 to the same shift and mask over a `Read` of that place, whatever the shape of
@@ -1418,9 +1462,9 @@ Nothing is deleted before its last reader has moved to the lowered program.
 |---|---|---|
 | `SemanticContext` | Keep | None. It is lowering's input. |
 | `TypeEnvironment`, `TypeId` | Keep | Lowering builds the lowered program's type table from it. |
-| `IntermediateType` | Keep | Lowering reads it and does not carry `IntermediateStructField::offset`, `slot_count` or the size of a reference into the lowered program. `slot_count` moves to the bytecode backend: it sizes strings with the container's `string_region_size`, which is VM layout. |
-| `xform_insert_implicit_conversions` | Keep and extend | Records every implicit conversion and the type of every untyped literal (ADR-0056), not only those of a comparison. |
-| `rule_constant_range` | Keep | Reads the recorded literal types instead of predicting them. |
+| `IntermediateType` | Keep, renamed | Renamed `SemanticType` (see [Names](#names)). Lowering reads it and does not carry `IntermediateStructField::offset`, `slot_count` or the size of a reference into the lowered program. `slot_count` moves to the bytecode backend: it sizes strings with the container's `string_region_size`, which is VM layout. |
+| `xform_insert_implicit_conversions` | Keep and extend | Records every implicit conversion and the type of every untyped literal (ADR-0056), not only those of a comparison. It is the recording pass (see [Names](#names)). |
+| `rule_constant_range` | Keep, split | Its checks of the type a literal ends up with read the recorded type and run after the recording pass; its checks against the operand types as written run before it, as today (see [Decisions](#4-decisions)). |
 | `intermediates/` | Keep | `stdlib_function.rs` gains the `Intrinsic` identity. |
 | `FunctionEnvironment` | Keep | Signatures of standard functions name their `Intrinsic`. |
 | `SymbolEnvironment` | Keep | Supplies the declarations `VarId`s are allocated from. |
@@ -1440,7 +1484,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 
 | Type | Disposition |
 |---|---|
-| `OpWidth`, `Signedness`, `OpType` | Move to `ironplc-lowered` as `ScalarType`. |
+| `OpWidth`, `Signedness`, `OpType` | Move to `ironplc-ir` as `ScalarType`. |
 | `VarTypeInfo` | Dissolves. Operation type is on the expression; storage width comes from the place's type. |
 | `ArrayVarInfo`, `StructVarInfo`, `StructFieldInfo`, `StructArrayVarInfo`, `FbInstanceInfo`, `UserFunctionInfo`, `UserFbTypeInfo`, `UserMethodInfo`, `StringVarInfo` | Keep in the bytecode backend's layout, without their type fields (`StructFieldInfo::op_type`, `field_op_types`, `param_op_types`, `element_var_type_info`). |
 | `ResolvedAccess` | Keep in the bytecode backend. It is that backend's addressing mode: the result of asking its layout how to reach a `Place`. |
@@ -1451,6 +1495,37 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `ClassifiedCmp` | Keep in the bytecode backend. The fused compare and branch is a VM optimization. |
 | `for_loop_trunc_can_be_elided`, the fused `FOR` head | Keep in the bytecode backend. They read the bounds of a `For` node. |
 | `Emitter`, `optimize/`, `stack_balance.rs`, `call_graph.rs`, `PoolConstant` | Keep, unchanged. |
+
+### Names
+
+The analyzer calls its description of a type `IntermediateType`
+(`intermediate_type.rs`), with `IntermediateStructField`,
+`IntermediateFunctionParameter`, `IntermediateResult` and the builders in
+`intermediates/`. The name says where the type sits, between parsing and code
+generation, rather than what it is. It also takes the word this design needs:
+the usual name for what lowering produces is an intermediate representation.
+
+These are renamed in one mechanical prefactor, before the IR exists.
+`IntermediateType` becomes `SemanticType`, and its siblings, its module and
+`intermediates/` follow. The name is `SemanticType` rather than `TypeRepr`.
+Compilers distinguish a type as it is written from a type as analysis
+understands it: Swift calls the first a `TypeRepr` and the second a `Type`,
+and rustc separates `hir::Ty`, as written, from `ty::Ty`. `IntermediateType`
+is the second kind, so `TypeRepr` would name the wrong one.
+
+With the word free:
+
+- The **IR** is the intermediate representation this design defines, in the
+  crate `ironplc-ir`.
+- A **lowered program** is a program in the IR: the output of **lowering**,
+  the pass in the crate `ironplc-lowering`.
+- A **backend** consumes a lowered program and nothing else.
+- The analyzer transform that ADR-0056 and the doc comment of
+  `xform_insert_implicit_conversions` call "a lowering pass" records
+  decisions rather than lowering anything, so it is the **recording pass**.
+
+The [glossary](../steering/glossary.md) gains these terms when this design is
+approved. The area code of its requirements stays `LOW`.
 
 ## 9. Testing
 
@@ -1477,7 +1552,7 @@ asserted by walking the analyzed `Library` of a corpus of programs: no literal
 is left at a generic category, and no operand is left unconverted.
 
 **Constructors are tested directly.** Each invariant a constructor checks
-(REQ-LOW-lowered-081) has a test that the constructor refuses the violating
+(REQ-LOW-ir-081) has a test that the constructor refuses the violating
 operands.
 
 **Operations are tested end to end.** Each requirement in
@@ -1561,7 +1636,7 @@ could implement it directly.
 Two constraints follow for whoever adds one:
 
 - **A vector node must not burden every backend** (Goal 4). It comes with an
-  expansion, in `ironplc-lowered`, back to the scalar `For` it replaced, so a
+  expansion, in `ironplc-ir`, back to the scalar `For` it replaced, so a
   backend without vector instructions (the bytecode VM today) calls the
   expansion and implements nothing new.
 - **The loop must stay recognizable.** A `For` keeps its control variable,
@@ -1692,9 +1767,19 @@ enable output `ENO`, and structured text may name them as arguments. A call
 with `EN` lowers to an `If` on `EN` around the call, and an assignment of
 `ENO`.
 
-IEC 61131-3 sets `ENO` to `FALSE` when the function meets an error, while
-[Meaning of operations](#310-meaning-of-operations) says such an operation
-traps. Which applies is open question 7.
+`ENO` follows `EN`, and an error in the call traps as it would without `EN`.
+IEC 61131-3 sets `ENO` to `FALSE` when the function meets an error, and a
+program can then route around the failed block. Here such an error traps
+([Meaning of operations](#310-meaning-of-operations)) and ends the round, so
+`ENO` is never `FALSE` because of one. This needs nothing new: every backend
+already traps, and a call means the same whether or not it wires `ENO`.
+Reporting an error in `ENO` instead would need `Intrinsic` variants that
+return an error beside their result, a stated result for each error (what
+`DIV` gives for a zero divisor), and a call whose meaning changes with whether
+`EN` is wired. It is out of scope (see [Scope](#scope)).
+
+**REQ-LOW-lowering-160** A call with `EN` lowers to an `If` on `EN` around the
+call; `ENO` is `TRUE` after the call runs and `FALSE` when `EN` is `FALSE`.
 
 ### Debugging
 
@@ -1712,6 +1797,7 @@ debugging. That is out of scope (see [Scope](#scope)).
 
 This section constrains the order of work; it is not a work breakdown.
 
+- The renames of [Names](#names) come first, as one mechanical prefactor.
 - The analyzer records each decision in the first table of
   [Decisions](#4-decisions), and each check only codegen makes moves to an
   analyzer rule, before lowering covers a construct that depends on it. This
@@ -1809,6 +1895,10 @@ decide. This design shares all three and builds on ADR-0056:
 - The `ImplicitConversion` nodes and the recorded literal types stay in the
   analyzed tree, so the language server shows them from there, as ADR-0056
   intends.
+- ADR-0056's order is kept: the recording pass runs after the semantic rules,
+  and `rule_constant_range` is split around it (see [Decisions](#4-decisions)).
+- ADR-0056 calls the pass "a lowering pass"; it is renamed the recording pass
+  (see [Names](#names)).
 
 The ADR that records this design's decisions amends ADR-0056 to say so; it
 does not supersede it.
@@ -1816,7 +1906,7 @@ does not supersede it.
 ## Decisions to Record
 
 The choice among the alternatives above is a decision, and belongs in ADRs
-that this document then cites. Six decisions are separable:
+that this document then cites. Eight decisions are separable:
 
 1. Code generation consumes a separate, target-neutral lowered program.
 2. The analyzer makes and records every decision whose outcome can make a
@@ -1829,60 +1919,23 @@ that this document then cites. Six decisions are separable:
    bytecode VM's today ([Meaning of operations](#310-meaning-of-operations)).
    That meaning is total: no operation is undefined for any operand.
 5. Each standard function block has one meaning, given by its expansion in
-   `ironplc-lowered`, which a backend may implement natively instead.
+   `ironplc-ir`, which a backend may implement natively instead.
 6. Sequential function charts and the graphical languages lower to the nodes
    of the lowered program, with the state they keep as synthesized fields and
    their jumps structured by lowering
    ([Sequential and Graphical Languages](#11-sequential-and-graphical-languages)).
+7. `Intrinsic` and `StandardBlock` have one variant per operation and operand
+   type, so a combination the language does not allow cannot be written.
+8. `ENO` follows `EN`, and an error in a call traps whether or not `EN` is
+   wired.
 
 ## Open Questions
 
-1. **Names.** "Lowered program", the crates `ironplc-lowered` and
-   `ironplc-lowering`, and the area code `LOW` are proposals. "Lowering",
-   "lowered program" and "backend" are not in the
-   [glossary](../steering/glossary.md) and would be added to it. The usual
-   name for this is "intermediate representation", which the repository
-   already uses for something else: `IntermediateType` is the analyzer's
-   resolved description of a type, and `intermediates/` holds the code that
-   builds those descriptions and the standard library's signatures.
-   `IntermediateType` appears about 1,000 times in 50 files. There are two ways
-   forward:
-   - **Keep "intermediate" where it is.** This design keeps "lowered program",
-     which says what the thing is: the output of lowering.
-   - **Free "intermediate" for this design.** Rename `IntermediateType` to a
-     name for what it is, such as `TypeRepr` (and `intermediate_type.rs` to
-     `type_repr.rs`), and `intermediates/` to, say, `type_builders/`. That is
-     one mechanical prefactor. The lowered program could then be called the
-     IR, in crates `ironplc-ir` and `ironplc-lowering`.
-
-   Either way, ADR-0056 and the doc comment of
-   `xform_insert_implicit_conversions` call that analyzer transform "a lowering
-   pass". It stays in the analyzer and records decisions rather than lowering
-   anything, so it would become "the recording pass".
-2. **When `rule_constant_range` runs.** The rule reports a constant that does
-   not fit where it goes, such as `x := 300` on a `USINT` (P2026). It has to
-   know what type a literal such as `300` ends up with, and today it predicts
-   that: it pushes the expected type down through operators, because that is
-   how codegen compiles them. Under this design the analyzer records each
-   literal's type in the pass that records conversions (REQ-LOW-analyzer-091),
-   so the rule could read the recorded type instead of predicting it.
-
-   But that pass runs after the semantic rules, on purpose. ADR-0056 tried
-   running it first, and the rule lost a diagnostic. In `DINT#300 < s` with
-   `s : SINT`, the rule checks `DINT#300` against the type of `s`. Once the
-   pass had wrapped `s` in a conversion to `DINT`, the rule saw `DINT` and
-   stopped reporting P2026. So the rule needs two things that exist at
-   different times: the recorded type of a literal, which exists only after
-   the pass, and the operand types as written, which the rule sees only
-   before it. The question is how to split the rule. Either its literal-type
-   checks run after the pass and its as-written checks before it, or the pass
-   records literal types in a way that does not hide the written operand
-   types from the rule.
-3. **String capacity.** Whether `StringShape::capacity` is a language property
+1. **String capacity.** Whether `StringShape::capacity` is a language property
    or a bytecode VM concern. `STRING[80]` states a capacity in the language,
    but a `STRING` declared without one takes a default, and the VM sizes its
    string region (`string_region_size`) on its own.
-4. **Interface calls.** Static method calls are settled
+2. **Interface calls.** Static method calls are settled
    ([Callees, arguments and intrinsics](#38-callees-arguments-and-intrinsics)).
    [Pull request 1870](https://github.com/ironplc/ironplc/pull/1870) proposes
    how a call through an interface works. An interface value is a fat
@@ -1893,24 +1946,7 @@ that this document then cites. Six decisions are separable:
    `Call` in each arm. What the lowered program would still need is a type for
    the fat reference, and a way for an arm to treat the instance as the
    implementer its dispatch id has established.
-5. **`Intrinsic` granularity.** Either shape names each operation once; they
-   differ in where the operand type goes.
-   - **One variant per operation**, such as `Intrinsic::Sqrt`, with the operand
-     type taken from the call's `ScalarType`. The enum stays about the size of
-     the standard's function list. But `Sqrt` at an integer type can be
-     written, so a constructor has to refuse it. And a backend's match on
-     `Intrinsic` does not show that it handles every type of every operation.
-   - **One variant per operation and type**, such as `SqrtF32` and `SqrtF64`,
-     as the VM's `func_id` table has today. The enum is several times larger.
-     But a combination the language does not allow cannot be written (Goal 2),
-     and the exhaustive match of REQ-LOW-codegen-074 shows every combination a
-     backend handles. This is the choice
-     [ADR-0004](../adrs/0004-separate-type-families-over-polymorphic-opcodes.md)
-     made for the VM's opcodes.
-
-   Either way, the analyzer resolves a generic function such as `ADD` on
-   `ANY_NUM` to one type before lowering sees it.
-6. **Aliasing an instance field.** Fields are accessed in place
+3. **Aliasing an instance field.** Fields are accessed in place
    ([Places](#34-places)), while the bytecode VM copies an instance's fields
    into the function block type's slots for its body and back after. The two
    agree unless something reaches an instance field by reference while that
@@ -1923,22 +1959,6 @@ that this document then cites. Six decisions are separable:
    fields as they were before the call. A backend that addresses fields in
    place leaves the writes made before the trap. Whether the values written
    before a trap are part of a round's observable behaviour is open with it.
-7. **`ENO` on error.** IEC 61131-3 sets `ENO` to `FALSE` when a function meets
-   an error, where [Meaning of operations](#310-meaning-of-operations) traps.
-   There are two options:
-   - **`ENO` follows `EN`, and an error still traps.** Nothing new is needed,
-     every backend already traps, and a program behaves the same whether or not
-     it wires `ENO`. But a program that wires `ENO` to recover from an error, as
-     the standard intends, stops instead. A program written for another
-     vendor's runtime may not expect that.
-   - **An operation called with `EN` reports its error in `ENO`.** This is
-     what the standard describes, and a network can route around a failed
-     block. But `Intrinsic` needs variants that return an error as a value
-     beside their result, and every backend implements both forms. The result
-     after an error also has to be specified: a division by zero would no
-     longer trap, so what `DIV` gives instead must be stated. And the same call
-     then means something different depending on whether `EN` is wired, which
-     a reader cannot see at the call.
 
 ## References
 
