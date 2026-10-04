@@ -442,6 +442,9 @@ fn compile_statement(
             }
             Ok(())
         }
+        // Analysis reports an EXIT or CONTINUE outside a loop first
+        // (`rule_loop_control_inside_loop`, P4021 and P4065); these are the
+        // fallback for a caller that compiles without analysis.
         StmtKind::Exit(span) => {
             let label = ctx.current_loop_exit().ok_or_else(|| {
                 Diagnostic::problem(
@@ -719,9 +722,10 @@ impl CaseSelector<'_> {
 ///
 /// A label is a value, not a bit pattern: `16#FFFFFFFF` and `4294967295` are
 /// the same label, and both narrow to the selector's width by the value they
-/// state. Analysis rejects a label outside the selector's type (P2026), so a
-/// value that does not fit here comes from a selector analysis could not
-/// type, such as an untyped literal, and is reported the same way.
+/// state. Analysis rejects a label outside the selector's type
+/// (`rule_constant_range`, P2026), so a value that does not fit here comes
+/// from a selector analysis could not type, such as an untyped literal
+/// (`CASE 5 OF ...`), and is reported the same way.
 struct CaseLabelValue<'a> {
     is_neg: bool,
     magnitude: &'a Integer,
