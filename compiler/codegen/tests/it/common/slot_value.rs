@@ -1,4 +1,4 @@
-//! Decoding a VM variable into a [`Value`].
+//! Decoding a VM variable into a [`Value`], and encoding one into a slot.
 //!
 //! This module is the one place the end-to-end tests know how the VM stores a
 //! value: which slot reader a type needs, that a `UDINT` is the low 32 bits,
@@ -54,6 +54,76 @@ pub(super) fn decode(slot: Slot, tag: u8, data_region: &[u8], string_offset: Opt
         // the slot holds the value as a signed integer.
         _ => Value::Int(slot.as_i64().into()),
     }
+}
+
+/// Encodes `value` as the slot a variable of debug type tag `tag` holds it
+/// in, or says why that type cannot hold it.
+///
+/// A `BOOL` accepts the integer 1 or 0, as `INT_TO_BOOL` converts them. A date
+/// or duration never comes from a number: the number would have to be in the
+/// VM's storage unit, which is what [`Value`] keeps out of the tests.
+pub(super) fn encode(value: &Value, tag: u8) -> Result<Slot, String> {
+    use iec_type_tag::*;
+    let slot = match (tag, value) {
+        (BOOL, Value::Bool(b)) => Slot::from_i32(i32::from(*b)),
+        (BOOL, Value::Int(i @ (0 | 1))) => Slot::from_i32(*i as i32),
+        (SINT, Value::Int(i)) => Slot::from_i32(fit::<i8>(*i)?.into()),
+        (INT, Value::Int(i)) => Slot::from_i32(fit::<i16>(*i)?.into()),
+        (DINT, Value::Int(i)) => Slot::from_i32(fit::<i32>(*i)?),
+        (LINT, Value::Int(i)) => Slot::from_i64(fit::<i64>(*i)?),
+        (USINT | BYTE, Value::Int(i)) => Slot::from_i32(fit::<u8>(*i)?.into()),
+        (UINT | WORD, Value::Int(i)) => Slot::from_i32(fit::<u16>(*i)?.into()),
+        (UDINT | DWORD, Value::Int(i)) => Slot::from_i32(fit::<u32>(*i)? as i32),
+        (ULINT | LWORD, Value::Int(i)) => Slot::from_u64(fit::<u64>(*i)?),
+        (REAL, Value::Real(r)) if f64::from(*r as f32) == *r => Slot::from_f32(*r as f32),
+        (LREAL, Value::Real(r)) => Slot::from_f64(*r),
+        (TIME, Value::Duration(d)) => Slot::from_i32(fit::<i32>(millis(*d)?)?),
+        (LTIME, Value::Duration(d)) => Slot::from_i64(fit::<i64>(millis(*d)?)?),
+        (TIME_OF_DAY | LTOD, Value::TimeOfDay(t)) => {
+            unsigned_slot(millis(*t - Time::MIDNIGHT)?, tag, LTOD)?
+        }
+        (DATE | LDATE, Value::Date(d)) => {
+            unsigned_slot(seconds(d.midnight() - EPOCH)?, tag, LDATE)?
+        }
+        (DATE_AND_TIME | LDT, Value::DateAndTime(dt)) => {
+            unsigned_slot(seconds(*dt - EPOCH)?, tag, LDT)?
+        }
+        _ => return Err(format!("its type cannot hold {value:?}")),
+    };
+    Ok(slot)
+}
+
+/// The slot holding the unsigned count of a date or time of day: 64 bits for
+/// the long type `long`, otherwise 32 bits held as the VM holds a 32-bit value.
+fn unsigned_slot(count: i128, tag: u8, long: u8) -> Result<Slot, String> {
+    if tag == long {
+        Ok(Slot::from_u64(fit::<u64>(count)?))
+    } else {
+        Ok(Slot::from_i32(fit::<u32>(count)? as i32))
+    }
+}
+
+/// `value` as a `T`, or why `T` cannot hold it.
+fn fit<T: TryFrom<i128>>(value: i128) -> Result<T, String> {
+    T::try_from(value).map_err(|_| format!("{value} is out of range"))
+}
+
+/// The whole milliseconds in `duration`, or why it has a finer part.
+fn millis(duration: Duration) -> Result<i128, String> {
+    let nanos = duration.whole_nanoseconds();
+    if nanos % 1_000_000 != 0 {
+        return Err(format!("{duration} is finer than a millisecond"));
+    }
+    Ok(nanos / 1_000_000)
+}
+
+/// The whole seconds in `duration`, or why it has a finer part.
+fn seconds(duration: Duration) -> Result<i128, String> {
+    let nanos = duration.whole_nanoseconds();
+    if nanos % 1_000_000_000 != 0 {
+        return Err(format!("{duration} is finer than a second"));
+    }
+    Ok(nanos / 1_000_000_000)
 }
 
 const EPOCH: PrimitiveDateTime = datetime!(1970-01-01 0:00);

@@ -11,6 +11,9 @@ use ironplc_parser::parse_program;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::{FaultContext, VmBuffers};
 
+use super::session::Session;
+use super::value::Value;
+
 /// Reads a STRING value from the data region at the given byte offset.
 pub fn read_string(data_region: &[u8], data_offset: usize) -> String {
     let cur_len =
@@ -145,60 +148,89 @@ pub fn parse_and_run_rounds(
     assert_stack_balanced(&vm, "after scenario");
 }
 
-/// A single step in a function-block (`TON`/`CTU`/`R_TRIG`/`RS`/…) driver
-/// scenario.
-///
-/// The timer/counter/edge/bistable end-to-end tests all share the same shape:
-/// build a program, then drive the VM across several scan rounds, writing
-/// inputs and asserting outputs along the way. Rather than repeat that
-/// `load_and_start` + `run_round` + `read_variable` scaffold in every test,
-/// each scenario is expressed as a `&[FbStep]` table and executed by
-/// [`drive_fb`]. This keeps every original scenario as one `rstest` `#[case]`
-/// while the driver lives in exactly one place.
-#[derive(Clone, Copy)]
-pub enum FbStep {
-    /// Write `value` into the variable at `index` (no scan round runs).
-    Write(u16, i32),
-    /// Run one scan round at absolute VM time `time_us` (microseconds).
-    Run(u64),
-    /// Assert the variable at `index` currently reads `value`.
-    Expect(u16, i32),
-    /// Feed `n` rising edges on the variable at `var`: for each edge, write 1
-    /// and run a round, then write 0 and run a round. Rounds run at
-    /// `time_base + i*2` and `+1`. Edge/counter FBs are edge-triggered, so the
-    /// exact time values only need to increase monotonically.
-    Pulse { var: u16, n: u64, time_base: u64 },
+/// Parses, compiles and loads `source`, then hands `f` a [`Session`] to drive
+/// it across scans, reading and writing variables by name.
+pub fn run_scans(source: &str, options: &CompilerOptions, f: impl FnOnce(&mut Session<'_, '_>)) {
+    let container = parse_and_compile(source, options);
+    let mut bufs = VmBuffers::from_container(&container);
+    let mut vm = load_and_start(&container, &mut bufs).unwrap();
+    assert_stack_balanced(&vm, "after init");
+    f(&mut Session::new(&container, &mut vm));
+    assert_stack_balanced(&vm, "after scenario");
 }
 
-/// Compiles `source` and drives the VM through `steps`, executing each
-/// [`FbStep`] in order. See [`FbStep`] for the step semantics.
+/// A single step in a function-block (`TON`/`CTU`/`R_TRIG`/`RS`/…) driver
+/// scenario, built with [`write`], [`run`], [`expect`] and [`pulse`].
+///
+/// The timer/counter/edge/bistable end-to-end tests all share the same shape:
+/// build a program, then drive it across several scans, writing inputs and
+/// asserting outputs along the way. Each scenario is a `&[FbStep]` table
+/// executed by [`drive_fb`], so every original scenario stays one `rstest`
+/// `#[case]` while the driver lives in exactly one place.
+#[derive(Clone, Debug)]
+pub enum FbStep {
+    /// Write a value to a variable (no scan runs).
+    Write(&'static str, Value),
+    /// Run one scan at absolute VM time `time_us` (microseconds).
+    Run(u64),
+    /// Assert a variable currently reads a value.
+    Expect(&'static str, Value),
+    /// Feed `n` rising edges on a variable: for each edge, write 1 and run a
+    /// scan, then write 0 and run a scan. Scans run at `time_base + i*2` and
+    /// `+1`. Edge/counter FBs are edge-triggered, so the exact time values only
+    /// need to increase monotonically.
+    Pulse {
+        var: &'static str,
+        n: u64,
+        time_base: u64,
+    },
+}
+
+/// A step writing `value` to the variable `name`.
+pub fn write(name: &'static str, value: impl Into<Value>) -> FbStep {
+    FbStep::Write(name, value.into())
+}
+
+/// A step running one scan at absolute VM time `time_us` (microseconds).
+pub fn run(time_us: u64) -> FbStep {
+    FbStep::Run(time_us)
+}
+
+/// A step asserting the variable `name` reads `value`; a `BOOL` reads as 1 or 0.
+pub fn expect(name: &'static str, value: impl Into<Value>) -> FbStep {
+    FbStep::Expect(name, value.into())
+}
+
+/// A step feeding `n` rising edges on the variable `name`, from `time_base`.
+pub fn pulse(name: &'static str, n: u64, time_base: u64) -> FbStep {
+    FbStep::Pulse {
+        var: name,
+        n,
+        time_base,
+    }
+}
+
+/// Compiles `source` and drives it through `steps`, executing each [`FbStep`]
+/// in order.
 pub fn drive_fb(source: &str, options: &CompilerOptions, steps: &[FbStep]) {
-    use ironplc_container::VarIndex;
-    parse_and_run_rounds(source, options, |vm| {
+    run_scans(source, options, |session| {
         for step in steps {
-            match *step {
-                FbStep::Write(index, value) => {
-                    vm.write_variable(VarIndex::new(index), value).unwrap();
-                }
-                FbStep::Run(time_us) => {
-                    vm.run_round(time_us).unwrap();
-                    assert_stack_balanced(&*vm, "after scan round");
-                }
-                FbStep::Expect(index, value) => {
-                    assert_eq!(
-                        vm.read_variable(VarIndex::new(index)).unwrap(),
-                        value,
-                        "vars[{index}] mismatch"
+            match step {
+                FbStep::Write(name, value) => session.write(name, value.clone()),
+                FbStep::Run(time_us) => session.scan(*time_us).unwrap(),
+                FbStep::Expect(name, expected) => {
+                    let actual = session.read(name);
+                    assert!(
+                        actual.matches(expected),
+                        "`{name}`: expected {expected:?}, got {actual:?}"
                     );
                 }
                 FbStep::Pulse { var, n, time_base } => {
-                    for i in 0..n {
-                        vm.write_variable(VarIndex::new(var), 1).unwrap();
-                        vm.run_round(time_base + i * 2).unwrap();
-                        assert_stack_balanced(&*vm, "after rising-edge round");
-                        vm.write_variable(VarIndex::new(var), 0).unwrap();
-                        vm.run_round(time_base + i * 2 + 1).unwrap();
-                        assert_stack_balanced(&*vm, "after falling-edge round");
+                    for i in 0..*n {
+                        session.write(var, 1);
+                        session.scan(time_base + i * 2).unwrap();
+                        session.write(var, 0);
+                        session.scan(time_base + i * 2 + 1).unwrap();
                     }
                 }
             }

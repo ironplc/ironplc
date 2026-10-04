@@ -4,7 +4,10 @@
 
 use ironplc_parser::options::{CompilerOptions, Dialect};
 
-use crate::common::{assert_run, assert_run_with, date, datetime, time, Duration, Snapshot, Value};
+use crate::common::{
+    assert_run, assert_run_with, date, datetime, drive_fb, expect, pulse, run, run_scans, time,
+    write, Duration, Snapshot, Value,
+};
 
 fn snapshot(source: &str) -> Snapshot {
     Snapshot::run(source, &CompilerOptions::default())
@@ -233,6 +236,57 @@ fn observe_when_integer_expected_from_time_then_fails() {
     );
 }
 
+// REQ-OBS-codegen-035
+#[test]
+#[should_panic(expected = "its type cannot hold")]
+fn observe_when_integer_written_to_date_then_fails() {
+    run_scans(
+        "PROGRAM main VAR d : DATE; END_VAR END_PROGRAM",
+        &CompilerOptions::default(),
+        |session| session.write("d", 1_704_067_200),
+    );
+}
+
+// REQ-OBS-codegen-040
+#[test]
+fn observe_when_value_written_between_scans_then_next_scan_reads_it() {
+    run_scans(
+        "PROGRAM main VAR input : DINT; output : DINT; END_VAR output := input * 2; END_PROGRAM",
+        &CompilerOptions::default(),
+        |session| {
+            session.write("input", 21);
+            session.scan(0).unwrap();
+            assert_eq!(session.read("output"), 42);
+        },
+    );
+}
+
+// REQ-OBS-codegen-041
+#[test]
+#[should_panic(expected = "300 is out of range")]
+fn observe_when_written_value_does_not_fit_declared_type_then_fails() {
+    run_scans(
+        "PROGRAM main VAR small : USINT; END_VAR END_PROGRAM",
+        &CompilerOptions::default(),
+        |session| session.write("small", 300),
+    );
+}
+
+// REQ-OBS-codegen-042
+#[test]
+fn observe_when_program_counts_scans_then_value_persists_across_scans() {
+    run_scans(
+        "PROGRAM main VAR count : DINT; END_VAR count := count + 1; END_PROGRAM",
+        &CompilerOptions::default(),
+        |session| {
+            for _ in 0..5 {
+                session.scan(0).unwrap();
+            }
+            assert_eq!(session.read("count"), 5);
+        },
+    );
+}
+
 // REQ-OBS-codegen-043
 e2e_i32!(
     observe_when_macro_asserts_then_takes_name_and_value,
@@ -267,5 +321,78 @@ fn observe_when_bool_expected_as_integer_then_true_is_one_and_false_zero() {
         "PROGRAM main VAR t : BOOL; f : BOOL; END_VAR t := TRUE; f := FALSE; END_PROGRAM",
         &CompilerOptions::default(),
         &[("t", 1), ("f", 0)],
+    );
+}
+
+// REQ-OBS-codegen-045
+#[test]
+fn observe_when_one_and_zero_written_to_bool_then_true_and_false() {
+    run_scans(
+        "PROGRAM main VAR b : BOOL; copy : BOOL; END_VAR copy := b; END_PROGRAM",
+        &CompilerOptions::default(),
+        |session| {
+            session.write("b", 1);
+            session.scan(0).unwrap();
+            assert_eq!(session.read("copy"), Value::Bool(true));
+            session.write("b", 0);
+            session.scan(1).unwrap();
+            assert_eq!(session.read("copy"), Value::Bool(false));
+        },
+    );
+}
+
+// REQ-OBS-codegen-046
+#[test]
+fn observe_when_function_block_steps_name_variables_then_drive_by_name() {
+    drive_fb(
+        "
+PROGRAM main
+  VAR counter : CTU; up : BOOL; reset : BOOL; done : BOOL; count : INT; END_VAR
+  counter(CU := up, R := reset, PV := 3, Q => done, CV => count);
+END_PROGRAM
+",
+        &CompilerOptions::default(),
+        &[
+            pulse("up", 3, 0),
+            expect("count", 3),
+            expect("done", 1),
+            write("reset", 1),
+            run(10),
+            expect("count", 0),
+            expect("done", 0),
+        ],
+    );
+}
+
+// REQ-OBS-codegen-047
+#[test]
+fn observe_when_duration_written_and_expected_then_compared_as_durations() {
+    run_scans(
+        "PROGRAM main VAR pt : TIME; doubled : TIME; END_VAR doubled := pt + pt; END_PROGRAM",
+        &CompilerOptions::default(),
+        |session| {
+            session.write("pt", Duration::seconds(2));
+            session.scan(0).unwrap();
+            assert_eq!(session.read_as::<Duration>("doubled"), Duration::seconds(4));
+        },
+    );
+    drive_fb(
+        "
+PROGRAM main
+  VAR timer : TON; preset : TIME; elapsed : TIME; done : BOOL; END_VAR
+  timer(IN := TRUE, PT := preset, Q => done, ET => elapsed);
+END_PROGRAM
+",
+        &CompilerOptions::default(),
+        &[
+            write("preset", Duration::seconds(2)),
+            run(0),
+            run(1_000_000),
+            expect("elapsed", Duration::seconds(1)),
+            expect("done", 0),
+            run(3_000_000),
+            expect("elapsed", Duration::seconds(2)),
+            expect("done", 1),
+        ],
     );
 }

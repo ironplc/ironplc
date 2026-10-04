@@ -1,10 +1,9 @@
 //! End-to-end integration tests for array support.
 //! Compiles ST programs with arrays and runs them through the VM.
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run_rounds;
+use crate::common::run_scans;
 
 e2e_i32!(
     end_to_end_when_array_store_and_load_then_roundtrips,
@@ -134,14 +133,14 @@ PROGRAM main
   x := arr[1];
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
+    run_scans(source, &CompilerOptions::default(), |session| {
         // First scan: sets arr[1] = 99
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 99);
+        session.scan(0).unwrap();
+        assert_eq!(session.read("x"), 99);
 
         // Second scan: arr[1] should still be 99
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 99);
+        session.scan(0).unwrap();
+        assert_eq!(session.read("x"), 99);
     });
 }
 

@@ -4,10 +4,9 @@
 //! user-defined FUNCTION_BLOCK declarations, compile to bytecode, and execute
 //! on the VM.
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run_rounds;
+use crate::common::run_scans;
 
 // A user-defined function block instance declared with member initial values
 // (`fb : SCALER := (factor := 3)`) is an instance, not a structure: the
@@ -71,22 +70,14 @@ PROGRAM main
   acc(val := 10, sum => result);
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
+    run_scans(source, &CompilerOptions::default(), |session| {
         // Round 1: total = 0 + 10 = 10
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(1)).unwrap(),
-            10,
-            "round 1: sum should be 10"
-        );
+        session.scan(0).unwrap();
+        assert_eq!(session.read("result"), 10, "round 1: sum should be 10");
 
         // Round 2: total = 10 + 10 = 20 (state persists in data region)
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(1)).unwrap(),
-            20,
-            "round 2: sum should be 20"
-        );
+        session.scan(0).unwrap();
+        assert_eq!(session.read("result"), 20, "round 2: sum should be 20");
     });
 }
 
@@ -112,30 +103,14 @@ PROGRAM main
   c2(inc := 100, value => r2);
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            1,
-            "c1 should be 1"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            100,
-            "c2 should be 100"
-        );
+    run_scans(source, &CompilerOptions::default(), |session| {
+        session.scan(0).unwrap();
+        assert_eq!(session.read("r1"), 1, "c1 should be 1");
+        assert_eq!(session.read("r2"), 100, "c2 should be 100");
 
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            2,
-            "c1 should be 2"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            200,
-            "c2 should be 200"
-        );
+        session.scan(0).unwrap();
+        assert_eq!(session.read("r1"), 2, "c1 should be 2");
+        assert_eq!(session.read("r2"), 200, "c2 should be 200");
     });
 }
 
@@ -208,25 +183,13 @@ PROGRAM main
   result := acc.sum;
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(1)).unwrap(),
-            10,
-            "round 1: result should be 10"
-        );
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(1)).unwrap(),
-            20,
-            "round 2: result should be 20"
-        );
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(1)).unwrap(),
-            30,
-            "round 3: result should be 30"
-        );
+    run_scans(source, &CompilerOptions::default(), |session| {
+        session.scan(0).unwrap();
+        assert_eq!(session.read("result"), 10, "round 1: result should be 10");
+        session.scan(0).unwrap();
+        assert_eq!(session.read("result"), 20, "round 2: result should be 20");
+        session.scan(0).unwrap();
+        assert_eq!(session.read("result"), 30, "round 3: result should be 30");
     });
 }
 

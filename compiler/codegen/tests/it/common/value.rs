@@ -29,6 +29,18 @@ pub enum Value {
     DateAndTime(PrimitiveDateTime),
 }
 
+impl Value {
+    /// Whether this value, read from a variable, is `expected`. A `BOOL`
+    /// equals the integer 1 when TRUE and 0 when FALSE, as `BOOL_TO_INT`
+    /// converts it.
+    pub fn matches(&self, expected: &Value) -> bool {
+        match (self, expected) {
+            (Value::Bool(b), Value::Int(i)) => *i == i128::from(*b),
+            _ => self == expected,
+        }
+    }
+}
+
 /// Whether `value` equals `other`; the parameter types fix what `other` is
 /// converted into.
 fn same<T: PartialEq>(value: &T, other: T) -> bool {
