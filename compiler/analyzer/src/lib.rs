@@ -57,6 +57,7 @@ mod rule_program_var_hides_global;
 mod rule_range_limits;
 mod rule_real_literal_range;
 mod rule_ref_to;
+mod rule_self_reference_context;
 mod rule_stdlib_type_redefinition;
 mod rule_string_encoding_compat;
 mod rule_string_length_range;

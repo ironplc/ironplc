@@ -232,3 +232,68 @@ fn apply_when_field_of_array_element_then_field_type() {
         context.types().id_of(&TypeName::from("INT"))
     );
 }
+
+/// Resolves `body` in a method of `FB_Motor`, which declares `count : INT`
+/// and `EXTENDS` `FB_Base`, which declares `level : DINT`. The method
+/// declares `count : LINT` as a parameter. `speed : BOOL` is a global.
+fn resolve_in_method(body: &str) -> (Library, SemanticContext) {
+    let program = format!(
+        "
+VAR_GLOBAL
+  speed : BOOL;
+END_VAR
+FUNCTION_BLOCK FB_Base
+VAR
+  level : DINT;
+END_VAR
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+VAR
+  count : INT;
+END_VAR
+METHOD Run
+VAR_INPUT
+  count : LINT;
+END_VAR
+VAR
+  n : DINT;
+END_VAR
+  {body}
+END_METHOD
+END_FUNCTION_BLOCK
+"
+    );
+    parse_and_resolve_types_with_options(
+        &program,
+        &CompilerOptions {
+            allow_fb_inheritance: true,
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        },
+    )
+}
+
+#[rstest::rstest]
+#[case::own_field_hidden_by_parameter("THIS^.count", "INT")]
+#[case::inherited_field("THIS^.level", "DINT")]
+#[case::inherited_field_through_super("SUPER^.level", "DINT")]
+fn apply_when_self_ref_member_then_declared_type_of_the_field(
+    #[case] member: &str,
+    #[case] expected: &str,
+) {
+    let (library, context) = resolve_in_method(&format!("n := {member};"));
+
+    assert_eq!(
+        Some(concrete(first_assigned_type(&library))),
+        context.types().id_of(&TypeName::from(expected))
+    );
+}
+
+#[rstest::rstest]
+#[case::global_is_not_a_member_of_this("THIS^.speed")]
+#[case::own_field_is_not_visible_through_super("SUPER^.count")]
+fn apply_when_self_ref_names_no_member_then_no_type(#[case] member: &str) {
+    let (library, _context) = resolve_in_method(&format!("n := {member};"));
+
+    assert_eq!(None, first_assigned_type(&library));
+}

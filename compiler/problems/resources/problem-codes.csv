@@ -130,6 +130,7 @@ P4062,MemberQualifierNotAllowed,Function block qualifier requires choosing a dia
 P4063,MemberQualifierInvalid,Member qualifiers are repeated or conflict or are out of order or not allowed here
 P4065,ContinueOutsideLoop,CONTINUE statement is not inside a loop
 P4072,ConditionTypeInvalid,Condition of IF or ELSIF or WHILE or REPEAT is not BOOL
+P4074,SelfReferenceWithoutTarget,THIS^ outside a function block or SUPER^ without a base type
 P2038,DateLiteralOutOfRange,Date literal is outside the range the date type can represent
 P2039,DurationLiteralOutOfRange,Duration literal is outside the range the duration type can represent
 P2040,RealLiteralOutOfRange,Real literal is outside the range the real type can represent
