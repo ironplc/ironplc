@@ -36,6 +36,18 @@ pub fn string_offset(preceding_max_lengths: &[u16]) -> usize {
         .sum()
 }
 
+/// Options for programs that use bit strings the way CODESYS and TwinCAT do: an
+/// untyped integer literal assigned to a `BYTE`/`WORD`/`DWORD`/`LWORD`
+/// (ADR-0031) and arithmetic on a bit string (ADR-0053). The strict default
+/// rejects both.
+pub fn bit_string_options() -> CompilerOptions {
+    CompilerOptions {
+        allow_int_literal_to_bit_string: true,
+        allow_bit_string_arithmetic: true,
+        ..CompilerOptions::default()
+    }
+}
+
 /// Parses an IEC 61131-3 source string and runs type resolution via the analyzer.
 ///
 /// The analyzer populates `Expr.expr_type` and resolves type aliases in

@@ -1,69 +1,78 @@
 //! End-to-end integration tests for bit string types (BYTE, WORD, DWORD, LWORD).
 
-use crate::common::Snapshot;
+use crate::common::{bit_string_options, Snapshot};
 use ironplc_parser::options::CompilerOptions;
 
 // --- BYTE (8-bit unsigned, 0..255) ---
 
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_byte_assignment_then_correct,
+    bit_string_options(),
     "PROGRAM main VAR x : BYTE; END_VAR x := 200; END_PROGRAM",
     &[("x", 200)],
 );
 
 // 256 truncated to u8 wraps to 0.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_byte_overflow_then_wraps,
+    bit_string_options(),
     "PROGRAM main VAR x : BYTE; END_VAR x := 255 + 1; END_PROGRAM",
     &[("x", 0)],
 );
 
 // 200 + 100 = 300, truncated to u8 = 44.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_byte_arithmetic_then_truncates,
+    bit_string_options(),
     "PROGRAM main VAR x : BYTE; y : BYTE; END_VAR x := 200; y := x + 100; END_PROGRAM",
     &[("x", 200), ("y", 44)],
 );
 
 // --- WORD (16-bit unsigned, 0..65535) ---
 
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_word_assignment_then_correct,
+    bit_string_options(),
     "PROGRAM main VAR x : WORD; END_VAR x := 50000; END_PROGRAM",
     &[("x", 50000)],
 );
 
 // 65536 truncated to u16 wraps to 0.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_word_overflow_then_wraps,
+    bit_string_options(),
     "PROGRAM main VAR x : WORD; END_VAR x := 65535 + 1; END_PROGRAM",
     &[("x", 0)],
 );
 
 // --- DWORD (32-bit unsigned, 0..4294967295) ---
 
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_dword_assignment_then_correct,
+    bit_string_options(),
     "PROGRAM main VAR x : DWORD; END_VAR x := 1000; END_PROGRAM",
     &[("x", 1000)],
 );
 
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_dword_comparison_then_correct,
+    bit_string_options(),
     "PROGRAM main VAR x : DWORD; result : DWORD; END_VAR x := 100; IF x > 50 THEN result := 1; ELSE result := 0; END_IF; END_PROGRAM",
     &[("result", 1)],
 );
 
 // --- LWORD (64-bit unsigned, 0..2^64-1) ---
 
-e2e_i64!(
+e2e_i64_with!(
     end_to_end_when_lword_assignment_then_correct,
+    bit_string_options(),
     "PROGRAM main VAR x : LWORD; END_VAR x := 100000; END_PROGRAM",
     &[("x", 100000)],
 );
 
-e2e_i64!(
+e2e_i64_with!(
     end_to_end_when_lword_comparison_then_correct,
+    bit_string_options(),
     "PROGRAM main VAR x : LWORD; y : LWORD; END_VAR x := 500; IF x > 100 THEN y := 1; ELSE y := 0; END_IF; END_PROGRAM",
     &[("y", 1)],
 );
@@ -158,8 +167,9 @@ fn end_to_end_when_dword_and_then_bitwise() {
 }
 
 // NOT 0 = 0xFFFFFFFF (as i32: -1).
-e2e!(
+e2e_with!(
     end_to_end_when_dword_not_then_bitwise,
+    bit_string_options(),
     "PROGRAM main VAR x : DWORD; y : DWORD; END_VAR x := 0; y := NOT x; END_PROGRAM",
     &[("y", u32::MAX)],
 );
@@ -173,25 +183,28 @@ e2e_i64!(
 );
 
 // NOT 0_i64 = -1_i64.
-e2e!(
+e2e_with!(
     end_to_end_when_lword_not_then_bitwise,
+    bit_string_options(),
     "PROGRAM main VAR x : LWORD; y : LWORD; END_VAR x := 0; y := NOT x; END_PROGRAM",
     &[("y", u64::MAX)],
 );
 
 // --- NOT in IF condition (inline truncation correctness) ---
 
-// NOT 0xFF -> BIT_NOT -> 0xFFFFFF00 -> TRUNC_U8 -> 0x00 -> IF sees 0 -> skip body.
-e2e_i32!(
+// NOT 0xFF -> BIT_NOT -> 0xFFFFFF00 -> TRUNC_U8 -> 0x00 -> equals 0 -> skip body.
+e2e_i32_with!(
     end_to_end_when_byte_not_in_if_then_correct,
-    "PROGRAM main VAR x : BYTE; result : BYTE; END_VAR x := BYTE#16#FF; result := 0; IF NOT x THEN result := 1; END_IF; END_PROGRAM",
+    bit_string_options(),
+    "PROGRAM main VAR x : BYTE; result : BYTE; END_VAR x := BYTE#16#FF; result := 0; IF (NOT x) <> BYTE#0 THEN result := 1; END_IF; END_PROGRAM",
     &[("result", 0)],
 );
 
-// NOT 0x00 -> BIT_NOT -> 0xFFFFFFFF -> TRUNC_U8 -> 0xFF -> IF sees non-zero -> enter body.
-e2e_i32!(
+// NOT 0x00 -> BIT_NOT -> 0xFFFFFFFF -> TRUNC_U8 -> 0xFF -> not 0 -> enter body.
+e2e_i32_with!(
     end_to_end_when_byte_not_zero_in_if_then_enters_body,
-    "PROGRAM main VAR x : BYTE; result : BYTE; END_VAR x := 0; result := 0; IF NOT x THEN result := 1; END_IF; END_PROGRAM",
+    bit_string_options(),
+    "PROGRAM main VAR x : BYTE; result : BYTE; END_VAR x := 0; result := 0; IF (NOT x) <> BYTE#0 THEN result := 1; END_IF; END_PROGRAM",
     &[("result", 1)],
 );
 
@@ -213,14 +226,16 @@ e2e!(
     &[("x", 4_294_967_292_u32)],
 );
 
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_dword_large_literal_eq_right_then_correct,
+    bit_string_options(),
     "PROGRAM main VAR mask : DWORD; b : BOOL; END_VAR mask := 4294967292; b := mask = 4294967292; END_PROGRAM",
     &[("b", 1)],
 );
 
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_dword_large_literal_eq_left_then_correct,
+    bit_string_options(),
     "PROGRAM main VAR mask : DWORD; b : BOOL; END_VAR mask := 4294967292; b := 4294967292 = mask; END_PROGRAM",
     &[("b", 1)],
 );
@@ -246,14 +261,16 @@ e2e_i32!(
 );
 
 // mask AND 16#FFFF_FFFC = 4294967292 AND 4294967292 = 4294967292 = last.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_dword_and_large_hex_literal_in_comparison_then_correct,
+    bit_string_options(),
     "PROGRAM main VAR mask : DWORD; last : DWORD; b : BOOL; END_VAR mask := 4294967292; last := mask AND 16#FFFF_FFFC; IF (mask AND 16#FFFF_FFFC) = last THEN b := TRUE; END_IF; END_PROGRAM",
     &[("b", 1)],
 );
 
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_dword_or_large_hex_literal_in_comparison_then_correct,
+    bit_string_options(),
     "PROGRAM main VAR mask : DWORD; last : DWORD; b : BOOL; END_VAR mask := 4294967292; last := mask OR 16#FFFF_FFFC; IF (mask OR 16#FFFF_FFFC) = last THEN b := TRUE; END_IF; END_PROGRAM",
     &[("b", 1)],
 );

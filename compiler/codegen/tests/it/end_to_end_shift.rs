@@ -210,7 +210,7 @@ PROGRAM main
     result : DINT;
   END_VAR
   a := -8;
-  result := SHR(ABS(a), 1);
+  result := DWORD_TO_DINT(SHR(DINT_TO_DWORD(ABS(a)), 1));
 END_PROGRAM
 ",
     &[("a", -8), ("result", 4)],

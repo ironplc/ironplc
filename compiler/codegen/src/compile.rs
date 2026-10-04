@@ -2133,7 +2133,7 @@ PROGRAM main
   VAR
     x : BYTE;
   END_VAR
-  x := 42;
+  x := BYTE#42;
 END_PROGRAM
 ";
         let (library, context) = parse(source);

@@ -6,7 +6,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 5;
   y := x = 5;
@@ -21,7 +21,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 5;
   y := x <> 3;
@@ -36,7 +36,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 3;
   y := x < 5;
@@ -51,7 +51,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 5;
   y := x <= 5;
@@ -66,7 +66,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 7;
   y := x > 5;
@@ -81,7 +81,7 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 3;
   y := x >= 5;
