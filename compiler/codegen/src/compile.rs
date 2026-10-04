@@ -67,7 +67,7 @@ use ironplc_problems::Problem;
 
 use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 use ironplc_analyzer::{
-    FunctionEnvironment, IntermediateType, Intrinsic, SemanticContext, TypeEnvironment,
+    FunctionEnvironment, Intrinsic, SemanticContext, SemanticType, TypeEnvironment,
 };
 
 use crate::emit::Emitter;
@@ -1376,7 +1376,7 @@ pub(crate) struct CompileContext {
     pub(crate) enum_map: crate::compile_enum::EnumOrdinalMap,
     /// What every type is, by the id an expression's `expr_type` carries.
     /// See [`crate::type_info::expr_type_info`].
-    pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, IntermediateType>,
+    pub(crate) types: HashMap<ironplc_dsl::type_id::TypeId, SemanticType>,
     /// The name the arithmetic overloads know a value of each type by.
     /// See [`crate::type_info::expr_operand_name`].
     pub(crate) operand_names: HashMap<ironplc_dsl::type_id::TypeId, ironplc_dsl::common::TypeName>,
@@ -2133,7 +2133,7 @@ PROGRAM main
   VAR
     x : BYTE;
   END_VAR
-  x := 42;
+  x := BYTE#42;
 END_PROGRAM
 ";
         let (library, context) = parse(source);

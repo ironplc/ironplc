@@ -133,7 +133,7 @@ fn observe_when_signed_integer_then_reads_its_value() {
 #[test]
 fn observe_when_unsigned_all_ones_then_reads_without_sign_extension() {
     let snapshot = snapshot(
-        "PROGRAM main VAR u : UDINT; w : LWORD; END_VAR u := 16#FFFF_FFFF; w := 16#FFFF_FFFF_FFFF_FFFF; END_PROGRAM",
+        "PROGRAM main VAR u : UDINT; w : LWORD; END_VAR u := 16#FFFF_FFFF; w := LWORD#16#FFFF_FFFF_FFFF_FFFF; END_PROGRAM",
     );
     assert_eq!(snapshot.read("u"), Value::Int(4_294_967_295));
     assert_eq!(snapshot.read("w"), Value::Int(18_446_744_073_709_551_615));
@@ -394,5 +394,35 @@ END_PROGRAM
             expect("elapsed", Duration::seconds(2)),
             expect("done", 1),
         ],
+    );
+}
+
+// REQ-OBS-codegen-100
+#[test]
+fn observe_when_end_to_end_files_scanned_then_none_reads_a_slot() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/it");
+    let mut scanned = 0;
+    let mut offenders = Vec::new();
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        let file = path.file_name().unwrap().to_string_lossy().into_owned();
+        if !(file.starts_with("end_to_end") && file.ends_with(".rs")) {
+            continue;
+        }
+        scanned += 1;
+        let text = std::fs::read_to_string(&path).unwrap();
+        for word in ["VarIndex", ".vars[", "data_region", "VmBuffers"] {
+            if text.contains(word) {
+                offenders.push(format!("{file} mentions `{word}`"));
+            }
+        }
+    }
+    assert!(
+        scanned > 100,
+        "found only {scanned} end-to-end files in {dir:?}"
+    );
+    assert!(
+        offenders.is_empty(),
+        "end-to-end tests read variables by name, never by slot: {offenders:#?}"
     );
 }

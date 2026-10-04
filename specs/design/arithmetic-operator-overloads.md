@@ -501,7 +501,7 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 
 **REQ-AO-codegen-009** An extensible call on a Table 30 pair compiles to the typed routine folded from the left, so `ADD(t1, t2, t3)` computes what `t1 + t2 + t3` computes.
 
-**REQ-AO-codegen-010** A numeric operator expression computes with the signedness of its resolved type, so `UDINT / UDINT` assigned to `DINT` divides unsigned and gives 2000000000 for 4000000000 and 2.
+**REQ-AO-codegen-010** A numeric operator expression computes with the signedness of its resolved type, so `UDINT / UDINT` assigned to a signed `LINT` divides unsigned and gives 2000000000 for 4000000000 and 2.
 
 **REQ-AO-codegen-011** A call to the function form of a numeric operator computes each fold step as the operator expression does, so `ADD(i, r)` gives 4.5 for `INT` 3 and `REAL` 1.5.
 

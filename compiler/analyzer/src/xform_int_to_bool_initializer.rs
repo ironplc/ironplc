@@ -26,7 +26,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::intermediate_type::IntermediateType;
+use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeEnvironment;
 
 pub fn apply(
@@ -70,7 +70,7 @@ impl Fold<Diagnostic> for IntToBoolFolder<'_> {
                 let is_bool = self
                     .type_environment
                     .get(&si.type_name)
-                    .map(|attrs| matches!(attrs.representation, IntermediateType::Bool))
+                    .map(|attrs| matches!(attrs.representation, SemanticType::Bool))
                     .unwrap_or(false);
 
                 if is_bool {

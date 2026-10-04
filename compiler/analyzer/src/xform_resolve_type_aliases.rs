@@ -8,7 +8,7 @@
 //! - Arrays: duplicate array element type information
 //! - Other types: handle as needed
 
-use crate::intermediate_type::IntermediateType;
+use crate::semantic_type::SemanticType;
 use crate::symbol_environment::SymbolEnvironment;
 use crate::type_environment::TypeEnvironment;
 use ironplc_dsl::common::*;
@@ -24,7 +24,7 @@ pub fn apply(
     // Find all type aliases and duplicate their relevant symbols
     for (type_name, type_attrs) in type_environment.iter() {
         if let Some(base_type) = find_base_type_for_alias(type_name, type_environment) {
-            // Determine kind using helpers to exercise TypeEnvironment/IntermediateType helpers
+            // Determine kind using helpers to exercise TypeEnvironment/SemanticType helpers
             let is_enum = type_environment.is_enumeration(type_name);
             let is_struct = type_attrs.representation.is_structure();
             let rep = &type_attrs.representation;
@@ -54,7 +54,7 @@ pub fn apply(
 fn duplicate_alias_symbols(
     base_type: &TypeName,
     alias_type: &TypeName,
-    type_representation: &IntermediateType,
+    type_representation: &SemanticType,
     is_enum: bool,
     is_struct: bool,
     symbol_environment: &mut SymbolEnvironment,

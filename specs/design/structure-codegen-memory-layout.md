@@ -37,7 +37,7 @@ Slot Table                          Data Region
 
 ### 1.2 Slot-Count Computation
 
-The number of 8-byte slots a structure type requires is computed recursively from its `IntermediateType::Structure`:
+The number of 8-byte slots a structure type requires is computed recursively from its `SemanticType::Structure`:
 
 | Field type | Slots |
 |---|---|
@@ -326,7 +326,7 @@ StructVarInfo {
 StructFieldInfo {
     name: String,                       // lowercase field name
     slot_offset: u32,                   // slot offset relative to struct base
-    field_type: IntermediateType,       // for nested resolution
+    field_type: SemanticType,       // for nested resolution
     op_type: Option<OpType>,            // Some for leaf fields, None for struct/array fields
 }
 ```
@@ -353,10 +353,10 @@ This parallels the existing `string_vars`, `fb_instances`, and `array_vars` maps
 
 ### 4.3 Type Resolution
 
-The codegen needs to resolve structure type names to their `IntermediateType::Structure` representation. The `TypeEnvironment` is passed to `assign_variables` and can be queried for named types. A new helper similar to `resolve_array_type` is needed:
+The codegen needs to resolve structure type names to their `SemanticType::Structure` representation. The `TypeEnvironment` is passed to `assign_variables` and can be queried for named types. A new helper similar to `resolve_array_type` is needed:
 
 ```
-fn resolve_struct_type(&self, type_name: &TypeName) -> Option<&IntermediateType>
+fn resolve_struct_type(&self, type_name: &TypeName) -> Option<&SemanticType>
 ```
 
 ---

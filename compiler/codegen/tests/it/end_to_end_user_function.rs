@@ -30,7 +30,7 @@ e2e_i32!(
 // FOO assigns 8, then shifts right by 1: 8 >> 1 = 4.
 e2e_i32!(
     end_to_end_when_user_function_assigns_return_var_then_uses_in_builtin_then_correct,
-    "FUNCTION FOO : INT VAR_INPUT A : INT; END_VAR FOO := 8; FOO := SHR(FOO, 1); END_FUNCTION PROGRAM main VAR result : INT; END_VAR result := FOO(A := 5); END_PROGRAM",
+    "FUNCTION FOO : WORD VAR_INPUT A : INT; END_VAR FOO := WORD#8; FOO := SHR(FOO, 1); END_FUNCTION PROGRAM main VAR result : WORD; END_VAR result := FOO(A := 5); END_PROGRAM",
     &[("result", 4)],
 );
 

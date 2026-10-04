@@ -12,8 +12,8 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::intermediate_type::{ByteSized, IntermediateType};
 use crate::intermediates::array;
+use crate::semantic_type::{ByteSized, SemanticType};
 use crate::symbol_environment::duplicate_declaration;
 use crate::type_id;
 use ironplc_dsl::type_id::TypeId;
@@ -39,33 +39,33 @@ pub enum UsageContext {
     General,
 }
 
-static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, IntermediateType); 29] = [
+static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, SemanticType); 29] = [
     // signed_integer_type_name
     (
         "sint",
         ElementaryTypeName::SINT,
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B8,
         },
     ),
     (
         "int",
         ElementaryTypeName::INT,
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B16,
         },
     ),
     (
         "dint",
         ElementaryTypeName::DINT,
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B32,
         },
     ),
     (
         "lint",
         ElementaryTypeName::LINT,
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B64,
         },
     ),
@@ -73,28 +73,28 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, IntermediateType
     (
         "usint",
         ElementaryTypeName::USINT,
-        IntermediateType::UInt {
+        SemanticType::UInt {
             size: ByteSized::B8,
         },
     ),
     (
         "uint",
         ElementaryTypeName::UINT,
-        IntermediateType::UInt {
+        SemanticType::UInt {
             size: ByteSized::B16,
         },
     ),
     (
         "udint",
         ElementaryTypeName::UDINT,
-        IntermediateType::UInt {
+        SemanticType::UInt {
             size: ByteSized::B32,
         },
     ),
     (
         "ulint",
         ElementaryTypeName::ULINT,
-        IntermediateType::UInt {
+        SemanticType::UInt {
             size: ByteSized::B64,
         },
     ),
@@ -102,14 +102,14 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, IntermediateType
     (
         "real",
         ElementaryTypeName::REAL,
-        IntermediateType::Real {
+        SemanticType::Real {
             size: ByteSized::B32,
         },
     ),
     (
         "lreal",
         ElementaryTypeName::LREAL,
-        IntermediateType::Real {
+        SemanticType::Real {
             size: ByteSized::B64,
         },
     ),
@@ -118,7 +118,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, IntermediateType
     (
         "time",
         ElementaryTypeName::TIME,
-        IntermediateType::Time {
+        SemanticType::Time {
             size: ByteSized::B32,
         },
     ),
@@ -126,7 +126,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, IntermediateType
     (
         "ltime",
         ElementaryTypeName::LTIME,
-        IntermediateType::Time {
+        SemanticType::Time {
             size: ByteSized::B64,
         },
     ),
@@ -135,35 +135,35 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, IntermediateType
     (
         "date",
         ElementaryTypeName::DATE,
-        IntermediateType::Date {
+        SemanticType::Date {
             size: ByteSized::B32,
         },
     ),
     (
         "time_of_day",
         ElementaryTypeName::TimeOfDay,
-        IntermediateType::TimeOfDay {
+        SemanticType::TimeOfDay {
             size: ByteSized::B32,
         },
     ),
     (
         "tod",
         ElementaryTypeName::TimeOfDay,
-        IntermediateType::TimeOfDay {
+        SemanticType::TimeOfDay {
             size: ByteSized::B32,
         },
     ),
     (
         "date_and_time",
         ElementaryTypeName::DateAndTime,
-        IntermediateType::DateAndTime {
+        SemanticType::DateAndTime {
             size: ByteSized::B32,
         },
     ),
     (
         "dt",
         ElementaryTypeName::DateAndTime,
-        IntermediateType::DateAndTime {
+        SemanticType::DateAndTime {
             size: ByteSized::B32,
         },
     ),
@@ -171,65 +171,65 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, IntermediateType
     (
         "ldate",
         ElementaryTypeName::LDATE,
-        IntermediateType::Date {
+        SemanticType::Date {
             size: ByteSized::B64,
         },
     ),
     (
         "ltime_of_day",
         ElementaryTypeName::LTimeOfDay,
-        IntermediateType::TimeOfDay {
+        SemanticType::TimeOfDay {
             size: ByteSized::B64,
         },
     ),
     (
         "ltod",
         ElementaryTypeName::LTimeOfDay,
-        IntermediateType::TimeOfDay {
+        SemanticType::TimeOfDay {
             size: ByteSized::B64,
         },
     ),
     (
         "ldate_and_time",
         ElementaryTypeName::LDateAndTime,
-        IntermediateType::DateAndTime {
+        SemanticType::DateAndTime {
             size: ByteSized::B64,
         },
     ),
     (
         "ldt",
         ElementaryTypeName::LDateAndTime,
-        IntermediateType::DateAndTime {
+        SemanticType::DateAndTime {
             size: ByteSized::B64,
         },
     ),
     // bit_string_type_name
-    ("bool", ElementaryTypeName::BOOL, IntermediateType::Bool),
+    ("bool", ElementaryTypeName::BOOL, SemanticType::Bool),
     (
         "byte",
         ElementaryTypeName::BYTE,
-        IntermediateType::Bytes {
+        SemanticType::Bytes {
             size: ByteSized::B8,
         },
     ),
     (
         "word",
         ElementaryTypeName::WORD,
-        IntermediateType::Bytes {
+        SemanticType::Bytes {
             size: ByteSized::B16,
         },
     ),
     (
         "dword",
         ElementaryTypeName::DWORD,
-        IntermediateType::Bytes {
+        SemanticType::Bytes {
             size: ByteSized::B32,
         },
     ),
     (
         "lword",
         ElementaryTypeName::LWORD,
-        IntermediateType::Bytes {
+        SemanticType::Bytes {
             size: ByteSized::B64,
         },
     ),
@@ -237,7 +237,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, IntermediateType
     (
         "string",
         ElementaryTypeName::STRING,
-        IntermediateType::String {
+        SemanticType::String {
             max_len: None,
             char_width: CharWidth::Narrow,
         },
@@ -245,7 +245,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, IntermediateType
     (
         "wstring",
         ElementaryTypeName::WSTRING,
-        IntermediateType::String {
+        SemanticType::String {
             max_len: None,
             char_width: CharWidth::Wide,
         },
@@ -260,7 +260,7 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, ElementaryTypeName, IntermediateType
 /// analyzer works from it rather than from a copy of it.
 ///
 /// Returns `None` for any name that is not an elementary type.
-pub fn elementary_type(type_name: &TypeName) -> Option<&'static IntermediateType> {
+pub fn elementary_type(type_name: &TypeName) -> Option<&'static SemanticType> {
     ELEMENTARY_TYPES_LOWER_CASE
         .iter()
         .find(|(name, _, _)| type_name.name.lower_case == *name)
@@ -342,7 +342,7 @@ impl TypeEnvironment {
         let is_function_block = |attributes: &crate::type_attributes::TypeAttributes| {
             matches!(
                 attributes.representation,
-                IntermediateType::FunctionBlock { .. }
+                SemanticType::FunctionBlock { .. }
             )
         };
         let problem = if is_function_block(existing) || is_function_block(&symbol) {
@@ -389,7 +389,7 @@ impl TypeEnvironment {
         let target_type = self.get_by_id(target)?.representation.clone();
         let reference = self.insert_anonymous(crate::type_attributes::TypeAttributes::new(
             SourceSpan::default(),
-            IntermediateType::Reference {
+            SemanticType::Reference {
                 target_type: Box::new(target_type),
             },
         ));
@@ -470,7 +470,7 @@ impl TypeEnvironment {
         type_name: &TypeName,
         base_type_name: &TypeName,
     ) -> Result<(), Diagnostic> {
-        let base_intermediate_type = self.get(base_type_name).ok_or_else(|| {
+        let base_semantic_type = self.get(base_type_name).ok_or_else(|| {
             Diagnostic::problem(
                 Problem::AliasParentTypeNotDeclared,
                 Label::span(type_name.span(), "Type alias"),
@@ -478,7 +478,7 @@ impl TypeEnvironment {
             .with_secondary(Label::span(base_type_name.span(), "Base type"))
         })?;
 
-        self.insert_type(type_name, base_intermediate_type.clone());
+        self.insert_type(type_name, base_semantic_type.clone());
         let element = self
             .id_of(base_type_name)
             .and_then(|base| self.array_elements.get(&base).copied());
@@ -536,7 +536,7 @@ impl TypeEnvironment {
         if let Some(element) = self.array_elements.get(&array) {
             return Some(*element);
         }
-        let IntermediateType::Array { element_type, .. } = &self.get_by_id(array)?.representation
+        let SemanticType::Array { element_type, .. } = &self.get_by_id(array)?.representation
         else {
             return None;
         };
@@ -571,7 +571,7 @@ impl TypeEnvironment {
         &self,
         declaring: &TypeName,
         target: &ReferenceTarget,
-    ) -> Result<IntermediateType, Diagnostic> {
+    ) -> Result<SemanticType, Diagnostic> {
         match target {
             ReferenceTarget::Named(referenced_type_name) => {
                 let referenced_attrs = self.get(referenced_type_name).ok_or_else(|| {
@@ -588,8 +588,8 @@ impl TypeEnvironment {
                 let array_spec = SpecificationKind::Inline(array_subranges.clone());
                 let result = array::try_from(declaring, &array_spec, self)?;
                 match result {
-                    array::IntermediateResult::Type(attrs) => Ok(attrs.representation),
-                    array::IntermediateResult::Alias(base_type_name) => Ok(self
+                    array::TypeResolution::Type(attrs) => Ok(attrs.representation),
+                    array::TypeResolution::Alias(base_type_name) => Ok(self
                         .get(&base_type_name)
                         .ok_or_else(|| Diagnostic::internal_error())?
                         .representation
@@ -604,7 +604,7 @@ impl TypeEnvironment {
     ///
     /// An untyped literal is of a generic category (`ANY_INT`) and `NULL` of
     /// no one type, so both answer `None` rather than a representation.
-    pub fn representation_of_expr(&self, expr: &Expr) -> Option<&IntermediateType> {
+    pub fn representation_of_expr(&self, expr: &Expr) -> Option<&SemanticType> {
         match expr.expr_type.as_ref()? {
             ExprType::Concrete(id) => Some(&self.get_by_id(*id)?.representation),
             ExprType::Literal(_) | ExprType::Null => None,
@@ -621,7 +621,7 @@ impl TypeEnvironment {
     /// Resolves a type name to its canonical elementary type name.
     ///
     /// Looks up the type, then scans the 24 elementary types to find one with
-    /// a matching `IntermediateType`. For aliases like `MyByte → BYTE`, returns
+    /// a matching `SemanticType`. For aliases like `MyByte → BYTE`, returns
     /// `Some(TypeName::from("BYTE"))`. For complex types, returns `None`.
     pub fn resolve_elementary_type_name(&self, type_name: &TypeName) -> Option<TypeName> {
         let repr = &self.get(type_name)?.representation;
@@ -631,63 +631,63 @@ impl TypeEnvironment {
             .map(|(name, _, _)| TypeName::from(name))
     }
 
-    /// Maps an `IntermediateType` back to its elementary `TypeName`.
+    /// Maps an `SemanticType` back to its elementary `TypeName`.
     ///
     /// Scans the elementary type table to find one matching the given
-    /// `IntermediateType`. Returns `Some(TypeName::from("BOOL"))` for
-    /// `IntermediateType::Bool`, etc. Returns `None` for complex types
+    /// `SemanticType`. Returns `Some(TypeName::from("BOOL"))` for
+    /// `SemanticType::Bool`, etc. Returns `None` for complex types
     /// (structs, arrays, enums).
-    pub fn elementary_type_name_for(&self, it: &IntermediateType) -> Option<TypeName> {
+    pub fn elementary_type_name_for(&self, it: &SemanticType) -> Option<TypeName> {
         ELEMENTARY_TYPES_LOWER_CASE
             .iter()
             .find(|(_, _, elem_type)| elem_type == it)
             .map(|(name, _, _)| TypeName::from(name))
     }
 
-    /// Returns the intermediate type for a named array type.
+    /// Returns the semantic type for a named array type.
     ///
-    /// Returns `Some` with the `IntermediateType::Array` if the type is found
+    /// Returns `Some` with the `SemanticType::Array` if the type is found
     /// and is an array type, or `None` if the type is not found or is not an array.
-    pub fn resolve_array_type(&self, type_name: &TypeName) -> Option<&IntermediateType> {
+    pub fn resolve_array_type(&self, type_name: &TypeName) -> Option<&SemanticType> {
         let attrs = self.get(type_name)?;
         match &attrs.representation {
-            it @ IntermediateType::Array { .. } => Some(it),
+            it @ SemanticType::Array { .. } => Some(it),
             _ => None,
         }
     }
 
-    /// Returns the intermediate type for a named subrange type.
+    /// Returns the semantic type for a named subrange type.
     ///
-    /// Returns `Some` with the `IntermediateType::Subrange` if the type is found
+    /// Returns `Some` with the `SemanticType::Subrange` if the type is found
     /// and is a subrange type, or `None` if the type is not found or is not a subrange.
-    pub fn resolve_subrange_type(&self, type_name: &TypeName) -> Option<&IntermediateType> {
+    pub fn resolve_subrange_type(&self, type_name: &TypeName) -> Option<&SemanticType> {
         let attrs = self.get(type_name)?;
         match &attrs.representation {
-            it @ IntermediateType::Subrange { .. } => Some(it),
+            it @ SemanticType::Subrange { .. } => Some(it),
             _ => None,
         }
     }
 
-    /// Returns the intermediate type for a named structure type.
+    /// Returns the semantic type for a named structure type.
     ///
-    /// Returns `Some` with the `IntermediateType::Structure` if the type is found
+    /// Returns `Some` with the `SemanticType::Structure` if the type is found
     /// and is a structure type, or `None` if the type is not found or is not a structure.
-    pub fn resolve_struct_type(&self, type_name: &TypeName) -> Option<&IntermediateType> {
+    pub fn resolve_struct_type(&self, type_name: &TypeName) -> Option<&SemanticType> {
         let attrs = self.get(type_name)?;
         match &attrs.representation {
-            it @ IntermediateType::Structure { .. } => Some(it),
+            it @ SemanticType::Structure { .. } => Some(it),
             _ => None,
         }
     }
 
-    /// Returns the intermediate type for a named type that exposes members
+    /// Returns the semantic type for a named type that exposes members
     /// reachable with `.` access.
     ///
-    /// Returns `Some` with the `IntermediateType::Structure` or
-    /// `IntermediateType::FunctionBlock` if the type is found and has named
+    /// Returns `Some` with the `SemanticType::Structure` or
+    /// `SemanticType::FunctionBlock` if the type is found and has named
     /// members, or `None` otherwise. Use [`TypeEnvironment::resolve_struct_type`]
     /// instead when the caller needs a structure specifically.
-    pub fn resolve_member_access_type(&self, type_name: &TypeName) -> Option<&IntermediateType> {
+    pub fn resolve_member_access_type(&self, type_name: &TypeName) -> Option<&SemanticType> {
         let attrs = self.get(type_name)?;
         attrs
             .representation
@@ -724,7 +724,7 @@ impl TypeEnvironment {
             attrs.type_category != TypeCategory::Elementary
                 && !matches!(
                     attrs.representation,
-                    IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. }
+                    SemanticType::FunctionBlock { .. } | SemanticType::Function { .. }
                 )
         })
     }
@@ -901,7 +901,7 @@ pub use crate::type_attributes::TypeAttributes;
 mod tests {
     use super::*;
     use crate::{
-        intermediate_type::{ArrayDimension, ByteSized, IntermediateType},
+        semantic_type::{ArrayDimension, ByteSized, SemanticType},
         type_attributes::TypeAttributes,
         type_category::TypeCategory,
     };
@@ -916,11 +916,11 @@ mod tests {
         let first = SourceSpan::range(0, 4);
         env.insert_type(
             &TypeName::from("TYPE"),
-            TypeAttributes::new(first.clone(), IntermediateType::Bool),
+            TypeAttributes::new(first.clone(), SemanticType::Bool),
         );
         env.insert_type(
             &TypeName::from("TYPE"),
-            TypeAttributes::new(SourceSpan::range(10, 14), IntermediateType::Bool),
+            TypeAttributes::new(SourceSpan::range(10, 14), SemanticType::Bool),
         );
 
         let duplicates = env.take_duplicates();
@@ -936,7 +936,7 @@ mod tests {
         let block = || {
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::FunctionBlock {
+                SemanticType::FunctionBlock {
                     name: "FB".to_string(),
                     fields: vec![],
                 },
@@ -955,13 +955,13 @@ mod tests {
         let mut env = TypeEnvironment::new();
         env.insert_type(
             &TypeName::from("Shared"),
-            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
+            TypeAttributes::new(SourceSpan::default(), SemanticType::Bool),
         );
         env.insert_type(
             &TypeName::from("Shared"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::FunctionBlock {
+                SemanticType::FunctionBlock {
                     name: "Shared".to_string(),
                     fields: vec![],
                 },
@@ -979,7 +979,7 @@ mod tests {
         let mut env = TypeEnvironment::new();
         env.insert_type(
             &TypeName::from("TYPE"),
-            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
+            TypeAttributes::new(SourceSpan::default(), SemanticType::Bool),
         );
         assert!(env
             .insert_alias(&TypeName::from("TYPE_ALIAS"), &TypeName::from("TYPE"))
@@ -995,45 +995,45 @@ mod tests {
     }
 
     #[test]
-    fn intermediate_type_helper_methods_work_correctly() {
+    fn semantic_type_helper_methods_work_correctly() {
         // Test primitive types
-        assert!(IntermediateType::Bool.is_primitive());
-        assert!(IntermediateType::Int {
+        assert!(SemanticType::Bool.is_primitive());
+        assert!(SemanticType::Int {
             size: ByteSized::B16
         }
         .is_primitive());
-        assert!(IntermediateType::UInt {
+        assert!(SemanticType::UInt {
             size: ByteSized::B32
         }
         .is_primitive());
-        assert!(IntermediateType::Real {
+        assert!(SemanticType::Real {
             size: ByteSized::B64
         }
         .is_primitive());
-        assert!(IntermediateType::String {
+        assert!(SemanticType::String {
             max_len: Some(10),
             char_width: CharWidth::Narrow,
         }
         .is_primitive());
-        assert!(IntermediateType::Time {
+        assert!(SemanticType::Time {
             size: ByteSized::B32
         }
         .is_primitive());
-        assert!(IntermediateType::Date {
+        assert!(SemanticType::Date {
             size: ByteSized::B32
         }
         .is_primitive());
 
         // Test non-primitive types
-        assert!(!IntermediateType::Enumeration {
-            underlying_type: Box::new(IntermediateType::Int {
+        assert!(!SemanticType::Enumeration {
+            underlying_type: Box::new(SemanticType::Int {
                 size: ByteSized::B8
             })
         }
         .is_primitive());
-        assert!(!IntermediateType::Structure { fields: vec![] }.is_primitive());
-        assert!(!IntermediateType::Array {
-            element_type: Box::new(IntermediateType::Int {
+        assert!(!SemanticType::Structure { fields: vec![] }.is_primitive());
+        assert!(!SemanticType::Array {
+            element_type: Box::new(SemanticType::Int {
                 size: ByteSized::B16
             }),
             dimensions: vec![ArrayDimension {
@@ -1044,43 +1044,43 @@ mod tests {
         .is_primitive());
 
         // Test numeric types
-        assert!(IntermediateType::Int {
+        assert!(SemanticType::Int {
             size: ByteSized::B16
         }
         .is_numeric());
-        assert!(IntermediateType::UInt {
+        assert!(SemanticType::UInt {
             size: ByteSized::B32
         }
         .is_numeric());
-        assert!(IntermediateType::Real {
+        assert!(SemanticType::Real {
             size: ByteSized::B64
         }
         .is_numeric());
-        assert!(!IntermediateType::Bool.is_numeric());
-        assert!(!IntermediateType::String {
+        assert!(!SemanticType::Bool.is_numeric());
+        assert!(!SemanticType::String {
             max_len: Some(10),
             char_width: CharWidth::Narrow,
         }
         .is_numeric());
 
         // Test integer types
-        assert!(IntermediateType::Int {
+        assert!(SemanticType::Int {
             size: ByteSized::B16
         }
         .is_integer());
-        assert!(IntermediateType::UInt {
+        assert!(SemanticType::UInt {
             size: ByteSized::B32
         }
         .is_integer());
-        assert!(!IntermediateType::Real {
+        assert!(!SemanticType::Real {
             size: ByteSized::B64
         }
         .is_integer());
-        assert!(!IntermediateType::Bool.is_integer());
+        assert!(!SemanticType::Bool.is_integer());
 
         // Test subrange types
-        let subrange = IntermediateType::Subrange {
-            base_type: Box::new(IntermediateType::Int {
+        let subrange = SemanticType::Subrange {
+            base_type: Box::new(SemanticType::Int {
                 size: ByteSized::B16,
             }),
             min_value: 1,
@@ -1090,7 +1090,7 @@ mod tests {
         assert!(!subrange.is_primitive());
 
         // Test function block types
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "MyFB".to_string(),
             fields: vec![],
         };
@@ -1098,8 +1098,8 @@ mod tests {
         assert!(!fb_type.is_primitive());
 
         // Test function types
-        let func_type = IntermediateType::Function {
-            return_type: Some(Box::new(IntermediateType::Int {
+        let func_type = SemanticType::Function {
+            return_type: Some(Box::new(SemanticType::Int {
                 size: ByteSized::B16,
             })),
             parameters: vec![],
@@ -1127,13 +1127,13 @@ mod tests {
         let int_type = env.get(&TypeName::from("int")).unwrap();
         assert!(matches!(
             &int_type.representation,
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B16
             }
         ));
 
         let bool_type = env.get(&TypeName::from("bool")).unwrap();
-        assert!(matches!(&bool_type.representation, IntermediateType::Bool));
+        assert!(matches!(&bool_type.representation, SemanticType::Bool));
     }
 
     #[test]
@@ -1145,8 +1145,8 @@ mod tests {
             &TypeName::from("MY_ENUM"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::Enumeration {
-                    underlying_type: Box::new(IntermediateType::Int {
+                SemanticType::Enumeration {
+                    underlying_type: Box::new(SemanticType::Int {
                         size: ByteSized::B8,
                     }),
                 },
@@ -1158,7 +1158,7 @@ mod tests {
             &TypeName::from("MY_INT"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::Int {
+                SemanticType::Int {
                     size: ByteSized::B16,
                 },
             ),
@@ -1177,7 +1177,7 @@ mod tests {
             &TypeName::from("MY_INT"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::Int {
+                SemanticType::Int {
                     size: ByteSized::B32,
                 },
             ),
@@ -1200,15 +1200,15 @@ mod tests {
         // Add types of different categories
         env.insert_type(
             &TypeName::from("MY_BOOL"),
-            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
+            TypeAttributes::new(SourceSpan::default(), SemanticType::Bool),
         );
 
         env.insert_type(
             &TypeName::from("MY_ENUM"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::Enumeration {
-                    underlying_type: Box::new(IntermediateType::Int {
+                SemanticType::Enumeration {
+                    underlying_type: Box::new(SemanticType::Int {
                         size: ByteSized::B8,
                     }),
                 },
@@ -1219,8 +1219,8 @@ mod tests {
             &TypeName::from("MY_SUBRANGE"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::Subrange {
-                    base_type: Box::new(IntermediateType::Int {
+                SemanticType::Subrange {
+                    base_type: Box::new(SemanticType::Int {
                         size: ByteSized::B16,
                     }),
                     min_value: 1,
@@ -1253,7 +1253,7 @@ mod tests {
             &TypeName::from("MY_INT"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::Int {
+                SemanticType::Int {
                     size: ByteSized::B32,
                 },
             ),
@@ -1291,7 +1291,7 @@ mod tests {
         let mut env = TypeEnvironment::new();
         env.insert_type(
             &TypeName::from("MY_BOOL"),
-            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
+            TypeAttributes::new(SourceSpan::default(), SemanticType::Bool),
         );
 
         // Boolean is not numeric, should fail for subrange base
@@ -1307,7 +1307,7 @@ mod tests {
             &TypeName::from("MY_REAL"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::Real {
+                SemanticType::Real {
                     size: ByteSized::B32,
                 },
             ),
@@ -1329,7 +1329,7 @@ mod tests {
             &TypeName::from("MY_FB"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::FunctionBlock {
+                SemanticType::FunctionBlock {
                     name: "MyFB".to_string(),
                     fields: vec![],
                 },
@@ -1349,7 +1349,7 @@ mod tests {
             &TypeName::from("MY_FB"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::FunctionBlock {
+                SemanticType::FunctionBlock {
                     name: "MyFB".to_string(),
                     fields: vec![],
                 },
@@ -1369,8 +1369,8 @@ mod tests {
             &TypeName::from("MY_ARRAY"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::Array {
-                    element_type: Box::new(IntermediateType::Int {
+                SemanticType::Array {
+                    element_type: Box::new(SemanticType::Int {
                         size: ByteSized::B16,
                     }),
                     dimensions: vec![ArrayDimension {
@@ -1383,7 +1383,7 @@ mod tests {
 
         let result = env.resolve_array_type(&TypeName::from("MY_ARRAY"));
         assert!(result.is_some());
-        assert!(matches!(result.unwrap(), IntermediateType::Array { .. }));
+        assert!(matches!(result.unwrap(), SemanticType::Array { .. }));
     }
 
     #[test]
@@ -1393,7 +1393,7 @@ mod tests {
             &TypeName::from("MY_INT"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::Int {
+                SemanticType::Int {
                     size: ByteSized::B16,
                 },
             ),
@@ -1441,7 +1441,7 @@ mod tests {
     #[test]
     fn resolve_struct_type_when_structure_then_returns_type() {
         let mut env = TypeEnvironment::new();
-        let struct_type = IntermediateType::Structure { fields: vec![] };
+        let struct_type = SemanticType::Structure { fields: vec![] };
         env.insert_type(
             &TypeName::from("MY_STRUCT"),
             TypeAttributes::new(SourceSpan::default(), struct_type.clone()),
@@ -1457,7 +1457,7 @@ mod tests {
         let mut env = TypeEnvironment::new();
         env.insert_type(
             &TypeName::from("MY_INT"),
-            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
+            TypeAttributes::new(SourceSpan::default(), SemanticType::Bool),
         );
 
         assert!(env.resolve_struct_type(&TypeName::from("MY_INT")).is_none());
@@ -1471,7 +1471,7 @@ mod tests {
         // Unlike resolve_struct_type, member access must also see function
         // block instances so `timer.Q` resolves.
         let mut env = TypeEnvironment::new();
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "MyFB".to_string(),
             fields: vec![],
         };
@@ -1490,7 +1490,7 @@ mod tests {
     #[test]
     fn resolve_member_access_type_when_structure_then_returns_type() {
         let mut env = TypeEnvironment::new();
-        let struct_type = IntermediateType::Structure { fields: vec![] };
+        let struct_type = SemanticType::Structure { fields: vec![] };
         env.insert_type(
             &TypeName::from("MY_STRUCT"),
             TypeAttributes::new(SourceSpan::default(), struct_type.clone()),
@@ -1507,7 +1507,7 @@ mod tests {
         let mut env = TypeEnvironment::new();
         env.insert_type(
             &TypeName::from("MY_BOOL"),
-            TypeAttributes::new(SourceSpan::default(), IntermediateType::Bool),
+            TypeAttributes::new(SourceSpan::default(), SemanticType::Bool),
         );
 
         assert!(env
@@ -1554,7 +1554,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Ok(IntermediateType::Int {
+            Ok(SemanticType::Int {
                 size: ByteSized::B16
             })
         ));
@@ -1567,8 +1567,8 @@ mod tests {
             &TypeName::from("ARR4"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::Array {
-                    element_type: Box::new(IntermediateType::Int {
+                SemanticType::Array {
+                    element_type: Box::new(SemanticType::Int {
                         size: ByteSized::B16,
                     }),
                     dimensions: vec![ArrayDimension { lower: 0, upper: 3 }],
@@ -1581,7 +1581,7 @@ mod tests {
             &ReferenceTarget::Named(TypeName::from("ARR4")),
         );
 
-        assert!(matches!(result, Ok(IntermediateType::Array { .. })));
+        assert!(matches!(result, Ok(SemanticType::Array { .. })));
     }
 
     #[test]
@@ -1598,7 +1598,7 @@ mod tests {
 
         assert!(result.is_ok());
         let resolved = result.unwrap();
-        assert!(matches!(resolved, IntermediateType::Array { .. }));
+        assert!(matches!(resolved, SemanticType::Array { .. }));
         assert_eq!(resolved.array_total_elements(), Some(4));
     }
 

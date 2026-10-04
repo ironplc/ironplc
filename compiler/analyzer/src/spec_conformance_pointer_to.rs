@@ -56,7 +56,7 @@ fn program_statements(lib: &Library) -> Vec<StmtKind> {
 
 /// REQ-PTR-analyzer-300: Reading through an explicit dereference of a
 /// `POINTER TO` variable is accepted — the pointer resolves to the same
-/// reference intermediate type as `REF_TO`, with no P2031 diagnostic.
+/// reference semantic type as `REF_TO`, with no P2031 diagnostic.
 #[spec_test(REQ_PTR_analyzer_300)]
 fn analyzer_spec_req_ptr_300_explicit_deref_of_pointer_is_accepted() {
     let source = "PROGRAM Main
