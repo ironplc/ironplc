@@ -65,7 +65,7 @@ use ironplc_problems::Problem;
 
 use ironplc_analyzer::system_globals::SYSTEM_UPTIME_GLOBALS;
 use ironplc_analyzer::{
-    FunctionEnvironment, Intrinsic, SemanticContext, SemanticType, TypeEnvironment,
+    CleanAnalysis, FunctionEnvironment, Intrinsic, SemanticType, TypeEnvironment,
 };
 
 use crate::emit::Emitter;
@@ -194,15 +194,6 @@ pub(crate) fn emit_string_literal_load(
     emitter.emit_load_const_str(pool_index);
 }
 
-/// Compiles a library into a bytecode container.
-///
-/// Finds the first PROGRAM declaration in the library and compiles it
-/// into a container suitable for execution by the VM. Only user-defined
-/// functions reachable from the program root are included; unreachable
-/// functions are automatically excluded.
-///
-/// Returns an error if no program is found or if the program contains
-/// unsupported constructs.
 /// Options that affect code generation.
 ///
 /// Every front end derives this from the project's [`CompilerOptions`] via
@@ -237,12 +228,25 @@ impl From<&CompilerOptions> for CodegenOptions {
     }
 }
 
+/// Compiles a library into a bytecode container.
+///
+/// Finds the first PROGRAM declaration in the library and compiles it
+/// into a container suitable for execution by the VM. Only user-defined
+/// functions reachable from the program root are included; unreachable
+/// functions are automatically excluded.
+///
+/// Takes a [`CleanAnalysis`], which can only be made from a semantic context
+/// that holds no diagnostics.
+///
+/// Returns an error if no program is found or if the program contains
+/// unsupported constructs.
 pub fn compile(
-    library: &Library,
-    context: &SemanticContext,
+    analysis: CleanAnalysis<'_>,
     options: &CodegenOptions,
     sources: &dyn crate::source_lookup::SourceLookup,
 ) -> Result<Container, Diagnostic> {
+    let library = analysis.library();
+    let context = analysis.context();
     let program = find_program(library)?;
     let config = find_configuration(library);
     if let Some(config) = config {
@@ -1695,8 +1699,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -1738,8 +1741,7 @@ END_FUNCTION_BLOCK
 ";
         let (library, context) = parse(source);
         let result = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         );
@@ -1774,8 +1776,7 @@ END_CONFIGURATION
     fn compile_source(source: &str) -> Result<Container, Diagnostic> {
         let (library, context) = parse(source);
         compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -1903,8 +1904,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -1938,8 +1938,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -1963,8 +1962,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -2006,8 +2004,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -2043,8 +2040,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let result = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         );
@@ -2067,8 +2063,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let result = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         );
@@ -2090,8 +2085,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -2119,8 +2113,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )
@@ -2154,8 +2147,7 @@ END_PROGRAM
 ";
         let (library, context) = parse(source);
         let container = compile(
-            &library,
-            &context,
+            CleanAnalysis::new(&library, &context).unwrap(),
             &CodegenOptions::default(),
             &crate::EmptyLookup,
         )

@@ -11,7 +11,9 @@
 //!
 //! See `specs/design/arithmetic-operator-overloads.md`.
 
-use ironplc_analyzer::{typed_overload, FunctionEnvironmentBuilder, Intrinsic, Overload};
+use ironplc_analyzer::{
+    typed_overload, CleanAnalysis, FunctionEnvironmentBuilder, Intrinsic, Overload,
+};
 use ironplc_container::FunctionId;
 use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::{FileId, Id};
@@ -29,8 +31,7 @@ fn program_bytecode(source: &str) -> Vec<u8> {
     let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     let container = crate::compile(
-        &analyzed,
-        &ctx,
+        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
         &crate::CodegenOptions::default(),
         &crate::EmptyLookup,
     )

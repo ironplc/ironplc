@@ -10,7 +10,10 @@ The IronPLC compiler follows a traditional multi-stage compilation pipeline:
 
 1. **Parser** (`parser/`) - Converts source text to AST
 2. **Analyzer** (`analyzer/`) - Semantic analysis and type checking
-3. **Code Generation** (future) - Generate target code
+3. **Code Generation** (`codegen/`) - Generates bytecode for the IronPLC VM.
+   `ironplc_codegen::compile` takes a `CleanAnalysis`, which the analyzer
+   makes only from a semantic context that holds no diagnostics. Its doc
+   comment says what that does and does not guarantee.
 
 ## Architectural Principles
 
@@ -177,7 +180,7 @@ test is redundant for *behavior*.
 | `wire_format.rs` | **Backwards-compatibility guard**: pins every opcode's byte value + a completeness test | — |
 | `compile_<op>.rs` | Bytecode assertions — **only for structure end-to-end cannot localize** (jump/branch offsets, struct/array/frame offsets, operand widths, peephole), and variable layout | `compile_loops.rs`, `compile_struct.rs`, `compile_system_uptime.rs` |
 | `vm_api_<api>.rs` | The VM's embedder API, which addresses variables by slot; slots are looked up by name with `vm_var_index` | `vm_api_write_variable_raw.rs` |
-| `common/` | Shared helpers: the `e2e!`/`e2e_*!` macros, `assert_run`, `Snapshot`, `run_scans`, `drive_fb`, `parse` | — |
+| `common/` | Shared helpers: the `e2e!`/`e2e_*!` macros, `assert_run`, `Snapshot`, `run_scans`, `drive_fb`, `parse`, and `parse_and_compile`, which builds the `CleanAnalysis` that `compile` takes | — |
 
 **The one thing end-to-end cannot catch is a consistent opcode *renumber*** (the
 compiler emits and the VM reads the new value, so a from-source compile+run still
@@ -193,9 +196,9 @@ Template for a structural bytecode test file:
 ```rust
 //! Bytecode-level integration tests for <OP> — structure only
 //! (offsets/widths/peephole). Behavior is covered by end_to_end_<op>.rs.
-mod common;
-use common::parse;
-use ironplc_codegen::compile;
+use ironplc_parser::options::CompilerOptions;
+
+use crate::common::{bc, parse_and_compile};
 ```
 
 Template for a new end-to-end test file (variables are read by name, see
