@@ -5,14 +5,14 @@
 
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Assignment, SymbolicVariableKind, Variable};
+use ironplc_dsl::textual::{Assignment, Expr, SymbolicVariableKind, Variable};
 
 use super::compile::{CompileContext, DEFAULT_OP_TYPE};
-use super::compile_expr::{
-    compile_expr, emit_store_var, emit_truncation, resolve_variable_name, variable_span,
-};
+use super::compile_array::{emit_flat_index, resolve_access, ResolvedAccess};
+use super::compile_expr::{compile_expr, emit_truncation, resolve_variable_name, variable_span};
 use super::compile_fb_init::compile_fb_field_store;
 use super::compile_partial_access::{compile_partial_access_assignment, PartialAccess};
+use super::compile_place::Place;
 use crate::emit::Emitter;
 use crate::string_width::compile_string_value;
 
@@ -72,14 +72,14 @@ pub(crate) fn compile_assignment(
     // element rather than a fixed-offset struct field. That shape
     // falls through to the `resolve_access` dispatch below.
     let fixed_offset_field = match &assignment.target {
-        Variable::Symbolic(SymbolicVariableKind::Structured(structured))
+        Variable::Symbolic(symbolic @ SymbolicVariableKind::Structured(structured))
             if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
         {
-            Some(structured)
+            Some((symbolic, structured))
         }
         _ => None,
     };
-    if let Some(structured) = fixed_offset_field {
+    if let Some((symbolic, structured)) = fixed_offset_field {
         // Function block instance field write (e.g. `timer.IN := TRUE`).
         // FB instances live in `ctx.fb_instances` rather than
         // `ctx.struct_vars`, and their fields are stored in the data
@@ -124,14 +124,8 @@ pub(crate) fn compile_assignment(
             return Ok(());
         }
 
-        let (var_index, desc_index, slot_offset, op_type, field_type) =
-            crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
-        compile_expr(emitter, ctx, &assignment.value, op_type)?;
-        crate::compile_struct::emit_truncation_for_field(emitter, &field_type);
-        let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
-        emitter.emit_load_const_i32(idx_const);
-        emitter.emit_store_array(var_index, desc_index);
-        return Ok(());
+        let place = Place::resolve(ctx, symbolic)?;
+        return assign_to_place(emitter, ctx, &place, &assignment.value);
     }
 
     // Whole-aggregate assignment (`x := y` where x is an array or a
@@ -155,133 +149,27 @@ pub(crate) fn compile_assignment(
         compile_string_value(emitter, ctx, &assignment.value, char_width)?;
         emitter.emit_str_store_var(data_offset);
     } else {
-        match crate::compile_array::resolve_access(ctx, &assignment.target)? {
-            crate::compile_array::ResolvedAccess::Scalar { var_index } => {
-                let type_info = target_name.and_then(|name| ctx.var_type_info(name));
-                let op_type = type_info
-                    .map(|ti| (ti.op_width, ti.signedness))
-                    .unwrap_or(DEFAULT_OP_TYPE);
-                compile_expr(emitter, ctx, &assignment.value, op_type)?;
-                if let Some(ti) = type_info {
-                    emit_truncation(emitter, ti);
-                }
-                emit_store_var(emitter, var_index, op_type);
-            }
-            crate::compile_array::ResolvedAccess::InOut { ref_slot } => {
-                // Store through the reference into the caller's variable.
-                let type_info = target_name.and_then(|name| ctx.var_type_info(name));
-                let op_type = type_info
-                    .map(|ti| (ti.op_width, ti.signedness))
-                    .unwrap_or(DEFAULT_OP_TYPE);
-                compile_expr(emitter, ctx, &assignment.value, op_type)?;
-                if let Some(ti) = type_info {
-                    emit_truncation(emitter, ti);
-                }
-                emitter.emit_load_var_i64(ref_slot);
-                emitter.emit_store_indirect();
-            }
-            crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
-                // Copy scalar fields from info (borrows ctx) before using ctx mutably.
-                let element_vti = info.element_var_type_info;
+        match resolve_access(ctx, &assignment.target)? {
+            ResolvedAccess::ArrayElement { info, subscripts } if info.is_string_element => {
+                // Copy fields from info (borrows ctx) before using ctx mutably.
                 let arr_var_index = info.var_index;
                 let arr_desc_index = info.desc_index;
-                let is_string_elem = info.is_string_element;
                 let element_char_width = info.string_char_width;
-                let dim_info: Vec<_> = info
-                    .dimensions
-                    .iter()
-                    .map(|d| crate::compile_array::DimensionInfo {
-                        lower_bound: d.lower_bound,
-                        size: d.size,
-                        stride: d.stride,
-                    })
-                    .collect();
-                // info is no longer used; subscripts borrows from AST, not ctx.
-                let target_span = variable_span(&assignment.target);
-
-                if is_string_elem {
-                    // String array: produce the RHS as a temp buffer at
-                    // the element's encoding, then the flat index, then
-                    // STR_STORE_ARRAY_ELEM (ADR-0034).
-                    compile_string_value(emitter, ctx, &assignment.value, element_char_width)?;
-                    crate::compile_array::emit_flat_index(
-                        emitter,
-                        ctx,
-                        &subscripts,
-                        &dim_info,
-                        &target_span,
-                    )?;
-                    emitter.emit_str_store_array_elem(arr_var_index, arr_desc_index);
-                } else {
-                    let element_op_type = (element_vti.op_width, element_vti.signedness);
-                    // 1. Compile the RHS value.
-                    compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
-                    // 2. Truncate for sub-32-bit types.
-                    emit_truncation(emitter, element_vti);
-                    // 3. Compute the flat index.
-                    crate::compile_array::emit_flat_index(
-                        emitter,
-                        ctx,
-                        &subscripts,
-                        &dim_info,
-                        &target_span,
-                    )?;
-                    // Stack: [..., value, index]. STORE_ARRAY pops both.
-                    emitter.emit_store_array(arr_var_index, arr_desc_index);
-                }
-            }
-            crate::compile_array::ResolvedAccess::DerefArrayElement { info, subscripts } => {
-                let element_vti = info.element_var_type_info;
-                let ref_var_index = info.var_index;
-                let arr_desc_index = info.desc_index;
-                let dim_info: Vec<_> = info
-                    .dimensions
-                    .iter()
-                    .map(|d| crate::compile_array::DimensionInfo {
-                        lower_bound: d.lower_bound,
-                        size: d.size,
-                        stride: d.stride,
-                    })
-                    .collect();
-                let element_op_type = (element_vti.op_width, element_vti.signedness);
-                let target_span = variable_span(&assignment.target);
-
-                compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
-                emit_truncation(emitter, element_vti);
-                crate::compile_array::emit_flat_index(
+                let dim_info = info.dimensions.clone();
+                // String array: produce the RHS as a temp buffer at the
+                // element's encoding, then the flat index, then
+                // STR_STORE_ARRAY_ELEM (ADR-0034).
+                compile_string_value(emitter, ctx, &assignment.value, element_char_width)?;
+                emit_flat_index(
                     emitter,
                     ctx,
                     &subscripts,
                     &dim_info,
-                    &target_span,
+                    &variable_span(&assignment.target),
                 )?;
-                emitter.emit_store_array_deref(ref_var_index, arr_desc_index);
+                emitter.emit_str_store_array_elem(arr_var_index, arr_desc_index);
             }
-            crate::compile_array::ResolvedAccess::StructFieldArrayElement {
-                var_index,
-                desc_index,
-                field_slot_offset,
-                ref dimensions,
-                subscripts,
-                element_op_type,
-                ref element_type,
-            } => {
-                let target_span = variable_span(&assignment.target);
-                compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
-                crate::compile_struct::emit_truncation_for_field(emitter, element_type);
-                crate::compile_array::emit_flat_index(
-                    emitter,
-                    ctx,
-                    &subscripts,
-                    dimensions,
-                    &target_span,
-                )?;
-                let offset_const = ctx.add_i64_constant(field_slot_offset.raw() as i64);
-                emitter.emit_load_const_i64(offset_const);
-                emitter.emit_add_i64();
-                emitter.emit_store_array(var_index, desc_index);
-            }
-            crate::compile_array::ResolvedAccess::StructFieldStringArrayElement(element) => {
+            ResolvedAccess::StructFieldStringArrayElement(element) => {
                 // The RHS produces, at the element's encoding, the
                 // temp buffer index the store consumes (ADR-0034).
                 compile_string_value(emitter, ctx, &assignment.value, element.char_width)?;
@@ -291,7 +179,49 @@ pub(crate) fn compile_assignment(
                     element.string_desc_index,
                 );
             }
+            // `a^[i] := v` where `a` is a STRING array rather than a
+            // reference to one. The analyzer accepts the dereference, and
+            // this has always compiled to a single-slot store through `a`.
+            // A place refuses a STRING element, so this shape keeps its
+            // own store until the analyzer rejects the dereference.
+            ResolvedAccess::DerefArrayElement { info, subscripts } if info.is_string_element => {
+                let element_vti = info.element_var_type_info;
+                let ref_var_index = info.var_index;
+                let arr_desc_index = info.desc_index;
+                let dim_info = info.dimensions.clone();
+                let element_op_type = (element_vti.op_width, element_vti.signedness);
+                compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
+                emit_truncation(emitter, element_vti);
+                emit_flat_index(
+                    emitter,
+                    ctx,
+                    &subscripts,
+                    &dim_info,
+                    &variable_span(&assignment.target),
+                )?;
+                emitter.emit_store_array_deref(ref_var_index, arr_desc_index);
+            }
+            access => {
+                let place = Place::from_access(
+                    ctx,
+                    access,
+                    target_name,
+                    variable_span(&assignment.target),
+                )?;
+                assign_to_place(emitter, ctx, &place, &assignment.value)?;
+            }
         }
     }
     Ok(())
+}
+
+/// Compiles `value` at the type `place` holds, and stores it there.
+fn assign_to_place(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    place: &Place,
+    value: &Expr,
+) -> Result<(), Diagnostic> {
+    compile_expr(emitter, ctx, value, place.op_type())?;
+    place.emit_store(emitter, ctx)
 }

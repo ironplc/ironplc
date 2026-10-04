@@ -725,4 +725,75 @@ mod tests {
         let result = find_field_in_type(&fields, &Id::from("unknown"), &span);
         assert!(result.is_err());
     }
+
+    /// A place for a field takes its operation type from
+    /// `var_type_info_for_field`, where the field's resolution takes it from
+    /// `resolve_field_op_type`. The two must agree for every field type.
+    #[test]
+    fn var_type_info_for_field_when_any_field_type_then_op_type_matches_resolve_field_op_type() {
+        use ironplc_analyzer::enumeration_members::EnumerationMembers;
+
+        let sizes = [
+            ByteSized::B8,
+            ByteSized::B16,
+            ByteSized::B32,
+            ByteSized::B64,
+        ];
+        let mut types = vec![SemanticType::Bool];
+        for size in sizes {
+            types.push(SemanticType::Int { size: size.clone() });
+            types.push(SemanticType::UInt { size: size.clone() });
+            types.push(SemanticType::Real { size: size.clone() });
+            types.push(SemanticType::Bytes { size: size.clone() });
+            types.push(SemanticType::Time { size: size.clone() });
+            types.push(SemanticType::Date { size: size.clone() });
+            types.push(SemanticType::TimeOfDay { size: size.clone() });
+            types.push(SemanticType::DateAndTime { size: size.clone() });
+        }
+        types.extend([
+            SemanticType::Enumeration {
+                underlying_type: Box::new(SemanticType::Int {
+                    size: ByteSized::B16,
+                }),
+                members: EnumerationMembers::default(),
+            },
+            SemanticType::Subrange {
+                base_type: Box::new(SemanticType::UInt {
+                    size: ByteSized::B8,
+                }),
+                min_value: 0,
+                max_value: 10,
+            },
+            SemanticType::Reference {
+                target_type: Box::new(SemanticType::Bool),
+            },
+            SemanticType::String {
+                max_len: None,
+                char_width: CharWidth::Narrow,
+            },
+            SemanticType::Structure { fields: vec![] },
+            SemanticType::Array {
+                element_type: Box::new(SemanticType::Bool),
+                dimensions: vec![],
+            },
+            SemanticType::FunctionBlock {
+                name: "FB".to_string(),
+                fields: vec![],
+            },
+            SemanticType::Function {
+                return_type: None,
+                parameters: vec![],
+            },
+        ]);
+
+        for field_type in &types {
+            let from_type_info =
+                var_type_info_for_field(field_type).map(|ti| (ti.op_width, ti.signedness));
+            assert_eq!(
+                from_type_info,
+                resolve_field_op_type(field_type),
+                "for {field_type:?}"
+            );
+        }
+    }
 }
