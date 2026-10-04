@@ -83,7 +83,9 @@ fn compile_intrinsic(
             compile_operator_form(emitter, ctx, func, op_type, &operator)
         }
         Intrinsic::Numeric(function) => compile_numeric(emitter, ctx, func, function, op_type),
-        Intrinsic::BitShift(shift) => compile_shift_rotate(emitter, ctx, func, op_type, shift),
+        Intrinsic::BitShift(shift) => {
+            compile_shift_rotate(emitter, ctx, fixed_args(func)?, op_type, shift)
+        }
         Intrinsic::Mux => compile_mux(emitter, ctx, func, op_type),
         // Assignment function (equivalent to := operator)
         Intrinsic::Move => compile_move(emitter, ctx, fixed_args(func)?, op_type),
