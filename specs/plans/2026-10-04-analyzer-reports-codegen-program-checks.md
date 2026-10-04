@@ -43,7 +43,7 @@ diagnostic from it reaches the user.
 | 9 | same, bit-string literal at 32-bit width | P2026 | `d := DWORD#16#1FFFFFFFF` | (b) |
 | 10 | same, bit-string literal at 64-bit width | P2026 | `d := LWORD#16#1FFFFFFFFFFFFFFFF` | (b) |
 | 11–12 | `compile_expr.rs` `signed_integer_to_i64` | P2026 | none: all four callers (`constant_i64`, `compile_loop.rs` `try_constant_i64`) discard the error with `.ok()` | (–) |
-| 13 | `compile_stmt.rs` `CaseLabelValue::overflow` | P2026 | a label outside the selector's width. `rule_constant_range` checks every label against the selector's own (narrower) range, and `rule_case_selector_type` (P4053) admits only integer and enumerated selectors. Checked for named, alias, subrange, array element, structure field, function result, arithmetic, `p^`, function block output and `VAR_EXTERNAL` selectors | (a) |
+| 13 | `compile_stmt.rs` `CaseLabelValue::overflow` | P2026 | a label outside the selector's width. `rule_constant_range` checks every label against the selector's own (narrower) range, and `rule_case_selector_type` (P4053) admits only integer and enumerated selectors. Checked for named, alias, subrange, array element, structure field, function result, arithmetic, `p^`, function block output and `VAR_EXTERNAL` selectors. The exception is an untyped literal selector (`CASE 5 OF 4294967295:`), which has no type for the rule to read until #2050 records one; found while writing PR 4, and moved to PR 6 | (a), except a literal selector (b) |
 | 14–15 | `compile_stmt.rs` `signed_integer_to_i32`, from `compile_array.rs` `array_spec_from_inline` | P2026 | `VAR a : ARRAY[2147483648..2147483650] OF BOOL`. The same bounds in a `TYPE` declaration are P2024 in analysis (`intermediates/array.rs`) | (b) |
 | 16 | `compile_stmt.rs` `StmtKind::Exit` | P4021 | `rule_loop_control_inside_loop` | (a) |
 | 17 | `compile_stmt.rs` `StmtKind::Continue` | P4065 | `rule_loop_control_inside_loop` | (a) |
@@ -265,6 +265,8 @@ Core PR (5), site 18:
       program that codegen's fallback was written for
 
 Core PR (6), literals (with or after #2050's last step):
+- [ ] `CASE` with an untyped literal selector: its labels are checked against
+      the type #2050 records for the selector
 - [ ] `rule_constant_range` checks every literal against its recorded type's
       range, bit strings and generic parameters included; tests for each
       program in sites 2–10 and for each newly rejected program listed above
