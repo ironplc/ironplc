@@ -20,5 +20,8 @@ fn main() {
         // Constant variable inference (`REQ-CVI-analyzer-*`): which
         // never-written declarations become CONSTANT.
         "constant-variable-inference.md",
+        // Inspecting the expression type annotation (`REQ-ETR-analyzer-*`):
+        // how a type is spelled in the annotated rendering.
+        "expression-type-resolution.md",
     ]);
 }

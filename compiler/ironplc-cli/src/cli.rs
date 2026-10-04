@@ -8,11 +8,14 @@ use codespan_reporting::{
         termcolor::{ColorChoice, StandardStream},
     },
 };
+use ironplc_analyzer::value_type::spelling;
 use ironplc_dsl::{
-    core::FileId,
+    common::{Library, LibraryElementKind},
+    core::{FileId, Located},
     diagnostic::{Diagnostic, Label},
+    type_id::TypeId,
 };
-use ironplc_plc2plc::write_to_string;
+use ironplc_plc2plc::{write_to_string, write_to_string_with_types};
 use ironplc_problems::Problem;
 use log::{error, trace};
 use std::{
@@ -70,6 +73,59 @@ pub fn echo(
     }
 
     finish("Echo", diagnostics, Some(&project), suppress_output)
+}
+
+/// Writes the analyzed program with a comment after each expression giving
+/// the type the analyzer recorded for it (`echo --types`).
+///
+/// The program is written whenever analysis built a context, so a program
+/// with semantic errors still shows what was resolved, and its diagnostics
+/// are reported as usual. Only the declarations of the project's own files
+/// are written: the analyzed library also holds those of every activated
+/// library.
+pub fn echo_types(
+    paths: &[PathBuf],
+    compiler_options: CompilerOptions,
+    libraries: &[LibraryName],
+    suppress_output: bool,
+) -> Result<(), String> {
+    let (mut project, mut diagnostics) = create_project(paths, compiler_options, libraries);
+    diagnostics.extend(project.semantic());
+
+    if let (Some(context), Some(library)) = (project.semantic_context(), project.analyzed_library())
+    {
+        let sources: HashSet<&FileId> = project.sources().iter().map(|s| s.file_id()).collect();
+        let own = Library {
+            elements: library
+                .elements
+                .iter()
+                .filter(|element| declared_in(element).is_some_and(|file| sources.contains(&file)))
+                .cloned()
+                .collect(),
+        };
+        let type_name = |id: TypeId| spelling(context.types(), id);
+        match write_to_string_with_types(&own, &type_name) {
+            Ok(output) => print!("{output}"),
+            Err(errs) => diagnostics.extend(errs),
+        }
+    }
+
+    finish("Echo", diagnostics, Some(&project), suppress_output)
+}
+
+/// The file `element` was declared in: the file its name was written in.
+/// `None` for an empty top-level `VAR_GLOBAL` block, which has no name.
+fn declared_in(element: &LibraryElementKind) -> Option<FileId> {
+    let span = match element {
+        LibraryElementKind::DataTypeDeclaration(decl) => decl.type_name().span(),
+        LibraryElementKind::FunctionDeclaration(decl) => decl.name.span(),
+        LibraryElementKind::FunctionBlockDeclaration(decl) => decl.name.span(),
+        LibraryElementKind::ProgramDeclaration(decl) => decl.name.span(),
+        LibraryElementKind::ConfigurationDeclaration(decl) => decl.name.span(),
+        LibraryElementKind::GlobalVarDeclarations(decls) => decls.first()?.span(),
+        LibraryElementKind::InterfaceDeclaration(decl) => decl.name.span(),
+    };
+    Some(span.file_id)
 }
 
 pub fn tokenize(

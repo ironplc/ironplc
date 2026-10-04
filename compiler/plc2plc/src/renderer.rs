@@ -12,6 +12,8 @@ use ironplc_dsl::time::*;
 use ironplc_dsl::{diagnostic::Diagnostic, visitor::Visitor};
 use paste::paste;
 
+use crate::type_comment::{self, TypeNamer};
+
 /// Defines a macro for creating a comma separated list of items where
 /// each item in the list is created by visiting the item.
 macro_rules! visit_comma_separated {
@@ -46,17 +48,22 @@ macro_rules! write_period_separated {
     };
 }
 
-pub fn apply(lib: &Library) -> Result<String, Vec<Diagnostic>> {
-    let mut visitor = LibraryRenderer::new();
+/// Renders `lib`. With `type_name`, each expression is followed by a comment
+/// giving the type the analyzer recorded for it (see `type_comment`).
+pub fn apply(lib: &Library, type_name: Option<TypeNamer>) -> Result<String, Vec<Diagnostic>> {
+    let mut visitor = LibraryRenderer::new(type_name);
     visitor
         .walk(lib)
         .map(|_| visitor.buffer)
         .map_err(|e| vec![e])
 }
 
-struct LibraryRenderer {
+struct LibraryRenderer<'a> {
     buffer: String,
     indents: usize,
+    /// Names a type for the comment after each expression; `None` renders
+    /// no comments.
+    type_name: Option<TypeNamer<'a>>,
 }
 
 /// The spelling of a character string: its characters, `$`-escaped where
@@ -69,11 +76,12 @@ fn character_string_text(width: &StringType, value: &[char]) -> String {
     val
 }
 
-impl LibraryRenderer {
-    fn new() -> Self {
+impl<'a> LibraryRenderer<'a> {
+    fn new(type_name: Option<TypeNamer<'a>>) -> Self {
         Self {
             buffer: String::new(),
             indents: 0,
+            type_name,
         }
     }
 
@@ -225,8 +233,35 @@ impl LibraryRenderer {
     }
 }
 
-impl Visitor<Diagnostic> for LibraryRenderer {
+impl Visitor<Diagnostic> for LibraryRenderer<'_> {
     type Value = ();
+
+    fn visit_expr(&mut self, node: &dsl::textual::Expr) -> Result<Self::Value, Diagnostic> {
+        let Some(type_name) = self.type_name else {
+            return node.recurse_visit(self);
+        };
+        // A conversion is written as its operand, without the operand's own
+        // comment: the conversion's comment names the operand's type too.
+        let written = match &node.kind {
+            dsl::textual::ExprKind::ImplicitConversion(inner) => inner.as_ref(),
+            _ => node,
+        };
+        // Parenthesised so the comment on the operand and the comment on the
+        // operation are not written side by side.
+        let parenthesise = matches!(
+            written.kind,
+            dsl::textual::ExprKind::UnaryOp(_) | dsl::textual::ExprKind::Deref(_)
+        );
+        if parenthesise {
+            self.write_ws("(");
+        }
+        self.visit_expr_kind(&written.kind)?;
+        if parenthesise {
+            self.write_ws(")");
+        }
+        self.write_ws(&type_comment::comment(node, type_name));
+        Ok(())
+    }
 
     fn visit_id(&mut self, node: &Id) -> Result<Self::Value, Diagnostic> {
         // TODO this is the wrong case

@@ -13,6 +13,7 @@ mod corpus;
 mod declarations;
 mod enums;
 mod exit_return;
+mod expression_types;
 mod fb_inheritance;
 mod method_call_expression;
 mod methods;
