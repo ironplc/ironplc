@@ -173,7 +173,19 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
     variable: &'ast Variable,
 ) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
     match variable {
-        Variable::Symbolic(SymbolicVariableKind::Array(array_var)) => {
+        Variable::Symbolic(symbolic) => resolve_symbolic_access(ctx, symbolic),
+        Variable::Direct(direct) => Err(Diagnostic::todo_with_span(direct.position.clone())),
+    }
+}
+
+/// Resolves a symbolic variable reference into its access kind, as
+/// [`resolve_access`] does for a [`Variable`].
+pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
+    ctx: &'ctx CompileContext,
+    symbolic: &'ast SymbolicVariableKind,
+) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
+    match symbolic {
+        SymbolicVariableKind::Array(array_var) => {
             // Walk the chain collecting subscript groups innermost-first,
             // then reverse. For nested arrays arr[i][j], the AST is:
             //   ArrayVariable {
@@ -267,7 +279,7 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
         // `s.arr[i].field` -- a field selected from an element of an
         // array-of-struct. The record is an array element rather than a
         // fixed-offset struct field, so it resolves through the array path.
-        Variable::Symbolic(SymbolicVariableKind::Structured(structured))
+        SymbolicVariableKind::Structured(structured)
             if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
         {
             crate::compile_array_struct::resolve_struct_array_element_field(
@@ -276,14 +288,14 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                 Vec::new(),
             )
         }
-        _ => {
-            if let Some(ref_slot) = super::compile_expr::in_out_ref_slot(ctx, variable) {
+        SymbolicVariableKind::Named(named) => {
+            if let Some(ref_slot) = ctx.in_out_ref_slot(&named.name) {
                 return Ok(ResolvedAccess::InOut { ref_slot });
             }
-            // Fall through to existing resolve_variable() for scalars.
-            let var_index = super::compile_expr::resolve_variable(ctx, variable)?;
+            let var_index = ctx.var_index(&named.name)?;
             Ok(ResolvedAccess::Scalar { var_index })
         }
+        other => Err(Diagnostic::todo_with_span(other.span())),
     }
 }
 
