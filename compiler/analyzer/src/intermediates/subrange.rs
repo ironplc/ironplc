@@ -12,7 +12,7 @@ use ironplc_problems::Problem;
 
 /// Result of processing a subrange specification
 #[derive(Debug, Clone, PartialEq)]
-pub enum IntermediateResult {
+pub enum TypeResolution {
     /// Create a new subrange type with the given attributes
     Type(TypeAttributes),
     /// Create an alias to an existing type
@@ -24,7 +24,7 @@ pub fn try_from(
     node_name: &TypeName,
     spec: &SubrangeSpecificationKind,
     type_environment: &TypeEnvironment,
-) -> Result<IntermediateResult, Diagnostic> {
+) -> Result<TypeResolution, Diagnostic> {
     match spec {
         SpecificationKind::Inline(spec) => {
             // Direct subrange specification: MY_RANGE : INT (1..100);
@@ -92,7 +92,7 @@ pub fn try_from(
                 .representation
                 .validate_bounds(min_value, max_value, node_name)?;
 
-            Ok(IntermediateResult::Type(TypeAttributes::new(
+            Ok(TypeResolution::Type(TypeAttributes::new(
                 node_name.span(),
                 SemanticType::Subrange {
                     base_type: Box::new(base_type.representation.clone()),
@@ -111,7 +111,7 @@ pub fn try_from(
                 .with_secondary(Label::span(base_type_name.span(), "Base type")));
             }
 
-            Ok(IntermediateResult::Alias(base_type_name.clone()))
+            Ok(TypeResolution::Alias(base_type_name.clone()))
         }
     }
 }
@@ -304,7 +304,7 @@ mod tests {
         assert!(result.is_ok());
 
         let result = result.unwrap();
-        let attrs = cast!(result, IntermediateResult::Type);
+        let attrs = cast!(result, TypeResolution::Type);
         assert!(attrs.representation.is_subrange());
         let (min_value, max_value) = cast_struct!(
             attrs.representation,
@@ -343,7 +343,7 @@ mod tests {
         assert!(result.is_ok());
 
         let result = result.unwrap();
-        let base_name = cast!(result, IntermediateResult::Alias);
+        let base_name = cast!(result, TypeResolution::Alias);
         assert_eq!(base_name, TypeName::from("BASE_RANGE"));
     }
 

@@ -69,20 +69,20 @@ impl DeclTypeResolver<'_> {
             }
             InitialValueAssignmentKind::Subrange(spec) => {
                 match subrange::try_from(name, spec, env).ok()? {
-                    subrange::IntermediateResult::Type(attributes) => attributes,
-                    subrange::IntermediateResult::Alias(alias) => return env.id_of(&alias),
+                    subrange::TypeResolution::Type(attributes) => attributes,
+                    subrange::TypeResolution::Alias(alias) => return env.id_of(&alias),
                 }
             }
             InitialValueAssignmentKind::Array(a) => {
                 match array::try_from(name, &a.spec, env).ok()? {
-                    array::IntermediateResult::Type(attributes) => {
+                    array::TypeResolution::Type(attributes) => {
                         let id = self.type_environment.insert_anonymous(attributes);
                         if let SpecificationKind::Inline(elements) = &a.spec {
                             self.type_environment.record_array_element(id, elements);
                         }
                         return Some(id);
                     }
-                    array::IntermediateResult::Alias(alias) => return env.id_of(&alias),
+                    array::TypeResolution::Alias(alias) => return env.id_of(&alias),
                 }
             }
             // A reference type is one type however often it is spelled
@@ -93,12 +93,12 @@ impl DeclTypeResolver<'_> {
                     ReferenceTarget::Array(subranges) => {
                         let spec = SpecificationKind::Inline(subranges.clone());
                         match array::try_from(name, &spec, env).ok()? {
-                            array::IntermediateResult::Type(attributes) => {
+                            array::TypeResolution::Type(attributes) => {
                                 let id = self.type_environment.insert_anonymous(attributes);
                                 self.type_environment.record_array_element(id, subranges);
                                 id
                             }
-                            array::IntermediateResult::Alias(alias) => env.id_of(&alias)?,
+                            array::TypeResolution::Alias(alias) => env.id_of(&alias)?,
                         }
                     }
                 };
