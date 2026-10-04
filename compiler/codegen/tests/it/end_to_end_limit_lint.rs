@@ -10,7 +10,7 @@ PROGRAM main
   result := LIMIT(LINT#-10000000000, LINT#5000000000, LINT#10000000000);
 END_PROGRAM
 ",
-    &[(0, 5_000_000_000)],
+    &[("result", 5_000_000_000)],
 );
 
 e2e_i64!(
@@ -23,5 +23,5 @@ PROGRAM main
   result := LIMIT(LINT#0, LINT#-5000000000, LINT#10000000000);
 END_PROGRAM
 ",
-    &[(0, 0)],
+    &[("result", 0)],
 );

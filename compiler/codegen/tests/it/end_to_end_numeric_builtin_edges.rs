@@ -49,7 +49,7 @@ PROGRAM main
   y := LIMIT(mn, 7, mx);
 END_PROGRAM
 ",
-    &[(2, 5)],
+    &[("y", 5)],
 );
 
 e2e_i64!(
@@ -64,7 +64,7 @@ PROGRAM main
   y := LIMIT(mn, 7, mx);
 END_PROGRAM
 ",
-    &[(2, 5)],
+    &[("y", 5)],
 );
 
 #[test]
@@ -111,7 +111,7 @@ PROGRAM main
   y := LIMIT(mn, 7.0, mx);
 END_PROGRAM
 ",
-    &[(2, 5.0)],
+    &[("y", 5.0)],
 );
 
 // 2 ** 2^32 overflows like any large power and wraps to 0; truncating the
@@ -128,7 +128,7 @@ PROGRAM main
   y := EXPT(b, e);
 END_PROGRAM
 ",
-    &[(2, 0)],
+    &[("y", 0)],
 );
 
 e2e_i64!(
@@ -143,5 +143,5 @@ PROGRAM main
   y := EXPT(b, e);
 END_PROGRAM
 ",
-    &[(2, -1)],
+    &[("y", -1)],
 );

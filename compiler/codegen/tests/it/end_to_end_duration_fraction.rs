@@ -48,5 +48,5 @@ END_PROGRAM
 "
     );
 
-    assert_run_with(&source, &CompilerOptions::default(), &[(0, expected)]);
+    assert_run_with(&source, &CompilerOptions::default(), &[("t", expected)]);
 }

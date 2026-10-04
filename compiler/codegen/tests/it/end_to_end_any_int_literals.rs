@@ -21,7 +21,7 @@ END_VAR
     result := ADD_ONE(5);
 END_PROGRAM
 ",
-    &[(0, 6)],
+    &[("result", 6)],
 );
 
 e2e_i32!(
@@ -41,7 +41,7 @@ END_VAR
     result := DOUBLE(7);
 END_PROGRAM
 ",
-    &[(0, 14)],
+    &[("result", 14)],
 );
 
 e2e_i32!(
@@ -61,7 +61,7 @@ END_VAR
     result := TRIPLE(100);
 END_PROGRAM
 ",
-    &[(0, 300)],
+    &[("result", 300)],
 );
 
 e2e_f64_near!(
@@ -82,7 +82,7 @@ END_VAR
     result := ADD_PI(3.25);
 END_PROGRAM
 ",
-    &[(0, 3.25)],
+    &[("result", 3.25)],
 );
 
 e2e_f32_near!(
@@ -103,7 +103,7 @@ END_VAR
     result := HALVE(10);
 END_PROGRAM
 ",
-    &[(0, 5.0)],
+    &[("result", 5.0)],
 );
 
 e2e_f64_near!(
@@ -124,7 +124,7 @@ END_VAR
     result := IDENTITY_LREAL(42);
 END_PROGRAM
 ",
-    &[(0, 42.0)],
+    &[("result", 42.0)],
 );
 
 e2e_i32!(
@@ -139,5 +139,5 @@ END_VAR
     result := x + 5;
 END_PROGRAM
 ",
-    &[(1, 15)],
+    &[("result", 15)],
 );

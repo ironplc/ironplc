@@ -157,7 +157,7 @@ fn end_to_end_when_long_time_of_day_literal_has_fraction_then_stored_at_type_uni
     #[case] source: &str,
     #[case] expected: Time,
 ) {
-    assert_run_with(source, &edition3(), &[(0, expected)]);
+    assert_run_with(source, &edition3(), &[("a", expected)]);
 }
 
 #[rstest]
@@ -187,5 +187,5 @@ fn end_to_end_when_long_date_and_time_literal_has_fraction_then_stored_at_type_u
     #[case] source: &str,
     #[case] expected: PrimitiveDateTime,
 ) {
-    assert_run_with(source, &edition3(), &[(0, expected)]);
+    assert_run_with(source, &edition3(), &[("d", expected)]);
 }

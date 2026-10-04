@@ -6,7 +6,6 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::parse_and_run_rounds;
 
-// x is at var index 1 (arr is var 0, x is var 1)
 e2e_i32!(
     end_to_end_when_array_store_and_load_then_roundtrips,
     "
@@ -19,10 +18,9 @@ PROGRAM main
   x := arr[3];
 END_PROGRAM
 ",
-    &[(1, 42)],
+    &[("x", 42)],
 );
 
-// sum is var index 1 (arr=0, sum=1, i=2)
 e2e_i32!(
     end_to_end_when_array_sum_loop_then_computes_correct_sum,
     "
@@ -43,7 +41,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(1, 150)],
+    &[("sum", 150)],
 );
 
 e2e_i32!(
@@ -57,7 +55,7 @@ PROGRAM main
   x := arr[2];
 END_PROGRAM
 ",
-    &[(1, 20)],
+    &[("x", 20)],
 );
 
 e2e_i32!(
@@ -74,7 +72,7 @@ PROGRAM main
   x := arr[1];
 END_PROGRAM
 ",
-    &[(1, 200000)],
+    &[("x", 200000)],
 );
 
 e2e_i32!(
@@ -93,7 +91,7 @@ PROGRAM main
   x := arr[0];
 END_PROGRAM
 ",
-    &[(1, 300)],
+    &[("x", 300)],
 );
 
 // arr=0, a=1, b=2, c=3
@@ -115,7 +113,7 @@ PROGRAM main
   c := arr[3];
 END_PROGRAM
 ",
-    &[(1, 11), (2, 22), (3, 33)],
+    &[("a", 11), ("b", 22), ("c", 33)],
 );
 
 // Multi-scan test: array state must persist across VM rounds, so it drives the
@@ -161,7 +159,7 @@ PROGRAM main
   y := arr[4];
 END_PROGRAM
 ",
-    &[(1, 10), (2, 20)],
+    &[("x", 10), ("y", 20)],
 );
 
 e2e_i32!(
@@ -176,7 +174,7 @@ PROGRAM main
   x := matrix[2, 3];
 END_PROGRAM
 ",
-    &[(1, 42)],
+    &[("x", 42)],
 );
 
 e2e_i32!(
@@ -200,5 +198,5 @@ END_VAR
     result := MY_FUNC(x := arg);
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("result", 42)],
 );

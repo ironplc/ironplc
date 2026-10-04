@@ -15,7 +15,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ",
-    &[(2, 7)],
+    &[("n", 7)],
 );
 
 e2e_i32!(
@@ -30,7 +30,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ",
-    &[(2, 0)],
+    &[("n", 0)],
 );
 
 e2e_i32!(
@@ -45,7 +45,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ",
-    &[(2, 1)],
+    &[("n", 1)],
 );
 
 e2e_i32!(
@@ -60,7 +60,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ",
-    &[(2, 0)],
+    &[("n", 0)],
 );
 
 e2e_i32!(
@@ -75,7 +75,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ",
-    &[(2, 1)],
+    &[("n", 1)],
 );
 
 e2e_i32!(
@@ -90,7 +90,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ",
-    &[(2, 0)],
+    &[("n", 0)],
 );
 
 // 'DE' starts at position 4 (1-based).
@@ -106,7 +106,7 @@ PROGRAM main
   n := FIND(s1, s2);
 END_PROGRAM
 ",
-    &[(2, 4)],
+    &[("n", 4)],
 );
 
 // MID('world', L=3, P=1) = 'wor', FIND('hello world', 'wor') = 7 (1-based).
@@ -122,11 +122,10 @@ PROGRAM main
   n := FIND(s1, MID(s2, 3, 1));
 END_PROGRAM
 ",
-    &[(2, 7)],
+    &[("n", 7)],
 );
 
 // 'bet' starts at position 1 in 'beta'.
-// Rusty dialect: var 0-1 system, var 2 struct, var 3 scratch, var 4 pos.
 e2e_i32_with!(
     end_to_end_when_find_with_struct_array_field_then_returns_position,
     CompilerOptions::from_dialect(Dialect::Rusty),
@@ -150,5 +149,5 @@ END_VAR
     pos := FIND(setup.NAMES[2], 'bet');
 END_PROGRAM
 ",
-    &[(4, 1)],
+    &[("pos", 1)],
 );

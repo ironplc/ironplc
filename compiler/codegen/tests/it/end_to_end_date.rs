@@ -76,7 +76,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(2, 1)],
+    &[("result", 1)],
 );
 
 e2e_i32!(
@@ -97,7 +97,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(2, 1)],
+    &[("result", 1)],
 );
 
 /// A duration, a time of day and a date are all counts rather than

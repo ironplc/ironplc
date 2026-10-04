@@ -16,7 +16,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("x", 42)],
 );
 
 // 300 truncated to u8 = 300 - 256 = 44
@@ -31,7 +31,7 @@ PROGRAM main
   x := 300;
 END_PROGRAM
 ",
-    &[(0, 44)],
+    &[("x", 44)],
 );
 
 e2e_i32!(
@@ -47,7 +47,7 @@ PROGRAM main
   y := x + 200;
 END_PROGRAM
 ",
-    &[(0, 100), (1, 300)],
+    &[("x", 100), ("y", 300)],
 );
 
 // INT is signed 16-bit; 40000 truncated to i16 = 40000 - 65536 = -25536
@@ -62,7 +62,7 @@ PROGRAM main
   x := 40000;
 END_PROGRAM
 ",
-    &[(0, -25536)],
+    &[("x", -25536)],
 );
 
 // An alias with no initializer takes the base type's default, 0 (#1416).
@@ -78,5 +78,5 @@ PROGRAM main
   y := x - 3;
 END_PROGRAM
 ",
-    &[(0, 0), (1, -3)],
+    &[("x", 0), ("y", -3)],
 );

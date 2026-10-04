@@ -14,10 +14,10 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 1)],
+    &[("x", 5), ("y", 1)],
 );
 
-// vars[1] is untouched.
+// y is untouched.
 e2e_i32!(
     end_to_end_when_if_false_then_skips_body,
     "
@@ -32,7 +32,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, -5), (1, 0)],
+    &[("x", -5), ("y", 0)],
 );
 
 e2e_i32!(
@@ -51,7 +51,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 1)],
+    &[("x", 5), ("y", 1)],
 );
 
 e2e_i32!(
@@ -70,7 +70,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, -5), (1, 2)],
+    &[("x", -5), ("y", 2)],
 );
 
 e2e_i32!(
@@ -91,7 +91,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, 10), (1, 1)],
+    &[("x", 10), ("y", 1)],
 );
 
 e2e_i32!(
@@ -112,7 +112,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, 3), (1, 2)],
+    &[("x", 3), ("y", 2)],
 );
 
 e2e_i32!(
@@ -133,7 +133,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, -5), (1, 3)],
+    &[("x", -5), ("y", 3)],
 );
 
 // n defaults to 0, so 2 > 0 is true.
@@ -150,7 +150,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("y", 1)],
 );
 
 // n is 5, so 2 > 5 is false.
@@ -168,7 +168,7 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 0)],
+    &[("n", 5), ("y", 0)],
 );
 
 // 2 * 4 = 8, and 8 > 8 is false.
@@ -184,5 +184,5 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, 0)],
+    &[("y", 0)],
 );
