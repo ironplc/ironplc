@@ -199,9 +199,8 @@ fn compile_statement(
                         &structured.field,
                         0,
                     )?;
-                if let ironplc_analyzer::intermediate_type::IntermediateType::String {
-                    char_width,
-                    ..
+                if let ironplc_analyzer::semantic_type::SemanticType::String {
+                    char_width, ..
                 } = &field_type
                 {
                     let char_width = *char_width;

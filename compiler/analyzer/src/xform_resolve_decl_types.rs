@@ -123,8 +123,8 @@ impl Fold<Diagnostic> for DeclTypeResolver<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intermediate_type::IntermediateType;
     use crate::semantic_context::SemanticContext;
+    use crate::semantic_type::SemanticType;
     use crate::test_helpers::parse_and_resolve_types_with_options;
     use ironplc_dsl::visitor::Visitor;
     use ironplc_parser::options::{CompilerOptions, Dialect};
@@ -193,7 +193,7 @@ END_PROGRAM
 
         assert_eq!(context.types().name_of(id), None);
         match &context.types().get_by_id(id).unwrap().representation {
-            IntermediateType::Array { dimensions, .. } => assert_eq!(dimensions.len(), 1),
+            SemanticType::Array { dimensions, .. } => assert_eq!(dimensions.len(), 1),
             other => panic!("expected an array, got {other:?}"),
         }
     }

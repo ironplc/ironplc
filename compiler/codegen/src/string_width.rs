@@ -28,7 +28,7 @@
 //! destination rather than checked against it, which is
 //! [`compile_string_value`].
 
-use ironplc_analyzer::{IntermediateType, Intrinsic, StringFunction};
+use ironplc_analyzer::{Intrinsic, SemanticType, StringFunction};
 use ironplc_container::CharWidth;
 use ironplc_dsl::common::{ConstantKind, ElementaryTypeName};
 use ironplc_dsl::core::{Located, SourceSpan};
@@ -208,16 +208,16 @@ fn access_root(kind: &SymbolicVariableKind) -> &SymbolicVariableKind {
 /// not fit a `u16`, which is not a length any slot can be given: the analyzer
 /// rejects it before codegen sees the field, and answering `None` here keeps
 /// an unreachable case from silently wrapping to a small capacity.
-fn string_shape_of(field_type: &IntermediateType) -> Option<StringShape> {
+fn string_shape_of(field_type: &SemanticType) -> Option<StringShape> {
     match field_type {
-        IntermediateType::String {
+        SemanticType::String {
             char_width,
             max_len,
         } => Some(StringShape {
             char_width: *char_width,
             max_length: max_len.and_then(|len| u16::try_from(len).ok()),
         }),
-        IntermediateType::Array { element_type, .. } => string_shape_of(element_type),
+        SemanticType::Array { element_type, .. } => string_shape_of(element_type),
         _ => None,
     }
 }

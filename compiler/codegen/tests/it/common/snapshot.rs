@@ -6,7 +6,7 @@ use ironplc_dsl::common::Library;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::VmBuffers;
 
-use super::run::{compile_analyzed, parse_and_run, run_one_scan};
+use super::run::{compile_analyzed, parse_and_try_run, run_one_scan};
 use super::value::{FromValue, Value};
 use super::variables::Variables;
 
@@ -19,7 +19,7 @@ pub struct Snapshot {
 impl Snapshot {
     /// Parses, compiles and runs `source` for one scan.
     pub fn run(source: &str, options: &CompilerOptions) -> Self {
-        let (container, bufs) = parse_and_run(source, options);
+        let (container, bufs) = parse_and_try_run(source, options).unwrap();
         Snapshot { container, bufs }
     }
 
@@ -49,12 +49,5 @@ impl Snapshot {
     pub fn read_as<T: FromValue>(&self, name: &str) -> T {
         let entry = Variables::of(&self.container).entry(name);
         Variables::convert(name, entry, &self.read(name))
-    }
-
-    /// The VM's buffers, for the reads into structures and arrays that wait
-    /// on paths (`specs/design/end-to-end-test-observation.md` §5). It goes
-    /// when they do; read everything else by name.
-    pub fn buffers(&self) -> &VmBuffers {
-        &self.bufs
     }
 }

@@ -55,10 +55,10 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::{ArrayDimension, IntermediateType},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::{ArrayDimension, SemanticType},
     symbol_environment::ScopeTracker,
     variable_type,
 };
@@ -96,7 +96,7 @@ impl RuleArrayIndexRange<'_> {
     /// Checks each literal subscript of `node` against its dimension of the
     /// array `node` subscripts.
     fn check(&mut self, node: &ArrayVariable) {
-        let Some(IntermediateType::Array { dimensions, .. }) =
+        let Some(SemanticType::Array { dimensions, .. }) =
             self.subscripted_type(&node.subscripted_variable)
         else {
             return;
@@ -116,10 +116,10 @@ impl RuleArrayIndexRange<'_> {
     ///
     /// `variable_type::of` answers a dereference with the reference's own
     /// type, so `p^[6]` is checked against the type `p` refers to.
-    fn subscripted_type(&self, kind: &SymbolicVariableKind) -> Option<IntermediateType> {
+    fn subscripted_type(&self, kind: &SymbolicVariableKind) -> Option<SemanticType> {
         let subscripted = variable_type::of(kind, self.context, &self.scope.current())?;
         match (kind, subscripted) {
-            (SymbolicVariableKind::Deref(_), IntermediateType::Reference { target_type }) => {
+            (SymbolicVariableKind::Deref(_), SemanticType::Reference { target_type }) => {
                 Some(*target_type)
             }
             (_, subscripted) => Some(subscripted),
