@@ -13,7 +13,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::Function;
 
 use super::compile::{CompileContext, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE};
-use super::compile_call::collect_positional_args;
+use super::compile_call::{collect_positional_args, wrong_arg_count};
 use super::compile_expr::{compile_expr, storage_bits};
 use crate::emit::Emitter;
 
@@ -178,7 +178,7 @@ pub(crate) fn compile_numeric(
     let args = collect_positional_args(func);
 
     if args.len() != expected_args {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     for (i, arg) in args.iter().enumerate() {
@@ -237,7 +237,7 @@ pub(crate) fn compile_shift_rotate(
     let args = collect_positional_args(func);
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     // Compile IN (value) with the inferred op_type

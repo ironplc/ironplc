@@ -38,6 +38,7 @@ pub(crate) struct ArraySpec {
 
 /// Metadata for a single dimension of an array, used for index computation.
 #[allow(dead_code)]
+#[derive(Clone)]
 pub(crate) struct DimensionInfo {
     pub lower_bound: i32,
     pub size: u32,
@@ -173,7 +174,19 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
     variable: &'ast Variable,
 ) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
     match variable {
-        Variable::Symbolic(SymbolicVariableKind::Array(array_var)) => {
+        Variable::Symbolic(symbolic) => resolve_symbolic_access(ctx, symbolic),
+        Variable::Direct(direct) => Err(Diagnostic::todo_with_span(direct.position.clone())),
+    }
+}
+
+/// Resolves a symbolic variable reference into its access kind, as
+/// [`resolve_access`] does for a [`Variable`].
+pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
+    ctx: &'ctx CompileContext,
+    symbolic: &'ast SymbolicVariableKind,
+) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
+    match symbolic {
+        SymbolicVariableKind::Array(array_var) => {
             // Walk the chain collecting subscript groups innermost-first,
             // then reverse. For nested arrays arr[i][j], the AST is:
             //   ArrayVariable {
@@ -267,7 +280,7 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
         // `s.arr[i].field` -- a field selected from an element of an
         // array-of-struct. The record is an array element rather than a
         // fixed-offset struct field, so it resolves through the array path.
-        Variable::Symbolic(SymbolicVariableKind::Structured(structured))
+        SymbolicVariableKind::Structured(structured)
             if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
         {
             crate::compile_array_struct::resolve_struct_array_element_field(
@@ -276,14 +289,14 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                 Vec::new(),
             )
         }
-        _ => {
-            if let Some(ref_slot) = super::compile_expr::in_out_ref_slot(ctx, variable) {
+        SymbolicVariableKind::Named(named) => {
+            if let Some(ref_slot) = ctx.in_out_ref_slot(&named.name) {
                 return Ok(ResolvedAccess::InOut { ref_slot });
             }
-            // Fall through to existing resolve_variable() for scalars.
-            let var_index = super::compile_expr::resolve_variable(ctx, variable)?;
+            let var_index = ctx.var_index(&named.name)?;
             Ok(ResolvedAccess::Scalar { var_index })
         }
+        other => Err(Diagnostic::todo_with_span(other.span())),
     }
 }
 
@@ -333,8 +346,9 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
                         "STRING array descriptor not registered for field",
                     ))
                 })?;
+        // Allocated for every structure that has a STRING-array descriptor.
         let scratch = struct_info.scratch_var_index.ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
+            Diagnostic::internal_error_at(Label::span(
                 structured.field.span(),
                 "Scratch variable not allocated for struct",
             ))
@@ -410,12 +424,16 @@ pub(crate) fn array_spec_from_inline(
         .ranges
         .iter()
         .map(|range| {
-            let lower = super::compile_stmt::signed_integer_to_i32(
-                range.start.as_signed_integer().unwrap(),
-            )?;
-            let upper =
-                super::compile_stmt::signed_integer_to_i32(range.end.as_signed_integer().unwrap())?;
-            Ok((lower, upper))
+            let (Some(start), Some(end)) = (
+                range.start.as_signed_integer(),
+                range.end.as_signed_integer(),
+            ) else {
+                return Err(Diagnostic::internal_error());
+            };
+            Ok((
+                super::compile_stmt::signed_integer_to_i32(start)?,
+                super::compile_stmt::signed_integer_to_i32(end)?,
+            ))
         })
         .collect::<Result<Vec<_>, Diagnostic>>()?;
     let (string_max_len, string_char_width) = match &subranges.type_name {
@@ -794,7 +812,7 @@ pub(crate) fn flatten_array_initial_values(
                     }
                     None => {
                         let zero = ConstantKind::integer_literal("0")
-                            .expect("literal '0' is always valid");
+                            .map_err(|_| Diagnostic::internal_error())?;
                         for _ in 0..count {
                             result.push(zero.clone());
                         }
