@@ -220,13 +220,14 @@ pub(crate) fn assign_variables(
                     let type_name_str = struct_init.type_name.to_string().to_uppercase();
                     (iec_type_tag::STRUCT, type_name_str)
                 }
-                InitialValueAssignmentKind::EnumeratedType(enum_init) => {
+                InitialValueAssignmentKind::EnumeratedType(_)
+                | InitialValueAssignmentKind::EnumeratedValues(_) => {
                     // Enum variables use DINT (W32/Signed/32-bit) per REQ-EN-codegen-010.
                     let type_info = crate::compile_enum::enum_var_type_info();
                     ctx.var_types.insert(id.clone(), type_info);
                     // Debug tag is DINT per REQ-EN-codegen-012; type_name is the
-                    // user-defined enum name (e.g. "COLOR").
-                    let name = enum_init.type_name.to_string().to_uppercase();
+                    // enum's debug name (e.g. "COLOR"), REQ-EN-codegen-092.
+                    let name = crate::compile_enum::debug_name(types, decl.type_id);
                     (iec_type_tag::DINT, name)
                 }
                 InitialValueAssignmentKind::Subrange(ref spec) => {
@@ -264,8 +265,8 @@ pub(crate) fn assign_variables(
                         "Variable type was not resolved before code generation",
                     )));
                 }
-                // Other initializer kinds (EnumeratedValues, etc.)
-                // do not yet have type info tracked in codegen.
+                // Other initializer kinds do not yet have type info tracked
+                // in codegen.
                 _ => (iec_type_tag::OTHER, String::new()),
             };
 
@@ -336,9 +337,10 @@ pub(crate) fn debug_type_for_decl(decl: &VarDecl, types: &TypeEnvironment) -> (u
             iec_type_tag::FB_INSTANCE,
             fb_init.type_name.to_string().to_uppercase(),
         ),
-        InitialValueAssignmentKind::EnumeratedType(enum_init) => (
+        InitialValueAssignmentKind::EnumeratedType(_)
+        | InitialValueAssignmentKind::EnumeratedValues(_) => (
             iec_type_tag::DINT,
-            enum_init.type_name.to_string().to_uppercase(),
+            crate::compile_enum::debug_name(types, decl.type_id),
         ),
         _ => (iec_type_tag::OTHER, String::new()),
     }
@@ -562,23 +564,11 @@ pub(crate) fn emit_initial_values(
                         )?;
                     }
                 }
-                InitialValueAssignmentKind::EnumeratedType(enum_init) => {
+                InitialValueAssignmentKind::EnumeratedType(_)
+                | InitialValueAssignmentKind::EnumeratedValues(_) => {
                     // Emit LOAD_CONST_I32(ordinal) + STORE_VAR_I32 per REQ-EN-codegen-020.
                     let var_index = ctx.var_index(id)?;
-                    let op_type = DEFAULT_OP_TYPE;
-                    let ordinal = if let Some(ev) = &enum_init.initial_value {
-                        crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?
-                    } else {
-                        // No explicit init: use type declaration default (REQ-EN-codegen-021/022).
-                        let type_upper = enum_init.type_name.to_string().to_uppercase();
-                        crate::compile_enum::resolve_enum_default_ordinal(
-                            &ctx.enum_map,
-                            &type_upper,
-                        )
-                    };
-                    let pool_index = ctx.add_i32_constant(ordinal);
-                    emitter.emit_load_const_i32(pool_index);
-                    emit_store_var(emitter, var_index, op_type);
+                    emit_enum_initial_value(emitter, ctx, decl, var_index)?;
                 }
                 InitialValueAssignmentKind::Subrange(ref spec) => {
                     // Initialize subrange variable to its lower bound (min_value)
@@ -642,6 +632,28 @@ pub(crate) fn emit_initial_values(
             }
         }
     }
+    Ok(())
+}
+
+/// Emits `LOAD_CONST_I32(ordinal)` + `STORE_VAR_I32` storing the ordinal the
+/// enumeration variable `decl` starts at (REQ-EN-codegen-020). Every
+/// enumeration operates as a `DINT` (REQ-EN-codegen-003), so no truncation
+/// follows.
+fn emit_enum_initial_value(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    decl: &VarDecl,
+    var_index: VarIndex,
+) -> Result<(), Diagnostic> {
+    let ordinal = crate::compile_enum::initial_ordinal(ctx, decl)?.ok_or_else(|| {
+        Diagnostic::internal_error_at(Label::span(
+            decl.identifier.span(),
+            "Enumeration initial value for a declaration that is not an enumeration",
+        ))
+    })?;
+    let pool_index = ctx.add_i32_constant(ordinal);
+    emitter.emit_load_const_i32(pool_index);
+    emit_store_var(emitter, var_index, DEFAULT_OP_TYPE);
     Ok(())
 }
 
@@ -716,20 +728,10 @@ pub(crate) fn emit_function_local_prologue(
                     }
                     emitter.emit_store_var_i64(var_index);
                 }
-                InitialValueAssignmentKind::EnumeratedType(enum_init) => {
+                InitialValueAssignmentKind::EnumeratedType(_)
+                | InitialValueAssignmentKind::EnumeratedValues(_) => {
                     // Re-initialize enum locals per REQ-EN-codegen-023.
-                    let ordinal = if let Some(ev) = &enum_init.initial_value {
-                        crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?
-                    } else {
-                        let type_upper = enum_init.type_name.to_string().to_uppercase();
-                        crate::compile_enum::resolve_enum_default_ordinal(
-                            &ctx.enum_map,
-                            &type_upper,
-                        )
-                    };
-                    let pool_index = ctx.add_i32_constant(ordinal);
-                    emitter.emit_load_const_i32(pool_index);
-                    emit_store_var(emitter, var_index, op_type);
+                    emit_enum_initial_value(emitter, ctx, decl, var_index)?;
                 }
                 _ => {
                     // Other initializer kinds; zero-fill as default.

@@ -297,6 +297,7 @@ mod tests {
             underlying_type: Box::new(SemanticType::Int {
                 size: crate::semantic_type::ByteSized::B8,
             }),
+            members: crate::enumeration_members::EnumerationMembers::default(),
         });
         assert_eq!(kind, TypeSymbolKind::Enumeration);
     }

@@ -1,6 +1,9 @@
 //! Semantic rule that references to enumerations use enumeration values
 //! that are part of the enumeration declaration.
 //!
+//! This holds for an inline enumeration too: `e : (A, B) := C` names a
+//! value its own list does not declare.
+//!
 //! ## Passes
 //!
 //! ```ignore
@@ -128,6 +131,27 @@ impl Visitor<Infallible> for RuleDeclaredEnumeratedValues<'_> {
         if let Some(value) = &init.initial_value {
             // Check if the value is in the list of defined enumeration values
             if !defined_values.iter().any(|id| **id == value.value) {
+                self.diagnostics.push(
+                    Diagnostic::problem(
+                        Problem::EnumValueNotDefined,
+                        Label::span(value.span(), "Expected value in enumeration"),
+                    )
+                    .with_context_id("value", &value.value),
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    fn visit_enumerated_values_initializer(
+        &mut self,
+        init: &EnumeratedValuesInitializer,
+    ) -> Result<Self::Value, Infallible> {
+        // An inline enumeration's initial value must be one of the values
+        // the declaration itself lists.
+        if let Some(value) = &init.initial_value {
+            if !init.values.iter().any(|member| member.value == value.value) {
                 self.diagnostics.push(
                     Diagnostic::problem(
                         Problem::EnumValueNotDefined,
@@ -381,4 +405,26 @@ END_PROGRAM",
 
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
+
+    rule_err_at!(
+        apply_when_inline_enum_init_not_a_member_then_enum_value_not_defined,
+        "
+PROGRAM main
+VAR
+e : (A, B) := C;
+END_VAR
+END_PROGRAM",
+        Problem::EnumValueNotDefined,
+        "C"
+    );
+
+    rule_ok!(
+        apply_when_inline_enum_init_is_a_member_then_ok,
+        "
+PROGRAM main
+VAR
+e : (A, B) := B;
+END_VAR
+END_PROGRAM"
+    );
 }

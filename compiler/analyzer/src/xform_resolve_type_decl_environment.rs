@@ -62,16 +62,16 @@ impl TypeEnvironment {
             }))
         } else {
             match existing.representation {
-                SemanticType::Enumeration { underlying_type: _ } => Ok(
-                    DataTypeDeclarationKind::Enumeration(EnumerationDeclaration {
+                SemanticType::Enumeration { .. } => Ok(DataTypeDeclarationKind::Enumeration(
+                    EnumerationDeclaration {
                         type_name: node.data_type_name,
                         spec_init: EnumeratedSpecificationInit {
                             spec: SpecificationKind::Named(node.base_type_name),
                             default: None,
                             underlying_type: None,
                         },
-                    }),
-                ),
+                    },
+                )),
                 SemanticType::Structure { fields: _ } => {
                     Ok(DataTypeDeclarationKind::StructureInitialization(
                         StructureInitializationDeclaration {
@@ -174,7 +174,12 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 self.insert_type(&node.type_name, string::from(string_initializer));
             }
             InitialValueAssignmentKind::EnumeratedValues(enumerated_values_initializer) => {
-                let attributes = enumeration::try_from_values(enumerated_values_initializer, None)?;
+                let default = enumerated_values_initializer
+                    .initial_value
+                    .as_ref()
+                    .map(|value| &value.value);
+                let attributes =
+                    enumeration::try_from_values(enumerated_values_initializer, None, default)?;
                 self.insert_type(&node.type_name, attributes);
             }
             InitialValueAssignmentKind::EnumeratedType(_enumerated_initial_value_assignment) => {
@@ -271,20 +276,22 @@ impl Fold<Diagnostic> for TypeEnvironment {
         match &node.spec_init.spec {
             SpecificationKind::Named(base_type_name) => {
                 // Alias of another enumeration: base must already exist because we sort the items
-                if self.get(base_type_name).is_none() {
+                let Some(base) = self.get(base_type_name) else {
                     return Err(Diagnostic::problem(
                         Problem::ParentEnumNotDeclared,
                         Label::span(node.type_name.span(), "Enumeration"),
                     )
                     .with_secondary(Label::span(base_type_name.span(), "Base type name")));
-                }
-                // Use explicit alias insertion to avoid duplicating representation logic
-                self.insert_alias(&node.type_name, base_type_name)?;
+                };
+                let default = node.spec_init.default.as_ref().map(|value| &value.value);
+                let attributes = enumeration::alias_of(base, default);
+                self.insert_type(&node.type_name, attributes);
             }
             SpecificationKind::Inline(spec_values) => {
                 let attributes = enumeration::try_from_values(
                     spec_values,
                     node.spec_init.underlying_type.clone(),
+                    node.spec_init.default.as_ref().map(|value| &value.value),
                 )?;
                 self.insert_type(&node.type_name, attributes);
             }

@@ -1,6 +1,8 @@
+use crate::enumeration_members::EnumerationMembers;
 use crate::semantic_type::{ByteSized, SemanticType};
 use crate::type_environment::TypeAttributes;
 use ironplc_dsl::common::*;
+use ironplc_dsl::core::Id;
 use ironplc_dsl::diagnostic::*;
 use ironplc_problems::Problem;
 
@@ -12,9 +14,9 @@ use ironplc_problems::Problem;
 /// documented example (`Red := 2, Green, Blue := 10` -> Green resolves to
 /// 3) and every real file found using this syntax.
 ///
-/// Used both for sizing (`try_from_values` below) and for codegen's
-/// ordinal map (`ironplc_codegen::compile_enum::build_enum_ordinal_map`),
-/// so both agree on what each member's runtime value actually is.
+/// Used both for sizing (`try_from_values` below) and for the members
+/// recorded with the type ([`EnumerationMembers`]), so both agree on what
+/// each member's runtime value actually is.
 pub fn resolve_ordinal_values(values: &[EnumeratedValue]) -> Vec<i64> {
     let mut resolved = Vec::with_capacity(values.len());
     let mut next = 0i64;
@@ -60,10 +62,15 @@ fn byte_sized_for_underlying_type(type_name: ElementaryTypeName) -> ByteSized {
 /// (`underlying_type_override`), or automatically from the resolved
 /// ordinal values (which may exceed the member count when explicit
 /// values are used).
+///
+/// The type records its members, their ordinals and `default`, the
+/// declared default value (see [`EnumerationMembers`]).
 pub fn try_from_values(
     enumerated_values: &dyn HasEnumeratedValues,
     underlying_type_override: Option<ElementaryTypeName>,
+    default: Option<&Id>,
 ) -> Result<TypeAttributes, Diagnostic> {
+    let members = EnumerationMembers::from_values(enumerated_values.values(), default);
     if let Some(type_name) = underlying_type_override {
         return Ok(TypeAttributes::new(
             enumerated_values.values_span(),
@@ -71,6 +78,7 @@ pub fn try_from_values(
                 underlying_type: Box::new(SemanticType::Int {
                     size: byte_sized_for_underlying_type(type_name),
                 }),
+                members,
             },
         ));
     }
@@ -101,8 +109,22 @@ pub fn try_from_values(
         enumerated_values.values_span(),
         SemanticType::Enumeration {
             underlying_type: Box::new(underlying_type),
+            members,
         },
     ))
+}
+
+/// The type an alias of the enumeration `base` declares (`PAINT : COLOR`):
+/// the base's representation and members, with `default` as its default
+/// when it declares one.
+pub fn alias_of(base: &TypeAttributes, default: Option<&Id>) -> TypeAttributes {
+    let mut alias = base.clone();
+    if let (Some(default), SemanticType::Enumeration { members, .. }) =
+        (default, &mut alias.representation)
+    {
+        *members = std::mem::take(members).with_default(default);
+    }
+    alias
 }
 
 #[cfg(test)]
@@ -351,5 +373,98 @@ END_TYPE
         // the resolved value, not just the member count.
         let attributes = env.get(&TypeName::from("E_Sparse")).unwrap();
         assert_eq!(Some(2), attributes.representation.size_in_bytes());
+    }
+
+    /// The members of the type `name` names, as (member, ordinal) pairs,
+    /// and its default ordinal.
+    fn members_of(
+        types: &crate::type_environment::TypeEnvironment,
+        id: ironplc_dsl::type_id::TypeId,
+    ) -> (Vec<(String, i64)>, i64) {
+        let attributes = types.get_by_id(id).unwrap();
+        let crate::semantic_type::SemanticType::Enumeration { members, .. } =
+            &attributes.representation
+        else {
+            panic!("not an enumeration");
+        };
+        let pairs = members
+            .iter()
+            .map(|m| (m.name.to_string(), m.ordinal))
+            .collect();
+        (pairs, members.default_ordinal())
+    }
+
+    fn pairs(expected: &[(&str, i64)]) -> Vec<(String, i64)> {
+        expected.iter().map(|(n, o)| (n.to_string(), *o)).collect()
+    }
+
+    fn edition_3() -> CompilerOptions {
+        CompilerOptions::from_dialect(ironplc_parser::options::Dialect::Iec61131_3Ed3)
+    }
+
+    #[test]
+    fn resolve_types_when_named_enumeration_then_type_has_members_and_default() {
+        let (_library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            "TYPE LEVEL : (LOW, MEDIUM := 5, HIGH) := HIGH; END_TYPE",
+            &edition_3(),
+        );
+        let types = context.types();
+        let id = types.id_of(&TypeName::from("LEVEL")).unwrap();
+
+        let (members, default) = members_of(types, id);
+
+        assert_eq!(members, pairs(&[("LOW", 0), ("MEDIUM", 5), ("HIGH", 6)]));
+        assert_eq!(default, 6);
+    }
+
+    #[test]
+    fn resolve_types_when_named_enumeration_without_default_then_default_is_first_member() {
+        let (_library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            "TYPE LEVEL : (LOW := 1, HIGH := 5); END_TYPE",
+            &edition_3(),
+        );
+        let types = context.types();
+        let id = types.id_of(&TypeName::from("LEVEL")).unwrap();
+
+        assert_eq!(members_of(types, id).1, 1);
+    }
+
+    #[test]
+    fn resolve_types_when_alias_chain_then_alias_has_base_members_and_own_default() {
+        let (_library, context) = crate::test_helpers::parse_and_resolve_types_with_context(
+            "TYPE
+                LEVEL : (LOW, MEDIUM, HIGH) := MEDIUM;
+                LEVEL2 : LEVEL;
+                LEVEL3 : LEVEL2 := HIGH;
+            END_TYPE",
+        );
+        let types = context.types();
+        let level2 = types.id_of(&TypeName::from("LEVEL2")).unwrap();
+        let level3 = types.id_of(&TypeName::from("LEVEL3")).unwrap();
+
+        let expected = pairs(&[("LOW", 0), ("MEDIUM", 1), ("HIGH", 2)]);
+        assert_eq!(members_of(types, level2), (expected.clone(), 1));
+        assert_eq!(members_of(types, level3), (expected, 2));
+    }
+
+    #[test]
+    fn resolve_types_when_inline_enumeration_then_declared_type_has_members() {
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            "PROGRAM main VAR e : (X := 1, Y := 5) := Y; END_VAR END_PROGRAM",
+            &edition_3(),
+        );
+        let ironplc_dsl::common::LibraryElementKind::ProgramDeclaration(program) =
+            &library.elements[0]
+        else {
+            panic!("not a program");
+        };
+        let id = program.variables[0].type_id.unwrap();
+
+        // The initial value belongs to the variable; the type's default is
+        // its first member.
+        assert_eq!(
+            members_of(context.types(), id),
+            (pairs(&[("X", 1), ("Y", 5)]), 1)
+        );
     }
 }

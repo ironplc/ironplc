@@ -19,10 +19,10 @@ The design builds on:
 
 ## Scope
 
-**In scope:** Named enumeration types declared via `TYPE ... END_TYPE`, used in variable declarations, assignments, expressions (comparisons), CASE selectors, and structure field initializers.
+**In scope:** Named enumeration types declared via `TYPE ... END_TYPE`, used in variable declarations, assignments, expressions (comparisons), CASE selectors, and structure field initializers. Inline enumerations declared in place of a type name (`VAR x : (A, B, C); END_VAR`, section 10).
 
 **Out of scope (deferred):**
-- Inline (anonymous) enumeration types (`VAR x : (A, B, C); END_VAR`)
+- Inline enumerations in structure fields, function inputs and global variables (#1946)
 - Enumeration-typed function/FB parameters (VAR_INPUT, VAR_OUTPUT, VAR_IN_OUT)
 - Enumeration-typed array elements
 - Explicit numeric assignment to enum values (not standard IEC 61131-3)
@@ -53,7 +53,7 @@ The design builds on:
 
 **REQ-EN-codegen-021** When a variable has no explicit initial value (`VAR x : COLOR; END_VAR`), the initial ordinal is determined by the type declaration's default value. For `TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE`, the default is RED's ordinal (0).
 
-**REQ-EN-codegen-022** When the type declaration specifies no default (e.g., `TYPE COLOR : (RED, GREEN, BLUE); END_TYPE`), the initial ordinal is 0 (the first declared value).
+**REQ-EN-codegen-022** When the type declaration specifies no default (e.g., `TYPE COLOR : (RED, GREEN, BLUE); END_TYPE`), the initial ordinal is the first declared value's: 0, unless that value is given an explicit one (`(A := 1, B := 5)` starts at 1).
 
 **REQ-EN-codegen-023** Function-local enum variables are re-initialized on every call (IEC 61131-3 stateless function requirement), following the same initialization rules as REQ-EN-codegen-020 through REQ-EN-codegen-022.
 
@@ -61,9 +61,9 @@ The design builds on:
 
 **REQ-EN-codegen-030** An `ExprKind::EnumeratedValue` compiles to `LOAD_CONST_I32(ordinal)`, pushing the ordinal onto the stack.
 
-**REQ-EN-codegen-031** A qualified enumeration reference (`COLOR#GREEN`) resolves the ordinal using the explicit type name and value name.
+**REQ-EN-codegen-031** A qualified enumeration reference (`COLOR#GREEN`) resolves the ordinal as a member of the type it names.
 
-**REQ-EN-codegen-032** An unqualified enumeration reference (`GREEN`) resolves the ordinal using the value name alone. The semantic analyzer guarantees unqualified names are unambiguous within scope.
+**REQ-EN-codegen-032** An unqualified enumeration reference (`GREEN`) resolves the ordinal as a member of the type the analyzer gave the expression (REQ-EN-codegen-081). Two enumerations may declare the same value name.
 
 **REQ-EN-codegen-033** Enumeration equality comparison (`x = GREEN`) compiles to the same integer comparison sequence as any other integer type: load both operands, emit `EQ_I32`.
 
@@ -118,7 +118,7 @@ Each EnumValueName (variable size):
 
 **REQ-EN-codegen-063** A reader that does not recognize Tag 9 skips it using the directory's `size` field (existing extensibility mechanism per the container format spec).
 
-**REQ-EN-codegen-064** Only named enumeration types (declared via `TYPE ... END_TYPE`) are emitted in the ENUM_DEF table.
+**REQ-EN-codegen-064** Only enumeration types are emitted in the ENUM_DEF table, one entry each: a named enumeration or alias under its type name, and an inline enumeration under the name REQ-EN-codegen-092 gives it.
 
 ## 8. Playground Display
 
@@ -128,12 +128,30 @@ Each EnumValueName (variable size):
 
 **REQ-EN-codegen-072** When no ENUM_DEF table is present (older container, stripped debug section), the playground displays the integer value using the `iec_type_tag`, which is always valid per REQ-EN-codegen-012.
 
-## 9. Ordinal Map Construction
+## 9. Enumeration Facts from the Analyzer
 
-**REQ-EN-codegen-080** The codegen builds the ordinal map by walking `LibraryElementKind::DataTypeDeclaration(Enumeration(decl))` entries in the library AST. For each `EnumerationDeclaration` whose `spec_init.spec` is `SpecificationKind::Inline(values)`, the codegen enumerates `values.values` and records `(type_name, value_name) → ordinal`.
+Ordinals are decided once, in the analyzer, so every code generator uses the same ones. Codegen does not walk the declarations, number members or keep a table of value names.
 
-**REQ-EN-codegen-081** The ordinal map also maintains a reverse lookup from unqualified value names to `(type_name, ordinal)` for resolving unqualified references per REQ-EN-codegen-032.
+**REQ-EN-codegen-080** The analyzer records each enumeration type's members in declaration order, their ordinals (explicit member values included, numbered by `resolve_ordinal_values`) and its default with the type, in `SemanticType::Enumeration::members`, for named enumerations, aliases and the anonymous types of inline enumerations alike. Codegen reads an ordinal by `(TypeId, value)`.
 
-**REQ-EN-codegen-082** The ordinal map also stores the type declaration's default value (from `spec_init.default`) as a pre-resolved ordinal, used by REQ-EN-codegen-021.
+**REQ-EN-codegen-081** The analyzer gives every unqualified enumerated value in an expression a type (`Expr::expr_type`): the assignment target's, the other comparison operand's, or the function block input's when that type declares the value, else the type of the one enumeration in scope that declares it. When several do, the analyzer reports P2043. Codegen looks the ordinal up in the value's `expr_type`.
 
-**REQ-EN-codegen-083** The ordinal map is built once at codegen entry and stored in `CompileContext` for use by all codegen phases.
+**REQ-EN-codegen-082** The default ordinal is the type's declared default, or its first member's ordinal. An alias has its base's members and default, unless it declares a default of its own.
+
+**REQ-EN-codegen-083** A value outside an expression is a member of the type of the place it appears in: a variable's initial value of the declared type (`VarDecl::type_id`), a CASE label of the selector's type, a structure field initializer of the field's type, and a function block member initializer of the member's declared type. A structure field without an initializer starts at its enumeration's default.
+
+## 10. Inline Enumerations
+
+An inline enumeration spells its values where a type name would go: `VAR e : (A, B) := B; END_VAR`. The analyzer enters it as an anonymous type of its own, recorded on `VarDecl::type_id`, so two declarations that spell the same list are two types (ADR-0055). It otherwise compiles as a named enumeration with the same value list does. It may be declared in any variable section of a program, function block, function or method.
+
+**REQ-EN-codegen-090** The values of an inline enumeration take the ordinals a named enumeration with the same value list would give them (REQ-EN-codegen-001), explicit member values included: in `(X := 1, Y := 5)`, `X` is 1 and `Y` is 5.
+
+**REQ-EN-codegen-091** A variable declared with an inline enumeration is allocated as a named enumeration variable is (REQ-EN-codegen-010, REQ-EN-codegen-011), and its `VarNameEntry` carries `iec_type_tag::DINT`.
+
+**REQ-EN-codegen-092** An inline enumeration's debug type name is made from its type id when the debug section is written, as `(ANONYMOUS ENUMERATION 42)`. A parenthesis cannot start an identifier, so the name is never a declared type's. The variable's `VarNameEntry::type_name` is that name, and the ENUM_DEF table holds one entry under it per declaration.
+
+**REQ-EN-codegen-093** An inline enumeration variable's explicit initial value is resolved as a member of the declaration's own type. Without an initial value, the variable starts at the type's default, its first member's ordinal.
+
+**REQ-EN-codegen-094** A function- or method-local inline enumeration variable is re-initialized on every call, as REQ-EN-codegen-023 requires of a named one.
+
+**REQ-EN-codegen-095** An unqualified value that an inline enumeration shares with another enumeration resolves in the type the analyzer gave it (REQ-EN-codegen-081): in `a := Y`, `Y` is a member of `a`'s type.

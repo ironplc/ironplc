@@ -44,6 +44,10 @@ pub fn apply(
 /// This enables resolving unqualified enum values (e.g., `RUNNING`) in
 /// expression contexts where no enum type context is available, such as
 /// comparisons (`State = RUNNING`) or boolean expressions.
+///
+/// The members of an inline enumeration (`state : (IDLE, RUNNING)`) are
+/// collected from the variables of a program, function, function block or
+/// method.
 fn collect_enum_values(lib: &Library) -> HashSet<Id> {
     let mut values = HashSet::new();
 
@@ -58,6 +62,9 @@ fn collect_enum_values(lib: &Library) -> HashSet<Id> {
             }
             LibraryElementKind::FunctionBlockDeclaration(fb) => {
                 collect_enum_values_from_vars(&fb.variables, &mut values);
+                for method in &fb.methods {
+                    collect_enum_values_from_vars(&method.variables, &mut values);
+                }
             }
             LibraryElementKind::ProgramDeclaration(prog) => {
                 collect_enum_values_from_vars(&prog.variables, &mut values);
@@ -663,5 +670,30 @@ END_FUNCTION_BLOCK";
             .unwrap();
         let result = apply(library, &mut type_environment);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn collect_enum_values_when_inline_enum_in_method_then_collects_members() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+    METHOD M1 : DINT
+        VAR
+            t : (T0, T1) := T1;
+        END_VAR
+        IF t = T1 THEN
+            M1 := 1;
+        END_IF;
+    END_METHOD
+END_FUNCTION_BLOCK";
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let library = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();
+
+        let values = super::collect_enum_values(&library);
+
+        assert!(values.contains(&ironplc_dsl::core::Id::from("T0")));
+        assert!(values.contains(&ironplc_dsl::core::Id::from("T1")));
     }
 }

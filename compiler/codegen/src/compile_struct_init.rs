@@ -32,7 +32,11 @@ fn emit_default_for_field(
     field_type: &SemanticType,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    if let SemanticType::Subrange { min_value, .. } = field_type {
+    if let Some(ordinal) = crate::compile_enum::field_default_ordinal(field_type) {
+        // An enumeration field starts at the enumeration's default.
+        let pool_index = ctx.add_i32_constant(ordinal);
+        emitter.emit_load_const_i32(pool_index);
+    } else if let SemanticType::Subrange { min_value, .. } = field_type {
         match op_type.0 {
             OpWidth::W32 => {
                 let pool_index = ctx.add_i32_constant(*min_value as i32);
@@ -64,6 +68,7 @@ fn compile_struct_field_init(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     init: &StructInitialValueAssignmentKind,
+    field_type: &SemanticType,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     match init {
@@ -71,8 +76,9 @@ fn compile_struct_field_init(
             compile_constant(emitter, ctx, constant, op_type)
         }
         StructInitialValueAssignmentKind::EnumeratedValue(ev) => {
-            // REQ-EN-codegen-050: Resolve enum value to ordinal and push as i32 constant.
-            let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?;
+            // REQ-EN-codegen-050: Resolve enum value to ordinal, as a member
+            // of the field's type, and push as i32 constant.
+            let ordinal = crate::compile_enum::ordinal_in(field_type.enumeration_members(), ev)?;
             let pool_index = ctx.add_i32_constant(ordinal);
             emitter.emit_load_const_i32(pool_index);
             Ok(())
@@ -237,7 +243,13 @@ pub(crate) fn initialize_struct_fields(
             // Leaf field (primitive/enum)
             if let Some(init_value) = init_map.get(&field_info.name) {
                 // Emit explicit initial value
-                compile_struct_field_init(emitter, ctx, init_value, op_type)?;
+                compile_struct_field_init(
+                    emitter,
+                    ctx,
+                    init_value,
+                    &field_info.field_type,
+                    op_type,
+                )?;
             } else {
                 // Emit type-appropriate default value
                 emit_default_for_field(emitter, ctx, &field_info.field_type, op_type)?;

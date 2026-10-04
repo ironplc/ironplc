@@ -10,6 +10,7 @@
 //! booleans) and complex types (like structures, arrays, and function blocks) found in
 //! IEC 61131-3 standard and similar PLC programming languages.
 
+use crate::enumeration_members::EnumerationMembers;
 use ironplc_container::{string_region_size, CharWidth, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::core::Id;
 
@@ -106,6 +107,9 @@ pub enum SemanticType {
     Enumeration {
         /// The underlying primitive type (usually Int { size: 8 })
         underlying_type: Box<SemanticType>,
+        /// The members, their ordinals and the default. Not compared by
+        /// `PartialEq` (see [`EnumerationMembers`]).
+        members: EnumerationMembers,
     },
     /// Structure type containing named fields
     Structure {
@@ -294,7 +298,9 @@ impl SemanticType {
                 char_width,
             } => max_len.map(|len| len as u32 * char_width.byte_width() as u32),
             SemanticType::Subrange { base_type, .. } => base_type.size_in_bytes(),
-            SemanticType::Enumeration { underlying_type } => underlying_type.size_in_bytes(),
+            SemanticType::Enumeration {
+                underlying_type, ..
+            } => underlying_type.size_in_bytes(),
             SemanticType::Structure { fields } => {
                 if fields.is_empty() {
                     return None;
@@ -370,7 +376,9 @@ impl SemanticType {
             SemanticType::DateAndTime { size } => size.as_bytes(),
             SemanticType::String { .. } => 1, // Strings are byte-aligned
             SemanticType::Subrange { base_type, .. } => base_type.alignment_bytes(),
-            SemanticType::Enumeration { underlying_type } => underlying_type.alignment_bytes(),
+            SemanticType::Enumeration {
+                underlying_type, ..
+            } => underlying_type.alignment_bytes(),
             SemanticType::Structure { fields } => {
                 // Structure alignment is the maximum alignment of all fields
                 // Empty structures have 1-byte alignment
@@ -418,7 +426,9 @@ impl SemanticType {
             | SemanticType::DateAndTime { .. } => true,
             SemanticType::String { max_len, .. } => max_len.is_some(),
             SemanticType::Subrange { base_type, .. } => base_type.has_explicit_size(),
-            SemanticType::Enumeration { underlying_type } => underlying_type.has_explicit_size(),
+            SemanticType::Enumeration {
+                underlying_type, ..
+            } => underlying_type.has_explicit_size(),
             SemanticType::Structure { .. } => true, // Structures always have explicit size in IEC 61131-3
             SemanticType::Array {
                 element_type,
@@ -850,6 +860,7 @@ mod tests {
             underlying_type: Box::new(SemanticType::Int {
                 size: ByteSized::B8,
             }),
+            members: crate::enumeration_members::EnumerationMembers::default(),
         };
         assert_eq!(enumeration.size_in_bytes(), Some(1));
 
@@ -2007,7 +2018,8 @@ mod tests {
             SemanticType::Enumeration {
                 underlying_type: Box::new(SemanticType::Int {
                     size: ByteSized::B8
-                })
+                }),
+                members: crate::enumeration_members::EnumerationMembers::default(),
             }
             .slot_count(),
             Ok(1)

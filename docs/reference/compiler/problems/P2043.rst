@@ -1,0 +1,62 @@
+=====
+P2043
+=====
+
+.. problem-summary:: P2043
+
+This error occurs when an enumerated value is written without its type, two
+or more enumerations declare it, and the place where it is used does not say
+which enumeration is meant.
+
+The place a value is used in usually says which enumeration is meant (see
+:doc:`/reference/language/data-types/derived/enumerated-types`). Where it
+does not, the value has the type of the one enumeration that declares it.
+The enumerations considered are the named enumerations and the inline
+enumerations of the variables in scope. Enumerations with the same members,
+such as an enumeration and its alias, count as one.
+
+Example
+-------
+
+The following code will generate error P2043:
+
+.. playground::
+
+   TYPE
+       Color : (Red, Green);
+       Light : (Off, Green);
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           code : DINT;
+       END_VAR
+       code := Green;  (* Error: Green of Color or of Light? *)
+   END_PROGRAM
+
+``code`` is a ``DINT``, so the assignment does not say whether ``Green`` is the
+value of ``Color`` or the value of ``Light``.
+
+To fix this error, use the value where its type is known, such as in an
+assignment to a variable of the enumeration:
+
+.. playground::
+
+   TYPE
+       Color : (Red, Green);
+       Light : (Off, Green);
+   END_TYPE
+
+   PROGRAM main
+       VAR
+           light : Light;
+           is_green : BOOL;
+       END_VAR
+       light := Green;             (* Correct: the type of light *)
+       is_green := light = Green;  (* Correct: the type of light *)
+   END_PROGRAM
+
+See Also
+--------
+
+- :doc:`/reference/language/data-types/derived/enumerated-types` — enumerated types

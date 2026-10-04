@@ -1028,7 +1028,8 @@ mod tests {
         assert!(!SemanticType::Enumeration {
             underlying_type: Box::new(SemanticType::Int {
                 size: ByteSized::B8
-            })
+            }),
+            members: crate::enumeration_members::EnumerationMembers::default(),
         }
         .is_primitive());
         assert!(!SemanticType::Structure { fields: vec![] }.is_primitive());
@@ -1149,6 +1150,7 @@ mod tests {
                     underlying_type: Box::new(SemanticType::Int {
                         size: ByteSized::B8,
                     }),
+                    members: crate::enumeration_members::EnumerationMembers::default(),
                 },
             ),
         );
@@ -1211,6 +1213,7 @@ mod tests {
                     underlying_type: Box::new(SemanticType::Int {
                         size: ByteSized::B8,
                     }),
+                    members: crate::enumeration_members::EnumerationMembers::default(),
                 },
             ),
         );

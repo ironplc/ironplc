@@ -790,8 +790,10 @@ fn compile_case_selector(
         }
         CaseSelectionKind::EnumeratedValue(ev) => {
             // REQ-EN-codegen-040: Load selector, load ordinal constant, compare with EQ_I32.
+            // The label is a value of the selector's type.
             compile_expr(emitter, ctx, selector.expr, selector.op_type)?;
-            let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?;
+            let members = crate::compile_enum::members_of_expr(ctx, selector.expr);
+            let ordinal = crate::compile_enum::ordinal_in(members, ev)?;
             let pool_index = ctx.add_i32_constant(ordinal);
             emitter.emit_load_const_i32(pool_index);
             emitter.emit_eq_i32();

@@ -22,6 +22,8 @@ mod test_macros;
 mod call_assignment_check;
 mod callee_resolution;
 mod constant_folding;
+mod enumerated_value_type;
+pub mod enumeration_members;
 mod enumeration_values;
 mod function_environment;
 mod intrinsic;

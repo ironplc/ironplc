@@ -100,7 +100,9 @@ pub(crate) fn resolve_field_op_type(field_type: &SemanticType) -> Option<OpType>
             ByteSized::B64 => Some((OpWidth::F64, Signedness::Signed)),
             _ => Some((OpWidth::F32, Signedness::Signed)),
         },
-        SemanticType::Enumeration { underlying_type } => resolve_field_op_type(underlying_type),
+        SemanticType::Enumeration {
+            underlying_type, ..
+        } => resolve_field_op_type(underlying_type),
         SemanticType::Subrange { base_type, .. } => resolve_field_op_type(base_type),
         SemanticType::Reference { .. } => Some((OpWidth::W64, Signedness::Unsigned)),
         // Composite types are not loaded/stored as single values
@@ -335,7 +337,9 @@ pub(crate) fn var_type_info_for_field(field_type: &SemanticType) -> Option<VarTy
         | SemanticType::Date { size }
         | SemanticType::TimeOfDay { size }
         | SemanticType::DateAndTime { size } => size.into(),
-        SemanticType::Enumeration { underlying_type } => {
+        SemanticType::Enumeration {
+            underlying_type, ..
+        } => {
             return var_type_info_for_field(underlying_type);
         }
         SemanticType::Subrange { base_type, .. } => {

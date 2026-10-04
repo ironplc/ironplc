@@ -995,9 +995,11 @@ parser! {
           })
         }
       }
-    } / tok(TokenType::LeftParen) _ values:enumerated_value() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightParen) _  init:(tok(TokenType::Assignment) _ i:enumerated_value() {i})? {
+    } / tok(TokenType::LeftParen) _ values:enumerated_value_decl() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightParen) _  init:(tok(TokenType::Assignment) _ i:enumerated_value() {i})? {
       // An enumerated_specification defined by enum values is unambiguous because
-      // the parenthesis are not valid simple_specification.
+      // the parenthesis are not valid simple_specification. Members are
+      // declarations, so they may carry explicit values as they may with an
+      // initial value in the alternative above.
       InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer {
         values,
         initial_value: init,

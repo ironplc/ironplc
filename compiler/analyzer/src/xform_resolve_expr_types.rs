@@ -15,10 +15,12 @@ use ironplc_dsl::type_id::TypeId;
 use std::collections::HashMap;
 
 use crate::callee_resolution::FunctionBlocks;
+use crate::enumerated_value_type::{self, Context, EnumeratedValueType, OwnedContext};
 use crate::function_environment::FunctionEnvironment;
 use crate::intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, Overload,
 };
+use crate::intermediates::inherited_fields::collect_inherited_fields;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
 use crate::semantic_type::SemanticType;
 use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
@@ -26,14 +28,20 @@ use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
 use ironplc_parser::options::CompilerOptions;
 
+/// Returns the library with every expression's type, and the unqualified
+/// enumerated values whose type is ambiguous (`P2043`).
 pub fn apply(
     lib: Library,
     symbols: &SymbolEnvironment,
     type_environment: &mut TypeEnvironment,
     function_environment: &FunctionEnvironment,
     options: &CompilerOptions,
-) -> Result<Library, Vec<Diagnostic>> {
+) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
+    let inherited_fields = collect_inherited_fields(&lib);
     let method_return_types = collect_method_return_types(&lib);
+    let function_block_inputs =
+        enumerated_value_type::function_block_inputs(&lib, &inherited_fields);
+    let named_enumerations = enumerated_value_type::named_enumerations(type_environment);
     let mut resolver = ExprTypeResolver {
         symbols,
         scope: ScopeTracker::default(),
@@ -41,9 +49,18 @@ pub fn apply(
         type_environment,
         function_environment,
         options: *options,
+        named_enumerations,
+        function_block_inputs,
+        ambiguous: Vec::new(),
     };
 
-    resolver.fold_library(lib).map_err(|e| vec![e])
+    let library = resolver.fold_library(lib).map_err(|e| vec![e])?;
+    let diagnostics = resolver
+        .ambiguous
+        .iter()
+        .map(enumerated_value_type::ambiguous)
+        .collect();
+    Ok((library, diagnostics))
 }
 
 /// The return type of every method callable on every function block, by
@@ -145,6 +162,13 @@ struct ExprTypeResolver<'a> {
     /// The compiler options, which decide whether a bit-string operand of
     /// an arithmetic operator is judged as an unsigned integer (ADR-0053).
     options: CompilerOptions,
+    /// See [`enumerated_value_type::named_enumerations`].
+    named_enumerations: Vec<TypeId>,
+    /// See [`enumerated_value_type::function_block_inputs`].
+    function_block_inputs: HashMap<TypeName, HashMap<Id, TypeId>>,
+    /// The unqualified enumerated values left ambiguous so far. A value
+    /// leaves the list when the place it is used in gives it a type.
+    ambiguous: Vec<EnumeratedValue>,
 }
 
 impl ExprTypeResolver<'_> {
@@ -250,7 +274,10 @@ impl ExprTypeResolver<'_> {
                     .clone()?;
                 self.expr_type_named(return_type)
             }
-            ExprKind::EnumeratedValue(ev) => self.expr_type_named(ev.type_name.clone()?),
+            ExprKind::EnumeratedValue(ev) => match &ev.type_name {
+                Some(type_name) => self.expr_type_named(type_name.clone()),
+                None => self.unqualified_enumerated_value_type(ev, None),
+            },
             ExprKind::Expression(inner) => inner.expr_type.clone(),
             ExprKind::LateBound(_) => None,
             // `REF(x)` is a reference to `x`'s type.
@@ -274,6 +301,99 @@ impl ExprTypeResolver<'_> {
             // keeps.
             ExprKind::ImplicitConversion(_) => None,
         }
+    }
+
+    /// The type of the unqualified enumerated value `ev` used where a value
+    /// of type `context` is expected (see [`enumerated_value_type`]). An
+    /// ambiguous value is recorded until a context resolves it.
+    fn unqualified_enumerated_value_type(
+        &mut self,
+        ev: &EnumeratedValue,
+        context: Option<Context>,
+    ) -> Option<ExprType> {
+        // The anonymous enumerations of the variables in scope, each
+        // declared in place (`e : (A, B)`).
+        let mut in_scope: Vec<TypeId> = self
+            .symbols
+            .visible_variables(&self.scope.current())
+            .into_iter()
+            .filter_map(|(_, info)| info.type_id)
+            .filter(|id| {
+                self.type_environment.name_of(*id).is_none()
+                    && self
+                        .type_environment
+                        .get_by_id(*id)
+                        .is_some_and(|attributes| attributes.representation.is_enumeration())
+            })
+            .collect();
+        in_scope.sort();
+        let candidates = self.named_enumerations.iter().copied().chain(in_scope);
+        let span = ev.span();
+        self.ambiguous.retain(|pending| pending.span() != span);
+        match enumerated_value_type::resolve(self.type_environment, &ev.value, context, candidates)
+        {
+            EnumeratedValueType::Resolved(id) => Some(ExprType::Concrete(id)),
+            EnumeratedValueType::Ambiguous => {
+                self.ambiguous.push(ev.clone());
+                None
+            }
+            EnumeratedValueType::Undeclared => None,
+        }
+    }
+
+    /// Gives `expr` the type `context` expects when `expr` is an
+    /// unqualified enumerated value that `context`, an enumeration, declares.
+    fn type_from_context(&mut self, expr: &mut Expr, context: Option<Context>) {
+        if context.is_none() {
+            return;
+        }
+        match &mut expr.kind {
+            ExprKind::Expression(inner) => {
+                self.type_from_context(inner, context);
+                expr.expr_type = inner.expr_type.clone();
+            }
+            ExprKind::EnumeratedValue(ev) if ev.type_name.is_none() => {
+                let ev = ev.clone();
+                expr.expr_type = self.unqualified_enumerated_value_type(&ev, context);
+            }
+            _ => {}
+        }
+    }
+
+    /// What a value compared with or assigned to `variable` is expected to
+    /// be: its type, or for a structure field of enumeration type, which has
+    /// no type id here, its members.
+    fn variable_context(&self, variable: &Variable) -> Option<Context<'_>> {
+        if let Some(id) = self.variable_type_id(variable) {
+            return Some(Context::Type(id));
+        }
+        let Variable::Symbolic(SymbolicVariableKind::Structured(sv)) = variable else {
+            return None;
+        };
+        let parent = self.resolve_parent_struct_type(sv.record.as_ref())?;
+        let field = parent
+            .member_fields()?
+            .iter()
+            .find(|f| f.name == sv.field)?;
+        field.field_type.enumeration_members().map(Context::Members)
+    }
+
+    /// What a value compared with `expr` is expected to be.
+    fn expr_context(&self, expr: &Expr) -> Option<Context<'_>> {
+        match (&expr.expr_type, &expr.kind) {
+            (Some(ExprType::Concrete(id)), _) => Some(Context::Type(*id)),
+            (None, ExprKind::Variable(variable)) => self.variable_context(variable),
+            _ => None,
+        }
+    }
+
+    /// The type a value the input `input` of the function block instance
+    /// `instance` receives is expected to have.
+    fn function_block_input_type(&self, instance: &Id, input: &Id) -> Option<TypeId> {
+        let fb_type = self
+            .type_environment
+            .name_of(self.declared_type_id(instance)?)?;
+        self.function_block_inputs.get(fb_type)?.get(input).copied()
     }
 
     /// The type `type_name` names: a literal of the category a generic name
@@ -528,11 +648,51 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         // First, recurse to fold children (bottom-up)
         let mut expr = node.recurse_fold(self)?;
 
+        // An unqualified enumerated value compared with a value of an
+        // enumeration type has that type.
+        if let ExprKind::Compare(compare) = &mut expr.kind {
+            if !matches!(
+                compare.op,
+                CompareOp::And
+                    | CompareOp::Or
+                    | CompareOp::Xor
+                    | CompareOp::AndThen
+                    | CompareOp::OrElse
+            ) {
+                let left = self.expr_context(&compare.left).map(OwnedContext::from);
+                let right = self.expr_context(&compare.right).map(OwnedContext::from);
+                self.type_from_context(&mut compare.right, left.as_ref().map(OwnedContext::get));
+                self.type_from_context(&mut compare.left, right.as_ref().map(OwnedContext::get));
+            }
+        }
+
         // Then determine type based on the (now-folded) kind
         if !matches!(expr.kind, ExprKind::ImplicitConversion(_)) {
             expr.expr_type = self.resolve_type(&expr.kind);
         }
         Ok(expr)
+    }
+
+    fn fold_assignment(&mut self, node: Assignment) -> Result<Assignment, Diagnostic> {
+        let mut node = node.recurse_fold(self)?;
+        // An unqualified enumerated value assigned has the target's type.
+        let target = self.variable_context(&node.target).map(OwnedContext::from);
+        self.type_from_context(&mut node.value, target.as_ref().map(OwnedContext::get));
+        Ok(node)
+    }
+
+    fn fold_fb_call(&mut self, node: FbCall) -> Result<FbCall, Diagnostic> {
+        let mut node = node.recurse_fold(self)?;
+        // An unqualified enumerated value passed to an input has its type.
+        for param in &mut node.params {
+            if let ParamAssignmentKind::NamedInput(input) = param {
+                let input_type = self
+                    .function_block_input_type(&node.var_name, &input.name)
+                    .map(Context::Type);
+                self.type_from_context(&mut input.expr, input_type);
+            }
+        }
+        Ok(node)
     }
 
     fn fold_initial_value_assignment_kind(
