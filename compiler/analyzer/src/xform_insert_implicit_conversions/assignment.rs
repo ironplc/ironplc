@@ -86,7 +86,7 @@ impl ImplicitConversions<'_> {
     }
 
     /// The operation width of the numeric type of `expr`.
-    fn width_of(&self, expr: &Expr) -> Option<OperationWidth> {
+    pub(super) fn width_of(&self, expr: &Expr) -> Option<OperationWidth> {
         numeric_operation_width(&self.conversions.operand_name(expr)?)
     }
 
@@ -104,7 +104,7 @@ impl ImplicitConversions<'_> {
     /// Returns `true` when `func`, the call `expr`, is the function form of
     /// an arithmetic operator on two inputs at the width of its result: the
     /// shape the arithmetic pass records a numeric operation in.
-    fn is_numeric_pair(&self, func: &Function, expr: &Expr) -> bool {
+    pub(super) fn is_numeric_pair(&self, func: &Function, expr: &Expr) -> bool {
         if arithmetic_operator(func).is_none() {
             return false;
         }

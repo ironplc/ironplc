@@ -155,9 +155,11 @@ yet. The decision above is unchanged.
 
 ### Literals (postscript)
 
-The pass also gives an untyped literal the type its statement context compiles
-it at: an assignment's target, a `FOR` loop's control variable, a function
-block input's field. Codegen still passes a literal's type down; it reads the
-recorded type only once every context records one. The decision above is
-unchanged.
+The pass also gives an untyped numeric literal the type codegen compiles it
+at, in every context: a statement's target or condition, and on the way to
+the literal every construct that passes its context's type on, computes at
+its own, or computes at a fixed one (a selector, a shift count, a string
+position, a subscript). Codegen still passes a literal's type down; it reads
+the recorded type in the next change, which also moves the few compiles of
+an unanalyzed library onto `analyze`. The decision above is unchanged.
 

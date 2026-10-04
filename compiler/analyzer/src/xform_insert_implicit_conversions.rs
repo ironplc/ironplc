@@ -33,7 +33,8 @@ use ironplc_dsl::common::Library;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::{
-    Assignment, CompareExpr, Expr, ExprKind, FbCall, For, Function, ParamAssignmentKind,
+    Assignment, Case, CompareExpr, Expr, ExprKind, FbCall, For, Function, If, ParamAssignmentKind,
+    Repeat, StmtKind, While,
 };
 use ironplc_dsl::type_id::TypeId;
 use ironplc_parser::options::CompilerOptions;
@@ -45,8 +46,10 @@ use crate::semantic_context::SemanticContext;
 use crate::symbol_environment::ScopeTracker;
 
 pub fn apply(lib: Library, context: &SemanticContext, options: &CompilerOptions) -> Library {
+    let methods = literal::method_parameters(&lib, context.types());
     let mut inserter = ImplicitConversions {
         conversions: ConversionTarget::new(context.types()),
+        methods,
         context,
         scope: ScopeTracker::default(),
         options,
@@ -57,6 +60,9 @@ pub fn apply(lib: Library, context: &SemanticContext, options: &CompilerOptions)
 
 struct ImplicitConversions<'a> {
     conversions: ConversionTarget<'a>,
+    /// The parameters of every method, to type the literals of its
+    /// arguments.
+    methods: literal::MethodParameters,
     context: &'a SemanticContext,
     /// Where the traversal is, to look an assignment's target up in the
     /// symbol environment.
@@ -116,8 +122,38 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
     fn fold_assignment(&mut self, node: Assignment) -> Result<Assignment, Infallible> {
         let mut node = node.recurse_fold(self)?;
         self.record_assignment_value(&mut node);
-        if let Some(at) = self.assigned_at(&node.target, node.deref) {
-            self.type_literals(&mut node.value, at);
+        self.type_assignment_literals(&mut node.target, node.deref, &mut node.value);
+        Ok(node)
+    }
+
+    fn fold_if(&mut self, node: If) -> Result<If, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.type_if_literals(&mut node);
+        Ok(node)
+    }
+
+    fn fold_while(&mut self, node: While) -> Result<While, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.type_while_literals(&mut node);
+        Ok(node)
+    }
+
+    fn fold_repeat(&mut self, node: Repeat) -> Result<Repeat, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.type_repeat_literals(&mut node);
+        Ok(node)
+    }
+
+    fn fold_case(&mut self, node: Case) -> Result<Case, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.type_case_literals(&mut node);
+        Ok(node)
+    }
+
+    fn fold_stmt_kind(&mut self, node: StmtKind) -> Result<StmtKind, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        if let StmtKind::MethodCall(call) = &mut node {
+            self.type_method_call_statement_literals(call);
         }
         Ok(node)
     }
