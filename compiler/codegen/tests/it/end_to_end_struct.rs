@@ -1,10 +1,7 @@
 //! End-to-end integration tests for structure field read support.
 //! Compiles ST programs with struct field access and runs them through the VM.
 
-use crate::common::{
-    date, datetime, parse_and_run, read_string, time, try_parse_and_compile, Duration, Snapshot,
-};
-use ironplc_container::STRING_HEADER_BYTES;
+use crate::common::{date, datetime, time, try_parse_and_compile, Duration, Snapshot};
 use ironplc_parser::options::{CompilerOptions, Dialect};
 
 // --- Scalar field read/write ---
@@ -116,7 +113,7 @@ e2e_i32!(
     &[("result", 63)],
 );
 
-// --- STRING-array fields (use `read_string` helper; stay inline) ---
+// --- STRING-array fields ---
 
 #[test]
 fn end_to_end_when_struct_string_array_field_write_and_read_then_correct() {
@@ -130,27 +127,18 @@ END_TYPE
 PROGRAM main
   VAR
     s : MyStruct;
+    first : STRING[10];
     result : STRING[10];
   END_VAR
     s.names[1] := 'hello';
     s.names[2] := 'world';
+    first := s.names[1];
     result := s.names[2];
 END_PROGRAM
 ";
     let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // Verify the writes landed in the struct's data region. Fields wait on
-    // paths, so they are read from the struct's data-region base.
-    let bufs = snapshot.buffers();
-    let struct_base = bufs.vars[0].as_i32() as usize;
-    let stride = STRING_HEADER_BYTES + 10;
-    assert_eq!(read_string(&bufs.data_region, struct_base), "hello");
-    assert_eq!(
-        read_string(&bufs.data_region, struct_base + stride),
-        "world"
-    );
-
-    // Verify the read-back via result.
+    assert_eq!(snapshot.read("first"), "hello");
     assert_eq!(snapshot.read("result"), "world");
 }
 
@@ -239,16 +227,18 @@ END_TYPE
 PROGRAM main
   VAR
     d : MY_DATA;
+    name : STRING[10];
+    value : INT;
   END_VAR
     d.NAME := 'hello';
     d.VALUE := 42;
+    name := d.NAME;
+    value := d.VALUE;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    let struct_base = bufs.vars[0].as_i32() as usize;
-    assert_eq!(read_string(&bufs.data_region, struct_base), "hello");
-    // INT field is at slot 2 (STRING[10] = ceil((4+10)/8) = 2 slots)
-    assert_eq!(bufs.vars[0].as_i32() as usize, struct_base);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read("name"), "hello");
+    assert_eq!(snapshot.read_as::<i32>("value"), 42);
 }
 
 #[test]
@@ -271,9 +261,6 @@ PROGRAM main
 END_PROGRAM
 ";
     let snapshot = Snapshot::run(source, &CompilerOptions::default());
-    let bufs = snapshot.buffers();
-    let struct_base = bufs.vars[0].as_i32() as usize;
-    assert_eq!(read_string(&bufs.data_region, struct_base), "world");
     assert_eq!(snapshot.read("result"), "world");
 }
 
@@ -312,12 +299,6 @@ PROGRAM main
 END_PROGRAM
 ";
     let snapshot = Snapshot::run(source, &CompilerOptions::default());
-
-    // Verify NAME field in the struct data region: TYP takes the struct's
-    // first slot, so NAME starts at byte offset 8.
-    let bufs = snapshot.buffers();
-    let struct_base = bufs.vars[0].as_i32() as usize;
-    assert_eq!(read_string(&bufs.data_region, struct_base + 8), "test");
 
     assert_eq!(snapshot.read("result_name"), "test");
     assert_eq!(snapshot.read_as::<i32>("result_sum"), 60);
