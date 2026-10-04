@@ -3,7 +3,7 @@
 //! [`Snapshot`](super::Snapshot) and [`Session`](super::Session) both find a
 //! variable here, so a name means the same variable to every test.
 
-use ironplc_container::debug_section::{function_id, DebugSection, VarNameEntry};
+use ironplc_container::debug_section::{DebugSection, VarNameEntry};
 use ironplc_container::{Container, VarIndex};
 use ironplc_vm::Slot;
 
@@ -33,21 +33,16 @@ impl<'a> Variables<'a> {
     /// to case as IEC identifiers are. A function's locals are not candidates.
     pub(super) fn entry(&self, name: &str) -> &'a VarNameEntry {
         let debug = self.debug;
-        let candidates = || {
-            debug
-                .var_names
-                .iter()
-                .filter(|entry| entry.function_id == function_id::GLOBAL_SCOPE)
-        };
-        candidates()
-            .find(|entry| entry.name.eq_ignore_ascii_case(name))
-            .unwrap_or_else(|| {
-                let declared: Vec<&str> = candidates().map(|entry| entry.name.as_str()).collect();
-                panic!(
-                    "the program declares no variable `{name}`; it declares {}",
-                    declared.join(", ")
-                )
-            })
+        debug.program_variable(name).unwrap_or_else(|| {
+            let declared: Vec<&str> = debug
+                .program_variables()
+                .map(|entry| entry.name.as_str())
+                .collect();
+            panic!(
+                "the program declares no variable `{name}`; it declares {}",
+                declared.join(", ")
+            )
+        })
     }
 
     /// The value `entry`'s variable holds in `slot`, with its string content,

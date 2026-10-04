@@ -20,6 +20,8 @@ use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::VmBuffers;
 use spec_test_macro::spec_test;
 
+use crate::spec_conformance::read_i32;
+
 /// The Goal example from `specs/design/adr-and-pointer-to.md`: a function-block
 /// instance binding a pointer to one of its own members and reading it back
 /// through `^`. The member value
@@ -100,9 +102,9 @@ END_VAR
     p^ := v;
 END_PROGRAM
 ";
-    let (_c, bufs) = adr_compile_and_run(source, &adr_options());
-    // vars: x=0, p=1, v=2. Writing through p must update x.
-    assert_eq!(bufs.vars[0].as_i32(), 99);
+    let (container, bufs) = adr_compile_and_run(source, &adr_options());
+    // Writing through p must update x.
+    assert_eq!(read_i32(&container, &bufs, "x"), 99);
 }
 
 /// REQ-PTR-codegen-502: An `ADR`-bound pointer compares non-equal to `NULL`,
@@ -128,10 +130,17 @@ END_PROGRAM
         allow_ref_to: true,
         ..adr_options()
     };
-    let (_c, bufs) = adr_compile_and_run(source, &options);
-    // vars: x=0, bound=1, unbound=2, boundValid=3, unboundValid=4.
-    assert_eq!(bufs.vars[3].as_i32(), 1, "bound pointer is not NULL");
-    assert_eq!(bufs.vars[4].as_i32(), 0, "unbound pointer defaults to NULL");
+    let (container, bufs) = adr_compile_and_run(source, &options);
+    assert_eq!(
+        read_i32(&container, &bufs, "boundValid"),
+        1,
+        "bound pointer is not NULL"
+    );
+    assert_eq!(
+        read_i32(&container, &bufs, "unboundValid"),
+        0,
+        "unbound pointer defaults to NULL"
+    );
 }
 
 /// REQ-PTR-codegen-510: The `twincat` and `codesys` dialect presets compile
