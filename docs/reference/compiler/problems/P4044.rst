@@ -16,6 +16,11 @@ selects the base type's implementation of an overridden method; it does
 not select a second field. CODESYS and TwinCAT reject the same code as a
 duplicate definition.
 
+A variable also cannot have the name of a property declared on an
+ancestor: the derived function block would then have a variable and a
+property of one name. TwinCAT rejects this too (3.1.4024.66: "Duplicate
+definition of variable ... in function block ... and in base ...").
+
 Methods are the exception: a derived function block may declare a method
 with the name of one it inherits, which overrides it.
 
@@ -37,6 +42,9 @@ The following code will generate error P4044:
        state : BOOL;
    END_VAR
    END_FUNCTION_BLOCK
+
+The same happens when the base function block declares a property named
+``state`` instead of a variable.
 
 To fix this error, rename the field in the derived function block (or
 remove it, if the inherited field already serves the purpose):
