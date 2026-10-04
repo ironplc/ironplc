@@ -11,10 +11,9 @@ use ironplc_container::opcode;
 use ironplc_dsl::common::ElementaryTypeName;
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{
-    Expr, ExprKind, Function, ParamAssignmentKind, SymbolicVariableKind, Variable,
-};
+use ironplc_dsl::textual::{Expr, ExprKind, Function, SymbolicVariableKind, Variable};
 
+use super::call_args::{collect_positional_args, fixed_args, wrong_arg_count};
 use super::compile::{
     CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo, VarTypeInfo,
     DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
@@ -109,7 +108,7 @@ fn compile_intrinsic(
         // compiles as the instruction sequence for the units of its operands.
         Intrinsic::Time { function, long } => {
             let (arith, width) = time_arith_for(function, long);
-            let (in1, in2) = extract_two_positional_args(func)?;
+            let [in1, in2] = fixed_args::<2>(func)?;
             compile_time_arith(emitter, ctx, arith, width, Operand::Expr(in1), in2)
         }
         // Time functions: datetime decomposition
@@ -292,7 +291,7 @@ fn compile_operator_form(
         // A comparison computes at the type of its operands, not at the
         // enclosing `op_type`, which is the type of the BOOL it yields.
         FormOf::Compare(op) if op.is_comparison() => {
-            let (left, right) = extract_two_positional_args(func)?;
+            let [left, right] = fixed_args::<2>(func)?;
             compile_comparison(emitter, ctx, op, left, right, op_type)
         }
         FormOf::Compare(op) => {
@@ -333,14 +332,6 @@ pub(crate) fn compile_left_fold(
         emit_fn(emitter, op_type);
     }
     Ok(())
-}
-
-/// Extracts two positional input arguments from a function call.
-fn extract_two_positional_args(func: &Function) -> Result<(&Expr, &Expr), Diagnostic> {
-    match collect_positional_args(func).as_slice() {
-        [in1, in2] => Ok((in1, in2)),
-        _ => Err(wrong_arg_count(func)),
-    }
 }
 
 /// Compiles DT_TO_DATE and DATE_AND_TIME_TO_DATE.
@@ -629,28 +620,6 @@ fn compile_mux(
 
     emitter.emit_builtin(func_id);
     Ok(())
-}
-
-/// The error for a call whose argument count its signature does not allow.
-/// Analysis rejects such a call (`rule_function_call_declared`), so reaching
-/// codegen with one is a compiler bug.
-#[track_caller]
-pub(crate) fn wrong_arg_count(func: &Function) -> Diagnostic {
-    Diagnostic::internal_error_at(Label::span(
-        func.name.span(),
-        "Call has an argument count its signature does not allow",
-    ))
-}
-
-/// Collects positional input arguments from a function call.
-pub(crate) fn collect_positional_args(func: &Function) -> Vec<&Expr> {
-    func.param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect()
 }
 
 /// Compiles a type conversion function call (e.g., INT_TO_REAL).

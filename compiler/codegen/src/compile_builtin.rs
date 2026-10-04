@@ -12,8 +12,8 @@ use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::Function;
 
+use super::call_args::{collect_positional_args, wrong_arg_count};
 use super::compile::{CompileContext, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE};
-use super::compile_call::{collect_positional_args, wrong_arg_count};
 use super::compile_expr::{compile_expr, storage_bits};
 use crate::emit::Emitter;
 
