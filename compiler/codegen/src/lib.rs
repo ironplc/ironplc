@@ -19,13 +19,15 @@
 //! # Example
 //!
 //! ```ignore
+//! use ironplc_analyzer::CleanAnalysis;
 //! use ironplc_codegen::{compile, CodegenOptions, EmptyLookup};
 //! use ironplc_parser::parse_program;
 //!
 //! let source = "PROGRAM main VAR x : INT; END_VAR x := 42; END_PROGRAM";
 //! let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
 //! let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
-//! let container = compile(&analyzed, &ctx, &CodegenOptions::default(), &EmptyLookup).unwrap();
+//! let analysis = CleanAnalysis::new(&analyzed, &ctx).unwrap();
+//! let container = compile(analysis, &CodegenOptions::default(), &EmptyLookup).unwrap();
 //! ```
 
 mod call_args;

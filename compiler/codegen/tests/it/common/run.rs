@@ -1,6 +1,6 @@
 //! Parse, compile and run helpers shared by the codegen integration tests.
 
-use ironplc_analyzer::SemanticContext;
+use ironplc_analyzer::{CleanAnalysis, SemanticContext};
 use ironplc_codegen::compile;
 use ironplc_container::Container;
 use ironplc_dsl::common::Library;
@@ -57,13 +57,9 @@ pub fn compile_analyzed(
     context: &SemanticContext,
     options: &CompilerOptions,
 ) -> Result<Container, Diagnostic> {
+    let analysis = CleanAnalysis::new(library, context).expect("analysis reported diagnostics");
     let codegen_options = ironplc_codegen::CodegenOptions::from(options);
-    compile(
-        library,
-        context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
+    compile(analysis, &codegen_options, &ironplc_codegen::EmptyLookup)
 }
 
 /// Parses, analyzes, compiles, and runs one scan cycle, returning `Err` on VM trap.

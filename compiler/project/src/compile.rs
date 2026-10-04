@@ -11,6 +11,7 @@
 //! codes and a file on disk, a JSON response and a cache handle, or a base64
 //! string handed back to JavaScript.
 
+use ironplc_analyzer::CleanAnalysis;
 use ironplc_codegen::{CodegenOptions, SourceLookup};
 use ironplc_container::Container;
 use ironplc_dsl::diagnostic::Diagnostic;
@@ -76,9 +77,13 @@ pub fn compile(
         };
     }
 
-    let (Some(library), Some(context)) = (project.analyzed_library(), project.semantic_context())
+    let Some(Ok(analysis)) = project
+        .analyzed_library()
+        .zip(project.semantic_context())
+        .map(|(library, context)| CleanAnalysis::new(library, context))
     else {
-        // A clean analysis always caches its artifacts, so this is a compiler
+        // A clean analysis always caches its artifacts, and the context's
+        // diagnostics are among those checked above, so this is a compiler
         // defect rather than a problem with the input.
         diagnostics.push(Diagnostic::internal_error());
         return CompileOutput {
@@ -91,7 +96,7 @@ pub fn compile(
     // the PROGRAM root to reduce container size.
     let codegen_options = CodegenOptions::from(compiler_options);
 
-    match ironplc_codegen::compile(library, context, &codegen_options, source_lookup) {
+    match ironplc_codegen::compile(analysis, &codegen_options, source_lookup) {
         Ok(container) => CompileOutput {
             diagnostics,
             container: Some(container),

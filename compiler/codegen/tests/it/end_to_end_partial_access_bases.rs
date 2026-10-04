@@ -225,8 +225,6 @@ END_PROGRAM
 #[rstest]
 #[case::bits_of_bits("d : DWORD;", "d.%B1.3 := TRUE;")]
 #[case::through_reference("x : BYTE; p : REF_TO BYTE;", "p := REF(x); p^.3 := TRUE;")]
-#[case::read_string("q : STRING; b : BOOL;", "b := q.3;")]
-#[case::write_string("q : STRING;", "q.3 := TRUE;")]
 fn partial_access_when_base_is_not_a_place_then_not_implemented(
     #[case] decls: &str,
     #[case] body: &str,

@@ -4,6 +4,7 @@
 //! Kept apart from `spec_conformance.rs`, which holds the rest of that
 //! document's requirements, to keep both modules within the size limit.
 
+use ironplc_analyzer::CleanAnalysis;
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::{CompilerOptions, Dialect};
@@ -21,8 +22,7 @@ fn try_compile(
     let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], options).unwrap();
     crate::compile(
-        &analyzed,
-        &ctx,
+        CleanAnalysis::new(&analyzed, &ctx).unwrap(),
         &crate::CodegenOptions::default(),
         &crate::EmptyLookup,
     )
