@@ -7,7 +7,6 @@
 //! each shape is covered.
 
 use ironplc_parser::options::{CompilerOptions, Dialect};
-use ironplc_problems::Problem;
 
 use crate::common::try_parse_and_compile;
 
@@ -242,7 +241,7 @@ END_PROGRAM
 );
 
 #[test]
-fn compile_when_continue_outside_loop_then_p4065_error() {
+fn compile_when_continue_outside_loop_then_internal_error() {
     let source = "
 PROGRAM main
   VAR
@@ -253,5 +252,6 @@ PROGRAM main
 END_PROGRAM
 ";
     let diagnostic = try_parse_and_compile(source, &edition_3()).unwrap_err();
-    assert_eq!(diagnostic.code, Problem::ContinueOutsideLoop.code());
+    // Analysis reports it first, as P4065 (`rule_loop_control_inside_loop`).
+    assert_eq!(diagnostic.code, "P9998");
 }

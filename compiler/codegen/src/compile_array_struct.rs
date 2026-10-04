@@ -161,8 +161,12 @@ fn locate_array_of_struct<'ctx, 'ast>(
     ctx: &'ctx CompileContext,
     structured: &'ast ironplc_dsl::textual::StructuredVariable,
 ) -> Result<LocatedArrayOfStruct<'ctx, 'ast>, Diagnostic> {
+    // Every caller checks that `record` is an array subscript.
     let SymbolicVariableKind::Array(array_var) = structured.record.as_ref() else {
-        return Err(Diagnostic::todo_with_span(structured.span()));
+        return Err(Diagnostic::internal_error_at(Label::span(
+            structured.span(),
+            "Structure field access is not on an array element",
+        )));
     };
 
     // Collect subscript groups innermost-first, then reverse -- the same
@@ -716,7 +720,7 @@ fn struct_fields<'a>(
 ) -> Result<&'a [ironplc_analyzer::intermediate_type::IntermediateStructField], Diagnostic> {
     match element_type {
         IntermediateType::Structure { fields } => Ok(fields),
-        _ => Err(Diagnostic::not_implemented(Label::span(
+        _ => Err(Diagnostic::internal_error_at(Label::span(
             span.clone(),
             "Array element type is not a structure",
         ))),

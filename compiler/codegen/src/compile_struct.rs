@@ -157,7 +157,7 @@ pub(crate) fn build_struct_fields(
         // overwriting the HashMap entry would make the first field inaccessible
         // by name while it still occupies slots in the layout.
         if field_index.contains_key(&name) {
-            return Err(Diagnostic::not_implemented(Label::span(
+            return Err(Diagnostic::internal_error_at(Label::span(
                 span.clone(),
                 format!(
                     "Structure has duplicate field name '{}' (case-insensitive)",

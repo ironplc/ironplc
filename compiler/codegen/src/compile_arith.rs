@@ -138,7 +138,10 @@ fn compile_typed_rest(
             return Err(Diagnostic::todo_with_span(span));
         };
         let Some(natural) = resolve_type_name(&accumulated.name) else {
-            return Err(Diagnostic::todo_with_span(span));
+            return Err(Diagnostic::internal_error_at(Label::span(
+                span,
+                "Typed overload result is not an elementary type",
+            )));
         };
         let left = Operand::Stack((natural.op_width, natural.signedness));
         compile_typed(emitter, ctx, name, left, arg, span.clone())?;

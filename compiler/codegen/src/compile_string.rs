@@ -7,10 +7,11 @@
 use ironplc_container::opcode;
 use ironplc_container::CharWidth;
 use ironplc_dsl::core::{Located, SourceSpan};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
 
 use super::compile::{string_region_size, CompileContext, DEFAULT_OP_TYPE};
+use super::compile_call::wrong_arg_count;
 use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
 use crate::string_width::{
@@ -33,7 +34,7 @@ pub(crate) fn compile_len(
     let args = collect_positional_args(func);
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let span = func.name.span();
@@ -81,7 +82,11 @@ pub(crate) fn compile_string_compare(
         CompareOp::LtEq => emitter.emit_le_i32(),
         CompareOp::GtEq => emitter.emit_ge_i32(),
         _ => {
-            return Err(Diagnostic::todo_with_span(span));
+            // Callers pass only comparison operators.
+            return Err(Diagnostic::internal_error_at(Label::span(
+                span,
+                "String comparison with an operator that is not a comparison",
+            )));
         }
     }
     Ok(())
@@ -186,7 +191,7 @@ pub(crate) fn compile_find(
     let args = collect_positional_args(func);
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let span = func.name.span();
@@ -212,7 +217,7 @@ pub(crate) fn compile_replace(
     let args = collect_positional_args(func);
 
     if args.len() != 4 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let span = func.name.span();
@@ -242,7 +247,7 @@ pub(crate) fn compile_insert(
     let args = collect_positional_args(func);
 
     if args.len() != 3 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let span = func.name.span();
@@ -271,7 +276,7 @@ fn compile_string_2arg(
     let args = collect_positional_args(func);
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let span = func.name.span();
@@ -298,7 +303,7 @@ fn compile_string_3arg(
     let args = collect_positional_args(func);
 
     if args.len() != 3 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let span = func.name.span();
@@ -375,7 +380,7 @@ pub(crate) fn compile_concat(
     let args = collect_positional_args(func);
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(func.name.span()));
+        return Err(wrong_arg_count(func));
     }
 
     let span = func.name.span();

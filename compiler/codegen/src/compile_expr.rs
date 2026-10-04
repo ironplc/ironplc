@@ -785,8 +785,9 @@ pub(crate) fn compile_variable_read(
                 &field_type,
                 ironplc_analyzer::intermediate_type::IntermediateType::String { .. }
             ) {
+                // `walk_struct_chain` found this structure variable above.
                 let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-                    Diagnostic::not_implemented(Label::span(
+                    Diagnostic::internal_error_at(Label::span(
                         structured.span(),
                         format!("Variable '{}' is not a structure", root_name),
                     ))
