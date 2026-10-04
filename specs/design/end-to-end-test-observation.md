@@ -1,6 +1,6 @@
 # Design: End-to-End Test Observation
 
-status: proposed
+status: approved
 date: 2026-10-03
 
 ## Overview
@@ -462,22 +462,25 @@ from the VM's current unit into a value: `5000` on a `TIME` becomes
 `1_704_067_200` on a `DATE` becomes `date!(2024-01-01)`. A call that
 asserts temporal and other variables together is split into one call per
 expected type. The script is the only place the old units appear, and it
-is thrown away.
+is thrown away. The assertions that go through the generic helpers were
+converted this way in the prefactor (step 1). What remains are those in
+the multi-scan tests, the function-block steps and the direct slot reads.
 
 Neither the hook nor the script lands on `main`.
 
 Implementation order. Each step leaves the suite green:
 
-1. Prefactors, with no change in behaviour. Merge the ten `assert_run_*`
-   helpers into one generic, so that one function reads a variable after a
-   scan. Split `codegen/tests/it/common/mod.rs`, which is at the module
-   limit, into `bc.rs`, `run.rs` and `assert.rs`.
+1. Prefactors, with no change in behaviour. One generic assertion helper
+   reads every variable after a scan, through the `SlotValue` readers in
+   `common/slot_value.rs`. Those readers already read dates and durations
+   as values (§3), so the helper-based temporal expectations are values,
+   not counts. `codegen/tests/it/common/mod.rs` is split into `bc.rs`,
+   `run.rs` and `assert.rs`.
 2. Add `Value`, name resolution and `Snapshot`, and migrate the single-scan
-   tuples, including the date and duration expectations (§2, §3,
-   REQ-OBS-codegen-043 to 045).
+   tuples (§2, §3, REQ-OBS-codegen-043 to 045).
 3. Add `Session` and migrate the multi-scan tests, the function-block steps,
-   the string reads and the §6 moves (REQ-OBS-codegen-040 to 042, 046,
-   047).
+   the string reads, the remaining date and duration expectations and the
+   §6 moves (REQ-OBS-codegen-040 to 042, 046, 047).
 4. After the Variable Inspection Model steps 1–3, add paths (§5), delete the
    slot-keyed helpers, and add the guard test (§7).
 
