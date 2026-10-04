@@ -588,8 +588,8 @@ impl TypeEnvironment {
                 let array_spec = SpecificationKind::Inline(array_subranges.clone());
                 let result = array::try_from(declaring, &array_spec, self)?;
                 match result {
-                    array::IntermediateResult::Type(attrs) => Ok(attrs.representation),
-                    array::IntermediateResult::Alias(base_type_name) => Ok(self
+                    array::TypeResolution::Type(attrs) => Ok(attrs.representation),
+                    array::TypeResolution::Alias(base_type_name) => Ok(self
                         .get(&base_type_name)
                         .ok_or_else(|| Diagnostic::internal_error())?
                         .representation

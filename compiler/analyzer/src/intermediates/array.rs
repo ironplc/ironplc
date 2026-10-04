@@ -13,7 +13,7 @@ use ironplc_problems::Problem;
 
 /// Result of processing an array specification
 #[derive(Debug, Clone, PartialEq)]
-pub enum IntermediateResult {
+pub enum TypeResolution {
     /// Create a new array type with the given attributes
     Type(TypeAttributes),
     /// Create an alias to an existing type
@@ -25,7 +25,7 @@ pub fn try_from(
     node_name: &TypeName,
     spec: &ArraySpecificationKind,
     type_environment: &TypeEnvironment,
-) -> Result<IntermediateResult, Diagnostic> {
+) -> Result<TypeResolution, Diagnostic> {
     match spec {
         SpecificationKind::Inline(array_subranges) => {
             // Array with explicit subranges: MY_ARRAY : ARRAY [1..10, 1..5] OF INT;
@@ -86,7 +86,7 @@ pub fn try_from(
                 element_repr
             };
 
-            Ok(IntermediateResult::Type(TypeAttributes::new(
+            Ok(TypeResolution::Type(TypeAttributes::new(
                 node_name.span(),
                 SemanticType::Array {
                     element_type: Box::new(resolved_element_type),
@@ -104,7 +104,7 @@ pub fn try_from(
                 .with_secondary(Label::span(base_type_name.span(), "Base type")));
             }
 
-            Ok(IntermediateResult::Alias(base_type_name.clone()))
+            Ok(TypeResolution::Alias(base_type_name.clone()))
         }
     }
 }
@@ -335,7 +335,7 @@ mod tests {
         let spec = SpecificationKind::Inline(array_subranges);
         let result = try_from(&TypeName::from("MY_ARRAY"), &spec, &env).unwrap();
 
-        let attrs = cast!(result, IntermediateResult::Type);
+        let attrs = cast!(result, TypeResolution::Type);
 
         let (element_type, dimensions) = cast_struct!(
             attrs.representation,
@@ -379,7 +379,7 @@ mod tests {
         let spec = SpecificationKind::Named(TypeName::from("BASE_ARRAY"));
         let result = try_from(&TypeName::from("ALIAS_ARRAY"), &spec, &env).unwrap();
 
-        let base_name = cast!(result, IntermediateResult::Alias);
+        let base_name = cast!(result, TypeResolution::Alias);
         assert_eq!(base_name, TypeName::from("BASE_ARRAY"));
     }
 
@@ -439,7 +439,7 @@ mod tests {
         let spec = SpecificationKind::Inline(array_subranges);
         let result = try_from(&TypeName::from("MATRIX"), &spec, &env).unwrap();
 
-        let attrs = cast!(result, IntermediateResult::Type);
+        let attrs = cast!(result, TypeResolution::Type);
 
         // Check total elements before destructuring
         assert_eq!(attrs.representation.array_total_elements(), Some(12)); // 3 * 4
@@ -478,7 +478,7 @@ mod tests {
         let spec = SpecificationKind::Inline(array_subranges);
         let result = try_from(&TypeName::from("MY_REF_ARRAY"), &spec, &env).unwrap();
 
-        let attrs = cast!(result, IntermediateResult::Type);
+        let attrs = cast!(result, TypeResolution::Type);
 
         let (element_type, dimensions) = cast_struct!(
             attrs.representation,
@@ -527,7 +527,7 @@ mod tests {
         assert!(result.is_ok());
 
         let attrs = match result.unwrap() {
-            IntermediateResult::Type(attrs) => attrs,
+            TypeResolution::Type(attrs) => attrs,
             _ => unreachable!("Expected Type result"),
         };
 
@@ -576,7 +576,7 @@ mod tests {
         assert!(result.is_ok());
 
         let attrs = match result.unwrap() {
-            IntermediateResult::Type(attrs) => attrs,
+            TypeResolution::Type(attrs) => attrs,
             _ => unreachable!("Expected Type result"),
         };
 
