@@ -4,7 +4,7 @@
 //! `__SYSTEM_UP_LTIME` (LTIME, i64 ms) are injected by the compiler
 //! and written by the VM before each scan round.
 
-use crate::common::{parse_and_compile, parse_and_run_rounds};
+use crate::common::{parse_and_compile, parse_and_run_rounds, run_scans, Duration};
 use ironplc_container::{VarIndex, FLAG_HAS_SYSTEM_UPTIME};
 use ironplc_parser::options::{CompilerOptions, Dialect};
 
@@ -97,16 +97,16 @@ PROGRAM main
   t := __SYSTEM_UP_TIME;
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &rusty_options(), |vm| {
+    run_scans(source, &rusty_options(), |session| {
         // Round 1: 1 second
-        vm.run_round(1_000_000).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 1000);
-        assert_eq!(vm.read_variable_i64(VarIndex::new(1)).unwrap(), 1000);
+        session.scan(1_000_000).unwrap();
+        assert_eq!(session.read("__SYSTEM_UP_TIME"), Duration::seconds(1));
+        assert_eq!(session.read("__SYSTEM_UP_LTIME"), Duration::seconds(1));
 
         // Round 2: 5 seconds
-        vm.run_round(5_000_000).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 5000);
-        assert_eq!(vm.read_variable_i64(VarIndex::new(1)).unwrap(), 5000);
+        session.scan(5_000_000).unwrap();
+        assert_eq!(session.read("__SYSTEM_UP_TIME"), Duration::seconds(5));
+        assert_eq!(session.read("__SYSTEM_UP_LTIME"), Duration::seconds(5));
     });
 }
 
@@ -127,11 +127,10 @@ PROGRAM main
   t := __SYSTEM_UP_TIME;
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &rusty_options(), |vm| {
-        vm.run_round(3_000_000).unwrap();
-        // Index 0: __SYSTEM_UP_TIME, Index 1: __SYSTEM_UP_LTIME, Index 2: t
-        assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 3000);
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 3000);
+    run_scans(source, &rusty_options(), |session| {
+        session.scan(3_000_000).unwrap();
+        assert_eq!(session.read("__SYSTEM_UP_TIME"), Duration::seconds(3));
+        assert_eq!(session.read("t"), Duration::seconds(3));
     });
 }
 

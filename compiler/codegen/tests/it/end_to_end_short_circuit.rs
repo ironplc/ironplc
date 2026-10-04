@@ -229,9 +229,9 @@ PROGRAM main
   result := b OR_ELSE a;
 END_PROGRAM
 ";
-    crate::common::parse_and_run_rounds(source, &short_circuit_options(), |vm| {
+    crate::common::run_scans(source, &short_circuit_options(), |session| {
         for round in 0..64 {
-            vm.run_round(round).unwrap();
+            session.scan(round).unwrap();
         }
     });
 }

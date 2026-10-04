@@ -3,7 +3,9 @@
 //! - [`bc`]: per-instruction bytecode builders and `assert_bytecode!`
 //! - `run`: parse, compile and run a program, and drive function blocks
 //! - `assert`: single-scan assertion helpers and the `e2e!` / `e2e_*!` macros
-//! - `snapshot`: reading a program's variables by name after a scan
+//! - `snapshot`, `session`: reading (and, across scans, writing) a program's
+//!   variables by name
+//! - `variables`: resolving a name to a variable
 //! - `value`: the [`Value`] a test observes, and typed expectations
 //! - `slot_value`: decoding a VM slot into a [`Value`]
 //!
@@ -19,9 +21,11 @@ pub mod bc;
 #[macro_use]
 mod assert;
 mod run;
+mod session;
 mod slot_value;
 mod snapshot;
 mod value;
+mod variables;
 
 pub use assert::*;
 pub use ironplc_vm::VmBuffers;

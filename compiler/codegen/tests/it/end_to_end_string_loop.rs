@@ -239,9 +239,9 @@ PROGRAM main
   t := CONCAT(s, 'x');
 END_PROGRAM
 ";
-    crate::common::parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
+    crate::common::run_scans(source, &CompilerOptions::default(), |session| {
         for _ in 0..500 {
-            vm.run_round(0).expect("every scan should run");
+            session.scan(0).expect("every scan should run");
         }
     });
 }
@@ -258,9 +258,9 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    crate::common::parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
+    crate::common::run_scans(source, &CompilerOptions::default(), |session| {
         for _ in 0..200 {
-            vm.run_round(0).expect("every scan should run");
+            session.scan(0).expect("every scan should run");
         }
     });
 }

@@ -4,10 +4,9 @@
 //! These tests verify that the full pipeline (parse → analyze → compile → VM)
 //! handles complex, multi-level nesting of data types correctly.
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, parse_and_run_rounds, read_string};
+use crate::common::{parse_and_run, read_string, run_scans};
 
 e2e_i32!(
     end_to_end_when_three_level_nested_struct_then_leaf_field_correct,
@@ -300,16 +299,16 @@ PROGRAM main
     END_IF;
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
+    run_scans(source, &CompilerOptions::default(), |session| {
         // ctr=0, history=1, scan=2, lim=3
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1);
+        session.scan(0).unwrap();
+        assert_eq!(session.read("scan"), 1);
 
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 2);
+        session.scan(0).unwrap();
+        assert_eq!(session.read("scan"), 2);
 
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 3);
+        session.scan(0).unwrap();
+        assert_eq!(session.read("scan"), 3);
     });
 }
 
@@ -482,16 +481,16 @@ PROGRAM main
     END_IF;
 END_PROGRAM
 ";
-    parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
+    run_scans(source, &CompilerOptions::default(), |session| {
         // acc=0, history=1, scan=2
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1); // scan=1
+        session.scan(0).unwrap();
+        assert_eq!(session.read("scan"), 1); // scan=1
 
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 2); // scan=2
+        session.scan(0).unwrap();
+        assert_eq!(session.read("scan"), 2); // scan=2
 
-        vm.run_round(0).unwrap();
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 3); // scan=3
+        session.scan(0).unwrap();
+        assert_eq!(session.read("scan"), 3); // scan=3
     });
 }
 
