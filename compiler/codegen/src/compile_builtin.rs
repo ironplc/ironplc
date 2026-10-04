@@ -10,10 +10,10 @@ use ironplc_analyzer::{BitShift, NumericFunction};
 use ironplc_container::opcode;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
-use ironplc_dsl::textual::Function;
+use ironplc_dsl::textual::{Expr, Function};
 
+use super::call_args::{collect_positional_args, wrong_arg_count};
 use super::compile::{CompileContext, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE};
-use super::compile_call::{collect_positional_args, wrong_arg_count};
 use super::compile_expr::{compile_expr, storage_bits};
 use crate::emit::Emitter;
 
@@ -230,16 +230,10 @@ pub(crate) fn shift_builtin(shift: BitShift, op_width: OpWidth, bits: u8) -> u16
 pub(crate) fn compile_shift_rotate(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func: &Function,
+    args: [&Expr; 2],
     op_type: OpType,
     shift: BitShift,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 2 {
-        return Err(wrong_arg_count(func));
-    }
-
     // Compile IN (value) with the inferred op_type
     compile_expr(emitter, ctx, args[0], op_type)?;
     // Compile N (shift count) — always as i32 for W32, i64 for W64
