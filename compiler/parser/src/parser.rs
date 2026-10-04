@@ -1597,6 +1597,7 @@ parser! {
         qualifiers,
         name,
         return_type: rt,
+        implicit_variables: vec![],
         variables,
         edge_variables,
         body: body.unwrap_or_default(),

@@ -16,11 +16,11 @@ use std::collections::HashMap;
 
 use crate::callee_resolution::FunctionBlocks;
 use crate::function_environment::FunctionEnvironment;
-use crate::intermediate_type::IntermediateType;
 use crate::intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, Overload,
 };
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
+use crate::semantic_type::SemanticType;
 use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
@@ -114,22 +114,22 @@ fn prefer_concrete(left: &Option<ExprType>, right: &Option<ExprType>) -> Option<
     }
 }
 
-/// Maps an [`IntermediateType`] to its canonical elementary [`TypeName`].
+/// Maps an [`SemanticType`] to its canonical elementary [`TypeName`].
 ///
 /// Delegates to [`TypeEnvironment::elementary_type_name_for`] for the simple
 /// cases. That helper does a strict equality lookup against the elementary
 /// types table, which only contains `String { max_len: None }`. A struct
 /// field declared `STRING[n]` resolves to `String { max_len: Some(n) }` and
 /// would otherwise return `None`, so we handle strings explicitly.
-fn intermediate_to_elementary_type_name(
+fn semantic_type_to_elementary_type_name(
     env: &TypeEnvironment,
-    it: &IntermediateType,
+    it: &SemanticType,
 ) -> Option<TypeName> {
     if let Some(tn) = env.elementary_type_name_for(it) {
         return Some(tn);
     }
     match it {
-        IntermediateType::String { .. } => Some(TypeName::from("STRING")),
+        SemanticType::String { .. } => Some(TypeName::from("STRING")),
         _ => None,
     }
 }
@@ -395,7 +395,7 @@ impl ExprTypeResolver<'_> {
             .elementary_type_name_for(&field.field_type)
     }
 
-    /// Resolves a `SymbolicVariableKind` to the `IntermediateType` whose
+    /// Resolves a `SymbolicVariableKind` to the `SemanticType` whose
     /// members it exposes.
     ///
     /// For `Structured`, recursively resolves the parent and finds the nested
@@ -405,7 +405,7 @@ impl ExprTypeResolver<'_> {
     fn resolve_parent_struct_type<'b>(
         &'b self,
         kind: &SymbolicVariableKind,
-    ) -> Option<&'b IntermediateType> {
+    ) -> Option<&'b SemanticType> {
         match kind {
             SymbolicVariableKind::Structured(sv) => {
                 let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
@@ -433,7 +433,7 @@ impl ExprTypeResolver<'_> {
     ///
     /// For an expression like `DATA.DIRS[i, j]`, `sv` is the `DATA.DIRS`
     /// struct field access. Walks the struct chain to find `DIRS`'s
-    /// `IntermediateType::Array`, then returns the element type's
+    /// `SemanticType::Array`, then returns the element type's
     /// canonical `TypeName`.
     fn resolve_struct_field_array_element_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
         let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
@@ -441,10 +441,10 @@ impl ExprTypeResolver<'_> {
             .member_fields()?
             .iter()
             .find(|f| f.name == sv.field)?;
-        let IntermediateType::Array { element_type, .. } = &field.field_type else {
+        let SemanticType::Array { element_type, .. } = &field.field_type else {
             return None;
         };
-        intermediate_to_elementary_type_name(self.type_environment, element_type)
+        semantic_type_to_elementary_type_name(self.type_environment, element_type)
     }
 
     /// The id of the type of the value the symbolic variable `kind` names:

@@ -9,9 +9,8 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::{drive_fb, FbStep, FbStep::*};
+use crate::common::{drive_fb, expect, run, write, Duration, FbStep};
 
-// timer=var0, result=var1.
 const TP_IN_TRUE: &str = "
 PROGRAM main
   VAR
@@ -22,7 +21,6 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// timer=var0, elapsed=var1.
 const TP_ET: &str = "
 PROGRAM main
   VAR
@@ -33,7 +31,6 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// timer=var0, enable=var1, result=var2, elapsed=var3.
 const TP_ENABLE_Q_ET: &str = "
 PROGRAM main
   VAR
@@ -46,7 +43,6 @@ PROGRAM main
 END_PROGRAM
 ";
 
-// timer1=var0, timer2=var1, enable=var2, q1=var3, q2=var4.
 const TP_TWO: &str = "
 PROGRAM main
   VAR
@@ -63,27 +59,27 @@ END_PROGRAM
 
 #[rstest]
 // Pulse starts on the rising edge: Q TRUE.
-#[case::triggered(TP_IN_TRUE, &[Run(0), Expect(1, 1)])]
+#[case::triggered(TP_IN_TRUE, &[run(0), expect("result", 1)])]
 // Within PT the pulse stays TRUE.
-#[case::before_pt(TP_IN_TRUE, &[Run(0), Run(2_000_000), Expect(1, 1)])]
+#[case::before_pt(TP_IN_TRUE, &[run(0), run(2_000_000), expect("result", 1)])]
 // Past PT the pulse ends: Q FALSE.
-#[case::after_pt(TP_IN_TRUE, &[Run(0), Run(6_000_000), Expect(1, 0)])]
+#[case::after_pt(TP_IN_TRUE, &[run(0), run(6_000_000), expect("result", 0)])]
 // ET reports 3s of pulse elapsed.
-#[case::reads_et(TP_ET, &[Run(0), Run(3_000_000), Expect(1, 3000)])]
+#[case::reads_et(TP_ET, &[run(0), run(3_000_000), expect("elapsed", Duration::seconds(3))])]
 // IN falling during the pulse does not cut it short; ET clamps to PT.
 #[case::in_falls_during_pulse(TP_ENABLE_Q_ET, &[
-    Write(1, 1), Run(0), Expect(2, 1),
-    Write(1, 0), Run(2_000_000), Expect(2, 1),
-    Run(6_000_000), Expect(2, 0), Expect(3, 5000),
+    write("enable", 1), run(0), expect("result", 1),
+    write("enable", 0), run(2_000_000), expect("result", 1),
+    run(6_000_000), expect("result", 0), expect("elapsed", Duration::seconds(5)),
 ])]
 // ET == PT exactly: pulse has ended, Q FALSE.
-#[case::at_exact_pt(TP_IN_TRUE, &[Run(0), Run(5_000_000), Expect(1, 0)])]
+#[case::at_exact_pt(TP_IN_TRUE, &[run(0), run(5_000_000), expect("result", 0)])]
 // Two TP timers with different PT run independently.
 #[case::two_timers(TP_TWO, &[
-    Write(2, 1), Run(0), Expect(3, 1), Expect(4, 1),
-    Write(2, 0),
-    Run(4_000_000), Expect(3, 0), Expect(4, 1),
-    Run(8_000_000), Expect(3, 0), Expect(4, 0),
+    write("enable", 1), run(0), expect("q1", 1), expect("q2", 1),
+    write("enable", 0),
+    run(4_000_000), expect("q1", 0), expect("q2", 1),
+    run(8_000_000), expect("q1", 0), expect("q2", 0),
 ])]
 fn end_to_end_fb_tp(#[case] source: &str, #[case] steps: &[FbStep]) {
     drive_fb(source, &CompilerOptions::default(), steps);

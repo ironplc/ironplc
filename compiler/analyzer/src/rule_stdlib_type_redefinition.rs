@@ -77,8 +77,8 @@ impl DiagnosticVisitor for RuleStdlibTypeRedefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_only;
+    use crate::test_helpers::diagnostic_codes;
+    use crate::test_helpers::rule_diagnostics;
 
     #[test]
     fn apply_when_user_defines_ton_then_err() {
@@ -90,14 +90,11 @@ value : INT;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let input = parse_only(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(1, err.len());
-        assert_eq!(Problem::StdlibTypeRedefinition.code(), err[0].code);
+        let err = rule_diagnostics(apply, program, &CompilerOptions::default());
+        assert_eq!(
+            diagnostic_codes(&err),
+            [Problem::StdlibTypeRedefinition.code()]
+        );
     }
 
     #[test]
@@ -110,11 +107,9 @@ value : INT;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let input = parse_only(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        assert!(result.is_ok());
+        assert!(diagnostics.is_empty());
     }
 
     #[test]
@@ -127,13 +122,22 @@ clk : BOOL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let input = parse_only(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(1, err.len());
-        assert_eq!(Problem::StdlibTypeRedefinition.code(), err[0].code);
+        let err = rule_diagnostics(apply, program, &CompilerOptions::default());
+        assert_eq!(
+            diagnostic_codes(&err),
+            [Problem::StdlibTypeRedefinition.code()]
+        );
     }
+
+    rule_err_at!(
+        apply_when_user_defines_ton_then_error_at_name,
+        "
+FUNCTION_BLOCK TON
+VAR_INPUT
+value : INT;
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::StdlibTypeRedefinition,
+        "TON"
+    );
 }

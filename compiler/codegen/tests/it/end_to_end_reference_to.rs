@@ -32,7 +32,7 @@ PROGRAM main
   y := r^;
 END_PROGRAM
 ",
-    &[(2, 42)],
+    &[("y", 42)],
 );
 
 e2e_i32_with!(
@@ -48,7 +48,7 @@ PROGRAM main
   r^ := 99;
 END_PROGRAM
 ",
-    &[(0, 99)],
+    &[("x", 99)],
 );
 
 // vars: x=0, r=1, y=2
@@ -68,7 +68,7 @@ PROGRAM main
   y := r^;
 END_PROGRAM
 ",
-    &[(2, 7)],
+    &[("y", 7)],
 );
 
 // vars: val=0, refs=1, result=2
@@ -86,7 +86,7 @@ PROGRAM main
   result := refs[0]^;
 END_PROGRAM
 ",
-    &[(2, 77)],
+    &[("result", 77)],
 );
 
 // TwinCAT `REFERENCE TO` auto-dereferences: a bare read reads through it.
@@ -105,7 +105,7 @@ PROGRAM main
   y := r;
 END_PROGRAM
 ",
-    &[(2, 42)],
+    &[("y", 42)],
 );
 
 // A bare write stores through the reference to the referent.
@@ -122,7 +122,7 @@ PROGRAM main
   r := 99;
 END_PROGRAM
 ",
-    &[(0, 99)],
+    &[("x", 99)],
 );
 
 // vars: x=0, r1=1, r2=2, y=3
@@ -143,11 +143,11 @@ PROGRAM main
   y := r2;
 END_PROGRAM
 ",
-    &[(3, 55)],
+    &[("y", 55)],
 );
 
 // vars: x=0, r=1, before=2, after=3
-// var 2: unbound reference is not valid; var 3: bound reference is valid
+// before: an unbound reference is not valid; after: a bound reference is valid
 e2e_i32_with!(
     end_to_end_when_isvalidref_then_reflects_binding_state,
     reference_to_options(),
@@ -164,7 +164,7 @@ PROGRAM main
   after := __ISVALIDREF(r);
 END_PROGRAM
 ",
-    &[(2, 0), (3, 1)],
+    &[("before", 0), ("after", 1)],
 );
 
 #[test]

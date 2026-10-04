@@ -8,10 +8,10 @@ PROGRAM main
   VAR
     y : REAL;
   END_VAR
-  y := SEL(0, 10.5, 20.5);
+  y := SEL(FALSE, 10.5, 20.5);
 END_PROGRAM
 ",
-    &[(0, 10.5)],
+    &[("y", 10.5)],
 );
 
 e2e_f32_near!(
@@ -22,10 +22,10 @@ PROGRAM main
   VAR
     y : REAL;
   END_VAR
-  y := SEL(1, 10.5, 20.5);
+  y := SEL(TRUE, 10.5, 20.5);
 END_PROGRAM
 ",
-    &[(0, 20.5)],
+    &[("y", 20.5)],
 );
 
 e2e_f32_near!(
@@ -34,14 +34,14 @@ e2e_f32_near!(
     "
 PROGRAM main
   VAR
-    g : DINT;
+    g : BOOL;
     y : REAL;
   END_VAR
-  g := 1;
+  g := TRUE;
   y := SEL(g, 100.0, 200.0);
 END_PROGRAM
 ",
-    &[(1, 200.0)],
+    &[("y", 200.0)],
 );
 
 e2e_f64_near!(
@@ -52,10 +52,10 @@ PROGRAM main
   VAR
     y : LREAL;
   END_VAR
-  y := SEL(0, 10.5, 20.5);
+  y := SEL(FALSE, 10.5, 20.5);
 END_PROGRAM
 ",
-    &[(0, 10.5)],
+    &[("y", 10.5)],
 );
 
 e2e_f64_near!(
@@ -66,8 +66,8 @@ PROGRAM main
   VAR
     y : LREAL;
   END_VAR
-  y := SEL(1, 10.5, 20.5);
+  y := SEL(TRUE, 10.5, 20.5);
 END_PROGRAM
 ",
-    &[(0, 20.5)],
+    &[("y", 20.5)],
 );

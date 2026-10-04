@@ -5,7 +5,6 @@
 
 use ironplc_parser::options::{CompilerOptions, Dialect};
 
-// shared is at index 0 (global), result is at index 1 (program local)
 e2e_i32!(
     end_to_end_when_global_var_with_initial_value_then_external_reads_value,
     "
@@ -29,7 +28,7 @@ PROGRAM main
   result := shared;
 END_PROGRAM
 ",
-    &[(0, 42), (1, 42)],
+    &[("shared", 42), ("result", 42)],
 );
 
 // counter starts at 0, after one scan: 0 + 10 = 10
@@ -53,7 +52,7 @@ PROGRAM main
   counter := counter + 10;
 END_PROGRAM
 ",
-    &[(0, 10)],
+    &[("counter", 10)],
 );
 
 e2e_i32!(
@@ -79,7 +78,7 @@ PROGRAM main
   result := value;
 END_PROGRAM
 ",
-    &[(0, 0), (1, 0)],
+    &[("value", 0), ("result", 0)],
 );
 
 // a=10, b=20, c=TRUE(1), sum=30
@@ -110,7 +109,7 @@ PROGRAM main
   sum := a + b;
 END_PROGRAM
 ",
-    &[(0, 10), (1, 20), (2, 1), (3, 30)],
+    &[("a", 10), ("b", 20), ("c", 1), ("sum", 30)],
 );
 
 e2e_i32!(
@@ -136,10 +135,9 @@ PROGRAM main
   result := max_value;
 END_PROGRAM
 ",
-    &[(0, 100), (1, 100)],
+    &[("max_value", 100), ("result", 100)],
 );
 
-// readings is at index 0 (global array), first/second/third at 1/2/3
 e2e_i32!(
     end_to_end_when_global_array_then_external_can_read_elements,
     "
@@ -167,7 +165,7 @@ PROGRAM main
   third := readings[3];
 END_PROGRAM
 ",
-    &[(1, 10), (2, 20), (3, 30)],
+    &[("first", 10), ("second", 20), ("third", 30)],
 );
 
 // result should be 100 + 200 + 300 = 600
@@ -197,7 +195,7 @@ PROGRAM main
   result := data[1] + data[2] + data[3];
 END_PROGRAM
 ",
-    &[(1, 600)],
+    &[("result", 600)],
 );
 
 e2e_i32!(
@@ -210,12 +208,9 @@ PROGRAM main
   x := 99;
 END_PROGRAM
 ",
-    &[(0, 99)],
+    &[("x", 99)],
 );
 
-// Rusty dialect prepends 2 system uptime globals, so:
-// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-// var 2: phys (global struct), var 3: result (program local)
 e2e_i32_with!(
     end_to_end_when_top_level_global_struct_then_field_readable_from_program,
     CompilerOptions::from_dialect(Dialect::Rusty),
@@ -240,11 +235,9 @@ PROGRAM main
   result := phys.T0 + phys.T1;
 END_PROGRAM
 ",
-    &[(3, 300)],
+    &[("result", 300)],
 );
 
-// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-// var 2: phys (global struct), var 3: result (program local)
 e2e_i32_with!(
     end_to_end_when_top_level_global_struct_then_field_readable_from_function,
     CompilerOptions::from_dialect(Dialect::Rusty),
@@ -274,11 +267,9 @@ PROGRAM main
   result := GET_T0(dummy := 0);
 END_PROGRAM
 ",
-    &[(3, 273)],
+    &[("result", 273)],
 );
 
-// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-// var 2: counter (global), var 3: result (program local)
 e2e_i32_with!(
     end_to_end_when_top_level_global_scalar_then_readable_from_program,
     CompilerOptions::from_dialect(Dialect::Rusty),
@@ -294,11 +285,9 @@ PROGRAM main
   result := counter;
 END_PROGRAM
 ",
-    &[(2, 42), (3, 42)],
+    &[("counter", 42), ("result", 42)],
 );
 
-// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-// var 2: counter (global), var 3: result (program local)
 e2e_i32_with!(
     end_to_end_when_top_level_global_scalar_then_readable_from_function,
     CompilerOptions::from_dialect(Dialect::Rusty),
@@ -318,11 +307,9 @@ PROGRAM main
   result := read_counter();
 END_PROGRAM
 ",
-    &[(2, 42), (3, 42)],
+    &[("counter", 42), ("result", 42)],
 );
 
-// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-// var 2: MY_CONST (global constant), var 3: result (program local)
 e2e_i32_with!(
     end_to_end_when_top_level_global_constant_then_readable_from_function,
     CompilerOptions::from_dialect(Dialect::Rusty),
@@ -342,11 +329,9 @@ PROGRAM main
   result := use_const();
 END_PROGRAM
 ",
-    &[(2, 100), (3, 100)],
+    &[("MY_CONST", 100), ("result", 100)],
 );
 
-// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-// var 2: scale_factor (global), var 3: fb_result (global), var 4: s
 // After FB call: fb_result = 10 * 5 = 50
 e2e_i32_with!(
     end_to_end_when_top_level_global_then_writable_from_function_block,
@@ -371,11 +356,9 @@ PROGRAM main
   s(value := 10);
 END_PROGRAM
 ",
-    &[(2, 5), (3, 50)],
+    &[("scale_factor", 5), ("fb_result", 50)],
 );
 
-// var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-// var 2: setup (global struct), var 3: result (program local)
 // setup.FLAG is set to TRUE, so the IF branch returns x=42
 e2e_i32_with!(
     end_to_end_when_global_struct_field_used_as_condition_then_branch_works,
@@ -410,5 +393,5 @@ END_VAR
     result := USE_GLOBAL_STRUCT(x := 42);
 END_PROGRAM
 ",
-    &[(3, 42)],
+    &[("result", 42)],
 );

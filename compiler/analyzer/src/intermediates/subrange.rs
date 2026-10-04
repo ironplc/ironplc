@@ -3,7 +3,7 @@
 //! This module handles validating that subrange bounds are within the limits
 //! of the base type.
 
-use crate::intermediate_type::IntermediateType;
+use crate::semantic_type::SemanticType;
 use crate::type_environment::{TypeAttributes, TypeEnvironment};
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Located;
@@ -12,19 +12,19 @@ use ironplc_problems::Problem;
 
 /// Result of processing a subrange specification
 #[derive(Debug, Clone, PartialEq)]
-pub enum IntermediateResult {
+pub enum TypeResolution {
     /// Create a new subrange type with the given attributes
     Type(TypeAttributes),
     /// Create an alias to an existing type
     Alias(TypeName),
 }
 
-/// Try to create the intermediate type information from the subrange specification.
+/// Try to create the semantic type information from the subrange specification.
 pub fn try_from(
     node_name: &TypeName,
     spec: &SubrangeSpecificationKind,
     type_environment: &TypeEnvironment,
-) -> Result<IntermediateResult, Diagnostic> {
+) -> Result<TypeResolution, Diagnostic> {
     match spec {
         SpecificationKind::Inline(spec) => {
             // Direct subrange specification: MY_RANGE : INT (1..100);
@@ -92,9 +92,9 @@ pub fn try_from(
                 .representation
                 .validate_bounds(min_value, max_value, node_name)?;
 
-            Ok(IntermediateResult::Type(TypeAttributes::new(
+            Ok(TypeResolution::Type(TypeAttributes::new(
                 node_name.span(),
-                IntermediateType::Subrange {
+                SemanticType::Subrange {
                     base_type: Box::new(base_type.representation.clone()),
                     min_value,
                     max_value,
@@ -111,7 +111,7 @@ pub fn try_from(
                 .with_secondary(Label::span(base_type_name.span(), "Base type")));
             }
 
-            Ok(IntermediateResult::Alias(base_type_name.clone()))
+            Ok(TypeResolution::Alias(base_type_name.clone()))
         }
     }
 }
@@ -119,7 +119,7 @@ pub fn try_from(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intermediate_type::{ByteSized, IntermediateType};
+    use crate::semantic_type::{ByteSized, SemanticType};
     use crate::type_environment::TypeEnvironmentBuilder;
     use crate::xform_resolve_type_decl_environment::apply;
     use ironplc_container::CharWidth;
@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn validate_subrange_bounds_with_various_types_then_validates_correctly() {
         // Test SINT bounds
-        let sint_type = IntermediateType::Int {
+        let sint_type = SemanticType::Int {
             size: ByteSized::B8,
         };
         assert!(sint_type
@@ -146,7 +146,7 @@ mod tests {
             .is_err());
 
         // Test INT bounds
-        let int_type = IntermediateType::Int {
+        let int_type = SemanticType::Int {
             size: ByteSized::B16,
         };
         assert!(int_type
@@ -160,7 +160,7 @@ mod tests {
             .is_err());
 
         // Test DINT bounds
-        let dint_type = IntermediateType::Int {
+        let dint_type = SemanticType::Int {
             size: ByteSized::B32,
         };
         assert!(dint_type
@@ -168,7 +168,7 @@ mod tests {
             .is_ok());
 
         // Test LINT bounds
-        let lint_type = IntermediateType::Int {
+        let lint_type = SemanticType::Int {
             size: ByteSized::B64,
         };
         assert!(lint_type
@@ -176,7 +176,7 @@ mod tests {
             .is_ok());
 
         // Test USINT bounds
-        let usint_type = IntermediateType::UInt {
+        let usint_type = SemanticType::UInt {
             size: ByteSized::B8,
         };
         assert!(usint_type
@@ -190,7 +190,7 @@ mod tests {
             .is_err());
 
         // Test UINT bounds
-        let uint_type = IntermediateType::UInt {
+        let uint_type = SemanticType::UInt {
             size: ByteSized::B16,
         };
         assert!(uint_type
@@ -204,7 +204,7 @@ mod tests {
             .is_err());
 
         // Test UDINT bounds
-        let udint_type = IntermediateType::UInt {
+        let udint_type = SemanticType::UInt {
             size: ByteSized::B32,
         };
         assert!(udint_type
@@ -212,7 +212,7 @@ mod tests {
             .is_ok());
 
         // Test ULINT bounds
-        let ulint_type = IntermediateType::UInt {
+        let ulint_type = SemanticType::UInt {
             size: ByteSized::B64,
         };
         assert!(ulint_type
@@ -220,8 +220,8 @@ mod tests {
             .is_ok());
 
         // Test nested subrange bounds
-        let nested_subrange = IntermediateType::Subrange {
-            base_type: Box::new(IntermediateType::Int {
+        let nested_subrange = SemanticType::Subrange {
+            base_type: Box::new(SemanticType::Int {
                 size: ByteSized::B16,
             }),
             min_value: 10,
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn validate_subrange_bounds_with_non_numeric_type_then_error() {
-        let string_type = IntermediateType::String {
+        let string_type = SemanticType::String {
             max_len: Some(10),
             char_width: CharWidth::Narrow,
         };
@@ -251,7 +251,7 @@ mod tests {
     #[test]
     fn validate_subrange_bounds_with_edge_cases_then_validates_correctly() {
         // Test edge case: min equals max
-        let int_type = IntermediateType::Int {
+        let int_type = SemanticType::Int {
             size: ByteSized::B16,
         };
         assert!(int_type
@@ -304,11 +304,11 @@ mod tests {
         assert!(result.is_ok());
 
         let result = result.unwrap();
-        let attrs = cast!(result, IntermediateResult::Type);
+        let attrs = cast!(result, TypeResolution::Type);
         assert!(attrs.representation.is_subrange());
         let (min_value, max_value) = cast_struct!(
             attrs.representation,
-            IntermediateType::Subrange {
+            SemanticType::Subrange {
                 min_value,
                 max_value
             }
@@ -326,8 +326,8 @@ mod tests {
             &TypeName::from("BASE_RANGE"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::Subrange {
-                    base_type: Box::new(IntermediateType::Int {
+                SemanticType::Subrange {
+                    base_type: Box::new(SemanticType::Int {
                         size: ByteSized::B16,
                     }),
                     min_value: 1,
@@ -343,7 +343,7 @@ mod tests {
         assert!(result.is_ok());
 
         let result = result.unwrap();
-        let base_name = cast!(result, IntermediateResult::Alias);
+        let base_name = cast!(result, TypeResolution::Alias);
         assert_eq!(base_name, TypeName::from("BASE_RANGE"));
     }
 
@@ -466,7 +466,7 @@ mod tests {
             &TypeName::from("string"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::String {
+                SemanticType::String {
                     max_len: None,
                     char_width: CharWidth::Narrow,
                 },
@@ -523,7 +523,7 @@ END_TYPE
         assert!(my_range_type.representation.is_subrange());
         let (min_value, max_value) = cast_struct!(
             &my_range_type.representation,
-            IntermediateType::Subrange {
+            SemanticType::Subrange {
                 min_value,
                 max_value
             }
@@ -535,7 +535,7 @@ END_TYPE
         assert!(small_range_type.representation.is_subrange());
         let (min_value, max_value) = cast_struct!(
             &small_range_type.representation,
-            IntermediateType::Subrange {
+            SemanticType::Subrange {
                 min_value,
                 max_value
             }

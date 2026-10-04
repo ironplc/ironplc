@@ -225,7 +225,9 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::fb_inheritance_options;
+    use crate::test_helpers::NOT_IMPLEMENTED_CODE;
+    use crate::test_helpers::{diagnostic_codes, rule_diagnostics};
 
     use super::*;
 
@@ -240,19 +242,18 @@ END_VAR
 TRIG := TRIG0.A;
 END_FUNCTION_BLOCK";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .first()
-            .unwrap()
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code()]
+        );
+        assert!(diagnostics[0]
             .described
             .contains(&"variable=TRIG".to_owned()))
     }
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_block_all_symbol_declared_then_ok,
         "
 FUNCTION_BLOCK LOGGER
@@ -265,7 +266,7 @@ TRIG := TRIG0;
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_function_all_symbol_declared_then_ok,
         "
 FUNCTION LOGGER : REAL
@@ -278,7 +279,7 @@ TRIG := TRIG0;
 END_FUNCTION"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_program_all_symbol_declared_then_ok,
         "
 PROGRAM LOGGER
@@ -291,7 +292,7 @@ TRIG := TRIG0;
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_assign_enum_variant_then_ok,
         "
 TYPE
@@ -317,12 +318,13 @@ END_VAR
 conter := 1;
 END_FUNCTION_BLOCK";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        assert!(result.is_err());
-        let errors = result.unwrap_err();
-        let error = errors.first().unwrap();
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code()]
+        );
+        let error = &diagnostics[0];
         assert!(error.described.contains(&"variable=conter".to_owned()));
         assert!(error.described.contains(&"did you mean=counter".to_owned()));
     }
@@ -338,12 +340,13 @@ END_VAR
 completely_different := 1;
 END_FUNCTION_BLOCK";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        assert!(result.is_err());
-        let errors = result.unwrap_err();
-        let error = errors.first().unwrap();
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code()]
+        );
+        let error = &diagnostics[0];
         assert!(error
             .described
             .contains(&"variable=completely_different".to_owned()));
@@ -353,7 +356,7 @@ END_FUNCTION_BLOCK";
             .any(|d| d.starts_with("did you mean")));
     }
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_enum_value_in_comparison_then_ok,
         "
 TYPE
@@ -385,14 +388,12 @@ END_PROGRAM";
             allow_system_uptime_global: true,
             ..CompilerOptions::default()
         };
-        let (library, context) =
-            crate::test_helpers::parse_and_resolve_types_with_options(program, &options);
-        let result = apply(&library, &context, &options);
+        let diagnostics = rule_diagnostics(apply, program, &options);
 
-        assert!(result.is_ok());
+        assert!(diagnostics.is_empty());
     }
 
-    rule_ctx_err!(
+    rule_err!(
         apply_when_system_uptime_global_disabled_then_direct_access_error,
         "
 PROGRAM main
@@ -401,23 +402,17 @@ VAR
 END_VAR
 
 t := __SYSTEM_UP_TIME;
-END_PROGRAM"
+END_PROGRAM",
+        [Problem::VariableUndefined]
     );
 
     // ---------------------------------------------------------------------
     // EXTENDS field inheritance.
     // ---------------------------------------------------------------------
 
-    fn opts_with_fb_inheritance() -> CompilerOptions {
-        CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        }
-    }
-
-    #[test]
-    fn apply_when_unqualified_inherited_field_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_unqualified_inherited_field_then_ok,
+        "
 FUNCTION_BLOCK FB_Base
 VAR
     bEnabled : BOOL;
@@ -429,20 +424,13 @@ VAR
     bRunning : BOOL;
 END_VAR
 bRunning := bEnabled;
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
-        );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
-
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
-    }
-
-    #[test]
-    fn apply_when_multi_level_inherited_field_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_multi_level_inherited_field_then_ok,
+        "
 FUNCTION_BLOCK FB_A
 VAR
     a : BOOL;
@@ -460,20 +448,13 @@ VAR
     c : BOOL;
 END_VAR
 c := a AND b;
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
-        );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
-
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
-    }
-
-    #[test]
-    fn apply_when_extends_and_genuinely_undeclared_field_then_error() {
-        let program = "
+    rule_err_at!(
+        apply_when_extends_and_genuinely_undeclared_field_then_error,
+        "
 FUNCTION_BLOCK FB_Base
 VAR
     bEnabled : BOOL;
@@ -485,27 +466,22 @@ VAR
     bRunning : BOOL;
 END_VAR
 bRunning := bNotDeclaredAnywhere;
-END_FUNCTION_BLOCK";
-
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
-        );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
-
-        assert!(result.is_err());
-    }
+END_FUNCTION_BLOCK",
+        Problem::VariableUndefined,
+        "bNotDeclaredAnywhere",
+        fb_inheritance_options()
+    );
 
     // ---------------------------------------------------------------------
     // METHOD scoping.
     // See https://github.com/ironplc/ironplc/issues/1439.
     // ---------------------------------------------------------------------
 
-    /// The standard way a method produces its result, and the same
-    /// spelling a `FUNCTION` body already uses.
-    #[test]
-    fn apply_when_method_assigns_own_name_then_ok() {
-        let program = "
+    rule_ok!(
+        /// The standard way a method produces its result, and the same
+        /// spelling a `FUNCTION` body already uses.
+        apply_when_method_assigns_own_name_then_ok,
+        "
 FUNCTION_BLOCK FB_Motor
 VAR
     speed : REAL;
@@ -513,16 +489,9 @@ END_VAR
 METHOD GetSpeed : REAL
     GetSpeed := speed;
 END_METHOD
-END_FUNCTION_BLOCK";
-
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
-        );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
-
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
-    }
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
     /// A method with no return type has no result to assign, so its name
     /// is not a variable and must stay undefined rather than becoming
@@ -536,17 +505,13 @@ METHOD DoThing
 END_METHOD
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
-        );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
+        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .first()
-            .unwrap()
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code()]
+        );
+        assert!(diagnostics[0]
             .described
             .contains(&"variable=DoThing".to_owned()));
     }
@@ -572,27 +537,23 @@ METHOD Other
 END_METHOD
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
-        );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
+        let diagnostics = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .first()
-            .unwrap()
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code()]
+        );
+        assert!(diagnostics[0]
             .described
             .contains(&"variable=newSpeed".to_owned()));
     }
 
-    /// The method scope nests inside the function block's rather than
-    /// replacing it -- reading and writing the instance's fields is the
-    /// point of a method.
-    #[test]
-    fn apply_when_method_references_function_block_field_then_ok() {
-        let program = "
+    rule_ok!(
+        /// The method scope nests inside the function block's rather than
+        /// replacing it -- reading and writing the instance's fields is the
+        /// point of a method.
+        apply_when_method_references_function_block_field_then_ok,
+        "
 FUNCTION_BLOCK FB_Motor
 VAR
     speed : INT;
@@ -603,22 +564,15 @@ VAR_INPUT
 END_VAR
     speed := newSpeed;
 END_METHOD
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
-        );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
-
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
-    }
-
-    /// Nesting reaches the whole `EXTENDS` chain, not just the immediately
-    /// enclosing function block's own fields.
-    #[test]
-    fn apply_when_method_references_inherited_field_then_ok() {
-        let program = "
+    rule_ok!(
+        /// Nesting reaches the whole `EXTENDS` chain, not just the immediately
+        /// enclosing function block's own fields.
+        apply_when_method_references_inherited_field_then_ok,
+        "
 FUNCTION_BLOCK FB_Base
 VAR
     bEnabled : BOOL;
@@ -629,22 +583,15 @@ FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
 METHOD Enable
     bEnabled := TRUE;
 END_METHOD
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
-        );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
-
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
-    }
-
-    /// Sibling scopes, so the same name in two methods is two variables
-    /// and not a redeclaration.
-    #[test]
-    fn apply_when_two_methods_declare_same_local_name_then_ok() {
-        let program = "
+    rule_ok!(
+        /// Sibling scopes, so the same name in two methods is two variables
+        /// and not a redeclaration.
+        apply_when_two_methods_declare_same_local_name_then_ok,
+        "
 FUNCTION_BLOCK FB_Motor
 METHOD A
 VAR
@@ -658,16 +605,9 @@ VAR
 END_VAR
     q := 2;
 END_METHOD
-END_FUNCTION_BLOCK";
-
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
-        );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
-
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
-    }
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
     /// Reproduces issue #1566: the rule used to abort at the first undefined
     /// variable, so a program with two of them reported one.
@@ -682,21 +622,22 @@ END_VAR
   x := UNDECLARED_TWO;
 END_PROGRAM";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let diagnostics = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
-        assert!(
-            reported
-                .iter()
-                .any(|d| d.as_str() == "variable=UNDECLARED_ONE"),
-            "expected UNDECLARED_ONE, got {reported:?}"
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code(); 2]
         );
-        assert!(
-            reported
-                .iter()
-                .any(|d| d.as_str() == "variable=UNDECLARED_TWO"),
-            "expected UNDECLARED_TWO, got {reported:?}"
+
+        let reported: Vec<&str> = diagnostics
+            .iter()
+            .flat_map(|d| &d.described)
+            .map(String::as_str)
+            .filter(|d| d.starts_with("variable="))
+            .collect();
+        assert_eq!(
+            reported,
+            ["variable=UNDECLARED_ONE", "variable=UNDECLARED_TWO"]
         );
     }
 
@@ -719,30 +660,34 @@ END_VAR
   y := BBB_ONE;
 END_PROGRAM";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let diagnostics = apply(&library, &context, &CompilerOptions::default()).unwrap_err();
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        let reported: Vec<&String> = diagnostics.iter().flat_map(|d| &d.described).collect();
-        assert!(
-            reported.iter().any(|d| d.as_str() == "variable=AAA_ONE"),
-            "expected AAA_ONE, got {reported:?}"
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::VariableUndefined.code(); 2]
         );
-        assert!(
-            reported.iter().any(|d| d.as_str() == "variable=BBB_ONE"),
-            "expected BBB_ONE, got {reported:?}"
-        );
+
+        let mut reported: Vec<&str> = diagnostics
+            .iter()
+            .flat_map(|d| &d.described)
+            .map(String::as_str)
+            .filter(|d| d.starts_with("variable="))
+            .collect();
+        // Which POU is checked first is not the point; that both are is.
+        reported.sort_unstable();
+        assert_eq!(reported, ["variable=AAA_ONE", "variable=BBB_ONE"]);
     }
 
     // ---------------------------------------------------------------------
     // PROPERTY accessors and property use.
     // ---------------------------------------------------------------------
 
-    /// Each accessor is a method (see `PropertyDeclaration`), so its body
-    /// sees the property name (GET result, SET input), its own variables,
-    /// and the function block's fields.
-    #[test]
-    fn apply_when_property_accessors_use_property_name_and_fields_then_ok() {
-        let program = "
+    rule_ok!(
+        /// Each accessor is a method (see `PropertyDeclaration`), so its body
+        /// sees the property name (GET result, SET input), its own variables,
+        /// and the function block's fields.
+        apply_when_property_accessors_use_property_name_and_fields_then_ok,
+        "
 FUNCTION_BLOCK FB_Motor
 VAR
     _speed : REAL;
@@ -759,16 +704,9 @@ SET
     _speed := Speed;
 END_SET
 END_PROPERTY
-END_FUNCTION_BLOCK";
-
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
-        );
-        let result = apply(&library, &context, &opts_with_fb_inheritance());
-
-        assert!(result.is_ok(), "unexpected errors: {result:?}");
-    }
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
 
     /// Reading a property by its bare name in the function block body is a
     /// property access, which is not implemented yet. It must not be
@@ -789,14 +727,9 @@ END_GET
 END_PROPERTY
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
-        );
-        let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].code, "P9999");
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
         assert!(errors[0].described.contains(&"property=Running".to_owned()));
     }
 
@@ -818,13 +751,9 @@ END_SET
 END_PROPERTY
 END_FUNCTION_BLOCK";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
-        );
-        let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
 
-        assert_eq!(errors[0].code, "P9999");
+        assert_eq!(diagnostic_codes(&errors), [NOT_IMPLEMENTED_CODE]);
         assert!(errors[0].described.contains(&"property=Speed".to_owned()));
     }
 
@@ -847,11 +776,12 @@ END_VAR
 y := Speed;
 END_PROGRAM";
 
-        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
-            program,
-            &opts_with_fb_inheritance(),
+        let errors = rule_diagnostics(apply, program, &fb_inheritance_options());
+
+        assert_eq!(
+            diagnostic_codes(&errors),
+            [Problem::VariableUndefined.code()]
         );
-        let errors = apply(&library, &context, &opts_with_fb_inheritance()).unwrap_err();
 
         assert!(errors[0].described.contains(&"variable=Speed".to_owned()));
     }
@@ -884,19 +814,19 @@ END_PROGRAM
         }
     }
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_global_used_without_external_after_configuration_then_error,
         &format!("{CONFIG_WITH_GLOBAL}{PROGRAM_USING_GLOBAL}"),
-        Problem::VariableUndefined
+        [Problem::VariableUndefined]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_global_used_without_external_before_configuration_then_error,
         &format!("{PROGRAM_USING_GLOBAL}{CONFIG_WITH_GLOBAL}"),
-        Problem::VariableUndefined
+        [Problem::VariableUndefined]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_global_used_through_external_then_ok,
         &format!(
             "{CONFIG_WITH_GLOBAL}
@@ -912,15 +842,14 @@ END_PROGRAM"
         )
     );
 
-    rule_ctx_ok_with!(
+    rule_ok!(
         apply_when_top_level_globals_allowed_and_global_used_directly_then_ok,
-        top_level_globals(),
-        &format!("{PROGRAM_USING_GLOBAL}{CONFIG_WITH_GLOBAL}")
+        &format!("{PROGRAM_USING_GLOBAL}{CONFIG_WITH_GLOBAL}"),
+        top_level_globals()
     );
 
-    rule_ctx_ok_with!(
+    rule_ok!(
         apply_when_top_level_global_used_directly_then_ok,
-        top_level_globals(),
         "
 VAR_GLOBAL
   g : INT;
@@ -930,6 +859,7 @@ VAR
   x : INT;
 END_VAR
   x := g;
-END_PROGRAM"
+END_PROGRAM",
+        top_level_globals()
     );
 }

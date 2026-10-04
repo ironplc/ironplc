@@ -69,20 +69,20 @@ impl DeclTypeResolver<'_> {
             }
             InitialValueAssignmentKind::Subrange(spec) => {
                 match subrange::try_from(name, spec, env).ok()? {
-                    subrange::IntermediateResult::Type(attributes) => attributes,
-                    subrange::IntermediateResult::Alias(alias) => return env.id_of(&alias),
+                    subrange::TypeResolution::Type(attributes) => attributes,
+                    subrange::TypeResolution::Alias(alias) => return env.id_of(&alias),
                 }
             }
             InitialValueAssignmentKind::Array(a) => {
                 match array::try_from(name, &a.spec, env).ok()? {
-                    array::IntermediateResult::Type(attributes) => {
+                    array::TypeResolution::Type(attributes) => {
                         let id = self.type_environment.insert_anonymous(attributes);
                         if let SpecificationKind::Inline(elements) = &a.spec {
                             self.type_environment.record_array_element(id, elements);
                         }
                         return Some(id);
                     }
-                    array::IntermediateResult::Alias(alias) => return env.id_of(&alias),
+                    array::TypeResolution::Alias(alias) => return env.id_of(&alias),
                 }
             }
             // A reference type is one type however often it is spelled
@@ -93,12 +93,12 @@ impl DeclTypeResolver<'_> {
                     ReferenceTarget::Array(subranges) => {
                         let spec = SpecificationKind::Inline(subranges.clone());
                         match array::try_from(name, &spec, env).ok()? {
-                            array::IntermediateResult::Type(attributes) => {
+                            array::TypeResolution::Type(attributes) => {
                                 let id = self.type_environment.insert_anonymous(attributes);
                                 self.type_environment.record_array_element(id, subranges);
                                 id
                             }
-                            array::IntermediateResult::Alias(alias) => env.id_of(&alias)?,
+                            array::TypeResolution::Alias(alias) => env.id_of(&alias)?,
                         }
                     }
                 };
@@ -123,8 +123,8 @@ impl Fold<Diagnostic> for DeclTypeResolver<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intermediate_type::IntermediateType;
     use crate::semantic_context::SemanticContext;
+    use crate::semantic_type::SemanticType;
     use crate::test_helpers::parse_and_resolve_types_with_options;
     use ironplc_dsl::visitor::Visitor;
     use ironplc_parser::options::{CompilerOptions, Dialect};
@@ -193,7 +193,7 @@ END_PROGRAM
 
         assert_eq!(context.types().name_of(id), None);
         match &context.types().get_by_id(id).unwrap().representation {
-            IntermediateType::Array { dimensions, .. } => assert_eq!(dimensions.len(), 1),
+            SemanticType::Array { dimensions, .. } => assert_eq!(dimensions.len(), 1),
             other => panic!("expected an array, got {other:?}"),
         }
     }

@@ -5,16 +5,12 @@
 //! Field access through an array-of-struct *field* (`h.items[i].a`) is covered
 //! by `end_to_end_struct.rs`; these tests own the case where the variable
 //! itself is the array.
-//!
-//! Assertion indices are variable-table slots, assigned in declaration order
-//! starting at 0. Each test notes its mapping.
 
 use crate::common::try_parse_and_compile;
 use ironplc_parser::options::CompilerOptions;
 
 // --- Nominal read and write ---
 
-// arr 0, result 1.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_written_with_literal_index_then_reads_back,
     "
@@ -33,13 +29,11 @@ PROGRAM main
   result := arr[2].b;
 END_PROGRAM
 ",
-    &[(1, 42)],
+    &[("result", 42)],
 );
 
 // The reported repro: a BOOL field written through a literal index. Exercises
 // the narrow-width truncation path on store.
-//
-// Arr 0, result 1.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_bool_field_written_then_reads_back,
     "
@@ -57,13 +51,11 @@ PROGRAM main
   result := BOOL_TO_DINT(Arr[1].Flag);
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("result", 1)],
 );
 
 // Writing one element must not disturb its neighbours -- this is what a wrong
 // element stride would break.
-//
-// arr 0, r1 1, r2 2, r3 3.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_elements_written_then_each_element_distinct,
     "
@@ -88,13 +80,11 @@ PROGRAM main
   r3 := arr[3].a;
 END_PROGRAM
 ",
-    &[(1, 11), (2, 22), (3, 33)],
+    &[("r1", 11), ("r2", 22), ("r3", 33)],
 );
 
 // Distinct fields within one element must not alias -- this is what a wrong
 // leaf offset would break.
-//
-// arr 0, ra 1, rb 2.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_sibling_fields_written_then_do_not_alias,
     "
@@ -116,13 +106,11 @@ PROGRAM main
   rb := arr[2].b;
 END_PROGRAM
 ",
-    &[(1, 7), (2, 9)],
+    &[("ra", 7), ("rb", 9)],
 );
 
 // Variable subscript exercises the runtime flat-index path rather than the
 // compile-time constant-folded one.
-//
-// arr 0, i 1, result 2.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_indexed_by_variable_then_correct_element,
     "
@@ -143,12 +131,12 @@ PROGRAM main
   result := arr[i].b;
 END_PROGRAM
 ",
-    &[(2, 55)],
+    &[("result", 55)],
 );
 
 // A FOR loop over the array, the shape the issue's users actually write.
 //
-// arr 0, i 1, total 2. total = 1 + 2 + 3.
+// total = 1 + 2 + 3.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_written_in_for_loop_then_all_elements_set,
     "
@@ -170,12 +158,12 @@ PROGRAM main
   total := arr[1].a + arr[2].a + arr[3].a;
 END_PROGRAM
 ",
-    &[(2, 6)],
+    &[("total", 6)],
 );
 
 // Several element reads combined in one expression.
 //
-// arr 0, total 1. total = 1 + 2 + 3.
+// total = 1 + 2 + 3.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_elements_summed_then_correct_total,
     "
@@ -196,13 +184,11 @@ PROGRAM main
   total := arr[1].a + arr[2].a + arr[3].a;
 END_PROGRAM
 ",
-    &[(1, 6)],
+    &[("total", 6)],
 );
 
 // Unwritten elements read as zero: the data region starts zeroed and nothing
 // else is allowed to land on top of the array.
-//
-// arr 0, r1 1, r2 2.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_not_written_then_fields_read_zero,
     "
@@ -223,15 +209,13 @@ PROGRAM main
   r2 := arr[3].b;
 END_PROGRAM
 ",
-    &[(1, 0), (2, 0)],
+    &[("r1", 0), ("r2", 0)],
 );
 
 // --- Bounds shapes ---
 
 // A zero lower bound: the subtracted lower bound is 0 so the emitted index is
 // the subscript itself.
-//
-// arr 0, r1 1, r2 2.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_zero_based_then_correct_element,
     "
@@ -253,13 +237,11 @@ PROGRAM main
   r2 := arr[2].a;
 END_PROGRAM
 ",
-    &[(1, 4), (2, 6)],
+    &[("r1", 4), ("r2", 6)],
 );
 
 // A negative lower bound must be subtracted, not ignored. The constant and
 // variable subscript paths both have to do it, so this uses one of each.
-//
-// arr 0, i 1, r1 2, r2 3.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_negative_lower_bound_then_correct_element,
     "
@@ -283,12 +265,10 @@ PROGRAM main
   r2 := arr[1].a;
 END_PROGRAM
 ",
-    &[(2, 8), (3, 9)],
+    &[("r1", 8), ("r2", 9)],
 );
 
 // Two-dimensional: both strides must be scaled by the element slot count.
-//
-// arr 0, r1 1, r2 2.
 e2e_i32!(
     end_to_end_when_two_dimensional_top_level_array_of_struct_then_correct_element,
     "
@@ -310,7 +290,7 @@ PROGRAM main
   r2 := arr[2,3].a;
 END_PROGRAM
 ",
-    &[(1, 1), (2, 6)],
+    &[("r1", 1), ("r2", 6)],
 );
 
 // The descriptor spans `total_elements * element_slots`, so an out-of-range
@@ -347,8 +327,6 @@ END_PROGRAM
 // A structure with a nested structure: the element stride is the *total* slot
 // count (3 slots per Item), so a wrong count here shifts every element after
 // the first.
-//
-// arr 0, r1 1, r2 2.
 e2e_i32!(
     end_to_end_when_top_level_array_of_nested_struct_then_element_stride_correct,
     "
@@ -376,13 +354,11 @@ PROGRAM main
   r2 := arr[2].lead;
 END_PROGRAM
 ",
-    &[(1, 1), (2, 2)],
+    &[("r1", 1), ("r2", 2)],
 );
 
 // A LINT field is a 64-bit leaf, so the load and store must be emitted at W64
 // rather than the default width. 4294967296 does not fit in 32 bits.
-//
-// arr 0, result 1.
 e2e_i64!(
     end_to_end_when_top_level_array_of_struct_lint_field_then_full_width_preserved,
     "
@@ -401,7 +377,7 @@ PROGRAM main
   result := arr[2].big;
 END_PROGRAM
 ",
-    &[(1, 4294967296)],
+    &[("result", 4294967296)],
 );
 
 // --- Array field inside the element ---
@@ -411,7 +387,6 @@ END_PROGRAM
 // index at stride 1. The field's offset within the element stays the
 // compile-time part.
 
-// a 0, r1 1, r2 2, r3 3.
 e2e_i32!(
     end_to_end_when_array_of_struct_element_has_array_field_then_reads_back,
     "
@@ -435,13 +410,11 @@ PROGRAM main
   r3 := a[3].values[2];
 END_PROGRAM
 ",
-    &[(1, 11), (2, 14), (3, 32)],
+    &[("r1", 11), ("r2", 14), ("r3", 32)],
 );
 
 // Both subscripts variable, so the whole index is computed at runtime rather
 // than folded to a constant.
-//
-// a 0, i 1, j 2, r 3.
 e2e_i32!(
     end_to_end_when_array_of_struct_array_field_indexed_by_variables_then_correct_element,
     "
@@ -463,14 +436,12 @@ PROGRAM main
   r := a[i].values[j];
 END_PROGRAM
 ",
-    &[(3, 55)],
+    &[("r", 55)],
 );
 
 // A scalar ahead of the array field, so the field's own offset has to be added
 // on top of the element stride. A wrong offset would alias `lead` with
 // `values[1]`.
-//
-// a 0, rl 1, rv 2.
 e2e_i32!(
     end_to_end_when_array_of_struct_array_field_preceded_by_scalar_then_no_alias,
     "
@@ -492,13 +463,11 @@ PROGRAM main
   rv := a[2].values[1];
 END_PROGRAM
 ",
-    &[(1, 9), (2, 21)],
+    &[("rl", 9), ("rv", 21)],
 );
 
 // Nested FOR loops over both indices, the shape that would expose a wrong
 // stride on either axis. a[3].values[2] is 3 * 10 + 2.
-//
-// a 0, i 1, j 2, r 3.
 e2e_i32!(
     end_to_end_when_array_of_struct_array_field_written_in_nested_loops_then_all_set,
     "
@@ -522,13 +491,11 @@ PROGRAM main
   r := a[3].values[2];
 END_PROGRAM
 ",
-    &[(3, 32)],
+    &[("r", 32)],
 );
 
 // The same shape reached through a struct field rather than a top-level
 // variable: `h.items[i].values[j]`.
-//
-// h 0, r 1.
 e2e_i32!(
     end_to_end_when_struct_field_array_of_struct_has_array_field_then_reads_back,
     "
@@ -551,15 +518,13 @@ PROGRAM main
   r := h.items[2].values[3];
 END_PROGRAM
 ",
-    &[(1, 77)],
+    &[("r", 77)],
 );
 
 // --- Named array type ---
 
 // `arr : Items` where `Items` is a named ARRAY OF <struct> type, rather than
 // an inline array specification on the declaration.
-//
-// arr 0, result 1.
 e2e_i32!(
     end_to_end_when_top_level_named_array_of_struct_type_then_reads_back,
     "
@@ -580,15 +545,13 @@ PROGRAM main
   result := arr[3].a;
 END_PROGRAM
 ",
-    &[(1, 21)],
+    &[("result", 21)],
 );
 
 // --- Neighbouring variables ---
 
 // A second array-of-struct and a plain array declared alongside must each get
 // their own data region run.
-//
-// first 0, second 1, plain 2, r1 3, r2 4, r3 5.
 e2e_i32!(
     end_to_end_when_two_top_level_arrays_of_struct_then_regions_do_not_overlap,
     "
@@ -615,7 +578,7 @@ PROGRAM main
   r3 := plain[1];
 END_PROGRAM
 ",
-    &[(3, 1), (4, 2), (5, 3)],
+    &[("r1", 1), ("r2", 2), ("r3", 3)],
 );
 
 // --- Global declaration ---
@@ -623,7 +586,7 @@ END_PROGRAM
 // A global array-of-struct is registered before program locals and aliased
 // into the program through VAR_EXTERNAL.
 //
-// devices 0 (global), result 1. result = 100 + 200.
+// result = 100 + 200.
 e2e_i32!(
     end_to_end_when_global_array_of_struct_then_external_can_read_and_write,
     "
@@ -655,14 +618,12 @@ PROGRAM main
   result := devices[1].a + devices[3].b;
 END_PROGRAM
 ",
-    &[(1, 300)],
+    &[("result", 300)],
 );
 
 // A function block body sees the global through the re-inserted global
 // metadata; without it the array resolves as a plain scalar and the field
 // access fails. The function block reaches the global through VAR_EXTERNAL.
-//
-// devices 0 (global), reader 1, result 2.
 e2e_i32!(
     end_to_end_when_function_block_reads_global_array_of_struct_then_correct_value,
     "
@@ -705,7 +666,7 @@ PROGRAM main
   result := reader.value;
 END_PROGRAM
 ",
-    &[(2, 17)],
+    &[("result", 17)],
 );
 
 // --- Rejected shapes ---

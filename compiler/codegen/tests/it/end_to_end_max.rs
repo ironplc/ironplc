@@ -10,7 +10,7 @@ PROGRAM main
   y := MAX(10, 3);
 END_PROGRAM
 ",
-    &[(0, 10)],
+    &[("y", 10)],
 );
 
 e2e_i32!(
@@ -25,5 +25,5 @@ PROGRAM main
   y := MAX(x, 100);
 END_PROGRAM
 ",
-    &[(0, 5), (1, 100)],
+    &[("x", 5), ("y", 100)],
 );

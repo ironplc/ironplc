@@ -1,10 +1,8 @@
 //! End-to-end integration tests for the ADD operator.
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_compile, VmBuffers};
-use ironplc_vm::Vm;
+use crate::common::run_scans;
 
 e2e_i32!(
     end_to_end_when_add_expression_then_variable_has_sum,
@@ -18,7 +16,7 @@ PROGRAM main
   y := x + 32;
 END_PROGRAM
 ",
-    &[(0, 10), (1, 42)],
+    &[("x", 10), ("y", 42)],
 );
 
 e2e_i32!(
@@ -31,7 +29,7 @@ PROGRAM main
   result := 1 + 2 + 3;
 END_PROGRAM
 ",
-    &[(0, 6)],
+    &[("result", 6)],
 );
 
 e2e_i32!(
@@ -48,7 +46,7 @@ PROGRAM main
   c := a + b;
 END_PROGRAM
 ",
-    &[(0, 100), (1, 200), (2, 300)],
+    &[("a", 100), ("b", 200), ("c", 300)],
 );
 
 e2e_i32!(
@@ -61,11 +59,11 @@ PROGRAM main
   result := 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10;
 END_PROGRAM
 ",
-    &[(0, 55)],
+    &[("result", 55)],
 );
 
-// Multi-scan test: the counter accumulates state across VM rounds, so it drives
-// the VM directly rather than using the single-scan `e2e_i32!` helper.
+// Multi-scan test: the counter accumulates state across scans, so it uses a
+// session rather than the single-scan `e2e_i32!` helper.
 #[test]
 fn end_to_end_when_counter_program_then_increments_across_scans() {
     let source = "
@@ -76,17 +74,10 @@ PROGRAM main
   count := count + 1;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = Vm::new()
-        .load(&container, &mut bufs)
-        .unwrap()
-        .start()
-        .unwrap();
-
-    for _ in 0..5 {
-        vm.run_round(0).unwrap();
-    }
-
-    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 5);
+    run_scans(source, &CompilerOptions::default(), |session| {
+        for _ in 0..5 {
+            session.scan(0).unwrap();
+        }
+        assert_eq!(session.read("count"), 5);
+    });
 }

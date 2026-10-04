@@ -37,6 +37,8 @@ pub mod debug_format;
 #[cfg(feature = "std")]
 pub mod debug_section;
 #[cfg(feature = "std")]
+mod program_variables;
+#[cfg(feature = "std")]
 pub mod task_table;
 // Shared container fixtures. Compiled for this crate's own tests, and for
 // downstream test suites via the `test-support` feature.

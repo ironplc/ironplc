@@ -117,21 +117,21 @@ TYPE
 E_Small : (A, B) WORD;
 END_TYPE";
 
-    rule_err1!(
+    rule_err!(
         apply_when_enum_base_type_and_flag_disabled_then_error,
         SOURCE,
-        Problem::EnumBaseTypeNotAllowed
+        [Problem::EnumBaseTypeNotAllowed]
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_enum_base_type_and_flag_enabled_then_ok,
-        opts_flag(),
-        SOURCE
+        SOURCE,
+        opts_flag()
     );
 
     // The label has to name the declaration that carries the suffix, or the
     // user cannot tell which type to change in a file full of them.
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_enum_base_type_then_label_names_the_declared_type,
         "
 TYPE
@@ -164,25 +164,24 @@ END_TYPE"
 
     // The suffix and a default value can appear together; the suffix is still
     // the only part gated, and still reported exactly once.
-    rule_err1!(
+    rule_err!(
         apply_when_enum_base_type_with_default_then_error,
         "
 TYPE
 E_Small : (A, B) WORD := B;
 END_TYPE",
-        Problem::EnumBaseTypeNotAllowed
+        [Problem::EnumBaseTypeNotAllowed]
     );
 
     // Each declaration that carries a suffix is reported on its own, so a
     // file with several gets one diagnostic per declaration.
-    rule_errn!(
+    rule_err!(
         apply_when_several_enums_have_base_types_then_one_error_each,
         "
 TYPE
 E_Small : (A, B) WORD;
 E_Other : (C, D) BYTE;
 END_TYPE",
-        2,
-        Problem::EnumBaseTypeNotAllowed
+        [Problem::EnumBaseTypeNotAllowed; 2]
     );
 }

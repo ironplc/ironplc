@@ -11,16 +11,16 @@
 //!
 //! See `specs/design/arithmetic-operator-overloads.md`.
 
-use ironplc_analyzer::{typed_overload, Overload};
+use ironplc_analyzer::{typed_overload, FunctionEnvironmentBuilder, Intrinsic, Overload};
 use ironplc_container::FunctionId;
 use ironplc_dsl::common::TypeName;
-use ironplc_dsl::core::FileId;
+use ironplc_dsl::core::{FileId, Id};
 use ironplc_dsl::textual::Operator;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use rstest::rstest;
 use spec_test_macro::spec_test;
 
-use crate::compile_time_arith::time_arith_for;
+use crate::compile_call::intrinsics_by_name;
 
 /// Compiles `source` under the Edition 3 dialect, which declares the long
 /// types, and returns the bytecode of its program body.
@@ -161,10 +161,16 @@ fn codegen_spec_req_ao_009_extensible_call_folds_through_typed_routine(
     );
 }
 
-/// Every typed name the analyzer's typed step can answer with has a codegen
-/// routine, at both widths: the dispatch in `compile_arith` relies on it.
+/// Every typed name the analyzer's typed step can answer with is registered
+/// as a time function, at both widths: `compile_arith` compiles the pair
+/// through the routine of the function it is registered as.
 #[test]
-fn time_arith_for_when_any_typed_overload_then_has_routine() {
+fn typed_overload_when_any_pair_then_names_a_registered_time_function() {
+    let intrinsics = intrinsics_by_name(
+        &FunctionEnvironmentBuilder::new()
+            .with_stdlib_functions()
+            .build(),
+    );
     let types = [
         "TIME",
         "LTIME",
@@ -188,8 +194,11 @@ fn time_arith_for_when_any_typed_overload_then_has_routine() {
                 let answer = typed_overload(&op, &TypeName::from(left), &TypeName::from(right));
                 if let Some(Overload::Typed { name, .. }) = answer {
                     assert!(
-                        time_arith_for(&name.to_ascii_lowercase()).is_some(),
-                        "{name} has no routine"
+                        matches!(
+                            intrinsics.get(&Id::from(name)),
+                            Some(Intrinsic::Time { .. })
+                        ),
+                        "{name} is not a time function"
                     );
                     names.insert(name);
                 }

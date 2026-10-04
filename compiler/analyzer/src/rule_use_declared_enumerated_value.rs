@@ -144,10 +144,20 @@ impl Visitor<Infallible> for RuleDeclaredEnumeratedValues<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_helpers::diagnostic_codes;
+    use crate::test_helpers::{rule_codes, rule_diagnostics};
+    use ironplc_dsl::diagnostic::Diagnostic;
+    use ironplc_parser::options::CompilerOptions;
+    use ironplc_problems::Problem;
 
-    use crate::stages::analyze;
-    use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::CompilerOptions, parse_program};
+    /// The diagnostics this rule reports for `program` under default options.
+    fn diagnostics_of(program: &str) -> Vec<Diagnostic> {
+        rule_diagnostics(super::apply, program, &CompilerOptions::default())
+    }
+
+    fn codes_of(program: &str) -> Vec<String> {
+        rule_codes(super::apply, program, &CompilerOptions::default())
+    }
 
     #[test]
     fn apply_when_two_undefined_enum_values_then_reports_both() {
@@ -163,23 +173,17 @@ B : LEVEL := FATAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let (_library, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
+        let diagnostics = diagnostics_of(program);
 
-        let reported: Vec<&String> = context
-            .diagnostics()
+        let codes = diagnostic_codes(&diagnostics);
+        assert_eq!(codes, [Problem::EnumValueNotDefined.code(); 2]);
+        let reported: Vec<&str> = diagnostics
             .iter()
             .flat_map(|d| &d.described)
+            .map(String::as_str)
+            .filter(|d| d.starts_with("value="))
             .collect();
-        assert!(
-            reported.iter().any(|d| d.as_str() == "value=CRITICAL"),
-            "expected CRITICAL, got {reported:?}"
-        );
-        assert!(
-            reported.iter().any(|d| d.as_str() == "value=FATAL"),
-            "expected FATAL, got {reported:?}"
-        );
+        assert_eq!(reported, ["value=CRITICAL", "value=FATAL"]);
     }
 
     #[test]
@@ -196,12 +200,7 @@ B : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
-
-        let (_library, context) = result.unwrap();
-        assert!(context.has_diagnostics());
+        assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
     }
 
     #[test]
@@ -217,17 +216,12 @@ LEVEL : LEVEL := CRITICAL;
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
-
-        let (_library, context) = result.unwrap();
-        assert!(context.has_diagnostics());
+        assert_eq!(codes_of(program), [Problem::EnumValueNotDefined.code()]);
     }
 
-    #[test]
-    fn apply_when_var_init_valid_enum_value_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_var_init_valid_enum_value_then_ok,
+        "
 TYPE
 LEVEL : (CRITICAL) := CRITICAL;
 END_TYPE
@@ -236,19 +230,12 @@ FUNCTION_BLOCK LOGGER
 VAR_INPUT
 LEVEL : LEVEL := CRITICAL;
 END_VAR
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    #[ignore = "flaky test - needs to be fixed"]
-    fn apply_when_var_init_valid_enum_value_through_alias_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_var_init_valid_enum_value_through_alias_then_ok,
+        "
 TYPE
 LEVEL : (CRITICAL) := CRITICAL;
 LEVEL_ALIAS : LEVEL;
@@ -259,22 +246,26 @@ VAR_INPUT
 NAME : LEVEL_ALIAS := CRITICAL;
 END_VAR
 
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
+    rule_err_at!(
+        apply_when_var_init_undefined_enum_value_through_alias_then_error,
+        "
+TYPE
+LEVEL : (CRITICAL) := CRITICAL;
+LEVEL_ALIAS : LEVEL;
+END_TYPE
 
-        assert!(result.is_ok());
-    }
+FUNCTION_BLOCK LOGGER
+VAR_INPUT
+NAME : LEVEL_ALIAS := FATAL;
+END_VAR
 
-    /// The diagnostics of analyzing `program` under default options.
-    fn diagnostics_of(program: &str) -> Vec<ironplc_dsl::diagnostic::Diagnostic> {
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let (_library, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
-        context.diagnostics().to_vec()
-    }
+END_FUNCTION_BLOCK",
+        Problem::EnumValueNotDefined,
+        "FATAL"
+    );
 
     #[test]
     fn apply_when_two_enums_share_value_then_each_value_defined() {

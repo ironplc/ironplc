@@ -149,7 +149,9 @@ impl Visitor<Infallible> for RuleExternalGlobalConst<'_> {
 
 #[cfg(test)]
 mod test {
-    rule_ctx_err!(
+    use ironplc_problems::Problem;
+
+    rule_err!(
         apply_when_global_const_external_not_const_then_error,
         "
 CONFIGURATION config
@@ -166,10 +168,11 @@ FUNCTION_BLOCK func
     VAR_EXTERNAL
         ResetCounterValue : INT;
     END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        [Problem::VariableMustBeConst]
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_local_const_shares_name_with_plain_global_then_ok,
         "
 CONFIGURATION config
@@ -198,7 +201,7 @@ PROGRAM plc_prg
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_global_const_external_const_then_ok,
         "
 CONFIGURATION config
@@ -220,7 +223,7 @@ FUNCTION_BLOCK func
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_errn!(
+    rule_err!(
         apply_when_two_non_const_externals_then_reports_both,
         "
 CONFIGURATION config
@@ -240,7 +243,28 @@ FUNCTION_BLOCK func
         SecondValue : INT;
     END_VAR
 END_FUNCTION_BLOCK",
-        2,
-        ironplc_problems::Problem::VariableMustBeConst
+        [ironplc_problems::Problem::VariableMustBeConst; 2]
+    );
+
+    rule_err_at!(
+        apply_when_global_const_external_not_const_then_error_at_external,
+        "
+FUNCTION_BLOCK func
+    VAR_EXTERNAL
+        ResetCounterValue : INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+CONFIGURATION config
+    VAR_GLOBAL CONSTANT
+        ResetCounterValue : INT := 17;
+    END_VAR
+    RESOURCE resource1 ON PLC
+        TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
+        PROGRAM plc_task_instance WITH plc_task : plc_prg;
+    END_RESOURCE
+END_CONFIGURATION",
+        Problem::VariableMustBeConst,
+        "ResetCounterValue"
     );
 }

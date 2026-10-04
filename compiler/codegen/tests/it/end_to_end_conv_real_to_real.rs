@@ -13,7 +13,7 @@ PROGRAM main
   y := REAL_TO_LREAL(x);
 END_PROGRAM
 ",
-    &[(1, 1.5)],
+    &[("y", 1.5)],
 );
 
 e2e_f32_near!(
@@ -29,5 +29,5 @@ PROGRAM main
   y := LREAL_TO_REAL(x);
 END_PROGRAM
 ",
-    &[(1, 9.876543)],
+    &[("y", 9.876543)],
 );

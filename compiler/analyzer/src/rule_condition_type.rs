@@ -144,7 +144,7 @@ impl Visitor<Infallible> for RuleConditionType<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::{rule_codes, rule_diagnostics};
     use rstest::rstest;
 
     /// A program with variables `c` of `declared_type`, `b : BOOL`,
@@ -165,17 +165,11 @@ END_PROGRAM"
     }
 
     fn diagnostics_for(program: &str) -> Vec<Diagnostic> {
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        apply(&library, &context, &CompilerOptions::default())
-            .err()
-            .unwrap_or_default()
+        rule_diagnostics(apply, program, &CompilerOptions::default())
     }
 
     fn codes_for(program: &str) -> Vec<String> {
-        diagnostics_for(program)
-            .into_iter()
-            .map(|diagnostic| diagnostic.code)
-            .collect()
+        rule_codes(apply, program, &CompilerOptions::default())
     }
 
     fn p4072() -> String {
@@ -260,7 +254,7 @@ END_PROGRAM"
         assert_eq!(codes_for(&program), vec![p4072(), p4072(), p4072()]);
     }
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// An alias of `BOOL` resolves to `BOOL`.
         apply_when_condition_is_alias_of_bool_then_ok,
         "
@@ -277,7 +271,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_condition_is_bool_function_result_then_ok,
         "
 FUNCTION is_high : BOOL
@@ -296,7 +290,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_condition_is_function_block_bool_output_then_ok,
         "
 PROGRAM main
@@ -309,7 +303,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         /// A condition the analyzer did not type is left to the rule that
         /// failed to type it.
         apply_when_condition_is_untyped_then_ok,
@@ -322,7 +316,7 @@ END_VAR
 END_PROGRAM"
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_condition_is_alias_of_integer_then_p4072,
         "
 TYPE
@@ -336,10 +330,10 @@ VAR
 END_VAR
     IF n THEN y := 1; END_IF;
 END_PROGRAM",
-        Problem::ConditionTypeInvalid
+        [Problem::ConditionTypeInvalid]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_condition_is_enumeration_then_p4072,
         "
 TYPE
@@ -353,10 +347,10 @@ VAR
 END_VAR
     IF mode THEN y := 1; END_IF;
 END_PROGRAM",
-        Problem::ConditionTypeInvalid
+        [Problem::ConditionTypeInvalid]
     );
 
-    rule_ctx_err1!(
+    rule_err!(
         apply_when_condition_is_integer_function_result_then_p4072,
         "
 FUNCTION count : DINT
@@ -373,7 +367,7 @@ VAR
 END_VAR
     IF count(level) THEN y := 1; END_IF;
 END_PROGRAM",
-        Problem::ConditionTypeInvalid
+        [Problem::ConditionTypeInvalid]
     );
 
     #[test]

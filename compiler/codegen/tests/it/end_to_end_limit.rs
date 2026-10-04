@@ -12,7 +12,7 @@ PROGRAM main
   y := LIMIT(0, x, 10);
 END_PROGRAM
 ",
-    &[(0, 5), (1, 5)],
+    &[("x", 5), ("y", 5)],
 );
 
 e2e_i32!(
@@ -27,7 +27,7 @@ PROGRAM main
   y := LIMIT(0, x, 10);
 END_PROGRAM
 ",
-    &[(0, -5), (1, 0)],
+    &[("x", -5), ("y", 0)],
 );
 
 e2e_i32!(
@@ -42,5 +42,5 @@ PROGRAM main
   y := LIMIT(0, x, 10);
 END_PROGRAM
 ",
-    &[(0, 15), (1, 10)],
+    &[("x", 15), ("y", 10)],
 );

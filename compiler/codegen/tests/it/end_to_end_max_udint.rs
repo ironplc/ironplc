@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 #[test]
 fn end_to_end_when_max_udint_large_values_then_unsigned_comparison() {
@@ -18,6 +18,6 @@ PROGRAM main
   result := MAX(a, b);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[2].as_i32() as u32, 3_000_000_000);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<u32>("result"), 3_000_000_000);
 }

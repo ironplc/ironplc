@@ -106,17 +106,10 @@ pub fn apply(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::fb_inheritance_options;
 
-    fn opts_with_fb_inheritance() -> CompilerOptions {
-        CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        }
-    }
-
-    rule_err1_with!(
+    rule_err!(
         apply_when_derived_redeclares_base_field_same_type_then_error,
-        opts_with_fb_inheritance(),
         "
 FUNCTION_BLOCK FB_Base
 VAR
@@ -129,12 +122,12 @@ VAR
     state : INT;
 END_VAR
 END_FUNCTION_BLOCK",
-        Problem::ExtendsFieldNameDuplicated
+        [Problem::ExtendsFieldNameDuplicated],
+        fb_inheritance_options()
     );
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_derived_redeclares_base_field_different_type_then_error,
-        opts_with_fb_inheritance(),
         "
 FUNCTION_BLOCK FB_Base
 VAR
@@ -147,12 +140,12 @@ VAR
     state : BOOL;
 END_VAR
 END_FUNCTION_BLOCK",
-        Problem::ExtendsFieldNameDuplicated
+        [Problem::ExtendsFieldNameDuplicated],
+        fb_inheritance_options()
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_derived_has_no_field_collision_then_ok,
-        opts_with_fb_inheritance(),
         "
 FUNCTION_BLOCK FB_Base
 VAR
@@ -164,12 +157,12 @@ FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
 VAR
     derivedState : BOOL;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
     );
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_grandparent_field_collision_then_error,
-        opts_with_fb_inheritance(),
         "
 FUNCTION_BLOCK FB_A
 VAR
@@ -188,17 +181,37 @@ VAR
     a : INT;
 END_VAR
 END_FUNCTION_BLOCK",
-        Problem::ExtendsFieldNameDuplicated
+        [Problem::ExtendsFieldNameDuplicated],
+        fb_inheritance_options()
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_no_extends_then_ok,
-        opts_with_fb_inheritance(),
         "
 FUNCTION_BLOCK FB_Plain
 VAR
     x : INT;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        fb_inheritance_options()
+    );
+
+    rule_err_at!(
+        apply_when_derived_redeclares_base_field_then_error_at_derived_field,
+        "
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+VAR
+    state : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Base
+VAR
+    state : INT;
+END_VAR
+END_FUNCTION_BLOCK",
+        Problem::ExtendsFieldNameDuplicated,
+        "state",
+        fb_inheritance_options()
     );
 }

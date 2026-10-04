@@ -38,10 +38,10 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::IntermediateType,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::SemanticType,
     type_environment::TypeEnvironment,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -222,7 +222,7 @@ impl<'a> RuleConstantVarsInitialized<'a> {
 
         // Extract fields from the structure type
         let fields = match &type_attrs.representation {
-            IntermediateType::Structure { fields } => fields,
+            SemanticType::Structure { fields } => fields,
             _ => {
                 // Not a structure type - another rule will catch this error
                 return;
@@ -257,7 +257,7 @@ impl<'a> RuleConstantVarsInitialized<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::test_helpers::parse_and_resolve_types_with_context;
+    use crate::test_helpers::{diagnostic_codes, rule_codes, rule_diagnostics};
 
     use super::*;
 
@@ -269,7 +269,8 @@ VAR CONSTANT
 ResetCounterValue : INT;
 END_VAR
 
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        [Problem::ConstantMustHaveInitializer]
     );
 
     rule_err!(
@@ -284,7 +285,8 @@ VAR CONSTANT
 ResetCounterValue : LOGLEVEL;
 END_VAR
 
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        [Problem::ConstantMustHaveInitializer]
     );
 
     rule_err!(
@@ -295,7 +297,8 @@ VAR CONSTANT
 ResetCounterValue : (INFO, WARN);
 END_VAR
 
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        [Problem::ConstantMustHaveInitializer]
     );
 
     rule_ok!(
@@ -337,7 +340,7 @@ END_FUNCTION_BLOCK"
 
     // Tests for const structure initialization
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_struct_all_fields_have_defaults_then_ok,
         "
 TYPE
@@ -354,7 +357,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_struct_missing_defaults_but_explicitly_initialized_then_ok,
         "
 TYPE
@@ -371,7 +374,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_struct_partial_defaults_with_remaining_initialized_then_ok,
         "
 TYPE
@@ -404,14 +407,14 @@ VAR CONSTANT
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
 
-        assert!(result.is_err());
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        // Check that the error mentions the missing field 'y'
-        assert!(errors[0].described.iter().any(|s| s.contains("y")));
+        assert_eq!(
+            diagnostic_codes(&diagnostics),
+            [Problem::ConstantMustHaveInitializer.code()]
+        );
+        // The error names the missing field 'y'.
+        assert!(diagnostics[0].described.iter().any(|s| s.contains("y")));
     }
 
     #[test]
@@ -430,17 +433,14 @@ VAR CONSTANT
 END_VAR
 END_FUNCTION_BLOCK";
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
+        let codes = rule_codes(apply, program, &CompilerOptions::default());
 
-        assert!(result.is_err());
-        let errors = result.unwrap_err();
-        // Should have errors for both x and y fields
-        assert_eq!(errors.len(), 2);
+        // One for each of the x and y fields.
+        assert_eq!(codes, [Problem::ConstantMustHaveInitializer.code(); 2]);
     }
 
     // Non-constant structures don't require initialization
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_non_const_struct_missing_initialization_then_ok,
         "
 TYPE
@@ -459,7 +459,7 @@ END_FUNCTION_BLOCK"
 
     // When a nested structure's type has all fields with defaults,
     // the outer struct field should be considered as having a default
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_nested_struct_inner_has_all_defaults_then_ok,
         "
 TYPE
@@ -481,7 +481,7 @@ END_FUNCTION_BLOCK"
 
     // When a nested structure's type has fields without defaults,
     // the outer const should require initialization
-    rule_ctx_err!(
+    rule_err!(
         apply_when_const_nested_struct_inner_missing_defaults_then_error,
         "
 TYPE
@@ -498,11 +498,12 @@ FUNCTION_BLOCK MAIN
 VAR CONSTANT
     myOuter : Outer;
 END_VAR
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        [Problem::ConstantMustHaveInitializer]
     );
 
     // Test deeply nested structures where all fields have defaults
-    rule_ctx_ok!(
+    rule_ok!(
         apply_when_const_deeply_nested_struct_all_have_defaults_then_ok,
         "
 TYPE
@@ -524,7 +525,7 @@ END_VAR
 END_FUNCTION_BLOCK"
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_const_array_type_missing_initializer_then_error,
         "
 FUNCTION_BLOCK LOGGER
@@ -532,7 +533,9 @@ VAR CONSTANT
 ResetCounterValue : ARRAY[1..10] OF INT;
 END_VAR
 
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::ConstantMustHaveInitializer,
+        "ResetCounterValue"
     );
 
     rule_ok!(

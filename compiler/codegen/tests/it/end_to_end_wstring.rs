@@ -1,53 +1,17 @@
 //! End-to-end integration tests for WSTRING (UTF-16LE) support.
 //!
 //! These compile and execute real `.st` programs through the full pipeline
-//! (parse → analyze → codegen → VM) and inspect the resulting data region.
-//! WSTRING stores two bytes per code unit (UTF-16LE per ADR-0016); a string of
-//! `n` code units occupies `n * 2` data bytes after the 6-byte header.
+//! (parse → analyze → codegen → VM) and read the results by name.
+//! `compile_wstring.rs` checks how a WSTRING is stored (UTF-16LE per ADR-0016).
 
 use ironplc_container::debug_section::iec_type_tag;
-use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
-use crate::common::{parse_and_compile, parse_and_run};
-
-/// Reads the `max_length` header field (code units).
-fn read_max_length(data_region: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([data_region[offset], data_region[offset + 1]])
-}
-
-/// Reads the `cur_length` header field (code units).
-fn read_cur_length(data_region: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([data_region[offset + 2], data_region[offset + 3]])
-}
-
-/// Reads the `char_width` header field (1 = narrow, 2 = wide).
-fn read_char_width(data_region: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([data_region[offset + 4], data_region[offset + 5]])
-}
-
-/// Reads a WSTRING value as a `String`, decoding `cur_length` UTF-16LE code
-/// units from the data region at `offset`.
-fn read_wstring(data_region: &[u8], offset: usize) -> String {
-    let cur_len = read_cur_length(data_region, offset) as usize;
-    let data_start = offset + STRING_HEADER_BYTES;
-    let units: Vec<u16> = (0..cur_len)
-        .map(|i| {
-            let b = data_start + i * 2;
-            u16::from_le_bytes([data_region[b], data_region[b + 1]])
-        })
-        .collect();
-    String::from_utf16(&units).unwrap()
-}
-
-/// Byte span of one `WSTRING[max_len]` element/variable in the data region.
-fn wstring_region(max_len: usize) -> usize {
-    STRING_HEADER_BYTES + max_len * 2
-}
+use crate::common::{parse_and_compile, Snapshot};
 
 #[test]
-fn wstring_when_literal_initializer_then_utf16le_bytes_and_wide_header() {
+fn wstring_when_literal_initializer_then_reads_literal() {
     let source = "
 PROGRAM main
   VAR
@@ -55,23 +19,13 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // Header: max_len = 10 code units, cur_len = 2 code units, char_width = 2.
-    assert_eq!(read_max_length(&bufs.data_region, 0), 10);
-    assert_eq!(read_cur_length(&bufs.data_region, 0), 2);
-    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
-
-    // Data: 'h' 'i' as UTF-16LE little-endian code units.
-    assert_eq!(
-        &bufs.data_region[STRING_HEADER_BYTES..STRING_HEADER_BYTES + 4],
-        &[0x68, 0x00, 0x69, 0x00]
-    );
-    assert_eq!(read_wstring(&bufs.data_region, 0), "hi");
+    assert_eq!(snapshot.read("ws"), "hi");
 }
 
 #[test]
-fn wstring_when_non_ascii_bmp_literal_then_utf16le_code_units() {
+fn wstring_when_non_ascii_bmp_literal_then_reads_its_characters() {
     // U+00E9 (é) and U+20AC (€) are BMP code points needing the high byte.
     let source = "
 PROGRAM main
@@ -80,15 +34,9 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(read_cur_length(&bufs.data_region, 0), 2);
-    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
-    assert_eq!(
-        &bufs.data_region[STRING_HEADER_BYTES..STRING_HEADER_BYTES + 4],
-        &[0xE9, 0x00, 0xAC, 0x20]
-    );
-    assert_eq!(read_wstring(&bufs.data_region, 0), "é€");
+    assert_eq!(snapshot.read("ws"), "é€");
 }
 
 #[test]
@@ -102,12 +50,9 @@ PROGRAM main
   dst := src;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let dst_offset = wstring_region(10);
-    assert_eq!(read_char_width(&bufs.data_region, dst_offset), 2);
-    assert_eq!(read_cur_length(&bufs.data_region, dst_offset), 3);
-    assert_eq!(read_wstring(&bufs.data_region, dst_offset), "abc");
+    assert_eq!(snapshot.read("dst"), "abc");
 }
 
 #[test]
@@ -120,13 +65,12 @@ PROGRAM main
   ws := \"world\";
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
-    assert_eq!(read_wstring(&bufs.data_region, 0), "world");
+    assert_eq!(snapshot.read("ws"), "world");
 }
 
-// a = var0, b = var1, eq = var2, ne = var3. BOOL true = 1, false = 0.
+// BOOL true = 1, false = 0.
 e2e_i32!(
     wstring_when_compared_equal_then_eq_true_and_ne_false,
     "
@@ -141,7 +85,7 @@ PROGRAM main
   ne := a <> b;
 END_PROGRAM
 ",
-    &[(2, 1), (3, 0)],
+    &[("eq", 1), ("ne", 0)],
 );
 
 e2e_i32!(
@@ -158,10 +102,10 @@ PROGRAM main
   ne := a <> b;
 END_PROGRAM
 ",
-    &[(2, 0), (3, 1)],
+    &[("eq", 0), ("ne", 1)],
 );
 
-// ws = var0, n = var1. LEN counts code units, not bytes.
+// LEN counts code units, not bytes.
 e2e_i32!(
     wstring_when_len_then_returns_code_unit_count,
     "
@@ -173,7 +117,7 @@ PROGRAM main
   n := LEN(ws);
 END_PROGRAM
 ",
-    &[(1, 5)],
+    &[("n", 5)],
 );
 
 #[test]
@@ -188,17 +132,13 @@ PROGRAM main
   out := CONCAT(a, b);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // a, b are WSTRING[10] (26 bytes each); out is WSTRING[20] at offset 52.
-    let out_offset = 2 * wstring_region(10);
-    assert_eq!(read_char_width(&bufs.data_region, out_offset), 2);
-    assert_eq!(read_cur_length(&bufs.data_region, out_offset), 6);
-    assert_eq!(read_wstring(&bufs.data_region, out_offset), "foobar");
+    assert_eq!(snapshot.read("out"), "foobar");
 }
 
 #[test]
-fn wstring_when_concat_with_literal_then_literal_is_utf16le() {
+fn wstring_when_concat_with_literal_then_keeps_wide_characters() {
     // The literal is encoded at the width the source spells, so it stores into
     // a wide destination without an encoding mismatch (ADR-0034).
     let source = "
@@ -210,16 +150,13 @@ PROGRAM main
   out := CONCAT(a, \"€\");
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let out_offset = wstring_region(10);
-    assert_eq!(read_char_width(&bufs.data_region, out_offset), 2);
-    assert_eq!(read_cur_length(&bufs.data_region, out_offset), 4);
-    assert_eq!(read_wstring(&bufs.data_region, out_offset), "foo€");
+    assert_eq!(snapshot.read("out"), "foo€");
 }
 
 #[test]
-fn wstring_when_concat_of_literals_only_then_result_is_utf16le() {
+fn wstring_when_concat_of_literals_only_then_keeps_wide_characters() {
     // No WSTRING variable participates in the expression, so the wide temp
     // buffer sizing has to come from the literals themselves.
     let source = "
@@ -230,11 +167,9 @@ PROGRAM main
   out := CONCAT(\"é\", \"€\");
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
-    assert_eq!(read_cur_length(&bufs.data_region, 0), 2);
-    assert_eq!(read_wstring(&bufs.data_region, 0), "é€");
+    assert_eq!(snapshot.read("out"), "é€");
 }
 
 #[test]
@@ -252,19 +187,15 @@ PROGRAM main
   m := MID(s, 3, 2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let region = wstring_region(20);
-    let l_offset = region;
-    let r_offset = 2 * region;
-    let m_offset = 3 * region;
     // LEFT(s,2)="ab"; RIGHT(s,3)="def"; MID(s,3,2)= 3 code units from pos 2 ="bcd".
-    assert_eq!(read_wstring(&bufs.data_region, l_offset), "ab");
-    assert_eq!(read_wstring(&bufs.data_region, r_offset), "def");
-    assert_eq!(read_wstring(&bufs.data_region, m_offset), "bcd");
+    assert_eq!(snapshot.read("l"), "ab");
+    assert_eq!(snapshot.read("r"), "def");
+    assert_eq!(snapshot.read("m"), "bcd");
 }
 
-// hay = var0, needle = var1, pos = var2. FIND is 1-based by code unit.
+// FIND is 1-based by code unit.
 e2e_i32!(
     wstring_when_find_substring_then_returns_code_unit_position,
     "
@@ -277,7 +208,7 @@ PROGRAM main
   pos := FIND(hay, needle);
 END_PROGRAM
 ",
-    &[(2, 3)],
+    &[("pos", 3)],
 );
 
 #[test]
@@ -286,25 +217,19 @@ fn wstring_array_when_assigned_and_read_back_then_values_match() {
 PROGRAM main
   VAR
     arr : ARRAY[1..3] OF WSTRING[8];
+    first : WSTRING[8];
     result : WSTRING[8];
   END_VAR
   arr[1] := \"one\";
   arr[2] := \"two\";
+  first := arr[1];
   result := arr[2];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let arr_base = bufs.vars[0].as_i32() as usize;
-    let stride = wstring_region(8);
-    assert_eq!(read_char_width(&bufs.data_region, arr_base), 2);
-    assert_eq!(read_wstring(&bufs.data_region, arr_base), "one");
-    assert_eq!(read_wstring(&bufs.data_region, arr_base + stride), "two");
-
-    // result is the scalar WSTRING after the 3-element array.
-    let result_offset = arr_base + 3 * stride;
-    assert_eq!(read_char_width(&bufs.data_region, result_offset), 2);
-    assert_eq!(read_wstring(&bufs.data_region, result_offset), "two");
+    assert_eq!(snapshot.read("first"), "one");
+    assert_eq!(snapshot.read("result"), "two");
 }
 
 #[test]
@@ -313,17 +238,20 @@ fn wstring_array_when_initial_values_then_populated() {
 PROGRAM main
   VAR
     days : ARRAY[1..3] OF WSTRING[8] := [\"Mon\", \"Tue\", \"Wed\"];
+    r1 : WSTRING[8];
+    r2 : WSTRING[8];
+    r3 : WSTRING[8];
   END_VAR
+  r1 := days[1];
+  r2 := days[2];
+  r3 := days[3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let base = bufs.vars[0].as_i32() as usize;
-    let stride = wstring_region(8);
-    assert_eq!(read_char_width(&bufs.data_region, base), 2);
-    assert_eq!(read_wstring(&bufs.data_region, base), "Mon");
-    assert_eq!(read_wstring(&bufs.data_region, base + stride), "Tue");
-    assert_eq!(read_wstring(&bufs.data_region, base + 2 * stride), "Wed");
+    assert_eq!(snapshot.read("r1"), "Mon");
+    assert_eq!(snapshot.read("r2"), "Tue");
+    assert_eq!(snapshot.read("r3"), "Wed");
 }
 
 #[test]
@@ -336,24 +264,10 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // narrow at offset 0: char_width 1, one byte per char.
-    assert_eq!(read_char_width(&bufs.data_region, 0), 1);
-    assert_eq!(read_cur_length(&bufs.data_region, 0), 3);
-    assert_eq!(
-        &bufs.data_region[STRING_HEADER_BYTES..STRING_HEADER_BYTES + 3],
-        b"abc"
-    );
-
-    // wide follows narrow's region (6 + 10*1 = 16): char_width 2, UTF-16LE.
-    let wide_offset = STRING_HEADER_BYTES + 10;
-    assert_eq!(read_char_width(&bufs.data_region, wide_offset), 2);
-    assert_eq!(read_cur_length(&bufs.data_region, wide_offset), 3);
-    assert_eq!(
-        &bufs.data_region[wide_offset + STRING_HEADER_BYTES..wide_offset + STRING_HEADER_BYTES + 6],
-        &[0x61, 0x00, 0x62, 0x00, 0x63, 0x00]
-    );
+    assert_eq!(snapshot.read("narrow"), "abc");
+    assert_eq!(snapshot.read("wide"), "abc");
 }
 
 #[test]
@@ -422,11 +336,9 @@ PROGRAM main
   out := CONCAT(mk(w), \"cd\");
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let out_offset = wstring_region(10);
-    assert_eq!(read_char_width(&bufs.data_region, out_offset), 2);
-    assert_eq!(read_wstring(&bufs.data_region, out_offset), "abcd");
+    assert_eq!(snapshot.read("out"), "abcd");
 }
 
 // =========================================================================
@@ -525,7 +437,7 @@ PROGRAM main
   ne := w <> \"abd\";
 END_PROGRAM
 ",
-    &[(1, 1), (2, 1)],
+    &[("eq", 1), ("ne", 1)],
 );
 
 e2e_i32!(
@@ -539,11 +451,12 @@ PROGRAM main
   pos := FIND(hay, \"cd\");
 END_PROGRAM
 ",
-    &[(1, 3)],
+    &[("pos", 3)],
 );
 
 #[test]
 fn wstring_struct_field_when_assigned_literal_then_stored_wide() {
+    // U+20AC (€) has no narrow encoding, so it only survives a wide field.
     let source = "
 TYPE
   Rec : STRUCT
@@ -554,14 +467,15 @@ END_TYPE
 PROGRAM main
   VAR
     r : Rec;
+    label : WSTRING[10];
   END_VAR
-  r.label := \"hi\";
+  r.label := \"hi€\";
+  label := r.label;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
-    assert_eq!(read_wstring(&bufs.data_region, 0), "hi");
+    assert_eq!(snapshot.read("label"), "hi€");
 }
 
 e2e_i32!(
@@ -576,10 +490,9 @@ PROGRAM main
   eq := arr[1] = \"one\";
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("eq", 1)],
 );
 
-// s = var0, w = var1, other = var2, same = var3, differ = var4.
 e2e_i32!(
     function_when_parameters_are_string_and_wstring_then_each_copied_at_its_own_width,
     "
@@ -605,13 +518,12 @@ PROGRAM main
   differ := same_len(s, other);
 END_PROGRAM
 ",
-    &[(3, 1), (4, 0)],
+    &[("same", 1), ("differ", 0)],
 );
 
 // A wide literal passed straight to a WSTRING parameter, with no wide variable
 // in between. The analyzer used to type every character-string literal STRING
 // and reject this call with P4026.
-// n = var0.
 e2e_i32!(
     function_when_wstring_parameter_given_wide_literal_then_runs,
     "
@@ -629,7 +541,7 @@ PROGRAM main
   n := wide_len(\"abcd\");
 END_PROGRAM
 ",
-    &[(0, 4)],
+    &[("n", 4)],
 );
 
 /// A WSTRING operation in a loop reuses one temp buffer per iteration, the
@@ -650,18 +562,15 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
     // 200 iterations, truncated to the declared 32 code units.
-    assert_eq!(read_cur_length(&bufs.data_region, 0), 32);
-    assert_eq!(read_wstring(&bufs.data_region, 0), "x".repeat(32));
+    assert_eq!(snapshot.read("ws"), "x".repeat(32));
 }
 
 // Storing into a WSTRING element of an array field of a structure produces
 // the value at the element's wide encoding. It used to be produced narrow,
 // which trapped V9014 (encoding mismatch) on the store.
-//
-// r 0, same 1.
 e2e_i32!(
     wstring_when_struct_wstring_array_field_written_then_reads_back,
     "
@@ -685,5 +594,5 @@ PROGRAM main
   END_IF;
 END_PROGRAM
 ",
-    &[(0, 4), (1, 1)],
+    &[("r", 4), ("same", 1)],
 );
