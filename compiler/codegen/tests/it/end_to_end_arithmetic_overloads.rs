@@ -220,18 +220,18 @@ END_PROGRAM",
 /// REQ-AO-codegen-010: `UDINT / UDINT` divides unsigned whatever the
 /// target's signedness.
 #[spec_test(REQ_AO_codegen_010)]
-fn end_to_end_req_ao_010_when_udint_quotient_assigned_to_dint_then_divides_unsigned() {
-    assert_run::<i32>(
+fn end_to_end_req_ao_010_when_udint_quotient_assigned_to_lint_then_divides_unsigned() {
+    assert_run::<i64>(
         "
 PROGRAM main
   VAR
-    d : DINT;
+    l : LINT;
     u1 : UDINT := 4000000000;
     u2 : UDINT := 2;
   END_VAR
-  d := u1 / u2;
+  l := u1 / u2;
 END_PROGRAM",
-        &[("d", 2_000_000_000)],
+        &[("l", 2_000_000_000)],
     );
 }
 

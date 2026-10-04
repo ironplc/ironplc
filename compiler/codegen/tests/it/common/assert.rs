@@ -81,6 +81,18 @@ macro_rules! e2e {
     };
 }
 
+/// Like [`e2e`] but takes a [`CompilerOptions`] expression, the way
+/// [`e2e_i32_with`] does for [`e2e_i32`].
+macro_rules! e2e_with {
+    ($(#[$meta:meta])* $name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run_with($source, &$opts, $asserts);
+        }
+    };
+}
+
 /// Declares a `#[test] fn` that asserts an IEC 61131-3 program produces the
 /// given i32 var values.
 ///

@@ -133,7 +133,7 @@ fn observe_when_signed_integer_then_reads_its_value() {
 #[test]
 fn observe_when_unsigned_all_ones_then_reads_without_sign_extension() {
     let snapshot = snapshot(
-        "PROGRAM main VAR u : UDINT; w : LWORD; END_VAR u := 16#FFFF_FFFF; w := 16#FFFF_FFFF_FFFF_FFFF; END_PROGRAM",
+        "PROGRAM main VAR u : UDINT; w : LWORD; END_VAR u := 16#FFFF_FFFF; w := LWORD#16#FFFF_FFFF_FFFF_FFFF; END_PROGRAM",
     );
     assert_eq!(snapshot.read("u"), Value::Int(4_294_967_295));
     assert_eq!(snapshot.read("w"), Value::Int(18_446_744_073_709_551_615));
