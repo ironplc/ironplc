@@ -54,21 +54,6 @@ END_PROGRAM
     &[("x", 100), ("y", 300)],
 );
 
-// INT is signed 16-bit; 40000 truncated to i16 = 40000 - 65536 = -25536
-e2e_i32!(
-    end_to_end_when_type_alias_int_overflow_then_truncated,
-    "
-TYPE MyInt : INT := 0; END_TYPE
-PROGRAM main
-  VAR
-    x : MyInt;
-  END_VAR
-  x := 40000;
-END_PROGRAM
-",
-    &[("x", -25536)],
-);
-
 // An alias with no initializer takes the base type's default, 0 (#1416).
 e2e_i32!(
     end_to_end_when_type_alias_without_initializer_then_uses_base_type,

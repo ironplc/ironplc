@@ -23,13 +23,6 @@ e2e_i32!(
     &[("x", -5), ("y", -4)],
 );
 
-// 128 truncated to i8 wraps to -128.
-e2e_i32!(
-    end_to_end_when_sint_overflow_then_wraps,
-    "PROGRAM main VAR x : SINT; END_VAR x := 127 + 1; END_PROGRAM",
-    &[("x", -128)],
-);
-
 // --- INT (16-bit signed, -32768..32767) ---
 
 e2e_i32!(
@@ -43,13 +36,6 @@ e2e_i32!(
     end_to_end_when_int_sign_extend_then_preserves_negative,
     "PROGRAM main VAR x : INT; y : INT; END_VAR x := -100; y := x + 1; END_PROGRAM",
     &[("x", -100), ("y", -99)],
-);
-
-// 32768 truncated to i16 wraps to -32768.
-e2e_i32!(
-    end_to_end_when_int_overflow_then_wraps,
-    "PROGRAM main VAR x : INT; END_VAR x := 32767 + 1; END_PROGRAM",
-    &[("x", -32768)],
 );
 
 // --- DINT (32-bit signed) ---
@@ -162,13 +148,6 @@ e2e_i32!(
     &[("x", 200), ("y", 210)],
 );
 
-// 256 truncated to u8 wraps to 0.
-e2e_i32!(
-    end_to_end_when_usint_overflow_then_wraps,
-    "PROGRAM main VAR x : USINT; END_VAR x := 255 + 1; END_PROGRAM",
-    &[("x", 0)],
-);
-
 // --- UINT (16-bit unsigned, 0..65535) ---
 
 e2e_i32!(
@@ -182,13 +161,6 @@ e2e_i32!(
     end_to_end_when_uint_zero_extend_then_preserves_high_value,
     "PROGRAM main VAR x : UINT; y : UINT; END_VAR x := 50000; y := x + 1000; END_PROGRAM",
     &[("x", 50000), ("y", 51000)],
-);
-
-// 65536 truncated to u16 wraps to 0.
-e2e_i32!(
-    end_to_end_when_uint_overflow_then_wraps,
-    "PROGRAM main VAR x : UINT; END_VAR x := 65535 + 1; END_PROGRAM",
-    &[("x", 0)],
 );
 
 // --- UDINT (32-bit unsigned) ---

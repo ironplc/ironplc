@@ -89,15 +89,18 @@ END_PROGRAM
 
 #[test]
 fn compile_when_constant_out_of_range_then_folded_not_truncated() {
-    // 300 does not fit USINT. The truncation still happens — it happens at
-    // compile time, so the pool holds 44 and no TRUNC_U8 is emitted.
+    // 300 does not fit BYTE. Analysis rejects an out-of-range numeric
+    // constant (P2026) but does not range-check a bit string, so this is the
+    // program analysis accepts that reaches the fold. The truncation still
+    // happens — it happens at compile time, so the pool holds 44 and no
+    // TRUNC_U8 is emitted.
     let bytecode = scan_bytecode(
         "
 PROGRAM main
   VAR
-    x : USINT;
+    x : BYTE;
   END_VAR
-  x := 300;
+  x := BYTE#300;
 END_PROGRAM
 ",
     );

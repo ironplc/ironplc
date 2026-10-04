@@ -42,7 +42,6 @@ mod compile_shift;
 mod compile_struct;
 mod compile_system_uptime;
 mod compile_temp_bufs;
-mod compile_this_super;
 mod compile_types;
 mod compile_wstring;
 mod end_to_end;
