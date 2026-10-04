@@ -855,7 +855,9 @@ pub(crate) fn emit_flat_index(
 
 /// Tries to compute the flat index at compile time when all subscripts are literals.
 /// Returns `None` if any subscript is not a literal (fall through to runtime).
-/// Returns `Err` if a literal subscript is out of bounds.
+/// Returns `Err` if a literal subscript is out of bounds. Analysis reports such
+/// a subscript first (`rule_array_index_range`, P2027), so this is the fallback
+/// for a caller that compiles without analysis.
 fn try_constant_flat_index(
     subscripts: &[&Expr],
     dimensions: &[DimensionInfo],

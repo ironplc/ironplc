@@ -832,7 +832,6 @@ fn non_integer_case_selector(selector_expr: &Expr) -> Diagnostic {
     ))
 }
 
-/// Converts a `SignedInteger` AST node to an `i32` value.
 /// Extracts the max length from a `StringInitializer`, returning a
 /// not-implemented diagnostic if the length is an unresolved constant reference.
 pub(crate) fn resolve_string_max_length(
@@ -885,6 +884,11 @@ fn resolve_signed_integer_ref(sir: &SignedIntegerRef) -> Result<&SignedInteger, 
     }
 }
 
+/// Converts a `SignedInteger` AST node to an `i32` value.
+///
+/// Its one use is the bounds of an inline array. Analysis reports a bound that
+/// a `DINT` cannot hold first (`rule_range_limits`, P2024), so this is the
+/// fallback for a caller that compiles without analysis.
 pub(crate) fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
     if si.is_neg {
         let unsigned = si.value.value as i128;
