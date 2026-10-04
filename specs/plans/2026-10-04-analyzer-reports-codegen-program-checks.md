@@ -9,8 +9,11 @@ site that raises a user-facing problem code, either show that analysis already
 reports it, or add an analyzer rule that does. The codegen checks stay as
 fallbacks; turning them into internal errors is later work (#2011).
 
-`compile` output for programs that are valid today must not change. A new rule
-may reject only programs that codegen already rejects.
+Where codegen's check is looser than the language, the new rule follows the
+language. Correctness comes before keeping today's programs compiling, as
+decided in review of #2055; this replaces #2051's criterion that `compile`
+output stays unchanged for programs that compile today. Each PR lists every
+program it newly rejects.
 
 ## Site inventory
 
@@ -44,7 +47,7 @@ diagnostic from it reaches the user.
 | 14–15 | `compile_stmt.rs` `signed_integer_to_i32`, from `compile_array.rs` `array_spec_from_inline` | P2026 | `VAR a : ARRAY[2147483648..2147483650] OF BOOL`. The same bounds in a `TYPE` declaration are P2024 in analysis (`intermediates/array.rs`) | (b) |
 | 16 | `compile_stmt.rs` `StmtKind::Exit` | P4021 | `rule_loop_control_inside_loop` | (a) |
 | 17 | `compile_stmt.rs` `StmtKind::Continue` | P4065 | `rule_loop_control_inside_loop` | (a) |
-| 18 | `compile.rs` `CompileContext::var_index` | P4007 | an undeclared name is reported by `rule_use_declared_symbolic_var`, but a valid program also reaches it: a `RESOURCE`'s `VAR_GLOBAL` used through `VAR_EXTERNAL` (#1930, fixed by the open #1938) | (c) |
+| 18 | `compile.rs` `CompileContext::var_index` | P4007 | an undeclared name is reported by `rule_use_declared_symbolic_var`, but valid programs also reach it: a variable inherited through `EXTENDS` (documented in `extends.rst`, asserted in `codegen/tests/it/compile_extends_inheritance.rs`), and a `RESOURCE`'s `VAR_GLOBAL` used through `VAR_EXTERNAL` (#1930, fixed by the open #1938) | (c) |
 | 19 | `string_width.rs` `resolve_operand_char_width` | P4034 | `w = 'abc'`; `CONCAT(s, w)`; `FIND(w, 'cd')`; `CONCAT(CONCAT(w, w), s)`; `CONCAT(w, w) = 'abab'` | (b) |
 | 20 | `string_width.rs` `compile_string_value` | P4034 | `a[1] := w` into an `ARRAY OF STRING`; `s.f := w` into a `STRING` field; `a[1] := CONCAT(w, w)` | (b) |
 | 21 | `compile_string.rs` `resolve_string_arg` | P4034 | only a named `WSTRING` passed where a `STRING` is required (`F(w)`, `STRING_TO_INT(w)`), which `rule_function_call_type_check` reports first (P4026) | (a) |
@@ -55,7 +58,8 @@ diagnostic from it reaches the user.
 Two of the issue's assumptions do not hold. The analyzer checks
 `StringEncodingMismatch` only between two named variables, so literals,
 string function results and element or field stores reach codegen unchecked
-(sites 19–20). And valid programs reach `VariableUndefined` (site 18).
+(sites 19–20). And valid programs reach `VariableUndefined` (site 18), through
+`EXTENDS` and through resource globals.
 
 ## Architecture
 
@@ -69,9 +73,11 @@ string function results and element or field stores reach codegen unchecked
   sees the same literals as `try_constant_flat_index`. It compares at `i128`,
   so `a[5000000000]` is P2027 too, which also covers that subscript case of
   site 2.
-- A subscript that names a constant (`a[K]`) stays unchecked. Codegen compiles
-  it today and the VM traps at run time. Rejecting it would change a program
-  that compiles now, so it is a separate issue.
+- A subscript that names a constant (`a[K]`) is out of bounds just as surely,
+  but codegen does not check it either, and the analyzer has no shared lookup
+  for a constant's value (the only table is private to
+  `xform_fold_initializer_expressions`). Checking it is a follow-up issue, not
+  part of moving codegen's checks.
 - `rule_range_limits` also requires each inline array bound to fit a `DINT`,
   and reports P2024 for one that does not. That is the code
   `intermediates/array.rs` already gives a `TYPE`-declared array, keeping its
@@ -97,22 +103,34 @@ string function results and element or field stores reach codegen unchecked
 
 **Integer and bit-string literals (sites 2–10).** These wait for #2050
 ("finish ADR-0056"), as #2051 asks. After #2050's last step every literal in
-the analyzed `Library` has a concrete type. A rule then checks each integer or
-bit-string literal against the storage of its recorded type, the same range
-codegen checks (`value_range::fits`):
+the analyzed `Library` has a concrete type. `rule_constant_range` then checks
+every integer and bit-string literal against the range of that type: `SINT`
+holds -128 to 127, `BYTE` 0 to 255, `DWORD` 0 to 4294967295. A literal's value
+must be one its type can hold.
 
-- 32-bit integers: signed for `SINT`, `INT` and `DINT`; unsigned for `USINT`,
-  `UINT`, `UDINT`, `BYTE`, `WORD` and `DWORD`;
-- 64-bit integers: signed for `LINT`; unsigned for `ULINT` and `LWORD`.
-
-Doing this before #2050 would mean predicting codegen's operation type for each
-context (generic arguments, `FOR` bounds, comparisons), which #2050 removes
-from `rule_constant_range`.
-
-The threshold is codegen's storage width, not the type's own range. The type's
-range would newly reject programs that compile today: `FOR s := 0 TO 300` on a
-`SINT`, `ADD(s, 300)`, `b : BYTE := 256` and `BYTE#256` all compile now.
-Tightening to the type's range is a behaviour change and gets its own issue.
+- **Stricter than codegen.** Codegen checks only the 32- or 64-bit slot a
+  value is stored in (`value_range::fits`). These programs compile today and
+  will be rejected: `FOR s := 0 TO 300` on a `SINT`, `ADD(s, 300)`,
+  `b : BYTE := 256`, `BYTE#256`, `d : DWORD := -1`.
+- **Bit strings are checked.** `rule_constant_range` and `P2026.rst` exempt
+  them today, on the grounds that wrapping a bit pattern is legitimate.
+  Wrapping a value at run time stays legitimate and is not affected. A
+  constant is not a run-time value, though, and `BYTE#256` is not a byte. The
+  exemption goes, and so does `P2026.rst`'s `pattern := 255 + 1` example of an
+  accepted wrap.
+- **Generic parameters are checked.** An argument to `ADD`'s `ANY_NUM` inputs
+  is checked against the type the call resolves to, which #2050 records on the
+  literal. `P2026.rst` says such arguments are not checked; that changes.
+- **Same change as #2050's last step.** That step switches
+  `rule_constant_range` from predicting literal types to reading them. This
+  lands as part of it or right after it. Either way, the comparison and
+  `CASE` checks keep reading the program as written, because they ask whether
+  the other operand can ever equal the literal, which is a different question
+  from the literal's own type (ADR-0056's `DINT#300 < s` case).
+- **Not before #2050.** Doing it earlier would mean predicting the operation
+  type of each context (generic arguments, `FOR` bounds, comparisons), which
+  #2050 removes from `rule_constant_range`.
+- **Codegen keeps its looser check** as the fallback.
 
 **(a) sites (13, 16, 17, 21).** Each codegen test that reaches the fallback (for
 example `compile_when_case_label_does_not_fit_selector_width_then_constant_overflow`,
@@ -126,10 +144,16 @@ the `CASE` cases are already in `rule_constant_range/tests.rs`, but `ULINT`
 gets a doc comment naming the rule that reports the problem first, as
 `compile_stmt.rs` already has for `CASE` labels.
 
-**Site 18.** No analyzer rule: the program is valid. #1938 removes the known
-path. The (a) PR adds the rule test for an undeclared name next to codegen's
-fallback. Once codegen allocates every variable the analyzer accepts, the site
-becomes an internal error with the others.
+**Site 18.** No analyzer rule: the programs that reach it are valid. Today
+codegen tells the user that a declared variable is undefined. Instead, its
+lookup failure reports P9999 (`Diagnostic::not_implemented`), saying the
+variable is one codegen cannot yet store. An undeclared name never reaches
+that point through `compile`, because `rule_use_declared_symbolic_var` reports
+it first. The PR adds that rule test next to the codegen fallback.
+`compile_extends_inheritance.rs` and `extends.rst` change from P4007 to P9999.
+#1938 then removes the resource-global path, and once codegen stores every
+variable the analyzer accepts, the site becomes an internal error with the
+others.
 
 **Sites 11–12.** `signed_integer_to_i64` becomes `Option<i64>`, and the two
 identical callers (`compile_expr::constant_i64`, `compile_loop::try_constant_i64`)
@@ -163,21 +187,23 @@ lowering has two fewer sites to translate.
    element or field stores.
 4. Core, (a) sites: matching rule tests and doc comments on the codegen
    fallbacks.
-5. Core, literals, **after #2050**: literal storage range.
+5. Core, site 18: codegen's variable lookup reports P9999 instead of P4007.
+6. Core, literals, **with or after #2050's last step**: every literal is
+   checked against its type's range.
 
-PR 1 lands first. PRs 2–4 are independent of each other and of #2050. PR 5
-waits for #2050's literal-type step.
+PR 1 lands first. PRs 2–5 are independent of each other and of #2050. PR 6
+belongs with #2050's last step.
 
-## Open questions for review
+## Decisions
 
-1. Literal threshold. The plan uses codegen's storage width so that no valid
-   program changes. Is the type's own range wanted instead, as a deliberate
-   behaviour change?
-2. Inline array bounds. The plan reports P2024, matching `TYPE` arrays, rather
-   than codegen's P2026. Is that right?
-3. Site 18. Should codegen's fallback become `not_implemented` (P9999) now,
-   rather than waiting for #1938, so that the resource-global case stops
-   claiming the variable is undefined?
+Settled in review of #2055, on the principle that correctness comes before
+keeping today's programs compiling:
+
+1. A literal is checked against its type's own range, bit strings and generic
+   parameters included, not against codegen's storage width.
+2. An inline array bound outside `DINT` is P2024, the code a `TYPE` array
+   already gets, not codegen's P2026.
+3. Codegen's variable lookup reports P9999 now, rather than waiting for #1938.
 
 ## File map
 
@@ -191,13 +217,16 @@ waits for #2050's literal-type step.
   `codegen/src/string_width.rs` (fallback comments). `P4034.rst` already
   describes these cases, so it needs no change.
 - PR 4: rule tests in `analyzer/src/rule_constant_range/tests.rs`,
-  `rule_loop_control_inside_loop.rs`, `rule_use_declared_symbolic_var.rs`,
-  `rule_function_call_type_check` tests; fallback comments in
-  `codegen/src/compile_stmt.rs`, `compile.rs`, `compile_string.rs`
-- PR 5: `analyzer/src/rule_constant_range.rs` or a new rule beside it;
-  `docs/reference/compiler/problems/P2026.rst` (it says generic parameters
-  and bit strings are not checked, which changes for values beyond the
-  storage width)
+  `rule_loop_control_inside_loop.rs` and the `rule_function_call_type_check`
+  tests; fallback comments in `codegen/src/compile_stmt.rs` and
+  `compile_string.rs`
+- PR 5: `codegen/src/compile.rs`, `codegen/tests/it/compile_extends_inheritance.rs`,
+  `analyzer/src/rule_use_declared_symbolic_var.rs` (rule test),
+  `docs/reference/language/object-orientation/extends.rst`
+- PR 6: `analyzer/src/rule_constant_range.rs` and its tests (including the
+  module doc's bit-string exemption); `docs/reference/compiler/problems/P2026.rst`
+  (the "Bit strings are not checked" section and the sentence on generic
+  parameters)
 
 ## Tasks
 
@@ -215,6 +244,7 @@ Core PR (2), arrays:
       each bound and for the `DINT` limits themselves
 - [ ] `P2027.rst` and `P2024.rst`
 - [ ] Doc comments on the two codegen fallbacks
+- [ ] Open a follow-up issue for subscripts that name a constant (`a[K]`)
 
 Core PR (3), string encodings:
 - [ ] Comparison operands, string-function operands (nested too), and stores
@@ -225,19 +255,29 @@ Core PR (3), string encodings:
 
 Core PR (4), (a) sites:
 - [ ] Rule tests for each codegen fallback test program not already covered
-- [ ] Doc comments on sites 13, 16, 17, 18, 21
+- [ ] Doc comments on sites 13, 16, 17, 21
 
-Core PR (5), literals (after #2050):
-- [ ] Storage-range check on every recorded literal type; tests for each
-      program in sites 2–10, and for the programs listed under the threshold
-      above, which must stay valid
+Core PR (5), site 18:
+- [ ] `var_index` reports `Diagnostic::not_implemented` for a name it has no
+      slot for
+- [ ] `compile_extends_inheritance.rs` expects P9999; `extends.rst` says so
+- [ ] Rule test in `rule_use_declared_symbolic_var` for the undeclared-name
+      program that codegen's fallback was written for
+
+Core PR (6), literals (with or after #2050's last step):
+- [ ] `rule_constant_range` checks every literal against its recorded type's
+      range, bit strings and generic parameters included; tests for each
+      program in sites 2–10 and for each newly rejected program listed above
+- [ ] Remove the bit-string exemption from the rule's module doc
 - [ ] `P2026.rst`
 
 Every core PR that adds or extends a rule:
-- [ ] Show that `compile` output is unchanged for valid programs. The
-      end-to-end harness ignores analysis diagnostics (`parse` keeps them in
-      the context), so run the suite once with `parse` asserting that the new
-      rule reports nothing, and report the result in the PR.
+- [ ] Find every program the rule newly rejects. The end-to-end harness
+      ignores analysis diagnostics (`parse` keeps them in the context), so
+      run the codegen suite once with `parse` asserting that the rule reports
+      nothing, and check the documentation's runnable examples. Fix each
+      fixture that relied on an invalid program, or turn it into a test of
+      the new diagnostic, and list them all in the PR.
 
 Every PR:
 - [ ] The PR description lists its sites and their group.
