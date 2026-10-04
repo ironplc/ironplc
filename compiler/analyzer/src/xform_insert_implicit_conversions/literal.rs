@@ -20,8 +20,8 @@
 use std::collections::HashMap;
 
 use ironplc_dsl::common::{
-    ElementaryTypeName, GenericTypeName, InitialValueAssignmentKind, Library, LibraryElementKind,
-    TypeName,
+    ConstantKind, ElementaryTypeName, GenericTypeName, InitialValueAssignmentKind, Library,
+    LibraryElementKind, TypeName,
 };
 use ironplc_dsl::core::Id;
 use ironplc_dsl::textual::{
@@ -31,7 +31,7 @@ use ironplc_dsl::textual::{
 use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
-use crate::intermediates::conversion_target::concrete;
+use crate::intermediates::conversion_target::{concrete, wrap};
 use crate::intermediates::numeric_operation::{
     literal_default_type, numeric_operation_width, OperationWidth,
 };
@@ -85,10 +85,19 @@ impl ImplicitConversions<'_> {
     /// Gives the untyped numeric literals of `expr` the type they are
     /// compiled at, when `expr` is compiled at `context`.
     pub(super) fn type_literals(&self, expr: &mut Expr, context: Option<TypeId>) {
-        if let (Some(ExprType::Literal(generic)), Some(context)) = (&expr.expr_type, context) {
-            if is_numeric_category(generic) {
+        match (&expr.expr_type, context) {
+            (Some(ExprType::Literal(generic)), Some(context)) if is_numeric_category(generic) => {
                 expr.expr_type = Some(ExprType::Concrete(context));
             }
+            // A typed numeric literal (`DINT#5`) keeps its type and is
+            // converted to its context's, which codegen compiled it at.
+            (Some(ExprType::Concrete(own)), Some(context))
+                if is_numeric_literal(expr) && self.converts_numeric(*own, context) =>
+            {
+                wrap(expr, context);
+                return;
+            }
+            _ => {}
         }
         let own = concrete(expr);
         let numeric_pair =
@@ -487,6 +496,14 @@ impl ImplicitConversions<'_> {
         }
     }
 
+    /// Returns `true` when a numeric value of type `own` is converted to be
+    /// operated on as the numeric type `context`.
+    fn converts_numeric(&self, own: TypeId, context: TypeId) -> bool {
+        self.width_of_type(own).is_some()
+            && self.width_of_type(context).is_some()
+            && self.conversions.needs_conversion(own, context)
+    }
+
     fn width_of_type(&self, id: TypeId) -> Option<OperationWidth> {
         numeric_operation_width(&self.conversions.name_of(id)?)
     }
@@ -500,6 +517,14 @@ impl ImplicitConversions<'_> {
         let lint: TypeName = ElementaryTypeName::LINT.into();
         self.context.types().id_of(&lint)
     }
+}
+
+/// Returns `true` when `expr` is an integer or real literal.
+fn is_numeric_literal(expr: &Expr) -> bool {
+    matches!(
+        &expr.kind,
+        ExprKind::Const(ConstantKind::IntegerLiteral(_) | ConstantKind::RealLiteral(_))
+    )
 }
 
 /// Returns `true` for the category of an untyped numeric literal.

@@ -117,8 +117,14 @@ pub(crate) fn emit_fb_instance_member_initializers(
 ) -> Result<(), Diagnostic> {
     for element in init {
         let value = match &element.init {
+            // The value is stored in the field: at its declared type in a
+            // user-defined block, and at the default slot type in a standard
+            // one, which records no field types.
             StructInitialValueAssignmentKind::Constant(constant) => {
-                Expr::new(ExprKind::Const(constant.clone()))
+                let mut expr = Expr::new(ExprKind::Const(constant.clone()));
+                expr.expr_type =
+                    fb_field_type_id(ctx, instance_name, &element.name).map(ExprType::Concrete);
+                expr
             }
             // The value is a member of the field's type.
             StructInitialValueAssignmentKind::EnumeratedValue(value) => {

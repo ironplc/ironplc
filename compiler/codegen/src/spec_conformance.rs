@@ -659,7 +659,7 @@ fn enum_spec_req_en_080_ordinals_from_type_members() {
         &options,
     )
     .unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], &options).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     let container = crate::compile(
         &analyzed,
         &ctx,

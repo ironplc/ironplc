@@ -774,3 +774,16 @@ fn apply_when_method_call_spelled_in_another_case_then_argument_takes_parameter_
     };
     assert_eq!(literal_types_with(source, &options), vec!["LINT"]);
 }
+
+#[spec_test(REQ_IC_analyzer_066)]
+#[test]
+fn apply_when_typed_literal_in_context_of_another_type_then_converted_to_it() {
+    let source = arithmetic_program("LINT", "", "UDINT#4000000000");
+    assert_eq!(assigned_values(&source), vec!["UDINT->LINT"]);
+}
+
+#[test]
+fn apply_when_typed_literal_in_context_of_its_own_type_then_unchanged() {
+    let source = arithmetic_program("LINT", "", "LINT#5");
+    assert_eq!(assigned_values(&source), vec!["LINT"]);
+}
