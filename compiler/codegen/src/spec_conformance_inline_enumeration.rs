@@ -5,38 +5,10 @@
 //! document's requirements, to keep both modules within the size limit.
 
 use ironplc_container::debug_section::iec_type_tag;
-use ironplc_dsl::core::FileId;
 use ironplc_parser::options::{CompilerOptions, Dialect};
-use ironplc_vm::test_support::load_and_start;
-use ironplc_vm::VmBuffers;
 use spec_test_macro::spec_test;
 
-use crate::spec_conformance::{compile_and_run, compile_only};
-
-/// Parse, analyze and compile under `options`.
-fn try_compile(
-    source: &str,
-    options: &CompilerOptions,
-) -> Result<ironplc_container::Container, ironplc_dsl::diagnostic::Diagnostic> {
-    let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], options).unwrap();
-    crate::compile(
-        &analyzed,
-        &ctx,
-        &crate::CodegenOptions::default(),
-        &crate::EmptyLookup,
-    )
-}
-
-/// Run one scan of a container.
-fn run(container: &ironplc_container::Container) -> VmBuffers {
-    let mut bufs = VmBuffers::from_container(container);
-    {
-        let mut vm = load_and_start(container, &mut bufs).unwrap();
-        vm.run_round(0).unwrap();
-    }
-    bufs
-}
+use crate::spec_conformance::{compile_and_run, compile_and_run_with, compile_only, read_i32};
 
 /// REQ-EN-codegen-090: inline values number as a named list does,
 /// explicit member values included.
@@ -51,9 +23,9 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let bufs = run(&try_compile(source, &options).unwrap());
-    assert_eq!(bufs.vars[0].as_i32(), 2);
-    assert_eq!(bufs.vars[1].as_i32(), 5);
+    let (c, bufs) = compile_and_run_with(source, &options);
+    assert_eq!(read_i32(&c, &bufs, "a"), 2);
+    assert_eq!(read_i32(&c, &bufs, "b"), 5);
 }
 
 /// REQ-EN-codegen-091: an inline enumeration variable is a DINT slot.
@@ -113,9 +85,9 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 0);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
+    let (c, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&c, &bufs, "a"), 0);
+    assert_eq!(read_i32(&c, &bufs, "b"), 0);
 }
 
 /// REQ-EN-codegen-094: a function-local inline enumeration is
@@ -140,9 +112,9 @@ PROGRAM main
   b := f();
 END_PROGRAM
 ";
-    let (_c, bufs) = compile_and_run(source);
-    assert_eq!(bufs.vars[0].as_i32(), 7);
-    assert_eq!(bufs.vars[1].as_i32(), 7);
+    let (c, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&c, &bufs, "a"), 7);
+    assert_eq!(read_i32(&c, &bufs, "b"), 7);
 }
 
 /// REQ-EN-codegen-095: an unqualified value's ordinal is looked up in the
@@ -162,8 +134,8 @@ PROGRAM main
   c := X;
 END_PROGRAM
 ";
-    let bufs = run(&try_compile(source, &CompilerOptions::default()).unwrap());
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-    assert_eq!(bufs.vars[2].as_i32(), 1);
+    let (c, bufs) = compile_and_run(source);
+    assert_eq!(read_i32(&c, &bufs, "a"), 1);
+    assert_eq!(read_i32(&c, &bufs, "b"), 0);
+    assert_eq!(read_i32(&c, &bufs, "c"), 1);
 }
