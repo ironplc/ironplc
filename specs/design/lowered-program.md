@@ -233,6 +233,13 @@ sequential function charts and the graphical languages can be lowered later.
   function block diagram, while the program runs.
 - Reporting an error in `ENO` rather than trapping (see
   [EN and ENO](#en-and-eno)).
+- Making the default string capacity a compiler option that a dialect sets.
+  This design keeps it possible (see [String capacity](#string-capacity)).
+- Fixing how lowering chooses the capacity of an intermediate string result
+  ([issue 2118](https://github.com/ironplc/ironplc/issues/2118)).
+- How the bytecode VM dispatches a call through an interface, which
+  [pull request 1870](https://github.com/ironplc/ironplc/pull/1870) designs, and
+  `__QUERYINTERFACE` and `__QUERYPOINTER`.
 
 ---
 
@@ -469,6 +476,7 @@ pub enum TypeKind {
     FunctionBlock { fields: Vec<Field>, block: Block },
     Program { fields: Vec<Field>, body: PouId },
     Reference { target: TypeId, nullability: Nullability }, // Nullable or NonNull (see §3.4)
+    Interface,                         // a value referring to an instance of any implementer (see §3.8)
 }
 
 pub struct Field {
@@ -575,18 +583,19 @@ a comparison of two arrays from being writable.
 
 | Class | Types | Represented by |
 |---|---|---|
-| Scalar | `BOOL`, integers, reals, bit strings, time and date types, enumerations, subranges, references | `Expr`, typed by a `ScalarType` |
+| Scalar | `BOOL`, integers, reals, bit strings, time and date types, enumerations, subranges, references, interface values | `Expr`, typed by a `ScalarType` |
 | String | `STRING`, `WSTRING` | `StrExpr`, typed by a `StringShape` |
 | Aggregate | arrays, structures, function block and program instances | `Place` only; there is no aggregate expression |
 
 `ScalarType` is today's `OpType`, one of four operation widths (32-bit integer,
 64-bit integer, 32-bit float, 64-bit float) with a signedness, plus a
-reference kind. Widths narrower than 32 bits exist only as the storage of a
-place (ADR-0001). `StringShape` is today's `string_width::StringShape`: an
-encoding (ADR-0034) and a capacity.
+reference kind and an interface kind. Widths narrower than 32 bits exist only
+as the storage of a place (ADR-0001). `StringShape` is today's
+`string_width::StringShape`: an encoding (ADR-0034) and a capacity (see
+[String capacity](#string-capacity)).
 
 ```rust
-pub enum ScalarType { I32(Signedness), I64(Signedness), F32, F64, Ref }
+pub enum ScalarType { I32(Signedness), I64(Signedness), F32, F64, Ref, Interface }
 ```
 
 The operation widths are ADR-0001's, and this design assumes them. They are
@@ -608,6 +617,14 @@ A reference has no width in the lowered program. The bytecode VM stores one as
 a 64-bit variable-table index (`codegen/src/type_info.rs`); a 32-bit
 WebAssembly target would store a 32-bit address. Which applies is the
 backend's layout.
+
+An interface value has no width either, and no visible parts. It refers to
+one function block instance and knows that instance's concrete type (see
+[Calls through an interface](#calls-through-an-interface)). How it is stored
+is the backend's layout. For the bytecode VM,
+[pull request 1870](https://github.com/ironplc/ironplc/pull/1870) proposes an
+index into a read-only table of instances in the container. A native backend
+might store a pointer and a type id.
 
 The four numeric kinds are also the four value types of WebAssembly, with
 signedness on the operation in both targets, so the scalar model maps onto
@@ -722,9 +739,9 @@ Two things follow from the copy:
 - **A reference into the copy.** `REF(x)` for a field of the current instance,
   taken inside the body, refers to the working copy. It is valid only while
   the body runs. Today the VM's references name variable-table slots, and
-  `REF(x)` names the slot that holds the copy. Whether analysis should reject
-  such a reference when it outlives the body is decided when a later design
-  lets one escape.
+  `REF(x)` names the slot that holds the copy, which every instance of the
+  type reuses. What to do about a reference that outlives the body is open
+  question 1.
 - **A reference to the instance's storage.** One that reaches the instance's
   storage while its body runs reads the values from before the body started,
   and its writes are overwritten when the body returns. The VM cannot form such
@@ -756,7 +773,8 @@ pub enum ExprKind {
     ShortCircuit { op: ShortCircuitOp, lhs: Box<Expr>, rhs: Box<Expr> },
     Call { callee: Callee, args: Vec<Arg> },
     RefTo(Place),
-    Null,
+    InterfaceOf(Place),                             // the interface value for a function block instance
+    Null,                                           // a null reference or a null interface value
     RoundTime,                                      // the time of the current round
 }
 ```
@@ -857,6 +875,60 @@ Temporary buffers, their pool size and their release
 ([ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md)) are how
 the bytecode backend evaluates a `StrExpr`. They do not appear in the lowered
 program.
+
+#### String capacity
+
+Every string type and every string expression has a capacity: the most code
+units its value can hold. A `StringShape` always states it, so the lowered
+program has no string of unknown capacity.
+
+- **A declared string** has the capacity its declaration gives, as in
+  `STRING[80]`. If the declaration gives none, it has the default capacity.
+  The analyzer applies the default when it resolves the type, so every string
+  type it records has a capacity, and lowering copies it into the type table.
+- **The default capacity** is a compile-time choice. Today it is 254
+  (`DEFAULT_STRING_MAX_LENGTH`); CODESYS and TwinCAT use 80, so a dialect
+  would set it. A different default changes only the capacities the analyzer
+  records. No backend assumes a value: a backend sizes storage from the
+  capacities in the lowered program, and the bytecode VM learns from the
+  container at load time how much memory to allocate. Making the default a
+  compiler option is out of scope (see [Scope](#scope)); this design keeps it
+  possible.
+- **An intermediate result** has the capacity lowering gives it. This covers
+  every `StrExpr` that is not a `Read` of a place: a literal, or the result of
+  `CONCAT` or a conversion. A backend sizes the storage it evaluates the
+  expression into from that capacity, never from the program's declarations.
+
+A value is cut only when it goes into a place or an intermediate result whose
+capacity is smaller than the value. It keeps its first code units.
+
+How lowering chooses an intermediate result's capacity is a known defect,
+[issue 2118](https://github.com/ironplc/ironplc/issues/2118). Today the
+bytecode backend makes every temporary as large as the largest string in the
+program. It also copies any operand that is not a plain variable into a slot
+of 254 code units
+([issue 1732](https://github.com/ironplc/ironplc/issues/1732)). How much of a
+result survives is therefore a property of the program, not of the expression.
+
+At first, lowering gives each intermediate result the capacity the bytecode
+backend gives it today, so the move is behaviour preserving. Fixing the defect
+then changes that one rule in lowering and no backend: for example, `CONCAT`
+of a `STRING[m]` and a `STRING[n]` would have `m + n`. REQ-LOW-codegen-055
+holds once the defect is fixed.
+
+**REQ-LOW-analyzer-053** Every string type the analyzer records has a
+capacity: the one its declaration gives, or the default capacity.
+
+**REQ-LOW-lowering-054** Every `StringShape` in the lowered program states a
+capacity, and no backend applies a default.
+
+**REQ-LOW-codegen-055** A backend sizes the storage for a string value from
+the capacity the lowered program gives that value, never from the capacities
+of other strings in the program.
+
+**REQ-LOW-codegen-056** A string value that goes into a place or an
+intermediate result with a smaller capacity keeps its first code units, up to
+that capacity.
 
 ### 3.7 Statements
 
@@ -966,7 +1038,14 @@ its outputs from the instance's fields, in that order.
 ### 3.8 Callees, arguments and intrinsics
 
 ```rust
-pub enum Callee { User(PouId), Intrinsic(Intrinsic) }
+pub enum Callee { User(PouId), Intrinsic(Intrinsic), Interface(InterfaceCallee) }
+
+pub struct InterfaceCallee {
+    pub value: Box<Expr>,               // the interface value the call goes through
+    pub implementers: Vec<Implementer>, // every concrete type the value can hold
+}
+
+pub struct Implementer { pub ty: TypeId, pub method: PouId }
 pub enum Block  { User(PouId), Standard(StandardBlock) }   // ADR-0003
 
 pub enum Arg {
@@ -1049,12 +1128,66 @@ these is resolved statically, as the first phase of
 
 A property is sugar. Reading `inst.P` calls its `GET` accessor, and writing
 `inst.P := v` calls its `SET` accessor, each lowered as a method call on
-`inst`, so the lowered program has no property node. A call through an
-interface is open question 2.
+`inst`, so the lowered program has no property node.
 
 **REQ-LOW-lowering-076** The first parameter of a method is its instance
 parameter, and the first argument of every call to a method is a `Ref` to the
-receiver's place.
+receiver's place, except a call through an interface (see
+[Calls through an interface](#calls-through-an-interface)).
+
+#### Calls through an interface
+
+An interface value refers to one function block instance whose concrete type
+implements the interface. Every implementer is in the program the compiler
+sees: compatibility libraries are merged before analysis, and there is no
+separate compilation. So a call through an interface goes one of two ways:
+
+- **One possible type.** The analyzer finds the concrete types each interface
+  variable can hold, following the instances assigned or passed to it.
+  Where only one is possible, lowering gives the variable the type of a
+  nullable reference to that function block. A call through it is then a
+  direct method call on the instance the reference points at. One type can
+  still mean many instances, so the receiver is still found at run time. The
+  analyzer makes this decision, because it decides whether a program that
+  needs dynamic dispatch is reported when dynamic dispatch is not enabled.
+- **Several possible types.** The call is a `Call` whose callee is
+  `Callee::Interface`. It carries the interface value and, for every concrete
+  type the value can hold, that type's method. Lowering makes that list from
+  the whole program. The arguments do not include a receiver; the receiver is
+  the instance the value refers to.
+
+What the call means is the same on every target: the method of the value's
+concrete type runs with the value's instance as its receiver, and a call
+through a null interface value traps. How it dispatches is the backend's
+choice. For the bytecode VM, pull request 1870 proposes reading the instance
+and its type from a table in the container, then branching to a direct call.
+A native backend might use a switch or a table of functions. The lowered
+program fixes the meaning and the list of implementers, and leaves the
+mechanism to each backend.
+
+An interface value is made from an instance place (`InterfaceOf`). Assigning
+it to a variable of an interface that it extends copies it unchanged. Two
+interface values are equal when they refer to the same instance, and `Null`
+is the null interface value. Analysis rejects an assignment that converts
+downward. `__QUERYINTERFACE` and `__QUERYPOINTER` are out of scope (see
+[Scope](#scope)).
+
+**REQ-LOW-analyzer-107** For each call through an interface, analysis records
+the concrete types the interface value can hold, or that it can hold only one.
+
+**REQ-LOW-lowering-104** An interface variable whose value can hold only one
+concrete type has the type of a nullable reference to that function block. A
+call through it lowers to a direct method call whose first argument is a `Ref`
+to the place the reference points at, so a null value traps there
+(REQ-LOW-codegen-088).
+
+**REQ-LOW-lowering-105** Any other call through an interface lowers to a
+`Callee::Interface` that lists, for every concrete type the value can hold,
+the method that implements the called method.
+
+**REQ-LOW-codegen-106** A call through an interface runs the method of the
+value's concrete type with the value's instance as its receiver, and traps
+when the value is null.
 
 `Intrinsic` is an enum with one variant per operation the compiler implements
 itself, at each set of operand types it takes: the standard functions of
@@ -1247,9 +1380,11 @@ task in the round runs, and the VM does not resume (`run_round`, `VmFaulted`).
 no program instance after it in the round runs.
 
 **REQ-LOW-codegen-098** Every trap is a division by zero, a negative exponent,
-a null dereference, a subscript out of bounds, a string that does not convert
-or a watchdog timeout, and a backend reports each under the problem code the
-bytecode VM gives it (V4001 to V4006).
+a null dereference, a call through a null interface value, a subscript out of
+bounds, a string that does not convert or a watchdog timeout, and a backend
+reports each under the problem code the bytecode VM gives it (V4001 to V4006,
+and the code chosen for a call through a null interface value when the VM
+implements one).
 
 After a trap, every variable keeps what was written to it before the trap,
 except the fields of an instance whose body was still running. Those keep the
@@ -1322,6 +1457,8 @@ today.
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)), with a codegen fallback for a pair without one | Its operands' conversions | A `Compare` at that type |
 | Argument order and count | `xform_named_to_positional_args`, then re-checked at 19 sites | Positional arguments | `Vec<Arg>` matched to parameters |
+| Whether an interface value can hold only one concrete type | Not made; calls through an interface are not compiled | The concrete types the value can hold (REQ-LOW-analyzer-107) | A direct method call, or a `Callee::Interface` |
+| Capacity of a string declared without one | Codegen and `slot_count`, from `DEFAULT_STRING_MAX_LENGTH` | The string type's capacity (REQ-LOW-analyzer-053) | The capacity of its `StringShape` |
 
 **Decisions lowering makes**
 
@@ -1330,6 +1467,8 @@ today.
 | Narrowing before a store | `emit_truncation` at each store site | `Truncate` |
 | Logical or bitwise operator | `emit_not` and `compile_compare`, from `expr_is_bool` | Distinct operators |
 | Callee | The analyzer's enum on the signature (to become `BuiltinFunction`, see [Names](#names)), dispatched by `compile_intrinsic`; then `lookup_builtin` picks a `func_id` from the operation width | `Callee`, with the `Intrinsic` for the operand types (REQ-LOW-lowering-147) |
+| Implementers of a call through an interface | Not made; calls through an interface are not compiled | `Callee::Interface` (REQ-LOW-lowering-105) |
+| Capacity of an intermediate string result | Codegen, from the largest string in the program ([issue 2118](https://github.com/ironplc/ironplc/issues/2118)) | The capacity of the `StrExpr`'s `StringShape` |
 | Argument passing mode | `ParamPassing` in `compile.rs` | `Arg` variant |
 | Variable and field identity | Nine name-keyed maps; lower-cased field names | `VarId`, `FieldIdx` |
 | Enumeration ordinal | `enum_map` | `Const` |
@@ -1534,6 +1673,7 @@ How the three targets are expected to realise the same node:
 | `Case` | Compare and branch chain | `br_table` or a chain | `switch` |
 | `Place` | One of seven load and store opcode families, chosen by layout; a field of the current instance is the slot the VM copied it into | An address in linear memory, from the instance parameter for a field of the current instance | A `getelementptr` from the variable's `alloca` or global, or from the instance parameter |
 | `Intrinsic` | `BUILTIN func_id` (ADR-0008) | A call to a runtime function, or inline instructions | An LLVM intrinsic such as `llvm.sqrt`, or a call to a runtime function |
+| `Callee::Interface` | As pull request 1870 decides; it proposes a table of instances read by `LOAD_INSTANCE`, then a branch to a `METHOD_CALL` per implementer | `br_table` or a branch over the implementers | A `switch` over the implementers, or a call through a table of functions |
 | `Block::Standard` | `FB_CALL` with a standard type id (ADR-0003) | A call to a runtime function, or its expansion | Its expansion, compiled like a user block |
 | `RoundTime` | The `uptime_us` of `run_round` | A value the host passes in | A global the runtime writes before each round |
 
@@ -2071,7 +2211,7 @@ does not supersede it.
 ## Decisions to Record
 
 The choice among the alternatives above is a decision, and belongs in ADRs
-that this document then cites. Nine decisions are separable:
+that this document then cites. Eleven decisions are separable:
 
 1. Code generation consumes a separate, target-neutral lowered program.
 2. The analyzer makes and records every decision whose outcome can make a
@@ -2098,25 +2238,45 @@ that this document then cites. Nine decisions are separable:
 9. A function block or method body works on a copy of its instance's fields,
    as the bytecode VM does. A trap leaves the fields of an instance whose body
    was running as they were before that body started
-   ([Working copy of an instance](#working-copy-of-an-instance)).
+   ([Working copy of an instance](#working-copy-of-an-instance)). Open
+   question 1 may change this decision.
+10. A call through an interface is one call in the IR. It lists the methods of
+    every concrete type the interface value can hold, and how it dispatches is
+    each backend's choice
+    ([Calls through an interface](#calls-through-an-interface)).
+11. Every string in the IR has an explicit capacity. The analyzer applies the
+    default capacity, lowering decides the capacity of an intermediate result,
+    and no backend sizes a string from other declarations
+    ([String capacity](#string-capacity)).
 
 ## Open Questions
 
-1. **String capacity.** Whether `StringShape::capacity` is a language property
-   or a bytecode VM concern. `STRING[80]` states a capacity in the language,
-   but a `STRING` declared without one takes a default, and the VM sizes its
-   string region (`string_region_size`) on its own.
-2. **Interface calls.** Static method calls are settled
-   ([Callees, arguments and intrinsics](#38-callees-arguments-and-intrinsics)).
-   [Pull request 1870](https://github.com/ironplc/ironplc/pull/1870) proposes
-   how a call through an interface works. An interface value is a fat
-   reference: an instance reference and a dispatch id. The compiler sees every
-   implementer, so a call branches over the known implementers with a direct
-   call in each branch. If that is chosen, a call through an interface needs no
-   node of its own: it lowers to a `Case` on the dispatch id, with a method
-   `Call` in each arm. What the lowered program would still need is a type for
-   the fat reference, and a way for an arm to treat the instance as the
-   implementer its dispatch id has established.
+1. **A reference into a function block's own fields.** Inside a function block
+   or method body, `REF(x)` of a field refers to the working copy (see
+   [Working copy of an instance](#working-copy-of-an-instance)). On the
+   bytecode VM that copy lives in slots that belong to the function block
+   type, which every instance of the type reuses. So a reference that outlives
+   the body reads and writes whichever instance of the type ran last. Nothing
+   reports it. The copy and a stable reference to a field cannot both hold.
+
+   A proposed resolution:
+   - **Fields in place.** Fields are accessed in place: one storage per
+     instance, writes visible at once, and a reference to a field valid for
+     the life of the program.
+   - **Writes before a trap stay.** Writes made before a trap stay visible,
+     with the VM writing each running body's copy back when it faults.
+   - **The copy as an optimization.** The copy becomes a bytecode-backend
+     optimization, chosen per function block type. Lowering allows it only
+     for a type none of whose bodies takes a reference into its own instance
+     or reaches another instance of the same type.
+   - **A VM change is needed.** Addressing fields in place needs a VM
+     reference that can name storage in the data region. Today a reference
+     is a variable-table index. That is a VM and container change, outside
+     this design's scope.
+
+   It does not block the first phase. A statement that takes a reference into
+   its own instance is one lowering does not support, so it stays on the route
+   that reads the AST until this is settled.
 
 ## References
 
