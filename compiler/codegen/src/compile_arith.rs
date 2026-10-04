@@ -27,8 +27,9 @@ use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{BinaryExpr, Expr, Function, Operator};
 
+use super::call_args::collect_positional_args;
 use super::compile::{CompileContext, OpType, VarTypeInfo};
-use super::compile_call::{collect_positional_args, compile_left_fold, emit_conversion_opcode};
+use super::compile_call::{compile_left_fold, emit_conversion_opcode};
 use super::compile_expr::{compile_expr, emit_arithmetic_op};
 use super::compile_time_arith::{compile_time_arith, time_arith_for, Operand};
 use super::type_info::{expr_operand_name, resolve_type_name};
