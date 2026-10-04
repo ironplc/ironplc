@@ -5,40 +5,10 @@
 //! `compile_wstring.rs` checks how a WSTRING is stored (UTF-16LE per ADR-0016).
 
 use ironplc_container::debug_section::iec_type_tag;
-use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
-use crate::common::{parse_and_compile, parse_and_run, Snapshot};
-
-/// Reads the `cur_length` header field (code units).
-fn read_cur_length(data_region: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([data_region[offset + 2], data_region[offset + 3]])
-}
-
-/// Reads the `char_width` header field (1 = narrow, 2 = wide).
-fn read_char_width(data_region: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([data_region[offset + 4], data_region[offset + 5]])
-}
-
-/// Reads a WSTRING value as a `String`, decoding `cur_length` UTF-16LE code
-/// units from the data region at `offset`.
-fn read_wstring(data_region: &[u8], offset: usize) -> String {
-    let cur_len = read_cur_length(data_region, offset) as usize;
-    let data_start = offset + STRING_HEADER_BYTES;
-    let units: Vec<u16> = (0..cur_len)
-        .map(|i| {
-            let b = data_start + i * 2;
-            u16::from_le_bytes([data_region[b], data_region[b + 1]])
-        })
-        .collect();
-    String::from_utf16(&units).unwrap()
-}
-
-/// Byte span of one `WSTRING[max_len]` element/variable in the data region.
-fn wstring_region(max_len: usize) -> usize {
-    STRING_HEADER_BYTES + max_len * 2
-}
+use crate::common::{parse_and_compile, Snapshot};
 
 #[test]
 fn wstring_when_literal_initializer_then_reads_literal() {
@@ -247,22 +217,18 @@ fn wstring_array_when_assigned_and_read_back_then_values_match() {
 PROGRAM main
   VAR
     arr : ARRAY[1..3] OF WSTRING[8];
+    first : WSTRING[8];
     result : WSTRING[8];
   END_VAR
   arr[1] := \"one\";
   arr[2] := \"two\";
+  first := arr[1];
   result := arr[2];
 END_PROGRAM
 ";
     let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // Elements wait on paths, so they are read from the array's base.
-    let bufs = snapshot.buffers();
-    let arr_base = bufs.vars[0].as_i32() as usize;
-    let stride = wstring_region(8);
-    assert_eq!(read_wstring(&bufs.data_region, arr_base), "one");
-    assert_eq!(read_wstring(&bufs.data_region, arr_base + stride), "two");
-
+    assert_eq!(snapshot.read("first"), "one");
     assert_eq!(snapshot.read("result"), "two");
 }
 
@@ -272,16 +238,20 @@ fn wstring_array_when_initial_values_then_populated() {
 PROGRAM main
   VAR
     days : ARRAY[1..3] OF WSTRING[8] := [\"Mon\", \"Tue\", \"Wed\"];
+    r1 : WSTRING[8];
+    r2 : WSTRING[8];
+    r3 : WSTRING[8];
   END_VAR
+  r1 := days[1];
+  r2 := days[2];
+  r3 := days[3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let base = bufs.vars[0].as_i32() as usize;
-    let stride = wstring_region(8);
-    assert_eq!(read_wstring(&bufs.data_region, base), "Mon");
-    assert_eq!(read_wstring(&bufs.data_region, base + stride), "Tue");
-    assert_eq!(read_wstring(&bufs.data_region, base + 2 * stride), "Wed");
+    assert_eq!(snapshot.read("r1"), "Mon");
+    assert_eq!(snapshot.read("r2"), "Tue");
+    assert_eq!(snapshot.read("r3"), "Wed");
 }
 
 #[test]
@@ -486,6 +456,7 @@ END_PROGRAM
 
 #[test]
 fn wstring_struct_field_when_assigned_literal_then_stored_wide() {
+    // U+20AC (€) has no narrow encoding, so it only survives a wide field.
     let source = "
 TYPE
   Rec : STRUCT
@@ -496,14 +467,15 @@ END_TYPE
 PROGRAM main
   VAR
     r : Rec;
+    label : WSTRING[10];
   END_VAR
-  r.label := \"hi\";
+  r.label := \"hi€\";
+  label := r.label;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(read_char_width(&bufs.data_region, 0), 2);
-    assert_eq!(read_wstring(&bufs.data_region, 0), "hi");
+    assert_eq!(snapshot.read("label"), "hi€");
 }
 
 e2e_i32!(

@@ -41,7 +41,7 @@ The IronPLC compiler follows a traditional multi-stage compilation pipeline:
 
 ### Naming Conventions
 - `xform_*` modules handle transformations
-- `intermediate_*` modules define data structures
+- `semantic_*` modules define data structures
 - `*_environment` modules manage symbol tables and contexts
 - Use descriptive names that reflect the module's purpose
 
@@ -115,7 +115,7 @@ its type", and every rule reads that answer:
   function's or method's own name is its `ResultVariable`.
 - `ScopeTracker` names the scope a visitor is in. Feed it from `enter_scope`
   and `exit_scope`, and pass `current()` to `find`.
-- `variable_type::declared` gives a name's declared `IntermediateType`, and
+- `variable_type::declared` gives a name's declared `SemanticType`, and
   `variable_type::of` walks a reference such as `s.field[i]` to the element it
   names. `TypeEnvironment::get_by_id` answers for any `type_id`.
 

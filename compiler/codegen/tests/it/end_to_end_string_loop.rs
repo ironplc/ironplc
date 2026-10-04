@@ -13,7 +13,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, read_string, string_offset, Snapshot};
+use crate::common::Snapshot;
 
 // --- The reported reproducer ---
 
@@ -330,13 +330,14 @@ fn end_to_end_when_struct_string_field_assigned_in_loop_then_runs_every_iteratio
 TYPE Rec : STRUCT name : STRING[16]; END_STRUCT; END_TYPE
 
 PROGRAM main
-  VAR r : Rec; i : INT; END_VAR
+  VAR r : Rec; i : INT; name : STRING[16]; END_VAR
   FOR i := 1 TO 50 DO
     r.name := CONCAT('id', 'x');
   END_FOR;
+  name := r.name;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(read_string(&bufs.data_region, string_offset(&[])), "idx");
+    assert_eq!(snapshot.read("name"), "idx");
 }
