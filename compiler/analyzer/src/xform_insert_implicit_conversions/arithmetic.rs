@@ -171,7 +171,7 @@ impl ImplicitConversions<'_> {
 
     /// Returns `true` when the operands of `op` have a typed overload on the
     /// time and date types.
-    fn has_typed_overload(&self, op: &Operator, left: &Expr, right: &Expr) -> bool {
+    pub(super) fn has_typed_overload(&self, op: &Operator, left: &Expr, right: &Expr) -> bool {
         let (Some(left), Some(right)) = (
             self.conversions.operand_name(left),
             self.conversions.operand_name(right),

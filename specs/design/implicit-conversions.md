@@ -139,7 +139,27 @@ An untyped literal has a generic type (`ANY_INT`) until a context gives it one (
 
 **REQ-IC-analyzer-056** A literal assigned to a subrange target takes the subrange's base type.
 
-Literals in the arguments of a standard function or a method, in a comparison of two literals, in a condition or a subscript, and in a declaration's initializer are not typed yet, and codegen still passes their type down.
+Every construct a literal can sit in either passes the type of its context on, computes at a type of its own, or computes at a fixed type, and the literal takes the type it reaches:
+
+**REQ-IC-analyzer-057** A standard function that computes at the type of its context (`ABS`, `MAX`, `LIMIT`, `MOVE`, the inputs of `MUX` and `SEL`) passes that type to its literal inputs: the `5` of `l := MAX(d, 5)` on an `LINT` is an `LINT`.
+
+**REQ-IC-analyzer-058** The selector of `MUX` and of `SEL` takes `DINT`, whatever the type of the inputs it selects between.
+
+**REQ-IC-analyzer-059** The count of a shift or rotate takes `LINT` when the shifted value is operated at 64 bits and `DINT` otherwise.
+
+**REQ-IC-analyzer-060** A position or length input of a string function (`LEFT`, `RIGHT`, `MID`, `INSERT`, `DELETE`, `REPLACE`) takes `DINT`.
+
+**REQ-IC-analyzer-061** The input of a type conversion function takes the conversion's source type: the `5` of `INT_TO_REAL(5)` is an `INT`.
+
+**REQ-IC-analyzer-062** A comparison of two untyped literals compares at the left one's default type: both literals of `1 < 2` are `DINT`s.
+
+**REQ-IC-analyzer-063** A literal argument of a method call takes the type of the parameter it is passed to, or `DINT` for a parameter not declared with a simple type, which is how codegen passes it.
+
+**REQ-IC-analyzer-064** A literal subscript of an array access whose subscripts are not all literals takes `DINT`.
+
+**REQ-IC-analyzer-065** The literals of a `CASE` selector take the selector's type, and those of an `IF`, `WHILE` or `REPEAT` condition the type the condition is tested at.
+
+A literal a standard function does not give a type to (`TRUNC`, a typed time function such as `MUL_TIME`) takes its default type, as does a literal argument of a user-defined function whose parameter the argument pass did not give it, before the argument's conversion. The member initializers of a function block instance, which codegen compiles as expressions it builds itself, are not typed by the pass.
 
 ## Codegen
 

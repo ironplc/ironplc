@@ -673,3 +673,104 @@ fn apply_when_subrange_target_then_literal_takes_base_type() {
         PROGRAM main VAR s : Small; END_VAR s := 3; END_PROGRAM";
     assert_eq!(literal_types(source), vec!["LINT"]);
 }
+
+#[spec_test(REQ_IC_analyzer_057)]
+#[test]
+fn apply_when_literal_input_of_standard_function_then_takes_context_type() {
+    let source = arithmetic_program("LINT", "d : DINT;", "MAX(d, 5)");
+    assert_eq!(literal_types(&source), vec!["LINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_058)]
+#[test]
+fn apply_when_selector_of_mux_or_sel_then_takes_default_type() {
+    let source = arithmetic_program("LINT", "a : LINT; b : LINT;", "MUX(1, a, b)");
+    assert_eq!(literal_types(&source), vec!["DINT"]);
+    let source = arithmetic_program("LINT", "a : LINT;", "SEL(TRUE, a, 7)");
+    assert_eq!(literal_types(&source), vec!["BOOL", "LINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_059)]
+#[test]
+fn apply_when_shift_count_then_takes_width_of_shifted_value() {
+    let source = arithmetic_program("LWORD", "w : LWORD;", "SHL(w, 2)");
+    assert_eq!(literal_types(&source), vec!["LINT"]);
+    let source = arithmetic_program("DWORD", "w : DWORD;", "SHL(w, 2)");
+    assert_eq!(literal_types(&source), vec!["DINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_060)]
+#[test]
+fn apply_when_string_function_position_then_takes_default_type() {
+    let source = arithmetic_program("STRING", "s : STRING;", "LEFT(s, 3)");
+    assert_eq!(literal_types(&source), vec!["DINT"]);
+}
+
+#[test]
+fn apply_when_string_function_nested_in_string_function_then_its_positions_typed() {
+    let source = arithmetic_program("DINT", "s : STRING;", "LEN(MID(s, 2, 3))");
+    assert_eq!(literal_types(&source), vec!["DINT", "DINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_061)]
+#[test]
+fn apply_when_conversion_input_then_takes_source_type() {
+    let source = arithmetic_program("REAL", "", "INT_TO_REAL(5)");
+    assert_eq!(literal_types(&source), vec!["INT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_062)]
+#[test]
+fn apply_when_comparison_of_two_literals_then_both_take_left_default_type() {
+    let source = arithmetic_program("BOOL", "", "1 < 2");
+    assert_eq!(literal_types(&source), vec!["DINT", "DINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_063)]
+#[test]
+fn apply_when_method_argument_then_takes_parameter_type() {
+    let source = "FUNCTION_BLOCK Acc
+        METHOD add : LINT VAR_INPUT n : LINT; END_VAR add := n; END_METHOD
+        END_FUNCTION_BLOCK
+        PROGRAM main VAR a : Acc; r : LINT; END_VAR r := a.add(1); END_PROGRAM";
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    assert_eq!(literal_types_with(source, &options), vec!["LINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_064)]
+#[test]
+fn apply_when_subscript_then_takes_default_type() {
+    let source = "PROGRAM main VAR a : ARRAY[1..2, 1..2] OF LINT; i : DINT; x : LINT; END_VAR
+        x := a[1, i]; END_PROGRAM";
+    assert_eq!(literal_types(source), vec!["DINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_065)]
+#[test]
+fn apply_when_case_selector_then_literals_take_its_type() {
+    let source = "PROGRAM main VAR d : DINT; x : DINT; END_VAR
+        CASE MAX(d, 1) OF 1: x := 2; END_CASE; END_PROGRAM";
+    assert_eq!(literal_types(source), vec!["DINT", "DINT"]);
+}
+
+#[test]
+fn apply_when_literal_argument_under_negation_then_takes_default_type_before_conversion() {
+    let source = call_program("LINT", "", "-1");
+    assert_eq!(literal_types(&source), vec!["DINT", "DINT"]);
+}
+
+#[test]
+fn apply_when_method_call_spelled_in_another_case_then_argument_takes_parameter_type() {
+    let source = "FUNCTION_BLOCK Acc
+        METHOD Add : LINT VAR_INPUT N : LINT; END_VAR Add := N; END_METHOD
+        END_FUNCTION_BLOCK
+        PROGRAM main VAR a : Acc; r : LINT; END_VAR r := a.ADD(n := 1); END_PROGRAM";
+    let options = CompilerOptions {
+        allow_fb_inheritance: true,
+        ..CompilerOptions::default()
+    };
+    assert_eq!(literal_types_with(source, &options), vec!["LINT"]);
+}
