@@ -150,6 +150,7 @@ mod end_to_end_neg;
 mod end_to_end_nested;
 mod end_to_end_numeric_builtin_edges;
 mod end_to_end_partial_access;
+mod end_to_end_partial_access_bases;
 mod end_to_end_pow;
 mod end_to_end_property_declaration;
 mod end_to_end_ref;
