@@ -410,9 +410,9 @@ impl CaseSelector<'_> {
 /// A label is a value, not a bit pattern: `16#FFFFFFFF` and `4294967295` are
 /// the same label, and both narrow to the selector's width by the value they
 /// state. Analysis rejects a label outside the selector's type
-/// (`rule_constant_range`, P2026), so a value that does not fit here comes
-/// from a selector analysis could not type, such as an untyped literal
-/// (`CASE 5 OF ...`), and is reported the same way.
+/// (`rule_constant_range`, P2026), including the type it records for an
+/// untyped literal selector (`CASE 5 OF ...`), so the check here is a
+/// fallback that reports the same way.
 struct CaseLabelValue<'a> {
     is_neg: bool,
     magnitude: &'a Integer,
