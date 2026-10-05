@@ -6,15 +6,17 @@
 //! module records that conversion on the argument, as an
 //! [`ExprKind::ImplicitConversion`].
 //!
-//! It records exactly what the code generator did, including two choices a
-//! later change may correct:
+//! It records what the code generator did, including a choice a later change
+//! may correct: a parameter whose type is not elementary (an alias, a
+//! subrange, an enumeration) is passed as a `DINT`, the default slot type, so
+//! an argument of another width is converted to `DINT`.
 //!
-//! * a parameter whose type is not elementary (an alias, a subrange, an
-//!   enumeration) is passed as a `DINT`, the default slot type, so an argument
-//!   of another width is converted to `DINT`;
-//! * an untyped literal is operated at its default type (`DINT` or `REAL`)
-//!   and then converted, so the `1.5` of `f(1.5)` with an `LREAL` parameter is
-//!   a `REAL` converted to `LREAL`.
+//! An untyped literal takes the type of its parameter, as it takes the type
+//! of an assignment's target, so the parameter receives the value the program
+//! wrote: the `0.1` of `f(0.1)` with an `LREAL` parameter is an `LREAL`. The
+//! code generator used to compile it at its default type (`REAL`) and convert
+//! it, which rounded `0.1` to a `REAL` and made `1.0E300` infinite, and
+//! failed on `f(5000000000)` with an `LINT` parameter.
 //!
 //! A standard function compiles its arguments as its operation requires and
 //! is not recorded here, and neither is a `VAR_IN_OUT` or `REF_TO`
@@ -73,11 +75,14 @@ impl ImplicitConversions<'_> {
                 let Some((default_id, default_width)) = self.elementary(&default) else {
                     return;
                 };
-                if default_width == width {
-                    arg.expr_type = Some(ExprType::Inferred(target));
-                } else {
+                if is_real(default_width) && !is_real(width) {
+                    // A real literal for an integer parameter, which the
+                    // argument type rule rejects: it is no value of the
+                    // parameter's type, so it is converted to one.
                     arg.expr_type = Some(ExprType::Inferred(default_id));
                     wrap(arg, target);
+                } else {
+                    arg.expr_type = Some(ExprType::Inferred(target));
                 }
             }
             Some(ExprType::Concrete(own) | ExprType::Inferred(own)) => {
@@ -120,5 +125,13 @@ impl ImplicitConversions<'_> {
     fn elementary(&self, name: &TypeName) -> Option<(TypeId, OperationWidth)> {
         let width = operation_width_of(elementary_type(name)?)?;
         Some((self.context.types().id_of(name)?, width))
+    }
+}
+
+/// Returns `true` for the width of a real type.
+fn is_real(width: OperationWidth) -> bool {
+    match width {
+        OperationWidth::F32 | OperationWidth::F64 => true,
+        OperationWidth::W32 | OperationWidth::W64 => false,
     }
 }
