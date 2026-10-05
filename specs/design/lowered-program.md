@@ -83,16 +83,20 @@ describe:
 - `collect_positional_args` is defined once.
 - `SavedFbScope` has given way to a `Scope` value.
 - Analysis now reports most of the problems only codegen found.
-- The analyzer records the conversions of arithmetic operands and of
-  assignments, as well as those of a comparison.
-- Bit and partial access compile through one addressing path.
+- Codegen takes a clean analysis, so no caller can skip the check (see
+  [The Clean-Analysis Gate](#2-the-clean-analysis-gate)).
+- The analyzer records the conversions of comparison and arithmetic operands,
+  of most assigned values and of the arguments of user-defined functions, and
+  the types of untyped literals (ADR-0056). Codegen no longer asks the
+  overload resolver a second time.
+- Bit and partial access, and assignments to most targets that occupy one
+  slot, compile through one addressing path (`Place`).
 
 The rest of this section describes the problem as it was measured, because
 that is what the design answers.
 
-`codegen::compile` takes `(&Library, &SemanticContext, &CodegenOptions,
-&dyn SourceLookup)`. The `Library` is the
-same tree the parser built, annotated in place by the analyzer. That one type
+`codegen::compile` reads the analyzed `Library`. The `Library` is the same
+tree the parser built, annotated in place by the analyzer. That one type
 serves three consumers with incompatible needs:
 
 | Consumer | Needs the tree to be |
@@ -348,26 +352,26 @@ covers, not compared byte for byte with the one built from the `Library`.
 
 ## 2. The Clean-Analysis Gate
 
-Today "codegen runs only on a clean analysis" is a run-time check written at
-each caller: `ironplc_project::compile` tests `diagnostics.is_empty()`,
-which also serves the MCP server and the playground, `lsp_runner.rs` tests
-`context.has_diagnostics()`, and the benchmarks and the VM command line's
-tests call codegen directly. Every one of them moves behind the gate when it
-starts to call lowering. Comments in codegen ("reaching here means analysis
-was skipped") record what happens when a caller gets it wrong.
-
-The gate makes the check a value. A clean analysis is a type that borrows the
-`Library` and the `SemanticContext` and can be constructed only when the
-context holds no diagnostics.
+Code generation already runs behind the gate. A clean analysis,
+`ironplc_analyzer::CleanAnalysis`, borrows the `Library` and the
+`SemanticContext` and can be constructed only when the context holds no
+diagnostics. `ironplc_codegen::compile` takes one, so a caller cannot forget
+the check. Every caller builds one: `ironplc_project::compile`, which also
+serves the MCP server and the playground, `lsp_runner.rs`, the benchmarks, and
+the tests of codegen and of the VM command line.
 
 ```rust
-// Shape, not final API.
 pub struct CleanAnalysis<'a> { library: &'a Library, context: &'a SemanticContext }
 
 impl<'a> CleanAnalysis<'a> {
-    pub fn new(library: &'a Library, context: &'a SemanticContext) -> Option<Self>;
+    // The error is the context's diagnostics.
+    pub fn new(library: &'a Library, context: &'a SemanticContext)
+        -> Result<Self, &'a [Diagnostic]>;
 }
 ```
+
+Lowering takes the same value. Nothing about the gate changes when lowering
+arrives: codegen passes the clean analysis it receives on to lowering.
 
 **REQ-LOW-analyzer-010** Constructing a clean analysis from a
 `SemanticContext` that holds any diagnostic fails.
@@ -375,25 +379,31 @@ impl<'a> CleanAnalysis<'a> {
 **REQ-LOW-lowering-011** Lowering has no entry point that accepts a `Library`
 without a clean analysis.
 
+`CleanAnalysis` meets REQ-LOW-analyzer-010 today.
+
 The gate guards against a mistake, not an adversary. It stops a caller from
 forgetting the check; it does not prove that the `SemanticContext` describes
-the `Library`. A caller can still build a context with no diagnostics by hand
-(`SemanticContextBuilder` does exactly that for tests), or pair a context with
-a library it was not built from, and the gate accepts both.
+the `Library`, or that the semantic rules ran. A context built by
+`SemanticContextBuilder`, or returned by `stages::resolve_types`, has been
+through no rule, so it holds no diagnostics and the gate accepts it. A caller
+can also pair a context with a library it was not built from. The
+documentation of `CleanAnalysis` says both.
 
 So lowering does not trust the gate further than it reaches. Behind it, a
 state analysis rules out is a compiler defect, and lowering reports it as
 P9998 from one place. It is never a user-facing problem, never a silent
 default and never a panic, which is what keeps a hand-built or mismatched
-context from crashing the compiler.
+context from crashing the compiler. Codegen keeps its own defensive error
+paths ("reaching here means analysis was skipped") until the route that reads
+the AST is deleted.
 
 Which states analysis rules out is established case by case, not assumed.
-Some of codegen's error paths are reached by programs analysis accepts. The
-analyzer does not check the operand pair of a comparison, so a `DINT` compared
-with a `UDINT` reaches codegen, which compiles it at the left operand's type
-([Comparison Operand Type](comparison-operand-type.md)). A path like that does
-not become a P9998 in lowering. The analyzer first either rejects the program
-or records a decision for it.
+Some of what codegen handles is reached by programs analysis accepts. The
+analyzer does not record the conversion of a function block or method argument
+yet, so a `DINT` passed to an `LINT` input reaches codegen unconverted, and
+codegen converts it ([Implicit Conversions](implicit-conversions.md)). A path
+like that does not become a P9998 in lowering. The analyzer first either
+rejects the program or records a decision for it.
 
 ## 3. The Lowered Program
 
@@ -1458,8 +1468,8 @@ today.
 
 | Decision | Made today in | Recorded as | In the lowered program |
 |---|---|---|---|
-| Type of an untyped literal | The analyzer for the operands of a comparison or an arithmetic operation (ADR-0056); elsewhere codegen, by threading an operation type through `compile_expr`, as predicted by `rule_constant_range` | The literal's `expr_type` | A `Const` of that type |
-| Implicit conversion | The analyzer for the operands of a comparison or an arithmetic operation, and for an assigned value (ADR-0056); `compile_value_arg` for arguments | `ExprKind::ImplicitConversion` | `Convert` |
+| Type of an untyped literal | The analyzer (ADR-0056), except a member initializer of a function block instance, which codegen builds itself; `rule_constant_range` still predicts it | The literal's `expr_type` | A `Const` of that type |
+| Implicit conversion | The analyzer for comparison and arithmetic operands, most assigned values and the arguments of user-defined functions (ADR-0056); codegen for the arguments of function block and method calls, and for the other contexts the analyzer does not record yet | `ExprKind::ImplicitConversion` | `Convert` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)), with a codegen fallback for a pair without one | Its operands' conversions | A `Compare` at that type |
 | Argument order and count | `xform_named_to_positional_args`, then re-checked at 19 sites | Positional arguments | `Vec<Arg>` matched to parameters |
@@ -1694,7 +1704,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `SemanticContext` | Keep | None. It is lowering's input. |
 | `TypeEnvironment`, `TypeId` | Keep | Lowering builds the lowered program's type table from it. |
 | `SemanticType` (formerly `IntermediateType`) | Keep | Lowering reads it and does not carry `SemanticStructField::offset`, `slot_count` or the size of a reference into the lowered program. `slot_count` moves to the bytecode backend: it sizes strings with the container's `string_region_size`, which is VM layout. |
-| `xform_insert_implicit_conversions` | Keep and extend | Records every implicit conversion and the type of every untyped literal (ADR-0056), not only those of a comparison. It is the recording pass (see [Names](#names)). |
+| `xform_insert_implicit_conversions` | Keep and extend | Records every implicit conversion and the type of every untyped literal (ADR-0056). It already records most of them; [issue 2050](https://github.com/ironplc/ironplc/issues/2050) finishes the rest. It is the recording pass (see [Names](#names)). |
 | `rule_constant_range` | Keep, split | Its checks of the type a literal ends up with read the recorded type and run after the recording pass; its checks against the operand types as written run before it, as today (see [Decisions](#4-decisions)). |
 | `intermediates/` | Keep | Its signatures carry the `BuiltinFunction` identity. |
 | `FunctionEnvironment` | Keep | Signatures of built-in functions name their `BuiltinFunction` (REQ-LOW-analyzer-070). |
@@ -2054,18 +2064,20 @@ This section constrains the order of work; it is not a work breakdown.
 - **Decisions recorded first.** The analyzer records each decision in the
   first table of [Decisions](#4-decisions), and each check only codegen makes
   moves to an analyzer rule, before lowering covers a construct that depends
-  on it. ADR-0056's own order continues: comparisons, arithmetic operands and
-  assignments are recorded; arguments come next, then literal types
-  everywhere. A statement that needs a decision the analyzer does not record
-  yet stays on the route that reads the AST.
+  on it. The recording pass already covers comparisons, arithmetic operands,
+  most assignments, the arguments of user-defined functions and the types of
+  literals. The arguments of function block and method calls and the other
+  remaining contexts come next
+  ([issue 2050](https://github.com/ironplc/ironplc/issues/2050)). A statement
+  that needs a decision the analyzer does not record yet stays on the route
+  that reads the AST.
 - **P9998 only once unreachable.** An error path of codegen becomes a P9998 in
   lowering only once it is shown unreachable from a program analysis accepts
   (see [The Clean-Analysis Gate](#2-the-clean-analysis-gate)).
-- **The gate arrives with lowering.** `CleanAnalysis` is created as lowering's
-  entry point (REQ-LOW-lowering-011). The codegen entry point that reads the
-  AST keeps its callers' own checks until it is deleted. Moving those callers
-  behind the gate is part of connecting lowering to `ironplc_project`, not a
-  step before it.
+- **The gate is already in place.** Codegen's entry point takes a
+  `CleanAnalysis`. While both routes exist, codegen passes it on to the entry
+  point that lowers one statement, so the lowered route meets
+  REQ-LOW-lowering-011 from its first statement, and no caller moves again.
 
 **Growing one statement at a time**
 
@@ -2201,15 +2213,15 @@ representable.
 
 ## Relationship to ADR-0056
 
-ADR-0056 records implicit conversions in the analyzer, and names arithmetic
-operands, assignments and function arguments as the next to move there. Its
-drivers were one recorded answer per expression, a language server that can
-show the answer without running codegen, and backends that lower rather than
-decide. This design shares all three and builds on ADR-0056:
+ADR-0056 records implicit conversions in the analyzer. It began with the
+operands of a comparison, and its postscripts have since extended the pass to
+arithmetic operands, assignments, the arguments of user-defined functions and
+the types of literals. Its drivers were one recorded answer per expression,
+a language server that can show the answer without running codegen, and
+backends that lower rather than decide. This design shares all three and builds on ADR-0056:
 
-- ADR-0056 stands, and its pass is extended past what it names: it records
-  every implicit conversion and the type of every untyped literal
-  (REQ-LOW-analyzer-091).
+- ADR-0056 stands, and its pass is extended until it records every implicit
+  conversion and the type of every untyped literal (REQ-LOW-analyzer-091).
 - Lowering translates each `ImplicitConversion` into a `Convert` and decides no
   conversion itself (REQ-LOW-lowering-094).
 - The `ImplicitConversion` nodes and the recorded literal types stay in the
