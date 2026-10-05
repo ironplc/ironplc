@@ -1,0 +1,68 @@
+=====
+P4069
+=====
+
+.. problem-summary:: P4069
+
+This error occurs when a bit access (``x.3``, ``x.%X3``) or a partial access
+(``x.%B0``, ``x.%W0``, ``x.%D0``, ``x.%L0``) selects from a variable whose
+type has no bits to select. Only a bit string (``BYTE``, ``WORD``, ``DWORD``,
+``LWORD``) or an integer (``SINT`` through ``ULINT``, or a subrange of one)
+can be accessed this way.
+
+The types this rejects include:
+
+- ``BOOL``: its single bit is its value, even though it occupies a byte
+- ``REAL`` and ``LREAL``: the bits of a floating-point number are not a bit
+  string
+- ``STRING``, ``WSTRING``, ``TIME``, dates and times of day
+- enumerations, structures, and function block instances
+- a whole array: a bit access applies to one element, ``a[1].3``, not to
+  ``a.3``
+
+A number past the width of the type does not change the error: ``r.70`` on a
+``REAL`` reports P4069 and not :doc:`P4025 </reference/compiler/problems/P4025>`,
+because no index would be valid.
+
+Example
+-------
+
+The following code will generate error P4069:
+
+.. code-block::
+
+   PROGRAM main
+       VAR
+           level  : REAL;
+           counts : ARRAY[1..2] OF DINT;
+           bit    : BOOL;
+       END_VAR
+
+       bit := level.3;   (* Error: REAL is not a bit string or integer *)
+       bit := counts.0;  (* Error: an array, not one of its elements *)
+   END_PROGRAM
+
+``level`` is a ``REAL`` and ``counts`` is a whole array, so neither has bits
+to select.
+
+To fix this error, select from a bit string or integer. Subscript the array
+to reach one element, and convert a value of another type first when its
+bits are what you need:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           level  : REAL := 5.0;
+           counts : ARRAY[1..2] OF DINT := [1, 2];
+           raw    : DINT;
+           bit    : BOOL;
+       END_VAR
+
+       raw := REAL_TO_DINT(level);
+       bit := raw.0;        (* bit 0 of the converted value *)
+       bit := counts[1].0;  (* bit 0 of the first element *)
+   END_PROGRAM
+
+See :doc:`/reference/language/structured-text/bit-access` for the types bit
+access applies to and the valid index range of each.

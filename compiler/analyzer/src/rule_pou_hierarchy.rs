@@ -20,7 +20,7 @@
 //! offending declaration, and each invocation of it and method call on it, so
 //! both the declaration and every call site are marked. Function block and
 //! program bodies are walked like any other, and yield nothing because the
-//! rule only records instances while inside a function.
+//! rule only checks declarations and invocations while inside a function.
 //!
 //! ## Passes
 //!
@@ -44,13 +44,13 @@
 //!    Delayed := timer.Q;
 //! END_FUNCTION
 //! ```
-use std::collections::HashMap;
 use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::*,
     core::{Id, Located},
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::{FbCall, MethodCall, MethodReceiver},
     visitor::Visitor,
 };
@@ -60,16 +60,19 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    symbol_environment::ScopeTracker,
 };
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: &Library,
-    _context: &SemanticContext,
+    context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
     run_rule(
         RulePouHierarchy {
+            context,
+            scope: ScopeTracker::default(),
             function: None,
             diagnostics: Vec::new(),
         },
@@ -80,58 +83,75 @@ pub fn apply(
 const HELP: &str = "A function has no state. Move the function block instance to a \
                     function block or program, or pass it in through VAR_IN_OUT.";
 
-struct RulePouHierarchy {
-    /// The function being walked, with the function block instances it
-    /// declared outside `VAR_IN_OUT`. `None` outside any function.
-    function: Option<InFunction>,
+struct RulePouHierarchy<'a> {
+    context: &'a SemanticContext,
+    /// Where the traversal is, to look variables up in the symbol
+    /// environment.
+    scope: ScopeTracker,
+    /// The name of the function being walked. `None` outside any function.
+    function: Option<Id>,
     diagnostics: Vec<Diagnostic>,
 }
 
-struct InFunction {
-    name: Id,
-    /// Instances already reported at their declaration, by variable name,
-    /// so that every invocation of one is reported too.
-    stateful_instances: HashMap<Id, TypeName>,
-}
-
-impl RulePouHierarchy {
-    /// Reports `call` when it invokes an instance the function declared
-    /// outside `VAR_IN_OUT`. An instance the function did not declare at
-    /// all is `P4012`'s to report, not this rule's.
+impl RulePouHierarchy<'_> {
+    /// Reports `call` when it invokes a function block instance the
+    /// function declared outside `VAR_IN_OUT`. An instance the function
+    /// did not declare at all is `P4012`'s to report, not this rule's.
     fn check_invocation(&mut self, instance: &Id, call: &impl Located, label: &str) {
         let Some(function) = &self.function else {
             return;
         };
-        let Some(fb_type) = function.stateful_instances.get(instance) else {
+        let scope = self.scope.current();
+        let Some(info) = self.context.symbols().find(instance, &scope) else {
             return;
         };
-        self.diagnostics.push(
-            Diagnostic::problem(
-                Problem::FunctionBlockInFunction,
-                Label::span(call.span(), label),
-            )
-            .with_context_id("function", &function.name)
-            .with_context_id("instance", instance)
-            .with_context_type("function block", fb_type)
-            .with_help(HELP),
-        );
+        // Declared by the function itself, not reached through it.
+        if info.scope != scope || info.variable_type == Some(VariableType::InOut) {
+            return;
+        }
+        let types = self.context.types();
+        let Some(type_id) = info.type_id.filter(|id| {
+            types
+                .get_by_id(*id)
+                .is_some_and(|attrs| attrs.representation.is_function_block())
+        }) else {
+            return;
+        };
+        let mut diagnostic = Diagnostic::problem(
+            Problem::FunctionBlockInFunction,
+            Label::span(call.span(), label),
+        )
+        .with_context_id("function", function)
+        .with_context_id("instance", instance);
+        if let Some(fb_type) = types.name_of(type_id) {
+            diagnostic = diagnostic.with_context_type("function block", fb_type);
+        }
+        self.diagnostics.push(diagnostic.with_help(HELP));
     }
 }
 
-impl DiagnosticVisitor for RulePouHierarchy {
+impl DiagnosticVisitor for RulePouHierarchy<'_> {
     fn into_diagnostics(self) -> Vec<Diagnostic> {
         self.diagnostics
     }
 }
 
-impl Visitor<Infallible> for RulePouHierarchy {
+impl Visitor<Infallible> for RulePouHierarchy<'_> {
     type Value = ();
+
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<Self::Value, Infallible> {
+        self.scope.enter(&node);
+        Ok(())
+    }
+
+    fn exit_scope(&mut self) {
+        self.scope.exit();
+    }
 
     fn visit_function_declaration(
         &mut self,
         node: &FunctionDeclaration,
     ) -> Result<Self::Value, Infallible> {
-        let mut stateful_instances = HashMap::new();
         for decl in &node.variables {
             // Type resolution has turned every instance declaration into a
             // function block initializer, so the initializer kind is the test.
@@ -141,9 +161,9 @@ impl Visitor<Infallible> for RulePouHierarchy {
             if decl.var_type == VariableType::InOut {
                 continue;
             }
-            let Some(name) = decl.identifier.symbolic_id() else {
+            if decl.identifier.symbolic_id().is_none() {
                 continue;
-            };
+            }
             self.diagnostics.push(
                 Diagnostic::problem(
                     Problem::FunctionBlockInFunction,
@@ -156,13 +176,9 @@ impl Visitor<Infallible> for RulePouHierarchy {
                 .with_context_type("function block", &init.type_name)
                 .with_help(HELP),
             );
-            stateful_instances.insert(name.clone(), init.type_name.clone());
         }
 
-        self.function = Some(InFunction {
-            name: node.name.clone(),
-            stateful_instances,
-        });
+        self.function = Some(node.name.clone());
         let result = node.recurse_visit(self);
         self.function = None;
         result
@@ -183,15 +199,8 @@ impl Visitor<Infallible> for RulePouHierarchy {
 
 #[cfg(test)]
 mod tests {
-    use ironplc_parser::options::CompilerOptions;
+    use crate::test_helpers::fb_inheritance_options;
     use ironplc_problems::Problem;
-
-    fn oop_options() -> CompilerOptions {
-        CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        }
-    }
 
     rule_ok!(
         apply_when_function_calls_function_then_ok,
@@ -237,7 +246,7 @@ PROGRAM main
 END_PROGRAM"
     );
 
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_function_declares_function_block_instance_then_error_at_declaration,
         "
 FUNCTION_BLOCK Callee
@@ -258,7 +267,7 @@ END_FUNCTION",
 
     // The declaration and the invocation are each reported, so both the
     // cause and the call site are marked.
-    rule_errn!(
+    rule_err!(
         apply_when_function_declares_and_invokes_function_block_then_reports_both,
         "
 FUNCTION Delayed : BOOL
@@ -268,11 +277,10 @@ FUNCTION Delayed : BOOL
   timer(IN := TRUE, PT := T#1s);
   Delayed := timer.Q;
 END_FUNCTION",
-        2,
-        Problem::FunctionBlockInFunction
+        [Problem::FunctionBlockInFunction; 2]
     );
 
-    rule_errn!(
+    rule_err!(
         apply_when_function_invokes_instance_twice_then_reports_each_invocation,
         "
 FUNCTION Delayed : BOOL
@@ -283,11 +291,10 @@ FUNCTION Delayed : BOOL
   timer(IN := FALSE, PT := T#1s);
   Delayed := timer.Q;
 END_FUNCTION",
-        3,
-        Problem::FunctionBlockInFunction
+        [Problem::FunctionBlockInFunction; 3]
     );
 
-    rule_err1!(
+    rule_err!(
         apply_when_function_declares_function_block_as_temp_then_error,
         "
 FUNCTION Delayed : BOOL
@@ -296,12 +303,12 @@ FUNCTION Delayed : BOOL
   END_VAR
   Delayed := FALSE;
 END_FUNCTION",
-        Problem::FunctionBlockInFunction
+        [Problem::FunctionBlockInFunction]
     );
 
     // Passing an instance by value would copy its state into the function,
     // so an input is as stateful as a local.
-    rule_err1!(
+    rule_err!(
         apply_when_function_declares_function_block_as_input_then_error,
         "
 FUNCTION Delayed : BOOL
@@ -310,7 +317,7 @@ FUNCTION Delayed : BOOL
   END_VAR
   Delayed := timer.Q;
 END_FUNCTION",
-        Problem::FunctionBlockInFunction
+        [Problem::FunctionBlockInFunction]
     );
 
     // Ed.3 permits a function block instance as VAR_IN_OUT of a function:
@@ -327,9 +334,8 @@ FUNCTION Delayed : BOOL
 END_FUNCTION"
     );
 
-    rule_errn_with!(
+    rule_err!(
         apply_when_function_calls_method_on_own_instance_then_reports_declaration_and_call,
-        oop_options(),
         "
 FUNCTION_BLOCK FB_Motor
   VAR
@@ -347,8 +353,8 @@ FUNCTION Spin : BOOL
   motor.Start();
   Spin := TRUE;
 END_FUNCTION",
-        2,
-        Problem::FunctionBlockInFunction
+        [Problem::FunctionBlockInFunction; 2],
+        fb_inheritance_options()
     );
 
     // An instance the function never declared is P4012's to report.

@@ -84,14 +84,14 @@ use std::convert::Infallible;
 
 use crate::{
     function_environment::FunctionEnvironment,
-    intermediate_type::{ByteSized, FunctionBlockVarType, IntermediateType},
     result::SemanticResult,
     rule_real_literal_range,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::{ByteSized, FunctionBlockVarType, SemanticType},
+    symbol_environment::ScopeTracker,
     type_environment::TypeEnvironment,
-    value_range,
-    variable_type::{self, Declarations, Declared},
+    value_range, variable_type,
 };
 
 pub fn apply(
@@ -101,12 +101,10 @@ pub fn apply(
 ) -> SemanticResult {
     run_rule(
         RuleConstantRange {
+            context,
             type_environment: context.types(),
             function_environment: context.functions(),
-            // `Declarations::new` opens the base scope, where declarations
-            // made outside any POU land. Opening another here would leave the
-            // stack unbalanced when the table drops.
-            declarations: Declarations::new(),
+            scope: ScopeTracker::default(),
             diagnostics: Vec::new(),
         },
         lib,
@@ -114,11 +112,13 @@ pub fn apply(
 }
 
 struct RuleConstantRange<'a> {
+    context: &'a SemanticContext,
     type_environment: &'a TypeEnvironment,
     /// The signature of every function, which states its parameters' types.
     function_environment: &'a FunctionEnvironment,
-    /// The declared type of every variable in scope.
-    declarations: Declarations<'a>,
+    /// Where the traversal is, to look variables up in the symbol
+    /// environment.
+    scope: ScopeTracker,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -140,7 +140,7 @@ fn signed_value(is_neg: bool, magnitude: u128) -> Option<i128> {
 
 impl RuleConstantRange<'_> {
     /// Reports `constant` when the type it is stored into cannot hold it.
-    fn check_constant(&mut self, constant: &ConstantKind, expected: &IntermediateType) {
+    fn check_constant(&mut self, constant: &ConstantKind, expected: &SemanticType) {
         // Every integer literal arrives here as a value, whatever radix it
         // was written in. A `ConstantKind` that is neither an integer nor a
         // real -- a duration, a string -- has no range to check.
@@ -166,8 +166,8 @@ impl RuleConstantRange<'_> {
     ///
     /// A prefixed literal states its own type, which that rule checks, and a
     /// value beyond every real type is reported there too.
-    fn check_real_literal(&mut self, literal: &RealLiteral, expected: &IntermediateType) {
-        let IntermediateType::Real {
+    fn check_real_literal(&mut self, literal: &RealLiteral, expected: &SemanticType) {
+        let SemanticType::Real {
             size: ByteSized::B32,
         } = expected
         else {
@@ -266,7 +266,7 @@ impl RuleConstantRange<'_> {
     /// A negated literal needs no handling here. Constant folding turns
     /// `-200` into one signed literal before any rule runs, so a `Neg` that
     /// survives has an operand this walk would descend into anyway.
-    fn check_expr(&mut self, expr: &Expr, expected: &IntermediateType) {
+    fn check_expr(&mut self, expr: &Expr, expected: &SemanticType) {
         match &expr.kind {
             ExprKind::Const(constant) => self.check_constant(constant, expected),
             ExprKind::BinaryOp(binary) => {
@@ -284,15 +284,15 @@ impl RuleConstantRange<'_> {
     /// This is the value written, not the variable selected from: `x.3 := v`
     /// writes a `BOOL` and `w.%B1 := v` writes a byte, whatever `x` and `w`
     /// are declared as.
-    fn assignment_target_type(&self, target: &Variable) -> Option<IntermediateType> {
+    fn assignment_target_type(&self, target: &Variable) -> Option<SemanticType> {
         let Variable::Symbolic(kind) = target else {
             // A directly represented variable (`%IW0`) has no declaration to
             // take a range from.
             return None;
         };
         match kind {
-            SymbolicVariableKind::BitAccess(_) => Some(IntermediateType::Bool),
-            SymbolicVariableKind::PartialAccess(partial) => Some(IntermediateType::Bytes {
+            SymbolicVariableKind::BitAccess(_) => Some(SemanticType::Bool),
+            SymbolicVariableKind::PartialAccess(partial) => Some(SemanticType::Bytes {
                 size: match partial.size {
                     PartialAccessSize::Byte => ByteSized::B8,
                     PartialAccessSize::Word => ByteSized::B16,
@@ -300,7 +300,7 @@ impl RuleConstantRange<'_> {
                     PartialAccessSize::LWord => ByteSized::B64,
                 },
             }),
-            _ => variable_type::of(kind, &self.declarations, self.type_environment),
+            _ => variable_type::of(kind, self.context, &self.scope.current()),
         }
     }
 
@@ -341,7 +341,7 @@ impl RuleConstantRange<'_> {
     }
 
     /// The representation of the type `type_name` names.
-    fn representation_of(&self, type_name: &TypeName) -> Option<IntermediateType> {
+    fn representation_of(&self, type_name: &TypeName) -> Option<SemanticType> {
         self.type_environment
             .get(type_name)
             .map(|attributes| attributes.representation.clone())
@@ -357,11 +357,7 @@ impl RuleConstantRange<'_> {
 
     /// Checks structure element initializers against the fields of
     /// `declared`, a structure or function block type.
-    fn check_element_inits(
-        &mut self,
-        elements: &[StructureElementInit],
-        declared: &IntermediateType,
-    ) {
+    fn check_element_inits(&mut self, elements: &[StructureElementInit], declared: &SemanticType) {
         for element in elements {
             if let Some(field) = variable_type::struct_field_type(declared, &element.name) {
                 self.check_struct_value(&element.init, &field);
@@ -374,7 +370,7 @@ impl RuleConstantRange<'_> {
     fn check_struct_value(
         &mut self,
         value: &StructInitialValueAssignmentKind,
-        expected: &IntermediateType,
+        expected: &SemanticType,
     ) {
         match value {
             StructInitialValueAssignmentKind::Constant(constant) => {
@@ -401,14 +397,14 @@ impl RuleConstantRange<'_> {
     fn check_array_elements(
         &mut self,
         elements: &[ArrayInitialElementKind],
-        declared: &IntermediateType,
+        declared: &SemanticType,
     ) {
         // Anything but an array has no element type to check against.
-        let IntermediateType::Array { element_type, .. } = declared else {
+        let SemanticType::Array { element_type, .. } = declared else {
             return;
         };
         let mut element_type = element_type.as_ref();
-        while let IntermediateType::Array {
+        while let SemanticType::Array {
             element_type: inner,
             ..
         } = element_type
@@ -422,11 +418,7 @@ impl RuleConstantRange<'_> {
 
     /// Checks one array initializer element, including every repetition of
     /// a repeated one (`2(300)`), against `expected`.
-    fn check_array_element(
-        &mut self,
-        element: &ArrayInitialElementKind,
-        expected: &IntermediateType,
-    ) {
+    fn check_array_element(&mut self, element: &ArrayInitialElementKind, expected: &SemanticType) {
         match element {
             ArrayInitialElementKind::Constant(constant) => self.check_constant(constant, expected),
             ArrayInitialElementKind::Repeated(repeated) => {
@@ -462,14 +454,8 @@ impl RuleConstantRange<'_> {
     /// `VAR_INPUT` and `VAR_IN_OUT` variables, a positional one by position
     /// among the `VAR_INPUT` variables.
     fn check_fb_call_arguments(&mut self, node: &FbCall) {
-        let Some(declared) = self.declarations.find(&node.var_name) else {
-            return;
-        };
-        let TypeReference::Named(type_name) = declared.type_reference() else {
-            return;
-        };
-        let Some(IntermediateType::FunctionBlock { fields, .. }) =
-            self.representation_of(&type_name)
+        let Some(SemanticType::FunctionBlock { fields, .. }) =
+            variable_type::declared(&node.var_name, self.context, &self.scope.current())
         else {
             return;
         };
@@ -561,30 +547,16 @@ impl RuleConstantRange<'_> {
 impl Visitor<Infallible> for RuleConstantRange<'_> {
     type Value = ();
 
-    /// Opens a declaration's scope.
-    ///
-    /// Every kind contributes the same thing -- a frame its own declarations
-    /// go into -- but the match stays exhaustive so that a new kind of scope
-    /// has to say so rather than silently sharing the enclosing
-    /// declaration's frame.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        match node {
-            ScopeNode::Function(_)
-            | ScopeNode::FunctionBlock(_)
-            | ScopeNode::Program(_)
-            | ScopeNode::Method(_) => self.declarations.enter(),
-        }
+        self.scope.enter(&node);
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.declarations.exit();
+        self.scope.exit();
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-        self.declarations
-            .add_if(node.identifier.symbolic_id(), Declared::of(node));
-
         self.check_initializer(&node.initializer);
 
         node.recurse_visit(self)

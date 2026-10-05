@@ -252,13 +252,16 @@ An extensible call with more than two inputs (`ADD(a, b, c)`) folds from the
 left: the resolver runs on the first two inputs, then on that result and the
 third, and so on. `ADD(t1, t2, t3)` is therefore two `ADD_TIME` steps, which
 is what `t1 + t2 + t3` is, so the function form accepts exactly what the
-operator accepts (the invariant of Keyword Function Forms). Codegen folds the
-same way, asking the resolver at each step with the accumulated result type.
+operator accepts (the invariant of Keyword Function Forms). The analyzer's
+conversion pass folds the same way, asking the resolver at each step with the
+accumulated result type, and records each step as a call of its own (see
+[Implicit Conversions](implicit-conversions.md)); codegen asks the resolver
+only for the typed overloads on the time and date types.
 
-For the numeric overload, codegen calls the resolver with the compiler
-options the analyzer ran with, which it reads from the semantic context it is
-given (`SemanticContext::compiler_options`). The two passes therefore ask the
-same question with the same options and cannot disagree about a result type.
+For the numeric overload the conversion pass calls the resolver with the
+compiler options the analyzer ran with, so the type resolver and the pass ask
+the same question with the same options and cannot disagree about a result
+type.
 
 ### Type resolution
 
@@ -309,12 +312,13 @@ Codegen changes in two places.
 
 **Typed dispatch.** Both spellings compile in `compile_arith.rs`: the
 operator expression and the function-form fold ask the typed step. When it
-answers, they compile the two operands through the typed routine named by the
-answer (`compile_time_arith.rs`), the routine that `ADD_TIME(a, b)` already
-reaches by name. The typed routines take their operands rather than a
-`Function`, so both spellings share them, and take their operation width from
-the typed name (32-bit for the short form, 64-bit for the long one) instead
-of hard-coding 32-bit, so the long forms compile. In a fold after the first
+answers, they compile the two operands through the routine of the time
+function that the answer's signature names as its intrinsic
+(`compile_time_arith.rs`), the routine a call of `ADD_TIME(a, b)` reaches
+through the same intrinsic. The typed routines take their operands rather
+than a `Function`, so both spellings share them, and take their operation
+width from the intrinsic (32-bit for the short form, 64-bit for the long one)
+instead of hard-coding 32-bit, so the long forms compile. In a fold after the first
 step, the left operand is the accumulated result already on the stack rather
 than an expression, so a routine's left operand is either one. A short-width
 operand of a long form is loaded at 32 bits and widened by its signedness, as
@@ -358,7 +362,8 @@ codegen would only ever see calls it already compiles. That is one more pass,
 a call node in the analyzed tree that the user did not write, a fabricated
 span on its name, and a rule whose correctness depends on the pass having
 run. Codegen already depends on the analyzer's table (`compile_function_call`
-looks up `operator_function_form`), so asking the typed step from codegen is
+compiles a call as the intrinsic its signature names), so asking the typed
+step from codegen is
 the same dependency with no new node, and the tree stays what the parser
 produced for every consumer of it. The rewrite was dropped.
 
@@ -496,7 +501,7 @@ Programs that keep working: `t1 + t2`, `t + lt`, `lt + LTIME#1s`, `dt + t`,
 
 **REQ-AO-codegen-009** An extensible call on a Table 30 pair compiles to the typed routine folded from the left, so `ADD(t1, t2, t3)` computes what `t1 + t2 + t3` computes.
 
-**REQ-AO-codegen-010** A numeric operator expression computes with the signedness of its resolved type, so `UDINT / UDINT` assigned to `DINT` divides unsigned and gives 2000000000 for 4000000000 and 2.
+**REQ-AO-codegen-010** A numeric operator expression computes with the signedness of its resolved type, so `UDINT / UDINT` assigned to a signed `LINT` divides unsigned and gives 2000000000 for 4000000000 and 2.
 
 **REQ-AO-codegen-011** A call to the function form of a numeric operator computes each fold step as the operator expression does, so `ADD(i, r)` gives 4.5 for `INT` 3 and `REAL` 1.5.
 

@@ -38,7 +38,6 @@ END_PROGRAM
     );
 }
 
-// x is at var index 1 (data is var 0, x is var 1)
 e2e_i32_with!(
     end_to_end_when_ref_to_array_declared_then_runs,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -50,11 +49,11 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ",
-    &[(1, 99)],
+    &[("x", 99)],
 );
 
 // A REF_TO whose target is a named array type behaves exactly as the inline
-// spelling (#1580). var layout: arr=0, pt=1, v=2, i=3
+// spelling (#1580).
 e2e_i32_with!(
     end_to_end_when_ref_to_named_array_type_deref_subscript_read_then_reads_element,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -72,10 +71,9 @@ PROGRAM main
   v := pt^[i];
 END_PROGRAM
 ",
-    &[(2, 77)],
+    &[("v", 77)],
 );
 
-// var layout: arr=0, pt=1, v=2
 e2e_i32_with!(
     end_to_end_when_ref_to_named_array_type_deref_subscript_write_then_writes_through_ref,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -92,10 +90,9 @@ PROGRAM main
   v := arr[2];
 END_PROGRAM
 ",
-    &[(2, 55)],
+    &[("v", 55)],
 );
 
-// var layout: arr=0, v=1
 e2e_i32_with!(
     end_to_end_when_function_param_ref_to_named_array_type_then_reads_element,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -119,10 +116,9 @@ PROGRAM main
   v := GET_ELEMENT(pt := REF(arr), i := 3);
 END_PROGRAM
 ",
-    &[(1, 31)],
+    &[("v", 31)],
 );
 
-// var layout: arr=0, fb=1, check=2
 e2e_i32_with!(
     end_to_end_when_fb_local_ref_to_named_array_type_then_writes_through_ref,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -150,11 +146,11 @@ PROGRAM main
   check := arr[0];
 END_PROGRAM
 ",
-    &[(2, 99)],
+    &[("check", 99)],
 );
 
 // The dimensions come from the type environment, so strides must be right
-// for more than one dimension. var layout: g=0, pt=1, v=2
+// for more than one dimension.
 e2e_i32_with!(
     end_to_end_when_ref_to_named_two_dimensional_array_type_then_reads_element,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -171,12 +167,11 @@ PROGRAM main
   v := pt^[1, 2];
 END_PROGRAM
 ",
-    &[(2, 42)],
+    &[("v", 42)],
 );
 
 // A named reference type whose target is itself a named array type reaches
 // codegen with the named target, so it takes the same path.
-// var layout: arr=0, pt=1, v=2
 e2e_i32_with!(
     end_to_end_when_ref_type_alias_of_named_array_type_then_reads_element,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
@@ -197,5 +192,5 @@ PROGRAM main
   v := pt^[0];
 END_PROGRAM
 ",
-    &[(2, 12)],
+    &[("v", 12)],
 );

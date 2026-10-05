@@ -15,6 +15,7 @@ use ironplc_dsl::common::TypeName;
 
 use super::stdlib_function::input_param;
 use crate::function_environment::FunctionSignature;
+use crate::intrinsic::{Intrinsic, TimeFunction};
 
 /// Returns standard time and date function definitions.
 ///
@@ -35,6 +36,10 @@ pub(super) fn get_time_functions() -> Vec<FunctionSignature> {
 #[derive(Clone, Copy)]
 pub(crate) struct TimeOverload {
     pub(crate) name: &'static str,
+    /// The function, which the long form shares with the short one.
+    function: TimeFunction,
+    /// True for the long form, over the long-width types.
+    long: bool,
     pub(crate) in1: &'static str,
     pub(crate) in2: &'static str,
     pub(crate) result: &'static str,
@@ -45,6 +50,10 @@ impl TimeOverload {
     fn signature(&self) -> FunctionSignature {
         FunctionSignature::stdlib(
             self.name,
+            Intrinsic::Time {
+                function: self.function,
+                long: self.long,
+            },
             TypeName::from(self.result),
             vec![input_param("IN1", self.in1), input_param("IN2", self.in2)],
         )
@@ -57,6 +66,8 @@ impl TimeOverload {
     pub(crate) fn long(&self) -> Option<TimeOverload> {
         Some(TimeOverload {
             name: long_form(self.name)?,
+            function: self.function,
+            long: true,
             in1: long_type(self.in1),
             in2: long_type(self.in2),
             result: long_type(self.result),
@@ -105,15 +116,18 @@ fn long_type(short: &'static str) -> &'static str {
     }
 }
 
-/// Builds one row of [`OVERLOADS`].
+/// Builds one row of [`OVERLOADS`]: a short form.
 const fn overload(
     name: &'static str,
+    function: TimeFunction,
     in1: &'static str,
     in2: &'static str,
     result: &'static str,
 ) -> TimeOverload {
     TimeOverload {
         name,
+        function,
+        long: false,
         in1,
         in2,
         result,
@@ -124,19 +138,61 @@ const fn overload(
 /// types (IEC 61131-3 Table 30).
 const OVERLOADS: &[TimeOverload] = &[
     // Duration arithmetic
-    overload("ADD_TIME", "TIME", "TIME", "TIME"),
-    overload("SUB_TIME", "TIME", "TIME", "TIME"),
-    overload("MUL_TIME", "TIME", "ANY_NUM", "TIME"),
-    overload("DIV_TIME", "TIME", "ANY_NUM", "TIME"),
+    overload("ADD_TIME", TimeFunction::AddTime, "TIME", "TIME", "TIME"),
+    overload("SUB_TIME", TimeFunction::SubTime, "TIME", "TIME", "TIME"),
+    overload("MUL_TIME", TimeFunction::MulTime, "TIME", "ANY_NUM", "TIME"),
+    overload("DIV_TIME", TimeFunction::DivTime, "TIME", "ANY_NUM", "TIME"),
     // Date/time plus or minus a duration
-    overload("ADD_DT_TIME", "DATE_AND_TIME", "TIME", "DATE_AND_TIME"),
-    overload("ADD_TOD_TIME", "TIME_OF_DAY", "TIME", "TIME_OF_DAY"),
-    overload("SUB_DT_TIME", "DATE_AND_TIME", "TIME", "DATE_AND_TIME"),
-    overload("SUB_TOD_TIME", "TIME_OF_DAY", "TIME", "TIME_OF_DAY"),
+    overload(
+        "ADD_DT_TIME",
+        TimeFunction::AddDtTime,
+        "DATE_AND_TIME",
+        "TIME",
+        "DATE_AND_TIME",
+    ),
+    overload(
+        "ADD_TOD_TIME",
+        TimeFunction::AddTodTime,
+        "TIME_OF_DAY",
+        "TIME",
+        "TIME_OF_DAY",
+    ),
+    overload(
+        "SUB_DT_TIME",
+        TimeFunction::SubDtTime,
+        "DATE_AND_TIME",
+        "TIME",
+        "DATE_AND_TIME",
+    ),
+    overload(
+        "SUB_TOD_TIME",
+        TimeFunction::SubTodTime,
+        "TIME_OF_DAY",
+        "TIME",
+        "TIME_OF_DAY",
+    ),
     // Date/time differences
-    overload("SUB_DT_DT", "DATE_AND_TIME", "DATE_AND_TIME", "TIME"),
-    overload("SUB_DATE_DATE", "DATE", "DATE", "TIME"),
-    overload("SUB_TOD_TOD", "TIME_OF_DAY", "TIME_OF_DAY", "TIME"),
+    overload(
+        "SUB_DT_DT",
+        TimeFunction::SubDtDt,
+        "DATE_AND_TIME",
+        "DATE_AND_TIME",
+        "TIME",
+    ),
+    overload(
+        "SUB_DATE_DATE",
+        TimeFunction::SubDateDate,
+        "DATE",
+        "DATE",
+        "TIME",
+    ),
+    overload(
+        "SUB_TOD_TOD",
+        TimeFunction::SubTodTod,
+        "TIME_OF_DAY",
+        "TIME_OF_DAY",
+        "TIME",
+    ),
 ];
 
 /// The time and date functions that are not overloads of an arithmetic
@@ -146,6 +202,10 @@ fn other_time_functions() -> Vec<FunctionSignature> {
         // Concatenation
         FunctionSignature::stdlib(
             "CONCAT_DATE_TOD",
+            Intrinsic::Time {
+                function: TimeFunction::ConcatDateTod,
+                long: false,
+            },
             TypeName::from("DATE_AND_TIME"),
             vec![
                 input_param("IN1", "DATE"),
@@ -155,21 +215,25 @@ fn other_time_functions() -> Vec<FunctionSignature> {
         // Decomposition: extract DATE or TIME_OF_DAY from DATE_AND_TIME
         FunctionSignature::stdlib(
             "DT_TO_DATE",
+            Intrinsic::DtToDate,
             TypeName::from("DATE"),
             vec![input_param("IN", "DATE_AND_TIME")],
         ),
         FunctionSignature::stdlib(
             "DATE_AND_TIME_TO_DATE",
+            Intrinsic::DtToDate,
             TypeName::from("DATE"),
             vec![input_param("IN", "DATE_AND_TIME")],
         ),
         FunctionSignature::stdlib(
             "DT_TO_TOD",
+            Intrinsic::DtToTod,
             TypeName::from("TIME_OF_DAY"),
             vec![input_param("IN", "DATE_AND_TIME")],
         ),
         FunctionSignature::stdlib(
             "DATE_AND_TIME_TO_TIME_OF_DAY",
+            Intrinsic::DtToTod,
             TypeName::from("TIME_OF_DAY"),
             vec![input_param("IN", "DATE_AND_TIME")],
         ),
@@ -239,6 +303,35 @@ mod tests {
         assert_eq!(
             sig.return_type.unwrap().to_type_name(),
             TypeName::from(result)
+        );
+    }
+
+    /// A long form stands for the same function as its short form, at the
+    /// long width; the decomposition functions stand for the same operation
+    /// under either spelling.
+    #[rstest]
+    #[case::short("ADD_TIME", Intrinsic::Time { function: TimeFunction::AddTime, long: false })]
+    #[case::long("ADD_LTIME", Intrinsic::Time { function: TimeFunction::AddTime, long: true })]
+    #[case::long_difference(
+        "SUB_LDATE_LDATE",
+        Intrinsic::Time { function: TimeFunction::SubDateDate, long: true }
+    )]
+    #[case::long_scale("DIV_LTIME", Intrinsic::Time { function: TimeFunction::DivTime, long: true })]
+    #[case::concat(
+        "CONCAT_DATE_TOD",
+        Intrinsic::Time { function: TimeFunction::ConcatDateTod, long: false }
+    )]
+    #[case::dt_to_date("DT_TO_DATE", Intrinsic::DtToDate)]
+    #[case::date_and_time_to_date("DATE_AND_TIME_TO_DATE", Intrinsic::DtToDate)]
+    #[case::dt_to_tod("DT_TO_TOD", Intrinsic::DtToTod)]
+    #[case::date_and_time_to_tod("DATE_AND_TIME_TO_TIME_OF_DAY", Intrinsic::DtToTod)]
+    fn get_time_functions_when_registered_then_names_its_intrinsic(
+        #[case] name: &str,
+        #[case] intrinsic: Intrinsic,
+    ) {
+        assert_eq!(
+            registered(name).and_then(|sig| sig.intrinsic),
+            Some(intrinsic)
         );
     }
 

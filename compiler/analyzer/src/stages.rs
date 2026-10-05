@@ -3,6 +3,7 @@
 //! The compiler as individual stages (to enable testing).
 
 use ironplc_dsl::{
+    common::TypeName,
     core::{FileId, Id, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
@@ -14,7 +15,7 @@ use crate::{
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
-    rule_abstract_not_instantiated, rule_assignment_aggregate_type_compat,
+    rule_abstract_not_instantiated, rule_array_index_range, rule_assignment_aggregate_type_compat,
     rule_bit_and_partial_access_range, rule_case_bit_string_label, rule_case_selector_type,
     rule_condition_type, rule_constant_range, rule_decl_struct_element_unique_names,
     rule_enum_base_type_allowed, rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
@@ -36,12 +37,12 @@ use crate::{
     system_globals::SYSTEM_UPTIME_GLOBALS,
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
-    xform_insert_implicit_deref, xform_int_to_bool_initializer, xform_mark_unwritten_constants,
-    xform_named_to_positional_args, xform_remove_unsigned_abs, xform_resolve_adr,
-    xform_resolve_constant_expressions, xform_resolve_decl_types, xform_resolve_expr_types,
-    xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
-    xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
-    xform_resolve_type_decl_environment, xform_toposort_declarations,
+    xform_insert_implicit_conversions, xform_insert_implicit_deref, xform_int_to_bool_initializer,
+    xform_mark_unwritten_constants, xform_named_to_positional_args, xform_remove_unsigned_abs,
+    xform_resolve_adr, xform_resolve_constant_expressions, xform_resolve_decl_types,
+    xform_resolve_expr_types, xform_resolve_late_bound_expr_kind,
+    xform_resolve_late_bound_type_initializer, xform_resolve_symbol_and_function_environment,
+    xform_resolve_type_aliases, xform_resolve_type_decl_environment, xform_toposort_declarations,
 };
 
 /// Analyze runs semantic analysis on the set of files as a self-contained and complete unit.
@@ -68,6 +69,11 @@ pub fn analyze(
     if let Err(diagnostics) = semantic(&library, &context, options) {
         context.add_diagnostics(diagnostics);
     }
+
+    // Record the implicit conversions the backends compile and the language
+    // server shows. After the rules, so that a rule checks the operands the
+    // program wrote rather than their conversions. See ADR-0056.
+    let library = xform_insert_implicit_conversions::apply(library, &context, options);
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
     // semantic analysis, but it should because the type table should influence rule checking.
@@ -140,6 +146,11 @@ fn run_best_effort(
     }
 }
 
+/// Resolves every declaration's and expression's type (stage 2).
+///
+/// The library this returns does not yet record implicit conversions: those
+/// are inserted by [`analyze`] after the semantic rules, so a backend compiles
+/// what [`analyze`] returns.
 pub fn resolve_types(
     sources: &[&Library],
     options: &CompilerOptions,
@@ -182,6 +193,7 @@ pub fn resolve_types(
                     &Id::from(global.name),
                     SymbolKind::Variable,
                     &ScopeKind::Global,
+                    type_environment.id_of(&TypeName::from(global.type_name)),
                 )
                 .map_err(|e| vec![e])?;
         }
@@ -261,6 +273,13 @@ pub fn resolve_types(
         xform_int_to_bool_initializer::apply(lib, &mut type_environment, options)
     });
 
+    // Record the type id each declaration declares, entering types spelled
+    // out in place as anonymous types. Runs before the symbol environment
+    // is built so that each variable symbol records its declared type id.
+    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+        xform_resolve_decl_types::apply(lib, &mut type_environment)
+    });
+
     // Best effort: a repeated declaration name is diagnosed here, by the
     // environments, and the first declaration is kept, so the rest of the
     // library still resolves instead of reverting on the first repeat.
@@ -269,6 +288,7 @@ pub fn resolve_types(
             lib,
             &mut symbol_environment,
             &mut function_environment,
+            &type_environment,
         )
     });
 
@@ -279,15 +299,17 @@ pub fn resolve_types(
         xform_named_to_positional_args::apply(lib, &function_environment)
     });
 
-    // Record the type id each declaration declares, entering types spelled
-    // out in place as anonymous types.
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
-        xform_resolve_decl_types::apply(lib, &mut type_environment)
-    });
-
-    // Resolve expression types using the function environment.
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
-        xform_resolve_expr_types::apply(lib, &mut type_environment, &function_environment, options)
+    // Resolve expression types using the function environment. Best effort:
+    // an unqualified enumerated value whose type is ambiguous is diagnosed
+    // and left without a type, and the rest of the library keeps its types.
+    library = run_best_effort(library, &mut diagnostics, |lib| {
+        xform_resolve_expr_types::apply(
+            lib,
+            &symbol_environment,
+            &mut type_environment,
+            &function_environment,
+            options,
+        )
     });
 
     // Fold constant binary and unary expressions.
@@ -301,7 +323,7 @@ pub fn resolve_types(
     });
 
     library = run_reverting_on_error(library, &mut diagnostics, |lib| {
-        xform_resolve_type_aliases::apply(lib, &type_environment, &mut symbol_environment)
+        xform_resolve_type_aliases::apply(lib, &mut symbol_environment)
     });
 
     // Mark every variable the program never writes as CONSTANT, so the
@@ -385,6 +407,7 @@ pub(crate) fn semantic(
         rule_mixed_located_var_declarations::apply,
         rule_pou_hierarchy::apply,
         rule_bit_and_partial_access_range::apply,
+        rule_array_index_range::apply,
         rule_case_bit_string_label::apply,
         rule_case_selector_type::apply,
         rule_condition_type::apply,
@@ -860,5 +883,88 @@ END_RESOURCE
 END_CONFIGURATION",
         );
         assert!(codes.is_empty(), "expected no diagnostics, got: {codes:?}");
+    }
+
+    fn variable_type_id(
+        context: &crate::semantic_context::SemanticContext,
+        name: &str,
+        scope: &crate::symbol_environment::ScopeKind,
+    ) -> Option<ironplc_dsl::type_id::TypeId> {
+        context
+            .symbols()
+            .find(&ironplc_dsl::core::Id::from(name), scope)
+            .expect("variable symbol")
+            .type_id
+    }
+
+    #[test]
+    fn resolve_types_when_variables_declared_then_symbols_record_type_id() {
+        use crate::symbol_environment::{ScopeKind, ScopePath};
+        use crate::test_helpers::parse_and_resolve_types_with_context;
+        use ironplc_dsl::common::TypeName;
+        use ironplc_dsl::core::Id;
+
+        let (_library, context) = parse_and_resolve_types_with_context(
+            "
+TYPE Point : STRUCT x : INT; END_STRUCT; END_TYPE
+PROGRAM main
+  VAR
+    count : INT;
+    p : Point;
+    arr : ARRAY[1..2] OF DINT;
+  END_VAR
+END_PROGRAM
+CONFIGURATION config
+  VAR_GLOBAL
+    flag : BOOL;
+  END_VAR
+  RESOURCE res ON PLC
+    TASK t(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM inst WITH t : main;
+  END_RESOURCE
+END_CONFIGURATION
+",
+        );
+        let types = context.types();
+        let main = ScopeKind::Named(ScopePath::new(vec![Id::from("main")]));
+
+        assert_eq!(
+            variable_type_id(&context, "count", &main),
+            types.id_of(&TypeName::from("INT"))
+        );
+        assert_eq!(
+            variable_type_id(&context, "p", &main),
+            types.id_of(&TypeName::from("Point"))
+        );
+        let arr = variable_type_id(&context, "arr", &main).expect("anonymous array type id");
+        assert!(types.get_by_id(arr).unwrap().representation.is_array());
+        assert_eq!(
+            variable_type_id(&context, "flag", &ScopeKind::Global),
+            types.id_of(&TypeName::from("BOOL"))
+        );
+    }
+
+    #[test]
+    fn resolve_types_when_system_uptime_global_then_symbol_records_type_id() {
+        use crate::symbol_environment::ScopeKind;
+        use crate::test_helpers::parse_and_resolve_types_with_options;
+        use ironplc_dsl::common::TypeName;
+
+        let options = CompilerOptions {
+            allow_system_uptime_global: true,
+            ..CompilerOptions::default()
+        };
+        let (_library, context) = parse_and_resolve_types_with_options(
+            "
+PROGRAM main
+END_PROGRAM
+",
+            &options,
+        );
+
+        assert_eq!(
+            variable_type_id(&context, "__SYSTEM_UP_LTIME", &ScopeKind::Global),
+            context.types().id_of(&TypeName::from("LTIME"))
+        );
     }
 }

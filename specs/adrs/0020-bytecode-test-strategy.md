@@ -3,6 +3,7 @@
 status: accepted
 date: 2026-03-09
 amended: 2026-09-11 (hardcoded-hex rule corrected to the mechanism that was built)
+amended: 2026-10-04 (end-to-end tests observe variables by name and IEC value)
 
 ## Context and Problem Statement
 
@@ -10,7 +11,7 @@ The IronPLC test suite has grown to include three categories of tests for byteco
 
 1. **VM bytecode tests** (`compiler/vm/tests/execute_*.rs`) — hand-assemble bytecodes with hardcoded hex bytes, load into the VM, execute, and assert results
 2. **Compile bytecode tests** (`compiler/codegen/tests/compile_*.rs`) — compile IEC 61131-3 source and assert the exact bytecode byte sequence produced
-3. **End-to-end tests** (`compiler/codegen/tests/end_to_end_*.rs`) — compile IEC 61131-3 source, execute in the VM, and assert variable values
+3. **End-to-end tests** (`compiler/codegen/tests/end_to_end_*.rs`) — compile IEC 61131-3 source, execute in the VM, and assert variable values *(amended: by name and IEC value, see the amendment below)*
 
 Many operations are tested at all three levels, with significant overlap. For example, `execute_sub_i32.rs` tests that `SUB_I32` produces the right answer for basic inputs like `10 - 3 = 7`, while `end_to_end_sub.rs` tests the same scenario via `result := 10 - 3`.
 
@@ -172,3 +173,29 @@ than a silent one.
 
 Confirmation item 2 is amended above to name `wire_format.rs`. Items 1, 3 and 4
 are unchanged and still describe the strategy in force.
+
+## Amendment: end-to-end tests observe variables by name and IEC value (2026-10-04)
+
+This ADR says end-to-end tests "assert variable values" and are "completely
+immune to bytecode encoding changes". They were immune to opcode encodings,
+but not to layout: they read a variable from the slot the compiler gave it,
+at the data-region offset the allocator chose, and asserted the count the VM
+stores a date or duration as. A change to variable layout, or a second
+backend, broke tests that were not about layout.
+
+[End-to-End Test Observation](../design/end-to-end-test-observation.md)
+closes that gap. An end-to-end test names a variable, and compares the IEC
+value of its declared type: `read("result")` against `"Hello World"`, a
+`TIME` against `Duration::seconds(5)`, a `DATE` against `date!(2024-01-01)`.
+The harness finds the variable through the container's debug section, so no
+test code holds a copy of the layout.
+
+Layout is therefore not an end-to-end concern. A test whose subject is where
+or how the compiler stores a variable, such as the slots the uptime globals
+take or the UTF-16LE bytes of a WSTRING, is a `compile_*.rs` test. A test
+whose subject is the VM's embedder API, which addresses variables by slot, is
+a `vm_api_*.rs` test that looks the slot up by name.
+
+The three categories and their purposes are unchanged. This amendment narrows
+what an end-to-end test may observe, so that the category stays immune to
+layout as well as to encoding.

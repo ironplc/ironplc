@@ -35,6 +35,9 @@ use std::marker::PhantomData;
 pub trait Key: Eq + Hash + Clone + fmt::Debug {}
 pub trait Value: fmt::Debug {}
 
+impl Key for ironplc_dsl::core::Id {}
+impl Key for ironplc_dsl::common::TypeName {}
+
 struct Scope<'a, K: Key, V: 'a + Value> {
     table: HashMap<K, V>,
     phantom: PhantomData<&'a V>,
@@ -46,10 +49,6 @@ impl<'a, K: Key, V: 'a + Value> Scope<'a, K, V> {
             table: HashMap::new(),
             phantom: PhantomData,
         }
-    }
-
-    fn add(&mut self, name: &K, value: V) -> Option<V> {
-        self.table.insert(name.clone(), value)
     }
 
     /// Tries to add the name into the scope with the specified value.
@@ -114,27 +113,6 @@ impl<'a, K: Key, V: 'a + Value> ScopedTable<'a, K, V> {
         self.stack.pop_front();
     }
 
-    /// Adds the key to the scope with the specified value.
-    ///
-    /// If the table does not have this key present in scope, None is returned.
-    ///
-    /// If the table does have this key present in scope, the value is updated,
-    /// and the old value is returned. The key is not updated. This matters
-    /// particularly for Id's which can be equal even if not identical.
-    pub fn add(&mut self, name: &K, value: V) -> Option<V> {
-        match self.stack.front_mut() {
-            None => None,
-            Some(scope) => scope.add(name, value),
-        }
-    }
-
-    pub fn add_if(&mut self, name: Option<&K>, value: V) -> Option<V> {
-        match name {
-            Some(n) => self.add(n, value),
-            None => None,
-        }
-    }
-
     /// Tries to add the key to the scope with the specified value.
     ///
     /// If the table does not have this key present in scope, None is returned.
@@ -156,18 +134,6 @@ impl<'a, K: Key, V: 'a + Value> ScopedTable<'a, K, V> {
     /// return a reference derived from the table.
     pub fn find(&self, name: &K) -> Option<&V> {
         self.stack.iter().find_map(|scope| scope.find(name))
-    }
-
-    /// Returns all keys across all scopes.
-    ///
-    /// Keys from inner scopes appear before keys from outer scopes.
-    /// If the same key exists in multiple scopes, it may appear more
-    /// than once.
-    pub fn keys(&self) -> Vec<&K> {
-        self.stack
-            .iter()
-            .flat_map(|scope| scope.table.keys())
-            .collect()
     }
 
     /// Removes the name from the inner-most scope if
@@ -221,7 +187,7 @@ mod tests {
     #[test]
     fn remove_when_key_exists_then_returns_value() {
         let mut table: ScopedTable<String, i32> = ScopedTable::new();
-        table.add(&"x".to_string(), 42);
+        table.try_add(&"x".to_string(), 42);
         let removed = table.remove(&"x".to_string());
         assert_eq!(removed, Some(42));
         assert!(table.find(&"x".to_string()).is_none());
@@ -235,23 +201,9 @@ mod tests {
     }
 
     #[test]
-    fn add_if_when_name_is_none_then_returns_none() {
-        let mut table: ScopedTable<String, i32> = ScopedTable::new();
-        let result = table.add_if(None, 10);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn add_if_when_name_is_some_then_adds() {
-        let mut table: ScopedTable<String, i32> = ScopedTable::new();
-        table.add_if(Some(&"key".to_string()), 10);
-        assert_eq!(table.find(&"key".to_string()), Some(&10));
-    }
-
-    #[test]
     fn debug_when_scoped_table_then_formats_without_error() {
         let mut table: ScopedTable<String, i32> = ScopedTable::new();
-        table.add(&"a".to_string(), 1);
+        table.try_add(&"a".to_string(), 1);
         let debug_str = format!("{:?}", table);
         assert!(!debug_str.is_empty());
     }
@@ -259,9 +211,9 @@ mod tests {
     #[test]
     fn enter_exit_when_inner_scope_then_hides_outer() {
         let mut table: ScopedTable<String, i32> = ScopedTable::new();
-        table.add(&"x".to_string(), 1);
+        table.try_add(&"x".to_string(), 1);
         table.enter();
-        table.add(&"x".to_string(), 2);
+        table.try_add(&"x".to_string(), 2);
         assert_eq!(table.find(&"x".to_string()), Some(&2));
         table.exit();
         assert_eq!(table.find(&"x".to_string()), Some(&1));

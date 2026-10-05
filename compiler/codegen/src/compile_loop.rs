@@ -3,16 +3,14 @@
 //! Separated from `compile_stmt.rs` to keep module sizes within the
 //! 1000-line guideline.
 
-use ironplc_dsl::common::ConstantKind;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, ExprKind, StmtKind, UnaryOp};
+use ironplc_dsl::textual::{Expr, StmtKind};
 
 use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
 use super::compile_expr::{
-    compile_expr, condition_op_type, emit_add, emit_classified_cmp_br, emit_ge, emit_le,
-    emit_load_var, emit_store_var, emit_truncation, signed_integer_to_i64, try_classify_cmp,
-    ClassifiedCmp,
+    compile_expr, condition_op_type, constant_i64, emit_add, emit_classified_cmp_br, emit_ge,
+    emit_le, emit_load_var, emit_store_var, emit_truncation, try_classify_cmp, ClassifiedCmp,
 };
 use super::compile_stmt::compile_stmts;
 use crate::emit::{self, Emitter};
@@ -45,7 +43,10 @@ fn compile_loop_body(
         next_used: false,
     });
     let result = compile_stmts(emitter, ctx, body);
-    let labels = ctx.loop_labels.pop().expect("pushed above");
+    let labels = ctx
+        .loop_labels
+        .pop()
+        .ok_or_else(Diagnostic::internal_error)?;
     result?;
     Ok(labels.next_used.then_some(labels.next))
 }
@@ -89,11 +90,11 @@ pub(crate) fn compile_while(
     if let Some(classified) = try_classify_cmp(ctx, &while_stmt.condition) {
         let body_label = emitter.create_label();
         let end_label = emitter.create_label();
-        emit_classified_cmp_br(emitter, classified, false, end_label);
+        emit_classified_cmp_br(emitter, classified, false, end_label)?;
         emitter.bind_label(body_label);
         let next = compile_loop_body(emitter, ctx, &while_stmt.body, end_label)?;
         bind_next(emitter, next);
-        emit_classified_cmp_br(emitter, classified, true, body_label);
+        emit_classified_cmp_br(emitter, classified, true, body_label)?;
         emitter.bind_label(end_label);
         return Ok(());
     }
@@ -140,7 +141,7 @@ pub(crate) fn compile_repeat(
     let next = compile_loop_body(emitter, ctx, &repeat_stmt.body, end_label)?;
     bind_next(emitter, next);
     if let Some(classified) = classified_until {
-        emit_classified_cmp_br(emitter, classified, false, loop_label);
+        emit_classified_cmp_br(emitter, classified, false, loop_label)?;
     } else {
         let cond_type = condition_op_type(ctx, &repeat_stmt.until)?;
         compile_expr(emitter, ctx, &repeat_stmt.until, cond_type)?;
@@ -162,27 +163,9 @@ enum StepSign {
 /// integer literal (positive or negative). Returns `None` for non-constant
 /// expressions.
 fn try_constant_sign(expr: &Expr) -> Option<StepSign> {
-    match try_constant_i64(expr)? {
+    match constant_i64(&expr.kind)? {
         v if v > 0 => Some(StepSign::Positive),
         v if v < 0 => Some(StepSign::Negative),
-        _ => None,
-    }
-}
-
-/// Returns the `i64` value of an expression if it is a compile-time constant
-/// integer literal (positive, negative, or unary-negated). Returns `None`
-/// for non-constant expressions or values outside the `i64` range.
-fn try_constant_i64(expr: &Expr) -> Option<i64> {
-    match &expr.kind {
-        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-            signed_integer_to_i64(&lit.value).ok()
-        }
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => match &unary.term.kind {
-            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => signed_integer_to_i64(&lit.value)
-                .ok()
-                .and_then(i64::checked_neg),
-            _ => None,
-        },
         _ => None,
     }
 }
@@ -220,15 +203,15 @@ fn for_loop_trunc_can_be_elided(
         // Wide type: emit_truncation is already a no-op; flag is irrelevant.
         return true;
     };
-    let Some(from_v) = try_constant_i64(from) else {
+    let Some(from_v) = constant_i64(&from.kind) else {
         return false;
     };
-    let Some(to_v) = try_constant_i64(to) else {
+    let Some(to_v) = constant_i64(&to.kind) else {
         return false;
     };
     let step_v = match step {
         None => 1,
-        Some(expr) => match try_constant_i64(expr) {
+        Some(expr) => match constant_i64(&expr.kind) {
             Some(v) => v,
             None => return false,
         },
@@ -277,7 +260,7 @@ fn try_classify_for_head(
     if op_type.1 != Signedness::Signed {
         return None;
     }
-    let to_value = try_constant_i64(to)?;
+    let to_value = constant_i64(&to.kind)?;
     let cmp_op_byte = match step_sign {
         StepSign::Positive => opcode::cmp_op::LE_S,
         StepSign::Negative => opcode::cmp_op::GE_S,
@@ -383,7 +366,7 @@ pub(crate) fn compile_for(
     {
         // Fused path: one CMP_BR replacing LOAD_VAR + LOAD_CONST + LE/GE + JMP_IF_NOT.
         // Branch to END when the continuation predicate is FALSE.
-        emit_classified_cmp_br(emitter, classified, false, end_label);
+        emit_classified_cmp_br(emitter, classified, false, end_label)?;
     } else {
         emit_load_var(emitter, var_index, op_type);
         compile_expr(emitter, ctx, &for_stmt.to, op_type)?;

@@ -10,7 +10,7 @@ PROGRAM main
   result := MUX(0, LINT#5000000000, LINT#10000000000);
 END_PROGRAM
 ",
-    &[(0, 5_000_000_000)],
+    &[("result", 5_000_000_000)],
 );
 
 e2e_i64!(
@@ -23,7 +23,7 @@ PROGRAM main
   result := MUX(1, LINT#5000000000, LINT#10000000000);
 END_PROGRAM
 ",
-    &[(0, 10_000_000_000)],
+    &[("result", 10_000_000_000)],
 );
 
 e2e_i64!(
@@ -36,7 +36,7 @@ PROGRAM main
   result := MUX(2, LINT#100, LINT#200, LINT#300);
 END_PROGRAM
 ",
-    &[(0, 300)],
+    &[("result", 300)],
 );
 
 e2e_i64!(
@@ -49,7 +49,7 @@ PROGRAM main
   result := MUX(10, LINT#100, LINT#200, LINT#300);
 END_PROGRAM
 ",
-    &[(0, 300)],
+    &[("result", 300)],
 );
 
 e2e_i64!(
@@ -64,5 +64,5 @@ PROGRAM main
   result := MUX(k, LINT#100, LINT#200);
 END_PROGRAM
 ",
-    &[(1, 100)],
+    &[("result", 100)],
 );

@@ -276,11 +276,9 @@ fn compile_to_container(source: &str) -> Container {
     let library =
         ironplc_parser::parse_program(source, &ironplc_dsl::core::FileId::default(), &options)
             .unwrap();
-    let (analyzed, context) =
-        ironplc_analyzer::stages::resolve_types(&[&library], &options).unwrap();
+    let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     ironplc_codegen::compile(
-        &analyzed,
-        &context,
+        ironplc_analyzer::CleanAnalysis::new(&analyzed, &context).unwrap(),
         &ironplc_codegen::CodegenOptions::default(),
         &ironplc_codegen::EmptyLookup,
     )

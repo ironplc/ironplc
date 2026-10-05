@@ -86,8 +86,7 @@ impl Visitor<Infallible> for RuleCaseBitStringLabel {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
+    use crate::test_helpers::rule_diagnostics;
 
     use super::*;
 
@@ -98,7 +97,7 @@ mod tests {
         }
     }
 
-    rule_err!(
+    rule_err_at!(
         apply_when_hex_case_label_and_flag_disabled_then_error,
         "
 FUNCTION_BLOCK FB_Example
@@ -109,12 +108,14 @@ END_VAR
 CASE x OF
     16#D012: y := 1;
 END_CASE;
-END_FUNCTION_BLOCK"
+END_FUNCTION_BLOCK",
+        Problem::BitStringCaseLabelNotAllowed,
+        "16#D012"
     );
 
-    #[test]
-    fn apply_when_hex_case_label_and_flag_enabled_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_hex_case_label_and_flag_enabled_then_ok,
+        "
 FUNCTION_BLOCK FB_Example
 VAR
     x : DINT;
@@ -123,14 +124,9 @@ END_VAR
 CASE x OF
     16#D012: y := 1;
 END_CASE;
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &opts_with_flag());
-
-        assert!(result.is_ok());
-    }
+END_FUNCTION_BLOCK",
+        opts_with_flag()
+    );
 
     #[test]
     fn apply_when_binary_and_octal_case_labels_and_flag_disabled_then_error_per_label() {
@@ -146,11 +142,7 @@ CASE x OF
 END_CASE;
 END_FUNCTION_BLOCK";
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        let diagnostics = result.unwrap_err();
+        let diagnostics = rule_diagnostics(apply, program, &CompilerOptions::default());
         assert_eq!(diagnostics.len(), 2);
     }
 

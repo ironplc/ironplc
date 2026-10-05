@@ -95,6 +95,8 @@ impl Visitor<Infallible> for RuleEnumerationValuesUnique {
 
 #[cfg(test)]
 mod tests {
+    use ironplc_problems::Problem;
+
     rule_ok!(
         apply_when_values_unique_then_ok,
         "
@@ -112,11 +114,13 @@ LOGLEVEL2 : LOGLEVEL;
 END_TYPE"
     );
 
-    rule_err!(
+    rule_err_at!(
         apply_when_value_duplicated_then_error,
         "
 TYPE
 LOGLEVEL : (CRITICAL, CRITICAL);
-END_TYPE"
+END_TYPE",
+        Problem::EnumTypeDeclDuplicateItem,
+        "CRITICAL"
     );
 }

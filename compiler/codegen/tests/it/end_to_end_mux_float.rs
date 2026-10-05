@@ -11,7 +11,7 @@ PROGRAM main
   y := MUX(0, 10.5, 20.5, 30.5);
 END_PROGRAM
 ",
-    &[(0, 10.5)],
+    &[("y", 10.5)],
 );
 
 e2e_f32_near!(
@@ -25,7 +25,7 @@ PROGRAM main
   y := MUX(2, 10.5, 20.5, 30.5);
 END_PROGRAM
 ",
-    &[(0, 30.5)],
+    &[("y", 30.5)],
 );
 
 e2e_f32_near!(
@@ -39,7 +39,7 @@ PROGRAM main
   y := MUX(5, 10.5, 20.5, 30.5);
 END_PROGRAM
 ",
-    &[(0, 30.5)],
+    &[("y", 30.5)],
 );
 
 e2e_f64_near!(
@@ -53,7 +53,7 @@ PROGRAM main
   y := MUX(0, 10.5, 20.5, 30.5);
 END_PROGRAM
 ",
-    &[(0, 10.5)],
+    &[("y", 10.5)],
 );
 
 e2e_f64_near!(
@@ -67,7 +67,7 @@ PROGRAM main
   y := MUX(1, 10.5, 20.5, 30.5);
 END_PROGRAM
 ",
-    &[(0, 20.5)],
+    &[("y", 20.5)],
 );
 
 e2e_f64_near!(
@@ -81,5 +81,5 @@ PROGRAM main
   y := MUX(5, 10.5, 20.5, 30.5);
 END_PROGRAM
 ",
-    &[(0, 30.5)],
+    &[("y", 30.5)],
 );

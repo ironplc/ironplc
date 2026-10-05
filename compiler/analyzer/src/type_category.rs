@@ -3,7 +3,7 @@
 //! This module provides functionality for categorizing types into elementary,
 //! user-defined, and derived types according to IEC 61131-3 standards.
 
-use crate::intermediate_type::IntermediateType;
+use crate::semantic_type::SemanticType;
 
 /// Categorizes types into elementary, user-defined, or derived types.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -17,29 +17,27 @@ pub enum TypeCategory {
 }
 
 impl TypeCategory {
-    /// Determines the category for a given intermediate type
-    pub fn for_type(intermediate_type: &IntermediateType) -> Self {
-        match intermediate_type {
-            IntermediateType::Bool
-            | IntermediateType::Int { .. }
-            | IntermediateType::UInt { .. }
-            | IntermediateType::Real { .. }
-            | IntermediateType::Bytes { .. }
-            | IntermediateType::Time { .. }
-            | IntermediateType::Date { .. }
-            | IntermediateType::TimeOfDay { .. }
-            | IntermediateType::DateAndTime { .. }
-            | IntermediateType::String { .. } => TypeCategory::Elementary,
-            IntermediateType::Structure { .. } | IntermediateType::Enumeration { .. } => {
+    /// Determines the category for a given semantic type
+    pub fn for_type(semantic_type: &SemanticType) -> Self {
+        match semantic_type {
+            SemanticType::Bool
+            | SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Real { .. }
+            | SemanticType::Bytes { .. }
+            | SemanticType::Time { .. }
+            | SemanticType::Date { .. }
+            | SemanticType::TimeOfDay { .. }
+            | SemanticType::DateAndTime { .. }
+            | SemanticType::String { .. } => TypeCategory::Elementary,
+            SemanticType::Structure { .. } | SemanticType::Enumeration { .. } => {
                 TypeCategory::UserDefined
             }
-            IntermediateType::Subrange { .. } | IntermediateType::Array { .. } => {
-                TypeCategory::Derived
-            }
-            IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. } => {
+            SemanticType::Subrange { .. } | SemanticType::Array { .. } => TypeCategory::Derived,
+            SemanticType::FunctionBlock { .. } | SemanticType::Function { .. } => {
                 TypeCategory::UserDefined
             }
-            IntermediateType::Reference { .. } => TypeCategory::Derived,
+            SemanticType::Reference { .. } => TypeCategory::Derived,
         }
     }
 }
@@ -47,24 +45,24 @@ impl TypeCategory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
+    use crate::semantic_type::{ArrayDimension, ByteSized, SemanticType};
     use ironplc_container::CharWidth;
 
     #[test]
     fn type_category_classification() {
         // Test elementary types
         assert_eq!(
-            TypeCategory::for_type(&IntermediateType::Bool),
+            TypeCategory::for_type(&SemanticType::Bool),
             TypeCategory::Elementary
         );
         assert_eq!(
-            TypeCategory::for_type(&IntermediateType::Int {
+            TypeCategory::for_type(&SemanticType::Int {
                 size: ByteSized::B16
             }),
             TypeCategory::Elementary
         );
         assert_eq!(
-            TypeCategory::for_type(&IntermediateType::String {
+            TypeCategory::for_type(&SemanticType::String {
                 max_len: None,
                 char_width: CharWidth::Narrow,
             }),
@@ -73,22 +71,23 @@ mod tests {
 
         // Test user-defined types
         assert_eq!(
-            TypeCategory::for_type(&IntermediateType::Structure { fields: vec![] }),
+            TypeCategory::for_type(&SemanticType::Structure { fields: vec![] }),
             TypeCategory::UserDefined
         );
         assert_eq!(
-            TypeCategory::for_type(&IntermediateType::Enumeration {
-                underlying_type: Box::new(IntermediateType::Int {
+            TypeCategory::for_type(&SemanticType::Enumeration {
+                underlying_type: Box::new(SemanticType::Int {
                     size: ByteSized::B8
-                })
+                }),
+                members: crate::enumeration_members::EnumerationMembers::default(),
             }),
             TypeCategory::UserDefined
         );
 
         // Test derived types
         assert_eq!(
-            TypeCategory::for_type(&IntermediateType::Subrange {
-                base_type: Box::new(IntermediateType::Int {
+            TypeCategory::for_type(&SemanticType::Subrange {
+                base_type: Box::new(SemanticType::Int {
                     size: ByteSized::B16
                 }),
                 min_value: 1,
@@ -97,8 +96,8 @@ mod tests {
             TypeCategory::Derived
         );
         assert_eq!(
-            TypeCategory::for_type(&IntermediateType::Array {
-                element_type: Box::new(IntermediateType::Bool),
+            TypeCategory::for_type(&SemanticType::Array {
+                element_type: Box::new(SemanticType::Bool),
                 dimensions: vec![ArrayDimension { lower: 0, upper: 9 }]
             }),
             TypeCategory::Derived

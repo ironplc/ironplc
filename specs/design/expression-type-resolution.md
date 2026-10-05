@@ -47,6 +47,9 @@ A declaration carries the id of the type it declares in
 - a reference type is the one type `TypeEnvironment::reference_to(target)`
   interns, so `REF_TO INT` is the same type wherever it is spelled.
 
+The pass runs before the `SymbolEnvironment` is built, so each variable's
+`SymbolInfo::type_id` holds the same id as its declaration.
+
 `expr_type` is left out of `Expr`'s equality: its ids are allocated per
 compilation, so an expected expression built by hand cannot know them.
 
@@ -63,12 +66,19 @@ on each expression from its operands' types:
 | Arithmetic operator | the result of the overload that applies (see [Arithmetic Operator Overloads](arithmetic-operator-overloads.md)), else the concrete operand's type |
 | Unary operator, parenthesised expression | the operand's type |
 | `AND`, `OR`, `XOR`, `AND_THEN`, `OR_ELSE` | the concrete operand's type |
-| Comparison | `BOOL` |
+| Comparison | `BOOL`; the operands compare at the type one widens to (see [Comparison Operand Type](comparison-operand-type.md)) |
 | Function call | the overload's result, else the declared return type, else for a generic return type the argument bound to it |
 | Enumerated value | its enumeration, when qualified |
 | `REF(x)` | `reference_to(x's type)` |
 | Dereference | the referenced type (`TypeEnvironment::referenced_type`) |
 | `NULL` | `Null` |
+| Implicit conversion | the type it converts to, recorded when the node is inserted |
+
+After the semantic rules, `xform_insert_implicit_conversions` records the
+conversions the language makes without the program spelling them: an
+`ExprKind::ImplicitConversion` around an operand converted to another type,
+and an untyped literal given the type it is used as. See
+[Implicit Conversions](implicit-conversions.md).
 
 ## Relations that compare by name
 
@@ -105,3 +115,52 @@ operation width and signedness codegen needs:
 `type_id`. `resolve_type_name` remains only for types written as names
 with no declaration behind them: function return types, parameter types
 from a signature, array element type names, and conversion function names.
+
+## Inspecting the annotation
+
+`ironplcc echo --types` writes the analyzed program as Structured Text with
+the annotation shown as comments, so the types and conversions the analyzer
+recorded can be read for a whole program. plc2plc renders it
+(`write_to_string_with_types`). It is handed a function that names a
+`TypeId`, so it does not depend on the analyzer, and the CLI hands it
+`value_type::spelling`.
+
+```
+count := ( count (* INT *) + 1 (* CONSTANT INT *) ) (* INT *) ;
+flag := ( big (* LINT *) > total (* DINT -> LINT *) ) (* BOOL *) ;
+r := Pass ( 0.1 (* CONSTANT REAL -> LREAL *) ) (* LREAL *) ;
+b := ( 1 (* CONSTANT ? ANY_INT *) < 2 (* CONSTANT ? ANY_INT *) ) (* BOOL *) ;
+```
+
+**REQ-ETR-plc2plc-001** The annotated rendering writes `(* T *)` after every expression, where `T` is the type recorded for it: `count (* INT *)`.
+
+**REQ-ETR-plc2plc-002** An implicit conversion is written as its operand followed by `(* FROM -> TO *)`, and the operand has no comment of its own: `total (* DINT -> LINT *)`.
+
+A literal, an enumerated value and `NULL` have values the compiler knows; a
+variable, a call and an operation produce theirs at run time. The comment
+tells them apart. A variable declared `CONSTANT` is still loaded at run time,
+because constant folding substitutes only literals, so it is not marked. A
+`CONSTANT FROM -> TO` comment is a conversion of a value known when compiling,
+which the compiler could remove by giving the literal the type `TO`.
+
+**REQ-ETR-plc2plc-003** A literal, an enumerated value and `NULL` are annotated with `CONSTANT` before the type, and no other expression is: `1 (* CONSTANT INT *)` but `count (* INT *)`.
+
+An expression left at a generic category is one whose type codegen still
+decides, not one with a type of its own
+([#2050](https://github.com/ironplc/ironplc/issues/2050)), so it is marked as
+undecided, as an expression with no type is.
+
+**REQ-ETR-plc2plc-004** An expression whose type the analyzer did not decide is annotated with `?`: `(* ? *)` with no recorded type, and `(* ? ANY_INT *)` at a generic category.
+
+**REQ-ETR-plc2plc-005** A unary operation and a dereference are parenthesised in the annotated rendering, so the comment on the operand and the comment on the operation are not written side by side: `( NOT flag (* BOOL *) ) (* BOOL *)`.
+
+**REQ-ETR-plc2plc-006** The annotated rendering re-parses to the same library as the plain rendering of the same library.
+
+**REQ-ETR-analyzer-001** `value_type::spelling` writes an elementary type in upper case, any other named type by its declared name, and an anonymous type by its shape: `DINT`, `Color`, `ARRAY[1..2] OF DINT`.
+
+The output is the analyzed program rather than the source: declarations are
+in dependency order, named arguments are positional, constant expressions are
+folded, and every file is merged into one output. Only the declarations of the
+project's own files are written, not those of an activated library.
+Assignment targets, `FOR` control variables and `CASE` labels are not
+expressions, so they carry no comment.

@@ -10,10 +10,10 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variable};
 use ironplc_problems::Problem;
 
-use ironplc_analyzer::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
+use ironplc_analyzer::semantic_type::{ArrayDimension, ByteSized, SemanticType};
 use ironplc_container::{CharWidth, ContainerBuilder, SlotIndex, VarIndex};
 
-use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
+use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
 use super::compile_expr::compile_expr;
 use crate::emit::Emitter;
 
@@ -38,6 +38,7 @@ pub(crate) struct ArraySpec {
 
 /// Metadata for a single dimension of an array, used for index computation.
 #[allow(dead_code)]
+#[derive(Clone)]
 pub(crate) struct DimensionInfo {
     pub lower_bound: i32,
     pub size: u32,
@@ -105,10 +106,9 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
         dimensions: Vec<DimensionInfo>,
         /// Subscript expressions.
         subscripts: Vec<&'ast Expr>,
-        /// Element op type for compile_expr width.
-        element_op_type: OpType,
-        /// Element intermediate type for truncation on store.
-        element_type: IntermediateType,
+        /// Element semantic type, which decides the type the element is
+        /// loaded and stored at.
+        element_type: SemanticType,
     },
     /// STRING array element within a struct field — see [`StructStringElement`].
     StructFieldStringArrayElement(StructStringElement<'ast>),
@@ -173,7 +173,19 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
     variable: &'ast Variable,
 ) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
     match variable {
-        Variable::Symbolic(SymbolicVariableKind::Array(array_var)) => {
+        Variable::Symbolic(symbolic) => resolve_symbolic_access(ctx, symbolic),
+        Variable::Direct(direct) => Err(Diagnostic::todo_with_span(direct.position.clone())),
+    }
+}
+
+/// Resolves a symbolic variable reference into its access kind, as
+/// [`resolve_access`] does for a [`Variable`].
+pub(crate) fn resolve_symbolic_access<'ctx, 'ast>(
+    ctx: &'ctx CompileContext,
+    symbolic: &'ast SymbolicVariableKind,
+) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
+    match symbolic {
+        SymbolicVariableKind::Array(array_var) => {
             // Walk the chain collecting subscript groups innermost-first,
             // then reverse. For nested arrays arr[i][j], the AST is:
             //   ArrayVariable {
@@ -267,7 +279,7 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
         // `s.arr[i].field` -- a field selected from an element of an
         // array-of-struct. The record is an array element rather than a
         // fixed-offset struct field, so it resolves through the array path.
-        Variable::Symbolic(SymbolicVariableKind::Structured(structured))
+        SymbolicVariableKind::Structured(structured)
             if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
         {
             crate::compile_array_struct::resolve_struct_array_element_field(
@@ -276,14 +288,14 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                 Vec::new(),
             )
         }
-        _ => {
-            if let Some(ref_slot) = super::compile_expr::in_out_ref_slot(ctx, variable) {
+        SymbolicVariableKind::Named(named) => {
+            if let Some(ref_slot) = ctx.in_out_ref_slot(&named.name) {
                 return Ok(ResolvedAccess::InOut { ref_slot });
             }
-            // Fall through to existing resolve_variable() for scalars.
-            let var_index = super::compile_expr::resolve_variable(ctx, variable)?;
+            let var_index = ctx.var_index(&named.name)?;
             Ok(ResolvedAccess::Scalar { var_index })
         }
+        other => Err(Diagnostic::todo_with_span(other.span())),
     }
 }
 
@@ -301,7 +313,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
     let (root_name, slot_offset, field_type) =
         crate::compile_struct::walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
 
-    let IntermediateType::Array {
+    let SemanticType::Array {
         element_type,
         dimensions: array_dims,
     } = &field_type
@@ -321,7 +333,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
 
     // STRING array fields use dedicated STR_LOAD/STORE_ARRAY_ELEM opcodes
     // with a scratch variable and a STRING-specific array descriptor.
-    if let IntermediateType::String { char_width, .. } = element_type.as_ref() {
+    if let SemanticType::String { char_width, .. } = element_type.as_ref() {
         let field_name = structured.field.to_string().to_lowercase();
         let &(str_desc_index, _, _) =
             struct_info
@@ -333,13 +345,14 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
                         "STRING array descriptor not registered for field",
                     ))
                 })?;
+        // Allocated for every structure that has a STRING-array descriptor.
         let scratch = struct_info.scratch_var_index.ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
+            Diagnostic::internal_error_at(Label::span(
                 structured.field.span(),
                 "Scratch variable not allocated for struct",
             ))
         })?;
-        let dimensions = dimensions_from_intermediate(array_dims);
+        let dimensions = dimensions_from_semantic_type(array_dims);
         let field_byte_offset = slot_offset.raw() * 8;
         return Ok(ResolvedAccess::StructFieldStringArrayElement(
             StructStringElement {
@@ -354,16 +367,14 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         ));
     }
 
-    let element_op_type =
-        crate::compile_struct::resolve_field_op_type(element_type).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
-                    structured.field.span(),
-                    "Array element type is not a primitive (nested struct/array elements not supported)",
-                ),
-            )
-        })?;
+    if crate::compile_struct::resolve_field_op_type(element_type).is_none() {
+        return Err(Diagnostic::not_implemented(Label::span(
+            structured.field.span(),
+            "Array element type is not a primitive (nested struct/array elements not supported)",
+        )));
+    }
 
-    let dimensions = dimensions_from_intermediate(array_dims);
+    let dimensions = dimensions_from_semantic_type(array_dims);
 
     Ok(ResolvedAccess::StructFieldArrayElement {
         var_index: struct_info.var_index,
@@ -371,7 +382,6 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         field_slot_offset: slot_offset,
         dimensions,
         subscripts,
-        element_op_type,
         element_type: element_type.as_ref().clone(),
     })
 }
@@ -380,7 +390,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
 ///
 /// Strides follow row-major order: the last dimension has stride 1, each
 /// preceding dimension's stride is the product of all subsequent dimension sizes.
-pub(crate) fn dimensions_from_intermediate(dims: &[ArrayDimension]) -> Vec<DimensionInfo> {
+pub(crate) fn dimensions_from_semantic_type(dims: &[ArrayDimension]) -> Vec<DimensionInfo> {
     let sizes: Vec<u32> = dims
         .iter()
         .map(|d| (d.upper as i64 - d.lower as i64 + 1).max(0) as u32)
@@ -410,12 +420,16 @@ pub(crate) fn array_spec_from_inline(
         .ranges
         .iter()
         .map(|range| {
-            let lower = super::compile_stmt::signed_integer_to_i32(
-                range.start.as_signed_integer().unwrap(),
-            )?;
-            let upper =
-                super::compile_stmt::signed_integer_to_i32(range.end.as_signed_integer().unwrap())?;
-            Ok((lower, upper))
+            let (Some(start), Some(end)) = (
+                range.start.as_signed_integer(),
+                range.end.as_signed_integer(),
+            ) else {
+                return Err(Diagnostic::internal_error());
+            };
+            Ok((
+                super::compile_stmt::signed_integer_to_i32(start)?,
+                super::compile_stmt::signed_integer_to_i32(end)?,
+            ))
         })
         .collect::<Result<Vec<_>, Diagnostic>>()?;
     let (string_max_len, string_char_width) = match &subranges.type_name {
@@ -470,7 +484,7 @@ pub(crate) fn array_spec_for_declaration(
                     "Array type is absent from the type environment",
                 ))
             })?;
-            let IntermediateType::Array {
+            let SemanticType::Array {
                 element_type,
                 dimensions,
             } = array_type
@@ -489,23 +503,23 @@ pub(crate) fn array_spec_for_declaration(
 
 /// Converts a named array type (from the TypeEnvironment) to a normalized ArraySpec.
 ///
-/// `span` locates the declaration being compiled; the intermediate type has
+/// `span` locates the declaration being compiled; the semantic type has
 /// no span of its own.
 pub(crate) fn array_spec_from_named(
-    element_type: &IntermediateType,
+    element_type: &SemanticType,
     dimensions: &[ArrayDimension],
     span: &SourceSpan,
 ) -> Result<ArraySpec, Diagnostic> {
     let dims: Vec<(i32, i32)> = dimensions.iter().map(|d| (d.lower, d.upper)).collect();
-    let ref_to = matches!(element_type, IntermediateType::Reference { .. });
-    let inner_type = if let IntermediateType::Reference { target_type } = element_type {
+    let ref_to = matches!(element_type, SemanticType::Reference { .. });
+    let inner_type = if let SemanticType::Reference { target_type } = element_type {
         target_type.as_ref()
     } else {
         element_type
     };
-    let element_type_name = intermediate_type_to_name(inner_type, span)?;
+    let element_type_name = semantic_type_to_name(inner_type, span)?;
     let (string_max_len, string_char_width) = match inner_type {
-        IntermediateType::String {
+        SemanticType::String {
             max_len,
             char_width,
         } => {
@@ -525,61 +539,61 @@ pub(crate) fn array_spec_from_named(
     })
 }
 
-/// Maps an IntermediateType to the IEC 61131-3 type name (as an Id) that
+/// Maps an SemanticType to the IEC 61131-3 type name (as an Id) that
 /// `type_info::resolve_type_name()` can look up. Only primitive types are
 /// supported (arrays of complex types are out of scope).
-fn intermediate_type_to_name(ty: &IntermediateType, span: &SourceSpan) -> Result<Id, Diagnostic> {
+fn semantic_type_to_name(ty: &SemanticType, span: &SourceSpan) -> Result<Id, Diagnostic> {
     let name = match ty {
-        IntermediateType::Bool => "BOOL",
-        IntermediateType::Int {
+        SemanticType::Bool => "BOOL",
+        SemanticType::Int {
             size: ByteSized::B8,
         } => "SINT",
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B16,
         } => "INT",
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B32,
         } => "DINT",
-        IntermediateType::Int {
+        SemanticType::Int {
             size: ByteSized::B64,
         } => "LINT",
-        IntermediateType::UInt {
+        SemanticType::UInt {
             size: ByteSized::B8,
         } => "USINT",
-        IntermediateType::UInt {
+        SemanticType::UInt {
             size: ByteSized::B16,
         } => "UINT",
-        IntermediateType::UInt {
+        SemanticType::UInt {
             size: ByteSized::B32,
         } => "UDINT",
-        IntermediateType::UInt {
+        SemanticType::UInt {
             size: ByteSized::B64,
         } => "ULINT",
-        IntermediateType::Bytes {
+        SemanticType::Bytes {
             size: ByteSized::B8,
         } => "BYTE",
-        IntermediateType::Bytes {
+        SemanticType::Bytes {
             size: ByteSized::B16,
         } => "WORD",
-        IntermediateType::Bytes {
+        SemanticType::Bytes {
             size: ByteSized::B32,
         } => "DWORD",
-        IntermediateType::Bytes {
+        SemanticType::Bytes {
             size: ByteSized::B64,
         } => "LWORD",
-        IntermediateType::Real {
+        SemanticType::Real {
             size: ByteSized::B32,
         } => "REAL",
-        IntermediateType::Real {
+        SemanticType::Real {
             size: ByteSized::B64,
         } => "LREAL",
-        IntermediateType::Time {
+        SemanticType::Time {
             size: ByteSized::B32,
         } => "TIME",
-        IntermediateType::Time {
+        SemanticType::Time {
             size: ByteSized::B64,
         } => "LTIME",
-        IntermediateType::String { .. } => "STRING",
+        SemanticType::String { .. } => "STRING",
         _ => {
             return Err(Diagnostic::not_implemented(Label::span(
                 span.clone(),
@@ -794,7 +808,7 @@ pub(crate) fn flatten_array_initial_values(
                     }
                     None => {
                         let zero = ConstantKind::integer_literal("0")
-                            .expect("literal '0' is always valid");
+                            .map_err(|_| Diagnostic::internal_error())?;
                         for _ in 0..count {
                             result.push(zero.clone());
                         }
@@ -855,7 +869,9 @@ pub(crate) fn emit_flat_index(
 
 /// Tries to compute the flat index at compile time when all subscripts are literals.
 /// Returns `None` if any subscript is not a literal (fall through to runtime).
-/// Returns `Err` if a literal subscript is out of bounds.
+/// Returns `Err` if a literal subscript is out of bounds. Analysis reports such
+/// a subscript first (`rule_array_index_range`, P2027), so this is the fallback
+/// for a caller that compiles without analysis.
 fn try_constant_flat_index(
     subscripts: &[&Expr],
     dimensions: &[DimensionInfo],

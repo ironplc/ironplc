@@ -1,10 +1,8 @@
 //! End-to-end integration tests for the MUL operator.
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_compile, VmBuffers};
-use ironplc_vm::Vm;
+use crate::common::run_scans;
 
 e2e_i32!(
     end_to_end_when_mul_expression_then_variable_has_product,
@@ -18,7 +16,7 @@ PROGRAM main
   y := x * 6;
 END_PROGRAM
 ",
-    &[(0, 7), (1, 42)],
+    &[("x", 7), ("y", 42)],
 );
 
 e2e_i32!(
@@ -31,7 +29,7 @@ PROGRAM main
   result := 999 * 0;
 END_PROGRAM
 ",
-    &[(0, 0)],
+    &[("result", 0)],
 );
 
 e2e_i32!(
@@ -44,7 +42,7 @@ PROGRAM main
   result := 42 * 1;
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("result", 42)],
 );
 
 e2e_i32!(
@@ -57,7 +55,7 @@ PROGRAM main
   result := 7 * -6;
 END_PROGRAM
 ",
-    &[(0, -42)],
+    &[("result", -42)],
 );
 
 e2e_i32!(
@@ -70,7 +68,7 @@ PROGRAM main
   result := -7 * -6;
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("result", 42)],
 );
 
 e2e_i32!(
@@ -83,7 +81,7 @@ PROGRAM main
   result := 2 * 3 * 4;
 END_PROGRAM
 ",
-    &[(0, 24)],
+    &[("result", 24)],
 );
 
 e2e_i32!(
@@ -100,7 +98,7 @@ PROGRAM main
   c := a * b;
 END_PROGRAM
 ",
-    &[(0, 7), (1, 6), (2, 42)],
+    &[("a", 7), ("b", 6), ("c", 42)],
 );
 
 // Multiplication has higher precedence: 2 + (3 * 4) = 14
@@ -114,7 +112,7 @@ PROGRAM main
   result := 2 + 3 * 4;
 END_PROGRAM
 ",
-    &[(0, 14)],
+    &[("result", 14)],
 );
 
 #[test]
@@ -127,20 +125,13 @@ PROGRAM main
   x := x * 2 + 1;
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = Vm::new()
-        .load(&container, &mut bufs)
-        .unwrap()
-        .start()
-        .unwrap();
-
     // Scan 1: x = 0*2+1 = 1
     // Scan 2: x = 1*2+1 = 3
     // Scan 3: x = 3*2+1 = 7
-    for _ in 0..3 {
-        vm.run_round(0).unwrap();
-    }
-
-    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 7);
+    run_scans(source, &CompilerOptions::default(), |session| {
+        for _ in 0..3 {
+            session.scan(0).unwrap();
+        }
+        assert_eq!(session.read("x"), 7);
+    });
 }

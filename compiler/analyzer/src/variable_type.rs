@@ -1,88 +1,32 @@
 //! Resolves a variable reference to the type of the variable it names.
 //!
 //! A rule that checks something about a variable's type needs two things: the
-//! declarations that are in scope, and a way to walk from a reference such as
-//! `s.field[i]` to the type of the element it names. Both live here so that
-//! rules share one answer rather than each carrying its own copy.
+//! variable's declared type, and a way to walk from a reference such as
+//! `s.field[i]` to the type of the element it names. The declared type comes
+//! from the symbol environment, looked up from the scope the rule is in; the
+//! walk lives here so that rules share one answer rather than each carrying
+//! its own copy.
 //!
 //! ```ignore
-//! // In the visitor: open a scope per POU, record each declaration in it.
-//! fn enter_scope(&mut self, _: ScopeNode<'_>) { self.declarations.enter() }
-//! fn exit_scope(&mut self) { self.declarations.exit() }
-//! fn visit_var_decl(&mut self, node: &VarDecl) {
-//!     self.declarations
-//!         .add_if(node.identifier.symbolic_id(), Declared::of(node));
-//! }
+//! // In the visitor: track the scope the traversal is in.
+//! fn enter_scope(&mut self, node: ScopeNode<'_>) { self.scope.enter(&node) }
+//! fn exit_scope(&mut self) { self.scope.exit() }
 //!
-//! let element = variable_type::of(&kind, &self.declarations, type_environment);
+//! let element = variable_type::of(&kind, context, &self.scope.current());
 //! ```
 
 use ironplc_dsl::{common::*, core::Id, textual::*};
 
 use crate::{
-    intermediate_type::IntermediateType,
-    scoped_table::{ScopedTable, Value},
+    semantic_context::SemanticContext, semantic_type::SemanticType, symbol_environment::ScopeKind,
     type_environment::TypeEnvironment,
 };
-use ironplc_dsl::type_id::TypeId;
 
-/// A variable's declared type, as spelled where the name is bound.
-#[derive(Debug)]
-pub(crate) enum Declared {
-    /// A variable declaration: its initializer as written, and the id of
-    /// the type it declares once the analyzer has resolved it.
-    Variable {
-        init: Box<InitialValueAssignmentKind>,
-        type_id: Option<TypeId>,
-    },
-    /// A name bound to a type without a declaration of its own: a
-    /// function's or method's result variable, or an implicit system
-    /// global.
-    Typed(TypeName),
-}
-impl Value for Declared {}
-
-impl Declared {
-    /// The id of the declared type, when the analyzer has resolved one.
-    pub(crate) fn type_id(&self, type_env: &TypeEnvironment) -> Option<TypeId> {
-        match self {
-            Declared::Variable { type_id, .. } => *type_id,
-            Declared::Typed(type_name) => type_env.id_of(type_name),
-        }
-    }
-
-    /// The declaration of `node`.
-    pub(crate) fn of(node: &VarDecl) -> Self {
-        Declared::Variable {
-            init: Box::new(node.initializer.clone()),
-            type_id: node.type_id,
-        }
-    }
-
-    /// The type named where the name is bound, or
-    /// [`TypeReference::Inline`] for a type spelled out in place.
-    pub(crate) fn type_reference(&self) -> TypeReference {
-        match self {
-            Declared::Variable { init, .. } => init.type_reference(),
-            Declared::Typed(type_name) => TypeReference::Named(type_name.clone()),
-        }
-    }
-}
-
-/// The declared type of every variable in scope.
-///
-/// A POU's own declarations shadow outer ones while still resolving the names
-/// it does not declare itself. The base scope -- the one
-/// [`ScopedTable::new`] opens -- is where declarations made outside any POU
-/// land, a `CONFIGURATION`'s `VAR_GLOBAL` block most importantly, so a POU
-/// body sees the globals.
-pub(crate) type Declarations<'a> = ScopedTable<'a, Id, Declared>;
-
-/// Resolves the [`IntermediateType`] a declaration denotes.
+/// Resolves the [`SemanticType`] a declaration denotes.
 pub(crate) fn resolve_initializer(
     init: &InitialValueAssignmentKind,
     type_env: &TypeEnvironment,
-) -> Option<IntermediateType> {
+) -> Option<SemanticType> {
     match init {
         InitialValueAssignmentKind::Simple(si) => {
             Some(type_env.get(&si.type_name)?.representation.clone())
@@ -104,7 +48,7 @@ pub(crate) fn resolve_initializer(
                     .get(&subranges.type_name.to_type_name())?
                     .representation
                     .clone();
-                Some(IntermediateType::Array {
+                Some(SemanticType::Array {
                     element_type: Box::new(element_type),
                     dimensions: vec![],
                 })
@@ -114,7 +58,7 @@ pub(crate) fn resolve_initializer(
     }
 }
 
-/// Resolves the [`IntermediateType`] of the variable a reference names,
+/// Resolves the [`SemanticType`] of the variable a reference names,
 /// walking through struct field accesses and array subscripts to the element
 /// it selects.
 ///
@@ -126,50 +70,59 @@ pub(crate) fn resolve_initializer(
 /// value read from or written to the reference has.
 pub(crate) fn of(
     kind: &SymbolicVariableKind,
-    declarations: &Declarations,
-    type_env: &TypeEnvironment,
-) -> Option<IntermediateType> {
+    context: &SemanticContext,
+    scope: &ScopeKind,
+) -> Option<SemanticType> {
     match kind {
-        SymbolicVariableKind::Named(named) => match declarations.find(&named.name)? {
-            Declared::Variable { init, .. } => resolve_initializer(init, type_env),
-            Declared::Typed(type_name) => Some(type_env.get(type_name)?.representation.clone()),
-        },
+        SymbolicVariableKind::Named(named) => declared(&named.name, context, scope).cloned(),
         SymbolicVariableKind::Structured(structured) => {
-            let record_type = of(&structured.record, declarations, type_env)?;
+            let record_type = of(&structured.record, context, scope)?;
             struct_field_type(&record_type, &structured.field)
         }
         SymbolicVariableKind::Array(array) => {
-            let array_type = of(&array.subscripted_variable, declarations, type_env)?;
+            let array_type = of(&array.subscripted_variable, context, scope)?;
             match array_type {
-                IntermediateType::Array { element_type, .. } => Some(*element_type),
+                SemanticType::Array { element_type, .. } => Some(*element_type),
                 _ => None,
             }
         }
         // A selection answers with the variable it selects from; see the
         // note on this function.
-        SymbolicVariableKind::BitAccess(bit_access) => {
-            of(&bit_access.variable, declarations, type_env)
-        }
-        SymbolicVariableKind::PartialAccess(partial) => {
-            of(&partial.variable, declarations, type_env)
-        }
+        SymbolicVariableKind::BitAccess(bit_access) => of(&bit_access.variable, context, scope),
+        SymbolicVariableKind::PartialAccess(partial) => of(&partial.variable, context, scope),
         SymbolicVariableKind::SelfRef(_) => {
             // Typing a member of THIS^/SUPER^ needs function-block member
             // resolution, which does not exist yet. See issue #1406.
             None
         }
-        SymbolicVariableKind::Deref(deref) => of(&deref.variable, declarations, type_env),
+        // `p^` is the variable `p` references, so it has the referenced
+        // type, not `REF_TO`.
+        SymbolicVariableKind::Deref(deref) => match of(&deref.variable, context, scope)? {
+            SemanticType::Reference { target_type } => Some(*target_type),
+            _ => None,
+        },
     }
+}
+
+/// The declared type of the variable `name` names from `scope`: a variable,
+/// parameter or result variable, looked up in the symbol environment.
+pub(crate) fn declared<'a>(
+    name: &Id,
+    context: &'a SemanticContext,
+    scope: &ScopeKind,
+) -> Option<&'a SemanticType> {
+    let type_id = context.symbols().find(name, scope)?.type_id?;
+    Some(&context.types().get_by_id(type_id)?.representation)
 }
 
 /// Finds the type of a field within a structure or function block type.
 pub(crate) fn struct_field_type(
-    parent_type: &IntermediateType,
+    parent_type: &SemanticType,
     field_name: &Id,
-) -> Option<IntermediateType> {
+) -> Option<SemanticType> {
     let fields = match parent_type {
-        IntermediateType::Structure { fields } => fields,
-        IntermediateType::FunctionBlock { fields, .. } => fields,
+        SemanticType::Structure { fields } => fields,
+        SemanticType::FunctionBlock { fields, .. } => fields,
         _ => return None,
     };
     fields

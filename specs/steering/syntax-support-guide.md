@@ -460,40 +460,37 @@ fn write_to_string_my_dialect_extension() {
 
 ### How End-to-End Tests Work
 
-Tests use inline IEC 61131-3 source, run the full pipeline (parse → analyze → compile → VM execute), and inspect the resulting variable buffers.
+Tests use inline IEC 61131-3 source, run the full pipeline (parse → analyze → compile → VM execute), and read variables **by name**. A test never uses a slot index or a data-region offset, and compares IEC values rather than how the VM stores them. See [End-to-End Test Observation](../design/end-to-end-test-observation.md).
 
 ### File Locations
 
 | What | Where |
 |------|-------|
-| Test helpers | `compiler/codegen/tests/common/mod.rs` |
-| End-to-end tests | `compiler/codegen/tests/end_to_end_*.rs` |
+| Test helpers | `compiler/codegen/tests/it/common/` |
+| End-to-end tests | `compiler/codegen/tests/it/end_to_end_*.rs` |
 
 ### Test Helpers
 
-From `codegen/tests/common/mod.rs`:
-
 | Helper | Purpose |
 |--------|---------|
-| `parse_and_run(source)` | Full pipeline, one scan cycle, returns `(Container, VmBuffers)` |
-| `parse_and_run_edition3(source)` | Same but with Edition 3 features enabled |
-| `parse_and_compile(source)` | Parse + compile without running (for bytecode inspection) |
-| `parse_and_try_run(source)` | Returns `Result` so you can test runtime traps |
-| `parse_and_run_rounds(source, closure)` | Multi-round execution for stateful tests |
+| `e2e_i32!`, `e2e_i64!`, `e2e_f32!`, `e2e_f64!` (and `_with`, `_near` forms) | Declare a test that runs the source for one scan and compares `(name, expected)` pairs |
+| `e2e!` | The same, with the expected type taken from typed values: `Duration::seconds(5)`, `date!(2024-01-01)`, `0xFFFF_FFFF_u32` |
+| `assert_run::<T>`, `assert_run_with::<T>` | The functions behind the macros, for a test that builds its source |
+| `Snapshot::run(source, options)` | Runs one scan; `read("name")` returns the variable's `Value`, and `read_as::<T>("name")` converts it without loss |
+| `run_scans(source, options, \|session\| ...)` | Drives several scans; `session.write("name", value)`, `session.scan(time_us)` and `session.read("name")` |
+| `drive_fb(source, options, &[write(..), run(..), expect(..), pulse(..)])` | A table of steps for timers, counters and other function blocks |
+| `parse_and_try_run(source, options)` | Returns `Result` so you can test runtime traps |
 
 ### Test Pattern
 
-From `codegen/tests/end_to_end_if.rs`:
+From `codegen/tests/it/end_to_end_if.rs`:
 
 ```rust
 //! End-to-end integration tests for IF/ELSIF/ELSE statements.
 
-mod common;
-use common::parse_and_run;
-
-#[test]
-fn end_to_end_when_if_true_then_executes_body() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_if_true_then_executes_body,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -504,44 +501,34 @@ PROGRAM main
     y := 1;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source);
-
-    assert_eq!(bufs.vars[0].as_i32(), 5);
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
+",
+    &[("x", 5), ("y", 1)],
+);
 ```
+
+A value is compared as the IEC value of its declared type: a `BOOL` as 1 or 0, an unsigned type as its unsigned value, and a duration or date as a `Duration`, `Date`, `Time` or `PrimitiveDateTime`, never as a count. A conversion that would lose information fails the test.
 
 ### Steps to Add an Execution Test
 
-1. **Create or extend a test file**: Add `compiler/codegen/tests/end_to_end_my_feature.rs` or add tests to an existing file if the feature is closely related
+1. **Create or extend a test file**: Add `compiler/codegen/tests/it/end_to_end_my_feature.rs` (registered with a `mod` line in `tests/it/main.rs`) or add tests to an existing file if the feature is closely related
 2. **Write inline source**: Use valid IEC 61131-3 source that exercises the new syntax
-3. **Run and inspect**: Use `parse_and_run()` and check `bufs.vars[N].as_i32()` (or appropriate type method)
+3. **Assert by name**: Use an `e2e_*!` macro, or `Snapshot::read("name")` for anything the macros do not cover. To check a value inside a structure, array or function block, copy it into a program variable (`r := s.names[2];`) and assert that variable
 4. **Test both success and edge cases**: Include tests for the happy path and boundary conditions
-
-### Variable Buffer Inspection
-
-Variables appear in `bufs.vars` in declaration order (0-indexed). Use the appropriate type accessor:
-
-- `bufs.vars[N].as_i32()` — for DINT, INT, SINT, etc.
-- `bufs.vars[N].as_f32()` — for REAL
-- `bufs.vars[N].as_f64()` — for LREAL
-- `bufs.vars[N].as_bool()` — for BOOL
 
 ### Testing Non-Standard Syntax Execution
 
-If the syntax is behind an `--allow-x` flag, you may need to add a helper in `codegen/tests/common/mod.rs` that enables the flag:
+If the syntax is behind an `--allow-x` flag, pass the options to a `_with` form:
 
 ```rust
-pub fn parse_with_extension(source: &str) -> (Library, SemanticContext) {
-    let options = CompilerOptions {
+e2e_i32_with!(
+    end_to_end_when_my_extension_then_executes,
+    CompilerOptions {
         allow_my_extension: true,
         ..CompilerOptions::default()
-    };
-    let library = parse_program(source, &FileId::default(), &options).unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
-    (analyzed, ctx)
-}
+    },
+    "...",
+    &[("x", 1)],
+);
 ```
 
 ### What Execution Tests Validate

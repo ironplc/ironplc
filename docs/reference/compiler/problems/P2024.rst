@@ -49,3 +49,14 @@ A dimension whose minimum equals its maximum is valid and declares one element:
    TYPE
        ONE_ELEMENT : ARRAY [0..0] OF INT;  (* Valid: a single element at index 0 *)
    END_TYPE
+
+Each bound must also be a ``DINT``, a value from -2147483648 to 2147483647.
+A bound outside that range is invalid whether or not the range is in order:
+
+.. playground::
+
+   PROGRAM main
+       VAR
+           wide : ARRAY [0..2147483648] OF BOOL;  (* Error: 2147483648 is not a DINT *)
+       END_VAR
+   END_PROGRAM

@@ -13,16 +13,14 @@ use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, SymbolicVariableKind};
 
-use ironplc_analyzer::intermediate_type::{
-    ArrayDimension, IntermediateStructField, IntermediateType,
-};
+use ironplc_analyzer::semantic_type::{ArrayDimension, SemanticStructField, SemanticType};
 use ironplc_container::{CharWidth, ContainerBuilder, FieldType, SlotIndex, VarIndex};
 
 use ironplc_analyzer::TypeEnvironment;
 use ironplc_dsl::common::SpecificationKind;
 
 use super::compile::CompileContext;
-use super::compile_array::{dimensions_from_intermediate, ResolvedAccess, StructStringElement};
+use super::compile_array::{dimensions_from_semantic_type, ResolvedAccess, StructStringElement};
 
 /// Metadata for a top-level `ARRAY OF <struct>` variable.
 ///
@@ -43,7 +41,7 @@ pub(crate) struct StructArrayVarInfo {
     /// Data region byte offset where element 0 starts.
     pub data_offset: u32,
     /// The element structure type.
-    pub element_type: IntermediateType,
+    pub element_type: SemanticType,
     /// Array bounds, in element (not slot) units.
     pub dimensions: Vec<ArrayDimension>,
     /// Scratch variable for STRING field access. `Some` exactly when
@@ -118,9 +116,9 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
 pub(crate) fn struct_array_element_field_type(
     ctx: &CompileContext,
     structured: &ironplc_dsl::textual::StructuredVariable,
-) -> Result<IntermediateType, Diagnostic> {
+) -> Result<SemanticType, Diagnostic> {
     let array = locate_array_of_struct(ctx, structured)?;
-    let IntermediateType::Structure { fields } = &array.element_type else {
+    let SemanticType::Structure { fields } = &array.element_type else {
         return Err(Diagnostic::not_implemented(Label::span(
             structured.field.span(),
             format!(
@@ -144,7 +142,7 @@ struct LocatedArrayOfStruct<'ctx, 'ast> {
     /// Slot offset of element 0 within the region.
     base_slot_offset: u32,
     /// The element structure type.
-    element_type: IntermediateType,
+    element_type: SemanticType,
     /// Array bounds, in element units.
     dimensions: Vec<ArrayDimension>,
     /// The element subscripts, outermost first.
@@ -161,8 +159,12 @@ fn locate_array_of_struct<'ctx, 'ast>(
     ctx: &'ctx CompileContext,
     structured: &'ast ironplc_dsl::textual::StructuredVariable,
 ) -> Result<LocatedArrayOfStruct<'ctx, 'ast>, Diagnostic> {
+    // Every caller checks that `record` is an array subscript.
     let SymbolicVariableKind::Array(array_var) = structured.record.as_ref() else {
-        return Err(Diagnostic::todo_with_span(structured.span()));
+        return Err(Diagnostic::internal_error_at(Label::span(
+            structured.span(),
+            "Structure field access is not on an array element",
+        )));
     };
 
     // Collect subscript groups innermost-first, then reverse -- the same
@@ -188,7 +190,7 @@ fn locate_array_of_struct<'ctx, 'ast>(
             let (root_name, field_slot_offset, field_type) =
                 crate::compile_struct::walk_struct_chain(ctx, &base.record, &base.field, 0)?;
 
-            let IntermediateType::Array {
+            let SemanticType::Array {
                 element_type,
                 dimensions,
             } = field_type
@@ -281,14 +283,14 @@ enum ArrayOfStructBase<'ast> {
 fn struct_array_element_field<'ctx, 'ast>(
     region: ArrayOfStructRegion<'ctx>,
     base_slot_offset: u32,
-    element_type: &IntermediateType,
+    element_type: &SemanticType,
     array_dims: &[ArrayDimension],
     field: &Id,
     element_subscripts: Vec<&'ast Expr>,
     field_subscripts: Vec<&'ast Expr>,
     array_span: &SourceSpan,
 ) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
-    let IntermediateType::Structure {
+    let SemanticType::Structure {
         fields: element_fields,
     } = element_type
     else {
@@ -311,7 +313,7 @@ fn struct_array_element_field<'ctx, 'ast>(
     let (leaf_slot_offset, leaf_type) =
         crate::compile_struct::find_field_in_type(element_fields, field, &field.span())?;
 
-    if let (true, IntermediateType::String { char_width, .. }) =
+    if let (true, SemanticType::String { char_width, .. }) =
         (field_subscripts.is_empty(), &leaf_type)
     {
         let slot_offset = base_slot_offset
@@ -330,7 +332,7 @@ fn struct_array_element_field<'ctx, 'ast>(
     }
 
     // Scale strides so the emitted flat index counts slots, not elements.
-    let mut dimensions = dimensions_from_intermediate(array_dims);
+    let mut dimensions = dimensions_from_semantic_type(array_dims);
     for dim in &mut dimensions {
         dim.stride = dim.stride.checked_mul(element_slots).ok_or_else(|| {
             Diagnostic::not_supported(Label::span(array_span.clone(), "Array too large"))
@@ -347,7 +349,7 @@ fn struct_array_element_field<'ctx, 'ast>(
     let value_type = if field_subscripts.is_empty() {
         leaf_type
     } else {
-        let IntermediateType::Array {
+        let SemanticType::Array {
             element_type: inner_element_type,
             dimensions: inner_dims,
         } = &leaf_type
@@ -357,7 +359,7 @@ fn struct_array_element_field<'ctx, 'ast>(
                 format!("Field '{}' is not an array type", field),
             )));
         };
-        dimensions.extend(dimensions_from_intermediate(inner_dims));
+        dimensions.extend(dimensions_from_semantic_type(inner_dims));
         subscripts.extend(field_subscripts);
         inner_element_type.as_ref().clone()
     };
@@ -366,7 +368,7 @@ fn struct_array_element_field<'ctx, 'ast>(
     // step both by the structure (over `i`) and by the string (over `j`), and
     // a descriptor carries only one stride. Reject rather than emit a wrong
     // address (#1791).
-    if matches!(value_type, IntermediateType::String { .. }) {
+    if matches!(value_type, SemanticType::String { .. }) {
         return Err(Diagnostic::not_implemented(Label::span(
             field.span(),
             format!(
@@ -378,16 +380,15 @@ fn struct_array_element_field<'ctx, 'ast>(
 
     // A composite value has no single-slot load or store, and the appended
     // strides above assume one slot per innermost element.
-    let element_op_type =
-        crate::compile_struct::resolve_field_op_type(&value_type).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
-                field.span(),
-                format!(
-                    "Field '{}' of an array-of-struct element is composite (nested struct or array)",
-                    field
-                ),
-            ))
-        })?;
+    if crate::compile_struct::resolve_field_op_type(&value_type).is_none() {
+        return Err(Diagnostic::not_implemented(Label::span(
+            field.span(),
+            format!(
+                "Field '{}' of an array-of-struct element is composite (nested struct or array)",
+                field
+            ),
+        )));
+    }
 
     let combined_offset = base_slot_offset
         .checked_add(leaf_slot_offset.raw())
@@ -401,7 +402,6 @@ fn struct_array_element_field<'ctx, 'ast>(
         field_slot_offset: SlotIndex::new(combined_offset),
         dimensions,
         subscripts,
-        element_op_type,
         element_type: value_type,
     })
 }
@@ -447,7 +447,7 @@ fn string_element_field<'ctx, 'ast>(
             string_desc_index: entry.desc_index,
             field_byte_offset,
             char_width,
-            dimensions: dimensions_from_intermediate(array_dims),
+            dimensions: dimensions_from_semantic_type(array_dims),
             subscripts: element_subscripts,
         },
     ))
@@ -461,7 +461,7 @@ fn string_element_field<'ctx, 'ast>(
 pub(crate) fn register_struct_element_strings(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
-    fields: &[IntermediateStructField],
+    fields: &[SemanticStructField],
     base_slot: u32,
     span: &SourceSpan,
     out: &mut Vec<ElementStringField>,
@@ -470,10 +470,10 @@ pub(crate) fn register_struct_element_strings(
     for f in &field_infos {
         let slot = base_slot + f.slot_offset.raw();
         match &f.field_type {
-            IntermediateType::Structure { fields } => {
+            SemanticType::Structure { fields } => {
                 register_struct_element_strings(ctx, builder, fields, slot, span, out)?;
             }
-            IntermediateType::Array {
+            SemanticType::Array {
                 element_type,
                 dimensions,
             } => {
@@ -502,13 +502,13 @@ pub(crate) fn register_struct_element_strings(
 fn register_array_element_strings(
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
-    element_type: &IntermediateType,
+    element_type: &SemanticType,
     dimensions: &[ArrayDimension],
     base_slot: u32,
     span: &SourceSpan,
     out: &mut Vec<ElementStringField>,
 ) -> Result<(), Diagnostic> {
-    let IntermediateType::Structure { fields } = element_type else {
+    let SemanticType::Structure { fields } = element_type else {
         return Ok(());
     };
     let element_bytes = element_type
@@ -525,7 +525,7 @@ fn register_array_element_strings(
 
     let (field_infos, _) = crate::compile_struct::build_struct_fields(fields, span)?;
     for f in &field_infos {
-        let (IntermediateType::String { char_width, .. }, Some(max_len)) =
+        let (SemanticType::String { char_width, .. }, Some(max_len)) =
             (&f.field_type, f.string_max_length)
         else {
             continue;
@@ -574,7 +574,7 @@ pub(crate) fn struct_array_declaration(
     types: &TypeEnvironment,
     spec: &SpecificationKind<ironplc_dsl::common::ArraySubranges>,
     span: &ironplc_dsl::core::SourceSpan,
-) -> Result<Option<(IntermediateType, String, Vec<ArrayDimension>)>, Diagnostic> {
+) -> Result<Option<(SemanticType, String, Vec<ArrayDimension>)>, Diagnostic> {
     match spec {
         SpecificationKind::Inline(subranges) => {
             if subranges.ref_to.is_some() {
@@ -598,19 +598,19 @@ pub(crate) fn struct_array_declaration(
             )))
         }
         SpecificationKind::Named(type_name) => {
-            let Some(IntermediateType::Array {
+            let Some(SemanticType::Array {
                 element_type,
                 dimensions,
             }) = types.resolve_array_type(type_name)
             else {
                 return Ok(None);
             };
-            if !matches!(element_type.as_ref(), IntermediateType::Structure { .. }) {
+            if !matches!(element_type.as_ref(), SemanticType::Structure { .. }) {
                 return Ok(None);
             }
             // Named array specifications are expanded to inline ones before
             // codegen, so this arm is defensive. It cannot name the element:
-            // `IntermediateType::Structure` is structural and carries no
+            // `SemanticType::Structure` is structural and carries no
             // declared name, so the debug entry falls back to the array type's.
             Ok(Some((
                 element_type.as_ref().clone(),
@@ -639,7 +639,7 @@ pub(crate) fn register_struct_array_variable(
     builder: &mut ContainerBuilder,
     id: &Id,
     var_index: VarIndex,
-    element_type: &IntermediateType,
+    element_type: &SemanticType,
     debug_type_name: &str,
     dimensions: &[ArrayDimension],
     span: &SourceSpan,
@@ -709,14 +709,14 @@ pub(crate) fn register_struct_array_variable(
     ))
 }
 
-/// Returns the field list of a structure `IntermediateType`.
+/// Returns the field list of a structure `SemanticType`.
 fn struct_fields<'a>(
-    element_type: &'a IntermediateType,
+    element_type: &'a SemanticType,
     span: &SourceSpan,
-) -> Result<&'a [ironplc_analyzer::intermediate_type::IntermediateStructField], Diagnostic> {
+) -> Result<&'a [ironplc_analyzer::semantic_type::SemanticStructField], Diagnostic> {
     match element_type {
-        IntermediateType::Structure { fields } => Ok(fields),
-        _ => Err(Diagnostic::not_implemented(Label::span(
+        SemanticType::Structure { fields } => Ok(fields),
+        _ => Err(Diagnostic::internal_error_at(Label::span(
             span.clone(),
             "Array element type is not a structure",
         ))),

@@ -1,31 +1,27 @@
-use crate::stages::analyze;
-use ironplc_dsl::core::FileId;
-use ironplc_parser::{options::CompilerOptions, parse_program};
+use crate::test_helpers::diagnostic_codes;
+use crate::test_helpers::{codes, rule_codes, rule_diagnostics};
+use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 use rstest::rstest;
 
-/// Analyzes `program`, returning how many out-of-range constants it
-/// reported. Naming the problem keeps a diagnostic from another rule
-/// from passing for one of ours.
-fn out_of_range_count(program: &str) -> usize {
-    problem_count(program, Problem::ConstantOverflow)
+/// No problems.
+const OK: &[Problem] = &[];
+/// One constant outside its type's range.
+const OVERFLOW: &[Problem] = &[Problem::ConstantOverflow];
+const OVERFLOW_TWICE: &[Problem] = &[Problem::ConstantOverflow, Problem::ConstantOverflow];
+/// One real outside its type's range.
+const REAL: &[Problem] = &[Problem::RealLiteralOutOfRange];
+const OVERFLOW_AND_REAL: &[Problem] = &[Problem::ConstantOverflow, Problem::RealLiteralOutOfRange];
+
+/// The problem codes this rule reports for `program`, in order.
+fn problems_of(program: &str) -> Vec<String> {
+    rule_codes(super::apply, program, &CompilerOptions::default())
 }
 
-/// Analyzes `program`, returning how many real literals it reported as
-/// outside their type's range.
-fn real_out_of_range_count(program: &str) -> usize {
-    problem_count(program, Problem::RealLiteralOutOfRange)
-}
-
-fn problem_count(program: &str, problem: Problem) -> usize {
-    let options = CompilerOptions::default();
-    let library = parse_program(program, &FileId::default(), &options).unwrap();
-    let (_library, context) = analyze(&[&library], &options).unwrap();
-    context
-        .diagnostics()
-        .iter()
-        .filter(|d| d.code == problem.code())
-        .count()
+/// The diagnostics this rule reports for `program` under default options.
+fn diagnostics_of(program: &str) -> Vec<Diagnostic> {
+    rule_diagnostics(super::apply, program, &CompilerOptions::default())
 }
 
 fn program_with(declarations: &str, body: &str) -> String {
@@ -38,74 +34,78 @@ fn program_with(declarations: &str, body: &str) -> String {
 // beyond either is reported.
 
 #[rstest]
-#[case::sint_low("SINT", "-128", true)]
-#[case::sint_high("SINT", "127", true)]
-#[case::sint_below("SINT", "-129", false)]
-#[case::sint_above("SINT", "128", false)]
-#[case::int_high("INT", "32767", true)]
-#[case::int_above("INT", "32768", false)]
-#[case::dint_high("DINT", "2147483647", true)]
-#[case::dint_above("DINT", "2147483648", false)]
-#[case::lint_high("LINT", "9223372036854775807", true)]
-#[case::lint_above("LINT", "9223372036854775808", false)]
-#[case::usint_low("USINT", "0", true)]
-#[case::usint_high("USINT", "255", true)]
-#[case::usint_below("USINT", "-1", false)]
-#[case::usint_above("USINT", "256", false)]
-#[case::uint_above("UINT", "65536", false)]
-#[case::udint_above("UDINT", "4294967296", false)]
-#[case::ulint_high("ULINT", "18446744073709551615", true)]
-#[case::ulint_above("ULINT", "18446744073709551616", false)]
+#[case::sint_low("SINT", "-128", OK)]
+#[case::sint_high("SINT", "127", OK)]
+#[case::sint_below("SINT", "-129", OVERFLOW)]
+#[case::sint_above("SINT", "128", OVERFLOW)]
+#[case::int_high("INT", "32767", OK)]
+#[case::int_above("INT", "32768", OVERFLOW)]
+#[case::dint_high("DINT", "2147483647", OK)]
+#[case::dint_above("DINT", "2147483648", OVERFLOW)]
+#[case::lint_high("LINT", "9223372036854775807", OK)]
+#[case::lint_above("LINT", "9223372036854775808", OVERFLOW)]
+#[case::usint_low("USINT", "0", OK)]
+#[case::usint_high("USINT", "255", OK)]
+#[case::usint_below("USINT", "-1", OVERFLOW)]
+#[case::usint_above("USINT", "256", OVERFLOW)]
+#[case::uint_above("UINT", "65536", OVERFLOW)]
+#[case::udint_above("UDINT", "4294967296", OVERFLOW)]
+#[case::ulint_high("ULINT", "18446744073709551615", OK)]
+#[case::ulint_above("ULINT", "18446744073709551616", OVERFLOW)]
 fn apply_when_initializer_at_boundary_then_ok_or_err(
     #[case] declared_type: &str,
     #[case] value: &str,
-    #[case] expected_ok: bool,
+    #[case] expected: &[Problem],
 ) {
     let program = program_with(&format!("x : {declared_type} := {value};\n"), "");
 
-    assert_eq!(out_of_range_count(&program) == 0, expected_ok);
+    assert_eq!(problems_of(&program), codes(expected));
 }
 
 // --- The contexts a constant is checked in ---
 
 #[test]
 fn apply_when_assignment_out_of_range_then_err() {
-    let codes = out_of_range_count(&program_with("x : USINT;\n", "x := 300;\n"));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&program_with("x : USINT;\n", "x := 300;\n")),
+        codes(OVERFLOW)
+    );
 }
 
 /// The operator does not widen the type, so a folded constant is checked
 /// exactly as a written one is.
 #[test]
 fn apply_when_folded_operand_out_of_range_then_err() {
-    let codes = out_of_range_count(&program_with("x : USINT;\n", "x := 255 + 1;\n"));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&program_with("x : USINT;\n", "x := 255 + 1;\n")),
+        codes(OVERFLOW)
+    );
 }
 
 /// A comparison happens at the variable's type, so a literal it can never
 /// equal is a mistake rather than a false condition.
 #[test]
 fn apply_when_comparison_constant_out_of_range_then_err() {
-    let codes = out_of_range_count(&program_with(
-        "x : SINT;\ny : DINT;\n",
-        "IF x = 200 THEN y := 0; END_IF;\n",
-    ));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&program_with(
+            "x : SINT;\ny : DINT;\n",
+            "IF x = 200 THEN y := 0; END_IF;\n",
+        )),
+        codes(OVERFLOW)
+    );
 }
 
 /// A `CASE` label the selector can never equal selects a group that can
 /// never run.
 #[test]
 fn apply_when_case_label_out_of_range_then_err() {
-    let codes = out_of_range_count(&program_with(
-        "x : SINT;\ny : DINT;\n",
-        "CASE x OF\n200: y := 1;\nEND_CASE;\n",
-    ));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&program_with(
+            "x : SINT;\ny : DINT;\n",
+            "CASE x OF\n200: y := 1;\nEND_CASE;\n",
+        )),
+        codes(OVERFLOW)
+    );
 }
 
 /// How a label is spelled makes no difference: each label is a value, and
@@ -113,35 +113,39 @@ fn apply_when_case_label_out_of_range_then_err() {
 /// bit pattern to be reinterpreted at the selector's width, so
 /// `16#FFFFFFFF` is 4294967295 and no `DINT`, rather than a `DINT` -1.
 #[rstest]
-#[case::decimal_in_range("DINT", "2147483647", 0)]
-#[case::decimal_above("DINT", "4294967295", 1)]
-#[case::decimal_below("DINT", "-2147483649", 1)]
-#[case::hex_in_range("DINT", "16#7FFFFFFF", 0)]
-#[case::hex_above("DINT", "16#FFFFFFFF", 1)]
-#[case::binary_above("SINT", "2#11111111", 1)]
-#[case::octal_above("SINT", "8#377", 1)]
-#[case::hex_fills_unsigned("UDINT", "16#FFFFFFFF", 0)]
-#[case::decimal_fills_unsigned("UDINT", "4294967295", 0)]
-#[case::hex_above_unsigned("UDINT", "16#100000000", 1)]
-#[case::hex_fills_unsigned_64("ULINT", "16#FFFFFFFFFFFFFFFF", 0)]
-#[case::hex_above_signed_64("LINT", "16#FFFFFFFFFFFFFFFF", 1)]
-#[case::negative_unsigned("USINT", "-1", 1)]
-#[case::subrange_in_range("SINT", "-128..127", 0)]
-#[case::subrange_end_above("SINT", "100..300", 1)]
-#[case::subrange_start_below("SINT", "-300..0", 1)]
-#[case::subrange_both_outside("USINT", "-1..256", 2)]
-#[case::subrange_unsigned_32("UDINT", "3000000000..4294967295", 0)]
+#[case::decimal_in_range("DINT", "2147483647", OK)]
+#[case::decimal_above("DINT", "4294967295", OVERFLOW)]
+#[case::decimal_below("DINT", "-2147483649", OVERFLOW)]
+#[case::hex_in_range("DINT", "16#7FFFFFFF", OK)]
+#[case::hex_above("DINT", "16#FFFFFFFF", OVERFLOW)]
+#[case::binary_above("SINT", "2#11111111", OVERFLOW)]
+#[case::octal_above("SINT", "8#377", OVERFLOW)]
+#[case::hex_fills_unsigned("UDINT", "16#FFFFFFFF", OK)]
+#[case::decimal_fills_unsigned("UDINT", "4294967295", OK)]
+#[case::hex_above_unsigned("UDINT", "16#100000000", OVERFLOW)]
+#[case::hex_fills_unsigned_64("ULINT", "16#FFFFFFFFFFFFFFFF", OK)]
+#[case::hex_above_signed_64("LINT", "16#FFFFFFFFFFFFFFFF", OVERFLOW)]
+#[case::negative_unsigned("USINT", "-1", OVERFLOW)]
+#[case::negative_unsigned_32("UDINT", "-1", OVERFLOW)]
+#[case::negative_unsigned_64("ULINT", "-1", OVERFLOW)]
+#[case::subrange_in_range("SINT", "-128..127", OK)]
+#[case::subrange_end_above("SINT", "100..300", OVERFLOW)]
+#[case::subrange_end_above_32("DINT", "0..4294967295", OVERFLOW)]
+#[case::subrange_start_below("SINT", "-300..0", OVERFLOW)]
+#[case::subrange_both_outside("USINT", "-1..256", OVERFLOW_TWICE)]
+#[case::subrange_unsigned_32("UDINT", "3000000000..4294967295", OK)]
 fn apply_when_case_label_then_checked_against_selector_type(
     #[case] selector_type: &str,
     #[case] label: &str,
-    #[case] expected: usize,
+    #[case] expected: &[Problem],
 ) {
-    let codes = out_of_range_count(&program_with(
-        &format!("x : {selector_type};\ny : DINT;\n"),
-        &format!("CASE x OF\n{label}: y := 1;\nEND_CASE;\n"),
-    ));
-
-    assert_eq!(codes, expected);
+    assert_eq!(
+        problems_of(&program_with(
+            &format!("x : {selector_type};\ny : DINT;\n"),
+            &format!("CASE x OF\n{label}: y := 1;\nEND_CASE;\n"),
+        )),
+        codes(expected)
+    );
 }
 
 /// A selector of a subrange type can hold only the values the subrange
@@ -151,8 +155,9 @@ fn apply_when_case_label_then_checked_against_selector_type(
 #[case::hex("16#14")]
 #[case::subrange_bound("5..20")]
 fn apply_when_case_label_outside_subrange_selector_then_err(#[case] label: &str) {
-    let codes = out_of_range_count(&format!(
-        "TYPE
+    assert_eq!(
+        problems_of(&format!(
+            "TYPE
 Ratio : INT(0..10);
 END_TYPE
 
@@ -165,38 +170,36 @@ CASE x OF
 {label}: y := 1;
 END_CASE;
 END_PROGRAM"
-    ));
-
-    assert_eq!(codes, 1);
+        )),
+        codes(OVERFLOW)
+    );
 }
 
 /// A label too large for any integer type is reported by the value the
 /// source spelled, with its own sign.
 #[test]
 fn apply_when_case_label_beyond_every_type_then_reported_with_its_sign() {
-    let options = CompilerOptions::default();
     let program = program_with(
         "x : DINT;\ny : DINT;\n",
         "CASE x OF\n16#FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF: y := 1;\nEND_CASE;\n",
     );
-    let library = parse_program(&program, &FileId::default(), &options).unwrap();
-    let (_library, context) = analyze(&[&library], &options).unwrap();
 
-    let overflow = context
-        .diagnostics()
-        .iter()
-        .find(|d| d.code == Problem::ConstantOverflow.code())
-        .map(|d| d.described.join(" "));
+    let diagnostics = diagnostics_of(&program);
 
-    assert!(
-        overflow.is_some_and(|text| text.contains("value=340282366920938463463374607431768211455"))
+    assert_eq!(
+        diagnostic_codes(&diagnostics),
+        [Problem::ConstantOverflow.code()]
     );
+    assert!(diagnostics[0]
+        .described
+        .contains(&"value=340282366920938463463374607431768211455".to_owned()));
 }
 
 #[test]
 fn apply_when_struct_field_out_of_range_then_err() {
-    let codes = out_of_range_count(
-        "TYPE
+    assert_eq!(
+        problems_of(
+            "TYPE
 Counts : STRUCT
     small : USINT;
 END_STRUCT;
@@ -208,25 +211,27 @@ VAR
 END_VAR
     counts.small := 300;
 END_PROGRAM",
+        ),
+        codes(OVERFLOW)
     );
-
-    assert_eq!(codes, 1);
 }
 
 #[test]
 fn apply_when_array_element_out_of_range_then_err() {
-    let codes = out_of_range_count(&program_with(
-        "readings : ARRAY[1..2] OF USINT;\ni : DINT;\n",
-        "readings[i] := 300;\n",
-    ));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&program_with(
+            "readings : ARRAY[1..2] OF USINT;\ni : DINT;\n",
+            "readings[i] := 300;\n",
+        )),
+        codes(OVERFLOW)
+    );
 }
 
 #[test]
 fn apply_when_global_out_of_range_then_err() {
-    let codes = out_of_range_count(
-        "PROGRAM main
+    assert_eq!(
+        problems_of(
+            "PROGRAM main
     g := 300;
 END_PROGRAM
 
@@ -239,17 +244,18 @@ RESOURCE res ON PLC
     PROGRAM inst WITH plc_task : main;
 END_RESOURCE
 END_CONFIGURATION",
+        ),
+        codes(OVERFLOW)
     );
-
-    assert_eq!(codes, 1);
 }
 
 // --- A subrange states its own range ---
 
 #[test]
 fn apply_when_subrange_initializer_out_of_range_then_err() {
-    let codes = out_of_range_count(
-        "TYPE
+    assert_eq!(
+        problems_of(
+            "TYPE
 Ratio : INT(0..10);
 END_TYPE
 
@@ -258,15 +264,16 @@ VAR
     r : Ratio := 20;
 END_VAR
 END_PROGRAM",
+        ),
+        codes(OVERFLOW)
     );
-
-    assert_eq!(codes, 1);
 }
 
 #[test]
 fn apply_when_subrange_initializer_in_range_then_ok() {
-    let codes = out_of_range_count(
-        "TYPE
+    assert_eq!(
+        problems_of(
+            "TYPE
 Ratio : INT(0..10);
 END_TYPE
 
@@ -275,9 +282,9 @@ VAR
     r : Ratio := 10;
 END_VAR
 END_PROGRAM",
+        ),
+        codes(OK)
     );
-
-    assert_eq!(codes, 0);
 }
 
 // --- A prefixed literal states its own type ---
@@ -287,52 +294,55 @@ END_PROGRAM",
 // destination check stays silent and only the prefix decides.
 
 #[rstest]
-#[case::sint_low("SINT#-128", true)]
-#[case::sint_below("SINT#-129", false)]
-#[case::int_high("INT#32767", true)]
-#[case::int_above("INT#32768", false)]
-#[case::dint_above("DINT#2147483648", false)]
-#[case::usint_high("USINT#255", true)]
-#[case::usint_negative("USINT#-1", false)]
-#[case::udint_above("UDINT#4294967296", false)]
-#[case::radix_high("INT#16#7FFF", true)]
-#[case::radix_above("INT#16#FFFF", false)]
+#[case::sint_low("SINT#-128", OK)]
+#[case::sint_below("SINT#-129", OVERFLOW)]
+#[case::int_high("INT#32767", OK)]
+#[case::int_above("INT#32768", OVERFLOW)]
+#[case::dint_above("DINT#2147483648", OVERFLOW)]
+#[case::usint_high("USINT#255", OK)]
+#[case::usint_negative("USINT#-1", OVERFLOW)]
+#[case::udint_above("UDINT#4294967296", OVERFLOW)]
+#[case::radix_high("INT#16#7FFF", OK)]
+#[case::radix_above("INT#16#FFFF", OVERFLOW)]
 fn apply_when_prefixed_literal_at_own_boundary_then_ok_or_err(
     #[case] literal: &str,
-    #[case] expected_ok: bool,
+    #[case] expected: &[Problem],
 ) {
     let program = program_with(&format!("x : LINT := {literal};\n"), "");
 
-    assert_eq!(out_of_range_count(&program) == 0, expected_ok);
+    assert_eq!(problems_of(&program), codes(expected));
 }
 
 #[test]
 fn apply_when_prefixed_literal_in_assignment_then_err() {
-    let codes = out_of_range_count(&program_with("x : DINT;\n", "x := INT#40000;\n"));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&program_with("x : DINT;\n", "x := INT#40000;\n")),
+        codes(OVERFLOW)
+    );
 }
 
 #[test]
 fn apply_when_prefixed_literal_in_comparison_then_err() {
-    let codes = out_of_range_count(&program_with(
-        "x : DINT;\ny : DINT;\n",
-        "IF x = INT#40000 THEN y := 0; END_IF;\n",
-    ));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&program_with(
+            "x : DINT;\ny : DINT;\n",
+            "IF x = INT#40000 THEN y := 0; END_IF;\n",
+        )),
+        codes(OVERFLOW)
+    );
 }
 
 /// The literal's own type travels with it into a function argument. The
 /// parameter is a `LINT`, which holds 40000, so only the prefix decides.
 #[test]
 fn apply_when_prefixed_literal_is_function_argument_then_err() {
-    let codes = out_of_range_count(&format!(
-        "{WIDE_FUNCTION}{}",
-        program_with("x : LINT;\n", "x := WIDE(INT#40000);\n")
-    ));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&format!(
+            "{WIDE_FUNCTION}{}",
+            program_with("x : LINT;\n", "x := WIDE(INT#40000);\n")
+        )),
+        codes(OVERFLOW)
+    );
 }
 
 const WIDE_FUNCTION: &str = "FUNCTION WIDE : LINT
@@ -345,9 +355,10 @@ END_FUNCTION
 /// destination's problem alone.
 #[test]
 fn apply_when_prefixed_literal_fits_own_type_only_then_one_err() {
-    let codes = out_of_range_count(&program_with("x : SINT := INT#200;\n", ""));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&program_with("x : SINT := INT#200;\n", "")),
+        codes(OVERFLOW)
+    );
 }
 
 /// The two checks answer different questions -- is this an `INT`, and
@@ -355,9 +366,10 @@ fn apply_when_prefixed_literal_fits_own_type_only_then_one_err() {
 /// each.
 #[test]
 fn apply_when_prefixed_literal_fits_neither_then_err_for_each() {
-    let codes = out_of_range_count(&program_with("x : SINT := INT#40000;\n", ""));
-
-    assert_eq!(codes, 2);
+    assert_eq!(
+        problems_of(&program_with("x : SINT := INT#40000;\n", "")),
+        codes(OVERFLOW_TWICE)
+    );
 }
 
 // --- What is deliberately not checked ---
@@ -376,80 +388,86 @@ fn apply_when_bit_string_overflows_then_ok(#[case] declared_type: &str, #[case] 
         &format!("x := {value};\n"),
     );
 
-    assert_eq!(out_of_range_count(&program), 0);
+    assert_eq!(problems_of(&program), codes(OK));
 }
 
 /// A radix does not change a value: `16#1FF` is 511, which no `USINT`
 /// can hold.
 #[test]
 fn apply_when_radix_literal_out_of_range_then_err() {
-    let codes = out_of_range_count(&program_with("x : USINT;\n", "x := 16#1FF;\n"));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&program_with("x : USINT;\n", "x := 16#1FF;\n")),
+        codes(OVERFLOW)
+    );
 }
 
 /// The same literal against a type that can hold it stays silent, so the
 /// check is about the value rather than the spelling.
 #[test]
 fn apply_when_radix_literal_in_range_then_ok() {
-    let codes = out_of_range_count(&program_with("x : UINT;\n", "x := 16#1FF;\n"));
-
-    assert_eq!(codes, 0);
+    assert_eq!(
+        problems_of(&program_with("x : UINT;\n", "x := 16#1FF;\n")),
+        codes(OK)
+    );
 }
 
 // --- An untyped real literal takes the type it is stored into ---
 
 #[rstest]
-#[case::real_high("REAL", "3.4028235E38", true)]
-#[case::real_low("REAL", "-3.4028235E38", true)]
-#[case::real_above("REAL", "3.5E38", false)]
-#[case::real_below("REAL", "-3.5E38", false)]
-#[case::lreal_holds_it("LREAL", "1.0E300", true)]
+#[case::real_high("REAL", "3.4028235E38", OK)]
+#[case::real_low("REAL", "-3.4028235E38", OK)]
+#[case::real_above("REAL", "3.5E38", REAL)]
+#[case::real_below("REAL", "-3.5E38", REAL)]
+#[case::lreal_holds_it("LREAL", "1.0E300", OK)]
 fn apply_when_real_initializer_at_boundary_then_ok_or_err(
     #[case] declared_type: &str,
     #[case] value: &str,
-    #[case] expected_ok: bool,
+    #[case] expected: &[Problem],
 ) {
     let program = program_with(&format!("x : {declared_type} := {value};\n"), "");
 
-    assert_eq!(real_out_of_range_count(&program) == 0, expected_ok);
+    assert_eq!(problems_of(&program), codes(expected));
 }
 
 #[test]
 fn apply_when_real_assignment_out_of_range_then_err() {
-    let codes = real_out_of_range_count(&program_with("x : REAL;\n", "x := 1.0E300;\n"));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&program_with("x : REAL;\n", "x := 1.0E300;\n")),
+        codes(REAL)
+    );
 }
 
 /// Each factor is a valid `REAL`, but their product is not.
 #[test]
 fn apply_when_folded_real_out_of_range_then_err() {
-    let codes = real_out_of_range_count(&program_with("x : REAL;\n", "x := 1.0E30 * 1.0E30;\n"));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&program_with("x : REAL;\n", "x := 1.0E30 * 1.0E30;\n")),
+        codes(REAL)
+    );
 }
 
 /// The operator computes at `REAL`, so the operand is a `REAL` too.
 #[test]
 fn apply_when_real_operand_out_of_range_then_err() {
-    let codes = real_out_of_range_count(&program_with(
-        "x : REAL;\ny : REAL;\n",
-        "x := y + 1.0E300;\n",
-    ));
-
-    assert_eq!(codes, 1);
+    assert_eq!(
+        problems_of(&program_with(
+            "x : REAL;\ny : REAL;\n",
+            "x := y + 1.0E300;\n",
+        )),
+        codes(REAL)
+    );
 }
 
 /// A literal beyond every real type, or one that names its own type, is
-/// checked once, by `rule_real_literal_range`, not again here.
+/// checked by `rule_real_literal_range`, so this rule stays silent rather
+/// than report it a second time.
 #[rstest]
 #[case::beyond_lreal("1.0E400")]
 #[case::prefixed("REAL#1.0E40")]
-fn apply_when_real_literal_reported_by_own_rule_then_reported_once(#[case] value: &str) {
+fn apply_when_real_literal_reported_by_own_rule_then_not_reported_here(#[case] value: &str) {
     let program = program_with("x : REAL;\n", &format!("x := {value};\n"));
 
-    assert_eq!(real_out_of_range_count(&program), 1);
+    assert_eq!(problems_of(&program), codes(OK));
 }
 
 #[rstest]
@@ -458,7 +476,7 @@ fn apply_when_real_literal_reported_by_own_rule_then_reported_once(#[case] value
 fn apply_when_not_integer_storage_then_ok(#[case] declared_type: &str, #[case] value: &str) {
     let program = program_with(&format!("x : {declared_type} := {value};\n"), "");
 
-    assert_eq!(out_of_range_count(&program), 0);
+    assert_eq!(problems_of(&program), codes(OK));
 }
 
 // --- Initializers, type defaults and call arguments ---
@@ -489,93 +507,119 @@ VAR_IN_OUT io : USINT; END_VAR
 END_FUNCTION_BLOCK
 ";
 
-/// Analyzes `SMALL_TYPES` and a program with `declarations` and `body`,
-/// returning (integer, real) out-of-range counts.
-fn counts_with_types(declarations: &str, body: &str) -> (usize, usize) {
-    let program = format!("{SMALL_TYPES}{}", program_with(declarations, body));
-    (
-        out_of_range_count(&program),
-        real_out_of_range_count(&program),
-    )
+/// The problem codes this rule reports for `SMALL_TYPES` and a program with
+/// `declarations` and `body`.
+fn problems_with_types(declarations: &str, body: &str) -> Vec<String> {
+    problems_of(&format!(
+        "{SMALL_TYPES}{}",
+        program_with(declarations, body)
+    ))
 }
 
 #[rstest]
-#[case::array_integer("a : ARRAY[1..3] OF USINT := [1, 300, 255];\n", (1, 0))]
-#[case::array_real("a : ARRAY[1..2] OF REAL := [1.0E300, 1.0];\n", (0, 1))]
-#[case::array_in_range("a : ARRAY[1..2] OF USINT := [0, 255];\n", (0, 0))]
-#[case::array_repeated("a : ARRAY[1..4] OF USINT := [2(300), 2(1)];\n", (1, 0))]
-#[case::array_multi_dimension("a : ARRAY[1..2, 1..2] OF USINT := [1, 2, 3, 300];\n", (1, 0))]
-#[case::struct_integer("s : Small := (i := 300);\n", (1, 0))]
-#[case::struct_real("s : Small := (r := 1.0E300);\n", (0, 1))]
-#[case::struct_in_range("s : Small := (i := 255, r := 1.0);\n", (0, 0))]
-#[case::struct_array_field("s : Small := (a := [1, 300]);\n", (1, 0))]
-#[case::struct_nested("o : Outer := (inner := (i := 300));\n", (1, 0))]
-#[case::function_block_instance("h : HOLD := (i := 300, r := 1.0E300);\n", (1, 1))]
+#[case::array_integer("a : ARRAY[1..3] OF USINT := [1, 300, 255];\n", OVERFLOW)]
+#[case::array_real("a : ARRAY[1..2] OF REAL := [1.0E300, 1.0];\n", REAL)]
+#[case::array_in_range("a : ARRAY[1..2] OF USINT := [0, 255];\n", OK)]
+#[case::array_repeated("a : ARRAY[1..4] OF USINT := [2(300), 2(1)];\n", OVERFLOW)]
+#[case::array_multi_dimension("a : ARRAY[1..2, 1..2] OF USINT := [1, 2, 3, 300];\n", OVERFLOW)]
+#[case::struct_integer("s : Small := (i := 300);\n", OVERFLOW)]
+#[case::struct_real("s : Small := (r := 1.0E300);\n", REAL)]
+#[case::struct_in_range("s : Small := (i := 255, r := 1.0);\n", OK)]
+#[case::struct_array_field("s : Small := (a := [1, 300]);\n", OVERFLOW)]
+#[case::struct_nested("o : Outer := (inner := (i := 300));\n", OVERFLOW)]
+#[case::function_block_instance("h : HOLD := (i := 300, r := 1.0E300);\n", OVERFLOW_AND_REAL)]
 fn apply_when_initializer_out_of_range_then_err(
     #[case] declarations: &str,
-    #[case] expected: (usize, usize),
+    #[case] expected: &[Problem],
 ) {
-    assert_eq!(counts_with_types(declarations, ""), expected);
+    assert_eq!(problems_with_types(declarations, ""), codes(expected));
 }
 
 #[rstest]
-#[case::named_integer("x := TAKE(i := 300, r := 1.0);\n", (1, 0))]
-#[case::named_real("x := TAKE(i := 1, r := 1.0E300);\n", (0, 1))]
-#[case::positional("x := TAKE(300, 1.0E300);\n", (1, 1))]
-#[case::in_range("x := TAKE(255, 1.0);\n", (0, 0))]
-#[case::folded("x := TAKE(255 + 1, 1.0);\n", (1, 0))]
-#[case::fb_named("h(i := 300, r := 1.0E300);\n", (1, 1))]
-#[case::fb_positional("h(300, 1.0E300);\n", (1, 1))]
-#[case::fb_in_range("h(i := 255, r := 1.0);\n", (0, 0))]
-#[case::fb_named_in_out("h(io := y);\n", (0, 0))]
+#[case::named_integer("x := TAKE(i := 300, r := 1.0);\n", OVERFLOW)]
+#[case::named_real("x := TAKE(i := 1, r := 1.0E300);\n", REAL)]
+#[case::positional("x := TAKE(300, 1.0E300);\n", OVERFLOW_AND_REAL)]
+#[case::in_range("x := TAKE(255, 1.0);\n", OK)]
+#[case::folded("x := TAKE(255 + 1, 1.0);\n", OVERFLOW)]
+#[case::fb_named("h(i := 300, r := 1.0E300);\n", OVERFLOW_AND_REAL)]
+#[case::fb_positional("h(300, 1.0E300);\n", OVERFLOW_AND_REAL)]
+#[case::fb_in_range("h(i := 255, r := 1.0);\n", OK)]
+#[case::fb_named_in_out("h(io := y);\n", OK)]
 fn apply_when_call_argument_out_of_range_then_err(
     #[case] body: &str,
-    #[case] expected: (usize, usize),
+    #[case] expected: &[Problem],
 ) {
     assert_eq!(
-        counts_with_types("x : REAL;\nh : HOLD;\ny : USINT;\n", body),
-        expected
+        problems_with_types("x : REAL;\nh : HOLD;\ny : USINT;\n", body),
+        codes(expected)
     );
 }
 
 /// A generic parameter states no range, so a standard function's `ANY_NUM`
 /// argument is not checked; a concrete parameter of a conversion function is.
 #[rstest]
-#[case::generic("x : DINT;\n", "x := ADD(300, 1);\n", 0)]
-#[case::conversion("x : INT;\n", "x := USINT_TO_INT(300);\n", 1)]
+#[case::generic("x : DINT;\n", "x := ADD(300, 1);\n", OK)]
+#[case::conversion("x : INT;\n", "x := USINT_TO_INT(300);\n", OVERFLOW)]
 fn apply_when_standard_function_argument_then_checked_by_parameter_type(
     #[case] declarations: &str,
     #[case] body: &str,
-    #[case] expected: usize,
+    #[case] expected: &[Problem],
 ) {
     assert_eq!(
-        out_of_range_count(&program_with(declarations, body)),
-        expected
+        problems_of(&program_with(declarations, body)),
+        codes(expected)
     );
 }
 
 #[rstest]
-#[case::struct_field_integer("S : STRUCT f : USINT := 300; END_STRUCT;", (1, 0))]
-#[case::struct_field_real("S : STRUCT f : REAL := 1.0E300; END_STRUCT;", (0, 1))]
-#[case::struct_field_array("S : STRUCT f : ARRAY[1..2] OF USINT := [1, 300]; END_STRUCT;", (1, 0))]
-#[case::alias_integer("Small : USINT := 300;", (1, 0))]
-#[case::alias_real("R : REAL := 1.0E300;", (0, 1))]
-#[case::alias_in_range("Small : USINT := 255;", (0, 0))]
-#[case::array_type("A : ARRAY[1..2] OF USINT := [2(300)];", (1, 0))]
+#[case::struct_field_integer("S : STRUCT f : USINT := 300; END_STRUCT;", OVERFLOW)]
+#[case::struct_field_real("S : STRUCT f : REAL := 1.0E300; END_STRUCT;", REAL)]
+#[case::struct_field_array(
+    "S : STRUCT f : ARRAY[1..2] OF USINT := [1, 300]; END_STRUCT;",
+    OVERFLOW
+)]
+#[case::alias_integer("Small : USINT := 300;", OVERFLOW)]
+#[case::alias_real("R : REAL := 1.0E300;", REAL)]
+#[case::alias_in_range("Small : USINT := 255;", OK)]
+#[case::array_type("A : ARRAY[1..2] OF USINT := [2(300)];", OVERFLOW)]
 fn apply_when_type_default_out_of_range_then_err(
     #[case] declarations: &str,
-    #[case] expected: (usize, usize),
+    #[case] expected: &[Problem],
 ) {
     let program = format!(
         "TYPE\n{declarations}\nEND_TYPE\n{}",
         program_with("x : DINT;\n", "")
     );
 
-    assert_eq!(
-        (
-            out_of_range_count(&program),
-            real_out_of_range_count(&program)
-        ),
-        expected
-    );
+    assert_eq!(problems_of(&program), codes(expected));
 }
+
+#[test]
+fn apply_when_assignment_to_named_subrange_out_of_range_then_err() {
+    let program = format!(
+        "TYPE Small : INT(0..10); END_TYPE\n{}",
+        program_with("  x : Small;\n", "  x := 20;\n")
+    );
+    assert_eq!(problems_of(&program), codes(OVERFLOW));
+}
+
+#[test]
+fn apply_when_assignment_to_named_subrange_in_range_then_ok() {
+    let program = format!(
+        "TYPE Small : INT(0..10); END_TYPE\n{}",
+        program_with("  x : Small;\n", "  x := 10;\n")
+    );
+    assert_eq!(problems_of(&program), codes(OK));
+}
+
+rule_err_at!(
+    apply_when_assignment_out_of_range_then_error_at_literal,
+    "PROGRAM main
+VAR
+    x : SINT;
+END_VAR
+    x := 128;
+END_PROGRAM",
+    Problem::ConstantOverflow,
+    "128"
+);

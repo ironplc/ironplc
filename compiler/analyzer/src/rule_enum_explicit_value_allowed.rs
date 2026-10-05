@@ -107,22 +107,21 @@ TYPE
 E_ModeLanguage : (Deutsch := 1, English := 2);
 END_TYPE";
 
-    rule_errn!(
+    rule_err!(
         apply_when_enum_explicit_values_and_flag_disabled_then_error,
         SOURCE,
-        2,
-        Problem::EnumExplicitValueNotAllowed
+        [Problem::EnumExplicitValueNotAllowed; 2]
     );
 
-    rule_ok_with!(
+    rule_ok!(
         apply_when_enum_explicit_values_and_flag_enabled_then_ok,
-        opts_flag(),
-        SOURCE
+        SOURCE,
+        opts_flag()
     );
 
     // The label has to name the member that carries the value, or the user
     // cannot tell which one to remove in a long declaration.
-    rule_err1_at!(
+    rule_err_at!(
         apply_when_one_member_has_explicit_value_then_label_names_that_member,
         "
 TYPE

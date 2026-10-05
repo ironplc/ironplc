@@ -75,6 +75,12 @@ mod test {
             Ok(()) => vec![],
             Err(errors) => errors
                 .iter()
+                .inspect(|e| {
+                    assert_eq!(
+                        e.code,
+                        ironplc_problems::Problem::InvalidStringEscape.code()
+                    )
+                })
                 .map(|e| (e.primary.location.start, e.primary.location.end))
                 .collect(),
         }

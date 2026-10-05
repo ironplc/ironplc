@@ -41,58 +41,50 @@
 //!   END_VAR
 //! END_PROGRAM
 //! ```
-use std::collections::HashSet;
 use std::convert::Infallible;
 
 use ironplc_dsl::{
     common::*,
-    core::{Id, Located},
+    core::Located,
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
 
 use crate::{
-    intermediates::global_vars::collect_global_var_decls,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    symbol_environment::{ScopeKind, SymbolEnvironment},
 };
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: &Library,
-    _context: &SemanticContext,
+    context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    // Keyed by the global's own `Id` so the diagnostic can point at the
-    // global's declaration. `Id` compares case-insensitively.
-    let globals: HashSet<Id> = collect_global_var_decls(lib)
-        .iter()
-        .filter_map(|decl| decl.identifier.symbolic_id().cloned())
-        .collect();
-
     run_rule(
         RuleProgramVarHidesGlobal {
-            globals,
+            symbols: context.symbols(),
             diagnostics: Vec::new(),
         },
         lib,
     )
 }
 
-struct RuleProgramVarHidesGlobal {
-    globals: HashSet<Id>,
+struct RuleProgramVarHidesGlobal<'a> {
+    symbols: &'a SymbolEnvironment,
     diagnostics: Vec<Diagnostic>,
 }
 
-impl DiagnosticVisitor for RuleProgramVarHidesGlobal {
+impl DiagnosticVisitor for RuleProgramVarHidesGlobal<'_> {
     fn into_diagnostics(self) -> Vec<Diagnostic> {
         self.diagnostics
     }
 }
 
-impl Visitor<Infallible> for RuleProgramVarHidesGlobal {
+impl Visitor<Infallible> for RuleProgramVarHidesGlobal<'_> {
     type Value = ();
 
     fn visit_program_declaration(
@@ -108,7 +100,13 @@ impl Visitor<Infallible> for RuleProgramVarHidesGlobal {
             let Some(name) = decl.identifier.symbolic_id() else {
                 continue;
             };
-            if let Some(global) = self.globals.get(name) {
+            // The global scope also holds types, programs and the
+            // compiler-provided globals; only a `VAR_GLOBAL` is hidden.
+            let global = self
+                .symbols
+                .find(name, &ScopeKind::Global)
+                .filter(|info| info.variable_type == Some(VariableType::Global));
+            if let Some(global) = global {
                 self.diagnostics.push(
                     Diagnostic::problem(
                         Problem::ProgramVariableHidesGlobal,
@@ -119,7 +117,7 @@ impl Visitor<Infallible> for RuleProgramVarHidesGlobal {
                     )
                     .with_context_id("variable", name)
                     .with_context_id("program", &node.name)
-                    .with_secondary(Label::span(global.span(), "Global variable")),
+                    .with_secondary(Label::span(global.span.clone(), "Global variable")),
                 );
             }
         }
@@ -167,7 +165,7 @@ END_PROGRAM"
         )
     );
 
-    rule_err1!(
+    rule_err!(
         apply_when_program_var_named_like_configuration_global_then_error,
         &with_config(
             "
@@ -177,10 +175,10 @@ PROGRAM main
   END_VAR
 END_PROGRAM"
         ),
-        Problem::ProgramVariableHidesGlobal
+        [Problem::ProgramVariableHidesGlobal]
     );
 
-    rule_err1!(
+    rule_err_at!(
         apply_when_program_var_differs_only_in_case_then_error,
         &with_config(
             "
@@ -190,10 +188,11 @@ PROGRAM main
   END_VAR
 END_PROGRAM"
         ),
-        Problem::ProgramVariableHidesGlobal
+        Problem::ProgramVariableHidesGlobal,
+        "MAXSPEED"
     );
 
-    rule_err1!(
+    rule_err!(
         apply_when_program_input_named_like_global_then_error,
         &with_config(
             "
@@ -203,10 +202,10 @@ PROGRAM main
   END_VAR
 END_PROGRAM"
         ),
-        Problem::ProgramVariableHidesGlobal
+        [Problem::ProgramVariableHidesGlobal]
     );
 
-    rule_err1!(
+    rule_err!(
         apply_when_program_var_named_like_resource_global_then_error,
         "
 CONFIGURATION config
@@ -224,15 +223,11 @@ PROGRAM main
     Limit : INT;
   END_VAR
 END_PROGRAM",
-        Problem::ProgramVariableHidesGlobal
+        [Problem::ProgramVariableHidesGlobal]
     );
 
-    rule_err1_with!(
+    rule_err!(
         apply_when_program_var_named_like_top_level_global_then_error,
-        CompilerOptions {
-            allow_top_level_var_global: true,
-            ..CompilerOptions::default()
-        },
         "
 VAR_GLOBAL
   Limit : INT;
@@ -243,10 +238,14 @@ PROGRAM main
     Limit : INT;
   END_VAR
 END_PROGRAM",
-        Problem::ProgramVariableHidesGlobal
+        [Problem::ProgramVariableHidesGlobal],
+        CompilerOptions {
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        }
     );
 
-    rule_errn!(
+    rule_err!(
         apply_when_two_program_vars_named_like_globals_then_reports_both,
         "
 CONFIGURATION config
@@ -266,8 +265,7 @@ PROGRAM main
     Second : INT;
   END_VAR
 END_PROGRAM",
-        2,
-        Problem::ProgramVariableHidesGlobal
+        [Problem::ProgramVariableHidesGlobal; 2]
     );
 
     // Hiding in a function block compiles correctly and is relied on by

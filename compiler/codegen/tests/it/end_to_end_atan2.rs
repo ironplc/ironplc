@@ -15,7 +15,7 @@ PROGRAM main
   result := ATAN2(y, x);
 END_PROGRAM
 ",
-    &[(2, std::f32::consts::FRAC_PI_4)],
+    &[("result", std::f32::consts::FRAC_PI_4)],
 );
 
 e2e_f32_near!(
@@ -33,7 +33,7 @@ PROGRAM main
   result := ATAN2(y, x);
 END_PROGRAM
 ",
-    &[(2, 0.0)],
+    &[("result", 0.0)],
 );
 
 e2e_f32_near!(
@@ -51,7 +51,7 @@ PROGRAM main
   result := ATAN2(y, x);
 END_PROGRAM
 ",
-    &[(2, std::f32::consts::FRAC_PI_2)],
+    &[("result", std::f32::consts::FRAC_PI_2)],
 );
 
 e2e_f64_near!(
@@ -69,5 +69,5 @@ PROGRAM main
   result := ATAN2(y, x);
 END_PROGRAM
 ",
-    &[(2, -3.0 * std::f64::consts::FRAC_PI_4)],
+    &[("result", -3.0 * std::f64::consts::FRAC_PI_4)],
 );

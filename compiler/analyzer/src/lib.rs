@@ -17,16 +17,20 @@ fn init_test_logger() {
 // their inline `#[cfg(test)] mod tests`.
 #[cfg(test)]
 #[macro_use]
-#[allow(unused_macros)]
 mod test_macros;
 
 mod call_assignment_check;
 mod callee_resolution;
+mod clean_analysis;
 mod constant_folding;
+mod enumerated_value_type;
+pub mod enumeration_members;
+mod enumeration_values;
 mod function_environment;
-pub mod intermediate_type;
+mod intrinsic;
 mod result;
 mod rule_abstract_not_instantiated;
+mod rule_array_index_range;
 mod rule_assignment_aggregate_type_compat;
 mod rule_bit_and_partial_access_range;
 mod rule_case_bit_string_label;
@@ -73,6 +77,7 @@ mod rule_var_decl_global_const_requires_external_const;
 mod rule_var_decl_initializer_type_compat;
 mod scoped_table;
 mod semantic_context;
+pub mod semantic_type;
 pub mod stages;
 mod string_similarity;
 pub mod symbol_environment;
@@ -88,6 +93,7 @@ pub mod value_type;
 mod variable_type;
 mod xform_fold_constant_expressions;
 mod xform_fold_initializer_expressions;
+mod xform_insert_implicit_conversions;
 mod xform_insert_implicit_deref;
 mod xform_int_to_bool_initializer;
 mod xform_mark_unwritten_constants;
@@ -110,18 +116,19 @@ mod intermediates;
 pub mod extractors;
 
 // Re-export public types for external use
+pub use clean_analysis::CleanAnalysis;
 pub use function_environment::{
     FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
 };
-pub use intermediate_type::IntermediateType;
 pub use intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, typed_overload, FoldFailure, Overload,
 };
 pub use intermediates::enumeration::resolve_ordinal_values;
-pub use intermediates::operator_function_form::{
-    operator_function_form, FormOf, OperatorFunctionForm,
-};
+pub use intermediates::numeric_operation::literal_default_type;
+pub use intermediates::operator_function_form::FormOf;
+pub use intrinsic::{BitShift, Intrinsic, NumericFunction, StringFunction, TimeFunction};
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
+pub use semantic_type::SemanticType;
 pub use type_attributes::TypeAttributes;
 pub use type_category::TypeCategory;
 pub use type_environment::{
@@ -130,6 +137,8 @@ pub use type_environment::{
 
 #[cfg(test)]
 mod test_helpers;
+#[cfg(test)]
+mod test_rule_conventions;
 
 // Spec conformance testing infrastructure (test-only).
 #[cfg(test)]

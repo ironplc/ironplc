@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 // --- SHL ---
 
@@ -18,7 +18,7 @@ PROGRAM main
   y := SHL(x, 4);
 END_PROGRAM
 ",
-    &[(0, 0x0F), (1, 0xF0)],
+    &[("x", 0x0F), ("y", 0xF0)],
 );
 
 e2e_i32!(
@@ -33,7 +33,7 @@ PROGRAM main
   y := SHL(x, 16);
 END_PROGRAM
 ",
-    &[(0, 0x0F), (1, 0x000F_0000_u32 as i32)],
+    &[("x", 0x0F), ("y", 0x000F_0000_u32 as i32)],
 );
 
 e2e_i64!(
@@ -48,7 +48,7 @@ PROGRAM main
   y := SHL(x, 32);
 END_PROGRAM
 ",
-    &[(0, 0x01), (1, 0x1_0000_0000)],
+    &[("x", 0x01), ("y", 0x1_0000_0000)],
 );
 
 // --- SHR ---
@@ -65,7 +65,7 @@ PROGRAM main
   y := SHR(x, 8);
 END_PROGRAM
 ",
-    &[(0, 0xFF00), (1, 0x00FF)],
+    &[("x", 0xFF00), ("y", 0x00FF)],
 );
 
 e2e_i32!(
@@ -80,7 +80,7 @@ PROGRAM main
   y := SHR(x, 4);
 END_PROGRAM
 ",
-    &[(0, 0xF0), (1, 0x0F)],
+    &[("x", 0xF0), ("y", 0x0F)],
 );
 
 // --- ROL ---
@@ -98,7 +98,7 @@ PROGRAM main
   y := ROL(x, 1);
 END_PROGRAM
 ",
-    &[(0, 0x81), (1, 0x03)],
+    &[("x", 0x81), ("y", 0x03)],
 );
 
 // ROL(WORD#16#8001, 1) = 0x0003
@@ -114,11 +114,11 @@ PROGRAM main
   y := ROL(x, 1);
 END_PROGRAM
 ",
-    &[(0, 0x8001), (1, 0x0003)],
+    &[("x", 0x8001), ("y", 0x0003)],
 );
 
 // ROL(DWORD#16#80000001, 1) = 0x00000003
-e2e_i32!(
+e2e!(
     end_to_end_when_rol_dword_then_rotates_left,
     "
 PROGRAM main
@@ -130,13 +130,13 @@ PROGRAM main
   y := ROL(x, 1);
 END_PROGRAM
 ",
-    &[(0, 0x80000001_u32 as i32), (1, 0x00000003)],
+    &[("x", 0x8000_0001_u32), ("y", 0x0000_0003)],
 );
 
 // --- ROR ---
 
 // ROR(DWORD#16#00000001, 1) = 0x80000000 (bit 0 wraps to bit 31)
-e2e_i32!(
+e2e!(
     end_to_end_when_ror_dword_then_rotates_right,
     "
 PROGRAM main
@@ -148,7 +148,7 @@ PROGRAM main
   y := ROR(x, 1);
 END_PROGRAM
 ",
-    &[(0, 0x01), (1, 0x80000000_u32 as i32)],
+    &[("x", 0x0000_0001_u32), ("y", 0x8000_0000)],
 );
 
 // ROR(BYTE#16#01, 1) = 0x80 (bit 0 wraps to bit 7 within 8 bits)
@@ -164,7 +164,7 @@ PROGRAM main
   y := ROR(x, 1);
 END_PROGRAM
 ",
-    &[(0, 0x01), (1, 0x80)],
+    &[("x", 0x01), ("y", 0x80)],
 );
 
 // SHL(BYTE#16#FF, 4) = 0xF0 (shifted to 0xFF0, truncated to u8 = 0xF0)
@@ -180,7 +180,7 @@ PROGRAM main
   y := SHL(x, 4);
 END_PROGRAM
 ",
-    &[(0, 0xFF), (1, 0xF0)],
+    &[("x", 0xFF), ("y", 0xF0)],
 );
 
 #[test]
@@ -195,8 +195,8 @@ PROGRAM main
   y := SHL(x, 0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), bufs.vars[0].as_i32());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<u32>("y"), 0xDEAD_BEEF);
 }
 
 // --- Nested function calls ---
@@ -210,8 +210,8 @@ PROGRAM main
     result : DINT;
   END_VAR
   a := -8;
-  result := SHR(ABS(a), 1);
+  result := DWORD_TO_DINT(SHR(DINT_TO_DWORD(ABS(a)), 1));
 END_PROGRAM
 ",
-    &[(0, -8), (1, 4)],
+    &[("a", -8), ("result", 4)],
 );

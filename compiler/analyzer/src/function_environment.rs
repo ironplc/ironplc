@@ -17,8 +17,9 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Expr, ParamAssignmentKind};
 use ironplc_problems::Problem;
 
-use crate::intermediate_type::IntermediateFunctionParameter;
 use crate::intermediates::stdlib_function::get_all_stdlib_functions;
+use crate::intrinsic::Intrinsic;
+use crate::semantic_type::SemanticFunctionParameter;
 use crate::symbol_environment::duplicate_declaration;
 
 /// Represents a function signature in the function environment.
@@ -33,7 +34,7 @@ pub struct FunctionSignature {
     /// Return type of the function (None for procedures)
     pub return_type: Option<FunctionReturnType>,
     /// List of function parameters
-    pub parameters: Vec<IntermediateFunctionParameter>,
+    pub parameters: Vec<SemanticFunctionParameter>,
     /// Source location (builtin for stdlib functions)
     pub span: SourceSpan,
     /// Whether this function accepts additional positional arguments beyond
@@ -42,6 +43,9 @@ pub struct FunctionSignature {
     /// Maximum number of input arguments for extensible functions.
     /// Only meaningful when `is_extensible` is true. None means no upper limit.
     pub max_inputs: Option<usize>,
+    /// The operation a standard function stands for, which code generation
+    /// compiles a call to it as. `None` for a user-defined function.
+    pub intrinsic: Option<Intrinsic>,
 }
 
 impl FunctionSignature {
@@ -49,7 +53,7 @@ impl FunctionSignature {
     pub fn new(
         name: Id,
         return_type: Option<FunctionReturnType>,
-        parameters: Vec<IntermediateFunctionParameter>,
+        parameters: Vec<SemanticFunctionParameter>,
         span: SourceSpan,
     ) -> Self {
         Self {
@@ -59,14 +63,17 @@ impl FunctionSignature {
             span,
             is_extensible: false,
             max_inputs: None,
+            intrinsic: None,
         }
     }
 
-    /// Creates a stdlib function signature with a builtin span.
+    /// Creates a stdlib function signature with a builtin span, standing for
+    /// the operation `intrinsic`.
     pub fn stdlib(
         name: &str,
+        intrinsic: Intrinsic,
         return_type: TypeName,
-        parameters: Vec<IntermediateFunctionParameter>,
+        parameters: Vec<SemanticFunctionParameter>,
     ) -> Self {
         Self {
             name: Id::from(name),
@@ -75,6 +82,7 @@ impl FunctionSignature {
             span: SourceSpan::builtin(),
             is_extensible: false,
             max_inputs: None,
+            intrinsic: Some(intrinsic),
         }
     }
 
@@ -87,8 +95,9 @@ impl FunctionSignature {
     /// it unbounded.
     pub fn stdlib_extensible(
         name: &str,
+        intrinsic: Intrinsic,
         return_type: TypeName,
-        parameters: Vec<IntermediateFunctionParameter>,
+        parameters: Vec<SemanticFunctionParameter>,
         max_inputs: Option<usize>,
     ) -> Self {
         Self {
@@ -98,6 +107,7 @@ impl FunctionSignature {
             span: SourceSpan::builtin(),
             is_extensible: true,
             max_inputs,
+            intrinsic: Some(intrinsic),
         }
     }
 
@@ -128,7 +138,7 @@ impl FunctionSignature {
     pub fn bind_inputs<'a>(
         &'a self,
         params: &'a [ParamAssignmentKind],
-    ) -> impl Iterator<Item = (IntermediateFunctionParameter, &'a Expr)> + 'a {
+    ) -> impl Iterator<Item = (SemanticFunctionParameter, &'a Expr)> + 'a {
         let positional = params.iter().filter_map(|param| match param {
             ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
             ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
@@ -151,7 +161,7 @@ impl FunctionSignature {
     /// has that parameter's type. The extension stops at `max_inputs`, or
     /// never when there is none, so a caller with no argument list to zip
     /// against must bound what it takes.
-    pub fn input_parameters(&self) -> impl Iterator<Item = IntermediateFunctionParameter> + '_ {
+    pub fn input_parameters(&self) -> impl Iterator<Item = SemanticFunctionParameter> + '_ {
         let declared = self.parameters.iter().filter(|p| p.is_input_compatible());
         let extension = self
             .is_extensible
@@ -167,7 +177,7 @@ impl FunctionSignature {
                 });
                 (1..)
                     .take(room)
-                    .map(move |offset| IntermediateFunctionParameter {
+                    .map(move |offset| SemanticFunctionParameter {
                         name: Id::from(&format!("{prefix}{}", number + offset)),
                         ..last.clone()
                     })
@@ -298,9 +308,24 @@ impl Default for FunctionEnvironmentBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::intermediates::operator_function_form::FormOf;
+    use ironplc_dsl::common::ElementaryTypeName;
+    use ironplc_dsl::textual::Operator;
 
     fn create_test_signature(name: &str, return_type_name: &str) -> FunctionSignature {
-        FunctionSignature::stdlib(name, TypeName::from(return_type_name), vec![])
+        FunctionSignature::stdlib(
+            name,
+            Intrinsic::Move,
+            TypeName::from(return_type_name),
+            vec![],
+        )
+    }
+
+    fn int_to_real() -> Intrinsic {
+        Intrinsic::Conversion {
+            source: ElementaryTypeName::INT,
+            target: ElementaryTypeName::REAL,
+        }
     }
 
     #[test]
@@ -356,8 +381,27 @@ mod tests {
 
     #[test]
     fn function_signature_is_stdlib_when_builtin_span_then_true() {
-        let sig = FunctionSignature::stdlib("INT_TO_REAL", TypeName::from("REAL"), vec![]);
+        let sig =
+            FunctionSignature::stdlib("INT_TO_REAL", int_to_real(), TypeName::from("REAL"), vec![]);
         assert!(sig.is_stdlib());
+    }
+
+    #[test]
+    fn function_signature_stdlib_when_created_then_names_its_intrinsic() {
+        let sig =
+            FunctionSignature::stdlib("INT_TO_REAL", int_to_real(), TypeName::from("REAL"), vec![]);
+        assert_eq!(sig.intrinsic, Some(int_to_real()));
+    }
+
+    #[test]
+    fn function_signature_new_when_user_defined_then_no_intrinsic() {
+        let sig = FunctionSignature::new(
+            Id::from("MY_FUNC"),
+            Some(FunctionReturnType::Named(TypeName::from("BOOL"))),
+            vec![],
+            SourceSpan::default(),
+        );
+        assert_eq!(sig.intrinsic, None);
     }
 
     #[test]
@@ -374,7 +418,7 @@ mod tests {
     #[test]
     fn function_signature_input_parameter_count_when_mixed_params_then_counts_inputs() {
         let params = vec![
-            IntermediateFunctionParameter {
+            SemanticFunctionParameter {
                 name: Id::from("IN1"),
                 param_type: TypeName::from("INT"),
                 is_input: true,
@@ -382,7 +426,7 @@ mod tests {
                 is_inout: false,
                 is_reference: false,
             },
-            IntermediateFunctionParameter {
+            SemanticFunctionParameter {
                 name: Id::from("IN2"),
                 param_type: TypeName::from("INT"),
                 is_input: true,
@@ -390,7 +434,7 @@ mod tests {
                 is_inout: false,
                 is_reference: false,
             },
-            IntermediateFunctionParameter {
+            SemanticFunctionParameter {
                 name: Id::from("OUT1"),
                 param_type: TypeName::from("INT"),
                 is_input: false,
@@ -410,8 +454,8 @@ mod tests {
         assert_eq!(sig.input_parameter_count(), 2);
     }
 
-    fn input(name: &str, type_name: &str) -> IntermediateFunctionParameter {
-        IntermediateFunctionParameter {
+    fn input(name: &str, type_name: &str) -> SemanticFunctionParameter {
+        SemanticFunctionParameter {
             name: Id::from(name),
             param_type: TypeName::from(type_name),
             is_input: true,
@@ -421,15 +465,15 @@ mod tests {
         }
     }
 
-    fn in_out(name: &str, type_name: &str) -> IntermediateFunctionParameter {
-        IntermediateFunctionParameter {
+    fn in_out(name: &str, type_name: &str) -> SemanticFunctionParameter {
+        SemanticFunctionParameter {
             is_input: false,
             is_inout: true,
             ..input(name, type_name)
         }
     }
 
-    fn user_function(params: Vec<IntermediateFunctionParameter>) -> FunctionSignature {
+    fn user_function(params: Vec<SemanticFunctionParameter>) -> FunctionSignature {
         FunctionSignature::new(
             Id::from("MY_FUNC"),
             Some(FunctionReturnType::Named(TypeName::from("BOOL"))),
@@ -450,7 +494,7 @@ mod tests {
         assert_eq!(names(sig.input_parameters()), vec!["ACC", "FACTOR"]);
     }
 
-    fn names(params: impl Iterator<Item = IntermediateFunctionParameter>) -> Vec<String> {
+    fn names(params: impl Iterator<Item = SemanticFunctionParameter>) -> Vec<String> {
         params.map(|p| p.name.original().clone()).collect()
     }
 
@@ -458,6 +502,7 @@ mod tests {
     fn function_signature_input_parameters_when_not_extensible_then_declared_inputs_only() {
         let sig = FunctionSignature::stdlib(
             "SUB",
+            Intrinsic::Operator(FormOf::Arithmetic(Operator::Sub)),
             TypeName::from("ANY_NUM"),
             vec![input("IN1", "ANY_NUM"), input("IN2", "ANY_NUM")],
         );
@@ -468,6 +513,7 @@ mod tests {
     fn function_signature_input_parameters_when_unbounded_then_numbering_continues() {
         let sig = FunctionSignature::stdlib_extensible(
             "ADD",
+            Intrinsic::Operator(FormOf::Arithmetic(Operator::Add)),
             TypeName::from("ANY_NUM"),
             vec![input("IN1", "ANY_NUM"), input("IN2", "ANY_NUM")],
             None,
@@ -486,6 +532,7 @@ mod tests {
     fn function_signature_input_parameters_when_bounded_then_stops_at_max_inputs() {
         let sig = FunctionSignature::stdlib_extensible(
             "MUX",
+            Intrinsic::Mux,
             TypeName::from("ANY_NUM"),
             vec![
                 input("K", "ANY_INT"),
@@ -502,7 +549,13 @@ mod tests {
 
     #[test]
     fn function_signature_input_parameters_when_extensible_without_inputs_then_empty() {
-        let sig = FunctionSignature::stdlib_extensible("F", TypeName::from("INT"), vec![], None);
+        let sig = FunctionSignature::stdlib_extensible(
+            "F",
+            Intrinsic::Move,
+            TypeName::from("INT"),
+            vec![],
+            None,
+        );
         assert_eq!(sig.input_parameters().count(), 0);
     }
 

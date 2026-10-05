@@ -6,13 +6,13 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 5;
   y := x = 5;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 1)],
+    &[("x", 5), ("y", 1)],
 );
 
 e2e_i32!(
@@ -21,13 +21,13 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 5;
   y := x <> 3;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 1)],
+    &[("x", 5), ("y", 1)],
 );
 
 e2e_i32!(
@@ -36,13 +36,13 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 3;
   y := x < 5;
 END_PROGRAM
 ",
-    &[(0, 3), (1, 1)],
+    &[("x", 3), ("y", 1)],
 );
 
 e2e_i32!(
@@ -51,13 +51,13 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 5;
   y := x <= 5;
 END_PROGRAM
 ",
-    &[(0, 5), (1, 1)],
+    &[("x", 5), ("y", 1)],
 );
 
 e2e_i32!(
@@ -66,13 +66,13 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 7;
   y := x > 5;
 END_PROGRAM
 ",
-    &[(0, 7), (1, 1)],
+    &[("x", 7), ("y", 1)],
 );
 
 e2e_i32!(
@@ -81,13 +81,13 @@ e2e_i32!(
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 3;
   y := x >= 5;
 END_PROGRAM
 ",
-    &[(0, 3), (1, 0)],
+    &[("x", 3), ("y", 0)],
 );
 
 // -2.5 < 0.0 is TRUE (1); 3.5 < 0.0 is FALSE (0)
@@ -106,7 +106,7 @@ PROGRAM main
   pos := x < 0.0;
 END_PROGRAM
 ",
-    &[(1, 1), (2, 0)],
+    &[("neg", 1), ("pos", 0)],
 );
 
 e2e_i32!(
@@ -121,7 +121,7 @@ PROGRAM main
   result := x > 0.0;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("result", 1)],
 );
 
 // 72 >= 65 is TRUE
@@ -137,7 +137,7 @@ PROGRAM main
   result := c >= BYTE#65;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("result", 1)],
 );
 
 // 72 <= 90 is TRUE
@@ -153,7 +153,7 @@ PROGRAM main
   result := c <= BYTE#90;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("result", 1)],
 );
 
 // 50 > 65 is FALSE
@@ -169,7 +169,7 @@ PROGRAM main
   result := c > BYTE#65;
 END_PROGRAM
 ",
-    &[(1, 0)],
+    &[("result", 0)],
 );
 
 // 200 < 100 is FALSE (unsigned comparison)
@@ -185,7 +185,7 @@ PROGRAM main
   result := c < BYTE#100;
 END_PROGRAM
 ",
-    &[(1, 0)],
+    &[("result", 0)],
 );
 
 // 'H' (72) is uppercase; 'a' (97) is not uppercase
@@ -208,5 +208,30 @@ PROGRAM main
   no := IS_UPPERCASE(c := BYTE#97);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("yes", 1), ("no", 0)],
+);
+
+e2e!(
+    /// An `IF` condition comparing a variable with a literal is fused into
+    /// one `CMP_BR_*` only when the literal fits an `i64`. A `ULINT` literal
+    /// above `i64::MAX` does not, so the condition is compiled the ordinary
+    /// way and still compares the full 64-bit value.
+    end_to_end_when_if_compares_ulint_with_literal_above_i64_then_correct,
+    "
+PROGRAM main
+  VAR
+    x : ULINT;
+    hit : LINT;
+    miss : LINT;
+  END_VAR
+  x := 18446744073709551615;
+  IF x = 18446744073709551615 THEN
+    hit := 1;
+  END_IF;
+  IF x = 18446744073709551614 THEN
+    miss := 1;
+  END_IF;
+END_PROGRAM
+",
+    &[("x", u64::MAX), ("hit", 1), ("miss", 0)],
 );

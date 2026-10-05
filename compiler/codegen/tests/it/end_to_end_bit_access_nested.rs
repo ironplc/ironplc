@@ -10,12 +10,11 @@
 //! `end_to_end_bit_access.rs` covers the plain-variable and 32-bit
 //! array-element cases.
 
-use crate::common::{parse_and_run, try_parse_and_compile};
+use crate::common::{try_parse_and_compile, Snapshot};
 use ironplc_parser::options::CompilerOptions;
 
-// --- 1. Bit write on an LWORD array element: the 64-bit branch of
-//        compile_bit_access_assignment_on_array (element_vti.op_width ==
-//        OpWidth::W64).
+// --- 1. Bit write on an LWORD array element: an array-element base whose
+//        bits are written with 64-bit operations.
 
 // x = arr[1]; arr[1] bit 40 = 2^40 = 1099511627776
 e2e_i64!(
@@ -31,7 +30,7 @@ PROGRAM main
   x := arr[1];
 END_PROGRAM
 ",
-    &[(1, 1099511627776)],
+    &[("x", 1099511627776)],
 );
 
 // x = arr[0]; bit 32 = 2^32 = 4294967296
@@ -48,11 +47,11 @@ PROGRAM main
   x := arr[0];
 END_PROGRAM
 ",
-    &[(1, 4294967296)],
+    &[("x", 4294967296)],
 );
 
 // x = arr[0]; 0xFF00FF00FF00FF00 | 0x1 = 0xFF00FF00FF00FF01
-e2e_i64!(
+e2e!(
     end_to_end_when_write_bit_on_lword_array_preserves_other_bits,
     "
 PROGRAM main
@@ -65,7 +64,7 @@ PROGRAM main
   x := arr[0];
 END_PROGRAM
 ",
-    &[(1, 0xFF00_FF00_FF00_FF01_u64 as i64)],
+    &[("x", 0xFF00_FF00_FF00_FF01_u64)],
 );
 
 // --- 2. Bit access on a struct field: the base is a Structured variable, so
@@ -92,7 +91,7 @@ PROGRAM main
   r2 := s.flags.2;
 END_PROGRAM
 ",
-    &[(1, 1), (2, 1)],
+    &[("r0", 1), ("r2", 1)],
 );
 
 // 0xAA | 0x01 = 0xAB = 171
@@ -114,7 +113,7 @@ PROGRAM main
   x := s.flags;
 END_PROGRAM
 ",
-    &[(1, 171)],
+    &[("x", 171)],
 );
 
 // s.a: 0xFF & 0xFE = 0xFE = 254; s.b: 0x00 | 0x80 = 0x80 = 128
@@ -141,7 +140,7 @@ PROGRAM main
   vb := s.b;
 END_PROGRAM
 ",
-    &[(1, 254), (2, 128)],
+    &[("va", 254), ("vb", 128)],
 );
 
 e2e_i32!(
@@ -161,7 +160,7 @@ PROGRAM main
   r := s.flags.15;
 END_PROGRAM
 ",
-    &[(1, 1)],
+    &[("r", 1)],
 );
 
 // Set bit 16 of 0 = 65536
@@ -183,7 +182,7 @@ PROGRAM main
   x := s.value;
 END_PROGRAM
 ",
-    &[(1, 65536)],
+    &[("x", 65536)],
 );
 
 // --- 3. %Xn syntax on struct field and on LWORD array element. Gated on the
@@ -216,7 +215,7 @@ PROGRAM main
   r1 := s.flags.%X1;
 END_PROGRAM
 ",
-    &[(1, 1), (2, 0)],
+    &[("r0", 1), ("r1", 0)],
 );
 
 e2e_i32_with!(
@@ -238,7 +237,7 @@ PROGRAM main
   x := s.flags;
 END_PROGRAM
 ",
-    &[(1, 8)],
+    &[("x", 8)],
 );
 
 // Multi-type read (LWORD result via as_i64) with non-default options; no
@@ -256,16 +255,16 @@ PROGRAM main
   x := arr[0];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &opts_with_partial_access());
+    let snapshot = Snapshot::run(source, &opts_with_partial_access());
     // x = arr[0]
-    assert_eq!(bufs.vars[1].as_i64(), 1099511627776);
+    assert_eq!(snapshot.read_as::<i64>("x"), 1099511627776);
 }
 
 // --- Sanity check: the 32-bit array-element path. This duplicates a test in
 // end_to_end_bit_access.rs under a distinct name so a regression in the
 // nested paths can be told apart from one in the plain path.
 
-// x is the scalar we wrote arr[0] into. vars[0] is the array base, not a scalar.
+// x is the scalar we wrote arr[0] into.
 e2e_i32!(
     end_to_end_when_write_bit_on_dint_array_then_correct,
     "
@@ -279,7 +278,7 @@ PROGRAM main
   x := arr[0];
 END_PROGRAM
 ",
-    &[(1, 65536)],
+    &[("x", 65536)],
 );
 
 // --- Compile-only checks for the same paths.
@@ -352,7 +351,7 @@ PROGRAM main
   r2 := s.flags[0].2;
 END_PROGRAM
 ",
-    &[(1, 1), (2, 1)],
+    &[("r0", 1), ("r2", 1)],
 );
 
 // 0xAA | 0x01 = 0xAB = 171
@@ -374,7 +373,7 @@ PROGRAM main
   x := s.flags[0];
 END_PROGRAM
 ",
-    &[(1, 171)],
+    &[("x", 171)],
 );
 
 // s.flags[0]: 0xFF & 0xFE = 0xFE = 254; s.flags[1]: 0x00 | 0x80 = 0x80 = 128
@@ -400,7 +399,7 @@ PROGRAM main
   v1 := s.flags[1];
 END_PROGRAM
 ",
-    &[(1, 254), (2, 128)],
+    &[("v0", 254), ("v1", 128)],
 );
 
 // bit 40 = 2^40 = 1099511627776
@@ -422,7 +421,7 @@ PROGRAM main
   x := s.vals[0];
 END_PROGRAM
 ",
-    &[(1, 1099511627776)],
+    &[("x", 1099511627776)],
 );
 
 // bit 3 = 8
@@ -445,5 +444,5 @@ PROGRAM main
   x := s.flags[0];
 END_PROGRAM
 ",
-    &[(1, 8)],
+    &[("x", 8)],
 );

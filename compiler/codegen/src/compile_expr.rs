@@ -4,14 +4,14 @@
 //! and typed opcode emission helpers. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_analyzer::IntermediateType;
+use ironplc_analyzer::SemanticType;
 use ironplc_container::{opcode, VarIndex};
 use ironplc_dsl::common::{Boolean, ConstantKind, SignedInteger};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    ArrayVariable, BitAccessVariable, CompareExpr, CompareOp, Expr, ExprKind, ExprType, Operator,
-    PartialAccessVariable, StructuredVariable, SymbolicVariableKind, UnaryOp, Variable,
+    CompareExpr, CompareOp, Expr, ExprKind, ExprType, Operator, SymbolicVariableKind, UnaryOp,
+    Variable,
 };
 use ironplc_problems::Problem;
 use paste::paste;
@@ -22,9 +22,10 @@ use super::compile::{
 };
 use super::compile_arith::compile_binary_arith;
 use super::compile_call::compile_function_call;
+use super::compile_comparison::compile_comparison;
 use super::compile_method::compile_method_call_expression;
+use super::compile_partial_access::{compile_partial_access_read, PartialAccess};
 use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
-use super::compile_string::compile_string_compare;
 use super::type_info::{expr_operand_name, expr_representation, expr_type_info};
 use crate::emit::Emitter;
 
@@ -64,14 +65,14 @@ pub(crate) fn concrete_op_type_from_expr(ctx: &CompileContext, expr: &Expr) -> O
 
 /// Returns `true` if the expression's value is a BOOL.
 pub(crate) fn expr_is_bool(ctx: &CompileContext, expr: &Expr) -> bool {
-    matches!(expr_representation(ctx, expr), Some(IntermediateType::Bool))
+    matches!(expr_representation(ctx, expr), Some(SemanticType::Bool))
 }
 
 /// Returns `true` if the expression's value is a STRING or WSTRING.
 pub(crate) fn expr_is_string(ctx: &CompileContext, expr: &Expr) -> bool {
     matches!(
         expr_representation(ctx, expr),
-        Some(IntermediateType::String { .. })
+        Some(SemanticType::String { .. })
     )
 }
 
@@ -98,8 +99,8 @@ pub(crate) fn unresolved_expr_type(expr: &Expr) -> Diagnostic {
 /// Returns the operation type for compiling a condition expression.
 ///
 /// For comparison operators (`>`, `<`, `=`, etc.), returns the type of the
-/// left operand since the comparison's own resolved type is BOOL but we need
-/// the operand type for correct signedness. For boolean combinations (AND,
+/// left operand, which the analyzer made the comparison's operand type
+/// (ADR-0056). For boolean combinations (AND,
 /// OR, XOR), recurses into the first operand. For other expressions (bare
 /// boolean variables, parenthesized expressions), returns the expression's
 /// own resolved type.
@@ -136,6 +137,17 @@ pub(crate) fn compile_expr(
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     match &expr.kind {
+        // The analyzer recorded the type a numeric literal is compiled at
+        // (ADR-0056). One codegen builds itself, such as a standard function
+        // block's member initializer, has none and is stored at the default
+        // slot type. Any other literal names its own type and is compiled
+        // for the storage its context gives it.
+        ExprKind::Const(
+            constant @ (ConstantKind::IntegerLiteral(_) | ConstantKind::RealLiteral(_)),
+        ) => {
+            let own = op_type_from_expr(ctx, expr).unwrap_or(DEFAULT_OP_TYPE);
+            compile_constant(emitter, ctx, constant, own)
+        }
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
         // A variable read at a different width is read at its own and
         // converted: loading an INT's slot as a REAL would reinterpret its
@@ -177,13 +189,18 @@ pub(crate) fn compile_expr(
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
         ExprKind::Compare(compare) => compile_compare(emitter, ctx, compare, op_type),
         ExprKind::EnumeratedValue(enum_val) => {
-            // REQ-EN-codegen-030: Push the enum value's ordinal as an i32 constant.
-            let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, enum_val)?;
+            // REQ-EN-codegen-030: Push the enum value's ordinal as an i32
+            // constant, looked up in the type the analyzer gave the value.
+            let members = crate::compile_enum::members_of_expr(ctx, expr);
+            let ordinal = crate::compile_enum::ordinal_in(members, enum_val)?;
             let pool_index = ctx.add_i32_constant(ordinal);
             emitter.emit_load_const_i32(pool_index);
             Ok(())
         }
-        ExprKind::Function(func) => compile_function_call(emitter, ctx, func, op_type),
+        ExprKind::Function(func) => {
+            let result = expr_operand_name(ctx, expr);
+            compile_function_call(emitter, ctx, func, result.as_ref(), op_type)
+        }
         ExprKind::MethodCall(call) => compile_method_call_expression(emitter, ctx, call),
         ExprKind::Ref(variable) => {
             // REF(param) of a VAR_IN_OUT parameter is the reference its slot
@@ -203,6 +220,17 @@ pub(crate) fn compile_expr(
             // then emit LOAD_INDIRECT to load the referenced variable's value.
             compile_expr(emitter, ctx, inner, (OpWidth::W64, Signedness::Unsigned))?;
             emitter.emit_load_indirect();
+            Ok(())
+        }
+        // The analyzer decided the conversion (ADR-0056): the inner value is
+        // compiled at its own type, so it widens by its own signedness, and
+        // converted to the type the node records.
+        ExprKind::ImplicitConversion(inner) => {
+            let from = self::op_type(ctx, inner)?;
+            let to = self::op_type(ctx, expr)?;
+            compile_expr(emitter, ctx, inner, from)?;
+            crate::compile_arith::convert(emitter, from, to);
+            crate::compile_arith::convert(emitter, to, op_type);
             Ok(())
         }
         ExprKind::Null(_) => {
@@ -233,19 +261,22 @@ fn compile_compare(
         return compile_short_circuit(emitter, ctx, compare, short_circuit);
     }
 
-    // String comparisons need a completely different code path because
-    // strings live in the data region, not on the operand stack.
-    if expr_is_string(ctx, &compare.left) {
-        return compile_string_compare(emitter, ctx, compare);
+    if compare.op.is_comparison() {
+        return compile_comparison(
+            emitter,
+            ctx,
+            &compare.op,
+            &compare.left,
+            &compare.right,
+            op_type,
+        );
     }
 
-    // A comparison's result is BOOL, but its operands may be a different
-    // type (e.g. REAL for `in < 0.0`). Derive the operand type from a
-    // concrete (non-generic) resolved type, preferring the left operand.
-    // When one side is a literal (generic type like ANY_INT) and the other
-    // is a typed variable (e.g. DWORD), we use the concrete type to ensure
-    // correct signedness. This also applies to AND/OR/XOR which can be
-    // either boolean (BOOL operands) or bitwise (e.g. DWORD operands).
+    // AND, OR and XOR are boolean on BOOL operands and bitwise on a bit
+    // string. Their result has the operand type, derived from a concrete
+    // (non-generic) resolved type, preferring the left operand: when one
+    // side is a literal (generic type like ANY_INT) and the other is a typed
+    // variable (e.g. DWORD), the concrete type gives the right width.
     let operand_op_type = concrete_op_type_from_expr(ctx, &compare.left)
         .or_else(|| concrete_op_type_from_expr(ctx, &compare.right))
         .or_else(|| op_type_from_expr(ctx, &compare.left))
@@ -578,149 +609,21 @@ pub(crate) fn compile_constant(
     }
 }
 
-/// Compiles a variable read expression, handling bit access.
+/// Compiles a variable read expression.
 ///
 /// For simple named variables, loads the variable value onto the stack.
-/// For bit access (e.g., `a.0`), loads the base variable, shifts right
-/// by the bit index, and masks with 1 to extract the single bit as a
-/// BOOL (0 or 1).
+/// A bit access (e.g., `a.0`) or partial access (e.g., `a.%B1`) leaves the
+/// bits it selects, shifted down to bit 0.
 pub(crate) fn compile_variable_read(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     variable: &Variable,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
+    if let Some(access) = PartialAccess::of(variable) {
+        return compile_partial_access_read(emitter, ctx, &access);
+    }
     match variable {
-        Variable::Symbolic(SymbolicVariableKind::BitAccess(bit_access)) => {
-            let bit_index = bit_access.index.value;
-
-            // Determine the op_type of the inner integer value that we are
-            // bit-accessing. For a named scalar, look it up in var_types. For
-            // an array element, the element type is stored on ArrayVarInfo.
-            // For a struct field, walk the struct chain and derive the op
-            // type from the leaf field's IntermediateType.
-            let base_op_type: OpType = match bit_access.variable.as_ref() {
-                SymbolicVariableKind::Named(named) => ctx.var_op_type(&named.name),
-                SymbolicVariableKind::Array(array) => {
-                    let root_name = resolve_symbolic_variable_name(&array.subscripted_variable)?;
-                    match ctx.array_vars.get(root_name) {
-                        Some(info) => (
-                            info.element_var_type_info.op_width,
-                            info.element_var_type_info.signedness,
-                        ),
-                        None => resolve_struct_field_array_element_op_type(ctx, array)
-                            .unwrap_or(DEFAULT_OP_TYPE),
-                    }
-                }
-                SymbolicVariableKind::Structured(structured) => {
-                    let (_root, _slot, field_type) = crate::compile_struct::walk_struct_chain(
-                        ctx,
-                        &structured.record,
-                        &structured.field,
-                        0,
-                    )?;
-                    crate::compile_struct::resolve_field_op_type(&field_type)
-                        .unwrap_or(DEFAULT_OP_TYPE)
-                }
-                _ => DEFAULT_OP_TYPE,
-            };
-
-            // Compile the inner variable read. For a named variable this is
-            // emit_load_var; for an array element it is emit_flat_index +
-            // emit_load_array; etc. The existing compile_variable_read path
-            // already handles each of these.
-            let inner_variable: Variable = (*bit_access.variable.clone()).into();
-            compile_variable_read(emitter, ctx, &inner_variable, base_op_type)?;
-
-            // Load the bit index and shift right
-            match base_op_type.0 {
-                OpWidth::W64 => {
-                    let pool_index = ctx.add_i64_constant(bit_index as i64);
-                    emitter.emit_load_const_i64(pool_index);
-                    emitter.emit_builtin(opcode::builtin::SHR_I64);
-                    // AND with 1 to isolate the bit
-                    let one_index = ctx.add_i64_constant(1);
-                    emitter.emit_load_const_i64(one_index);
-                    emitter.emit_bit_and_64();
-                }
-                _ => {
-                    let pool_index = ctx.add_i32_constant(bit_index as i32);
-                    emitter.emit_load_const_i32(pool_index);
-                    emitter.emit_builtin(opcode::builtin::SHR_I32);
-                    // AND with 1 to isolate the bit
-                    let one_index = ctx.add_i32_constant(1);
-                    emitter.emit_load_const_i32(one_index);
-                    emitter.emit_bit_and_32();
-                }
-            }
-            Ok(())
-        }
-        Variable::Symbolic(SymbolicVariableKind::PartialAccess(pa)) => {
-            let access_bits = pa.size.bit_width();
-            let bit_offset = pa.index.value as u32 * access_bits;
-
-            let base_op_type: OpType = match pa.variable.as_ref() {
-                SymbolicVariableKind::Named(named) => ctx.var_op_type(&named.name),
-                SymbolicVariableKind::Array(array) => {
-                    let root_name = resolve_symbolic_variable_name(&array.subscripted_variable)?;
-                    match ctx.array_vars.get(root_name) {
-                        Some(info) => (
-                            info.element_var_type_info.op_width,
-                            info.element_var_type_info.signedness,
-                        ),
-                        None => resolve_struct_field_array_element_op_type(ctx, array)
-                            .unwrap_or(DEFAULT_OP_TYPE),
-                    }
-                }
-                SymbolicVariableKind::Structured(structured) => {
-                    let (_root, _slot, field_type) = crate::compile_struct::walk_struct_chain(
-                        ctx,
-                        &structured.record,
-                        &structured.field,
-                        0,
-                    )?;
-                    crate::compile_struct::resolve_field_op_type(&field_type)
-                        .unwrap_or(DEFAULT_OP_TYPE)
-                }
-                _ => DEFAULT_OP_TYPE,
-            };
-
-            let inner_variable: Variable = (*pa.variable.clone()).into();
-            compile_variable_read(emitter, ctx, &inner_variable, base_op_type)?;
-
-            match base_op_type.0 {
-                OpWidth::W64 => {
-                    if bit_offset > 0 {
-                        let shift_pool = ctx.add_i64_constant(bit_offset as i64);
-                        emitter.emit_load_const_i64(shift_pool);
-                        emitter.emit_builtin(opcode::builtin::SHR_I64);
-                    }
-                    if access_bits < 64 {
-                        let mask = (1i64 << access_bits) - 1;
-                        let mask_pool = ctx.add_i64_constant(mask);
-                        emitter.emit_load_const_i64(mask_pool);
-                        emitter.emit_bit_and_64();
-                    }
-                }
-                OpWidth::W32 => {
-                    if bit_offset > 0 {
-                        let shift_pool = ctx.add_i32_constant(bit_offset as i32);
-                        emitter.emit_load_const_i32(shift_pool);
-                        emitter.emit_builtin(opcode::builtin::SHR_I32);
-                    }
-                    if access_bits < 32 {
-                        let mask = (1i32 << access_bits) - 1;
-                        let mask_pool = ctx.add_i32_constant(mask);
-                        emitter.emit_load_const_i32(mask_pool);
-                        emitter.emit_bit_and_32();
-                    }
-                }
-                OpWidth::F32 | OpWidth::F64 => {
-                    return Err(partial_access_on_float(pa));
-                }
-            }
-            Ok(())
-        }
         // The guard excludes `s.arr[i].field`, whose record is an array
         // element rather than a fixed-offset struct field. That shape falls
         // through to the generic `resolve_access` dispatch below.
@@ -769,10 +672,11 @@ pub(crate) fn compile_variable_read(
             )?;
             if matches!(
                 &field_type,
-                ironplc_analyzer::intermediate_type::IntermediateType::String { .. }
+                ironplc_analyzer::semantic_type::SemanticType::String { .. }
             ) {
+                // `walk_struct_chain` found this structure variable above.
                 let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-                    Diagnostic::not_implemented(Label::span(
+                    Diagnostic::internal_error_at(Label::span(
                         structured.span(),
                         format!("Variable '{}' is not a structure", root_name),
                     ))
@@ -891,33 +795,6 @@ pub(crate) fn compile_variable_read(
     }
 }
 
-/// Resolves the name of the innermost named variable from a symbolic variable kind.
-pub(crate) fn resolve_symbolic_variable_name(
-    kind: &SymbolicVariableKind,
-) -> Result<&Id, Diagnostic> {
-    match kind {
-        SymbolicVariableKind::Named(named) => Ok(&named.name),
-        SymbolicVariableKind::BitAccess(bit_access) => {
-            resolve_symbolic_variable_name(&bit_access.variable)
-        }
-        SymbolicVariableKind::PartialAccess(partial) => {
-            resolve_symbolic_variable_name(&partial.variable)
-        }
-        SymbolicVariableKind::Array(array) => {
-            resolve_symbolic_variable_name(&array.subscripted_variable)
-        }
-        SymbolicVariableKind::Structured(structured) => {
-            resolve_symbolic_variable_name(&structured.record)
-        }
-        SymbolicVariableKind::Deref(deref) => resolve_symbolic_variable_name(&deref.variable),
-        // THIS^/SUPER^ names the executing instance, not a variable in the
-        // table. Giving it a receiver-pointer parameter is the codegen
-        // slice that also owns method-call codegen; until then this is an
-        // error, never a guess at some enclosing name.
-        SymbolicVariableKind::SelfRef(self_ref) => Err(Diagnostic::todo_with_span(self_ref.span())),
-    }
-}
-
 /// Returns the slot holding the reference when `variable` names a
 /// `VAR_IN_OUT` parameter of the function being compiled.
 pub(crate) fn in_out_ref_slot(ctx: &CompileContext, variable: &Variable) -> Option<VarIndex> {
@@ -972,659 +849,6 @@ pub(crate) fn variable_span(variable: &Variable) -> ironplc_dsl::core::SourceSpa
         Variable::Symbolic(kind) => kind.span(),
         Variable::Direct(addr) => addr.position.clone(),
     }
-}
-
-/// Extracts a `BitAccessVariable` from an assignment target, if it is a bit access.
-pub(crate) fn extract_bit_access_target(variable: &Variable) -> Option<&BitAccessVariable> {
-    match variable {
-        Variable::Symbolic(SymbolicVariableKind::BitAccess(bit_access)) => Some(bit_access),
-        _ => None,
-    }
-}
-
-/// Extracts a `PartialAccessVariable` from an assignment target.
-pub(crate) fn extract_partial_access_target(variable: &Variable) -> Option<&PartialAccessVariable> {
-    match variable {
-        Variable::Symbolic(SymbolicVariableKind::PartialAccess(pa)) => Some(pa),
-        _ => None,
-    }
-}
-
-/// Compiles a bit access assignment using read-modify-write.
-///
-/// `target.N := value` is compiled as:
-///   1. Load the base variable
-///   2. AND with clear mask (~(1 << N)) to clear the target bit
-///   3. Compile the RHS value
-///   4. AND with 1 to ensure it's 0 or 1
-///   5. Left-shift by N
-///   6. OR with the cleared variable to set the bit
-///   7. Store back to the base variable
-pub(crate) fn compile_bit_access_assignment(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    bit_access: &BitAccessVariable,
-    value: &Expr,
-) -> Result<(), Diagnostic> {
-    // Array-element base: use the array read/write opcodes which take the
-    // flat index on the stack. The index is emitted twice (once for the
-    // load, once for the store) because no DUP opcode is available.
-    if let SymbolicVariableKind::Array(array) = bit_access.variable.as_ref() {
-        return compile_bit_access_assignment_on_array(emitter, ctx, array, bit_access, value);
-    }
-
-    // Struct-field base: `s.field.n := rhs;`. Uses LOAD_ARRAY/STORE_ARRAY on
-    // the underlying struct-as-flat-slot-array with a compile-time slot index.
-    if let SymbolicVariableKind::Structured(structured) = bit_access.variable.as_ref() {
-        return compile_bit_access_assignment_on_struct_field(
-            emitter, ctx, structured, bit_access, value,
-        );
-    }
-
-    let base_name = resolve_symbolic_variable_name(&bit_access.variable)?;
-    let var_index = ctx.var_index(base_name)?;
-    let base_op_type = ctx.var_op_type(base_name);
-    let bit_index = bit_access.index.value as u32;
-
-    match base_op_type.0 {
-        OpWidth::W64 => {
-            let clear_mask = !(1i64 << bit_index);
-            let clear_pool = ctx.add_i64_constant(clear_mask);
-
-            // Load base var and clear the target bit.
-            emit_load_var(emitter, var_index, base_op_type);
-            emitter.emit_load_const_i64(clear_pool);
-            emitter.emit_bit_and_64();
-
-            // Compile the RHS, mask to 1 bit, shift into position.
-            compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-            let one_pool = ctx.add_i32_constant(1);
-            emitter.emit_load_const_i32(one_pool);
-            emitter.emit_bit_and_32();
-            // Widen to 64-bit before shifting.
-            emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
-            let shift_pool = ctx.add_i32_constant(bit_index as i32);
-            emitter.emit_load_const_i32(shift_pool);
-            emitter.emit_builtin(opcode::builtin::SHL_I64);
-
-            // OR the shifted bit into the cleared variable.
-            emitter.emit_bit_or_64();
-        }
-        _ => {
-            let clear_mask = !(1i32 << bit_index);
-            let clear_pool = ctx.add_i32_constant(clear_mask);
-
-            // Load base var and clear the target bit.
-            emit_load_var(emitter, var_index, base_op_type);
-            emitter.emit_load_const_i32(clear_pool);
-            emitter.emit_bit_and_32();
-
-            // Compile the RHS, mask to 1 bit, shift into position.
-            compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-            let one_pool = ctx.add_i32_constant(1);
-            emitter.emit_load_const_i32(one_pool);
-            emitter.emit_bit_and_32();
-            let shift_pool = ctx.add_i32_constant(bit_index as i32);
-            emitter.emit_load_const_i32(shift_pool);
-            emitter.emit_builtin(opcode::builtin::SHL_I32);
-
-            // OR the shifted bit into the cleared variable.
-            emitter.emit_bit_or_32();
-        }
-    }
-
-    // Truncate if needed and store back.
-    if let Some(ti) = ctx.var_type_info(base_name) {
-        emit_truncation(emitter, ti);
-    }
-    emit_store_var(emitter, var_index, base_op_type);
-    Ok(())
-}
-
-/// Compiles a bit-access assignment where the base is an array element:
-/// `arr[i].n := rhs;`. Uses LOAD_ARRAY/STORE_ARRAY; the flat index is emitted
-/// twice (once for the read, once for the write) because no DUP opcode is
-/// available. Supports both W32 element widths (BYTE/WORD/DWORD, INT/DINT)
-/// and W64 element widths (LWORD/LINT/ULINT).
-fn compile_bit_access_assignment_on_array(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    array: &ArrayVariable,
-    bit_access: &BitAccessVariable,
-    value: &Expr,
-) -> Result<(), Diagnostic> {
-    let bit_index = bit_access.index.value as u32;
-
-    // If the array base is a struct field, delegate to the struct-field-array
-    // handler which uses flat_index + field_slot_offset addressing.
-    if let SymbolicVariableKind::Structured(structured) = array.subscripted_variable.as_ref() {
-        return compile_bit_access_assignment_on_struct_field_array(
-            emitter, ctx, structured, array, bit_access, value,
-        );
-    }
-
-    let root_name = resolve_symbolic_variable_name(&array.subscripted_variable)?;
-    let info = ctx.array_vars.get(root_name).ok_or_else(|| {
-        Diagnostic::not_implemented(Label::span(
-            bit_access.span(),
-            "Bit access on non-trivial array base is not yet supported",
-        ))
-    })?;
-    // Copy scalar fields out of the borrow so ctx can be used mutably.
-    let arr_var_index = info.var_index;
-    let arr_desc_index = info.desc_index;
-    let element_vti = info.element_var_type_info;
-    let dim_info: Vec<crate::compile_array::DimensionInfo> = info
-        .dimensions
-        .iter()
-        .map(|d| crate::compile_array::DimensionInfo {
-            lower_bound: d.lower_bound,
-            size: d.size,
-            stride: d.stride,
-        })
-        .collect();
-    let subscripts: Vec<&Expr> = array.subscripts.iter().collect();
-
-    let span = bit_access.span();
-
-    // 1. Compute flat index and load the element.
-    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
-    emitter.emit_load_array(arr_var_index, arr_desc_index);
-
-    // 2/3. Clear the target bit, then OR in the shifted RHS bit. Width-
-    //      dependent: LWORD/LINT elements use 64-bit ops; everything else
-    //      (BYTE/WORD/DWORD/INT/DINT) uses 32-bit ops.
-    if element_vti.op_width == OpWidth::W64 {
-        let clear_mask = !(1i64 << bit_index);
-        let clear_pool = ctx.add_i64_constant(clear_mask);
-        emitter.emit_load_const_i64(clear_pool);
-        emitter.emit_bit_and_64();
-
-        compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-        let one_pool = ctx.add_i32_constant(1);
-        emitter.emit_load_const_i32(one_pool);
-        emitter.emit_bit_and_32();
-        // Widen to 64-bit before shifting into a high bit position.
-        emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
-        let shift_pool = ctx.add_i32_constant(bit_index as i32);
-        emitter.emit_load_const_i32(shift_pool);
-        emitter.emit_builtin(opcode::builtin::SHL_I64);
-        emitter.emit_bit_or_64();
-    } else {
-        let clear_mask = !(1i32 << bit_index);
-        let clear_pool = ctx.add_i32_constant(clear_mask);
-        emitter.emit_load_const_i32(clear_pool);
-        emitter.emit_bit_and_32();
-
-        compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-        let one_pool = ctx.add_i32_constant(1);
-        emitter.emit_load_const_i32(one_pool);
-        emitter.emit_bit_and_32();
-        let shift_pool = ctx.add_i32_constant(bit_index as i32);
-        emitter.emit_load_const_i32(shift_pool);
-        emitter.emit_builtin(opcode::builtin::SHL_I32);
-        emitter.emit_bit_or_32();
-    }
-
-    // 4. Truncate the new element value to fit its storage width.
-    emit_truncation(emitter, element_vti);
-
-    // 5. Recompute the flat index and STORE back.
-    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
-    emitter.emit_store_array(arr_var_index, arr_desc_index);
-
-    Ok(())
-}
-
-/// Compiles a bit-access assignment where the base is a struct field:
-/// `s.field.n := rhs;`. Uses LOAD_ARRAY/STORE_ARRAY on the struct's flat
-/// slot-array with the field's compile-time slot offset as the index.
-fn compile_bit_access_assignment_on_struct_field(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    structured: &StructuredVariable,
-    bit_access: &BitAccessVariable,
-    value: &Expr,
-) -> Result<(), Diagnostic> {
-    let bit_index = bit_access.index.value as u32;
-
-    let (var_index, desc_index, slot_offset, _op_type, field_type) =
-        crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
-    let field_vti =
-        crate::compile_struct::var_type_info_for_field(&field_type).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
-                structured.field.span(),
-                "Bit access on non-integer struct field is not supported",
-            ))
-        })?;
-
-    // Index constant is the same for load and store; add once and reuse
-    // across both emitter calls.
-    let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
-
-    // 1. Load the current field value.
-    emitter.emit_load_const_i32(idx_const);
-    emitter.emit_load_array(var_index, desc_index);
-
-    // 2/3. Clear target bit and OR in the shifted RHS bit.
-    if field_vti.op_width == OpWidth::W64 {
-        let clear_mask = !(1i64 << bit_index);
-        let clear_pool = ctx.add_i64_constant(clear_mask);
-        emitter.emit_load_const_i64(clear_pool);
-        emitter.emit_bit_and_64();
-
-        compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-        let one_pool = ctx.add_i32_constant(1);
-        emitter.emit_load_const_i32(one_pool);
-        emitter.emit_bit_and_32();
-        emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
-        let shift_pool = ctx.add_i32_constant(bit_index as i32);
-        emitter.emit_load_const_i32(shift_pool);
-        emitter.emit_builtin(opcode::builtin::SHL_I64);
-        emitter.emit_bit_or_64();
-    } else {
-        let clear_mask = !(1i32 << bit_index);
-        let clear_pool = ctx.add_i32_constant(clear_mask);
-        emitter.emit_load_const_i32(clear_pool);
-        emitter.emit_bit_and_32();
-
-        compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-        let one_pool = ctx.add_i32_constant(1);
-        emitter.emit_load_const_i32(one_pool);
-        emitter.emit_bit_and_32();
-        let shift_pool = ctx.add_i32_constant(bit_index as i32);
-        emitter.emit_load_const_i32(shift_pool);
-        emitter.emit_builtin(opcode::builtin::SHL_I32);
-        emitter.emit_bit_or_32();
-    }
-
-    // 4. Truncate the new field value to fit its storage width (e.g., SINT
-    //    stored in a W32 slot needs sign-extension/truncation).
-    emit_truncation(emitter, field_vti);
-
-    // 5. Re-emit the slot index and STORE back.
-    emitter.emit_load_const_i32(idx_const);
-    emitter.emit_store_array(var_index, desc_index);
-
-    Ok(())
-}
-
-/// Resolves the element op_type for an array that is a struct field.
-///
-/// Used by the bit-access read path when the bit-access base is
-/// `Array(Structured(...))` — the array is not in `ctx.array_vars` so we
-/// derive the element type from the struct field's `IntermediateType::Array`.
-fn resolve_struct_field_array_element_op_type(
-    ctx: &CompileContext,
-    array: &ArrayVariable,
-) -> Option<OpType> {
-    if let SymbolicVariableKind::Structured(structured) = array.subscripted_variable.as_ref() {
-        let (_root, _slot, field_type) =
-            crate::compile_struct::walk_struct_chain(ctx, &structured.record, &structured.field, 0)
-                .ok()?;
-        if let ironplc_analyzer::intermediate_type::IntermediateType::Array {
-            element_type, ..
-        } = &field_type
-        {
-            return crate::compile_struct::resolve_field_op_type(element_type);
-        }
-    }
-    None
-}
-
-/// Compiles a bit-access assignment where the base is an array element
-/// nested inside a struct field: `s.arr[i].n := rhs;`.
-///
-/// Combines the struct-field-array resolution (flat_index + slot_offset)
-/// with the bit-level read-modify-write pattern.
-fn compile_bit_access_assignment_on_struct_field_array(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    structured: &StructuredVariable,
-    array: &ArrayVariable,
-    bit_access: &BitAccessVariable,
-    value: &Expr,
-) -> Result<(), Diagnostic> {
-    let bit_index = bit_access.index.value as u32;
-    let subscripts: Vec<&Expr> = array.subscripts.iter().collect();
-
-    let access = crate::compile_array::resolve_struct_field_array(ctx, structured, subscripts)?;
-
-    let crate::compile_array::ResolvedAccess::StructFieldArrayElement {
-        var_index,
-        desc_index,
-        field_slot_offset,
-        ref dimensions,
-        subscripts,
-        element_type,
-        ..
-    } = access
-    else {
-        return Err(Diagnostic::not_implemented(Label::span(
-            bit_access.span(),
-            "Bit access on struct-field STRING array is not supported",
-        )));
-    };
-
-    let element_vti =
-        crate::compile_struct::var_type_info_for_field(&element_type).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
-                bit_access.span(),
-                "Bit access on non-integer array element type",
-            ))
-        })?;
-
-    let span = bit_access.span();
-
-    // 1. Load the current element: flat_index + field_slot_offset → LOAD_ARRAY.
-    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, dimensions, &span)?;
-    let offset_const = ctx.add_i64_constant(field_slot_offset.raw() as i64);
-    emitter.emit_load_const_i64(offset_const);
-    emitter.emit_add_i64();
-    emitter.emit_load_array(var_index, desc_index);
-
-    // 2/3. Clear target bit, then OR in the shifted RHS bit.
-    if element_vti.op_width == OpWidth::W64 {
-        let clear_mask = !(1i64 << bit_index);
-        let clear_pool = ctx.add_i64_constant(clear_mask);
-        emitter.emit_load_const_i64(clear_pool);
-        emitter.emit_bit_and_64();
-
-        compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-        let one_pool = ctx.add_i32_constant(1);
-        emitter.emit_load_const_i32(one_pool);
-        emitter.emit_bit_and_32();
-        emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
-        let shift_pool = ctx.add_i32_constant(bit_index as i32);
-        emitter.emit_load_const_i32(shift_pool);
-        emitter.emit_builtin(opcode::builtin::SHL_I64);
-        emitter.emit_bit_or_64();
-    } else {
-        let clear_mask = !(1i32 << bit_index);
-        let clear_pool = ctx.add_i32_constant(clear_mask);
-        emitter.emit_load_const_i32(clear_pool);
-        emitter.emit_bit_and_32();
-
-        compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-        let one_pool = ctx.add_i32_constant(1);
-        emitter.emit_load_const_i32(one_pool);
-        emitter.emit_bit_and_32();
-        let shift_pool = ctx.add_i32_constant(bit_index as i32);
-        emitter.emit_load_const_i32(shift_pool);
-        emitter.emit_builtin(opcode::builtin::SHL_I32);
-        emitter.emit_bit_or_32();
-    }
-
-    // 4. Truncate the new element value.
-    emit_truncation(emitter, element_vti);
-
-    // 5. Re-compute flat_index + field_slot_offset and STORE back.
-    let subscripts_again: Vec<&Expr> = array.subscripts.iter().collect();
-    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts_again, dimensions, &span)?;
-    emitter.emit_load_const_i64(offset_const);
-    emitter.emit_add_i64();
-    emitter.emit_store_array(var_index, desc_index);
-
-    Ok(())
-}
-
-/// Compiles a partial-access assignment using read-modify-write.
-///
-/// `target.%Bn := value` clears the byte at position n and ORs in the RHS.
-/// Supports named scalars; array elements and struct fields dispatch the
-/// same logic used by bit access.
-pub(crate) fn compile_partial_access_assignment(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    pa: &PartialAccessVariable,
-    value: &Expr,
-) -> Result<(), Diagnostic> {
-    // Delegate to sub-handlers for array and struct bases, mirroring the
-    // bit-access dispatch structure.
-    if let SymbolicVariableKind::Array(array) = pa.variable.as_ref() {
-        if let SymbolicVariableKind::Structured(structured) = array.subscripted_variable.as_ref() {
-            return compile_partial_access_assignment_on_struct_field_array(
-                emitter, ctx, structured, array, pa, value,
-            );
-        }
-        return compile_partial_access_assignment_on_array(emitter, ctx, array, pa, value);
-    }
-    if let SymbolicVariableKind::Structured(structured) = pa.variable.as_ref() {
-        return compile_partial_access_assignment_on_struct_field(
-            emitter, ctx, structured, pa, value,
-        );
-    }
-
-    let base_name = resolve_symbolic_variable_name(&pa.variable)?;
-    let var_index = ctx.var_index(base_name)?;
-    let base_op_type = ctx.var_op_type(base_name);
-
-    emit_load_var(emitter, var_index, base_op_type);
-    emit_partial_access_read_modify_write(emitter, ctx, base_op_type.0, pa, value)?;
-
-    if let Some(ti) = ctx.var_type_info(base_name) {
-        emit_truncation(emitter, ti);
-    }
-    emit_store_var(emitter, var_index, base_op_type);
-    Ok(())
-}
-
-fn compile_partial_access_assignment_on_array(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    array: &ArrayVariable,
-    pa: &PartialAccessVariable,
-    value: &Expr,
-) -> Result<(), Diagnostic> {
-    let root_name = resolve_symbolic_variable_name(&array.subscripted_variable)?;
-    let info = ctx.array_vars.get(root_name).ok_or_else(|| {
-        Diagnostic::not_implemented(Label::span(
-            pa.span(),
-            "Partial access on non-trivial array base",
-        ))
-    })?;
-    let arr_var_index = info.var_index;
-    let arr_desc_index = info.desc_index;
-    let element_vti = info.element_var_type_info;
-    let dim_info: Vec<crate::compile_array::DimensionInfo> = info
-        .dimensions
-        .iter()
-        .map(|d| crate::compile_array::DimensionInfo {
-            lower_bound: d.lower_bound,
-            size: d.size,
-            stride: d.stride,
-        })
-        .collect();
-    let subscripts: Vec<&Expr> = array.subscripts.iter().collect();
-    let span = pa.span();
-
-    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
-    emitter.emit_load_array(arr_var_index, arr_desc_index);
-
-    emit_partial_access_read_modify_write(emitter, ctx, element_vti.op_width, pa, value)?;
-    emit_truncation(emitter, element_vti);
-
-    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
-    emitter.emit_store_array(arr_var_index, arr_desc_index);
-    Ok(())
-}
-
-fn compile_partial_access_assignment_on_struct_field(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    structured: &StructuredVariable,
-    pa: &PartialAccessVariable,
-    value: &Expr,
-) -> Result<(), Diagnostic> {
-    let (var_index, desc_index, slot_offset, _op_type, field_type) =
-        crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
-    let field_vti =
-        crate::compile_struct::var_type_info_for_field(&field_type).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
-                structured.field.span(),
-                "Partial access on non-integer struct field",
-            ))
-        })?;
-
-    let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
-
-    emitter.emit_load_const_i32(idx_const);
-    emitter.emit_load_array(var_index, desc_index);
-
-    emit_partial_access_read_modify_write(emitter, ctx, field_vti.op_width, pa, value)?;
-    emit_truncation(emitter, field_vti);
-
-    emitter.emit_load_const_i32(idx_const);
-    emitter.emit_store_array(var_index, desc_index);
-    Ok(())
-}
-
-fn compile_partial_access_assignment_on_struct_field_array(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    structured: &StructuredVariable,
-    array: &ArrayVariable,
-    pa: &PartialAccessVariable,
-    value: &Expr,
-) -> Result<(), Diagnostic> {
-    let subscripts: Vec<&Expr> = array.subscripts.iter().collect();
-
-    let access = crate::compile_array::resolve_struct_field_array(ctx, structured, subscripts)?;
-    let crate::compile_array::ResolvedAccess::StructFieldArrayElement {
-        var_index,
-        desc_index,
-        field_slot_offset,
-        ref dimensions,
-        subscripts,
-        element_type,
-        ..
-    } = access
-    else {
-        return Err(Diagnostic::not_implemented(Label::span(
-            pa.span(),
-            "Partial access on struct-field STRING array",
-        )));
-    };
-
-    let element_vti =
-        crate::compile_struct::var_type_info_for_field(&element_type).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(
-                pa.span(),
-                "Partial access on non-integer array element",
-            ))
-        })?;
-    let span = pa.span();
-
-    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, dimensions, &span)?;
-    let offset_const = ctx.add_i64_constant(field_slot_offset.raw() as i64);
-    emitter.emit_load_const_i64(offset_const);
-    emitter.emit_add_i64();
-    emitter.emit_load_array(var_index, desc_index);
-
-    emit_partial_access_read_modify_write(emitter, ctx, element_vti.op_width, pa, value)?;
-    emit_truncation(emitter, element_vti);
-
-    let subscripts_again: Vec<&Expr> = array.subscripts.iter().collect();
-    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts_again, dimensions, &span)?;
-    emitter.emit_load_const_i64(offset_const);
-    emitter.emit_add_i64();
-    emitter.emit_store_array(var_index, desc_index);
-    Ok(())
-}
-
-/// A mask with the low `bits` bits set.
-///
-/// Built at 128 bits so that a slice exactly as wide as its operand -- `%D`
-/// on a `DWORD`, `%L` on an `LWORD` -- does not overflow the shift. Callers
-/// narrow the result to the operand width they AND it with.
-fn low_bits_mask(bits: u32) -> u128 {
-    (1u128 << bits) - 1
-}
-
-/// A partial access whose base is a `REAL` or `LREAL`.
-///
-/// A slice is taken from an integer or bit-string value; the analyzer is
-/// expected to reject any other base before codegen sees it.
-fn partial_access_on_float(pa: &PartialAccessVariable) -> Diagnostic {
-    Diagnostic::internal_error_at(Label::span(
-        pa.span(),
-        "Partial access on a floating-point variable",
-    ))
-}
-
-/// Emits the read-modify-write sequence for partial access: clear the
-/// target region and OR in the shifted RHS value.
-///
-/// Assumes the current base value is already on the stack.
-fn emit_partial_access_read_modify_write(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    base_width: OpWidth,
-    pa: &PartialAccessVariable,
-    value: &Expr,
-) -> Result<(), Diagnostic> {
-    let access_bits = pa.size.bit_width();
-    let bit_offset = pa.index.value as u32 * access_bits;
-
-    // The slice is a bit string of its own width, so the value written is
-    // compiled as one: an `%L` slice takes a 64-bit right-hand side, every
-    // narrower slice a 32-bit one.
-    let wide_value = access_bits > 32;
-    let value_width = if wide_value {
-        OpWidth::W64
-    } else {
-        OpWidth::W32
-    };
-    let value_op_type = (value_width, Signedness::Unsigned);
-
-    match base_width {
-        OpWidth::W64 => {
-            let clear_mask = !((low_bits_mask(access_bits) << bit_offset) as u64) as i64;
-            let clear_pool = ctx.add_i64_constant(clear_mask);
-            emitter.emit_load_const_i64(clear_pool);
-            emitter.emit_bit_and_64();
-
-            compile_expr(emitter, ctx, value, value_op_type)?;
-            if wide_value {
-                let slice_mask = low_bits_mask(access_bits) as u64 as i64;
-                let mask_pool = ctx.add_i64_constant(slice_mask);
-                emitter.emit_load_const_i64(mask_pool);
-                emitter.emit_bit_and_64();
-            } else {
-                let slice_mask = low_bits_mask(access_bits) as u32 as i32;
-                let mask_pool = ctx.add_i32_constant(slice_mask);
-                emitter.emit_load_const_i32(mask_pool);
-                emitter.emit_bit_and_32();
-                emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
-            }
-            if bit_offset > 0 {
-                let shift_pool = ctx.add_i32_constant(bit_offset as i32);
-                emitter.emit_load_const_i32(shift_pool);
-                emitter.emit_builtin(opcode::builtin::SHL_I64);
-            }
-            emitter.emit_bit_or_64();
-        }
-        OpWidth::W32 => {
-            let clear_mask = !((low_bits_mask(access_bits) << bit_offset) as u32) as i32;
-            let clear_pool = ctx.add_i32_constant(clear_mask);
-            emitter.emit_load_const_i32(clear_pool);
-            emitter.emit_bit_and_32();
-
-            compile_expr(emitter, ctx, value, value_op_type)?;
-            let slice_mask = low_bits_mask(access_bits) as u32 as i32;
-            let mask_pool = ctx.add_i32_constant(slice_mask);
-            emitter.emit_load_const_i32(mask_pool);
-            emitter.emit_bit_and_32();
-            if bit_offset > 0 {
-                let shift_pool = ctx.add_i32_constant(bit_offset as i32);
-                emitter.emit_load_const_i32(shift_pool);
-                emitter.emit_builtin(opcode::builtin::SHL_I32);
-            }
-            emitter.emit_bit_or_32();
-        }
-        OpWidth::F32 | OpWidth::F64 => return Err(partial_access_on_float(pa)),
-    }
-    Ok(())
 }
 
 /// Result of classifying a comparison expression as a fusable
@@ -1718,12 +942,11 @@ pub(crate) fn emit_classified_cmp_br(
     classified: ClassifiedCmp,
     branch_when_true: bool,
     target: crate::emit::Label,
-) {
+) -> Result<(), Diagnostic> {
     let cmp_op_byte = if branch_when_true {
         classified.cmp_op_byte
     } else {
-        opcode::cmp_op::negate(classified.cmp_op_byte)
-            .expect("classified cmp_op must be a valid comparison code")
+        opcode::cmp_op::negate(classified.cmp_op_byte).ok_or_else(Diagnostic::internal_error)?
     };
     match classified.op_width {
         OpWidth::W32 => emitter.emit_cmp_br_i32(
@@ -1738,10 +961,9 @@ pub(crate) fn emit_classified_cmp_br(
             classified.const_idx,
             target,
         ),
-        OpWidth::F32 | OpWidth::F64 => {
-            unreachable!("classify_with_named rejects float widths")
-        }
+        OpWidth::F32 | OpWidth::F64 => return Err(Diagnostic::internal_error()),
     }
+    Ok(())
 }
 
 /// Strips parenthesised-expression wrappers from an `ExprKind`.
@@ -1767,16 +989,15 @@ fn named_variable_name(kind: &ExprKind) -> Option<&Id> {
 }
 
 /// Returns the `i64` value of an `ExprKind` that is a compile-time integer
-/// literal (positive, negative, or unary-negated). Returns `None` otherwise.
-fn constant_i64(kind: &ExprKind) -> Option<i64> {
+/// literal (positive, negative, or unary-negated). Returns `None` for any
+/// other expression, and for a literal outside the `i64` range.
+pub(crate) fn constant_i64(kind: &ExprKind) -> Option<i64> {
     match kind {
-        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-            signed_integer_to_i64(&lit.value).ok()
-        }
+        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => signed_integer_to_i64(&lit.value),
         ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => match &unary.term.kind {
-            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => signed_integer_to_i64(&lit.value)
-                .ok()
-                .and_then(i64::checked_neg),
+            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
+                signed_integer_to_i64(&lit.value).and_then(i64::checked_neg)
+            }
             _ => None,
         },
         _ => None,
@@ -1802,26 +1023,17 @@ fn compare_op_to_cmp_op(op: &CompareOp) -> Option<u8> {
     }
 }
 
-/// Converts a `SignedInteger` AST node to an `i64` value.
-pub(crate) fn signed_integer_to_i64(si: &SignedInteger) -> Result<i64, Diagnostic> {
+/// Converts a `SignedInteger` AST node to an `i64` value, or `None` when it
+/// is outside the `i64` range.
+///
+/// A caller is looking for a constant to fuse into a comparison or to bound a
+/// `FOR` loop with, and compiles the expression the ordinary way when there is
+/// none, so a literal that does not fit is not a problem to report here.
+fn signed_integer_to_i64(si: &SignedInteger) -> Option<i64> {
     if si.is_neg {
-        let unsigned = si.value.value as i128;
-        let signed = -unsigned;
-        i64::try_from(signed).map_err(|_| {
-            Diagnostic::problem(
-                Problem::ConstantOverflow,
-                Label::span(si.value.span(), "Integer literal"),
-            )
-            .with_context("value", &signed.to_string())
-        })
+        i64::try_from(-(si.value.value as i128)).ok()
     } else {
-        i64::try_from(si.value.value).map_err(|_| {
-            Diagnostic::problem(
-                Problem::ConstantOverflow,
-                Label::span(si.value.span(), "Integer literal"),
-            )
-            .with_context("value", &si.value.value.to_string())
-        })
+        i64::try_from(si.value.value).ok()
     }
 }
 

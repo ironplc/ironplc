@@ -27,7 +27,7 @@ PROGRAM main
   ry := y[1];
 END_PROGRAM
 ",
-    &[(2, 99), (3, 5)],
+    &[("rx", 99), ("ry", 5)],
 );
 
 // A write to the *source* after the copy must not be seen by the
@@ -49,7 +49,7 @@ PROGRAM main
   ry := y[1];
 END_PROGRAM
 ",
-    &[(2, 5), (3, 42)],
+    &[("rx", 5), ("ry", 42)],
 );
 
 // Every element is copied, not just the first.
@@ -74,7 +74,7 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ",
-    &[(2, 10)],
+    &[("total", 10)],
 );
 
 // A narrower element type still occupies one slot each, so the copy length
@@ -96,7 +96,7 @@ PROGRAM main
   ry := y[2];
 END_PROGRAM
 ",
-    &[(2, 21), (3, 7)],
+    &[("rx", 21), ("ry", 7)],
 );
 
 e2e_i64!(
@@ -116,7 +116,7 @@ PROGRAM main
   ry := y[1];
 END_PROGRAM
 ",
-    &[(2, 6000000000), (3, 5000000000)],
+    &[("rx", 6000000000), ("ry", 5000000000)],
 );
 
 // Multi-dimensional arrays are a flat span, so the copy covers every cell.
@@ -137,7 +137,7 @@ PROGRAM main
   ry := y[2, 3];
 END_PROGRAM
 ",
-    &[(2, 22), (3, 11)],
+    &[("rx", 22), ("ry", 11)],
 );
 
 // Self-assignment is a copy_within over identical ranges: a no-op, not
@@ -158,7 +158,7 @@ PROGRAM main
   r3 := x[3];
 END_PROGRAM
 ",
-    &[(1, 10), (2, 30)],
+    &[("r1", 10), ("r3", 30)],
 );
 
 // Whole-struct assignment behaved correctly before this change; these pin
@@ -187,7 +187,7 @@ PROGRAM main
   rb := b.x;
 END_PROGRAM
 ",
-    &[(2, 99), (3, 5)],
+    &[("ra", 99), ("rb", 5)],
 );
 
 // A struct field that is itself an array is inside the same region, so one
@@ -217,7 +217,7 @@ PROGRAM main
   rb := b.items[2];
 END_PROGRAM
 ",
-    &[(2, 80), (3, 8)],
+    &[("ra", 80), ("rb", 8)],
 );
 
 // The old push-every-slot protocol peaked at n+1 operand-stack entries. A
@@ -253,7 +253,7 @@ PROGRAM main
   last := a.f40;
 END_PROGRAM
 ",
-    &[(2, 1), (3, 40)],
+    &[("first", 1), ("last", 40)],
 );
 
 // ARRAY OF STRING elements are variable-length regions with a
@@ -278,7 +278,7 @@ PROGRAM main
   ry := LEN(y[1]);
 END_PROGRAM
 ",
-    &[(2, 4), (3, 3)],
+    &[("rx", 4), ("ry", 3)],
 );
 
 // An array whose elements are structures is not covered here: declaring one
@@ -320,7 +320,7 @@ PROGRAM main
   rg := g[1];
 END_PROGRAM
 ",
-    &[(2, 99), (3, 5)],
+    &[("ra", 99), ("rg", 5)],
 );
 
 // ... and in the other direction, writing a global from a local.
@@ -353,7 +353,7 @@ PROGRAM main
   ra := a[1];
 END_PROGRAM
 ",
-    &[(2, 5), (3, 99)],
+    &[("ra", 5), ("rg", 99)],
 );
 
 // Copies inside a FUNCTION, FUNCTION_BLOCK or METHOD body are not covered

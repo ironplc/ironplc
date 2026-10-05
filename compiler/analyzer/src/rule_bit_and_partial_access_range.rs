@@ -3,8 +3,12 @@
 //!
 //! A variable's declared type fixes what parts it has: a `BYTE` has eight
 //! bits and one byte, a `WORD` sixteen bits and two bytes. An index past the
-//! last part names storage the variable does not have, and a slice wider than
-//! the variable cannot be taken from it at all.
+//! last part names storage the variable does not have (P4025), and a slice
+//! wider than the variable cannot be taken from it at all (P4025).
+//!
+//! Only a bit string or an integer has parts to select. A `REAL`, a `STRING`,
+//! a structure, a whole array or a `BOOL` has none, whatever the index
+//! (P4069).
 //!
 //! Both spellings of bit access are checked -- `x.3` and the IEC
 //! 61131-3:2013 form `x.%X3` -- along with the byte, word, dword and lword
@@ -38,10 +42,12 @@
 //!       myByte : BYTE;
 //!       myBool : BOOL;
 //!       myWord : WORD;
+//!       myReal : REAL;
 //!    END_VAR
 //!    myBool := myByte.8;     (* a BYTE has bits 0..7 *)
 //!    myWord := myByte.%W0;   (* a WORD does not fit in a BYTE *)
 //!    myByte := myWord.%B2;   (* a WORD has bytes 0..1 *)
+//!    myBool := myReal.3;     (* a REAL has no bits to select *)
 //! END_FUNCTION_BLOCK
 //! ```
 use ironplc_dsl::{
@@ -59,7 +65,9 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    variable_type::{self, Declarations, Declared},
+    semantic_type::SemanticType,
+    symbol_environment::ScopeTracker,
+    variable_type,
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -70,11 +78,8 @@ pub fn apply(
 ) -> SemanticResult {
     run_rule(
         RuleBitAndPartialAccessRange {
-            type_environment: context.types(),
-            // `Declarations::new` opens the base scope, where declarations
-            // made outside any POU land. Opening another here would leave
-            // the stack unbalanced when the table drops.
-            declarations: Declarations::new(),
+            context,
+            scope: ScopeTracker::default(),
             diagnostics: Vec::new(),
         },
         lib,
@@ -82,9 +87,10 @@ pub fn apply(
 }
 
 struct RuleBitAndPartialAccessRange<'a> {
-    type_environment: &'a crate::type_environment::TypeEnvironment,
-    /// The declared type of every variable in scope.
-    declarations: Declarations<'a>,
+    context: &'a SemanticContext,
+    /// Where the traversal is, to look variables up in the symbol
+    /// environment.
+    scope: ScopeTracker,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -95,15 +101,35 @@ impl DiagnosticVisitor for RuleBitAndPartialAccessRange<'_> {
 }
 
 impl RuleBitAndPartialAccessRange<'_> {
-    fn check_partial_access(&mut self, node: &PartialAccessVariable) {
-        let accessed_type =
-            match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
-                Some(t) => t,
-                None => return,
-            };
+    /// The number of bits a bit or partial access can select from
+    /// `variable`.
+    ///
+    /// `None` when there is nothing to check the index against: either the
+    /// variable's type is not resolved (another rule reports an undeclared
+    /// name), or the type has no bits to select, which this reports.
+    fn selectable_bits(&mut self, variable: &SymbolicVariableKind) -> Option<u128> {
+        let accessed_type = variable_type::of(variable, self.context, &self.scope.current())?;
+        let bits = bit_width(&accessed_type);
+        if bits.is_none() {
+            self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::BitAccessTypeInvalid,
+                    Label::span(
+                        variable.span(),
+                        format!(
+                            "Variable '{variable}' is not a bit string or integer, so it has no bits to select"
+                        ),
+                    ),
+                )
+                .with_context("variable", &variable.to_string()),
+            );
+        }
+        bits
+    }
 
-        let base_bytes = match accessed_type.size_in_bytes() {
-            Some(bytes) => bytes as u128,
+    fn check_partial_access(&mut self, node: &PartialAccessVariable) {
+        let base_bytes = match self.selectable_bits(&node.variable) {
+            Some(bits) => bits / 8,
             None => return,
         };
 
@@ -155,15 +181,8 @@ impl RuleBitAndPartialAccessRange<'_> {
     }
 
     fn check_bit_access(&mut self, node: &BitAccessVariable) {
-        // Resolve the type of the variable being bit-accessed
-        let accessed_type =
-            match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
-                Some(t) => t,
-                None => return,
-            };
-
-        let bit_width = match accessed_type.size_in_bytes() {
-            Some(bytes) => bytes as u128 * 8,
+        let bit_width = match self.selectable_bits(&node.variable) {
+            Some(bits) => bits,
             None => return,
         };
 
@@ -188,32 +207,36 @@ impl RuleBitAndPartialAccessRange<'_> {
     }
 }
 
+/// The number of bits in a value of `accessed_type`, when it is a type a
+/// bit or partial access can select from.
+///
+/// IEC 61131-3:2013 defines partial access on the bit strings `BYTE`,
+/// `WORD`, `DWORD` and `LWORD`. Integers are accepted as well, in every
+/// dialect, as CODESYS and TwinCAT accept them. A `BOOL` is not: it has one
+/// bit, which is its value, even though it occupies a byte.
+fn bit_width(accessed_type: &SemanticType) -> Option<u128> {
+    match accessed_type {
+        SemanticType::Bytes { size } | SemanticType::Int { size } | SemanticType::UInt { size } => {
+            Some(size.as_bytes() as u128 * 8)
+        }
+        SemanticType::Subrange { base_type, .. } => bit_width(base_type),
+        _ => None,
+    }
+}
+
 impl Visitor<Infallible> for RuleBitAndPartialAccessRange<'_> {
     type Value = ();
 
-    /// Opens a declaration's scope.
-    ///
-    /// Every kind contributes the same thing -- a frame its own declarations
-    /// go into -- but the match stays exhaustive so that a new kind of scope
-    /// has to say so rather than silently sharing the enclosing
-    /// declaration's frame.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
-        match node {
-            ScopeNode::Function(_)
-            | ScopeNode::FunctionBlock(_)
-            | ScopeNode::Program(_)
-            | ScopeNode::Method(_) => self.declarations.enter(),
-        }
+        self.scope.enter(&node);
         Ok(())
     }
 
     fn exit_scope(&mut self) {
-        self.declarations.exit();
+        self.scope.exit();
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<(), Infallible> {
-        self.declarations
-            .add_if(node.identifier.symbolic_id(), Declared::of(node));
         node.recurse_visit(self)
     }
 
@@ -248,30 +271,20 @@ impl Visitor<Infallible> for RuleBitAndPartialAccessRange<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::stages::analyze;
-    use crate::test_helpers::parse_and_resolve_types_with_context;
-    use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::CompilerOptions, parse_program};
+    use crate::test_helpers::{codes, edition3_options, rule_codes};
+    use ironplc_parser::options::CompilerOptions;
     use rstest::rstest;
     use spec_test_macro::spec_test;
 
     use super::*;
 
-    fn assert_bit_access_ok(program: &str) {
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok(), "Expected OK but got: {:?}", result);
-    }
+    /// No problems: the access is in range.
+    const OK: &[Problem] = &[];
+    /// The one problem an out-of-range access reports.
+    const OUT_OF_RANGE: &[Problem] = &[Problem::BitAccessOutOfRange];
 
-    fn assert_bit_access_err(program: &str) {
-        let library =
-            parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
-        let result = analyze(&[&library], &CompilerOptions::default());
-        let (_library, context) = result.unwrap();
-        assert!(
-            context.has_diagnostics(),
-            "Expected diagnostics but got none"
-        );
+    fn problems_with(program: &str, opts: &CompilerOptions) -> Vec<String> {
+        rule_codes(apply, program, opts)
     }
 
     // --- Bit access boundary tests across all bit-sized types ---
@@ -281,46 +294,46 @@ mod tests {
 
     #[rstest]
     // BYTE (8 bits): valid range 0..7
-    #[case::byte_bit_0("BYTE", 0, true)]
-    #[case::byte_bit_7("BYTE", 7, true)]
-    #[case::byte_bit_8("BYTE", 8, false)]
+    #[case::byte_bit_0("BYTE", 0, OK)]
+    #[case::byte_bit_7("BYTE", 7, OK)]
+    #[case::byte_bit_8("BYTE", 8, OUT_OF_RANGE)]
     // WORD (16 bits): valid range 0..15
-    #[case::word_bit_15("WORD", 15, true)]
-    #[case::word_bit_16("WORD", 16, false)]
+    #[case::word_bit_15("WORD", 15, OK)]
+    #[case::word_bit_16("WORD", 16, OUT_OF_RANGE)]
     // DWORD (32 bits): valid range 0..31
-    #[case::dword_bit_31("DWORD", 31, true)]
-    #[case::dword_bit_32("DWORD", 32, false)]
+    #[case::dword_bit_31("DWORD", 31, OK)]
+    #[case::dword_bit_32("DWORD", 32, OUT_OF_RANGE)]
     // LWORD (64 bits): valid range 0..63
-    #[case::lword_bit_63("LWORD", 63, true)]
-    #[case::lword_bit_64("LWORD", 64, false)]
+    #[case::lword_bit_63("LWORD", 63, OK)]
+    #[case::lword_bit_64("LWORD", 64, OUT_OF_RANGE)]
     // SINT (8 bits): valid range 0..7
-    #[case::sint_bit_7("SINT", 7, true)]
-    #[case::sint_bit_8("SINT", 8, false)]
+    #[case::sint_bit_7("SINT", 7, OK)]
+    #[case::sint_bit_8("SINT", 8, OUT_OF_RANGE)]
     // INT (16 bits): valid range 0..15
-    #[case::int_bit_15("INT", 15, true)]
-    #[case::int_bit_16("INT", 16, false)]
+    #[case::int_bit_15("INT", 15, OK)]
+    #[case::int_bit_16("INT", 16, OUT_OF_RANGE)]
     // DINT (32 bits): valid range 0..31
-    #[case::dint_bit_31("DINT", 31, true)]
-    #[case::dint_bit_32("DINT", 32, false)]
+    #[case::dint_bit_31("DINT", 31, OK)]
+    #[case::dint_bit_32("DINT", 32, OUT_OF_RANGE)]
     // LINT (64 bits): valid range 0..63
-    #[case::lint_bit_63("LINT", 63, true)]
-    #[case::lint_bit_64("LINT", 64, false)]
+    #[case::lint_bit_63("LINT", 63, OK)]
+    #[case::lint_bit_64("LINT", 64, OUT_OF_RANGE)]
     // USINT (8 bits): valid range 0..7
-    #[case::usint_bit_7("USINT", 7, true)]
-    #[case::usint_bit_8("USINT", 8, false)]
+    #[case::usint_bit_7("USINT", 7, OK)]
+    #[case::usint_bit_8("USINT", 8, OUT_OF_RANGE)]
     // UINT (16 bits): valid range 0..15
-    #[case::uint_bit_15("UINT", 15, true)]
-    #[case::uint_bit_16("UINT", 16, false)]
+    #[case::uint_bit_15("UINT", 15, OK)]
+    #[case::uint_bit_16("UINT", 16, OUT_OF_RANGE)]
     // UDINT (32 bits): valid range 0..31
-    #[case::udint_bit_31("UDINT", 31, true)]
-    #[case::udint_bit_32("UDINT", 32, false)]
+    #[case::udint_bit_31("UDINT", 31, OK)]
+    #[case::udint_bit_32("UDINT", 32, OUT_OF_RANGE)]
     // ULINT (64 bits): valid range 0..63
-    #[case::ulint_bit_63("ULINT", 63, true)]
-    #[case::ulint_bit_64("ULINT", 64, false)]
+    #[case::ulint_bit_63("ULINT", 63, OK)]
+    #[case::ulint_bit_64("ULINT", 64, OUT_OF_RANGE)]
     fn apply_when_bit_index_at_boundary_then_ok_or_err(
         #[case] type_name: &str,
         #[case] bit: u32,
-        #[case] expected_ok: bool,
+        #[case] expected: &[Problem],
     ) {
         let program = format!(
             "FUNCTION_BLOCK FB1
@@ -331,47 +344,42 @@ END_VAR
     y := x.{bit};
 END_FUNCTION_BLOCK"
         );
-        if expected_ok {
-            assert_bit_access_ok(&program);
-        } else {
-            assert_bit_access_err(&program);
-        }
+        assert_eq!(
+            problems_with(&program, &CompilerOptions::default()),
+            codes(expected)
+        );
     }
 
     // --- Bit access on assignment target ---
 
-    #[test]
-    fn apply_when_bit_access_target_in_range_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
+    rule_ok!(
+        apply_when_bit_access_target_in_range_then_ok,
+        "FUNCTION_BLOCK FB1
 VAR
     x : WORD;
     y : BOOL;
 END_VAR
     x.0 := y;
-END_FUNCTION_BLOCK",
-        );
-    }
+END_FUNCTION_BLOCK"
+    );
 
-    #[test]
-    fn apply_when_bit_access_target_out_of_range_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
+    rule_err!(
+        apply_when_bit_access_target_out_of_range_then_err,
+        "FUNCTION_BLOCK FB1
 VAR
     x : BYTE;
     y : BOOL;
 END_VAR
     x.8 := y;
 END_FUNCTION_BLOCK",
-        );
-    }
+        [Problem::BitAccessOutOfRange]
+    );
 
     // --- Struct field bit access ---
 
-    #[test]
-    fn apply_when_struct_field_bit_in_range_then_ok() {
-        assert_bit_access_ok(
-            "TYPE
+    rule_ok!(
+        apply_when_struct_field_bit_in_range_then_ok,
+        "TYPE
     MyStruct : STRUCT
         field1 : BYTE;
     END_STRUCT;
@@ -383,14 +391,12 @@ VAR
     y : BOOL;
 END_VAR
     y := s.field1.7;
-END_FUNCTION_BLOCK",
-        );
-    }
+END_FUNCTION_BLOCK"
+    );
 
-    #[test]
-    fn apply_when_struct_field_bit_out_of_range_then_err() {
-        assert_bit_access_err(
-            "TYPE
+    rule_err!(
+        apply_when_struct_field_bit_out_of_range_then_err,
+        "TYPE
     MyStruct : STRUCT
         field1 : BYTE;
     END_STRUCT;
@@ -403,13 +409,12 @@ VAR
 END_VAR
     y := s.field1.8;
 END_FUNCTION_BLOCK",
-        );
-    }
+        [Problem::BitAccessOutOfRange]
+    );
 
-    #[test]
-    fn apply_when_struct_word_field_bit_in_range_then_ok() {
-        assert_bit_access_ok(
-            "TYPE
+    rule_ok!(
+        apply_when_struct_word_field_bit_in_range_then_ok,
+        "TYPE
     MyStruct : STRUCT
         field1 : WORD;
     END_STRUCT;
@@ -421,14 +426,12 @@ VAR
     y : BOOL;
 END_VAR
     y := s.field1.15;
-END_FUNCTION_BLOCK",
-        );
-    }
+END_FUNCTION_BLOCK"
+    );
 
-    #[test]
-    fn apply_when_struct_word_field_bit_out_of_range_then_err() {
-        assert_bit_access_err(
-            "TYPE
+    rule_err!(
+        apply_when_struct_word_field_bit_out_of_range_then_err,
+        "TYPE
     MyStruct : STRUCT
         field1 : WORD;
     END_STRUCT;
@@ -441,69 +444,63 @@ VAR
 END_VAR
     y := s.field1.16;
 END_FUNCTION_BLOCK",
-        );
-    }
+        [Problem::BitAccessOutOfRange]
+    );
 
     // --- Array element bit access ---
 
-    #[test]
-    fn apply_when_array_element_bit_in_range_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
+    rule_ok!(
+        apply_when_array_element_bit_in_range_then_ok,
+        "FUNCTION_BLOCK FB1
 VAR
     arr : ARRAY [0..3] OF BYTE;
     y : BOOL;
 END_VAR
     y := arr[0].7;
-END_FUNCTION_BLOCK",
-        );
-    }
+END_FUNCTION_BLOCK"
+    );
 
-    #[test]
-    fn apply_when_array_element_bit_out_of_range_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
+    rule_err_at!(
+        apply_when_array_element_bit_out_of_range_then_err,
+        "FUNCTION_BLOCK FB1
 VAR
     arr : ARRAY [0..3] OF BYTE;
     y : BOOL;
 END_VAR
     y := arr[0].8;
 END_FUNCTION_BLOCK",
-        );
-    }
+        Problem::BitAccessOutOfRange,
+        "8"
+    );
 
-    #[test]
-    fn apply_when_array_word_element_bit_in_range_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
+    rule_ok!(
+        apply_when_array_word_element_bit_in_range_then_ok,
+        "FUNCTION_BLOCK FB1
 VAR
     arr : ARRAY [0..3] OF WORD;
     y : BOOL;
 END_VAR
     y := arr[1].15;
-END_FUNCTION_BLOCK",
-        );
-    }
+END_FUNCTION_BLOCK"
+    );
 
-    #[test]
-    fn apply_when_array_word_element_bit_out_of_range_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
+    rule_err!(
+        apply_when_array_word_element_bit_out_of_range_then_err,
+        "FUNCTION_BLOCK FB1
 VAR
     arr : ARRAY [0..3] OF WORD;
     y : BOOL;
 END_VAR
     y := arr[1].16;
 END_FUNCTION_BLOCK",
-        );
-    }
+        [Problem::BitAccessOutOfRange]
+    );
 
     // --- Bit access in FUNCTION (not FUNCTION_BLOCK) ---
 
-    #[test]
-    fn apply_when_function_dint_bit_access_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION FOO : INT
+    rule_ok!(
+        apply_when_function_dint_bit_access_then_ok,
+        "FUNCTION FOO : INT
 VAR_INPUT
     A : DINT;
 END_VAR
@@ -517,9 +514,8 @@ VAR
     result : INT;
 END_VAR
     result := FOO(A := 5);
-END_PROGRAM",
-        );
-    }
+END_PROGRAM"
+    );
 
     // --- Declarations outside the POU body ---
     //
@@ -527,10 +523,9 @@ END_PROGRAM",
     // the enclosing POU's own variables, so a global and a method local are
     // both checkable.
 
-    #[test]
-    fn apply_when_global_bit_out_of_range_then_err() {
-        assert_bit_access_err(
-            "PROGRAM main
+    rule_err!(
+        apply_when_global_bit_out_of_range_then_err,
+        "PROGRAM main
 VAR
     y : BOOL;
 END_VAR
@@ -546,8 +541,8 @@ RESOURCE res ON PLC
     PROGRAM inst WITH plc_task : main;
 END_RESOURCE
 END_CONFIGURATION",
-        );
-    }
+        [Problem::BitAccessOutOfRange]
+    );
 
     #[test]
     fn apply_when_method_local_bit_out_of_range_then_err() {
@@ -566,13 +561,7 @@ END_VAR
     y := local.8;
 END_METHOD
 END_FUNCTION_BLOCK";
-        let library = parse_program(program, &FileId::default(), &opts).unwrap();
-        let (_library, context) = analyze(&[&library], &opts).unwrap();
-
-        assert!(context
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == Problem::BitAccessOutOfRange.code()));
+        assert_eq!(problems_with(program, &opts), codes(OUT_OF_RANGE));
     }
 
     // --- Partial access: byte, word, dword and lword slices ---
@@ -580,21 +569,14 @@ END_FUNCTION_BLOCK";
     // The `%` selectors need `allow_partial_access_syntax`, so these build
     // their own options rather than using the helpers above.
 
-    /// Analyzes `program` with partial-access syntax enabled, returning
-    /// whether this rule reported the access as out of range. Naming the
-    /// problem keeps a diagnostic from some other rule from passing for one
-    /// of ours.
-    fn reports_out_of_range_with_partial_access(program: &str) -> bool {
+    /// The problem codes this rule reports for `program` with partial-access
+    /// syntax enabled.
+    fn partial_access_problems(program: &str) -> Vec<String> {
         let opts = CompilerOptions {
             allow_partial_access_syntax: true,
             ..CompilerOptions::default()
         };
-        let library = parse_program(program, &FileId::default(), &opts).unwrap();
-        let (_library, context) = analyze(&[&library], &opts).unwrap();
-        context
-            .diagnostics()
-            .iter()
-            .any(|d| d.code == Problem::BitAccessOutOfRange.code())
+        problems_with(program, &opts)
     }
 
     fn partial_access_program(declared_type: &str, target_type: &str, selector: &str) -> String {
@@ -614,26 +596,23 @@ END_FUNCTION_BLOCK"
     #[spec_test(REQ_PAB_analyzer_122)]
     #[rstest]
     // A WORD holds two bytes, so byte 0 and byte 1 exist and byte 2 does not.
-    #[case::word_byte_0("WORD", "BYTE", "%B0", true)]
-    #[case::word_byte_1("WORD", "BYTE", "%B1", true)]
-    #[case::word_byte_2("WORD", "BYTE", "%B2", false)]
+    #[case::word_byte_0("WORD", "BYTE", "%B0", OK)]
+    #[case::word_byte_1("WORD", "BYTE", "%B1", OK)]
+    #[case::word_byte_2("WORD", "BYTE", "%B2", OUT_OF_RANGE)]
     // A DWORD holds four bytes and two words.
-    #[case::dword_byte_3("DWORD", "BYTE", "%B3", true)]
-    #[case::dword_byte_4("DWORD", "BYTE", "%B4", false)]
-    #[case::dword_word_1("DWORD", "WORD", "%W1", true)]
-    #[case::dword_word_2("DWORD", "WORD", "%W2", false)]
+    #[case::dword_byte_3("DWORD", "BYTE", "%B3", OK)]
+    #[case::dword_byte_4("DWORD", "BYTE", "%B4", OUT_OF_RANGE)]
+    #[case::dword_word_1("DWORD", "WORD", "%W1", OK)]
+    #[case::dword_word_2("DWORD", "WORD", "%W2", OUT_OF_RANGE)]
     fn apply_when_partial_access_index_at_boundary_then_ok_or_err(
         #[case] declared_type: &str,
         #[case] target_type: &str,
         #[case] selector: &str,
-        #[case] expected_ok: bool,
+        #[case] expected: &[Problem],
     ) {
         let program = partial_access_program(declared_type, target_type, selector);
 
-        assert_eq!(
-            !reports_out_of_range_with_partial_access(&program),
-            expected_ok
-        );
+        assert_eq!(partial_access_problems(&program), codes(expected));
     }
 
     /// REQ-PAB-analyzer-121: a slice wider than the variable is rejected.
@@ -651,7 +630,7 @@ END_FUNCTION_BLOCK"
     ) {
         let program = partial_access_program(declared_type, target_type, selector);
 
-        assert!(reports_out_of_range_with_partial_access(&program));
+        assert_eq!(partial_access_problems(&program), codes(OUT_OF_RANGE));
     }
 
     // ---------------------------------------------------------------------
@@ -662,9 +641,6 @@ END_FUNCTION_BLOCK"
     /// REQ-PAB-analyzer-030: `b.%X8` on a BYTE is rejected (bit 8 out of range).
     #[spec_test(REQ_PAB_analyzer_030)]
     fn analyzer_spec_req_pab_030_dot_percent_x_bit_out_of_range_is_rejected() {
-        use ironplc_parser::options::CompilerOptions;
-        use ironplc_parser::parse_program;
-
         let opts = CompilerOptions {
             allow_partial_access_syntax: true,
             ..CompilerOptions::default()
@@ -676,12 +652,86 @@ VAR
 END_VAR
     y := b.%X8;
 END_FUNCTION_BLOCK";
-        let library = parse_program(program, &FileId::default(), &opts).unwrap();
-        let result = analyze(&[&library], &opts);
-        let (_library, context) = result.unwrap();
-        assert!(
-            context.has_diagnostics(),
-            "Expected BitAccessOutOfRange diagnostic but got none"
+        assert_eq!(problems_with(program, &opts), codes(OUT_OF_RANGE));
+    }
+
+    // --- The type a bit or partial access selects from ---
+    //
+    // Only a bit string or an integer has bits to select. These run under
+    // Edition 3, which has the `%` selectors and `REF_TO`.
+
+    /// The problems this rule reports for `statement` in a program that
+    /// declares a variable of each kind.
+    fn problems_of(statement: &str) -> Vec<String> {
+        let program = format!(
+            "TYPE
+    Rec : STRUCT f : REAL; w : WORD; END_STRUCT;
+    Color : (Red, Green);
+    Small : INT (0..10);
+END_TYPE
+PROGRAM main
+VAR
+    x : BOOL;
+    y : BYTE;
+    b : BOOL;
+    r : REAL;
+    lr : LREAL;
+    q : STRING;
+    t : TIME;
+    rec : Rec;
+    fb : TON;
+    a : ARRAY[1..2] OF DINT;
+    ra : ARRAY[1..2] OF REAL;
+    e : Color;
+    ie : (Up, Down);
+    sr : Small;
+    p : REF_TO BYTE;
+END_VAR
+    {statement}
+END_PROGRAM"
         );
+        rule_codes(apply, &program, &edition3_options())
+    }
+
+    /// REQ-PAB-analyzer-123: bit and partial access on a variable that is
+    /// not a bit string or an integer is rejected.
+    #[spec_test(REQ_PAB_analyzer_123)]
+    #[rstest]
+    #[case::bool("x := b.0;")]
+    #[case::real("x := r.3;")]
+    #[case::lreal("x := lr.3;")]
+    #[case::string("x := q.3;")]
+    #[case::time("x := t.3;")]
+    #[case::structure("x := rec.3;")]
+    #[case::function_block("x := fb.1;")]
+    #[case::whole_array("x := a.3;")]
+    #[case::whole_array_past_its_size("x := a.70;")]
+    #[case::array_element("x := ra[1].3;")]
+    #[case::structure_field("x := rec.f.3;")]
+    #[case::enumeration("x := e.0;")]
+    #[case::inline_enumeration("x := ie.0;")]
+    #[case::bit_access_target("r.3 := x;")]
+    #[case::percent_x("x := r.%X3;")]
+    #[case::partial_access("y := r.%B0;")]
+    #[case::partial_access_target("q.%B0 := y;")]
+    fn apply_when_accessed_type_has_no_bits_then_bit_access_type_invalid(#[case] statement: &str) {
+        assert_eq!(
+            problems_of(statement),
+            codes(&[Problem::BitAccessTypeInvalid])
+        );
+    }
+
+    #[rstest]
+    #[case::structure_field("x := rec.w.15;")]
+    #[case::subrange("x := sr.15;")]
+    #[case::dereference("x := p^.7;")]
+    #[case::dereference_partial_access("y := p^.%B0;")]
+    fn apply_when_accessed_type_has_bits_then_ok(#[case] statement: &str) {
+        assert!(problems_of(statement).is_empty());
+    }
+
+    #[test]
+    fn apply_when_dereferenced_bit_past_target_width_then_out_of_range() {
+        assert_eq!(problems_of("x := p^.8;"), codes(OUT_OF_RANGE));
     }
 }

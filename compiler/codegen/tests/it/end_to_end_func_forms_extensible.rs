@@ -24,7 +24,7 @@ PROGRAM main
   b5 := AND(b1, b2, NOT b3);
 END_PROGRAM
 ",
-    &[(3, 0), (4, 1)],
+    &[("b4", 0), ("b5", 1)],
 );
 
 e2e_i32!(
@@ -39,7 +39,7 @@ PROGRAM main
   result := ADD(x, 20, 30, 40);
 END_PROGRAM
 ",
-    &[(0, 10), (1, 100)],
+    &[("x", 10), ("result", 100)],
 );
 
 e2e_i32!(
@@ -52,7 +52,7 @@ PROGRAM main
   result := MUL(2, 3, 7);
 END_PROGRAM
 ",
-    &[(0, 42)],
+    &[("result", 42)],
 );
 
 e2e_i32!(
@@ -67,7 +67,7 @@ PROGRAM main
   all_false := OR(FALSE, FALSE, FALSE);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("any_true", 1), ("all_false", 0)],
 );
 
 // XOR over three inputs is odd parity.
@@ -83,7 +83,7 @@ PROGRAM main
   even := XOR(TRUE, TRUE, FALSE);
 END_PROGRAM
 ",
-    &[(0, 1), (1, 0)],
+    &[("odd", 1), ("even", 0)],
 );
 
 e2e_i32!(
@@ -96,7 +96,7 @@ PROGRAM main
   result := AND(WORD#16#FFFF, WORD#16#0FF0, WORD#16#00FF);
 END_PROGRAM
 ",
-    &[(0, 0x00F0)],
+    &[("result", 0x00F0)],
 );
 
 e2e_i32!(
@@ -109,5 +109,5 @@ PROGRAM main
   result := ADD(IN3 := 300, IN1 := 1, IN2 := 20);
 END_PROGRAM
 ",
-    &[(0, 321)],
+    &[("result", 321)],
 );
