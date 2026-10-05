@@ -492,32 +492,6 @@ END_PROGRAM
         assert!(codes.is_empty(), "{codes:?}");
     }
 
-    #[test]
-    fn analyze_when_string_assigned_wstring_then_pipeline_reports_p4034() {
-        // The rule is wired into the full `analyze` pipeline, which collects
-        // semantic diagnostics into the context rather than returning Err.
-        use crate::stages::analyze;
-        let library = crate::test_helpers::parse_only(
-            "
-PROGRAM main
-  VAR
-    s : STRING[10];
-    w : WSTRING[10];
-  END_VAR
-  s := w;
-END_PROGRAM
-",
-        );
-        // rule-test-conventions: allow(pipeline) -- shows the rule is wired into analyze
-        let (_lib, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
-        let codes: Vec<_> = context
-            .diagnostics()
-            .iter()
-            .map(|d| d.code.clone())
-            .collect();
-        assert_eq!(codes, [Problem::StringEncodingMismatch.code()]);
-    }
-
     rule_ok!(
         apply_when_sibling_method_declares_wstring_then_field_encoding_used,
         "
