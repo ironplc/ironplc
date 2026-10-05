@@ -154,8 +154,9 @@ untyped literal has the type its value defaults to, ``DINT`` for an integer:
 The same holds wherever a constant is stored: an element of an array
 initializer (including each repetition, as in ``[2(300)]``), an element of a
 structure or function block instance initializer, the default of a structure
-field or a type declaration, and an argument passed to a function or function
-block input, which is checked against the parameter's type:
+field or a type declaration, a value written through a reference (``p^ := 300``
+on a ``REF_TO SINT``), and an argument passed to a function or function block
+input, which is checked against the parameter's type:
 
 .. code-block::
 

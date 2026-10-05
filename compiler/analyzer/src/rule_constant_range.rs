@@ -48,12 +48,14 @@
 //! as one the program wrote (ADR-0056):
 //!
 //! * A constant stored directly in a place must be a value of the place's
-//!   declared type: an assignment, a variable's initial value, the elements of
+//!   declared type: an assignment, including one through a reference
+//!   (`p^ := 300` on a `REF_TO SINT`), a variable's initial value, the elements of
 //!   an array, structure or function block instance initializer, the default
 //!   of a structure field or type declaration, and an argument passed to a
 //!   function or function block input. The type recorded for a literal can be
 //!   wider than the place: a subrange is recorded at its base type, and the
-//!   input of a standard function block at the default slot type.
+//!   input of a standard function block and a write through a reference at
+//!   the default slot type.
 //! * A literal compared with an operand of another type must be a value that
 //!   operand can hold: `DINT#300 < s` on a `SINT` can never be true, although
 //!   the pass converts `s` to `DINT`.
@@ -692,12 +694,16 @@ impl Visitor<Infallible> for RuleConstantRange<'_> {
     }
 
     fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Infallible> {
-        // A write through a reference stores into whatever the reference
-        // points at, which this rule cannot see.
-        if !node.deref {
-            if let Some(target) = self.assignment_target_type(&node.target) {
-                self.check_expr(&node.value, &target);
-            }
+        let target = self.assignment_target_type(&node.target);
+        // `p^ := v` stores into the variable `p` references, a value of the
+        // type `p` refers to. The pass records the literal at the default
+        // slot type, so only this check sees that type.
+        let stored = match node.deref {
+            true => target.and_then(|target| target.referenced_type().cloned()),
+            false => target,
+        };
+        if let Some(stored) = stored {
+            self.check_expr(&node.value, &stored);
         }
         node.recurse_visit(self)
     }
