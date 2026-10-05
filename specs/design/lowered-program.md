@@ -16,12 +16,12 @@ in IronPLC's **intermediate representation (IR)**, which this design defines
 Two things motivate it.
 
 The first is that the bytecode backend re-derives what analysis already
-established. It looks variables up by name, matches standard functions by
-spelling, re-checks argument counts, and asks the analyzer's overload resolver
-the same question a second time. Each of those is a place where a state the
-analyzer has ruled out is still representable, so each needs an error path, and
-the project's rule that every enum and `Option` variant is handled directly
-cannot be met without writing arms for states that cannot occur.
+established. It looks variables up by name, matches standard function blocks
+by spelling, re-checks argument counts, and asks the analyzer's overload
+resolver the same question a second time. Each of those is a place where a
+state the analyzer has ruled out is still representable, so each needs an error
+path, and the project's rule that every enum and `Option` variant is handled
+directly cannot be met without writing arms for states that cannot occur.
 
 The second is that a backend emitting WebAssembly is planned, and one emitting
 native code through LLVM is possible. Whatever the bytecode backend decides for
@@ -61,8 +61,9 @@ The design builds on:
 - **[ADR-0056](../adrs/0056-analyzer-records-implicit-conversions-in-the-ast.md)**,
   **[Implicit Conversions](implicit-conversions.md)** and
   **[Comparison Operand Type](comparison-operand-type.md)**: the analyzer
-  records the implicit conversions of a comparison as
-  `ExprKind::ImplicitConversion` nodes, and codegen compiles what is recorded.
+  records implicit conversions, first those of a comparison and now most
+  others, as `ExprKind::ImplicitConversion` nodes, and codegen compiles what
+  is recorded.
   This design extends that arrangement to every decision that can make a
   program invalid; see [Relationship to ADR-0056](#relationship-to-adr-0056).
 
@@ -87,8 +88,9 @@ describe:
   [The Clean-Analysis Gate](#2-the-clean-analysis-gate)).
 - The analyzer records the conversions of comparison and arithmetic operands,
   of most assigned values and of the arguments of user-defined functions, and
-  the types of untyped literals (ADR-0056). Codegen no longer asks the
-  overload resolver a second time.
+  the types of untyped literals (ADR-0056). Codegen asks the overload
+  resolver a second time only for an operand pair with a typed overload, such
+  as time arithmetic.
 - Bit and partial access, and assignments to most targets that occupy one
   slot, compile through one addressing path (`Place`).
 
@@ -101,7 +103,7 @@ serves three consumers with incompatible needs:
 
 | Consumer | Needs the tree to be |
 |---|---|
-| `plc2plc` | Faithful to the source. `Assignment::ref_bind` exists only so the renderer can reproduce `REF=`. |
+| `plc2plc` | Faithful to the source. `Assignment::ref_bind` exists so the renderer can reproduce `REF=`. |
 | Language server | Able to hold a broken program. Best-effort transforms leave a declaration they could not transform unchanged or as a placeholder. |
 | Code generation | Total. Every node resolved, every type known. |
 
@@ -605,7 +607,8 @@ a comparison of two arrays from being writable.
 64-bit integer, 32-bit float, 64-bit float) with a signedness, plus a
 reference kind and an interface kind. Widths narrower than 32 bits exist only
 as the storage of a place (ADR-0001). `StringShape` is today's
-`string_width::StringShape`: an encoding (ADR-0034) and a capacity (see
+`string_width::StringShape`: an encoding (ADR-0034) and a capacity. Today
+the capacity may be unknown; in the IR it is always stated (see
 [String capacity](#string-capacity)).
 
 ```rust
@@ -836,11 +839,12 @@ is not optional and is never a generic category such as `ANY_INT`.
 **REQ-LOW-lowering-043** The operands of a `Compare` have the same type as each
 other, and the `Compare` itself has the operation type of `BOOL`.
 
-A `ScalarType` does not say whether a value is a `BOOL`, a `UDINT` or a
-`DWORD`: all three are unsigned 32-bit operations, by ADR-0001's widths (see
-[Value classes](#33-value-classes)). Lowering knows which from
-the source type and chooses operators accordingly (REQ-LOW-lowering-048); a
-backend never needs to.
+A `ScalarType` does not say whether a value is a `BOOL`. Today codegen
+computes a `BOOL` as a signed 32-bit value (`type_info.rs`), the operation
+type of a `DINT`, and a `UDINT` and a `DWORD` share the unsigned one. It
+chooses between a logical and a bitwise operator from the signedness alone
+(`compile_expr.rs`). Lowering knows which from the source type and chooses
+operators accordingly (REQ-LOW-lowering-048); a backend never needs to.
 
 **REQ-LOW-lowering-044** A `Convert` changes type: its operand's type differs
 from its own.
@@ -920,17 +924,18 @@ A value is cut only when it goes into a place or an intermediate result whose
 capacity is smaller than the value. It keeps its first code units.
 
 How lowering chooses an intermediate result's capacity is a known defect,
-[issue 2118](https://github.com/ironplc/ironplc/issues/2118). Today the
-bytecode backend makes every temporary as large as the largest string in the
-program. It also copies any operand that is not a plain variable into a slot
-of 254 code units
-([issue 1732](https://github.com/ironplc/ironplc/issues/1732)). How much of a
-result survives is therefore a property of the program, not of the expression.
+[issue 2118](https://github.com/ironplc/ironplc/issues/2118). Today codegen
+computes a bound for each string expression (`string_width.rs`): a declared
+capacity, a literal's length, `m + n` for `CONCAT` of a `STRING[m]` and a
+`STRING[n]`, and 254 code units where it knows none. It sizes the copy of an
+operand that is not a plain variable from that bound. But it makes every
+temporary buffer as large as the largest string the program declares or
+copies, so the size of a buffer is a property of the program, not of the
+expression.
 
 At first, lowering gives each intermediate result the capacity the bytecode
 backend gives it today, so the move is behaviour preserving. Fixing the defect
-then changes that one rule in lowering and no backend: for example, `CONCAT`
-of a `STRING[m]` and a `STRING[n]` would have `m + n`. REQ-LOW-codegen-055
+then changes that one rule in lowering and no backend. REQ-LOW-codegen-055
 holds once the defect is fixed.
 
 **REQ-LOW-analyzer-053** Every string type the analyzer records has a
@@ -1141,7 +1146,9 @@ the first argument of the call is a `Ref` to the receiver. `inst.m(a)` passes
 `inst`; `THIS^.m(a)` passes the caller's own instance, `this^`; and
 `SUPER^.m(a)` calls the base type's method with that same receiver. Each of
 these is resolved statically, as the first phase of
-[ADR-0041](../adrs/0041-staged-method-and-interface-dispatch.md) does today.
+[ADR-0041](../adrs/0041-staged-method-and-interface-dispatch.md) resolves
+`inst.m(a)` today. Analysis does not resolve a call through `THIS^` or
+`SUPER^` yet, and reports one as not implemented.
 
 A property is sugar. Reading `inst.P` calls its `GET` accessor, and writing
 `inst.P := v` calls its `SET` accessor, each lowered as a method call on
@@ -1472,7 +1479,7 @@ today.
 | Implicit conversion | The analyzer for comparison and arithmetic operands, most assigned values and the arguments of user-defined functions (ADR-0056); codegen for the arguments of function block and method calls, and for the other contexts the analyzer does not record yet | `ExprKind::ImplicitConversion` | `Convert` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)), with a codegen fallback for a pair without one | Its operands' conversions | A `Compare` at that type |
-| Argument order and count | `xform_named_to_positional_args`, then re-checked at 19 sites | Positional arguments | `Vec<Arg>` matched to parameters |
+| Argument order and count | `xform_named_to_positional_args` for a function call, then re-checked at 27 sites in codegen; codegen for a method call (`compile_method.rs`) and, by name, for a function block call (`compile_stmt.rs`) | Positional arguments | `Vec<Arg>` matched to parameters |
 | Whether an interface value can hold only one concrete type | Not made; calls through an interface are not compiled | The concrete types the value can hold (REQ-LOW-analyzer-107) | A direct method call, or a `Callee::Interface` |
 | Capacity of a string declared without one | Codegen and `slot_count`, from `DEFAULT_STRING_MAX_LENGTH` | The string type's capacity (REQ-LOW-analyzer-053) | The capacity of its `StringShape` |
 
@@ -1481,17 +1488,17 @@ today.
 | Decision | Made today in | In the lowered program |
 |---|---|---|
 | Narrowing before a store | `emit_truncation` at each store site | `Truncate` |
-| Logical or bitwise operator | `emit_not` and `compile_compare`, from `expr_is_bool` | Distinct operators |
+| Logical or bitwise operator | `emit_not` and the `AND`, `OR` and `XOR` emitters, from the signedness of the operation type | Distinct operators |
 | Callee | The analyzer's enum on the signature (to become `BuiltinFunction`, see [Names](#names)), dispatched by `compile_intrinsic`; then `lookup_builtin` picks a `func_id` from the operation width | `Callee`, with the `Intrinsic` for the operand types (REQ-LOW-lowering-147) |
 | Implementers of a call through an interface | Not made; calls through an interface are not compiled | `Callee::Interface` (REQ-LOW-lowering-105) |
-| Capacity of an intermediate string result | Codegen, from the largest string in the program ([issue 2118](https://github.com/ironplc/ironplc/issues/2118)) | The capacity of the `StrExpr`'s `StringShape` |
+| Capacity of an intermediate string result | Codegen: a bound per expression (`string_width.rs`), and a temporary buffer as large as the largest string in the program ([issue 2118](https://github.com/ironplc/ironplc/issues/2118)) | The capacity of the `StrExpr`'s `StringShape` |
 | Argument passing mode | `ParamPassing` in `compile.rs` | `Arg` variant |
 | Variable and field identity | Nine name-keyed maps; lower-cased field names | `VarId`, `FieldIdx` |
-| Enumeration ordinal | `enum_map` | `Const` |
-| Default initial value | `emit_initial_values`; subrange lower bound, first enumeration value | `Assign` statements in `init` |
+| Enumeration ordinal | The analyzer numbers the members (`EnumerationMembers`); codegen looks the ordinal up (`compile_enum.rs`) | `Const` |
+| Default initial value | `emit_initial_values`; subrange lower bound, the enumeration's default member as the analyzer records it | `Assign` statements in `init` |
 | Function local re-initialization ([ADR-0024](../adrs/0024-function-local-reinit-via-bytecode-prologue.md)) | `emit_function_local_prologue` | Statements at the head of the function body |
 | Behaviour policy | `CodegenOptions::string_to_num` | `Intrinsic` variant |
-| Target of `EXIT` and `CONTINUE` | `loop_labels` stack, with `ExitOutsideLoop` as a fallback | `LoopId` |
+| Target of `EXIT` and `CONTINUE` | `loop_labels` stack, with a P9998 as a fallback | `LoopId` |
 | String encoding and capacity of a string value | `string_width.rs` | `StringShape` |
 | Temporal literal count and unit ([ADR-0021](../adrs/0021-time-32bit-ltime-64bit.md), [ADR-0025](../adrs/0025-datetime-unsigned-representation.md)) | `compile_time_count` | `Const` |
 
@@ -1533,18 +1540,24 @@ Neither predicts a decision.
 The user-facing problems codegen raises today fall into three groups:
 
 - **A check analysis already makes**, kept in codegen as a fallback:
-  `VariableUndefined`, `ExitOutsideLoop`, `ContinueOutsideLoop`,
-  `RecursiveCycle`, `StringEncodingMismatch`, and `ConstantOverflow` where
-  `rule_constant_range` covers the same site. Behind the gate it is a P9998.
-- **A check only codegen makes**: `ArrayIndexOutOfBounds` for a constant
-  subscript, and `ConstantOverflow` where `rule_constant_range` does not cover
-  the site. It moves to an analyzer rule.
+  `ArrayIndexOutOfBounds` for a literal subscript, and `ConstantOverflow`
+  where `rule_constant_range` covers the same site. Behind the gate it is a
+  P9998. Codegen already reports the other checks analysis makes, such as an
+  `EXIT` outside a loop, a recursive call or a string encoding mismatch, as
+  P9998.
+- **A check only codegen makes**: `ConstantOverflow` where
+  `rule_constant_range` does not cover the site, such as a `CASE` label under
+  a selector analysis could not type. It moves to an analyzer rule.
 - **A limit of what the bytecode backend builds**: `TaskSingleNotSupported`,
   `TaskParameterOutOfRange`, and `NoProgramDeclaration`, since a container
   needs a program to run. It stays in that backend (REQ-LOW-codegen-113).
 
 **REQ-LOW-analyzer-095** Analysis reports a constant subscript outside its
 dimension's bounds as `ArrayIndexOutOfBounds`.
+
+`rule_array_index_range` meets REQ-LOW-analyzer-095 for a literal subscript,
+as it stands after constant folding. Neither it nor codegen checks a subscript
+that names a constant.
 
 ## 5. Desugaring
 
@@ -1635,9 +1648,10 @@ never reports that the program is invalid.
 
 No diagnostic a user sees moves later. Every problem with the program is
 reported by analysis, beside every other problem, in `check` and in the
-language server. Two things move earlier: the checks only codegen makes today
-become analyzer rules, and `check` reports a construct the compiler cannot
-generate yet (REQ-LOW-project-004), which today surfaces only from `compile`.
+language server. Two things move earlier: the `ConstantOverflow` checks only
+codegen makes today become analyzer rules, and `check` reports a construct the
+compiler cannot generate yet (REQ-LOW-project-004), which today surfaces only
+from `compile`.
 
 ## 7. Backend Contract
 
@@ -1718,8 +1732,8 @@ Nothing is deleted before its last reader has moved to the lowered program.
 
 | Fields | What they are | Disposition |
 |---|---|---|
-| `var_types`, `types`, `operand_names`, `enum_map`, `compiler_options`, `string_to_num` | Language decisions and their inputs | Move to lowering. No backend holds them. |
-| `variables`, `string_vars`, `array_vars`, `struct_vars`, `struct_array_vars`, `fb_instances`, `in_out_params`, `user_functions`, `user_fb_types` | Storage layout | Keep in the bytecode backend as its layout, keyed by id, immutable during emission. |
+| `var_types`, `types`, `operand_names`, `intrinsics`, `compiler_options`, `string_to_num` | Language decisions and their inputs | Move to lowering. No backend holds them. |
+| `variables`, `string_vars`, `array_vars`, `struct_vars`, `struct_array_vars`, `fb_instances`, `in_out_params`, `user_functions`, `user_fb_types`, `next_user_fb_type_id` | Storage layout | Keep in the bytecode backend as its layout, keyed by id, immutable during emission. |
 | `constants`, `loop_labels`, `current_function_return`, `current_function_id`, `call_graph`, `data_region_offset`, `max_string_capacity`, `has_wide_string`, `debug_*` | Emission state | Keep in a smaller emit context. |
 
 ### Other codegen types
@@ -1728,7 +1742,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 |---|---|
 | `OpWidth`, `Signedness`, `OpType` | Move to `ironplc-ir` as `ScalarType`. |
 | `VarTypeInfo` | Dissolves. Operation type is on the expression; storage width comes from the place's type. |
-| `ArrayVarInfo`, `StructVarInfo`, `StructFieldInfo`, `StructArrayVarInfo`, `FbInstanceInfo`, `UserFunctionInfo`, `UserFbTypeInfo`, `UserMethodInfo`, `StringVarInfo` | Keep in the bytecode backend's layout, without their type fields (`StructFieldInfo::op_type`, `field_op_types`, `param_op_types`, `element_var_type_info`). |
+| `ArrayVarInfo`, `StructVarInfo`, `StructFieldInfo`, `StructArrayVarInfo`, `FbInstanceInfo`, `UserFunctionInfo`, `UserFbTypeInfo`, `UserMethodInfo`, `StringVarInfo` | Keep in the bytecode backend's layout, without their type fields (`StructFieldInfo::op_type` and `field_type`, `field_op_types`, `field_type_ids`, `param_op_types`, `element_var_type_info`). |
 | `Place` (`compile_place.rs`), `ResolvedAccess` | Keep in the bytecode backend. They are that backend's addressing: the result of asking its layout how to reach a lowered `Place`. |
 | `ParamPassing` | Dissolves into `Arg`, which adds the by-value aggregate mode `ParamPassing` lacks. |
 | `Scope` (formerly `SavedFbScope`) | Absorbed into the bytecode backend's layout. Ids do not collide across scopes, and a function block's variables are fields of its instance. While both routes exist it is how a lowered statement finds its variables' storage (see [Delivery Constraints](#delivery-constraints)). |
@@ -2165,7 +2179,7 @@ This section constrains the order of work; it is not a work breakdown.
 checked library has a non-optional `expr_type` and an uninhabited `LateBound`.
 GHC ("Trees That Grow") and Scala 3 (`Tree[T]`) do this. It removes the phase
 leftovers and none of the name, call or typing work, and it changes every type
-in the 9,400-line DSL crate, the derive macro, 44 rules and 18 transforms.
+in the 9,400-line DSL crate, the derive macro, 45 rules and 18 transforms.
 ADR-0013 already weighed churn in the AST against benefit.
 
 **Side tables keyed by node id.** The AST stays syntactic and analysis results
