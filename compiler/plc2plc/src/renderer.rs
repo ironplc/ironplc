@@ -156,6 +156,59 @@ impl<'a> LibraryRenderer<'a> {
         Ok(())
     }
 
+    fn write_declaration_qualifier(&mut self, qualifier: &DeclarationQualifier) {
+        match qualifier {
+            DeclarationQualifier::Unspecified => {}
+            DeclarationQualifier::Constant => self.write_ws("CONSTANT"),
+            DeclarationQualifier::Retain => self.write_ws("RETAIN"),
+            DeclarationQualifier::NonRetain => self.write_ws("NON_RETAIN"),
+            DeclarationQualifier::Persistent => self.write_ws("PERSISTENT"),
+        }
+    }
+
+    /// Writes one `name : initializer;` line, without the enclosing block.
+    fn write_var_decl_line(&mut self, node: &VarDecl) -> Result<(), Diagnostic> {
+        match &node.identifier {
+            VariableIdentifier::Symbol(id) => {
+                self.visit_id(id)?;
+            }
+            VariableIdentifier::Direct(direct) => {
+                self.visit_direct_variable_identifier(direct)?;
+            }
+        }
+
+        self.write_ws(":");
+        self.visit_initial_value_assignment_kind(&node.initializer)?;
+
+        self.write(";");
+        self.newline();
+        Ok(())
+    }
+
+    /// Writes the single `VAR_GLOBAL` block that a `CONFIGURATION` or a
+    /// `RESOURCE` may hold. The grammar allows only one block there, so the
+    /// declarations share it, and it carries the block qualifier that the
+    /// parser copied onto every declaration. Writes nothing when empty.
+    fn write_global_var_block(&mut self, vars: &[VarDecl]) -> Result<(), Diagnostic> {
+        let Some(first) = vars.first() else {
+            return Ok(());
+        };
+
+        self.write_ws("VAR_GLOBAL");
+        self.write_declaration_qualifier(&first.qualifier);
+        self.newline();
+
+        self.indent();
+        for var in vars {
+            self.write_var_decl_line(var)?;
+        }
+        self.outdent();
+
+        self.write_ws("END_VAR");
+        self.newline();
+        Ok(())
+    }
+
     fn render_data_source_kind(
         &mut self,
         source: &dsl::configuration::DataSourceKind,
@@ -758,32 +811,11 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
             VariableType::Access => "VAR_ACCESS",
         };
         self.write_ws(var_type);
-
-        match node.qualifier {
-            DeclarationQualifier::Unspecified => {}
-            DeclarationQualifier::Constant => self.write_ws("CONSTANT"),
-            DeclarationQualifier::Retain => self.write_ws("RETAIN"),
-            DeclarationQualifier::NonRetain => self.write_ws("NON_RETAIN"),
-            DeclarationQualifier::Persistent => self.write_ws("PERSISTENT"),
-        }
-
+        self.write_declaration_qualifier(&node.qualifier);
         self.newline();
 
         self.indent();
-        match &node.identifier {
-            VariableIdentifier::Symbol(id) => {
-                self.visit_id(id)?;
-            }
-            VariableIdentifier::Direct(direct) => {
-                self.visit_direct_variable_identifier(direct)?;
-            }
-        }
-
-        self.write_ws(":");
-        self.visit_initial_value_assignment_kind(&node.initializer)?;
-
-        self.write(";");
-        self.newline();
+        self.write_var_decl_line(node)?;
         self.outdent();
 
         self.write_ws("END_VAR");
@@ -796,15 +828,7 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         self.newline();
 
         self.write_ws("VAR_INPUT");
-
-        match node.qualifier {
-            DeclarationQualifier::Unspecified => {}
-            DeclarationQualifier::Constant => self.write_ws("CONSTANT"),
-            DeclarationQualifier::Retain => self.write_ws("RETAIN"),
-            DeclarationQualifier::NonRetain => self.write_ws("NON_RETAIN"),
-            DeclarationQualifier::Persistent => self.write_ws("PERSISTENT"),
-        }
-
+        self.write_declaration_qualifier(&node.qualifier);
         self.newline();
 
         self.indent();
@@ -1304,16 +1328,16 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         self.newline();
 
         self.indent();
+        // The grammar puts the resource's globals before its tasks and
+        // programs.
+        self.write_global_var_block(&node.global_vars)?;
+
         for task in node.tasks.iter() {
             self.visit_task_configuration(task)?;
         }
 
         for program in node.programs.iter() {
             self.visit_program_configuration(program)?;
-        }
-
-        for var in node.global_vars.iter() {
-            self.visit_var_decl(var)?;
         }
 
         self.outdent();
@@ -1370,6 +1394,9 @@ impl Visitor<Diagnostic> for LibraryRenderer<'_> {
         self.newline();
 
         self.indent();
+        // The grammar puts the configuration's globals before its resources.
+        self.write_global_var_block(&node.global_var)?;
+
         for res in node.resource_decl.iter() {
             self.visit_resource_declaration(res)?;
         }
