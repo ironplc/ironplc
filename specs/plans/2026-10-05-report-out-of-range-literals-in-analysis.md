@@ -125,27 +125,20 @@ run-time value: `BYTE#256` is not a byte. Wrapping at run time (`b := b + 1`
 with `allow_bit_string_arithmetic`) is unaffected. `rule_constant_range` is the
 only caller of `value_range::of`.
 
-## Decisions for review
+## Decisions
 
-1. **One report per literal.** The issue says no literal is reported twice. One
-   existing test, `apply_when_prefixed_literal_fits_neither_then_err_for_each`,
-   expects two reports for `x : SINT := INT#40000`: one for the prefix and one
-   for the destination. **Proposal:** report a literal once, for the first
-   check it fails, checking its own type before the type as written. That test
-   then expects one report, against `INT`, and `P2026.rst` drops "reported once
-   for each". **Alternative:** report once per distinct range. That keeps the
-   test, and still removes the duplicates of finding 3.
-2. **Run the whole rule after the pass, rather than split it across the
-   pass.** The issue proposes keeping the as-written checks before the pass.
-   Those checks and the recorded-type checks would then report independently,
-   and neither could tell whether the other had already reported a literal
-   (finding 3). Running the whole rule after the pass, with the as-written
-   checks reading through conversions, keeps one place that knows what was
-   reported.
-3. **An ADR for the bit-string reversal.** **Proposal:** a new ADR-0057,
-   "Constants of bit-string types are range-checked". **Alternative:** a
-   postscript on ADR-0053 (bit-string arithmetic). That ADR is about run-time
-   arithmetic, which does not change, so a new ADR reads better.
+Settled in review of this plan:
+
+1. **One report per literal.** A literal is reported once, for the first check
+   it fails, its own type before the type as written. The test
+   `apply_when_prefixed_literal_fits_neither_then_err_for_each` expects one
+   report for `x : SINT := INT#40000`, against `INT`, and `P2026.rst` drops
+   "reported once for each".
+2. **The whole rule runs after the pass**, with the as-written checks reading
+   through conversions. Split across the pass, the two halves could not tell
+   whether the other had already reported a literal (finding 3).
+3. **ADR-0053 records the bit-string reversal** in a postscript, rather than a
+   new ADR.
 
 ## Programs newly rejected
 
@@ -227,7 +220,7 @@ design document: the rule's module doc and
 - `compiler/codegen/src/compile_stmt.rs`: `CaseLabelValue::overflow`.
 - `compiler/codegen/tests/it/`: the seven tests in the table above.
 - `docs/reference/compiler/problems/P2026.rst`.
-- `specs/design/implicit-conversions.md`, ADR-0056, and the new ADR-0057.
+- `specs/design/implicit-conversions.md`, ADR-0056 and ADR-0053.
 
 ## Tasks
 
@@ -256,7 +249,7 @@ design document: the rule's module doc and
       the issue's table, every newly rejected program, the cases in finding 1,
       `w XOR LWORD#16#FFFFFFFFF`, and `WIDE(1.0E300)` staying accepted.
 - [ ] Rework the seven codegen tests above.
-- [ ] Module doc, `P2026.rst`, the design doc and ADR-0057.
+- [ ] Module doc, `P2026.rst`, the design doc and the ADR-0053 postscript.
 - [ ] `cd compiler && just` and `cd specs && just`. The PR lists every newly
       rejected program and reports finding 4 as a follow-up issue.
 
