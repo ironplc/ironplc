@@ -1482,6 +1482,7 @@ today.
 | Argument order and count | `xform_named_to_positional_args` for a function call, then re-checked at 27 sites in codegen; codegen for a method call (`compile_method.rs`) and, by name, for a function block call (`compile_stmt.rs`) | Positional arguments | `Vec<Arg>` matched to parameters |
 | Whether an interface value can hold only one concrete type | Not made; calls through an interface are not compiled | The concrete types the value can hold (REQ-LOW-analyzer-107) | A direct method call, or a `Callee::Interface` |
 | Capacity of a string declared without one | Codegen and `slot_count`, from `DEFAULT_STRING_MAX_LENGTH` | The string type's capacity (REQ-LOW-analyzer-053) | The capacity of its `StringShape` |
+| Enumeration ordinal | The analyzer, when the type enters the type environment (`EnumerationMembers`); codegen looks the ordinal up (`compile_enum.rs`) | Each member's ordinal, explicit (`GREEN := 5`) or counted on from the one before, and the type's default member, on `SemanticType::Enumeration` | `Const` |
 
 **Decisions lowering makes**
 
@@ -1494,7 +1495,6 @@ today.
 | Capacity of an intermediate string result | Codegen: a bound per expression (`string_width.rs`), and a temporary buffer as large as the largest string in the program ([issue 2118](https://github.com/ironplc/ironplc/issues/2118)) | The capacity of the `StrExpr`'s `StringShape` |
 | Argument passing mode | `ParamPassing` in `compile.rs` | `Arg` variant |
 | Variable and field identity | Nine name-keyed maps; lower-cased field names | `VarId`, `FieldIdx` |
-| Enumeration ordinal | The analyzer numbers the members (`EnumerationMembers`); codegen looks the ordinal up (`compile_enum.rs`) | `Const` |
 | Default initial value | `emit_initial_values`; subrange lower bound, the enumeration's default member as the analyzer records it | `Assign` statements in `init` |
 | Function local re-initialization ([ADR-0024](../adrs/0024-function-local-reinit-via-bytecode-prologue.md)) | `emit_function_local_prologue` | Statements at the head of the function body |
 | Behaviour policy | `CodegenOptions::string_to_num` | `Intrinsic` variant |
