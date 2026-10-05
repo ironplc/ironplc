@@ -18,7 +18,7 @@ use super::compile::{
     CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo, VarTypeInfo,
     DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
-use super::compile_arith::compile_arith_fold;
+use super::compile_arith::{compile_arith_fold, compile_at_operand_type};
 use super::compile_builtin::{compile_numeric, compile_shift_rotate};
 use super::compile_comparison::compile_comparison;
 use super::compile_expr::{
@@ -66,11 +66,31 @@ pub(crate) fn compile_function_call(
     compile_user_function_call(emitter, ctx, func, &func_info)
 }
 
-/// Compiles a call to a standard function as the operation `intrinsic`.
+/// Compiles a call to a standard function as the operation `intrinsic`, at
+/// its operand's type when it is an operation on one value
+/// ([`Intrinsic::computes_at_operand_type`]) and at `op_type` otherwise.
+fn compile_intrinsic(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    result: Option<&TypeName>,
+    op_type: OpType,
+    intrinsic: Intrinsic,
+) -> Result<(), Diagnostic> {
+    if intrinsic.computes_at_operand_type() {
+        return compile_at_operand_type(emitter, ctx, result, op_type, |emitter, ctx, at| {
+            compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
+        });
+    }
+    compile_intrinsic_at(emitter, ctx, func, result, op_type, intrinsic)
+}
+
+/// Compiles a call to a standard function as the operation `intrinsic`, at
+/// `op_type`.
 ///
 /// The match has an arm for every operation, so a standard function the
 /// analyzer adds does not compile until it has one here.
-fn compile_intrinsic(
+fn compile_intrinsic_at(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
@@ -271,9 +291,10 @@ fn compile_reference_arg(
 
 /// Compiles the function form of an operator as the operator itself.
 ///
-/// The arguments compile at the enclosing expression's operation type, as
-/// every function argument does, and the opcode comes from the emitter the
-/// operator expression uses, so `AND(a, b)` and `a AND b` cannot diverge.
+/// The arguments compile at `op_type`, the enclosing expression's operation
+/// type, or for `NOT` its operand's (see [`compile_intrinsic`]), and the
+/// opcode comes from the emitter the operator expression uses, so `AND(a, b)`
+/// and `a AND b` cannot diverge.
 ///
 /// A binary operator folds its arguments from the left, so `ADD(a, b, c)`
 /// compiles as `(a + b) + c`. The analyzer has already enforced how many

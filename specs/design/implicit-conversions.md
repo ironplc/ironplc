@@ -85,7 +85,7 @@ The conversion of an arithmetic result to the type of its context is recorded wh
 
 ### Assignments
 
-An assignment stores its value at the type of its target. The pass records the conversion of the value to the type the target is stored as: its own elementary type, or its base type for a subrange. It records the conversions the code generator makes, and only those: a value converts to its context when it is a variable, an arithmetic operation that computes at its own result type (operator or function form), or a parenthesized one of those, and its operation width differs from the target's. Any other value is compiled at the target's width rather than converted to it, so there is nothing to record: a literal takes the target's type (ADR-0028), and a negation negates at the target's width.
+An assignment stores its value at the type of its target. The pass records the conversion of the value to the type the target is stored as: its own elementary type, or its base type for a subrange. It records the conversions the code generator makes, and only those: a value converts to its context when it is a variable, an operation that computes at its own result type, or a parenthesized one of those, and its operation width differs from the target's. An operation computes at its own type when it is arithmetic (operator or function form) or an operation on one value (see Codegen). Any other value is compiled at the target's width rather than converted to it, so there is nothing to record: a literal takes the target's type (ADR-0028), and `MAX` of two `DINT`s assigned to an `LINT` selects at the target's width.
 
 **REQ-IC-analyzer-030** A variable assigned to a target of another operation width is wrapped in an `ImplicitConversion` to the target's type: in `l := d` on an `LINT` and a `DINT` the `DINT` is converted to `LINT`.
 
@@ -93,7 +93,7 @@ An assignment stores its value at the type of its target. The pass records the c
 
 **REQ-IC-analyzer-032** A value of the target's operation width is not converted, whatever its signedness: in `i := s` on an `INT` and a `SINT` the `SINT` is not wrapped.
 
-**REQ-IC-analyzer-033** A value computed at the target's width is not converted: the `-d` of `l := -d` is left as it is, and an untyped literal takes the target's type (see Literals).
+**REQ-IC-analyzer-037** An operation on one value is converted from its own type: in `l := -d` on an `LINT` and a `DINT` the negation is converted to `LINT`, and so are `NOT`, `ABS` and the other numeric functions of one input, `MOVE`, and a shift or rotate.
 
 **REQ-IC-analyzer-034** An array element or structure field target converts the value to the element's or field's type.
 
@@ -141,7 +141,7 @@ An untyped literal has a generic type (`ANY_INT`) until a context gives it one (
 
 Every construct a literal can sit in either passes the type of its context on, computes at a type of its own, or computes at a fixed type, and the literal takes the type it reaches:
 
-**REQ-IC-analyzer-057** A standard function that computes at the type of its context (`ABS`, `MAX`, `LIMIT`, `MOVE`, the inputs of `MUX` and `SEL`) passes that type to its literal inputs: the `5` of `l := MAX(d, 5)` on an `LINT` is an `LINT`.
+**REQ-IC-analyzer-057** A standard function that computes at the type of its context (`MAX`, `MIN`, `LIMIT`, the inputs of `MUX` and `SEL`) passes that type to its literal inputs: the `5` of `l := MAX(d, 5)` on an `LINT` is an `LINT`.
 
 **REQ-IC-analyzer-058** The selector of `MUX` and of `SEL` takes `DINT`, whatever the type of the inputs it selects between.
 
@@ -158,6 +158,8 @@ Every construct a literal can sit in either passes the type of its context on, c
 **REQ-IC-analyzer-064** A literal subscript of an array access whose subscripts are not all literals takes `DINT`.
 
 **REQ-IC-analyzer-065** The literals of a `CASE` selector take the selector's type, and those of an `IF`, `WHILE` or `REPEAT` condition the type the condition is tested at.
+
+**REQ-IC-analyzer-067** An operation on one value of a numeric type passes its own type, not its context's, to its literal inputs: the count `1` of `lw := SHL(w, 1)` on an `LWORD` and a `DWORD` is a `DINT`, since the `DWORD` is shifted at 32 bits.
 
 **REQ-IC-analyzer-066** A typed numeric literal keeps its own type and, in a context of another numeric type, is wrapped in an `ImplicitConversion` to it: the `UDINT#4000000000` of `l := UDINT#4000000000` on an `LINT` is converted to `LINT`.
 
@@ -176,12 +178,23 @@ can place (a direct address the analyzer does not type yet). Codegen does not
 choose a comparison's operand type, and does not decide which operand to
 convert.
 
+An operation on one value -- a negation, `NOT`, a numeric function of one
+input (`ABS`, `SQRT`, ...), `MOVE`, or a shift or rotate, whose count only
+says how far -- has its operand's type, and computes at that type when it is
+numeric, as an arithmetic operation computes at its result's. Its result is
+converted to the type of its context. A function of several inputs of one type
+(`MAX`, `MIN`, `LIMIT`, `SEL`, `MUX`, `EXPT`, `ATAN2`) computes at the type of
+its context instead, because the analyzer types its result by its first input,
+which need not be the widest
+([#2127](https://github.com/ironplc/ironplc/issues/2127)).
+
+**REQ-IC-codegen-003** An operation on one value assigned to a wider target computes at its operand's type: `lw := SHL(dw, 1)` with `dw = 16#80000000` stores 0, `lw := NOT dw` with `dw = 0` stores `16#FFFFFFFF`, and `l := -d` with `d` the least `DINT` stores that `DINT`.
+
 ## Out of scope
 
 - A value in a context that records nothing -- a function block or method
-  argument, the operand of a negation, a condition, a subscript -- is still
-  converted by codegen.
-- Codegen still converts a variable or an arithmetic result to the type of
-  its context where nothing recorded it, so its own conversion is removed
-  only once every context records it. A literal's type is no longer passed
-  down.
+  argument, a condition, a subscript -- is still converted by codegen.
+- Codegen still converts a variable, an arithmetic result or an operation on
+  one value to the type of its context where nothing recorded it, so its own
+  conversion is removed only once every context records it. A literal's type
+  is no longer passed down.

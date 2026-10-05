@@ -7,12 +7,15 @@
 //!
 //! It records the conversions the code generator makes today, and only
 //! those. A value converts to its context when it is a variable, an
-//! arithmetic operation that computes at its own result type, or a
-//! parenthesized one of those, and its operation width differs from the
-//! target's. Any other value -- a literal, a negation, a call -- is compiled
-//! at the target's width rather than converted to it, so there is no
-//! conversion to record. The target of a dereference, of a function block
-//! field, or a directly represented variable is not recorded yet.
+//! operation that computes at its own result type, or a parenthesized one of
+//! those, and its operation width differs from the target's. An operation
+//! computes at its own type when it is arithmetic, a negation or `NOT`, or a
+//! standard function on one value ([`Intrinsic::computes_at_operand_type`]).
+//! Any other value -- a literal, a call to `MAX` or to a user-defined
+//! function -- is compiled at the target's width rather than converted to it,
+//! so there is no conversion to record. The target of a dereference, of a
+//! function block field, or a directly represented variable is not recorded
+//! yet.
 
 use ironplc_dsl::textual::{
     Assignment, Expr, ExprKind, Function, ParamAssignmentKind, PartialAccessSize,
@@ -23,6 +26,7 @@ use ironplc_dsl::type_id::TypeId;
 use super::arithmetic::arithmetic_operator;
 use super::ImplicitConversions;
 use crate::intermediates::numeric_operation::{numeric_operation_width, OperationWidth};
+use crate::intrinsic::Intrinsic;
 use crate::semantic_type::{ByteSized, SemanticType};
 use crate::variable_type;
 
@@ -94,11 +98,22 @@ impl ImplicitConversions<'_> {
     /// to the type of its context, rather than computed at the context's.
     fn converts_to_its_context(&self, expr: &Expr) -> bool {
         match &expr.kind {
-            ExprKind::Variable(_) | ExprKind::BinaryOp(_) => true,
+            ExprKind::Variable(_) | ExprKind::BinaryOp(_) | ExprKind::UnaryOp(_) => true,
             ExprKind::Expression(inner) => self.converts_to_its_context(inner),
-            ExprKind::Function(func) => self.is_numeric_pair(func, expr),
+            ExprKind::Function(func) => {
+                self.is_numeric_pair(func, expr)
+                    || self
+                        .intrinsic_of(func)
+                        .is_some_and(|intrinsic| intrinsic.computes_at_operand_type())
+            }
             _ => false,
         }
+    }
+
+    /// The operation the standard function `func` calls, or `None` for a
+    /// user-defined function.
+    pub(super) fn intrinsic_of(&self, func: &Function) -> Option<Intrinsic> {
+        self.context.functions().get(&func.name)?.intrinsic.clone()
     }
 
     /// Returns `true` when `func`, the call `expr`, is the function form of

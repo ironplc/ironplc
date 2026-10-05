@@ -227,6 +227,28 @@ fn compile_numeric_pair(
     Ok(())
 }
 
+/// Compiles, by `compile`, an operation whose result has the type of its
+/// operand, `result`, then converts the result to `op_type`, the operation
+/// type of the enclosing expression.
+///
+/// A negation, `NOT`, a numeric function of one input, `MOVE` and a shift or
+/// rotate compute at their own type when it is numeric, as an arithmetic
+/// operation does: `SHL` of a `DWORD` assigned to an `LWORD` shifts the 32
+/// bits of the `DWORD` and widens the result. Any other, such as `NOT` of a
+/// `BOOL`, computes at `op_type`.
+pub(crate) fn compile_at_operand_type(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    result: Option<&TypeName>,
+    op_type: OpType,
+    compile: impl FnOnce(&mut Emitter, &mut CompileContext, OpType) -> Result<(), Diagnostic>,
+) -> Result<(), Diagnostic> {
+    let at = numeric_op_type(result).unwrap_or(op_type);
+    compile(emitter, ctx, at)?;
+    convert(emitter, at, op_type);
+    Ok(())
+}
+
 /// Emits the conversion of the value on the stack from `from` to `to`, or
 /// nothing when the two share an operation width.
 pub(crate) fn convert(emitter: &mut Emitter, from: OpType, to: OpType) {
