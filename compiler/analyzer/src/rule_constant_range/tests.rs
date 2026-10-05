@@ -1,6 +1,6 @@
 use crate::test_helpers::diagnostic_codes;
 use crate::test_helpers::{
-    codes, rule_codes_after_conversions, rule_diagnostics_after_conversions,
+    codes, edition3_options, rule_codes_after_conversions, rule_diagnostics_after_conversions,
 };
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::CompilerOptions;
@@ -562,6 +562,24 @@ fn apply_when_standard_function_block_input_then_checked_against_declared_type(
 ) {
     assert_eq!(
         problems_of(&program_with("c : CTU;\n", body)),
+        codes(expected)
+    );
+}
+
+/// A write through a reference stores a value of the type the reference
+/// refers to, although the pass records the literal at the default slot
+/// type.
+#[rstest]
+#[case::out_of_range("p^ := 300;\n", OVERFLOW)]
+#[case::in_range("p^ := 127;\n", OK)]
+fn apply_when_assignment_through_reference_then_checked_against_referenced_type(
+    #[case] body: &str,
+    #[case] expected: &[Problem],
+) {
+    let program = program_with("s : SINT;\np : REF_TO SINT;\n", body);
+
+    assert_eq!(
+        rule_codes_after_conversions(super::apply, &program, &edition3_options()),
         codes(expected)
     );
 }
