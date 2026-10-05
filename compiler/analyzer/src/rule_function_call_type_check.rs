@@ -343,6 +343,9 @@ impl Visitor<Infallible> for RuleFunctionCallTypeCheck<'_> {
 mod composite_tests;
 
 #[cfg(test)]
+mod label_tests;
+
+#[cfg(test)]
 mod string_encoding_tests;
 
 #[cfg(test)]
