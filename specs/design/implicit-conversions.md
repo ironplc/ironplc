@@ -30,9 +30,10 @@ the node; it is written (`Display`, plc2plc) as the expression it converts.
 
 `xform_insert_implicit_conversions` runs in `stages::analyze` after the
 semantic rules, so a rule checks the operands the program wrote.
-`rule_constant_range` runs after the pass instead, on the library it returns,
-and reads an operand's type through the conversion that wraps it, so it checks
-the operands as written too. A backend compiles the library `analyze` returns;
+`rule_constant_range` runs after the pass instead, on the library it returns:
+it checks each literal against the type the pass records for it, and reads an
+operand's type through the conversion that wraps it, so it checks the operands
+as written too. A backend compiles the library `analyze` returns;
 the library `resolve_types` returns has no conversions yet.
 
 The pass covers the comparisons `=`, `<>`, `<`, `<=`, `>` and `>=`, and their

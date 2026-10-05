@@ -367,31 +367,228 @@ fn apply_when_prefixed_literal_fits_own_type_only_then_one_err() {
     );
 }
 
-/// The two checks answer different questions -- is this an `INT`, and
-/// does it fit a `SINT` -- so a literal that fails both is reported for
-/// each.
+/// A literal is reported once, for its own type before the place it is
+/// stored in: `INT#40000` is not an `INT`, which is reported, and not a
+/// `SINT` either, which is not.
 #[test]
-fn apply_when_prefixed_literal_fits_neither_then_err_for_each() {
+fn apply_when_prefixed_literal_fits_neither_then_reported_against_prefix() {
+    let diagnostics = diagnostics_of(&program_with("x : SINT := INT#40000;\n", ""));
+
+    assert_eq!(diagnostic_codes(&diagnostics), codes(OVERFLOW));
     assert_eq!(
-        problems_of(&program_with("x : SINT := INT#40000;\n", "")),
-        codes(OVERFLOW_TWICE)
+        diagnostics[0].primary.message,
+        "Value must be in the range -32768 to 32767"
     );
 }
 
-// --- What is deliberately not checked ---
+// --- Bit strings ---
 //
-// A bit string is a pattern rather than a magnitude, so wrapping one is
-// a legitimate thing to want. The type decides that, not how the literal
-// was spelled.
+// A bit string wraps at run time, but a constant is not a run-time value:
+// `BYTE#256` is not a byte. A bit string holds the unsigned values of its
+// width, however the constant is spelled.
 
 #[rstest]
-#[case::byte("BYTE", "300")]
-#[case::word("WORD", "70000")]
-#[case::dword("DWORD", "5000000000")]
-fn apply_when_bit_string_overflows_then_ok(#[case] declared_type: &str, #[case] value: &str) {
-    let program = program_with(
-        &format!("x : {declared_type};\n"),
-        &format!("x := {value};\n"),
+#[case::byte_assignment("x : BYTE;\n", "x := 300;\n", OVERFLOW)]
+#[case::word_assignment("x : WORD;\n", "x := 70000;\n", OVERFLOW)]
+#[case::dword_assignment("x : DWORD;\n", "x := 5000000000;\n", OVERFLOW)]
+#[case::byte_folded("x : BYTE;\n", "x := 255 + 1;\n", OVERFLOW)]
+#[case::byte_initializer("x : BYTE := 256;\n", "", OVERFLOW)]
+#[case::dword_negative("x : DWORD := -1;\n", "", OVERFLOW)]
+#[case::dword_radix("x : DWORD := 16#1FFFFFFFF;\n", "", OVERFLOW)]
+#[case::lword_negative("x : LWORD := -1;\n", "", OVERFLOW)]
+#[case::byte_prefix("x : BYTE;\n", "x := BYTE#256;\n", OVERFLOW)]
+#[case::dword_prefix("x : DWORD;\n", "x := DWORD#16#1FFFFFFFF;\n", OVERFLOW)]
+#[case::lword_prefix("x : LWORD;\n", "x := LWORD#16#1FFFFFFFFFFFFFFFF;\n", OVERFLOW)]
+#[case::prefix_in_initializer("x : LWORD := BYTE#256;\n", "", OVERFLOW)]
+#[case::byte_high("x : BYTE := 255;\n", "x := BYTE#16#FF;\n", OK)]
+#[case::dword_high("x : DWORD := 16#FFFFFFFF;\n", "x := DWORD#4294967295;\n", OK)]
+#[case::lword_high("x : LWORD;\n", "x := LWORD#16#FFFFFFFFFFFFFFFF;\n", OK)]
+fn apply_when_bit_string_constant_then_checked_against_width(
+    #[case] declarations: &str,
+    #[case] body: &str,
+    #[case] expected: &[Problem],
+) {
+    assert_eq!(
+        problems_of(&program_with(declarations, body)),
+        codes(expected)
+    );
+}
+
+/// A write to part of a bit string (`d.%B1`) stores a byte, whatever `d`
+/// is.
+#[rstest]
+#[case::out_of_range("d.%B1 := 256;\n", OVERFLOW)]
+#[case::in_range("d.%B1 := 16#FF;\n", OK)]
+fn apply_when_partial_access_assignment_then_checked_against_part(
+    #[case] body: &str,
+    #[case] expected: &[Problem],
+) {
+    let options = CompilerOptions {
+        allow_partial_access_syntax: true,
+        ..CompilerOptions::default()
+    };
+    let program = program_with("d : DWORD;\n", body);
+
+    assert_eq!(
+        rule_codes_after_conversions(super::apply, &program, &options),
+        codes(expected)
+    );
+}
+
+// --- A literal's recorded type ---
+//
+// An untyped literal is a value of the type the conversion pass records
+// for it, which is the type it is computed at, wherever it is used.
+
+#[rstest]
+#[case::generic_argument("d : DINT;\n", "d := ADD(d, 5000000000);\n")]
+#[case::generic_argument_64("l : LINT;\n", "l := ADD(l, 10000000000000000000);\n")]
+#[case::generic_argument_unsigned("u : ULINT;\n", "u := ADD(u, -1);\n")]
+#[case::generic_argument_narrow("s : SINT;\n", "s := ADD(s, 300);\n")]
+#[case::for_bound(
+    "i : DINT;\nx : DINT;\n",
+    "FOR i := 0 TO 5000000000 DO x := 1; END_FOR;\n"
+)]
+#[case::for_step(
+    "i : DINT;\nx : DINT;\n",
+    "FOR i := 0 TO 10 BY 5000000000 DO x := 1; END_FOR;\n"
+)]
+#[case::for_bound_narrow("s : SINT;\nx : DINT;\n", "FOR s := 0 TO 300 DO x := 1; END_FOR;\n")]
+#[case::while_condition("x : DINT;\n", "WHILE (x + 5000000000) > 0 DO x := 0; END_WHILE;\n")]
+#[case::shift_count("w : DWORD;\n", "w := SHL(w, 5000000000);\n")]
+#[case::max_input("s : SINT;\n", "s := MAX(300, 1);\n")]
+#[case::move_input("s : SINT;\n", "s := MOVE(300);\n")]
+#[case::abs_input("s : SINT;\n", "s := ABS(300);\n")]
+#[case::mux_input("s : SINT;\n", "s := MUX(0, 300, 1);\n")]
+#[case::comparison_of_literals("b : BOOL;\n", "b := 1 = 5000000000;\n")]
+fn apply_when_literal_outside_recorded_type_then_err(
+    #[case] declarations: &str,
+    #[case] body: &str,
+) {
+    assert_eq!(
+        problems_of(&program_with(declarations, body)),
+        codes(OVERFLOW)
+    );
+}
+
+#[rstest]
+#[case::generic_argument("d : DINT;\n", "d := ADD(d, 2147483647);\n")]
+#[case::for_bound_narrow("s : SINT;\nx : DINT;\n", "FOR s := 0 TO 127 DO x := 1; END_FOR;\n")]
+#[case::shift_count("w : DWORD;\n", "w := SHL(w, 31);\n")]
+#[case::wide_operation("l : LINT;\nd : DINT;\n", "l := l + 5000000000;\n")]
+fn apply_when_literal_inside_recorded_type_then_ok(#[case] declarations: &str, #[case] body: &str) {
+    assert_eq!(problems_of(&program_with(declarations, body)), codes(OK));
+}
+
+/// An untyped `CASE` selector has the type the pass records for it, so a
+/// label that type cannot hold selects a group that can never run.
+#[rstest]
+#[case::above("CASE 5 OF\n4294967295: y := 1;\nEND_CASE;\n", OVERFLOW)]
+#[case::in_range("CASE 5 OF\n2147483647: y := 1;\nEND_CASE;\n", OK)]
+fn apply_when_case_selector_is_literal_then_labels_checked_against_recorded_type(
+    #[case] body: &str,
+    #[case] expected: &[Problem],
+) {
+    assert_eq!(
+        problems_of(&program_with("y : DINT;\n", body)),
+        codes(expected)
+    );
+}
+
+/// The pass converts a typed literal used at another type, and the
+/// converted value must fit that type too.
+#[rstest]
+#[case::narrowed("s : SINT;\n", "s := DINT#300;\n", OVERFLOW)]
+#[case::compared("d : DINT;\nb : BOOL;\n", "b := d < UDINT#4000000000;\n", OVERFLOW)]
+#[case::widened("l : LINT;\n", "l := UDINT#4000000000;\n", OK)]
+fn apply_when_typed_literal_converted_then_checked_against_conversion(
+    #[case] declarations: &str,
+    #[case] body: &str,
+    #[case] expected: &[Problem],
+) {
+    assert_eq!(
+        problems_of(&program_with(declarations, body)),
+        codes(expected)
+    );
+}
+
+/// `AND`, `OR` and `XOR` operate at the type of their left operand, and a
+/// wider literal on the right is used at that type although the pass
+/// records no conversion of it.
+#[rstest]
+#[case::xor_wider("w : DWORD;\n", "w := w XOR LWORD#16#FFFFFFFFF;\n", OVERFLOW)]
+#[case::and_wider("w : WORD;\n", "w := w AND DWORD#16#1FFFF;\n", OVERFLOW)]
+#[case::or_fits("w : WORD;\n", "w := w OR DWORD#16#FFFF;\n", OK)]
+#[case::left_wider("l : LWORD;\nw : DWORD;\n", "l := LWORD#16#FFFFFFFFF OR w;\n", OK)]
+fn apply_when_bitwise_operand_literal_then_checked_against_operator_type(
+    #[case] declarations: &str,
+    #[case] body: &str,
+    #[case] expected: &[Problem],
+) {
+    assert_eq!(
+        problems_of(&program_with(declarations, body)),
+        codes(expected)
+    );
+}
+
+// --- The program as written ---
+//
+// The pass converts operands and records types that are not in the
+// source. A check of the place a constant is stored in, of the other
+// operand of a comparison, or of a `CASE` selector reads the program as
+// the user wrote it.
+
+/// `s` is converted to `DINT`, but the comparison can only be true for a
+/// value a `SINT` holds (ADR-0056).
+#[test]
+fn apply_when_typed_literal_compared_with_narrower_operand_then_err() {
+    assert_eq!(
+        problems_of(&program_with(
+            "s : SINT;\nb : BOOL;\n",
+            "b := DINT#300 < s;\n"
+        )),
+        codes(OVERFLOW)
+    );
+}
+
+/// The input of a standard function block is recorded at the default slot
+/// type, `DINT`, but `CTU`'s `PV` is an `INT`.
+#[rstest]
+#[case::out_of_range("c(CU := TRUE, PV := 40000);\n", OVERFLOW)]
+#[case::in_range("c(CU := TRUE, PV := 32767);\n", OK)]
+fn apply_when_standard_function_block_input_then_checked_against_declared_type(
+    #[case] body: &str,
+    #[case] expected: &[Problem],
+) {
+    assert_eq!(
+        problems_of(&program_with("c : CTU;\n", body)),
+        codes(expected)
+    );
+}
+
+/// The operand of an operator is a value of the type the operator computes
+/// at, not of the place the result is stored in: here the sum is an `INT`
+/// and 300 is one. Storing an `INT` in a `SINT` is another rule's problem.
+#[test]
+fn apply_when_operand_fits_operation_but_not_destination_then_ok() {
+    assert_eq!(
+        problems_of(&program_with("s : SINT;\nx : INT;\n", "s := x + 300;\n")),
+        codes(OK)
+    );
+}
+
+/// The pass records an untyped real argument of an `LREAL` parameter as a
+/// `REAL` converted to `LREAL`. The program wrote an `LREAL` argument, so
+/// the literal is not checked as a `REAL`.
+#[test]
+fn apply_when_real_literal_passed_to_lreal_parameter_then_ok() {
+    let program = format!(
+        "FUNCTION WIDE_REAL : LREAL
+VAR_INPUT p : LREAL; END_VAR
+WIDE_REAL := p;
+END_FUNCTION
+{}",
+        program_with("x : LREAL;\n", "x := WIDE_REAL(1.0E300);\n")
     );
 
     assert_eq!(problems_of(&program), codes(OK));
@@ -561,10 +758,12 @@ fn apply_when_call_argument_out_of_range_then_err(
     );
 }
 
-/// A generic parameter states no range, so a standard function's `ANY_NUM`
-/// argument is not checked; a concrete parameter of a conversion function is.
+/// A standard function's `ANY_NUM` argument is checked against the type the
+/// call computes at, and the argument of a conversion function against its
+/// source type.
 #[rstest]
 #[case::generic("x : DINT;\n", "x := ADD(300, 1);\n", OK)]
+#[case::generic_narrow("x : SINT;\n", "x := ADD(x, 300);\n", OVERFLOW)]
 #[case::conversion("x : INT;\n", "x := USINT_TO_INT(300);\n", OVERFLOW)]
 fn apply_when_standard_function_argument_then_checked_by_parameter_type(
     #[case] declarations: &str,

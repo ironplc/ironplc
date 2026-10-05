@@ -75,8 +75,9 @@ pub fn analyze(
     // program wrote rather than their conversions. See ADR-0056.
     let library = xform_insert_implicit_conversions::apply(library, &context, options);
 
-    // A rule that runs on the library the pass returns. It reads an operand
-    // as the program wrote it through the conversion that wraps it.
+    // A rule that reads the type the pass records on each literal, so it
+    // runs on the library the pass returns. It reads an operand as the
+    // program wrote it through the conversion that wraps it.
     if let Err(diagnostics) = rule_constant_range::apply(&library, &context, options) {
         context.add_diagnostics(diagnostics);
     }

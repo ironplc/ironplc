@@ -1,49 +1,11 @@
-//! End-to-end tests pairing the two paths a narrow store can take.
+//! End-to-end tests of the narrow stores the compiler settles itself.
 //!
 //! When the value comes from a constant load the compiler settles the
 //! truncation itself and emits no `TRUNC_*`; when it is computed during the
-//! scan the VM executes one. The out-of-range tests drive the same value down
-//! both paths in one program and assert the two slots agree, so the
-//! compile-time fold cannot drift from the VM's wrapping semantics without a
-//! test failing.
-//!
-//! Analysis rejects an out-of-range constant of a numeric type (P2026) but
-//! does not range-check a bit string, so a bit string is how an out-of-range
-//! constant reaches the fold in a program analysis accepts. Those tests use
-//! `BYTE` and `WORD`, with the flags that admit an integer literal and
-//! arithmetic on them (ADR-0031, ADR-0053).
-//!
-//! `a + a` keeps the run-time path honest: the analyzer folds
-//! literal-op-literal before codegen, so a computed value needs variable
-//! operands to survive as far as the VM.
-
-use crate::common::bit_string_options;
-
-// BYTE: 150 + 150 = 300, wrapped to u8 = 44.
-e2e_i32_with!(
-    end_to_end_when_byte_overflow_then_folded_matches_computed,
-    bit_string_options(),
-    "PROGRAM main
-       VAR live : BYTE; folded : BYTE; a : BYTE; END_VAR
-       a := 150;
-       live := a + a;
-       folded := 300;
-     END_PROGRAM",
-    &[("live", 44), ("folded", 44)],
-);
-
-// WORD: 40000 + 40000 = 80000, wrapped to u16 = 14464.
-e2e_i32_with!(
-    end_to_end_when_word_overflow_then_folded_matches_computed,
-    bit_string_options(),
-    "PROGRAM main
-       VAR live : WORD; folded : WORD; a : WORD; END_VAR
-       a := 40000;
-       live := a + a;
-       folded := 80000;
-     END_PROGRAM",
-    &[("live", 14464), ("folded", 14464)],
-);
+//! scan the VM executes one. Analysis rejects a constant its type cannot hold
+//! (P2026), bit strings included, so every constant that reaches the fold is
+//! in range, and these tests pin that the fold keeps its value. Wrapping a
+//! value computed at run time is covered by `end_to_end_bitstring.rs`.
 
 // A constant already inside the narrow range keeps its value: the fold drops
 // the TRUNC rather than changing what is stored.
