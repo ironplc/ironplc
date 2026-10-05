@@ -69,7 +69,18 @@ pub(super) fn method_parameters(lib: &Library, types: &TypeEnvironment) -> Metho
                             .and_then(|attributes| {
                                 elementary_of(types, &attributes.representation)
                             }),
-                        _ => None,
+                        InitialValueAssignmentKind::None(_)
+                        | InitialValueAssignmentKind::String(_)
+                        | InitialValueAssignmentKind::EnumeratedValues(_)
+                        | InitialValueAssignmentKind::EnumeratedType(_)
+                        | InitialValueAssignmentKind::FunctionBlock(_)
+                        | InitialValueAssignmentKind::FunctionBlockCall(_)
+                        | InitialValueAssignmentKind::Subrange(_)
+                        | InitialValueAssignmentKind::Structure(_)
+                        | InitialValueAssignmentKind::Array(_)
+                        | InitialValueAssignmentKind::Reference(_)
+                        | InitialValueAssignmentKind::LateResolvedType(_)
+                        | InitialValueAssignmentKind::SimpleExpr(_) => None,
                     }
                     .or_else(|| dint(types));
                     Some((name, passed))
@@ -453,7 +464,7 @@ impl ImplicitConversions<'_> {
             if let ParamAssignmentKind::NamedInput(input) = param {
                 match self.function_block_field_at(&node.var_name, &input.name) {
                     Some(Some(at)) => self.type_literals(&mut input.expr, Some(at)),
-                    _ => self.type_own(&mut input.expr),
+                    Some(None) | None => self.type_own(&mut input.expr),
                 }
             }
         }
@@ -498,14 +509,35 @@ impl ImplicitConversions<'_> {
                 | CompareOp::Xor
                 | CompareOp::AndThen
                 | CompareOp::OrElse => self.condition_type(&compare.left),
-                _ if self.conversions.is_string(&compare.left) => self.dint(),
-                _ => self.own_or_default(&compare.left),
+                CompareOp::Eq
+                | CompareOp::Ne
+                | CompareOp::Lt
+                | CompareOp::Gt
+                | CompareOp::LtEq
+                | CompareOp::GtEq => {
+                    if self.conversions.is_string(&compare.left) {
+                        self.dint()
+                    } else {
+                        self.own_or_default(&compare.left)
+                    }
+                }
             },
-            ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Not => {
-                self.condition_type(&unary.term)
-            }
+            ExprKind::UnaryOp(unary) => match unary.op {
+                UnaryOp::Not => self.condition_type(&unary.term),
+                UnaryOp::Neg => self.own_or_default(condition),
+            },
             ExprKind::Expression(inner) => self.condition_type(inner),
-            _ => self.own_or_default(condition),
+            ExprKind::Const(_)
+            | ExprKind::BinaryOp(_)
+            | ExprKind::EnumeratedValue(_)
+            | ExprKind::Variable(_)
+            | ExprKind::Function(_)
+            | ExprKind::MethodCall(_)
+            | ExprKind::LateBound(_)
+            | ExprKind::Ref(_)
+            | ExprKind::Deref(_)
+            | ExprKind::ImplicitConversion(_)
+            | ExprKind::Null(_) => self.own_or_default(condition),
         }
     }
 

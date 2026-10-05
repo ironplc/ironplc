@@ -74,7 +74,11 @@ impl ImplicitConversions<'_> {
             {
                 return None
             }
-            _ => self.type_of(kind)?,
+            SymbolicVariableKind::Named(_)
+            | SymbolicVariableKind::Array(_)
+            | SymbolicVariableKind::Structured(_)
+            | SymbolicVariableKind::Deref(_)
+            | SymbolicVariableKind::SelfRef(_) => self.type_of(kind)?,
         };
         let representation = match representation {
             SemanticType::Subrange { base_type, .. } => *base_type,
@@ -148,7 +152,7 @@ impl ImplicitConversions<'_> {
             ParamAssignmentKind::PositionalInput(input) => {
                 self.width_of(&input.expr) == Some(natural)
             }
-            _ => false,
+            ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => false,
         };
         matches!(func.param_assignment.as_slice(), [left, right] if at_natural(left) && at_natural(right))
     }

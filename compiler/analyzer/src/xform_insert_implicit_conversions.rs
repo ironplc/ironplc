@@ -177,7 +177,21 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
                 self.record_binary_operands(binary, node.expr_type.as_ref());
             }
             ExprKind::Function(_) => self.record_fold_operands(&mut node),
-            _ => {}
+            // A comparison's operands are recorded by `fold_compare_expr`
+            // and a call's arguments by `fold_function`; nothing else has
+            // operands an operation converts.
+            ExprKind::Compare(_)
+            | ExprKind::UnaryOp(_)
+            | ExprKind::Expression(_)
+            | ExprKind::Const(_)
+            | ExprKind::EnumeratedValue(_)
+            | ExprKind::Variable(_)
+            | ExprKind::MethodCall(_)
+            | ExprKind::LateBound(_)
+            | ExprKind::Ref(_)
+            | ExprKind::Deref(_)
+            | ExprKind::ImplicitConversion(_)
+            | ExprKind::Null(_) => {}
         }
         Ok(node)
     }
