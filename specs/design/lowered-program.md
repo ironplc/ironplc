@@ -200,6 +200,10 @@ sequential function charts and the graphical languages can be lowered later.
   diagrams and instruction lists. They are constraints too (see
   [Sequential and Graphical Languages](#11-sequential-and-graphical-languages)).
 - Any change to the bytecode instruction set, the container format or the VM.
+  One VM change is needed to meet this design fully: addressing function
+  block fields in place
+  ([issue 2120](https://github.com/ironplc/ironplc/issues/2120); see
+  [Instance fields](#instance-fields)). It is designed separately.
 - Changing what an operation does. [Meaning of operations](#310-meaning-of-operations)
   records what the bytecode VM does today.
 - Removing `Expr::expr_type` or `VarDecl::type_id` from the AST. The analyzer's
@@ -656,9 +660,8 @@ reference type: `x` in the body of `MyFb` is
 identity, whether it is named inside the body or as `inst.x` outside it, and
 `THIS^` is the place `this^`. A backend that runs the body of every instance
 from one copy of the code, as both targets do, receives the instance it needs
-to address. While a function block or method body runs, `this^` is the
-working copy of its instance (see
-[Working copy of an instance](#working-copy-of-an-instance)).
+to address. `this^` is the instance itself, not a copy of it (see
+[Instance fields](#instance-fields)).
 
 **REQ-LOW-lowering-030** A `Field` projection applies only to a place whose
 type is a structure, function block or program, and its index is within that
@@ -710,52 +713,56 @@ Codegen's `Place` (`compile_place.rs`) and `ResolvedAccess` (`compile_array.rs`)
 are the bytecode backend's answer to that question, and they stay in that
 backend (see [Existing Structures](#8-existing-structures)).
 
-#### Working copy of an instance
+#### Instance fields
 
-A function block or method body does not work on its instance's storage
-directly. It works on a copy, as the bytecode VM does today:
+A program, function block or method body works on its instance's fields in
+place. Each instance has one storage for its fields, which lives as long as
+the program, so:
 
-- **When the body starts,** the instance's fields are copied, and `this^` is
-  that working copy for as long as the body runs. A method called on the
-  current instance, through `THIS^` or `SUPER^`, works on the same copy rather
-  than taking another.
-- **When the body returns,** the copy is written back to the instance.
-- **When the body traps,** nothing is written back. The instance keeps the
-  values its fields had before the call. So does the instance of every
-  function block or method body that called it and has not returned.
+- **A write is visible at once,** through every path to the field.
+- **A reference to a field stays valid** for the life of the program. That
+  holds for `REF(x)` taken inside the body and for a reference to `inst.x`
+  taken outside it.
+- **A method called on the current instance,** through `THIS^` or `SUPER^`,
+  works on the same fields.
+- **When a body traps,** the writes it made before the trap stay, as writes to
+  globals do.
 
-A program body works on its instance directly. The bytecode VM keeps a
-program's variables in ordinary variable-table slots, so they need no copy.
+Safety is what decides this. A reference must never be able to outlive what
+it names. That is the purpose of P2029, "No REF of ephemeral variables"
+([REF_TO](ref-to.md)), which accepts a reference to a function block's field
+because the field is persistent. Fields in place make that true for every
+backend, and they are what a WebAssembly or LLVM backend does without extra
+work.
 
-The VM makes the copy into slots that belong to the function block type,
-before it runs the body (`FB_CALL` and `METHOD_CALL` in `vm/src/vm.rs`), and
-writes it back in `handle_frame_return`. A backend that addresses fields in
-place gives the same result. It may skip the copy wherever it can show that
-nothing could tell the difference: the body cannot trap, and nothing reaches
-the instance's storage while the body runs.
+**The bytecode VM does not do this yet.** It copies an instance's fields into
+slots that belong to the function block type before the body runs (`FB_CALL`
+and `METHOD_CALL` in `vm/src/vm.rs`). It copies them back when the body
+returns (`handle_frame_return`). Every instance of the type reuses those
+slots, and a VM reference can only name such a slot. So the copy differs from
+the meaning above in three ways:
 
-Two things follow from the copy:
+- **References.** A reference to a field that outlives the body reads and
+  writes whichever instance of the type ran last.
+- **Traps.** A trap inside a body discards the writes the body made.
+- **Shared slots.** A body that reached another instance of its own type would
+  overwrite its own copy.
 
-- **A reference into the copy.** `REF(x)` for a field of the current instance,
-  taken inside the body, refers to the working copy. It is valid only while
-  the body runs. Today the VM's references name variable-table slots, and
-  `REF(x)` names the slot that holds the copy, which every instance of the
-  type reuses. What to do about a reference that outlives the body is open
-  question 1.
-- **A reference to the instance's storage.** One that reaches the instance's
-  storage while its body runs reads the values from before the body started,
-  and its writes are overwritten when the body returns. The VM cannot form such
-  a reference today: `REF(inst.x)`, and `inst.x` as the argument of a
-  `VAR_IN_OUT`, are not implemented.
+Removing the copy is a change to the VM of its own,
+[issue 2120](https://github.com/ironplc/ironplc/issues/2120). Until it lands,
+the bytecode backend keeps the copy for every statement, whichever route
+compiles it. The refactor therefore changes none of this behaviour (see
+[Delivery Constraints](#delivery-constraints)). The bytecode backend meets
+REQ-LOW-codegen-037 and REQ-LOW-codegen-038 once issue 2120 lands.
 
-**REQ-LOW-codegen-037** A function block or method body reads and writes a
-working copy of its instance's fields. The copy is taken when the body starts,
-a method called on the current instance uses the same copy, and the copy is
-written back to the instance when the body returns.
+**REQ-LOW-codegen-037** A program, function block or method body reads and
+writes its instance's fields in place. A write is visible at once through
+every path to the field, and a reference to a field stays valid for the life
+of the program.
 
-**REQ-LOW-codegen-038** When a trap ends the round, every instance whose
-function block or method body had started and not returned keeps the values
-its fields had before that body started.
+**REQ-LOW-codegen-038** When a trap ends the round, every write made before
+the trap stays, including writes to the fields of an instance whose body was
+running.
 
 ### 3.5 Scalar expressions
 
@@ -1387,9 +1394,8 @@ and the code chosen for a call through a null interface value when the VM
 implements one).
 
 After a trap, every variable keeps what was written to it before the trap,
-except the fields of an instance whose body was still running. Those keep the
-values they had before that body started (REQ-LOW-codegen-038; see
-[Working copy of an instance](#working-copy-of-an-instance)).
+including the fields of an instance whose body was running
+(REQ-LOW-codegen-038; see [Instance fields](#instance-fields)).
 
 The program instances of a round run one at a time, each to completion, as the
 bytecode VM's cooperative scheduler runs them (`vm/src/scheduler.rs`). The
@@ -1671,7 +1677,7 @@ How the three targets are expected to realise the same node:
 | `Loop`, `Exit`, `Continue` | Labels and jumps | `loop`, `block`, `br` | Basic blocks and `br` |
 | `For` | Labels and jumps, with a fused compare and branch | The expansion to `Loop` | Basic blocks, with the bounds left for LLVM's loop passes |
 | `Case` | Compare and branch chain | `br_table` or a chain | `switch` |
-| `Place` | One of seven load and store opcode families, chosen by layout; a field of the current instance is the slot the VM copied it into | An address in linear memory, from the instance parameter for a field of the current instance | A `getelementptr` from the variable's `alloca` or global, or from the instance parameter |
+| `Place` | One of seven load and store opcode families, chosen by layout; a field of the current instance is the slot the VM copied it into, until [issue 2120](https://github.com/ironplc/ironplc/issues/2120) | An address in linear memory, from the instance parameter for a field of the current instance | A `getelementptr` from the variable's `alloca` or global, or from the instance parameter |
 | `Intrinsic` | `BUILTIN func_id` (ADR-0008) | A call to a runtime function, or inline instructions | An LLVM intrinsic such as `llvm.sqrt`, or a call to a runtime function |
 | `Callee::Interface` | As pull request 1870 decides; it proposes a table of instances read by `LOAD_INSTANCE`, then a branch to a `METHOD_CALL` per implementer | `br_table` or a branch over the implementers | A `switch` over the implementers, or a call through a table of functions |
 | `Block::Standard` | `FB_CALL` with a standard type id (ADR-0003) | A call to a runtime function, or its expansion | Its expansion, compiled like a user block |
@@ -2086,12 +2092,21 @@ This section constrains the order of work; it is not a work breakdown.
   its owning POU (REQ-LOW-lowering-006). So while both routes exist, the
   bytecode backend finds a lowered variable's storage in the layout codegen
   builds today: through the current body's `Scope`, by name. A field of the
-  current instance is found the same way, in the working copy (see
-  [Working copy of an instance](#working-copy-of-an-instance)).
+  current instance is found the same way. While the VM copies fields, that is
+  the slot holding the copy (see [Instance fields](#instance-fields)).
   REQ-LOW-codegen-122 and REQ-LOW-codegen-123 are met later. Once a POU's
   statements all lower, the backend builds its layout from the POU's lowered
   declarations, keyed by id and complete before emission. Both requirements
   hold when the route that reads the AST is deleted.
+- **One field model per body.** Every statement of a body reaches its
+  instance's fields the same way. The bytecode backend keeps the VM's copy of
+  the fields for every statement, from either route, until every statement of
+  a function block type's bodies takes the lowered route. Only then can it
+  switch that type to fields in place
+  ([issue 2120](https://github.com/ironplc/ironplc/issues/2120)). No stop-gap
+  is planned for the ways the copy differs from REQ-LOW-codegen-037 and
+  REQ-LOW-codegen-038: keeping it changes nothing the refactor relies on, and
+  both routes behave as today.
 - **A route switch.** An option chooses the route each statement takes:
   - `Ast`: every statement from the AST.
   - `PreferLowered`: the lowered statement where lowering supports it.
@@ -2235,11 +2250,14 @@ that this document then cites. Eleven decisions are separable:
    type, so a combination the language does not allow cannot be written.
 8. `ENO` follows `EN`, and an error in a call traps whether or not `EN` is
    wired.
-9. A function block or method body works on a copy of its instance's fields,
-   as the bytecode VM does. A trap leaves the fields of an instance whose body
-   was running as they were before that body started
-   ([Working copy of an instance](#working-copy-of-an-instance)). Open
-   question 1 may change this decision.
+9. A body works on its instance's fields in place. Each instance has one
+   storage for its fields; a reference to a field stays valid for the life of
+   the program; and writes made before a trap stay. Safety decides this: a
+   reference must never be able to outlive what it names. The bytecode VM's
+   copy of the fields is removed by a VM change of its own
+   ([issue 2120](https://github.com/ironplc/ironplc/issues/2120)), and until
+   then the refactor keeps the copy unchanged
+   ([Instance fields](#instance-fields)).
 10. A call through an interface is one call in the IR. It lists the methods of
     every concrete type the interface value can hold, and how it dispatches is
     each backend's choice
@@ -2251,32 +2269,7 @@ that this document then cites. Eleven decisions are separable:
 
 ## Open Questions
 
-1. **A reference into a function block's own fields.** Inside a function block
-   or method body, `REF(x)` of a field refers to the working copy (see
-   [Working copy of an instance](#working-copy-of-an-instance)). On the
-   bytecode VM that copy lives in slots that belong to the function block
-   type, which every instance of the type reuses. So a reference that outlives
-   the body reads and writes whichever instance of the type ran last. Nothing
-   reports it. The copy and a stable reference to a field cannot both hold.
-
-   A proposed resolution:
-   - **Fields in place.** Fields are accessed in place: one storage per
-     instance, writes visible at once, and a reference to a field valid for
-     the life of the program.
-   - **Writes before a trap stay.** Writes made before a trap stay visible,
-     with the VM writing each running body's copy back when it faults.
-   - **The copy as an optimization.** The copy becomes a bytecode-backend
-     optimization, chosen per function block type. Lowering allows it only
-     for a type none of whose bodies takes a reference into its own instance
-     or reaches another instance of the same type.
-   - **A VM change is needed.** Addressing fields in place needs a VM
-     reference that can name storage in the data region. Today a reference
-     is a variable-table index. That is a VM and container change, outside
-     this design's scope.
-
-   It does not block the first phase. A statement that takes a reference into
-   its own instance is one lowering does not support, so it stays on the route
-   that reads the AST until this is settled.
+None.
 
 ## References
 
