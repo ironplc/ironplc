@@ -577,18 +577,23 @@ fn apply_when_operand_fits_operation_but_not_destination_then_ok() {
     );
 }
 
-/// The pass records an untyped real argument of an `LREAL` parameter as a
-/// `REAL` converted to `LREAL`. The program wrote an `LREAL` argument, so
-/// the literal is not checked as a `REAL`.
-#[test]
-fn apply_when_real_literal_passed_to_lreal_parameter_then_ok() {
+/// An untyped literal argument is a value of its parameter's type, so a
+/// literal no `DINT` or `REAL` holds is passed to an `LINT` or `LREAL`
+/// parameter as it is.
+#[rstest]
+#[case::lint("LINT", "5000000000")]
+#[case::lreal("LREAL", "1.0E300")]
+fn apply_when_literal_passed_to_wide_parameter_then_ok(#[case] param: &str, #[case] value: &str) {
     let program = format!(
-        "FUNCTION WIDE_REAL : LREAL
-VAR_INPUT p : LREAL; END_VAR
-WIDE_REAL := p;
+        "FUNCTION WIDE_ARG : {param}
+VAR_INPUT p : {param}; END_VAR
+WIDE_ARG := p;
 END_FUNCTION
 {}",
-        program_with("x : LREAL;\n", "x := WIDE_REAL(1.0E300);\n")
+        program_with(
+            &format!("x : {param};\n"),
+            &format!("x := WIDE_ARG({value});\n")
+        )
     );
 
     assert_eq!(problems_of(&program), codes(OK));

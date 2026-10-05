@@ -108,13 +108,13 @@ The target of a dereference (`r^ := d`), a function block field (`timer.PT := t`
 
 ### Arguments
 
-A call to a user-defined function passes each input by value at the operation width of its parameter. The pass records the conversion of an argument of another width to the type its parameter is passed as, and codegen compiles the argument at the parameter's width without choosing a conversion. It records what codegen did before it, including two choices a later change may correct: a parameter whose type is not elementary (an alias, a subrange, an enumeration) is passed as a `DINT`, the default slot type, and an untyped literal is operated at its default type (`DINT` or `REAL`, ADR-0028) and then converted.
+A call to a user-defined function passes each input by value at the operation width of its parameter. The pass records the conversion of an argument of another width to the type its parameter is passed as, and codegen compiles the argument at the parameter's width without choosing a conversion. It records what codegen did before it, including a choice a later change may correct: a parameter whose type is not elementary (an alias, a subrange, an enumeration) is passed as a `DINT`, the default slot type. An untyped literal takes its parameter's type, as it takes an assignment target's, so the parameter receives the value the program wrote. Codegen used to operate it at its default type (`DINT` or `REAL`, ADR-0028) and convert it, which rounded `f(0.1)` with an `LREAL` parameter to a `REAL` and failed on `f(5000000000)` with an `LINT` one.
 
 **REQ-IC-analyzer-040** An argument whose operation width differs from its parameter's is wrapped in an `ImplicitConversion` to the parameter's type: the `DINT` of `f(d)` with an `LINT` parameter is converted to `LINT`, whatever kind of expression the argument is.
 
 **REQ-IC-analyzer-041** An argument of its parameter's operation width is not converted: the `SINT` of `f(s)` with an `INT` parameter is not wrapped.
 
-**REQ-IC-analyzer-042** An untyped literal argument takes its parameter's type when its default type has the parameter's width, and is otherwise its default type converted to the parameter's: the `1` of `f(1)` with an `INT` parameter is an `INT`, with an `LINT` one a `DINT` converted to `LINT`.
+**REQ-IC-analyzer-042** An untyped literal argument takes its parameter's type: the `1` of `f(1)` with an `INT` parameter is an `INT`, the `5000000000` of `f(5000000000)` with an `LINT` one an `LINT`, and the `0.1` of `f(0.1)` with an `LREAL` one an `LREAL`.
 
 **REQ-IC-analyzer-043** A parameter whose type is not elementary is passed as a `DINT`: an argument of an alias of `LINT` to a parameter of that alias is converted to `DINT`.
 

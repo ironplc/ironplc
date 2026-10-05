@@ -36,8 +36,7 @@
 //! An untyped real literal recorded as a `REAL` must be a value a `REAL` can
 //! represent. That is reported as the real literal problem
 //! `rule_real_literal_range` reports for a `REAL#` literal, rather than as an
-//! overflow. A real literal the pass converts to an `LREAL` argument is not
-//! checked as a `REAL`.
+//! overflow.
 //!
 //! ## The program as written
 //!
@@ -765,21 +764,6 @@ impl Visitor<Infallible> for OwnTypes<'_, '_> {
     type Value = ();
 
     fn visit_expr(&mut self, node: &Expr) -> Result<(), Infallible> {
-        if let ExprKind::ImplicitConversion(inner) = &node.kind {
-            // The pass records an untyped real argument of an `LREAL`
-            // parameter as a `REAL` converted to `LREAL`, which is not what
-            // the program wrote, so it is not checked as a `REAL`.
-            if matches!(
-                &inner.kind,
-                ExprKind::Const(ConstantKind::RealLiteral(RealLiteral {
-                    data_type: None,
-                    ..
-                }))
-            ) {
-                return Ok(());
-            }
-        }
-
         // The literals within first, so that a literal is reported against
         // its own type before the type of an operation on it.
         node.recurse_visit(self)?;
