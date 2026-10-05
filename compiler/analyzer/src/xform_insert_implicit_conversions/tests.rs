@@ -7,6 +7,7 @@ use ironplc_dsl::textual::*;
 use ironplc_dsl::visitor::Visitor;
 use ironplc_parser::options::CompilerOptions;
 
+use rstest::rstest;
 use spec_test_macro::spec_test;
 
 use crate::stages::analyze;
@@ -439,10 +440,28 @@ fn apply_when_value_shares_target_width_then_unchanged() {
     assert_eq!(assigned_values(&source), vec!["SINT"]);
 }
 
-#[spec_test(REQ_IC_analyzer_033)]
+#[spec_test(REQ_IC_analyzer_037)]
+#[rstest]
+#[case::negation("LINT", "d : DINT;", "-d", "DINT->LINT")]
+#[case::abs("LINT", "d : DINT;", "ABS(d)", "DINT->LINT")]
+#[case::not("LWORD", "w : DWORD;", "NOT w", "DWORD->LWORD")]
+#[case::not_form("LWORD", "w : DWORD;", "NOT(w)", "DWORD->LWORD")]
+#[case::shift("LWORD", "w : DWORD;", "SHL(w, 1)", "DWORD->LWORD")]
+#[case::move_form("LINT", "d : DINT;", "MOVE(d)", "DINT->LINT")]
+#[case::real_function("LREAL", "r : REAL;", "SQRT(r)", "REAL->LREAL")]
+fn apply_when_operation_on_one_value_assigned_to_wider_target_then_result_converted(
+    #[case] target: &str,
+    #[case] vars: &str,
+    #[case] value: &str,
+    #[case] expected: &str,
+) {
+    let source = arithmetic_program(target, vars, value);
+    assert_eq!(assigned_values(&source), vec![expected]);
+}
+
 #[test]
-fn apply_when_negation_assigned_to_wider_target_then_unchanged() {
-    let source = arithmetic_program("LINT", "d : DINT;", "-d");
+fn apply_when_selection_function_assigned_to_wider_target_then_unchanged() {
+    let source = arithmetic_program("LINT", "d : DINT; e : DINT;", "MAX(d, e)");
     assert_eq!(assigned_values(&source), vec!["DINT"]);
 }
 
@@ -696,6 +715,15 @@ fn apply_when_shift_count_then_takes_width_of_shifted_value() {
     let source = arithmetic_program("LWORD", "w : LWORD;", "SHL(w, 2)");
     assert_eq!(literal_types(&source), vec!["LINT"]);
     let source = arithmetic_program("DWORD", "w : DWORD;", "SHL(w, 2)");
+    assert_eq!(literal_types(&source), vec!["DINT"]);
+}
+
+#[spec_test(REQ_IC_analyzer_067)]
+#[rstest]
+#[case::shift("SHL(w, 1)")]
+#[case::rotate("ROL(w, 1)")]
+fn apply_when_literal_input_of_operation_on_one_value_then_takes_its_type(#[case] value: &str) {
+    let source = arithmetic_program("LWORD", "w : DWORD;", value);
     assert_eq!(literal_types(&source), vec!["DINT"]);
 }
 

@@ -20,7 +20,7 @@ use super::compile::{
     encode_string_literal, CompileContext, OpType, OpWidth, Signedness, VarTypeInfo,
     DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
-use super::compile_arith::compile_binary_arith;
+use super::compile_arith::{compile_at_operand_type, compile_binary_arith};
 use super::compile_call::compile_function_call;
 use super::compile_comparison::compile_comparison;
 use super::compile_method::compile_method_call_expression;
@@ -166,17 +166,25 @@ pub(crate) fn compile_expr(
             let result = expr_operand_name(ctx, expr);
             compile_binary_arith(emitter, ctx, binary, result.as_ref(), op_type)
         }
-        ExprKind::UnaryOp(unary) => match unary.op {
-            UnaryOp::Neg => {
-                compile_expr(emitter, ctx, &unary.term, op_type)?;
-                emit_neg(emitter, op_type);
-                Ok(())
-            }
-            UnaryOp::Not => {
-                compile_expr(emitter, ctx, &unary.term, op_type)?;
-                emit_not(emitter, ctx, op_type, &unary.term)
-            }
-        },
+        ExprKind::UnaryOp(unary) => {
+            let result = expr_operand_name(ctx, expr);
+            compile_at_operand_type(
+                emitter,
+                ctx,
+                result.as_ref(),
+                op_type,
+                |emitter, ctx, at| {
+                    compile_expr(emitter, ctx, &unary.term, at)?;
+                    match unary.op {
+                        UnaryOp::Neg => {
+                            emit_neg(emitter, at);
+                            Ok(())
+                        }
+                        UnaryOp::Not => emit_not(emitter, ctx, at, &unary.term),
+                    }
+                },
+            )
+        }
         ExprKind::LateBound(late_bound) => {
             if let Some(ref_slot) = ctx.in_out_ref_slot(&late_bound.value) {
                 emit_load_in_out(emitter, ref_slot);

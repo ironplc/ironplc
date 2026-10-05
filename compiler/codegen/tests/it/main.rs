@@ -151,6 +151,7 @@ mod end_to_end_mux_lint;
 mod end_to_end_neg;
 mod end_to_end_nested;
 mod end_to_end_numeric_builtin_edges;
+mod end_to_end_operation_width;
 mod end_to_end_partial_access;
 mod end_to_end_partial_access_bases;
 mod end_to_end_pow;

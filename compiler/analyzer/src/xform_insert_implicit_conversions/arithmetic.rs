@@ -79,7 +79,7 @@ impl ImplicitConversions<'_> {
             .into_iter()
             .filter_map(|input| match input {
                 ParamAssignmentKind::PositionalInput(input) => Some(input.expr),
-                _ => None,
+                ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
             });
         let Some(mut accumulated) = inputs.next() else {
             return;
@@ -220,7 +220,7 @@ fn positional_inputs(func: &Function) -> Option<Vec<&Expr>> {
         .iter()
         .map(|input| match input {
             ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
-            _ => None,
+            ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
         })
         .collect()
 }

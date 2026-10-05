@@ -4,9 +4,9 @@
 //! context gives it one (ADR-0028). The code generator gives it one top-down:
 //! each statement passes the type it stores or tests at into its expression,
 //! and every construct on the way to the literal either passes that type on
-//! (a negation, parentheses, `ABS`, `MUX`), computes at a type of its own (an
-//! arithmetic operation of a concrete type, a comparison, a call to a
-//! user-defined function), or computes at a fixed type (a subscript, a
+//! (parentheses, `MAX`, `MUX`), computes at a type of its own (an arithmetic
+//! operation, a negation or `ABS` of a concrete type, a comparison, a call to
+//! a user-defined function), or computes at a fixed type (a subscript, a
 //! string position, a shift count). This module records the type each
 //! literal reaches, so that a backend reads it from the literal rather than
 //! carrying it down.
@@ -69,7 +69,18 @@ pub(super) fn method_parameters(lib: &Library, types: &TypeEnvironment) -> Metho
                             .and_then(|attributes| {
                                 elementary_of(types, &attributes.representation)
                             }),
-                        _ => None,
+                        InitialValueAssignmentKind::None(_)
+                        | InitialValueAssignmentKind::String(_)
+                        | InitialValueAssignmentKind::EnumeratedValues(_)
+                        | InitialValueAssignmentKind::EnumeratedType(_)
+                        | InitialValueAssignmentKind::FunctionBlock(_)
+                        | InitialValueAssignmentKind::FunctionBlockCall(_)
+                        | InitialValueAssignmentKind::Subrange(_)
+                        | InitialValueAssignmentKind::Structure(_)
+                        | InitialValueAssignmentKind::Array(_)
+                        | InitialValueAssignmentKind::Reference(_)
+                        | InitialValueAssignmentKind::LateResolvedType(_)
+                        | InitialValueAssignmentKind::SimpleExpr(_) => None,
                     }
                     .or_else(|| dint(types));
                     Some((name, passed))
@@ -100,16 +111,21 @@ impl ImplicitConversions<'_> {
             _ => {}
         }
         let own = concrete(expr);
+        // An operation of a numeric result type computes at that type.
+        let numeric = self.width_of(expr).and(own);
         let numeric_pair =
             matches!(&expr.kind, ExprKind::Function(func) if self.is_numeric_pair(func, expr));
-        let numeric_result = self.width_of(expr).is_some();
         match &mut expr.kind {
             ExprKind::Const(_)
             | ExprKind::LateBound(_)
             | ExprKind::EnumeratedValue(_)
             | ExprKind::Ref(_)
             | ExprKind::Null(_) => {}
-            ExprKind::UnaryOp(unary) => self.type_literals(&mut unary.term, context.or(own)),
+            // A negation or `NOT` computes at its own numeric type, as an
+            // arithmetic operation does.
+            ExprKind::UnaryOp(unary) => {
+                self.type_literals(&mut unary.term, numeric.or(context).or(own))
+            }
             ExprKind::Expression(inner) => self.type_literals(inner, context.or(own)),
             ExprKind::BinaryOp(binary) => {
                 if self.has_typed_overload(&binary.op, &binary.left, &binary.right) {
@@ -118,13 +134,15 @@ impl ImplicitConversions<'_> {
                 } else {
                     // An operation of a numeric type computes at it; any
                     // other at the type of its context.
-                    let at = if numeric_result { own } else { context };
+                    let at = numeric.or(context);
                     self.type_literals(&mut binary.left, at);
                     self.type_literals(&mut binary.right, at);
                 }
             }
             ExprKind::Compare(compare) => self.type_compare_literals(compare, context),
-            ExprKind::Function(func) => self.type_call_literals(func, own, context, numeric_pair),
+            ExprKind::Function(func) => {
+                self.type_call_literals(func, numeric, context, numeric_pair)
+            }
             ExprKind::MethodCall(call) => self.type_method_call_literals(call),
             ExprKind::Variable(variable) => self.type_variable_literals(variable),
             ExprKind::Deref(inner) | ExprKind::ImplicitConversion(inner) => self.type_own(inner),
@@ -172,19 +190,15 @@ impl ImplicitConversions<'_> {
     }
 
     /// Types the literals of the inputs of `func`, a call whose own type is
-    /// `own`, compiled at `context`.
+    /// `numeric` when it is a numeric operation type, compiled at `context`.
     fn type_call_literals(
         &self,
         func: &mut Function,
-        own: Option<TypeId>,
+        numeric: Option<TypeId>,
         context: Option<TypeId>,
         numeric_pair: bool,
     ) {
-        let intrinsic = self
-            .context
-            .functions()
-            .get(&func.name)
-            .map(|signature| signature.intrinsic.clone());
+        let intrinsic = self.intrinsic_of(func);
         let typed_pair = matches!(
             func.param_assignment.as_slice(),
             [ParamAssignmentKind::PositionalInput(left), ParamAssignmentKind::PositionalInput(right), ..]
@@ -199,17 +213,27 @@ impl ImplicitConversions<'_> {
             })
             .collect();
         let dint = self.dint();
+        // An operation on one value computes at its own numeric type, and any
+        // other at the type of its context.
+        let operated = if intrinsic
+            .as_ref()
+            .is_some_and(Intrinsic::computes_at_operand_type)
+        {
+            numeric.or(context)
+        } else {
+            context
+        };
         match intrinsic {
             // A user-defined function, or one the analyzer has no signature
             // for: each argument at its own type, which the argument pass
             // gave it.
-            None | Some(None) => inputs.into_iter().for_each(|arg| self.type_own(arg)),
-            Some(Some(intrinsic)) => match intrinsic {
+            None => inputs.into_iter().for_each(|arg| self.type_own(arg)),
+            Some(intrinsic) => match intrinsic {
                 Intrinsic::Operator(FormOf::Arithmetic(_)) => {
                     let at = if typed_pair {
                         None
                     } else if numeric_pair {
-                        own
+                        numeric
                     } else {
                         context
                     };
@@ -232,7 +256,7 @@ impl ImplicitConversions<'_> {
                 }
                 Intrinsic::Operator(FormOf::Compare(_) | FormOf::Not) | Intrinsic::Move => inputs
                     .into_iter()
-                    .for_each(|arg| self.type_literals(arg, context)),
+                    .for_each(|arg| self.type_literals(arg, operated)),
                 Intrinsic::Numeric(function) => {
                     for (index, arg) in inputs.into_iter().enumerate() {
                         // SEL's selector is a BOOL or an integer, whatever
@@ -240,17 +264,17 @@ impl ImplicitConversions<'_> {
                         let at = if function == NumericFunction::Sel && index == 0 {
                             dint
                         } else {
-                            context
+                            operated
                         };
                         self.type_literals(arg, at);
                     }
                 }
                 Intrinsic::BitShift(_) => {
                     let wide =
-                        context.and_then(|id| self.width_of_type(id)) == Some(OperationWidth::W64);
+                        operated.and_then(|id| self.width_of_type(id)) == Some(OperationWidth::W64);
                     let count = if wide { self.lint() } else { dint };
                     for (index, arg) in inputs.into_iter().enumerate() {
-                        self.type_literals(arg, if index == 0 { context } else { count });
+                        self.type_literals(arg, if index == 0 { operated } else { count });
                     }
                 }
                 Intrinsic::Mux => {
@@ -440,7 +464,7 @@ impl ImplicitConversions<'_> {
             if let ParamAssignmentKind::NamedInput(input) = param {
                 match self.function_block_field_at(&node.var_name, &input.name) {
                     Some(Some(at)) => self.type_literals(&mut input.expr, Some(at)),
-                    _ => self.type_own(&mut input.expr),
+                    Some(None) | None => self.type_own(&mut input.expr),
                 }
             }
         }
@@ -485,14 +509,35 @@ impl ImplicitConversions<'_> {
                 | CompareOp::Xor
                 | CompareOp::AndThen
                 | CompareOp::OrElse => self.condition_type(&compare.left),
-                _ if self.conversions.is_string(&compare.left) => self.dint(),
-                _ => self.own_or_default(&compare.left),
+                CompareOp::Eq
+                | CompareOp::Ne
+                | CompareOp::Lt
+                | CompareOp::Gt
+                | CompareOp::LtEq
+                | CompareOp::GtEq => {
+                    if self.conversions.is_string(&compare.left) {
+                        self.dint()
+                    } else {
+                        self.own_or_default(&compare.left)
+                    }
+                }
             },
-            ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Not => {
-                self.condition_type(&unary.term)
-            }
+            ExprKind::UnaryOp(unary) => match unary.op {
+                UnaryOp::Not => self.condition_type(&unary.term),
+                UnaryOp::Neg => self.own_or_default(condition),
+            },
             ExprKind::Expression(inner) => self.condition_type(inner),
-            _ => self.own_or_default(condition),
+            ExprKind::Const(_)
+            | ExprKind::BinaryOp(_)
+            | ExprKind::EnumeratedValue(_)
+            | ExprKind::Variable(_)
+            | ExprKind::Function(_)
+            | ExprKind::MethodCall(_)
+            | ExprKind::LateBound(_)
+            | ExprKind::Ref(_)
+            | ExprKind::Deref(_)
+            | ExprKind::ImplicitConversion(_)
+            | ExprKind::Null(_) => self.own_or_default(condition),
         }
     }
 
