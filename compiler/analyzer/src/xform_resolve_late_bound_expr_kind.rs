@@ -426,6 +426,55 @@ END_FUNCTION_BLOCK";
         assert!(result.is_ok());
     }
 
+    /// `ON` is a keyword that the parser also accepts as an identifier, so
+    /// it can name an enumeration member. Using it must resolve to that
+    /// member as any other member name does.
+    /// See https://github.com/ironplc/ironplc/issues/1944.
+    #[test]
+    fn apply_when_assign_keyword_named_enum_variant_then_enumerated_value() {
+        use ironplc_dsl::common::{FunctionBlockBodyKind, LibraryElementKind};
+        use ironplc_dsl::textual::{ExprKind, StmtKind};
+
+        let program = "
+TYPE
+    M : (Off, On);
+END_TYPE
+
+FUNCTION_BLOCK FB_EXAMPLE
+    VAR
+        c : M;
+    END_VAR
+    c := On;
+END_FUNCTION_BLOCK";
+
+        let library =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let (library, diagnostics) = apply(library, &mut type_environment).unwrap();
+
+        assert!(diagnostics.is_empty());
+        let LibraryElementKind::FunctionBlockDeclaration(fb) = &library.elements[1] else {
+            panic!("expected a function block");
+        };
+        let FunctionBlockBodyKind::Statements(body) = &fb.body else {
+            panic!("expected statements");
+        };
+        let StmtKind::Assignment(assignment) = &body.body[0] else {
+            panic!("expected an assignment");
+        };
+        let ExprKind::EnumeratedValue(value) = &assignment.value.kind else {
+            panic!(
+                "expected an enumerated value, got {:?}",
+                assignment.value.kind
+            );
+        };
+        assert_eq!(ironplc_dsl::core::Id::from("On"), value.value);
+    }
+
     #[test]
     fn apply_when_assign_to_array_member_then_ok() {
         let program = "FUNCTION_BLOCK _BUFFER_INSERT
