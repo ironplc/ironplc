@@ -226,7 +226,15 @@ impl WriteCollector<'_> {
                     self.mark_member(&fb_type, field);
                 }
             }
-            SymbolicVariableKind::SelfRef(_) => self.mark(field),
+            SymbolicVariableKind::SelfRef(self_ref) => {
+                match self
+                    .symbol_environment
+                    .self_type(&self.current_scope(), self_ref.kind)
+                {
+                    Some(block) => self.mark_member(&block, field),
+                    None => self.mark(field),
+                }
+            }
             _ => self.mark_any_scope(field),
         }
     }
