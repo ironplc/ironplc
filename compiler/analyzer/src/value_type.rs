@@ -25,6 +25,7 @@ use ironplc_parser::options::CompilerOptions;
 use crate::semantic_type::SemanticType;
 use crate::type_compat::are_types_compatible;
 use crate::type_environment::TypeEnvironment;
+use crate::type_id::elementary_debug_tag;
 
 /// The type of a value, as the checks compare it.
 #[derive(Debug, PartialEq)]
@@ -213,6 +214,21 @@ pub(crate) fn describe(types: &TypeEnvironment, id: TypeId) -> String {
     }
 }
 
+/// The type `id` identifies, as Structured Text writes it: an elementary
+/// type in upper case (`DINT`), any other named type by its declared name,
+/// and an anonymous type by its shape, as [`describe`] gives it.
+///
+/// [`describe`] names an elementary type as the environment registered it
+/// (`dint`), which is how diagnostics show it. This is for output read as
+/// source, such as the annotated rendering of `ironplcc echo --types`.
+pub fn spelling(types: &TypeEnvironment, id: TypeId) -> String {
+    let described = describe(types, id);
+    if elementary_debug_tag(id).is_some() {
+        return described.to_uppercase();
+    }
+    described
+}
+
 fn describe_representation(types: &TypeEnvironment, representation: &SemanticType) -> String {
     if let Some(name) = types.elementary_type_name_for(representation) {
         return name.to_string().to_uppercase();
@@ -281,6 +297,7 @@ mod tests {
     use crate::type_environment::TypeEnvironmentBuilder;
     use ironplc_container::CharWidth;
     use ironplc_dsl::core::SourceSpan;
+    use spec_test_macro::spec_test;
 
     fn anonymous(types: &mut TypeEnvironment, representation: SemanticType) -> TypeId {
         types.insert_anonymous(TypeAttributes::new(SourceSpan::default(), representation))
@@ -351,6 +368,48 @@ mod tests {
         );
 
         assert_eq!(describe(&types, id), "an enumeration");
+    }
+
+    #[spec_test(REQ_ETR_analyzer_001)]
+    fn spelling_when_elementary_named_or_anonymous_then_as_written() {
+        let mut types = environment();
+        let dint = types.id_of(&TypeName::from("DINT")).unwrap();
+        let color = TypeName::from("Color");
+        types.insert_type(
+            &color,
+            TypeAttributes::new(
+                SourceSpan::default(),
+                SemanticType::Enumeration {
+                    underlying_type: Box::new(SemanticType::Int {
+                        size: ByteSized::B8,
+                    }),
+                    members: crate::enumeration_members::EnumerationMembers::default(),
+                },
+            ),
+        );
+        let named = types.id_of(&color).unwrap();
+        let array = anonymous(
+            &mut types,
+            SemanticType::Array {
+                element_type: Box::new(SemanticType::Int {
+                    size: ByteSized::B32,
+                }),
+                dimensions: vec![ArrayDimension { lower: 1, upper: 2 }],
+            },
+        );
+
+        assert_eq!(spelling(&types, dint), "DINT");
+        assert_eq!(spelling(&types, named), "Color");
+        assert_eq!(spelling(&types, array), "ARRAY[1..2] OF DINT");
+    }
+
+    #[test]
+    fn spelling_when_reference_then_ref_to_upper_case_target() {
+        let mut types = environment();
+        let int = types.id_of(&TypeName::from("INT")).unwrap();
+        let reference = types.reference_to(int).unwrap();
+
+        assert_eq!(spelling(&types, reference), "REF_TO INT");
     }
 
     #[test]
