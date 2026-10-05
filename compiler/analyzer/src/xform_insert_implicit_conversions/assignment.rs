@@ -96,17 +96,35 @@ impl ImplicitConversions<'_> {
 
     /// Returns `true` when `expr` is computed at its own type and converted
     /// to the type of its context, rather than computed at the context's.
+    ///
+    /// The match names every kind of expression, so that a kind added to
+    /// [`ExprKind`] is decided here rather than falling through unconverted.
     fn converts_to_its_context(&self, expr: &Expr) -> bool {
         match &expr.kind {
+            // A variable is read at its own type, and an arithmetic
+            // operation, a negation or `NOT` computes at its own.
             ExprKind::Variable(_) | ExprKind::BinaryOp(_) | ExprKind::UnaryOp(_) => true,
+            // A recorded conversion compiles to the type it records, then to
+            // its context's.
+            ExprKind::ImplicitConversion(_) => true,
             ExprKind::Expression(inner) => self.converts_to_its_context(inner),
+            // The function form of an arithmetic operator and an operation on
+            // one value compute at their own type. Any other standard
+            // function computes at its context's, and a user-defined
+            // function's result is not converted (#2126).
             ExprKind::Function(func) => {
                 self.is_numeric_pair(func, expr)
                     || self
                         .intrinsic_of(func)
                         .is_some_and(|intrinsic| intrinsic.computes_at_operand_type())
             }
-            _ => false,
+            // Computed or read at its own type and not converted (#2126).
+            ExprKind::Compare(_) | ExprKind::MethodCall(_) | ExprKind::Deref(_) => false,
+            // A literal compiles at the type the literal pass gives it, and a
+            // late-bound name is read at its context's type.
+            ExprKind::Const(_) | ExprKind::LateBound(_) => false,
+            // Not a number: an enumeration's ordinal, or a reference.
+            ExprKind::EnumeratedValue(_) | ExprKind::Ref(_) | ExprKind::Null(_) => false,
         }
     }
 
