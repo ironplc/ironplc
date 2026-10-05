@@ -137,6 +137,17 @@ pub(crate) fn compile_expr(
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     match &expr.kind {
+        // The analyzer recorded the type a numeric literal is compiled at
+        // (ADR-0056). One codegen builds itself, such as a standard function
+        // block's member initializer, has none and is stored at the default
+        // slot type. Any other literal names its own type and is compiled
+        // for the storage its context gives it.
+        ExprKind::Const(
+            constant @ (ConstantKind::IntegerLiteral(_) | ConstantKind::RealLiteral(_)),
+        ) => {
+            let own = op_type_from_expr(ctx, expr).unwrap_or(DEFAULT_OP_TYPE);
+            compile_constant(emitter, ctx, constant, own)
+        }
         ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
         // A variable read at a different width is read at its own and
         // converted: loading an INT's slot as a REAL would reinterpret its

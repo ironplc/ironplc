@@ -17,7 +17,7 @@
 
 use std::collections::HashMap;
 
-use ironplc_analyzer::stages::resolve_types;
+use ironplc_analyzer::stages::analyze;
 use ironplc_analyzer::CleanAnalysis;
 use ironplc_codegen::{compile, CodegenOptions, SourceLookup};
 use ironplc_container::opcode;
@@ -44,7 +44,7 @@ fn compile_with_source(source: &str) -> (ironplc_container::Container, FileId) {
     let file_id = FileId::from_string("test.st");
     let options = CompilerOptions::default();
     let library = parse_program(source, &file_id, &options).unwrap();
-    let (analyzed, ctx) = resolve_types(&[&library], &options).unwrap();
+    let (analyzed, ctx) = analyze(&[&library], &options).unwrap();
 
     let mut bytes_map = HashMap::new();
     bytes_map.insert(file_id.clone(), source.as_bytes().to_vec());
@@ -109,7 +109,7 @@ fn line_map_when_empty_program_then_source_file_table_still_populated_with_zero_
     let source = "PROGRAM main\n  VAR x : DINT; END_VAR\n  x := 1;\nEND_PROGRAM\n";
     let options = CompilerOptions::default();
     let library = parse_program(source, &file_id, &options).unwrap();
-    let (analyzed, ctx) = resolve_types(&[&library], &options).unwrap();
+    let (analyzed, ctx) = analyze(&[&library], &options).unwrap();
 
     let container = compile(
         CleanAnalysis::new(&analyzed, &ctx).unwrap(),

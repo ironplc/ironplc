@@ -159,7 +159,8 @@ The pass also gives an untyped numeric literal the type codegen compiles it
 at, in every context: a statement's target or condition, and on the way to
 the literal every construct that passes its context's type on, computes at
 its own, or computes at a fixed one (a selector, a shift count, a string
-position, a subscript). Codegen still passes a literal's type down; it reads
-the recorded type in the next change, which also moves the few compiles of
-an unanalyzed library onto `analyze`. The decision above is unchanged.
+position, a subscript). Codegen compiles an integer or real literal at its
+recorded type rather than one passed down, and a typed literal (`DINT#5`) in a
+context of another type is recorded as converted to it. The decision above is
+unchanged.
 

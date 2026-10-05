@@ -159,6 +159,12 @@ Every construct a literal can sit in either passes the type of its context on, c
 
 **REQ-IC-analyzer-065** The literals of a `CASE` selector take the selector's type, and those of an `IF`, `WHILE` or `REPEAT` condition the type the condition is tested at.
 
+**REQ-IC-analyzer-066** A typed numeric literal keeps its own type and, in a context of another numeric type, is wrapped in an `ImplicitConversion` to it: the `UDINT#4000000000` of `l := UDINT#4000000000` on an `LINT` is converted to `LINT`.
+
+**REQ-IC-codegen-002** An integer or real literal compiles at the type the analyzer recorded for it, not at a type its context passes down: `l := 5000000000` stores 5000000000, and `l := UDINT#4000000000` stores 4000000000.
+
+A literal codegen builds itself has no recorded type: a member initializer of a function block instance takes the field's type in a user-defined block and is stored at the default slot type in a standard one. A time, date, string, boolean or bit-string literal names its own type and is compiled for the storage its context gives it.
+
 A literal a standard function does not give a type to (`TRUNC`, a typed time function such as `MUL_TIME`) takes its default type, as does a literal argument of a user-defined function whose parameter the argument pass did not give it, before the argument's conversion. The member initializers of a function block instance, which codegen compiles as expressions it builds itself, are not typed by the pass.
 
 ## Codegen
@@ -177,4 +183,5 @@ convert.
   converted by codegen.
 - Codegen still converts a variable or an arithmetic result to the type of
   its context where nothing recorded it, so its own conversion is removed
-  only once every context records it.
+  only once every context records it. A literal's type is no longer passed
+  down.

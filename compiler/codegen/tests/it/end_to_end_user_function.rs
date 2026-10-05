@@ -195,3 +195,14 @@ e2e_f64!(
      PROGRAM main VAR r : REAL := 1.5; a : LREAL; END_VAR a := widen(r); END_PROGRAM",
     &[("a", 1.5)],
 );
+
+// A literal compiles at the type the analyzer recorded for it: an untyped
+// literal at its context's, beyond the range of the default DINT, and a typed
+// one at its own, converted to its context's by its own signedness.
+e2e_i64!(
+    #[spec_test(REQ_IC_codegen_002)]
+    end_to_end_when_literal_assigned_then_compiled_at_recorded_type,
+    "PROGRAM main VAR a : LINT; b : LINT; END_VAR
+     a := 5000000000; b := UDINT#4000000000; END_PROGRAM",
+    &[("a", 5_000_000_000), ("b", 4_000_000_000)],
+);
