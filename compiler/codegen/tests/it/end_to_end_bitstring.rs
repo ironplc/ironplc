@@ -12,12 +12,13 @@ e2e_i32_with!(
     &[("x", 200)],
 );
 
-// 256 truncated to u8 wraps to 0.
+// 255 + 1 computed at run time wraps to 0. A constant 256 is not a BYTE
+// (P2026), so the wrap needs a variable operand.
 e2e_i32_with!(
     end_to_end_when_byte_overflow_then_wraps,
     bit_string_options(),
-    "PROGRAM main VAR x : BYTE; END_VAR x := 255 + 1; END_PROGRAM",
-    &[("x", 0)],
+    "PROGRAM main VAR x : BYTE; a : BYTE; END_VAR a := 255; x := a + 1; END_PROGRAM",
+    &[("a", 255), ("x", 0)],
 );
 
 // 200 + 100 = 300, truncated to u8 = 44.
@@ -37,12 +38,12 @@ e2e_i32_with!(
     &[("x", 50000)],
 );
 
-// 65536 truncated to u16 wraps to 0.
+// 65535 + 1 computed at run time wraps to 0.
 e2e_i32_with!(
     end_to_end_when_word_overflow_then_wraps,
     bit_string_options(),
-    "PROGRAM main VAR x : WORD; END_VAR x := 65535 + 1; END_PROGRAM",
-    &[("x", 0)],
+    "PROGRAM main VAR x : WORD; a : WORD; END_VAR a := 65535; x := a + 1; END_PROGRAM",
+    &[("a", 65535), ("x", 0)],
 );
 
 // --- DWORD (32-bit unsigned, 0..4294967295) ---

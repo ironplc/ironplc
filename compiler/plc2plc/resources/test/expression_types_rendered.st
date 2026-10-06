@@ -64,7 +64,7 @@ END_VAR
 count := ( count (* INT *) + 1 (* CONSTANT INT *) ) (* INT *) ;
 flag := ( big (* LINT *) > total (* DINT -> LINT *) ) (* BOOL *) ;
 level := count (* INT -> REAL *) ;
-out := Scale ( total (* DINT *) , 0.5 (* CONSTANT REAL -> LREAL *) ) (* LREAL *) ;
+out := Scale ( total (* DINT *) , 0.5 (* CONSTANT LREAL *) ) (* LREAL *) ;
 FOR i := 1 (* CONSTANT INT *) TO 4 (* CONSTANT INT *) DO
    arr[ i (* INT *) ] := MAX ( arr[ i (* INT *) ] (* INT *) , count (* INT *) ) (* INT *) ;
 END_FOR ;

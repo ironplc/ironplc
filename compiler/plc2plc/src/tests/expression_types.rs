@@ -87,11 +87,16 @@ fn write_to_string_with_types_when_literal_enumerated_value_or_null_then_only_th
     );
 }
 
+/// A typed literal keeps its type and is converted to its parameter's; an
+/// untyped one takes the parameter's type.
 #[test]
 fn write_to_string_with_types_when_converted_literal_then_constant_prefix_and_from_and_to() {
     assert_eq!(
-        statements("out := Pass(0.1);"),
-        vec!["out := Pass ( 0.1 (* CONSTANT REAL -> LREAL *) ) (* LREAL *) ;"]
+        statements("out := Pass(REAL#0.5); out := Pass(0.1);"),
+        vec![
+            "out := Pass ( REAL#0.5 (* CONSTANT REAL -> LREAL *) ) (* LREAL *) ;",
+            "out := Pass ( 0.1 (* CONSTANT LREAL *) ) (* LREAL *) ;",
+        ]
     );
 }
 

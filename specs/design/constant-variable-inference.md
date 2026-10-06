@@ -143,6 +143,32 @@ must be declared constant in every unit that references it. Marking one
 side without the other would introduce that diagnostic into a program
 that had none.
 
+## Writes to a declared constant
+
+The same resolution rejects a program that writes a variable declared
+`CONSTANT`: `rule_constant_not_written` reports P4064 at the write, with the
+declaration as a secondary label. Only statements that change the variable
+count; a construct that only might (its address taken, an argument the
+collector cannot bind) is not reported, so the rule never rejects a program
+that leaves its constants alone.
+
+**REQ-CVI-analyzer-050** An assignment, `FOR` control variable, output binding
+or `VAR_IN_OUT` argument (REQ-CVI-analyzer-010 to 013) that resolves to a
+declaration qualified `CONSTANT` is P4064.
+
+**REQ-CVI-analyzer-051** A write through a `VAR_EXTERNAL` declaration is
+checked against the qualifier of that declaration, not of its global: through
+a `VAR_EXTERNAL CONSTANT` it is P4064, and through a plain `VAR_EXTERNAL` it is
+not, whatever other units declare for the same global. For
+REQ-CVI-analyzer-021 the write still reaches the global.
+
+**REQ-CVI-analyzer-052** Taking the address of a constant (REQ-CVI-analyzer-014),
+passing it where the parameter cannot be determined (REQ-CVI-analyzer-015), and
+the writes of REQ-CVI-analyzer-016 to 019 are not P4064.
+
+**REQ-CVI-analyzer-053** A write that does not resolve to one declaration
+(REQ-CVI-analyzer-021) is not P4064.
+
 ## Pipeline position
 
 **REQ-CVI-analyzer-040** The transform runs inside `stages::resolve_types`,

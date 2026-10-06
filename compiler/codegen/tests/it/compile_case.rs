@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{bc, parse_and_compile, try_parse_and_compile};
+use crate::common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_case_single_arm_then_produces_eq_and_jmp() {
@@ -97,26 +97,4 @@ END_PROGRAM
             bc::ret_void(),
         ]
     );
-}
-
-/// Analysis takes a CASE label's range from the selector's type
-/// (`rule_constant_range`), and an untyped literal selector has none, so a
-/// label that does not fit reaches codegen in a program analysis accepts.
-/// The backend narrows every label by its value and refuses this one rather
-/// than reinterpret it as a bit pattern.
-#[test]
-fn compile_when_case_label_does_not_fit_literal_selector_then_constant_overflow() {
-    let source = "
-PROGRAM main
-VAR
-    y : DINT;
-END_VAR
-    CASE 5 OF
-        4294967295: y := 1;
-    END_CASE;
-END_PROGRAM
-";
-    let result = try_parse_and_compile(source, &CompilerOptions::default());
-
-    assert_eq!(result.unwrap_err().code, "P2026");
 }

@@ -37,15 +37,17 @@ pub fn fits(count: i128, bits: u32, signed: bool) -> bool {
 }
 
 /// The inclusive range of values `representation` can hold, or `None` when it
-/// does not hold integers as numbers.
+/// does not hold integers.
 ///
-/// A bit string (`BYTE`, `WORD`, `DWORD`, `LWORD`) answers `None` even though
-/// it holds an integer: it is a pattern rather than a magnitude, and wrapping
-/// one is a legitimate thing for a program to want.
+/// A bit string (`BYTE`, `WORD`, `DWORD`, `LWORD`) holds the unsigned values
+/// of its width. It wraps at run time, but a constant of one is a value like
+/// any other: `BYTE#256` is not a byte (ADR-0053).
 pub fn of(representation: &SemanticType) -> Option<(i128, i128)> {
     match representation {
         SemanticType::Int { size } => Some(for_integer(u32::from(size.as_bytes()) * 8, true)),
-        SemanticType::UInt { size } => Some(for_integer(u32::from(size.as_bytes()) * 8, false)),
+        SemanticType::UInt { size } | SemanticType::Bytes { size } => {
+            Some(for_integer(u32::from(size.as_bytes()) * 8, false))
+        }
         // A subrange states its own bounds, which are narrower than the base
         // type's by construction (`rule_range_limits` rejects the
         // rest).
@@ -113,15 +115,13 @@ mod tests {
         assert_eq!(of(&representation), Some((-10, 10)));
     }
 
-    /// A bit string holds an integer but is a pattern rather than a
-    /// magnitude, so it has no range for this purpose.
     #[test]
-    fn of_when_bit_string_then_none() {
+    fn of_when_bit_string_then_unsigned_range_of_width() {
         let representation = SemanticType::Bytes {
-            size: ByteSized::B8,
+            size: ByteSized::B32,
         };
 
-        assert_eq!(of(&representation), None);
+        assert_eq!(of(&representation), Some((0, 4_294_967_295)));
     }
 
     #[test]
