@@ -1083,28 +1083,3 @@ END_VAR]]></Declaration>
     let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
     assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
 }
-
-#[test]
-fn parse_when_itf_with_method_element_then_method_is_dropped() {
-    // `interface_declaration` parses the header only, so an interface's
-    // `<Method>` children are still ignored. Appending them would turn
-    // every real `.TcIO` file into a parse error.
-    let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <Itf Name="I_Drivable" Id="{00000000-0000-0000-0000-000000000000}">
-    <Declaration><![CDATA[INTERFACE I_Drivable
-]]></Declaration>
-    <Method Name="Start" Id="{00000000-0000-0000-0000-000000000001}">
-      <Declaration><![CDATA[METHOD Start : BOOL]]></Declaration>
-    </Method>
-  </Itf>
-</TcPlcObject>"#;
-
-    let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
-    assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
-    let library = result.unwrap();
-    assert!(matches!(
-        library.elements[0],
-        LibraryElementKind::InterfaceDeclaration(_)
-    ));
-}

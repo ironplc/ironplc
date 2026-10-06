@@ -19,8 +19,9 @@
 //! `specs/design/comparison-operand-type.md`.
 //!
 //! The pass runs in `stages::analyze` after the semantic rules, so a rule
-//! checks the operands the program wrote. It reports nothing: a comparison
-//! it cannot settle is left as it is.
+//! checks the operands the program wrote. `rule_constant_range` runs after
+//! the pass and reads an operand through the conversion that wraps it. The
+//! pass reports nothing: a comparison it cannot settle is left as it is.
 
 mod argument;
 mod arithmetic;

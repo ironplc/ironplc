@@ -118,7 +118,7 @@ In TwinCAT XML:
 
 **AST representation:** `PropertyDeclaration` (in `dsl/src/oop.rs`) holds the name, the type (`FunctionReturnType`, as a method's return type), and `get`/`set: Option<MethodDeclaration>`, and sits in `FunctionBlockDeclaration::properties`. Each accessor is represented as the method it behaves as: `GET` is a method named after the property with the property type as its return type, and `SET` is a method with no return type and one implicit `VAR_INPUT` named after the property that holds the assigned value. Every scope-aware analyzer pass therefore handles an accessor body as a method body, and a property read or write can later compile to an ordinary method call (ADR-0041 Phase 1).
 
-**As shipped (syntax):** declarations parse from ST and `.TcPOU`, render through plc2plc, and their accessor bodies are analyzed. Using a property (`fb.P`, `fb.P := x`, or a bare `P` inside the function block) reports P9999. Not yet parsed: access modifiers (`PROPERTY PUBLIC`, issue #1424) and properties in an `INTERFACE`.
+**As shipped (syntax):** declarations parse from ST and `.TcPOU`, render through plc2plc, and their accessor bodies are analyzed. Using a property (`fb.P`, `fb.P := x`, or a bare `P` inside the function block) reports P9999. Not yet parsed: access modifiers (`PROPERTY PUBLIC`, issue #1424). Properties in an `INTERFACE` are parsed as prototypes, see §1.3.
 
 #### 1.3 `INTERFACE` / `END_INTERFACE`
 
@@ -137,9 +137,11 @@ In TwinCAT XML, interfaces are a separate object type (`<Itf>` element instead o
 
 **Design:** Add `Interface` and `EndInterface` as keyword tokens. The parser recognizes `INTERFACE name ... END_INTERFACE` as a top-level declaration. In the AST, interfaces are a new `LibraryElementKind::Interface`.
 
-**As shipped — header only.** Only the interface header is parsed: the name and an optional `EXTENDS` list. Method and property signatures inside the interface body are not parsed, and TwinCAT stores each as a separate `<Method>`/`<Property>` XML element that is currently ignored.
+**As shipped — members are parsed, not analyzed.** The interface body holds method and property **prototypes**, in any order: `METHOD name [: type]` with only `VAR_INPUT`/`VAR_OUTPUT`/`VAR_IN_OUT` blocks and no body, and `PROPERTY name : type` with an empty `GET END_GET` and/or `SET END_SET`. A body, a local `VAR` block or an accessor body inside an interface is a syntax error, as in the Ed. 3 grammar. In `.TcIO` files, `twincat_parser.rs` rebuilds this text from the `<Method>`/`<Property>` elements; an `<Implementation>` with content under an interface member is reported as malformed (P0009).
 
-In the type-declaration environment an interface is modelled as an **empty structure**, because IronPLC has no representation for interface members today. This is deliberately a placeholder: it is enough for a variable declared with an interface type to resolve rather than failing with "type not declared", and it is not a claim that member or method access through an interface works. Dispatch through an interface value is Phase 2 of [ADR-0041](../adrs/0041-staged-method-and-interface-dispatch.md) and is not decided yet.
+**AST representation:** `InterfaceDeclaration` (in `dsl/src/oop.rs`) holds `methods: Vec<MethodPrototype>` and `properties: Vec<PropertyPrototype>`. These are distinct from `MethodDeclaration`/`PropertyDeclaration`, so no pass that walks method bodies sees them. A method prototype is a scope for its parameters, and the interface is a scope around its prototypes, so a prototype's parameters are recorded under `I_X.Method` exactly as a method's are under `FB_X.Method`.
+
+In the type-declaration environment an interface is still modelled as an **empty structure**: a placeholder, not a claim that member or method access through an interface works. The analyzer reports every `INTERFACE` declaration and every `IMPLEMENTS` clause as not yet supported (P9999), and a variable declared with an interface type still fails with P2008 (issue #1891). Dispatch through an interface value is Phase 2 of [ADR-0041](../adrs/0041-staged-method-and-interface-dispatch.md) and is not decided yet.
 
 The `twincat_parser.rs` module needs to handle `<Itf>` elements in addition to `<POU>`, `<GVL>`, and `<DUT>`.
 

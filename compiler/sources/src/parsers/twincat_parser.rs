@@ -216,11 +216,16 @@ fn parse_pou(
         None => builder.push_synthetic(&impl_text),
     }
 
-    // Methods and properties follow the function block body and precede
-    // END_FUNCTION_BLOCK, which is where `function_block_declaration` expects
-    // them.
-    if closing == "END_FUNCTION_BLOCK" {
-        append_members(&mut builder, object, file_id)?;
+    match closing {
+        // Methods and properties follow the function block body and precede
+        // END_FUNCTION_BLOCK, which is where `function_block_declaration`
+        // expects them.
+        "END_FUNCTION_BLOCK" => {
+            append_members(&mut builder, object, MemberForm::Declaration, file_id)?
+        }
+        // An interface holds only method and property prototypes.
+        "END_INTERFACE" => append_members(&mut builder, object, MemberForm::Prototype, file_id)?,
+        _ => {}
     }
 
     builder.push_synthetic("\n");
@@ -389,9 +394,21 @@ fn skip_leading_trivia(text: &str) -> &str {
     }
 }
 
-/// Append every `<Method>` and `<Property>` child of a POU to the combined
-/// text, in document order, as inline `METHOD ... END_METHOD` and
-/// `PROPERTY ... END_PROPERTY` declarations.
+/// Whether the members being appended carry bodies (a function block's) or
+/// only signatures (an interface's).
+#[derive(Clone, Copy)]
+enum MemberForm {
+    /// `METHOD ... END_METHOD` and `PROPERTY ... END_PROPERTY` with bodies,
+    /// as `function_block_declaration` expects.
+    Declaration,
+    /// Method and property prototypes, as `interface_declaration` expects.
+    /// An element that carries an implementation is malformed.
+    Prototype,
+}
+
+/// Append every `<Method>` and `<Property>` child of a POU or interface to
+/// the combined text, in document order, as inline `METHOD ... END_METHOD`
+/// and `PROPERTY ... END_PROPERTY` declarations or prototypes.
 ///
 /// TwinCAT stores each method and property as a sibling element rather than
 /// inline in the POU's own `<Declaration>`. A method element has the same
@@ -400,19 +417,22 @@ fn skip_leading_trivia(text: &str) -> &str {
 /// `<Implementation><ST>` with the body. Only the closing `END_METHOD` is
 /// implicit in the XML structure and has to be reconstructed.
 ///
-/// Only function block members are appended. `method_declaration` and
-/// `property_declaration` are reachable only from
-/// `function_block_declaration`, so a member of a `PROGRAM`, a `FUNCTION`, or
-/// an interface has nowhere to go in the grammar and is still dropped.
+/// Only function block and interface members are appended. The member rules
+/// are reachable only from `function_block_declaration` and
+/// `interface_declaration`, so a member of a `PROGRAM` or a `FUNCTION` has
+/// nowhere to go in the grammar and is still dropped.
 fn append_members(
     builder: &mut CombinedText,
     pou: &roxmltree::Node,
+    form: MemberForm,
     file_id: &FileId,
 ) -> Result<(), Diagnostic> {
     for member in pou.children().filter(|n| n.is_element()) {
         match member.tag_name().name() {
-            "Method" => append_declared_block(builder, &member, "Method", "END_METHOD", file_id)?,
-            "Property" => append_property(builder, &member, file_id)?,
+            "Method" => {
+                append_member_block(builder, &member, "Method", "END_METHOD", form, file_id)?
+            }
+            "Property" => append_property(builder, &member, form, file_id)?,
             _ => {}
         }
     }
@@ -429,6 +449,7 @@ fn append_members(
 fn append_property(
     builder: &mut CombinedText,
     property: &roxmltree::Node,
+    form: MemberForm,
     file_id: &FileId,
 ) -> Result<(), Diagnostic> {
     let declaration = required_declaration(property, "Property", file_id)?;
@@ -440,7 +461,7 @@ fn append_property(
         if let Some(accessor) = find_child_element(property, tag) {
             builder.push_synthetic("\n");
             builder.push_synthetic(opening);
-            append_declared_block(builder, &accessor, tag, closing, file_id)?;
+            append_member_block(builder, &accessor, tag, closing, form, file_id)?;
         }
     }
 
@@ -448,17 +469,18 @@ fn append_property(
     Ok(())
 }
 
-/// Append one element that carries a `<Declaration>` and an optional
-/// `<Implementation><ST>`, followed by the `closing` keyword that the XML
-/// structure leaves implicit.
+/// Append one element that carries a `<Declaration>` and, for a
+/// [`MemberForm::Declaration`], an optional `<Implementation><ST>`, followed
+/// by the `closing` keyword that the XML structure leaves implicit.
 ///
 /// `kind` names the element in the diagnostic when its `<Declaration>` is
-/// missing.
-fn append_declared_block(
+/// missing, or when a prototype has an implementation.
+fn append_member_block(
     builder: &mut CombinedText,
     element: &roxmltree::Node,
     kind: &str,
     closing: &str,
+    form: MemberForm,
     file_id: &FileId,
 ) -> Result<(), Diagnostic> {
     let declaration = required_declaration(element, kind, file_id)?;
@@ -467,10 +489,29 @@ fn append_declared_block(
 
     builder.push_synthetic("\n");
     builder.push_cdata(&declaration_text, declaration_byte_offset);
-    builder.push_synthetic("\n");
-    match impl_byte_offset {
-        Some(offset) => builder.push_cdata(&impl_text, offset),
-        None => builder.push_synthetic(&impl_text),
+
+    match form {
+        MemberForm::Declaration => {
+            builder.push_synthetic("\n");
+            match impl_byte_offset {
+                Some(offset) => builder.push_cdata(&impl_text, offset),
+                None => builder.push_synthetic(&impl_text),
+            }
+        }
+        MemberForm::Prototype => {
+            if !impl_text.trim().is_empty() {
+                return Err(Diagnostic::problem(
+                    Problem::TwinCatMalformed,
+                    Label::file(
+                        file_id.clone(),
+                        format!(
+                            "Interface {kind} '{}' has an implementation, but an interface member only declares a signature",
+                            element.attribute("Name").unwrap_or("<unnamed>")
+                        ),
+                    ),
+                ));
+            }
+        }
     }
 
     builder.push_synthetic("\n");
@@ -576,3 +617,6 @@ mod tests;
 
 #[cfg(test)]
 mod property_tests;
+
+#[cfg(test)]
+mod interface_tests;

@@ -40,6 +40,16 @@
 //!
 //! See section 2.2.1.
 //!
+//! ## The program as written
+//!
+//! `stages::analyze` runs this rule after `xform_insert_implicit_conversions`,
+//! on the library the pass returns, rather than with the other rules. The
+//! rule checks the program as written all the same: an operand's type is read
+//! through the `ImplicitConversion` the pass wrapped it in, and a type the
+//! pass inferred for an untyped literal (`ExprType::Inferred`) is not one the
+//! program wrote (ADR-0056).
+//! So `DINT#300 < s` on a `SINT` is still checked against `SINT`.
+//!
 //! ## Passes
 //!
 //! ```ignore
@@ -136,6 +146,17 @@ impl DiagnosticVisitor for RuleConstantRange<'_> {
 fn signed_value(is_neg: bool, magnitude: u128) -> Option<i128> {
     let magnitude = i128::try_from(magnitude).ok()?;
     Some(if is_neg { -magnitude } else { magnitude })
+}
+
+/// The type of `expr` as the program wrote it: the type of the operand a
+/// conversion wraps, and none for a type the pass inferred from the context,
+/// which the program did not state (see the module doc).
+fn type_as_written<'t>(types: &'t TypeEnvironment, expr: &Expr) -> Option<&'t SemanticType> {
+    match (&expr.kind, &expr.expr_type) {
+        (ExprKind::ImplicitConversion(inner), _) => type_as_written(types, inner),
+        (_, Some(ExprType::Inferred(_))) => None,
+        _ => types.representation_of_expr(expr),
+    }
 }
 
 impl RuleConstantRange<'_> {
@@ -274,7 +295,9 @@ impl RuleConstantRange<'_> {
                 self.check_expr(&binary.right, expected);
             }
             ExprKind::UnaryOp(unary) => self.check_expr(&unary.term, expected),
-            ExprKind::Expression(inner) => self.check_expr(inner, expected),
+            ExprKind::Expression(inner) | ExprKind::ImplicitConversion(inner) => {
+                self.check_expr(inner, expected)
+            }
             _ => {}
         }
     }
@@ -489,10 +512,10 @@ impl RuleConstantRange<'_> {
     /// `IF c = 200` compares at `c`'s type, so a literal that `c` can never
     /// hold makes the comparison unsatisfiable rather than false.
     fn check_compare(&mut self, compare: &CompareExpr) {
-        if let Some(left) = self.type_environment.representation_of_expr(&compare.left) {
+        if let Some(left) = type_as_written(self.type_environment, &compare.left) {
             self.check_expr(&compare.right, left);
         }
-        if let Some(right) = self.type_environment.representation_of_expr(&compare.right) {
+        if let Some(right) = type_as_written(self.type_environment, &compare.right) {
             self.check_expr(&compare.left, right);
         }
     }
@@ -506,7 +529,7 @@ impl RuleConstantRange<'_> {
     /// subrange label's bounds are values too, each compared against the
     /// selector; `rule_range_limits` checks their order.
     fn check_case(&mut self, node: &Case) {
-        let Some(selector) = self.type_environment.representation_of_expr(&node.selector) else {
+        let Some(selector) = type_as_written(self.type_environment, &node.selector) else {
             return;
         };
         let Some(range) = value_range::of(selector) else {

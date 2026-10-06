@@ -769,6 +769,67 @@ END_FUNCTION_BLOCK",
     // -----------------------------------------------------------------
 
     /// The problem codes analysis reports for `program`, in order.
+    /// An interface is a scope, so a method prototype's parameters belong
+    /// to `I_Axis.Home` rather than to the library-level scope.
+    #[test]
+    fn apply_when_interface_method_prototype_has_parameter_then_recorded_in_prototype_scope() {
+        let (symbol_env, _) = resolve_with_methods(
+            "
+INTERFACE I_Axis
+METHOD Home : BOOL
+VAR_INPUT
+    x : INT;
+END_VAR
+END_METHOD
+END_INTERFACE",
+        );
+
+        let param = Id::from("x");
+        assert!(symbol_env
+            .get_variables_in_scope(&method_scope("I_Axis", "Home"))
+            .iter()
+            .any(|(name, _)| *name == &param));
+        assert!(!symbol_env
+            .get_variables_in_scope(&ScopeKind::Global)
+            .iter()
+            .any(|(name, _)| *name == &param));
+    }
+
+    /// Were the prototype's scope not nested in its interface, its path
+    /// would be `Home`, the same as the function's, and the shared input
+    /// name would be reported as declared twice.
+    #[test]
+    fn apply_when_method_prototype_shares_name_with_function_then_no_diagnostic() {
+        let options = ironplc_parser::options::CompilerOptions {
+            allow_fb_inheritance: true,
+            ..ironplc_parser::options::CompilerOptions::default()
+        };
+        let (library, _context) = parse_and_resolve_types_with_options(
+            "
+INTERFACE I_Axis
+METHOD Home : BOOL
+VAR_INPUT
+    x : INT;
+END_VAR
+END_METHOD
+END_INTERFACE
+
+FUNCTION Home : BOOL
+VAR_INPUT
+    x : INT;
+END_VAR
+Home := x > 0;
+END_FUNCTION",
+            &options,
+        );
+        let mut symbol_env = SymbolEnvironment::new();
+        let mut function_env = FunctionEnvironment::new();
+
+        let diagnostics = apply_impl(&library, &mut symbol_env, &mut function_env);
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
     fn analyzed_codes(program: &str) -> Vec<String> {
         analyzed_codes_with(
             program,

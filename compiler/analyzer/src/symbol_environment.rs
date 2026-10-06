@@ -62,6 +62,8 @@ impl ScopeTracker {
             ScopeNode::FunctionBlock(node) => node.name.name.clone(),
             ScopeNode::Program(node) => node.name.clone(),
             ScopeNode::Method(node) => node.name.clone(),
+            ScopeNode::MethodPrototype(node) => node.name.clone(),
+            ScopeNode::Interface(node) => node.name.clone(),
         }
     }
 

@@ -164,3 +164,12 @@ recorded type rather than one passed down, and a typed literal (`DINT#5`) in a
 context of another type is recorded as converted to it. The decision above is
 unchanged.
 
+### A rule after the pass (postscript)
+
+`rule_constant_range` now runs after the pass, on the library it returns, so
+that it can read the type the pass records on a literal (#2071). It still
+checks the program as written: it reads an operand's type through the
+conversion that wraps it, and gives an untyped literal no type of its own. So
+`DINT#300 < s` on a `SINT` still reports P2026, the diagnostic that was lost
+when the pass first ran before the rules. The other rules still run before the
+pass. The decision above is unchanged.
