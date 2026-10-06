@@ -14,7 +14,6 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     CaseSelectionKind, Expr, FbCall, ParamAssignmentKind, Statements, StmtKind,
 };
-use ironplc_problems::Problem;
 
 use super::compile::{
     CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness, DEFAULT_STRING_MAX_LENGTH,
@@ -411,8 +410,9 @@ impl CaseSelector<'_> {
 /// the same label, and both narrow to the selector's width by the value they
 /// state. Analysis rejects a label outside the selector's type
 /// (`rule_constant_range`, P2026), including the type it records for an
-/// untyped literal selector (`CASE 5 OF ...`), so the check here is a
-/// fallback that reports the same way.
+/// untyped literal selector (`CASE 5 OF ...`), and the selector's storage is
+/// at least that wide. So every label fits by the time it arrives here, and
+/// one that does not is a broken invariant, reported as an internal error.
 struct CaseLabelValue<'a> {
     is_neg: bool,
     magnitude: &'a Integer,
@@ -463,11 +463,13 @@ impl<'a> CaseLabelValue<'a> {
 
     fn overflow(&self) -> Diagnostic {
         let sign = if self.is_neg { "-" } else { "" };
-        Diagnostic::problem(
-            Problem::ConstantOverflow,
-            Label::span(self.magnitude.span(), "CASE label"),
-        )
-        .with_context("value", &format!("{sign}{}", self.magnitude.value))
+        Diagnostic::internal_error_at(Label::span(
+            self.magnitude.span(),
+            format!(
+                "CASE label {sign}{} does not fit the selector's storage",
+                self.magnitude.value
+            ),
+        ))
     }
 }
 
