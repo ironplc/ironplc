@@ -1,15 +1,16 @@
 # Design: End-to-End Test Observation
 
-status: approved
+status: implemented
 date: 2026-10-03
 
 ## Overview
 
 This design specifies how an end-to-end test observes a program after
-running it. A test names a variable with an IEC access path, such as
-`count`, `result`, `timer.Q` or `s.names[2]`, and gets back an IEC value. It
-never uses a VM slot index, a data-region byte offset, or the bit pattern
-that a backend stores.
+running it. A test names a program variable, such as `count` or `result`,
+and gets back an IEC value. It never uses a VM slot index, a data-region
+byte offset, or the bit pattern that a backend stores. A value inside a
+structure, array or function-block instance is copied into a program
+variable first (§5).
 
 The goal is that variable layout belongs to the backend. Codegen can
 reorder, pack or re-represent variables, and a new backend can run the same
@@ -21,9 +22,6 @@ This design builds on:
   into categories: end-to-end for correctness, `compile_*` and
   `wire_format.rs` for encoding, and `vm/tests` for traps. This design adds
   the rule that end-to-end tests do not see layout.
-- **[Variable Inspection Model](variable-inspection-model.md)**, which
-  defines the debug-section layout tables and tree API that paths into
-  aggregates resolve through.
 - **[Variable Value Rendering](variable-value-rendering.md)** and
   **[Bytecode Container Format](bytecode-container-format.md)**, which
   define the `VAR_NAME` and `STRING_LAYOUT` sub-tables that resolve
@@ -37,13 +35,10 @@ Testable claims carry `REQ-OBS-codegen-NNN` identifiers per
 requirement, because the end-to-end suite and its harness live in
 `compiler/codegen/tests/it`.
 
-No crate's `build.rs` registers this file yet. The PR that implements the
-harness registers it in `compiler/codegen/build.rs` and lands a
-`#[spec_test]` with a real assertion for each requirement. The claims in §5
-wait on the Variable Inspection Model, so they do not carry requirement
-markers yet. Registering this file therefore does not demand tests for
-behaviour that cannot be built. The PR that implements §5 numbers them from
-REQ-OBS-codegen-080.
+No crate's `build.rs` registers this file yet. Each requirement has a
+conformance test in `compiler/codegen/tests/it/harness_observation.rs` that
+names it in a comment. Registering the file in `compiler/codegen/build.rs`
+turns those into `#[spec_test]`s.
 
 ## Problem
 
@@ -96,8 +91,8 @@ that are not about layout. A second backend cannot run them at all.
 **In scope:** top-level program variables and globals, of every elementary
 type and of `STRING`/`WSTRING`; reads after one or more scans; writes
 between scans; the single-scan assertion macros; the function-block step
-driver; and, once the Variable Inspection Model lands, paths into
-structures, arrays and function-block instances.
+driver; and values inside structures, arrays and function-block instances,
+through a copy into a program variable (§5).
 
 **Out of scope:**
 
@@ -119,8 +114,7 @@ structures, arrays and function-block instances.
 **Chosen:** the VM implementation finds a name in the container's `VAR_NAME`
 sub-table, and finds string contents through `STRING_LAYOUT`. These are the
 same tables that the debugger, `--dump-vars`, the MCP `run` tool and the
-playground use. Paths into aggregates resolve through the Variable
-Inspection Model's tree.
+playground use.
 
 **Rejected: number the declarations by re-parsing the source in the
 harness.** That builds a second copy of the allocator's rules, and the
@@ -387,38 +381,37 @@ assert_eq!(snapshot.read("result"), "Hello World");
 The VM's `scan` keeps the stack-balance check that the current harness runs
 after every round, so every test continues to guard against stack leaks.
 
-## 5. Paths into aggregates
+## 5. Values inside structures, arrays and function blocks
 
-This section waits on steps 1–3 of the
-[Variable Inspection Model](variable-inspection-model.md#7-implementation-sequence).
-Its claims get requirement markers, numbered from REQ-OBS-codegen-080, in
-the PR that implements them.
+A test reads a value inside an aggregate by having the program copy it into
+a variable of its own, and reading that variable by name:
 
-A path is a name followed by any number of `.field` and `[i]` or `[i,j]`
-steps, as IEC writes an access. It resolves through
-`VariableRenderer`'s tree, so the debugger's expansion and the harness's
-reads are one walk over one set of tables.
+```iecst
+s.names[2] := 'world';
+result := s.names[2];   (* the test reads `result` *)
+```
 
-- `read("s.x")` reads field `x` of structure variable `s`.
-- `read("a[2]")` reads the element whose index is 2 under the declared
-  bounds, which is the second element of `ARRAY[1..3]`.
-- `read("m[1,2]")` reads a multi-dimensional array element under its
-  declared bounds.
-- `read("timer.Q")` reads an output of a function-block instance, for both
-  standard and user-defined function blocks.
-- Path steps compose to any depth: `read("items[2].inner.values[1]")` reads
-  the leaf that path names.
-- A path that names an aggregate rather than a leaf fails the test with a
-  message that names the path's type.
+A function block's internal `VAR`s cannot be read from outside the
+instance, so a test that checks one declares it `VAR_OUTPUT` and copies it
+the same way.
 
-Until this section is in scope, the 19 aggregate-base reads in
-`end_to_end_struct.rs`, `end_to_end_array_string.rs`,
-`end_to_end_array_string_paren_length.rs` and `end_to_end_wstring.rs` keep
-their slot arithmetic. The scalar results in those files, such as `result`,
-move to names with everything else. The `read_max_length` checks on string
-headers assert representation, and they become behaviour checks instead:
-assign an over-long value and assert that it is truncated to the declared
-length.
+The copy reads the field or element through codegen's own read path, so
+the test checks behaviour rather than inspecting storage. A bug that
+corrupts a write and the matching read in the same way could cancel out.
+Reads and writes are separate code in codegen, and many other tests read
+fields and elements, so that risk is accepted in exchange for tests that
+do not depend on layout.
+
+A length check is a behaviour check: assign a value longer than the
+declared length and assert that it reads back cut to that length. The copy
+target is longer than the element, so only the element's own length can
+cut the value.
+
+**Rejected for now: paths in the harness**, such as `read("s.names[2]")`.
+They would resolve through the tree API of the
+[Variable Inspection Model](variable-inspection-model.md), which is not
+built, and nothing in a codegen refactor needs them. If that model lands,
+paths can be added without changing the tests that copy.
 
 ## 6. Tests that are not end-to-end tests
 
@@ -429,15 +422,15 @@ name through `vm_var_index(&container, name)`:
 | Test | Subject | Destination |
 |---|---|---|
 | `end_to_end_write_variable_raw.rs` | The embedder's raw read/write API | `vm_api_write_variable_raw.rs` |
-| `vm_when_uptime_enabled_then_globals_shift_by_two` | That the uptime globals take the first two slots | A `compile_*` test |
+| `vm_when_uptime_enabled_then_globals_shift_by_two` | That the uptime globals take the first two slots | `compile_system_uptime.rs` |
+| The header and byte checks in `end_to_end_wstring.rs` | That a WSTRING is stored wide, as UTF-16LE (ADR-0016) | `compile_wstring.rs`, which checks the emitted `STR_INIT` and constants |
 
 ## 7. Enforcement
 
-**REQ-OBS-codegen-100** No `end_to_end_*.rs` file in `compiler/codegen/tests/it` mentions `VarIndex`, `.vars[`, `data_region` or `VmBuffers`, and a guard test fails if one does.
+**REQ-OBS-codegen-100** No end-to-end test file (`end_to_end.rs` or `end_to_end_*.rs`) in `compiler/codegen/tests/it` mentions `VarIndex`, `.vars[`, `data_region` or `VmBuffers`, and a guard test fails if one does.
 
 The slot-keyed helpers, `string_offset` and the test-local `read_string`
-are deleted when the last caller migrates. Then no end-to-end test can call
-them, so a new test cannot fall back on them.
+are deleted, so a new test cannot fall back on them.
 
 ## 8. Migration
 
@@ -481,8 +474,11 @@ Implementation order. Each step leaves the suite green:
 3. Add `Session` and migrate the multi-scan tests, the function-block steps,
    the string reads, the remaining date and duration expectations and the
    §6 moves (REQ-OBS-codegen-040 to 042, 046, 047).
-4. After the Variable Inspection Model steps 1–3, add paths (§5), delete the
-   slot-keyed helpers, and add the guard test (§7).
+4. Copy the remaining reads into structures, arrays and function blocks
+   into program variables (§5), delete the slot-keyed helpers, and add the
+   guard test (§7).
+
+All four steps are implemented.
 
 ## 9. Amendments to other documents
 
@@ -496,10 +492,8 @@ Each amendment lands in the PR that changes the behaviour:
 
 ## Open questions
 
-1. **Aggregates: wait, or copy now?** This design waits for the Variable
-   Inspection Model. The alternative is to rewrite the four affected files
-   now so each copies the field into a scalar (`r := s.names[2]`) and
-   asserts `r`. That is available sooner, but each test then exercises a
-   read path it did not cover before.
+1. **Aggregates: wait, or copy now?** Resolved: copy now (§5). Waiting
+   would have tied the suite to the Variable Inspection Model, which a
+   codegen refactor does not need.
 2. **Enumerations: ordinal or value name?** The ordinal causes no churn.
    The name would be more neutral across backends.

@@ -174,7 +174,10 @@ impl Visitor<Infallible> for SymbolScopeChecker<'_> {
         self.units.push(match node {
             ScopeNode::FunctionBlock(node) => Some(node.name.name.clone()),
             ScopeNode::Program(node) => Some(node.name.clone()),
-            ScopeNode::Function(_) | ScopeNode::Method(_) => None,
+            ScopeNode::Function(_)
+            | ScopeNode::Method(_)
+            | ScopeNode::MethodPrototype(_)
+            | ScopeNode::Interface(_) => None,
         });
         Ok(())
     }

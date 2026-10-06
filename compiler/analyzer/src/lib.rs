@@ -21,9 +21,12 @@ mod test_macros;
 
 mod call_assignment_check;
 mod callee_resolution;
+mod clean_analysis;
 mod constant_folding;
+mod enumerated_value_type;
+pub mod enumeration_members;
+mod enumeration_values;
 mod function_environment;
-pub mod intermediate_type;
 mod intrinsic;
 mod result;
 mod rule_abstract_not_instantiated;
@@ -57,6 +60,7 @@ mod rule_program_var_hides_global;
 mod rule_range_limits;
 mod rule_real_literal_range;
 mod rule_ref_to;
+mod rule_return_type_declared;
 mod rule_self_reference_context;
 mod rule_stdlib_type_redefinition;
 mod rule_string_encoding_compat;
@@ -75,6 +79,7 @@ mod rule_var_decl_global_const_requires_external_const;
 mod rule_var_decl_initializer_type_compat;
 mod scoped_table;
 mod semantic_context;
+pub mod semantic_type;
 pub mod stages;
 mod string_similarity;
 pub mod symbol_environment;
@@ -113,17 +118,19 @@ mod intermediates;
 pub mod extractors;
 
 // Re-export public types for external use
+pub use clean_analysis::CleanAnalysis;
 pub use function_environment::{
     FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
 };
-pub use intermediate_type::IntermediateType;
 pub use intermediates::arithmetic_overload::{
     resolve_arithmetic_fold, resolve_arithmetic_overload, typed_overload, FoldFailure, Overload,
 };
 pub use intermediates::enumeration::resolve_ordinal_values;
+pub use intermediates::numeric_operation::literal_default_type;
 pub use intermediates::operator_function_form::FormOf;
 pub use intrinsic::{BitShift, Intrinsic, NumericFunction, StringFunction, TimeFunction};
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
+pub use semantic_type::SemanticType;
 pub use type_attributes::TypeAttributes;
 pub use type_category::TypeCategory;
 pub use type_environment::{

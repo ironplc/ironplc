@@ -12,7 +12,7 @@ use spec_test_macro::spec_test;
 
 use crate::common::assert_run_with;
 
-/// A program assigning `expr` to `result`, the first variable (index 0).
+/// A program assigning `expr` to `result`.
 ///
 /// Each wide operand, truncated to 32 bits, is no greater than the narrow
 /// operand it is compared with: `l` is 2^32 + 1, `lt_wide` 2^32 + 1 ms, and

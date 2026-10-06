@@ -40,6 +40,16 @@
 //!
 //! See section 2.2.1.
 //!
+//! ## The program as written
+//!
+//! `stages::analyze` runs this rule after `xform_insert_implicit_conversions`,
+//! on the library the pass returns, rather than with the other rules. The
+//! rule checks the program as written all the same: an operand's type is read
+//! through the `ImplicitConversion` the pass wrapped it in, and a type the
+//! pass inferred for an untyped literal (`ExprType::Inferred`) is not one the
+//! program wrote (ADR-0056).
+//! So `DINT#300 < s` on a `SINT` is still checked against `SINT`.
+//!
 //! ## Passes
 //!
 //! ```ignore
@@ -84,11 +94,11 @@ use std::convert::Infallible;
 
 use crate::{
     function_environment::FunctionEnvironment,
-    intermediate_type::{ByteSized, FunctionBlockVarType, IntermediateType},
     result::SemanticResult,
     rule_real_literal_range,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::{ByteSized, FunctionBlockVarType, SemanticType},
     symbol_environment::ScopeTracker,
     type_environment::TypeEnvironment,
     value_range, variable_type,
@@ -138,9 +148,20 @@ fn signed_value(is_neg: bool, magnitude: u128) -> Option<i128> {
     Some(if is_neg { -magnitude } else { magnitude })
 }
 
+/// The type of `expr` as the program wrote it: the type of the operand a
+/// conversion wraps, and none for a type the pass inferred from the context,
+/// which the program did not state (see the module doc).
+fn type_as_written<'t>(types: &'t TypeEnvironment, expr: &Expr) -> Option<&'t SemanticType> {
+    match (&expr.kind, &expr.expr_type) {
+        (ExprKind::ImplicitConversion(inner), _) => type_as_written(types, inner),
+        (_, Some(ExprType::Inferred(_))) => None,
+        _ => types.representation_of_expr(expr),
+    }
+}
+
 impl RuleConstantRange<'_> {
     /// Reports `constant` when the type it is stored into cannot hold it.
-    fn check_constant(&mut self, constant: &ConstantKind, expected: &IntermediateType) {
+    fn check_constant(&mut self, constant: &ConstantKind, expected: &SemanticType) {
         // Every integer literal arrives here as a value, whatever radix it
         // was written in. A `ConstantKind` that is neither an integer nor a
         // real -- a duration, a string -- has no range to check.
@@ -166,8 +187,8 @@ impl RuleConstantRange<'_> {
     ///
     /// A prefixed literal states its own type, which that rule checks, and a
     /// value beyond every real type is reported there too.
-    fn check_real_literal(&mut self, literal: &RealLiteral, expected: &IntermediateType) {
-        let IntermediateType::Real {
+    fn check_real_literal(&mut self, literal: &RealLiteral, expected: &SemanticType) {
+        let SemanticType::Real {
             size: ByteSized::B32,
         } = expected
         else {
@@ -266,7 +287,7 @@ impl RuleConstantRange<'_> {
     /// A negated literal needs no handling here. Constant folding turns
     /// `-200` into one signed literal before any rule runs, so a `Neg` that
     /// survives has an operand this walk would descend into anyway.
-    fn check_expr(&mut self, expr: &Expr, expected: &IntermediateType) {
+    fn check_expr(&mut self, expr: &Expr, expected: &SemanticType) {
         match &expr.kind {
             ExprKind::Const(constant) => self.check_constant(constant, expected),
             ExprKind::BinaryOp(binary) => {
@@ -274,7 +295,9 @@ impl RuleConstantRange<'_> {
                 self.check_expr(&binary.right, expected);
             }
             ExprKind::UnaryOp(unary) => self.check_expr(&unary.term, expected),
-            ExprKind::Expression(inner) => self.check_expr(inner, expected),
+            ExprKind::Expression(inner) | ExprKind::ImplicitConversion(inner) => {
+                self.check_expr(inner, expected)
+            }
             _ => {}
         }
     }
@@ -284,15 +307,15 @@ impl RuleConstantRange<'_> {
     /// This is the value written, not the variable selected from: `x.3 := v`
     /// writes a `BOOL` and `w.%B1 := v` writes a byte, whatever `x` and `w`
     /// are declared as.
-    fn assignment_target_type(&self, target: &Variable) -> Option<IntermediateType> {
+    fn assignment_target_type(&self, target: &Variable) -> Option<SemanticType> {
         let Variable::Symbolic(kind) = target else {
             // A directly represented variable (`%IW0`) has no declaration to
             // take a range from.
             return None;
         };
         match kind {
-            SymbolicVariableKind::BitAccess(_) => Some(IntermediateType::Bool),
-            SymbolicVariableKind::PartialAccess(partial) => Some(IntermediateType::Bytes {
+            SymbolicVariableKind::BitAccess(_) => Some(SemanticType::Bool),
+            SymbolicVariableKind::PartialAccess(partial) => Some(SemanticType::Bytes {
                 size: match partial.size {
                     PartialAccessSize::Byte => ByteSized::B8,
                     PartialAccessSize::Word => ByteSized::B16,
@@ -341,7 +364,7 @@ impl RuleConstantRange<'_> {
     }
 
     /// The representation of the type `type_name` names.
-    fn representation_of(&self, type_name: &TypeName) -> Option<IntermediateType> {
+    fn representation_of(&self, type_name: &TypeName) -> Option<SemanticType> {
         self.type_environment
             .get(type_name)
             .map(|attributes| attributes.representation.clone())
@@ -357,11 +380,7 @@ impl RuleConstantRange<'_> {
 
     /// Checks structure element initializers against the fields of
     /// `declared`, a structure or function block type.
-    fn check_element_inits(
-        &mut self,
-        elements: &[StructureElementInit],
-        declared: &IntermediateType,
-    ) {
+    fn check_element_inits(&mut self, elements: &[StructureElementInit], declared: &SemanticType) {
         for element in elements {
             if let Some(field) = variable_type::struct_field_type(declared, &element.name) {
                 self.check_struct_value(&element.init, &field);
@@ -374,7 +393,7 @@ impl RuleConstantRange<'_> {
     fn check_struct_value(
         &mut self,
         value: &StructInitialValueAssignmentKind,
-        expected: &IntermediateType,
+        expected: &SemanticType,
     ) {
         match value {
             StructInitialValueAssignmentKind::Constant(constant) => {
@@ -401,14 +420,14 @@ impl RuleConstantRange<'_> {
     fn check_array_elements(
         &mut self,
         elements: &[ArrayInitialElementKind],
-        declared: &IntermediateType,
+        declared: &SemanticType,
     ) {
         // Anything but an array has no element type to check against.
-        let IntermediateType::Array { element_type, .. } = declared else {
+        let SemanticType::Array { element_type, .. } = declared else {
             return;
         };
         let mut element_type = element_type.as_ref();
-        while let IntermediateType::Array {
+        while let SemanticType::Array {
             element_type: inner,
             ..
         } = element_type
@@ -422,11 +441,7 @@ impl RuleConstantRange<'_> {
 
     /// Checks one array initializer element, including every repetition of
     /// a repeated one (`2(300)`), against `expected`.
-    fn check_array_element(
-        &mut self,
-        element: &ArrayInitialElementKind,
-        expected: &IntermediateType,
-    ) {
+    fn check_array_element(&mut self, element: &ArrayInitialElementKind, expected: &SemanticType) {
         match element {
             ArrayInitialElementKind::Constant(constant) => self.check_constant(constant, expected),
             ArrayInitialElementKind::Repeated(repeated) => {
@@ -462,7 +477,7 @@ impl RuleConstantRange<'_> {
     /// `VAR_INPUT` and `VAR_IN_OUT` variables, a positional one by position
     /// among the `VAR_INPUT` variables.
     fn check_fb_call_arguments(&mut self, node: &FbCall) {
-        let Some(IntermediateType::FunctionBlock { fields, .. }) =
+        let Some(SemanticType::FunctionBlock { fields, .. }) =
             variable_type::declared(&node.var_name, self.context, &self.scope.current())
         else {
             return;
@@ -497,10 +512,10 @@ impl RuleConstantRange<'_> {
     /// `IF c = 200` compares at `c`'s type, so a literal that `c` can never
     /// hold makes the comparison unsatisfiable rather than false.
     fn check_compare(&mut self, compare: &CompareExpr) {
-        if let Some(left) = self.type_environment.representation_of_expr(&compare.left) {
+        if let Some(left) = type_as_written(self.type_environment, &compare.left) {
             self.check_expr(&compare.right, left);
         }
-        if let Some(right) = self.type_environment.representation_of_expr(&compare.right) {
+        if let Some(right) = type_as_written(self.type_environment, &compare.right) {
             self.check_expr(&compare.left, right);
         }
     }
@@ -514,7 +529,7 @@ impl RuleConstantRange<'_> {
     /// subrange label's bounds are values too, each compared against the
     /// selector; `rule_range_limits` checks their order.
     fn check_case(&mut self, node: &Case) {
-        let Some(selector) = self.type_environment.representation_of_expr(&node.selector) else {
+        let Some(selector) = type_as_written(self.type_environment, &node.selector) else {
             return;
         };
         let Some(range) = value_range::of(selector) else {

@@ -57,3 +57,23 @@ END_FUNCTION_BLOCK
         &CompilerOptions::default(),
     );
 }
+
+#[test]
+fn write_to_string_when_inline_enum_explicit_values_then_round_trips() {
+    // With and without an initial value: the two spellings reach the
+    // initializer through different grammar alternatives.
+    assert_round_trips(
+        "
+FUNCTION_BLOCK FB_Example
+VAR
+    a : (X := 1, Y := 5);
+    b : (P := 2, Q) := Q;
+END_VAR
+END_FUNCTION_BLOCK
+",
+        &CompilerOptions {
+            allow_enum_explicit_values: true,
+            ..CompilerOptions::default()
+        },
+    );
+}

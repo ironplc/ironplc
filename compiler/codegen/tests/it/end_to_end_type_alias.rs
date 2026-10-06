@@ -4,9 +4,12 @@
 //! resolves type aliases to their elementary types, enabling codegen to select
 //! the correct opcodes.
 
+use crate::common::bit_string_options;
+
 // BYTE is an unsigned 8-bit type; 42 fits within u8 range
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_type_alias_byte_assignment_then_correct,
+    bit_string_options(),
     "
 TYPE MyByte : BYTE := 0; END_TYPE
 PROGRAM main
@@ -20,8 +23,9 @@ END_PROGRAM
 );
 
 // 300 truncated to u8 = 300 - 256 = 44
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_type_alias_byte_truncation_then_correct,
+    bit_string_options(),
     "
 TYPE MyByte : BYTE := 0; END_TYPE
 PROGRAM main
@@ -48,21 +52,6 @@ PROGRAM main
 END_PROGRAM
 ",
     &[("x", 100), ("y", 300)],
-);
-
-// INT is signed 16-bit; 40000 truncated to i16 = 40000 - 65536 = -25536
-e2e_i32!(
-    end_to_end_when_type_alias_int_overflow_then_truncated,
-    "
-TYPE MyInt : INT := 0; END_TYPE
-PROGRAM main
-  VAR
-    x : MyInt;
-  END_VAR
-  x := 40000;
-END_PROGRAM
-",
-    &[("x", -25536)],
 );
 
 // An alias with no initializer takes the base type's default, 0 (#1416).

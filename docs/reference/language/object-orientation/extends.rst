@@ -25,10 +25,9 @@ IEC 61131-3 Edition 3.
        :doc:`P4044 </reference/compiler/problems/P4044>`. Code generation
        does not yet give a derived type storage for what it inherits, so
        compiling a derived type reports
-       :doc:`P4007 </reference/compiler/problems/P4007>` where it reads or
-       writes an inherited variable and
-       :doc:`P9999 </reference/compiler/problems/P9999>` where it calls an
-       inherited method. On an interface, parsed only. Enable with
+       :doc:`P9999 </reference/compiler/problems/P9999>` where it reads or
+       writes an inherited variable or calls an inherited method. On an
+       interface, parsed only. Enable with
        ``--allow-fb-inheritance``; see
        :doc:`/explanation/enabling-dialects-and-features`.
 

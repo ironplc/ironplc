@@ -1,10 +1,12 @@
 //! What a test can see of a program after one scan.
 
+use ironplc_analyzer::SemanticContext;
 use ironplc_container::Container;
+use ironplc_dsl::common::Library;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::VmBuffers;
 
-use super::run::parse_and_run;
+use super::run::{compile_analyzed, parse_and_try_run, run_one_scan};
 use super::value::{FromValue, Value};
 use super::variables::Variables;
 
@@ -17,7 +19,20 @@ pub struct Snapshot {
 impl Snapshot {
     /// Parses, compiles and runs `source` for one scan.
     pub fn run(source: &str, options: &CompilerOptions) -> Self {
-        let (container, bufs) = parse_and_run(source, options);
+        let (container, bufs) = parse_and_try_run(source, options).unwrap();
+        Snapshot { container, bufs }
+    }
+
+    /// Compiles the analyzed `library` and runs it for one scan. Use this when
+    /// the program is analyzed together with another library, such as a
+    /// bundled one, so source text alone is not enough.
+    pub fn run_analyzed(
+        library: &Library,
+        context: &SemanticContext,
+        options: &CompilerOptions,
+    ) -> Self {
+        let container = compile_analyzed(library, context, options).unwrap();
+        let bufs = run_one_scan(&container).unwrap();
         Snapshot { container, bufs }
     }
 

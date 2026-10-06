@@ -1,6 +1,6 @@
 //! Parse, compile and run helpers shared by the codegen integration tests.
 
-use ironplc_analyzer::SemanticContext;
+use ironplc_analyzer::{CleanAnalysis, SemanticContext};
 use ironplc_codegen::compile;
 use ironplc_container::Container;
 use ironplc_dsl::common::Library;
@@ -14,26 +14,16 @@ use ironplc_vm::{FaultContext, VmBuffers};
 use super::session::Session;
 use super::value::Value;
 
-/// Reads a STRING value from the data region at the given byte offset.
-pub fn read_string(data_region: &[u8], data_offset: usize) -> String {
-    let cur_len =
-        u16::from_le_bytes([data_region[data_offset + 2], data_region[data_offset + 3]]) as usize;
-    let data_start = data_offset + ironplc_container::STRING_HEADER_BYTES;
-    let bytes = &data_region[data_start..data_start + cur_len];
-    bytes.iter().map(|&b| b as char).collect()
-}
-
-/// Computes the data_offset of a STRING variable given the declared max
-/// lengths of the string variables that precede it in declaration order.
-///
-/// Each STRING variable occupies `STRING_HEADER_BYTES + max_length` bytes,
-/// so `string_offset(&[])` is the first declared string and
-/// `string_offset(&[254, 254])` is the third.
-pub fn string_offset(preceding_max_lengths: &[u16]) -> usize {
-    preceding_max_lengths
-        .iter()
-        .map(|&ml| ironplc_container::STRING_HEADER_BYTES + ml as usize)
-        .sum()
+/// Options for programs that use bit strings the way CODESYS and TwinCAT do: an
+/// untyped integer literal assigned to a `BYTE`/`WORD`/`DWORD`/`LWORD`
+/// (ADR-0031) and arithmetic on a bit string (ADR-0053). The strict default
+/// rejects both.
+pub fn bit_string_options() -> CompilerOptions {
+    CompilerOptions {
+        allow_int_literal_to_bit_string: true,
+        allow_bit_string_arithmetic: true,
+        ..CompilerOptions::default()
+    }
 }
 
 /// Parses an IEC 61131-3 source string and runs type resolution via the analyzer.
@@ -57,20 +47,19 @@ pub fn try_parse_and_compile(
     options: &CompilerOptions,
 ) -> Result<Container, Diagnostic> {
     let (library, context) = parse(source, options);
-    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
-    compile(
-        &library,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
+    compile_analyzed(&library, &context, options)
 }
 
-/// Parses, analyzes, compiles, and runs one scan cycle.
-/// Returns the container and buffers so callers can inspect variable values.
-pub fn parse_and_run(source: &str, options: &CompilerOptions) -> (Container, VmBuffers) {
-    let (container, bufs) = parse_and_try_run(source, options).unwrap();
-    (container, bufs)
+/// Compiles an analyzed library, such as user source analyzed together with a
+/// bundled library, into a Container.
+pub fn compile_analyzed(
+    library: &Library,
+    context: &SemanticContext,
+    options: &CompilerOptions,
+) -> Result<Container, Diagnostic> {
+    let analysis = CleanAnalysis::new(library, context).expect("analysis reported diagnostics");
+    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
+    compile(analysis, &codegen_options, &ironplc_codegen::EmptyLookup)
 }
 
 /// Parses, analyzes, compiles, and runs one scan cycle, returning `Err` on VM trap.
@@ -80,22 +69,21 @@ pub fn parse_and_try_run(
     options: &CompilerOptions,
 ) -> Result<(Container, VmBuffers), FaultContext> {
     let (library, context) = parse(source, options);
-    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
-    let container = compile(
-        &library,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
-    .unwrap();
-    let mut bufs = VmBuffers::from_container(&container);
+    let container = compile_analyzed(&library, &context, options).unwrap();
+    let bufs = run_one_scan(&container)?;
+    Ok((container, bufs))
+}
+
+/// Loads `container` and runs one scan cycle, returning `Err` on VM trap.
+pub fn run_one_scan(container: &Container) -> Result<VmBuffers, FaultContext> {
+    let mut bufs = VmBuffers::from_container(container);
     {
-        let mut vm = load_and_start(&container, &mut bufs)?;
+        let mut vm = load_and_start(container, &mut bufs)?;
         assert_stack_balanced(&vm, "after init");
         vm.run_round(0)?;
         assert_stack_balanced(&vm, "after scan round");
     }
-    Ok((container, bufs))
+    Ok(bufs)
 }
 
 /// Asserts the VM's operand stack is empty.
@@ -120,28 +108,22 @@ pub fn assert_stack_balanced(vm: &ironplc_vm::VmRunning<'_>, phase: &str) {
     );
 }
 
-/// Parses, analyzes, compiles, and runs a multi-round test scenario.
+/// Parses, analyzes, compiles, and runs a multi-round test scenario on the
+/// VM itself, for tests whose subject is the VM's API.
 ///
-/// The closure receives a mutable VM reference so it can write variables,
-/// run multiple rounds, and read back results.
+/// The closure receives the container, to find a variable's slot with
+/// [`vm_var_index`](super::vm_var_index), and a mutable VM reference so it can
+/// write variables, run multiple rounds, and read back results.
 pub fn parse_and_run_rounds(
     source: &str,
     options: &CompilerOptions,
-    f: impl FnOnce(&mut ironplc_vm::VmRunning<'_>),
+    f: impl FnOnce(&Container, &mut ironplc_vm::VmRunning<'_>),
 ) {
-    let (library, context) = parse(source, options);
-    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
-    let container = compile(
-        &library,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
-    .unwrap();
+    let container = parse_and_compile(source, options);
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = load_and_start(&container, &mut bufs).unwrap();
     assert_stack_balanced(&vm, "after init");
-    f(&mut vm);
+    f(&container, &mut vm);
     // The closure may have run any number of rounds. Each individual round
     // is covered by the `debug_assert` at the end of `VmRunning::run_round`;
     // this catches the final state even when that assertion is compiled out.

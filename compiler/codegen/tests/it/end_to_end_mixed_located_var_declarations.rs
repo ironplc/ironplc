@@ -10,10 +10,6 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-// var layout: result=0, tempSensor=1 (plain variables are allocated
-// before located ones, unrelated to source declaration order --
-// confirmed via debug_section.var_names, same as other located-variable
-// end-to-end tests elsewhere in this suite).
 e2e_i32_with!(
     end_to_end_when_mixed_var_block_then_plain_variable_readable,
     CompilerOptions {
@@ -32,7 +28,6 @@ END_PROGRAM
     &[("result", 42)],
 );
 
-// var layout: inst=0 (struct), out=1
 e2e_i32_with!(
     end_to_end_when_mixed_var_input_block_then_plain_input_readable,
     CompilerOptions {

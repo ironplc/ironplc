@@ -1,13 +1,16 @@
-//! Intermediate representation of types in the IronPLC compiler.
+//! Semantic types in the IronPLC compiler.
 //!
-//! This module defines the IntermediateType enum and related structures that represent
-//! the type system during the compilation process. These types are used after parsing
-//! but before code generation to perform type checking and semantic analysis.
+//! This module defines the SemanticType enum and related structures that represent
+//! the type system during the compilation process. A semantic type is the resolved
+//! description of a type (as opposed to the type as written in the source). These types
+//! are used after parsing but before code generation to perform type checking and
+//! semantic analysis.
 //!
-//! The intermediate type system is designed to support both primitive types (like integers,
+//! The semantic type system is designed to support both primitive types (like integers,
 //! booleans) and complex types (like structures, arrays, and function blocks) found in
 //! IEC 61131-3 standard and similar PLC programming languages.
 
+use crate::enumeration_members::EnumerationMembers;
 use ironplc_container::{string_region_size, CharWidth, DEFAULT_STRING_MAX_LENGTH};
 use ironplc_dsl::core::Id;
 
@@ -56,13 +59,13 @@ impl ByteSized {
     }
 }
 
-/// Represents a type in the intermediate representation of the PLC program.
+/// Represents the semantic type of a type in the PLC program.
 ///
 /// This enum captures all possible types that can appear in a PLC program,
-/// from primitive types to complex user-defined types. The intermediate
-/// representation is used during semantic analysis and code generation.
+/// from primitive types to complex user-defined types. The semantic type
+/// is used during semantic analysis and code generation.
 #[derive(Debug, Clone, PartialEq)]
-pub enum IntermediateType {
+pub enum SemanticType {
     /// Boolean type (true/false)
     Bool,
     /// Signed integer with specified bit width
@@ -103,24 +106,27 @@ pub enum IntermediateType {
     /// User-defined enumeration type
     Enumeration {
         /// The underlying primitive type (usually Int { size: 8 })
-        underlying_type: Box<IntermediateType>,
+        underlying_type: Box<SemanticType>,
+        /// The members, their ordinals and the default. Not compared by
+        /// `PartialEq` (see [`EnumerationMembers`]).
+        members: EnumerationMembers,
     },
     /// Structure type containing named fields
     Structure {
         /// Ordered list of fields in the structure
-        fields: Vec<IntermediateStructField>,
+        fields: Vec<SemanticStructField>,
     },
     /// Array type with element type and per-dimension bounds.
     Array {
         /// Type of elements in the array
-        element_type: Box<IntermediateType>,
+        element_type: Box<SemanticType>,
         /// Per-dimension bounds. Empty for dynamic/unknown-size arrays.
         dimensions: Vec<ArrayDimension>,
     },
     /// Subrange type with base type and bounds
     Subrange {
         /// The base type this subrange is derived from (must be integer type)
-        base_type: Box<IntermediateType>,
+        base_type: Box<SemanticType>,
         /// Minimum value (inclusive)
         min_value: i128,
         /// Maximum value (inclusive)
@@ -131,69 +137,69 @@ pub enum IntermediateType {
         /// Name of the function block type
         name: String,
         /// Ordered list of fields (variables) in the function block instance
-        fields: Vec<IntermediateStructField>,
+        fields: Vec<SemanticStructField>,
     },
     /// Function type with return type and parameters
     Function {
         /// Return type of the function, None for procedures
-        return_type: Option<Box<IntermediateType>>,
+        return_type: Option<Box<SemanticType>>,
         /// List of function parameters
-        parameters: Vec<IntermediateFunctionParameter>,
+        parameters: Vec<SemanticFunctionParameter>,
     },
     /// Reference type (REF_TO) pointing to a target type.
     /// References are stored as variable-table indices (u64) at runtime.
     Reference {
         /// The type that this reference points to
-        target_type: Box<IntermediateType>,
+        target_type: Box<SemanticType>,
     },
 }
 
-impl IntermediateType {
+impl SemanticType {
     /// Returns if the type is a primitive type.
     pub fn is_primitive(&self) -> bool {
         matches!(
             self,
-            IntermediateType::Bool
-                | IntermediateType::Int { .. }
-                | IntermediateType::UInt { .. }
-                | IntermediateType::Real { .. }
-                | IntermediateType::Bytes { .. }
-                | IntermediateType::String { .. }
-                | IntermediateType::Time { .. }
-                | IntermediateType::Date { .. }
-                | IntermediateType::TimeOfDay { .. }
-                | IntermediateType::DateAndTime { .. }
+            SemanticType::Bool
+                | SemanticType::Int { .. }
+                | SemanticType::UInt { .. }
+                | SemanticType::Real { .. }
+                | SemanticType::Bytes { .. }
+                | SemanticType::String { .. }
+                | SemanticType::Time { .. }
+                | SemanticType::Date { .. }
+                | SemanticType::TimeOfDay { .. }
+                | SemanticType::DateAndTime { .. }
         )
     }
 
     /// Returns if the type is an enumeration.
     pub fn is_enumeration(&self) -> bool {
-        matches!(self, IntermediateType::Enumeration { .. })
+        matches!(self, SemanticType::Enumeration { .. })
     }
 
     /// Returns if the type is a structure.
     pub fn is_structure(&self) -> bool {
-        matches!(self, IntermediateType::Structure { .. })
+        matches!(self, SemanticType::Structure { .. })
     }
 
     /// Returns if the type is an array.
     pub fn is_array(&self) -> bool {
-        matches!(self, IntermediateType::Array { .. })
+        matches!(self, SemanticType::Array { .. })
     }
 
     /// Returns if the type is a subrange.
     pub fn is_subrange(&self) -> bool {
-        matches!(self, IntermediateType::Subrange { .. })
+        matches!(self, SemanticType::Subrange { .. })
     }
 
     /// Returns if the type is a function block.
     pub fn is_function_block(&self) -> bool {
-        matches!(self, IntermediateType::FunctionBlock { .. })
+        matches!(self, SemanticType::FunctionBlock { .. })
     }
 
     /// Returns if the type is a function.
     pub fn is_function(&self) -> bool {
-        matches!(self, IntermediateType::Function { .. })
+        matches!(self, SemanticType::Function { .. })
     }
 
     /// Returns if the type exposes named members reachable with `.` access.
@@ -209,25 +215,26 @@ impl IntermediateType {
     ///
     /// A function block instance exposes its variables (`timer.Q`) the same way
     /// a structure exposes its fields (`setup.FLAG`), so both are returned
-    /// here. Use [`IntermediateType::is_structure`] instead when the caller
+    /// here. Use [`SemanticType::is_structure`] instead when the caller
     /// needs a structure specifically.
-    pub fn member_fields(&self) -> Option<&Vec<IntermediateStructField>> {
+    pub fn member_fields(&self) -> Option<&Vec<SemanticStructField>> {
         match self {
-            IntermediateType::Structure { fields }
-            | IntermediateType::FunctionBlock { fields, .. } => Some(fields),
+            SemanticType::Structure { fields } | SemanticType::FunctionBlock { fields, .. } => {
+                Some(fields)
+            }
             _ => None,
         }
     }
 
     /// Returns if the type is a reference (REF_TO).
     pub fn is_reference(&self) -> bool {
-        matches!(self, IntermediateType::Reference { .. })
+        matches!(self, SemanticType::Reference { .. })
     }
 
     /// Returns the target type if this is a reference type, None otherwise.
-    pub fn referenced_type(&self) -> Option<&IntermediateType> {
+    pub fn referenced_type(&self) -> Option<&SemanticType> {
         match self {
-            IntermediateType::Reference { target_type } => Some(target_type),
+            SemanticType::Reference { target_type } => Some(target_type),
             _ => None,
         }
     }
@@ -236,9 +243,7 @@ impl IntermediateType {
     pub fn is_numeric(&self) -> bool {
         matches!(
             self,
-            IntermediateType::Int { .. }
-                | IntermediateType::UInt { .. }
-                | IntermediateType::Real { .. }
+            SemanticType::Int { .. } | SemanticType::UInt { .. } | SemanticType::Real { .. }
         )
     }
 
@@ -246,7 +251,7 @@ impl IntermediateType {
     /// or None if dimensions is empty.
     pub fn array_total_elements(&self) -> Option<u32> {
         match self {
-            IntermediateType::Array { dimensions, .. } if !dimensions.is_empty() => {
+            SemanticType::Array { dimensions, .. } if !dimensions.is_empty() => {
                 let mut total: u32 = 1;
                 for dim in dimensions {
                     // Guard: if lower > upper, this dimension is invalid.
@@ -266,10 +271,7 @@ impl IntermediateType {
 
     /// Returns if the type is an integer type (signed or unsigned).
     pub fn is_integer(&self) -> bool {
-        matches!(
-            self,
-            IntermediateType::Int { .. } | IntermediateType::UInt { .. }
-        )
+        matches!(self, SemanticType::Int { .. } | SemanticType::UInt { .. })
     }
 
     /// Gets the size in bytes for this type.
@@ -281,23 +283,25 @@ impl IntermediateType {
     /// but some types require compile-time analysis to determine their final size.
     pub fn size_in_bytes(&self) -> Option<u32> {
         match self {
-            IntermediateType::Bool => Some(1),
-            IntermediateType::Int { size } | IntermediateType::UInt { size } => {
+            SemanticType::Bool => Some(1),
+            SemanticType::Int { size } | SemanticType::UInt { size } => {
                 Some(size.as_bytes() as u32)
             }
-            IntermediateType::Real { size } => Some(size.as_bytes() as u32),
-            IntermediateType::Bytes { size } => Some(size.as_bytes() as u32),
-            IntermediateType::Time { size } => Some(size.as_bytes() as u32),
-            IntermediateType::Date { size } => Some(size.as_bytes() as u32),
-            IntermediateType::TimeOfDay { size } => Some(size.as_bytes() as u32),
-            IntermediateType::DateAndTime { size } => Some(size.as_bytes() as u32),
-            IntermediateType::String {
+            SemanticType::Real { size } => Some(size.as_bytes() as u32),
+            SemanticType::Bytes { size } => Some(size.as_bytes() as u32),
+            SemanticType::Time { size } => Some(size.as_bytes() as u32),
+            SemanticType::Date { size } => Some(size.as_bytes() as u32),
+            SemanticType::TimeOfDay { size } => Some(size.as_bytes() as u32),
+            SemanticType::DateAndTime { size } => Some(size.as_bytes() as u32),
+            SemanticType::String {
                 max_len,
                 char_width,
             } => max_len.map(|len| len as u32 * char_width.byte_width() as u32),
-            IntermediateType::Subrange { base_type, .. } => base_type.size_in_bytes(),
-            IntermediateType::Enumeration { underlying_type } => underlying_type.size_in_bytes(),
-            IntermediateType::Structure { fields } => {
+            SemanticType::Subrange { base_type, .. } => base_type.size_in_bytes(),
+            SemanticType::Enumeration {
+                underlying_type, ..
+            } => underlying_type.size_in_bytes(),
+            SemanticType::Structure { fields } => {
                 if fields.is_empty() {
                     return None;
                 }
@@ -315,12 +319,12 @@ impl IntermediateType {
                 let padding = (alignment - (size_after_last_field % alignment)) % alignment;
                 Some(size_after_last_field.saturating_add(padding))
             }
-            IntermediateType::Array { element_type, .. } => {
+            SemanticType::Array { element_type, .. } => {
                 let total_elements = self.array_total_elements()?;
                 let elem_size = element_type.size_in_bytes()?;
                 (elem_size).checked_mul(total_elements)
             }
-            IntermediateType::FunctionBlock { fields, .. } => {
+            SemanticType::FunctionBlock { fields, .. } => {
                 // Function blocks follow the same memory layout rules as structures
                 if fields.is_empty() {
                     return None;
@@ -339,11 +343,11 @@ impl IntermediateType {
                 let padding = (alignment - (size_after_last_field % alignment)) % alignment;
                 Some(size_after_last_field.saturating_add(padding))
             }
-            IntermediateType::Function { .. } => {
+            SemanticType::Function { .. } => {
                 // Functions don't have memory layout in the traditional sense
                 None
             }
-            IntermediateType::Reference { .. } => {
+            SemanticType::Reference { .. } => {
                 // References are stored as 64-bit variable-table indices
                 Some(8)
             }
@@ -362,18 +366,20 @@ impl IntermediateType {
     /// - 64-bit types (LINT, ULINT, LREAL, LWORD, LTIME, LDATE, DT, LDT): 8-byte alignment
     pub fn alignment_bytes(&self) -> u8 {
         match self {
-            IntermediateType::Bool => 1,
-            IntermediateType::Int { size } | IntermediateType::UInt { size } => size.as_bytes(),
-            IntermediateType::Real { size } => size.as_bytes(),
-            IntermediateType::Bytes { size } => size.as_bytes(),
-            IntermediateType::Time { size } => size.as_bytes(),
-            IntermediateType::Date { size } => size.as_bytes(),
-            IntermediateType::TimeOfDay { size } => size.as_bytes(),
-            IntermediateType::DateAndTime { size } => size.as_bytes(),
-            IntermediateType::String { .. } => 1, // Strings are byte-aligned
-            IntermediateType::Subrange { base_type, .. } => base_type.alignment_bytes(),
-            IntermediateType::Enumeration { underlying_type } => underlying_type.alignment_bytes(),
-            IntermediateType::Structure { fields } => {
+            SemanticType::Bool => 1,
+            SemanticType::Int { size } | SemanticType::UInt { size } => size.as_bytes(),
+            SemanticType::Real { size } => size.as_bytes(),
+            SemanticType::Bytes { size } => size.as_bytes(),
+            SemanticType::Time { size } => size.as_bytes(),
+            SemanticType::Date { size } => size.as_bytes(),
+            SemanticType::TimeOfDay { size } => size.as_bytes(),
+            SemanticType::DateAndTime { size } => size.as_bytes(),
+            SemanticType::String { .. } => 1, // Strings are byte-aligned
+            SemanticType::Subrange { base_type, .. } => base_type.alignment_bytes(),
+            SemanticType::Enumeration {
+                underlying_type, ..
+            } => underlying_type.alignment_bytes(),
+            SemanticType::Structure { fields } => {
                 // Structure alignment is the maximum alignment of all fields
                 // Empty structures have 1-byte alignment
                 fields
@@ -382,8 +388,8 @@ impl IntermediateType {
                     .max()
                     .unwrap_or(1)
             }
-            IntermediateType::Array { element_type, .. } => element_type.alignment_bytes(),
-            IntermediateType::FunctionBlock { fields, .. } => {
+            SemanticType::Array { element_type, .. } => element_type.alignment_bytes(),
+            SemanticType::FunctionBlock { fields, .. } => {
                 // Function block alignment is the maximum alignment of all fields
                 // Empty function blocks have 1-byte alignment
                 fields
@@ -392,8 +398,8 @@ impl IntermediateType {
                     .max()
                     .unwrap_or(1)
             }
-            IntermediateType::Function { .. } => 1, // Default alignment (functions don't have memory layout)
-            IntermediateType::Reference { .. } => 8, // References are 64-bit variable-table indices
+            SemanticType::Function { .. } => 1, // Default alignment (functions don't have memory layout)
+            SemanticType::Reference { .. } => 8, // References are 64-bit variable-table indices
         }
     }
 
@@ -409,31 +415,31 @@ impl IntermediateType {
     /// - `false`: Type size needs to be inferred from context or defaults
     pub fn has_explicit_size(&self) -> bool {
         match self {
-            IntermediateType::Bool
-            | IntermediateType::Int { .. }
-            | IntermediateType::UInt { .. }
-            | IntermediateType::Real { .. }
-            | IntermediateType::Bytes { .. }
-            | IntermediateType::Time { .. }
-            | IntermediateType::Date { .. }
-            | IntermediateType::TimeOfDay { .. }
-            | IntermediateType::DateAndTime { .. } => true,
-            IntermediateType::String { max_len, .. } => max_len.is_some(),
-            IntermediateType::Subrange { base_type, .. } => base_type.has_explicit_size(),
-            IntermediateType::Enumeration { underlying_type } => {
-                underlying_type.has_explicit_size()
-            }
-            IntermediateType::Structure { .. } => true, // Structures always have explicit size in IEC 61131-3
-            IntermediateType::Array {
+            SemanticType::Bool
+            | SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Real { .. }
+            | SemanticType::Bytes { .. }
+            | SemanticType::Time { .. }
+            | SemanticType::Date { .. }
+            | SemanticType::TimeOfDay { .. }
+            | SemanticType::DateAndTime { .. } => true,
+            SemanticType::String { max_len, .. } => max_len.is_some(),
+            SemanticType::Subrange { base_type, .. } => base_type.has_explicit_size(),
+            SemanticType::Enumeration {
+                underlying_type, ..
+            } => underlying_type.has_explicit_size(),
+            SemanticType::Structure { .. } => true, // Structures always have explicit size in IEC 61131-3
+            SemanticType::Array {
                 element_type,
                 dimensions,
             } => {
                 // Array has explicit size if it has known dimensions and elements have explicit size
                 !dimensions.is_empty() && element_type.has_explicit_size()
             }
-            IntermediateType::FunctionBlock { .. } => true, // Function block instances have explicit size
-            IntermediateType::Function { .. } => true, // Functions have explicit size (no variable size)
-            IntermediateType::Reference { .. } => true, // References are always 8 bytes
+            SemanticType::FunctionBlock { .. } => true, // Function block instances have explicit size
+            SemanticType::Function { .. } => true, // Functions have explicit size (no variable size)
+            SemanticType::Reference { .. } => true, // References are always 8 bytes
         }
     }
 
@@ -454,13 +460,13 @@ impl IntermediateType {
     /// ```ignore
     /// // For a structure with fields: x: INT (offset 0), y: DINT (offset 4)
     /// let fields = vec![
-    ///     IntermediateStructField {
+    ///     SemanticStructField {
     ///         name: Id::from("x"),
-    ///         field_type: IntermediateType::Bool,
+    ///         field_type: SemanticType::Bool,
     ///         offset: 0,
     ///     }
     /// ];
-    /// let struct_type = IntermediateType::Structure { fields };
+    /// let struct_type = SemanticType::Structure { fields };
     /// let field_id = Id::from("x");
     /// assert_eq!(struct_type.get_field_offset(&field_id), Some(0));
     /// let unknown_id = Id::from("unknown");
@@ -475,7 +481,7 @@ impl IntermediateType {
     #[allow(dead_code)]
     pub fn get_field_offset(&self, field_name: &ironplc_dsl::core::Id) -> Option<u32> {
         match self {
-            IntermediateType::Structure { fields } => {
+            SemanticType::Structure { fields } => {
                 // Find the field by name using case-insensitive Id comparison
                 fields
                     .iter()
@@ -509,7 +515,7 @@ impl IntermediateType {
     ///
     /// # Examples
     /// ```ignore
-    /// let int_type = IntermediateType::Int { size: ByteSized::B16 };
+    /// let int_type = SemanticType::Int { size: ByteSized::B16 };
     /// let type_name = TypeName::from("MY_RANGE");
     ///
     /// // Valid bounds for INT (-32768 to 32767)
@@ -529,19 +535,19 @@ impl IntermediateType {
         use ironplc_problems::Problem;
 
         let (type_min, type_max) = match self {
-            IntermediateType::Int { size } => match size {
+            SemanticType::Int { size } => match size {
                 ByteSized::B8 => (i8::MIN as i128, i8::MAX as i128),
                 ByteSized::B16 => (i16::MIN as i128, i16::MAX as i128),
                 ByteSized::B32 => (i32::MIN as i128, i32::MAX as i128),
                 ByteSized::B64 => (i64::MIN as i128, i64::MAX as i128),
             },
-            IntermediateType::UInt { size } => match size {
+            SemanticType::UInt { size } => match size {
                 ByteSized::B8 => (0, u8::MAX as i128),
                 ByteSized::B16 => (0, u16::MAX as i128),
                 ByteSized::B32 => (0, u32::MAX as i128),
                 ByteSized::B64 => (0, u64::MAX as i128),
             },
-            IntermediateType::Subrange {
+            SemanticType::Subrange {
                 min_value: base_min,
                 max_value: base_max,
                 ..
@@ -595,7 +601,7 @@ pub enum SlotCountError {
     Overflow,
 }
 
-impl IntermediateType {
+impl SemanticType {
     /// Returns the number of 8-byte slots this type occupies in the data region.
     ///
     /// Returns `Ok(n)` for types with known slot counts.
@@ -623,21 +629,21 @@ impl IntermediateType {
 
         match self {
             // Primitives: 1 slot each
-            IntermediateType::Bool
-            | IntermediateType::Int { .. }
-            | IntermediateType::UInt { .. }
-            | IntermediateType::Real { .. }
-            | IntermediateType::Bytes { .. }
-            | IntermediateType::Time { .. }
-            | IntermediateType::Date { .. }
-            | IntermediateType::TimeOfDay { .. }
-            | IntermediateType::DateAndTime { .. }
-            | IntermediateType::Enumeration { .. }
-            | IntermediateType::Subrange { .. }
-            | IntermediateType::Reference { .. } => Ok(1),
+            SemanticType::Bool
+            | SemanticType::Int { .. }
+            | SemanticType::UInt { .. }
+            | SemanticType::Real { .. }
+            | SemanticType::Bytes { .. }
+            | SemanticType::Time { .. }
+            | SemanticType::Date { .. }
+            | SemanticType::TimeOfDay { .. }
+            | SemanticType::DateAndTime { .. }
+            | SemanticType::Enumeration { .. }
+            | SemanticType::Subrange { .. }
+            | SemanticType::Reference { .. } => Ok(1),
 
             // Structures: sum of field slot counts
-            IntermediateType::Structure { fields } => {
+            SemanticType::Structure { fields } => {
                 let mut total = 0u32;
                 for field in fields {
                     let field_slots = field.field_type.slot_count_inner(depth + 1)?;
@@ -649,7 +655,7 @@ impl IntermediateType {
             }
 
             // Arrays: total_elements * element_slots
-            IntermediateType::Array {
+            SemanticType::Array {
                 element_type,
                 dimensions,
             } => {
@@ -669,7 +675,7 @@ impl IntermediateType {
             // to whole 8-byte slots. A WSTRING needs twice the payload of a
             // STRING of the same declared length, so `char_width` is part of
             // the sizing and not discarded.
-            IntermediateType::String {
+            SemanticType::String {
                 max_len,
                 char_width,
             } => {
@@ -680,20 +686,20 @@ impl IntermediateType {
             }
 
             // Not yet supported in data region
-            IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. } => {
+            SemanticType::FunctionBlock { .. } | SemanticType::Function { .. } => {
                 Err(SlotCountError::UnsupportedFieldType)
             }
         }
     }
 }
 
-/// Represents a field within a structure or function block type in the intermediate representation.
+/// Represents a field within a structure or function block semantic type.
 #[derive(Debug, Clone, PartialEq)]
-pub struct IntermediateStructField {
+pub struct SemanticStructField {
     /// Name of the field
     pub name: Id,
     /// Type of the field
-    pub field_type: IntermediateType,
+    pub field_type: SemanticType,
     /// Memory offset of the field from the start of the structure (in bytes)
     pub offset: u32,
     /// Variable type for function block fields (None for structure fields)
@@ -706,11 +712,11 @@ pub struct IntermediateStructField {
 
 /// Represents a parameter in a function or function block declaration.
 ///
-/// Uses `TypeName` instead of resolved `IntermediateType` to allow building
+/// Uses `TypeName` instead of resolved `SemanticType` to allow building
 /// complete function signatures even when type resolution fails. Types can
 /// be resolved on-demand via `TypeEnvironment` when needed for validation.
 #[derive(Debug, Clone, PartialEq)]
-pub struct IntermediateFunctionParameter {
+pub struct SemanticFunctionParameter {
     /// Name of the parameter
     pub name: ironplc_dsl::core::Id,
     /// Type name of the parameter (resolved on-demand via TypeEnvironment)
@@ -726,7 +732,7 @@ pub struct IntermediateFunctionParameter {
     pub is_reference: bool,
 }
 
-impl IntermediateFunctionParameter {
+impl SemanticFunctionParameter {
     /// Returns true if this parameter receives a value from the caller
     /// (either VAR_INPUT or VAR_IN_OUT).
     pub fn is_input_compatible(&self) -> bool {
@@ -736,39 +742,39 @@ impl IntermediateFunctionParameter {
 
 #[cfg(test)]
 mod tests {
-    use crate::intermediate_type::{
-        ArrayDimension, ByteSized, IntermediateStructField, IntermediateType, SlotCountError,
+    use crate::semantic_type::{
+        ArrayDimension, ByteSized, SemanticStructField, SemanticType, SlotCountError,
     };
     use ironplc_container::{CharWidth, STRING_HEADER_BYTES};
     use ironplc_dsl::core::Id;
 
     #[test]
-    fn intermediate_type_size_in_bytes_returns_bytes() {
+    fn semantic_type_size_in_bytes_returns_bytes() {
         // Test sized types
-        assert_eq!(IntermediateType::Bool.size_in_bytes(), Some(1));
+        assert_eq!(SemanticType::Bool.size_in_bytes(), Some(1));
         assert_eq!(
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B16
             }
             .size_in_bytes(),
             Some(2)
         );
         assert_eq!(
-            IntermediateType::UInt {
+            SemanticType::UInt {
                 size: ByteSized::B32
             }
             .size_in_bytes(),
             Some(4)
         );
         assert_eq!(
-            IntermediateType::Real {
+            SemanticType::Real {
                 size: ByteSized::B64
             }
             .size_in_bytes(),
             Some(8)
         );
         assert_eq!(
-            IntermediateType::Bytes {
+            SemanticType::Bytes {
                 size: ByteSized::B8
             }
             .size_in_bytes(),
@@ -777,35 +783,35 @@ mod tests {
 
         // Test time and date types
         assert_eq!(
-            IntermediateType::Time {
+            SemanticType::Time {
                 size: ByteSized::B32
             }
             .size_in_bytes(),
             Some(4)
         );
         assert_eq!(
-            IntermediateType::Time {
+            SemanticType::Time {
                 size: ByteSized::B64
             }
             .size_in_bytes(),
             Some(8)
         );
         assert_eq!(
-            IntermediateType::Date {
+            SemanticType::Date {
                 size: ByteSized::B32
             }
             .size_in_bytes(),
             Some(4)
         );
         assert_eq!(
-            IntermediateType::TimeOfDay {
+            SemanticType::TimeOfDay {
                 size: ByteSized::B32
             }
             .size_in_bytes(),
             Some(4)
         );
         assert_eq!(
-            IntermediateType::DateAndTime {
+            SemanticType::DateAndTime {
                 size: ByteSized::B64
             }
             .size_in_bytes(),
@@ -814,7 +820,7 @@ mod tests {
 
         // Test string types
         assert_eq!(
-            IntermediateType::String {
+            SemanticType::String {
                 max_len: Some(10),
                 char_width: CharWidth::Narrow,
             }
@@ -822,7 +828,7 @@ mod tests {
             Some(10)
         );
         assert_eq!(
-            IntermediateType::String {
+            SemanticType::String {
                 max_len: None,
                 char_width: CharWidth::Narrow,
             }
@@ -831,7 +837,7 @@ mod tests {
         );
         // WSTRING payload is two bytes per code unit.
         assert_eq!(
-            IntermediateType::String {
+            SemanticType::String {
                 max_len: Some(10),
                 char_width: CharWidth::Wide,
             }
@@ -840,8 +846,8 @@ mod tests {
         );
 
         // Test subrange inherits base type size
-        let subrange = IntermediateType::Subrange {
-            base_type: Box::new(IntermediateType::Int {
+        let subrange = SemanticType::Subrange {
+            base_type: Box::new(SemanticType::Int {
                 size: ByteSized::B16,
             }),
             min_value: 1,
@@ -850,16 +856,17 @@ mod tests {
         assert_eq!(subrange.size_in_bytes(), Some(2));
 
         // Test enumeration inherits underlying type size
-        let enumeration = IntermediateType::Enumeration {
-            underlying_type: Box::new(IntermediateType::Int {
+        let enumeration = SemanticType::Enumeration {
+            underlying_type: Box::new(SemanticType::Int {
                 size: ByteSized::B8,
             }),
+            members: crate::enumeration_members::EnumerationMembers::default(),
         };
         assert_eq!(enumeration.size_in_bytes(), Some(1));
 
         // Test fixed-size array
-        let array = IntermediateType::Array {
-            element_type: Box::new(IntermediateType::Int {
+        let array = SemanticType::Array {
+            element_type: Box::new(SemanticType::Int {
                 size: ByteSized::B32,
             }),
             dimensions: vec![ArrayDimension { lower: 1, upper: 5 }],
@@ -867,8 +874,8 @@ mod tests {
         assert_eq!(array.size_in_bytes(), Some(20)); // 4 bytes * 5 elements
 
         // Test dynamic array (empty dimensions)
-        let dynamic_array = IntermediateType::Array {
-            element_type: Box::new(IntermediateType::Int {
+        let dynamic_array = SemanticType::Array {
+            element_type: Box::new(SemanticType::Int {
                 size: ByteSized::B32,
             }),
             dimensions: vec![],
@@ -876,8 +883,8 @@ mod tests {
         assert_eq!(dynamic_array.size_in_bytes(), None);
 
         // Test reference types (always 8 bytes)
-        let ref_type = IntermediateType::Reference {
-            target_type: Box::new(IntermediateType::Int {
+        let ref_type = SemanticType::Reference {
+            target_type: Box::new(SemanticType::Int {
                 size: ByteSized::B16,
             }),
         };
@@ -885,25 +892,25 @@ mod tests {
     }
 
     #[test]
-    fn intermediate_type_alignment_bytes_returns_alignment() {
+    fn semantic_type_alignment_bytes_returns_alignment() {
         // Test primitive types
-        assert_eq!(IntermediateType::Bool.alignment_bytes(), 1);
+        assert_eq!(SemanticType::Bool.alignment_bytes(), 1);
         assert_eq!(
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B16
             }
             .alignment_bytes(),
             2
         );
         assert_eq!(
-            IntermediateType::UInt {
+            SemanticType::UInt {
                 size: ByteSized::B32
             }
             .alignment_bytes(),
             4
         );
         assert_eq!(
-            IntermediateType::Real {
+            SemanticType::Real {
                 size: ByteSized::B64
             }
             .alignment_bytes(),
@@ -912,28 +919,28 @@ mod tests {
 
         // Test time and date types
         assert_eq!(
-            IntermediateType::Time {
+            SemanticType::Time {
                 size: ByteSized::B32
             }
             .alignment_bytes(),
             4
         );
         assert_eq!(
-            IntermediateType::Time {
+            SemanticType::Time {
                 size: ByteSized::B64
             }
             .alignment_bytes(),
             8
         );
         assert_eq!(
-            IntermediateType::Date {
+            SemanticType::Date {
                 size: ByteSized::B32
             }
             .alignment_bytes(),
             4
         );
         assert_eq!(
-            IntermediateType::DateAndTime {
+            SemanticType::DateAndTime {
                 size: ByteSized::B64
             }
             .alignment_bytes(),
@@ -942,7 +949,7 @@ mod tests {
 
         // Test string types (byte-aligned)
         assert_eq!(
-            IntermediateType::String {
+            SemanticType::String {
                 max_len: Some(10),
                 char_width: CharWidth::Narrow,
             }
@@ -951,8 +958,8 @@ mod tests {
         );
 
         // Test derived types inherit alignment
-        let subrange = IntermediateType::Subrange {
-            base_type: Box::new(IntermediateType::Int {
+        let subrange = SemanticType::Subrange {
+            base_type: Box::new(SemanticType::Int {
                 size: ByteSized::B32,
             }),
             min_value: 1,
@@ -961,8 +968,8 @@ mod tests {
         assert_eq!(subrange.alignment_bytes(), 4);
 
         // Test array inherits element alignment
-        let array = IntermediateType::Array {
-            element_type: Box::new(IntermediateType::Real {
+        let array = SemanticType::Array {
+            element_type: Box::new(SemanticType::Real {
                 size: ByteSized::B64,
             }),
             dimensions: vec![ArrayDimension { lower: 1, upper: 3 }],
@@ -970,44 +977,44 @@ mod tests {
         assert_eq!(array.alignment_bytes(), 8);
 
         // Test reference type alignment (always 8 bytes)
-        let ref_type = IntermediateType::Reference {
-            target_type: Box::new(IntermediateType::Bool),
+        let ref_type = SemanticType::Reference {
+            target_type: Box::new(SemanticType::Bool),
         };
         assert_eq!(ref_type.alignment_bytes(), 8);
     }
 
     #[test]
-    fn intermediate_type_has_explicit_size_returns_correct_value() {
+    fn semantic_type_has_explicit_size_returns_correct_value() {
         // Test types with explicit size
-        assert!(IntermediateType::Bool.has_explicit_size());
-        assert!(IntermediateType::Int {
+        assert!(SemanticType::Bool.has_explicit_size());
+        assert!(SemanticType::Int {
             size: ByteSized::B16
         }
         .has_explicit_size());
-        assert!(IntermediateType::Time {
+        assert!(SemanticType::Time {
             size: ByteSized::B32
         }
         .has_explicit_size());
-        assert!(IntermediateType::Date {
+        assert!(SemanticType::Date {
             size: ByteSized::B32
         }
         .has_explicit_size());
 
         // Test string types
-        assert!(IntermediateType::String {
+        assert!(SemanticType::String {
             max_len: Some(10),
             char_width: CharWidth::Narrow,
         }
         .has_explicit_size());
-        assert!(!IntermediateType::String {
+        assert!(!SemanticType::String {
             max_len: None,
             char_width: CharWidth::Narrow,
         }
         .has_explicit_size());
 
         // Test derived types
-        let subrange = IntermediateType::Subrange {
-            base_type: Box::new(IntermediateType::Int {
+        let subrange = SemanticType::Subrange {
+            base_type: Box::new(SemanticType::Int {
                 size: ByteSized::B16,
             }),
             min_value: 1,
@@ -1016,14 +1023,14 @@ mod tests {
         assert!(subrange.has_explicit_size());
 
         // Test arrays
-        let fixed_array = IntermediateType::Array {
-            element_type: Box::new(IntermediateType::Bool),
+        let fixed_array = SemanticType::Array {
+            element_type: Box::new(SemanticType::Bool),
             dimensions: vec![ArrayDimension { lower: 0, upper: 9 }],
         };
         assert!(fixed_array.has_explicit_size());
 
-        let dynamic_array = IntermediateType::Array {
-            element_type: Box::new(IntermediateType::Bool),
+        let dynamic_array = SemanticType::Array {
+            element_type: Box::new(SemanticType::Bool),
             dimensions: vec![],
         };
         assert!(!dynamic_array.has_explicit_size());
@@ -1031,22 +1038,22 @@ mod tests {
 
     #[test]
     fn get_field_offset_with_structure_then_returns_correct_offset() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         let fields = vec![
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field1"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B16,
                 },
                 offset: 0,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field2"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B32,
                 },
                 offset: 4,
@@ -1055,7 +1062,7 @@ mod tests {
             },
         ];
 
-        let struct_type = IntermediateType::Structure { fields };
+        let struct_type = SemanticType::Structure { fields };
 
         let field1_id = Id::from("field1");
         let field2_id = Id::from("field2");
@@ -1068,12 +1075,12 @@ mod tests {
 
     #[test]
     fn get_field_offset_with_case_insensitive_field_name_then_returns_correct_offset() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
-        let fields = vec![IntermediateStructField {
+        let fields = vec![SemanticStructField {
             name: Id::from("MyField"),
-            field_type: IntermediateType::Int {
+            field_type: SemanticType::Int {
                 size: ByteSized::B16,
             },
             offset: 2,
@@ -1081,7 +1088,7 @@ mod tests {
             has_default: false,
         }];
 
-        let struct_type = IntermediateType::Structure { fields };
+        let struct_type = SemanticType::Structure { fields };
 
         // Test case-insensitive matching following IEC 61131-3 identifier rules
         let lowercase_id = Id::from("myfield");
@@ -1097,14 +1104,14 @@ mod tests {
     fn get_field_offset_with_non_structure_then_returns_none() {
         use ironplc_dsl::core::Id;
 
-        let int_type = IntermediateType::Int {
+        let int_type = SemanticType::Int {
             size: ByteSized::B16,
         };
         let field_id = Id::from("any_field");
         assert_eq!(int_type.get_field_offset(&field_id), None);
 
-        let array_type = IntermediateType::Array {
-            element_type: Box::new(IntermediateType::Bool),
+        let array_type = SemanticType::Array {
+            element_type: Box::new(SemanticType::Bool),
             dimensions: vec![ArrayDimension { lower: 0, upper: 9 }],
         };
         assert_eq!(array_type.get_field_offset(&field_id), None);
@@ -1115,7 +1122,7 @@ mod tests {
         use ironplc_dsl::common::TypeName;
 
         // Test all signed integer types
-        let sint_type = IntermediateType::Int {
+        let sint_type = SemanticType::Int {
             size: ByteSized::B8,
         };
         assert!(sint_type
@@ -1128,7 +1135,7 @@ mod tests {
             .validate_bounds(-128, 128, &TypeName::from("TEST"))
             .is_err());
 
-        let int_type = IntermediateType::Int {
+        let int_type = SemanticType::Int {
             size: ByteSized::B16,
         };
         assert!(int_type
@@ -1138,7 +1145,7 @@ mod tests {
             .validate_bounds(-32769, 32767, &TypeName::from("TEST"))
             .is_err());
 
-        let dint_type = IntermediateType::Int {
+        let dint_type = SemanticType::Int {
             size: ByteSized::B32,
         };
         assert!(dint_type
@@ -1148,7 +1155,7 @@ mod tests {
             .validate_bounds(-2147483649, 2147483647, &TypeName::from("TEST"))
             .is_err());
 
-        let lint_type = IntermediateType::Int {
+        let lint_type = SemanticType::Int {
             size: ByteSized::B64,
         };
         assert!(lint_type
@@ -1156,7 +1163,7 @@ mod tests {
             .is_ok());
 
         // Test all unsigned integer types
-        let usint_type = IntermediateType::UInt {
+        let usint_type = SemanticType::UInt {
             size: ByteSized::B8,
         };
         assert!(usint_type
@@ -1169,7 +1176,7 @@ mod tests {
             .validate_bounds(0, 256, &TypeName::from("TEST"))
             .is_err());
 
-        let uint_type = IntermediateType::UInt {
+        let uint_type = SemanticType::UInt {
             size: ByteSized::B16,
         };
         assert!(uint_type
@@ -1179,7 +1186,7 @@ mod tests {
             .validate_bounds(-1, 65535, &TypeName::from("TEST"))
             .is_err());
 
-        let udint_type = IntermediateType::UInt {
+        let udint_type = SemanticType::UInt {
             size: ByteSized::B32,
         };
         assert!(udint_type
@@ -1189,7 +1196,7 @@ mod tests {
             .validate_bounds(-1, 4294967295, &TypeName::from("TEST"))
             .is_err());
 
-        let ulint_type = IntermediateType::UInt {
+        let ulint_type = SemanticType::UInt {
             size: ByteSized::B64,
         };
         assert!(ulint_type
@@ -1205,8 +1212,8 @@ mod tests {
         use ironplc_dsl::common::TypeName;
 
         // Create a nested subrange: INT (10..100) -> SUBRANGE (20..80)
-        let nested_subrange = IntermediateType::Subrange {
-            base_type: Box::new(IntermediateType::Int {
+        let nested_subrange = SemanticType::Subrange {
+            base_type: Box::new(SemanticType::Int {
                 size: ByteSized::B16,
             }),
             min_value: 10,
@@ -1238,7 +1245,7 @@ mod tests {
         use ironplc_dsl::common::TypeName;
         use ironplc_problems::Problem;
 
-        let string_type = IntermediateType::String {
+        let string_type = SemanticType::String {
             max_len: Some(10),
             char_width: CharWidth::Narrow,
         };
@@ -1247,14 +1254,14 @@ mod tests {
         let error = result.unwrap_err();
         assert_eq!(error.code, Problem::SubrangeBaseTypeNotNumeric.code());
 
-        let bool_type = IntermediateType::Bool;
+        let bool_type = SemanticType::Bool;
         let result = bool_type.validate_bounds(0, 1, &TypeName::from("TEST"));
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert_eq!(error.code, Problem::SubrangeBaseTypeNotNumeric.code());
 
-        let array_type = IntermediateType::Array {
-            element_type: Box::new(IntermediateType::Int {
+        let array_type = SemanticType::Array {
+            element_type: Box::new(SemanticType::Int {
                 size: ByteSized::B16,
             }),
             dimensions: vec![ArrayDimension {
@@ -1270,18 +1277,18 @@ mod tests {
 
     #[test]
     fn structure_alignment_bytes_with_empty_structure_then_returns_one() {
-        let struct_type = IntermediateType::Structure { fields: vec![] };
+        let struct_type = SemanticType::Structure { fields: vec![] };
         assert_eq!(struct_type.alignment_bytes(), 1);
     }
 
     #[test]
     fn structure_alignment_bytes_with_single_field_then_returns_field_alignment() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
-        let fields = vec![IntermediateStructField {
+        let fields = vec![SemanticStructField {
             name: Id::from("field1"),
-            field_type: IntermediateType::Int {
+            field_type: SemanticType::Int {
                 size: ByteSized::B32,
             },
             offset: 0,
@@ -1289,37 +1296,37 @@ mod tests {
             has_default: false,
         }];
 
-        let struct_type = IntermediateType::Structure { fields };
+        let struct_type = SemanticType::Structure { fields };
         assert_eq!(struct_type.alignment_bytes(), 4);
     }
 
     #[test]
     fn structure_alignment_bytes_with_multiple_fields_then_returns_max_alignment() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         let fields = vec![
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field1"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B8,
                 },
                 offset: 0,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field2"),
-                field_type: IntermediateType::Real {
+                field_type: SemanticType::Real {
                     size: ByteSized::B64,
                 },
                 offset: 8,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field3"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B16,
                 },
                 offset: 16,
@@ -1328,21 +1335,21 @@ mod tests {
             },
         ];
 
-        let struct_type = IntermediateType::Structure { fields };
+        let struct_type = SemanticType::Structure { fields };
         // Maximum alignment should be 8 (from the Real field)
         assert_eq!(struct_type.alignment_bytes(), 8);
     }
 
     #[test]
     fn structure_alignment_bytes_with_nested_structure_then_returns_max_nested_alignment() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         // Create inner structure with B64 alignment
-        let inner_struct = IntermediateType::Structure {
-            fields: vec![IntermediateStructField {
+        let inner_struct = SemanticType::Structure {
+            fields: vec![SemanticStructField {
                 name: Id::from("inner_field"),
-                field_type: IntermediateType::Real {
+                field_type: SemanticType::Real {
                     size: ByteSized::B64,
                 },
                 offset: 0,
@@ -1352,18 +1359,18 @@ mod tests {
         };
 
         // Create outer structure containing the inner structure
-        let outer_struct = IntermediateType::Structure {
+        let outer_struct = SemanticType::Structure {
             fields: vec![
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("field1"),
-                    field_type: IntermediateType::Int {
+                    field_type: SemanticType::Int {
                         size: ByteSized::B16,
                     },
                     offset: 0,
                     var_type: None,
                     has_default: false,
                 },
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("nested"),
                     field_type: inner_struct,
                     offset: 8,
@@ -1379,18 +1386,18 @@ mod tests {
 
     #[test]
     fn structure_size_in_bytes_with_empty_structure_then_returns_none() {
-        let struct_type = IntermediateType::Structure { fields: vec![] };
+        let struct_type = SemanticType::Structure { fields: vec![] };
         assert_eq!(struct_type.size_in_bytes(), None);
     }
 
     #[test]
     fn structure_size_in_bytes_with_single_field_then_returns_field_size() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
-        let fields = vec![IntermediateStructField {
+        let fields = vec![SemanticStructField {
             name: Id::from("field1"),
-            field_type: IntermediateType::Int {
+            field_type: SemanticType::Int {
                 size: ByteSized::B32,
             },
             offset: 0,
@@ -1398,30 +1405,30 @@ mod tests {
             has_default: false,
         }];
 
-        let struct_type = IntermediateType::Structure { fields };
+        let struct_type = SemanticType::Structure { fields };
         // Size should be 4 bytes (one DINT field)
         assert_eq!(struct_type.size_in_bytes(), Some(4));
     }
 
     #[test]
     fn structure_size_in_bytes_with_aligned_fields_then_returns_total_size() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         // Structure with two 4-byte aligned fields
         let fields = vec![
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field1"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B32,
                 },
                 offset: 0,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field2"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B32,
                 },
                 offset: 4,
@@ -1430,31 +1437,31 @@ mod tests {
             },
         ];
 
-        let struct_type = IntermediateType::Structure { fields };
+        let struct_type = SemanticType::Structure { fields };
         // Size should be 8 bytes (two DINT fields)
         assert_eq!(struct_type.size_in_bytes(), Some(8));
     }
 
     #[test]
     fn structure_size_in_bytes_with_padding_then_returns_padded_size() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         // Structure: SINT (1 byte at offset 0), DINT (4 bytes at offset 4)
         // Total size should be 8 bytes (padded to 4-byte alignment)
         let fields = vec![
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field1"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B8,
                 },
                 offset: 0,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field2"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B32,
                 },
                 offset: 4,
@@ -1463,31 +1470,31 @@ mod tests {
             },
         ];
 
-        let struct_type = IntermediateType::Structure { fields };
+        let struct_type = SemanticType::Structure { fields };
         // Size should be 8 bytes (1 byte + 3 padding + 4 bytes)
         assert_eq!(struct_type.size_in_bytes(), Some(8));
     }
 
     #[test]
     fn structure_size_in_bytes_with_trailing_padding_then_returns_aligned_size() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         // Structure: LREAL (8 bytes at offset 0), SINT (1 byte at offset 8)
         // Total size should be 16 bytes (padded to 8-byte alignment)
         let fields = vec![
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field1"),
-                field_type: IntermediateType::Real {
+                field_type: SemanticType::Real {
                     size: ByteSized::B64,
                 },
                 offset: 0,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field2"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B8,
                 },
                 offset: 8,
@@ -1496,31 +1503,31 @@ mod tests {
             },
         ];
 
-        let struct_type = IntermediateType::Structure { fields };
+        let struct_type = SemanticType::Structure { fields };
         // Size should be 16 bytes (8 bytes + 1 byte + 7 padding)
         assert_eq!(struct_type.size_in_bytes(), Some(16));
     }
 
     #[test]
     fn structure_size_in_bytes_with_nested_structure_then_returns_correct_size() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         // Create inner structure (two INT fields = 4 bytes total)
-        let inner_struct = IntermediateType::Structure {
+        let inner_struct = SemanticType::Structure {
             fields: vec![
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("x"),
-                    field_type: IntermediateType::Int {
+                    field_type: SemanticType::Int {
                         size: ByteSized::B16,
                     },
                     offset: 0,
                     var_type: None,
                     has_default: false,
                 },
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("y"),
-                    field_type: IntermediateType::Int {
+                    field_type: SemanticType::Int {
                         size: ByteSized::B16,
                     },
                     offset: 2,
@@ -1531,18 +1538,18 @@ mod tests {
         };
 
         // Create outer structure
-        let outer_struct = IntermediateType::Structure {
+        let outer_struct = SemanticType::Structure {
             fields: vec![
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("point"),
                     field_type: inner_struct,
                     offset: 0,
                     var_type: None,
                     has_default: false,
                 },
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("id"),
-                    field_type: IntermediateType::Int {
+                    field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
                     offset: 4,
@@ -1558,24 +1565,24 @@ mod tests {
 
     #[test]
     fn structure_size_in_bytes_with_unknown_field_size_then_returns_none() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         // Structure containing a field with unknown size (dynamic array)
         let fields = vec![
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field1"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B32,
                 },
                 offset: 0,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("dynamic_array"),
-                field_type: IntermediateType::Array {
-                    element_type: Box::new(IntermediateType::Bool),
+                field_type: SemanticType::Array {
+                    element_type: Box::new(SemanticType::Bool),
                     dimensions: vec![], // Dynamic size
                 },
                 offset: 4,
@@ -1584,24 +1591,24 @@ mod tests {
             },
         ];
 
-        let struct_type = IntermediateType::Structure { fields };
+        let struct_type = SemanticType::Structure { fields };
         // Should return None because one field has unknown size
         assert_eq!(struct_type.size_in_bytes(), None);
     }
 
     #[test]
     fn member_fields_when_structure_then_returns_fields() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
-        let fields = vec![IntermediateStructField {
+        let fields = vec![SemanticStructField {
             name: Id::from("field1"),
-            field_type: IntermediateType::Bool,
+            field_type: SemanticType::Bool,
             offset: 0,
             var_type: None,
             has_default: false,
         }];
-        let struct_type = IntermediateType::Structure {
+        let struct_type = SemanticType::Structure {
             fields: fields.clone(),
         };
 
@@ -1611,17 +1618,17 @@ mod tests {
 
     #[test]
     fn member_fields_when_function_block_then_returns_fields() {
-        use super::{FunctionBlockVarType, IntermediateStructField};
+        use super::{FunctionBlockVarType, SemanticStructField};
         use ironplc_dsl::core::Id;
 
-        let fields = vec![IntermediateStructField {
+        let fields = vec![SemanticStructField {
             name: Id::from("Q"),
-            field_type: IntermediateType::Bool,
+            field_type: SemanticType::Bool,
             offset: 0,
             var_type: Some(FunctionBlockVarType::Output),
             has_default: false,
         }];
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "MyFB".to_string(),
             fields: fields.clone(),
         };
@@ -1632,11 +1639,11 @@ mod tests {
 
     #[test]
     fn member_fields_when_not_composite_then_returns_none() {
-        assert!(!IntermediateType::Bool.has_members());
-        assert_eq!(IntermediateType::Bool.member_fields(), None);
+        assert!(!SemanticType::Bool.has_members());
+        assert_eq!(SemanticType::Bool.member_fields(), None);
 
-        let array_type = IntermediateType::Array {
-            element_type: Box::new(IntermediateType::Bool),
+        let array_type = SemanticType::Array {
+            element_type: Box::new(SemanticType::Bool),
             dimensions: vec![],
         };
         assert!(!array_type.has_members());
@@ -1645,7 +1652,7 @@ mod tests {
 
     #[test]
     fn function_block_alignment_bytes_with_empty_function_block_then_returns_one() {
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "EmptyFB".to_string(),
             fields: vec![],
         };
@@ -1654,12 +1661,12 @@ mod tests {
 
     #[test]
     fn function_block_alignment_bytes_with_single_field_then_returns_field_alignment() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
-        let fields = vec![IntermediateStructField {
+        let fields = vec![SemanticStructField {
             name: Id::from("field1"),
-            field_type: IntermediateType::Int {
+            field_type: SemanticType::Int {
                 size: ByteSized::B32,
             },
             offset: 0,
@@ -1667,7 +1674,7 @@ mod tests {
             has_default: false,
         }];
 
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "TestFB".to_string(),
             fields,
         };
@@ -1676,31 +1683,31 @@ mod tests {
 
     #[test]
     fn function_block_alignment_bytes_with_multiple_fields_then_returns_max_alignment() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         let fields = vec![
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field1"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B8,
                 },
                 offset: 0,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field2"),
-                field_type: IntermediateType::Real {
+                field_type: SemanticType::Real {
                     size: ByteSized::B64,
                 },
                 offset: 8,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("field3"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B16,
                 },
                 offset: 16,
@@ -1709,7 +1716,7 @@ mod tests {
             },
         ];
 
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "TestFB".to_string(),
             fields,
         };
@@ -1719,7 +1726,7 @@ mod tests {
 
     #[test]
     fn function_block_size_in_bytes_with_empty_function_block_then_returns_none() {
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "EmptyFB".to_string(),
             fields: vec![],
         };
@@ -1728,12 +1735,12 @@ mod tests {
 
     #[test]
     fn function_block_size_in_bytes_with_single_field_then_returns_field_size() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
-        let fields = vec![IntermediateStructField {
+        let fields = vec![SemanticStructField {
             name: Id::from("counter"),
-            field_type: IntermediateType::Int {
+            field_type: SemanticType::Int {
                 size: ByteSized::B32,
             },
             offset: 0,
@@ -1741,7 +1748,7 @@ mod tests {
             has_default: false,
         }];
 
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "CounterFB".to_string(),
             fields,
         };
@@ -1751,23 +1758,23 @@ mod tests {
 
     #[test]
     fn function_block_size_in_bytes_with_aligned_fields_then_returns_total_size() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         // Function block with two 4-byte aligned fields
         let fields = vec![
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("input"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B32,
                 },
                 offset: 0,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("output"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B32,
                 },
                 offset: 4,
@@ -1776,7 +1783,7 @@ mod tests {
             },
         ];
 
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "ProcessFB".to_string(),
             fields,
         };
@@ -1786,24 +1793,24 @@ mod tests {
 
     #[test]
     fn function_block_size_in_bytes_with_padding_then_returns_padded_size() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         // Function block: SINT (1 byte at offset 0), DINT (4 bytes at offset 4)
         // Total size should be 8 bytes (padded to 4-byte alignment)
         let fields = vec![
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("flag"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B8,
                 },
                 offset: 0,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("value"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B32,
                 },
                 offset: 4,
@@ -1812,7 +1819,7 @@ mod tests {
             },
         ];
 
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "TestFB".to_string(),
             fields,
         };
@@ -1822,24 +1829,24 @@ mod tests {
 
     #[test]
     fn function_block_size_in_bytes_with_trailing_padding_then_returns_aligned_size() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         // Function block: LREAL (8 bytes at offset 0), SINT (1 byte at offset 8)
         // Total size should be 16 bytes (padded to 8-byte alignment)
         let fields = vec![
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("timestamp"),
-                field_type: IntermediateType::Real {
+                field_type: SemanticType::Real {
                     size: ByteSized::B64,
                 },
                 offset: 0,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("status"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B8,
                 },
                 offset: 8,
@@ -1848,7 +1855,7 @@ mod tests {
             },
         ];
 
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "TimerFB".to_string(),
             fields,
         };
@@ -1858,24 +1865,24 @@ mod tests {
 
     #[test]
     fn function_block_size_in_bytes_with_nested_structure_then_returns_correct_size() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         // Create inner structure (two INT fields = 4 bytes total)
-        let inner_struct = IntermediateType::Structure {
+        let inner_struct = SemanticType::Structure {
             fields: vec![
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("x"),
-                    field_type: IntermediateType::Int {
+                    field_type: SemanticType::Int {
                         size: ByteSized::B16,
                     },
                     offset: 0,
                     var_type: None,
                     has_default: false,
                 },
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("y"),
-                    field_type: IntermediateType::Int {
+                    field_type: SemanticType::Int {
                         size: ByteSized::B16,
                     },
                     offset: 2,
@@ -1886,19 +1893,19 @@ mod tests {
         };
 
         // Create function block containing the structure
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "PositionFB".to_string(),
             fields: vec![
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("position"),
                     field_type: inner_struct,
                     offset: 0,
                     var_type: None,
                     has_default: false,
                 },
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("id"),
-                    field_type: IntermediateType::Int {
+                    field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
                     offset: 4,
@@ -1914,24 +1921,24 @@ mod tests {
 
     #[test]
     fn function_block_size_in_bytes_with_unknown_field_size_then_returns_none() {
-        use super::IntermediateStructField;
+        use super::SemanticStructField;
         use ironplc_dsl::core::Id;
 
         // Function block containing a field with unknown size (dynamic array)
         let fields = vec![
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("counter"),
-                field_type: IntermediateType::Int {
+                field_type: SemanticType::Int {
                     size: ByteSized::B32,
                 },
                 offset: 0,
                 var_type: None,
                 has_default: false,
             },
-            IntermediateStructField {
+            SemanticStructField {
                 name: Id::from("buffer"),
-                field_type: IntermediateType::Array {
-                    element_type: Box::new(IntermediateType::Bool),
+                field_type: SemanticType::Array {
+                    element_type: Box::new(SemanticType::Bool),
                     dimensions: vec![], // Dynamic size
                 },
                 offset: 4,
@@ -1940,7 +1947,7 @@ mod tests {
             },
         ];
 
-        let fb_type = IntermediateType::FunctionBlock {
+        let fb_type = SemanticType::FunctionBlock {
             name: "BufferFB".to_string(),
             fields,
         };
@@ -1950,75 +1957,76 @@ mod tests {
 
     #[test]
     fn slot_count_when_primitive_then_returns_1() {
-        assert_eq!(IntermediateType::Bool.slot_count(), Ok(1));
+        assert_eq!(SemanticType::Bool.slot_count(), Ok(1));
         assert_eq!(
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B16
             }
             .slot_count(),
             Ok(1)
         );
         assert_eq!(
-            IntermediateType::UInt {
+            SemanticType::UInt {
                 size: ByteSized::B32
             }
             .slot_count(),
             Ok(1)
         );
         assert_eq!(
-            IntermediateType::Real {
+            SemanticType::Real {
                 size: ByteSized::B64
             }
             .slot_count(),
             Ok(1)
         );
         assert_eq!(
-            IntermediateType::Bytes {
+            SemanticType::Bytes {
                 size: ByteSized::B8
             }
             .slot_count(),
             Ok(1)
         );
         assert_eq!(
-            IntermediateType::Time {
+            SemanticType::Time {
                 size: ByteSized::B32
             }
             .slot_count(),
             Ok(1)
         );
         assert_eq!(
-            IntermediateType::Date {
+            SemanticType::Date {
                 size: ByteSized::B32
             }
             .slot_count(),
             Ok(1)
         );
         assert_eq!(
-            IntermediateType::TimeOfDay {
+            SemanticType::TimeOfDay {
                 size: ByteSized::B32
             }
             .slot_count(),
             Ok(1)
         );
         assert_eq!(
-            IntermediateType::DateAndTime {
+            SemanticType::DateAndTime {
                 size: ByteSized::B64
             }
             .slot_count(),
             Ok(1)
         );
         assert_eq!(
-            IntermediateType::Enumeration {
-                underlying_type: Box::new(IntermediateType::Int {
+            SemanticType::Enumeration {
+                underlying_type: Box::new(SemanticType::Int {
                     size: ByteSized::B8
-                })
+                }),
+                members: crate::enumeration_members::EnumerationMembers::default(),
             }
             .slot_count(),
             Ok(1)
         );
         assert_eq!(
-            IntermediateType::Subrange {
-                base_type: Box::new(IntermediateType::Int {
+            SemanticType::Subrange {
+                base_type: Box::new(SemanticType::Int {
                     size: ByteSized::B16
                 }),
                 min_value: 1,
@@ -2031,20 +2039,20 @@ mod tests {
 
     #[test]
     fn slot_count_when_structure_with_two_fields_then_returns_2() {
-        let s = IntermediateType::Structure {
+        let s = SemanticType::Structure {
             fields: vec![
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("a"),
-                    field_type: IntermediateType::Int {
+                    field_type: SemanticType::Int {
                         size: ByteSized::B16,
                     },
                     offset: 0,
                     var_type: None,
                     has_default: false,
                 },
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("b"),
-                    field_type: IntermediateType::Bool,
+                    field_type: SemanticType::Bool,
                     offset: 2,
                     var_type: None,
                     has_default: false,
@@ -2056,20 +2064,20 @@ mod tests {
 
     #[test]
     fn slot_count_when_nested_structure_then_returns_sum() {
-        let inner = IntermediateType::Structure {
+        let inner = SemanticType::Structure {
             fields: vec![
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("x"),
-                    field_type: IntermediateType::Int {
+                    field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
                     offset: 0,
                     var_type: None,
                     has_default: false,
                 },
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("y"),
-                    field_type: IntermediateType::Int {
+                    field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
                     offset: 4,
@@ -2078,18 +2086,18 @@ mod tests {
                 },
             ],
         };
-        let outer = IntermediateType::Structure {
+        let outer = SemanticType::Structure {
             fields: vec![
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("inner"),
                     field_type: inner,
                     offset: 0,
                     var_type: None,
                     has_default: false,
                 },
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("z"),
-                    field_type: IntermediateType::Bool,
+                    field_type: SemanticType::Bool,
                     offset: 8,
                     var_type: None,
                     has_default: false,
@@ -2102,8 +2110,8 @@ mod tests {
 
     #[test]
     fn slot_count_when_array_of_primitives_then_returns_total_elements() {
-        let arr = IntermediateType::Array {
-            element_type: Box::new(IntermediateType::Int {
+        let arr = SemanticType::Array {
+            element_type: Box::new(SemanticType::Int {
                 size: ByteSized::B32,
             }),
             dimensions: vec![ArrayDimension {
@@ -2116,20 +2124,20 @@ mod tests {
 
     #[test]
     fn slot_count_when_array_of_structures_then_returns_elements_times_struct_slots() {
-        let s = IntermediateType::Structure {
+        let s = SemanticType::Structure {
             fields: vec![
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("a"),
-                    field_type: IntermediateType::Int {
+                    field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
                     offset: 0,
                     var_type: None,
                     has_default: false,
                 },
-                IntermediateStructField {
+                SemanticStructField {
                     name: Id::from("b"),
-                    field_type: IntermediateType::Int {
+                    field_type: SemanticType::Int {
                         size: ByteSized::B32,
                     },
                     offset: 4,
@@ -2138,7 +2146,7 @@ mod tests {
                 },
             ],
         };
-        let arr = IntermediateType::Array {
+        let arr = SemanticType::Array {
             element_type: Box::new(s),
             dimensions: vec![ArrayDimension { lower: 1, upper: 5 }],
         };
@@ -2148,8 +2156,8 @@ mod tests {
 
     #[test]
     fn slot_count_when_reference_field_then_returns_1() {
-        let r = IntermediateType::Reference {
-            target_type: Box::new(IntermediateType::Int {
+        let r = SemanticType::Reference {
+            target_type: Box::new(SemanticType::Int {
                 size: ByteSized::B32,
             }),
         };
@@ -2159,7 +2167,7 @@ mod tests {
     #[test]
     fn slot_count_when_string_with_explicit_len_then_returns_ceil_slots() {
         // STRING[255]: ceil((6 + 255 * 1) / 8) = ceil(261/8) = 33 slots
-        let s = IntermediateType::String {
+        let s = SemanticType::String {
             max_len: Some(255),
             char_width: CharWidth::Narrow,
         };
@@ -2169,7 +2177,7 @@ mod tests {
     #[test]
     fn slot_count_when_string_with_default_len_then_returns_ceil_slots() {
         // STRING (default 254): ceil((6 + 254 * 1) / 8) = ceil(260/8) = 33 slots
-        let s = IntermediateType::String {
+        let s = SemanticType::String {
             max_len: None,
             char_width: CharWidth::Narrow,
         };
@@ -2180,7 +2188,7 @@ mod tests {
     fn slot_count_when_string_small_then_returns_2() {
         // STRING[4]: ceil((6 + 4 * 1) / 8) = ceil(10/8) = 2 slots.
         // The 6-byte header does not leave a 4-character string inside one slot.
-        let s = IntermediateType::String {
+        let s = SemanticType::String {
             max_len: Some(4),
             char_width: CharWidth::Narrow,
         };
@@ -2190,7 +2198,7 @@ mod tests {
     #[test]
     fn slot_count_when_wstring_with_explicit_len_then_scales_by_char_width() {
         // WSTRING[255]: ceil((6 + 255 * 2) / 8) = ceil(516/8) = 65 slots
-        let s = IntermediateType::String {
+        let s = SemanticType::String {
             max_len: Some(255),
             char_width: CharWidth::Wide,
         };
@@ -2200,7 +2208,7 @@ mod tests {
     #[test]
     fn slot_count_when_wstring_with_default_len_then_scales_by_char_width() {
         // WSTRING (default 254): ceil((6 + 254 * 2) / 8) = ceil(514/8) = 65 slots
-        let s = IntermediateType::String {
+        let s = SemanticType::String {
             max_len: None,
             char_width: CharWidth::Wide,
         };
@@ -2209,11 +2217,11 @@ mod tests {
 
     #[test]
     fn slot_count_when_wstring_then_returns_more_slots_than_same_length_string() {
-        let narrow = IntermediateType::String {
+        let narrow = SemanticType::String {
             max_len: Some(64),
             char_width: CharWidth::Narrow,
         };
-        let wide = IntermediateType::String {
+        let wide = SemanticType::String {
             max_len: Some(64),
             char_width: CharWidth::Wide,
         };
@@ -2228,7 +2236,7 @@ mod tests {
         // size_in_bytes plus the header, rounded up to whole slots.
         for char_width in [CharWidth::Narrow, CharWidth::Wide] {
             for max_len in [0u128, 1, 4, 80, 254, 255, 4096] {
-                let s = IntermediateType::String {
+                let s = SemanticType::String {
                     max_len: Some(max_len),
                     char_width,
                 };
@@ -2249,7 +2257,7 @@ mod tests {
     fn slot_count_when_string_len_exceeds_u16_then_returns_overflow() {
         // max_length is a u16 field in the data-region header, so a longer
         // declared length has no representable layout.
-        let s = IntermediateType::String {
+        let s = SemanticType::String {
             max_len: Some(u16::MAX as u128 + 1),
             char_width: CharWidth::Narrow,
         };
@@ -2259,10 +2267,10 @@ mod tests {
     #[test]
     fn slot_count_when_nesting_exceeds_max_depth_then_returns_max_depth_exceeded() {
         // Build 34 levels of nesting (exceeds MAX_NESTING_DEPTH of 32)
-        let mut t = IntermediateType::Bool;
+        let mut t = SemanticType::Bool;
         for i in 0..34 {
-            t = IntermediateType::Structure {
-                fields: vec![IntermediateStructField {
+            t = SemanticType::Structure {
+                fields: vec![SemanticStructField {
                     name: Id::from(&format!("f{}", i)),
                     field_type: t,
                     offset: 0,
@@ -2277,8 +2285,8 @@ mod tests {
     #[test]
     fn slot_count_when_total_overflows_u32_then_returns_overflow() {
         // Create a multi-dimensional array that overflows u32
-        let arr = IntermediateType::Array {
-            element_type: Box::new(IntermediateType::Int {
+        let arr = SemanticType::Array {
+            element_type: Box::new(SemanticType::Int {
                 size: ByteSized::B32,
             }),
             dimensions: vec![

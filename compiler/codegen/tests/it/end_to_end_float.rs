@@ -1,6 +1,6 @@
 //! End-to-end integration tests for REAL (f32) and LREAL (f64) floating-point types.
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 use ironplc_parser::options::CompilerOptions;
 
 // --- REAL (f32) tests ---
@@ -196,8 +196,8 @@ e2e_i32!(
 fn end_to_end_when_lreal_precision_then_exceeds_f32() {
     // This value is distinguishable from 1.0 in f64 but not in f32.
     let source = "PROGRAM main VAR x : LREAL; END_VAR x := 1.0000000000000002; END_PROGRAM";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    let x = bufs.vars[0].as_f64();
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    let x = snapshot.read_as::<f64>("x");
     assert!(x != 1.0_f64, "expected value distinct from 1.0 in f64");
 }
 
@@ -221,8 +221,8 @@ e2e_f64_near!(
 fn end_to_end_when_real_divide_by_zero_then_inf() {
     // Float divide-by-zero does NOT trap — produces Inf per IEEE 754.
     let source = "PROGRAM main VAR x : REAL; y : REAL; END_VAR x := 1.0; y := x / 0.0; END_PROGRAM";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    let y = bufs.vars[1].as_f32();
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    let y = snapshot.read_as::<f32>("y");
     assert!(y.is_infinite() && y > 0.0, "expected +Inf, got {y}");
 }
 
@@ -230,16 +230,16 @@ fn end_to_end_when_real_divide_by_zero_then_inf() {
 fn end_to_end_when_real_negative_divide_by_zero_then_neg_inf() {
     let source =
         "PROGRAM main VAR x : REAL; y : REAL; END_VAR x := -1.0; y := x / 0.0; END_PROGRAM";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    let y = bufs.vars[1].as_f32();
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    let y = snapshot.read_as::<f32>("y");
     assert!(y.is_infinite() && y < 0.0, "expected -Inf, got {y}");
 }
 
 #[test]
 fn end_to_end_when_real_zero_divide_by_zero_then_nan() {
     let source = "PROGRAM main VAR x : REAL; y : REAL; END_VAR x := 0.0; y := x / 0.0; END_PROGRAM";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    let y = bufs.vars[1].as_f32();
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    let y = snapshot.read_as::<f32>("y");
     assert!(y.is_nan(), "expected NaN, got {y}");
 }
 
@@ -300,9 +300,9 @@ PROGRAM main
   product := inf * 2.0;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    let sum = bufs.vars[2].as_f32();
-    let product = bufs.vars[3].as_f32();
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    let sum = snapshot.read_as::<f32>("sum");
+    let product = snapshot.read_as::<f32>("product");
     assert!(sum.is_infinite() && sum > 0.0, "Inf + 1.0 should be +Inf");
     assert!(
         product.is_infinite() && product > 0.0,
@@ -314,8 +314,8 @@ END_PROGRAM
 fn end_to_end_when_lreal_divide_by_zero_then_inf() {
     let source =
         "PROGRAM main VAR x : LREAL; y : LREAL; END_VAR x := 1.0; y := x / 0.0; END_PROGRAM";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    let y = bufs.vars[1].as_f64();
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    let y = snapshot.read_as::<f64>("y");
     assert!(y.is_infinite() && y > 0.0, "expected +Inf, got {y}");
 }
 
@@ -323,8 +323,8 @@ fn end_to_end_when_lreal_divide_by_zero_then_inf() {
 fn end_to_end_when_lreal_negative_divide_by_zero_then_neg_inf() {
     let source =
         "PROGRAM main VAR x : LREAL; y : LREAL; END_VAR x := -1.0; y := x / 0.0; END_PROGRAM";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    let y = bufs.vars[1].as_f64();
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    let y = snapshot.read_as::<f64>("y");
     assert!(y.is_infinite() && y < 0.0, "expected -Inf, got {y}");
 }
 
@@ -332,8 +332,8 @@ fn end_to_end_when_lreal_negative_divide_by_zero_then_neg_inf() {
 fn end_to_end_when_lreal_zero_divide_by_zero_then_nan() {
     let source =
         "PROGRAM main VAR x : LREAL; y : LREAL; END_VAR x := 0.0; y := x / 0.0; END_PROGRAM";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    let y = bufs.vars[1].as_f64();
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    let y = snapshot.read_as::<f64>("y");
     assert!(y.is_nan(), "expected NaN, got {y}");
 }
 

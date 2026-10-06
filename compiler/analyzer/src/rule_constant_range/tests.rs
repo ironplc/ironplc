@@ -1,5 +1,7 @@
 use crate::test_helpers::diagnostic_codes;
-use crate::test_helpers::{codes, rule_codes, rule_diagnostics};
+use crate::test_helpers::{
+    codes, rule_codes_after_conversions, rule_diagnostics_after_conversions,
+};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
@@ -15,13 +17,17 @@ const REAL: &[Problem] = &[Problem::RealLiteralOutOfRange];
 const OVERFLOW_AND_REAL: &[Problem] = &[Problem::ConstantOverflow, Problem::RealLiteralOutOfRange];
 
 /// The problem codes this rule reports for `program`, in order.
+///
+/// `stages::analyze` runs this rule on the library the conversion pass
+/// returns, so its tests do too; the rule macros run a rule on the resolved
+/// library.
 fn problems_of(program: &str) -> Vec<String> {
-    rule_codes(super::apply, program, &CompilerOptions::default())
+    rule_codes_after_conversions(super::apply, program, &CompilerOptions::default())
 }
 
 /// The diagnostics this rule reports for `program` under default options.
 fn diagnostics_of(program: &str) -> Vec<Diagnostic> {
-    rule_diagnostics(super::apply, program, &CompilerOptions::default())
+    rule_diagnostics_after_conversions(super::apply, program, &CompilerOptions::default())
 }
 
 fn program_with(declarations: &str, body: &str) -> String {
@@ -126,8 +132,11 @@ fn apply_when_case_label_out_of_range_then_err() {
 #[case::hex_fills_unsigned_64("ULINT", "16#FFFFFFFFFFFFFFFF", OK)]
 #[case::hex_above_signed_64("LINT", "16#FFFFFFFFFFFFFFFF", OVERFLOW)]
 #[case::negative_unsigned("USINT", "-1", OVERFLOW)]
+#[case::negative_unsigned_32("UDINT", "-1", OVERFLOW)]
+#[case::negative_unsigned_64("ULINT", "-1", OVERFLOW)]
 #[case::subrange_in_range("SINT", "-128..127", OK)]
 #[case::subrange_end_above("SINT", "100..300", OVERFLOW)]
+#[case::subrange_end_above_32("DINT", "0..4294967295", OVERFLOW)]
 #[case::subrange_start_below("SINT", "-300..0", OVERFLOW)]
 #[case::subrange_both_outside("USINT", "-1..256", OVERFLOW_TWICE)]
 #[case::subrange_unsigned_32("UDINT", "3000000000..4294967295", OK)]
@@ -609,14 +618,14 @@ fn apply_when_assignment_to_named_subrange_in_range_then_ok() {
     assert_eq!(problems_of(&program), codes(OK));
 }
 
-rule_err_at!(
-    apply_when_assignment_out_of_range_then_error_at_literal,
-    "PROGRAM main
-VAR
-    x : SINT;
-END_VAR
-    x := 128;
-END_PROGRAM",
-    Problem::ConstantOverflow,
-    "128"
-);
+#[test]
+fn apply_when_assignment_out_of_range_then_error_at_literal() {
+    let program = program_with("    x : SINT;\n", "    x := 128;\n");
+
+    let diagnostics = diagnostics_of(&program);
+
+    assert_eq!(diagnostic_codes(&diagnostics), codes(OVERFLOW));
+    let start = program.find("128").unwrap();
+    let location = &diagnostics[0].primary.location;
+    assert_eq!((location.start, location.end), (start, start + "128".len()));
+}

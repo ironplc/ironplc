@@ -18,15 +18,15 @@
 use ironplc_dsl::{common::*, core::Id, textual::*};
 
 use crate::{
-    intermediate_type::IntermediateType, semantic_context::SemanticContext,
-    symbol_environment::ScopeKind, type_environment::TypeEnvironment,
+    semantic_context::SemanticContext, semantic_type::SemanticType, symbol_environment::ScopeKind,
+    type_environment::TypeEnvironment,
 };
 
-/// Resolves the [`IntermediateType`] a declaration denotes.
+/// Resolves the [`SemanticType`] a declaration denotes.
 pub(crate) fn resolve_initializer(
     init: &InitialValueAssignmentKind,
     type_env: &TypeEnvironment,
-) -> Option<IntermediateType> {
+) -> Option<SemanticType> {
     match init {
         InitialValueAssignmentKind::Simple(si) => {
             Some(type_env.get(&si.type_name)?.representation.clone())
@@ -48,7 +48,7 @@ pub(crate) fn resolve_initializer(
                     .get(&subranges.type_name.to_type_name())?
                     .representation
                     .clone();
-                Some(IntermediateType::Array {
+                Some(SemanticType::Array {
                     element_type: Box::new(element_type),
                     dimensions: vec![],
                 })
@@ -58,7 +58,7 @@ pub(crate) fn resolve_initializer(
     }
 }
 
-/// Resolves the [`IntermediateType`] of the variable a reference names,
+/// Resolves the [`SemanticType`] of the variable a reference names,
 /// walking through struct field accesses and array subscripts to the element
 /// it selects.
 ///
@@ -72,7 +72,7 @@ pub(crate) fn of(
     kind: &SymbolicVariableKind,
     context: &SemanticContext,
     scope: &ScopeKind,
-) -> Option<IntermediateType> {
+) -> Option<SemanticType> {
     match kind {
         SymbolicVariableKind::Named(named) => declared(&named.name, context, scope).cloned(),
         SymbolicVariableKind::Structured(structured) => {
@@ -82,7 +82,7 @@ pub(crate) fn of(
         SymbolicVariableKind::Array(array) => {
             let array_type = of(&array.subscripted_variable, context, scope)?;
             match array_type {
-                IntermediateType::Array { element_type, .. } => Some(*element_type),
+                SemanticType::Array { element_type, .. } => Some(*element_type),
                 _ => None,
             }
         }
@@ -95,7 +95,12 @@ pub(crate) fn of(
             // resolution, which does not exist yet. See issue #1406.
             None
         }
-        SymbolicVariableKind::Deref(deref) => of(&deref.variable, context, scope),
+        // `p^` is the variable `p` references, so it has the referenced
+        // type, not `REF_TO`.
+        SymbolicVariableKind::Deref(deref) => match of(&deref.variable, context, scope)? {
+            SemanticType::Reference { target_type } => Some(*target_type),
+            _ => None,
+        },
     }
 }
 
@@ -105,19 +110,19 @@ pub(crate) fn declared<'a>(
     name: &Id,
     context: &'a SemanticContext,
     scope: &ScopeKind,
-) -> Option<&'a IntermediateType> {
+) -> Option<&'a SemanticType> {
     let type_id = context.symbols().find(name, scope)?.type_id?;
     Some(&context.types().get_by_id(type_id)?.representation)
 }
 
 /// Finds the type of a field within a structure or function block type.
 pub(crate) fn struct_field_type(
-    parent_type: &IntermediateType,
+    parent_type: &SemanticType,
     field_name: &Id,
-) -> Option<IntermediateType> {
+) -> Option<SemanticType> {
     let fields = match parent_type {
-        IntermediateType::Structure { fields } => fields,
-        IntermediateType::FunctionBlock { fields, .. } => fields,
+        SemanticType::Structure { fields } => fields,
+        SemanticType::FunctionBlock { fields, .. } => fields,
         _ => return None,
     };
     fields

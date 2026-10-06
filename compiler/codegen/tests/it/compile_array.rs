@@ -208,42 +208,6 @@ END_PROGRAM
 }
 
 #[test]
-fn compile_when_array_constant_oob_above_then_error() {
-    let source = "
-PROGRAM main
-  VAR
-    arr : ARRAY[1..10] OF INT;
-    x : INT;
-  END_VAR
-  x := arr[11];
-END_PROGRAM
-";
-    let result = try_parse_and_compile(source, &CompilerOptions::default());
-    assert!(
-        result.is_err(),
-        "Expected compile-time error for out-of-bounds index"
-    );
-}
-
-#[test]
-fn compile_when_array_constant_oob_below_then_error() {
-    let source = "
-PROGRAM main
-  VAR
-    arr : ARRAY[1..10] OF INT;
-    x : INT;
-  END_VAR
-  x := arr[0];
-END_PROGRAM
-";
-    let result = try_parse_and_compile(source, &CompilerOptions::default());
-    assert!(
-        result.is_err(),
-        "Expected compile-time error for out-of-bounds index"
-    );
-}
-
-#[test]
 fn compile_when_array_sint_store_then_emits_truncation() {
     let source = "
 PROGRAM main
