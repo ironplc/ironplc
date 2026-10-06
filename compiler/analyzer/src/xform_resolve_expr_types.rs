@@ -23,7 +23,7 @@ use crate::intermediates::arithmetic_overload::{
 use crate::intermediates::inherited_fields::collect_inherited_fields;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
 use crate::semantic_type::SemanticType;
-use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
+use crate::symbol_environment::{ScopeTracker, SymbolEnvironment, SymbolKind};
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
 use ironplc_parser::options::CompilerOptions;
@@ -341,6 +341,44 @@ impl ExprTypeResolver<'_> {
         }
     }
 
+    /// Turns a bare name that late-bound resolution took for an enumerated
+    /// value back into a variable reference when a variable of that name is
+    /// in scope. Late-bound resolution runs before the symbol environment
+    /// exists and sees only the variables of the enclosing function, function
+    /// block or program, so it takes a method's variable, a global, an
+    /// inherited field or the implicit value input of a property accessor for
+    /// an enumerated value of the same name. A variable in scope hides an
+    /// enumerated value of that name.
+    fn restore_shadowing_variable(&self, expr: &mut Expr) {
+        let ExprKind::EnumeratedValue(ev) = &expr.kind else {
+            return;
+        };
+        if ev.type_name.is_some() {
+            return;
+        }
+        let declares_value = self
+            .symbols
+            .find(&ev.value, &self.scope.current())
+            .is_some_and(|symbol| {
+                matches!(
+                    symbol.kind,
+                    SymbolKind::Variable
+                        | SymbolKind::Parameter
+                        | SymbolKind::OutputParameter
+                        | SymbolKind::InOutParameter
+                        | SymbolKind::EdgeVariable
+                        | SymbolKind::ResultVariable
+                )
+            });
+        if declares_value {
+            expr.kind = ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(
+                NamedVariable {
+                    name: ev.value.clone(),
+                },
+            )));
+        }
+    }
+
     /// Gives `expr` the type `context` expects when `expr` is an
     /// unqualified enumerated value that `context`, an enumeration, declares.
     fn type_from_context(&mut self, expr: &mut Expr, context: Option<Context>) {
@@ -647,6 +685,8 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
     fn fold_expr(&mut self, node: Expr) -> Result<Expr, Diagnostic> {
         // First, recurse to fold children (bottom-up)
         let mut expr = node.recurse_fold(self)?;
+
+        self.restore_shadowing_variable(&mut expr);
 
         // An unqualified enumerated value compared with a value of an
         // enumeration type has that type.

@@ -232,3 +232,61 @@ fn apply_when_field_of_array_element_then_field_type() {
         context.types().id_of(&TypeName::from("INT"))
     );
 }
+
+/// Resolves `unit` after an enumeration `E_State` that has a value `Error`.
+fn resolve_with_enumeration(unit: &str) -> (Library, SemanticContext) {
+    let program = format!(
+        "
+TYPE E_State : (Idle, Error); END_TYPE
+{unit}
+"
+    );
+    parse_and_resolve_types_with_options(
+        &program,
+        &CompilerOptions {
+            allow_fb_inheritance: true,
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        },
+    )
+}
+
+/// A variable in scope hides an enumerated value of the same name. Late-bound
+/// resolution sees only the variables of the enclosing unit, so these are
+/// the names it takes for the enumerated value until the symbol environment
+/// restores them.
+#[rstest::rstest]
+#[case::method_input(
+    "FUNCTION_BLOCK FB_A VAR b : BOOL; END_VAR METHOD M VAR_INPUT Error : BOOL; END_VAR b := Error; END_METHOD END_FUNCTION_BLOCK"
+)]
+#[case::method_local(
+    "FUNCTION_BLOCK FB_A VAR b : BOOL; END_VAR METHOD M VAR Error : BOOL; END_VAR b := Error; END_METHOD END_FUNCTION_BLOCK"
+)]
+#[case::global(
+    "VAR_GLOBAL Error : BOOL; END_VAR PROGRAM main VAR b : BOOL; END_VAR b := Error; END_PROGRAM"
+)]
+#[case::inherited_field(
+    "FUNCTION_BLOCK FB_Base VAR Error : BOOL; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK FB_A EXTENDS FB_Base VAR b : BOOL; END_VAR METHOD M b := Error; END_METHOD END_FUNCTION_BLOCK"
+)]
+#[case::property_set_input(
+    "FUNCTION_BLOCK FB_A VAR b : BOOL; END_VAR PROPERTY Error : BOOL SET b := Error; END_SET END_PROPERTY END_FUNCTION_BLOCK"
+)]
+fn apply_when_variable_named_like_enumerated_value_in_scope_then_variable_type(#[case] unit: &str) {
+    let (library, context) = resolve_with_enumeration(unit);
+
+    assert_eq!(
+        Some(concrete(first_assigned_type(&library))),
+        context.types().id_of(&TypeName::from("BOOL"))
+    );
+}
+
+#[test]
+fn apply_when_no_variable_named_like_enumerated_value_then_enumeration_type() {
+    let (library, context) =
+        resolve_with_enumeration("PROGRAM main VAR s : E_State; END_VAR s := Error; END_PROGRAM");
+
+    assert_eq!(
+        Some(concrete(first_assigned_type(&library))),
+        context.types().id_of(&TypeName::from("E_State"))
+    );
+}
