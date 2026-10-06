@@ -780,6 +780,7 @@ END_FUNCTION_BLOCK"
     fn analysis_codes(program: &str) -> Vec<String> {
         let options = CompilerOptions {
             allow_fb_inheritance: true,
+            allow_top_level_var_global: true,
             ..CompilerOptions::default()
         };
         let lib = parse_program(program, &FileId::default(), &options).unwrap();
@@ -966,6 +967,133 @@ END_FUNCTION_BLOCK"
         #[case] body: &str,
     ) {
         assert_eq!(Vec::<String>::new(), constant_write_codes(locals, body));
+    }
+
+    // ---------------------------------------------------------------------
+    // Behaviour of `THIS^`/`SUPER^` that has no settled answer yet. These
+    // tests pin what the analysis does today so a change shows up as a
+    // failing test rather than silently. A failure here means the behaviour
+    // changed, not necessarily that it broke.
+    // ---------------------------------------------------------------------
+
+    /// `body` in a method of `FB_A`, which declares an external, a
+    /// temporary, a property, an instance and a second method.
+    fn pinned_codes(body: &str) -> Vec<String> {
+        analysis_codes(&format!(
+            "
+VAR_GLOBAL
+    g : INT;
+END_VAR
+
+FUNCTION_BLOCK FB_Inner
+VAR_INPUT
+    i : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_A
+VAR_EXTERNAL
+    g : INT;
+END_VAR
+VAR_TEMP
+    t : INT;
+END_VAR
+VAR
+    inner : FB_Inner;
+    _p : INT;
+END_VAR
+PROPERTY Prop : INT
+GET
+    Prop := _p;
+END_GET
+END_PROPERTY
+METHOD Other
+VAR
+    other_local : INT;
+END_VAR
+END_METHOD
+METHOD Run
+VAR
+    n : INT;
+    flag : BOOL;
+END_VAR
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        ))
+    }
+
+    /// An undeclared base is not reported for itself. `SUPER^.x` finds no
+    /// member and passes, and a call is reported as an undeclared method of
+    /// the missing block.
+    #[rstest::rstest]
+    #[case::member("    SUPER^.x := 1;", &[])]
+    #[case::call("    SUPER^.Go();", &["P4046"])]
+    fn analyze_when_super_of_undeclared_base_then_pinned(
+        #[case] body: &str,
+        #[case] expected: &[&str],
+    ) {
+        let codes = analysis_codes(&format!(
+            "
+FUNCTION_BLOCK FB_A EXTENDS FB_Missing
+METHOD Run
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        ));
+        assert_eq!(expected, codes.as_slice());
+    }
+
+    /// `VAR_EXTERNAL` and `VAR_TEMP` declarations are members of the block's
+    /// scope, so `THIS^` reaches them and they are typed.
+    #[rstest::rstest]
+    #[case::external_in_range("    n := THIS^.g;", &[])]
+    #[case::external_wrong_type("    flag := THIS^.g;", &["P4035"])]
+    #[case::temporary_in_range("    n := THIS^.t;", &[])]
+    #[case::temporary_wrong_type("    flag := THIS^.t;", &["P4035"])]
+    fn analyze_when_self_ref_names_external_or_temporary_then_pinned(
+        #[case] body: &str,
+        #[case] expected: &[&str],
+    ) {
+        assert_eq!(expected, pinned_codes(body).as_slice());
+    }
+
+    /// A property, another method's local and a method name are not fields.
+    /// Nothing reports them and the access has no type, so a wrong-typed
+    /// assignment is not caught either.
+    #[rstest::rstest]
+    #[case::property("    flag := THIS^.Prop;")]
+    #[case::local_of_another_method("    flag := THIS^.other_local;")]
+    #[case::method_name_without_call("    flag := THIS^.Other;")]
+    fn analyze_when_self_ref_names_a_non_field_then_pinned_untyped_and_unreported(
+        #[case] body: &str,
+    ) {
+        assert_eq!(Vec::<String>::new(), pinned_codes(body));
+    }
+
+    /// Calling a member instance through `THIS^` is a hard error, as it is
+    /// through a named instance (`a.inner(...)`).
+    #[test]
+    fn analyze_when_member_instance_called_through_self_ref_then_pinned_p4046() {
+        assert_eq!(
+            vec!["P4046".to_string()],
+            pinned_codes("    THIS^.inner(i := 1);")
+        );
+    }
+
+    /// A bit access through `THIS^` in a program is reported once, as P4074.
+    #[test]
+    fn analyze_when_bit_access_through_self_ref_in_program_then_only_p4074() {
+        let codes = analysis_codes(
+            "
+PROGRAM main
+VAR
+    flags : WORD;
+END_VAR
+    THIS^.flags.0 := TRUE;
+END_PROGRAM",
+        );
+        assert_eq!(vec!["P4074".to_string()], codes);
     }
 
     /// A bare `THIS^`, used as a value on its own, is not analyzed yet.
