@@ -9,7 +9,7 @@
 <meta property="og:site_name" content="IronPLC" />
 <meta property="og:description" content="The EXIT statement terminates execution of the innermost enclosing loop.,, IEC 61131-3, Section 3.3.2.4,, Support, Supported,,,, Syntax: Description: EXIT immediately breaks out of the innermost FO..." />
 <meta name="description" content="The EXIT statement terminates execution of the innermost enclosing loop.,, IEC 61131-3, Section 3.3.2.4,, Support, Supported,,,, Syntax: Description: EXIT immediately breaks out of the innermost FO..." />
-<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="RETURN" href="return.html"><link rel="prev" title="REPEAT" href="repeat.html">
+<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="CONTINUE" href="continue.html"><link rel="prev" title="REPEAT" href="repeat.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/structured-text/exit.html">
 
     <link rel="shortcut icon" href="../../../_static/favicon.ico"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.247.0">
+<meta name="ironplc-version" content="0.248.0">
 </head>
   <body>
     
@@ -328,6 +328,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/interface.html">INTERFACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../object-orientation/member-qualifiers.html">Member Qualifiers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../object-orientation/property.html">PROPERTY</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
@@ -340,6 +342,7 @@
 <li class="toctree-l4"><a class="reference internal" href="while.html">WHILE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="repeat.html">REPEAT</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">EXIT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="continue.html">CONTINUE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="return.html">RETURN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="arithmetic-operators.html">Arithmetic Operators</a></li>
 <li class="toctree-l4"><a class="reference internal" href="comparison-operators.html">Comparison Operators</a></li>
@@ -532,6 +535,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2039.html">P2039</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2040.html">P2040</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2041.html">P2041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4003.html">P4003</a></li>
@@ -589,6 +593,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4055.html">P4055</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4056.html">P4056</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4057.html">P4057</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4058.html">P4058</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4059.html">P4059</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4060.html">P4060</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4062.html">P4062</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4063.html">P4063</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4065.html">P4065</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4069.html">P4069</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4072.html">P4072</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -788,6 +800,7 @@ terminated.</p>
 <li><p><a class="reference internal" href="for.html"><span class="doc">FOR</span></a> — counted loop</p></li>
 <li><p><a class="reference internal" href="while.html"><span class="doc">WHILE</span></a> — pre-tested loop</p></li>
 <li><p><a class="reference internal" href="repeat.html"><span class="doc">REPEAT</span></a> — post-tested loop</p></li>
+<li><p><a class="reference internal" href="continue.html"><span class="doc">CONTINUE</span></a> — next iteration of the innermost loop</p></li>
 <li><p><a class="reference internal" href="return.html"><span class="doc">RETURN</span></a> — early exit from POU</p></li>
 </ul>
 </section>
@@ -798,12 +811,12 @@ terminated.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="return.html">
+          <a class="next-page" href="continue.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">RETURN</div>
+                <div class="title">CONTINUE</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

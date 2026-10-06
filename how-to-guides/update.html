@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.247.0">
+<meta name="ironplc-version" content="0.248.0">
 </head>
   <body>
     
@@ -328,6 +328,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/interface.html">INTERFACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/member-qualifiers.html">Member Qualifiers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/property.html">PROPERTY</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
@@ -340,6 +342,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/while.html">WHILE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/repeat.html">REPEAT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/exit.html">EXIT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/continue.html">CONTINUE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/return.html">RETURN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/arithmetic-operators.html">Arithmetic Operators</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/comparison-operators.html">Comparison Operators</a></li>
@@ -532,6 +535,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2039.html">P2039</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2040.html">P2040</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2041.html">P2041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4003.html">P4003</a></li>
@@ -589,6 +593,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4055.html">P4055</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4056.html">P4056</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4057.html">P4057</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4058.html">P4058</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4059.html">P4059</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4060.html">P4060</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4062.html">P4062</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4063.html">P4063</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4065.html">P4065</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4069.html">P4069</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4072.html">P4072</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -740,8 +752,8 @@ automatic mechanism to distribute updates.</p>
 <li><p>Right-click (or press and hold) on <span class="guilabel">IronPLC</span> and select <span class="guilabel">Uninstall/Change</span>. Then follow the directions on the screen.</p></li>
 <li><p>Download the latest IronPLC installer from <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>:</p>
 <ul class="simple">
-<li><p>x64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.247.0/ironplcc-x86_64-windows.exe">ironplcc-x86_64-windows.exe</a></p></li>
-<li><p>Arm64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.247.0/ironplcc-aarch64-windows.exe">ironplcc-aarch64-windows.exe</a></p></li>
+<li><p>x64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.248.0/ironplcc-x86_64-windows.exe">ironplcc-x86_64-windows.exe</a></p></li>
+<li><p>Arm64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.248.0/ironplcc-aarch64-windows.exe">ironplcc-aarch64-windows.exe</a></p></li>
 </ul>
 </li>
 <li><p>Run the installer and follow the prompts to complete
@@ -753,9 +765,9 @@ installation of the CLI.</p></li>
 <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>:</p>
 <ul class="simple">
 <li><p>Visual Studio Code —
-<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.247.0/ironplc-vscode-extension-marketplace.vsix">ironplc-vscode-extension-marketplace.vsix</a></p></li>
+<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.248.0/ironplc-vscode-extension-marketplace.vsix">ironplc-vscode-extension-marketplace.vsix</a></p></li>
 <li><p>Cursor, Kiro, Devin, VSCodium, and other environments that install from
-Open VSX — <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.247.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a></p></li>
+Open VSX — <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.248.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a></p></li>
 </ul>
 <p>Each registry uses a different extension ID, so the two VSIX files are not
 interchangeable. Visual Studio Code updates an extension from the
@@ -790,9 +802,9 @@ and re-run the script to install the latest version:</p>
 <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>:</p>
 <ul class="simple">
 <li><p>Visual Studio Code —
-<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.247.0/ironplc-vscode-extension-marketplace.vsix">ironplc-vscode-extension-marketplace.vsix</a></p></li>
+<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.248.0/ironplc-vscode-extension-marketplace.vsix">ironplc-vscode-extension-marketplace.vsix</a></p></li>
 <li><p>Cursor, Kiro, Devin, VSCodium, and other environments that install from
-Open VSX — <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.247.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a></p></li>
+Open VSX — <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.248.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a></p></li>
 </ul>
 <p>Each registry uses a different extension ID, so the two VSIX files are not
 interchangeable. Visual Studio Code updates an extension from the
@@ -822,9 +834,9 @@ version:</p>
 <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>:</p>
 <ul class="simple">
 <li><p>Visual Studio Code —
-<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.247.0/ironplc-vscode-extension-marketplace.vsix">ironplc-vscode-extension-marketplace.vsix</a></p></li>
+<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.248.0/ironplc-vscode-extension-marketplace.vsix">ironplc-vscode-extension-marketplace.vsix</a></p></li>
 <li><p>Cursor, Kiro, Devin, VSCodium, and other environments that install from
-Open VSX — <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.247.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a></p></li>
+Open VSX — <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.248.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a></p></li>
 </ul>
 <p>Each registry uses a different extension ID, so the two VSIX files are not
 interchangeable. Visual Studio Code updates an extension from the

@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/language/data-types/elementary/ltime-of-day.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="64-bit time of day value.,, Size, 64 bits (millisecond resolution),, Default, LTOD#00:00:00,, IEC 61131-3, Section 2.3.1 (Edition 3),, Support, Supported ( Edition 3),,,, Literals: Example: Try it ..." />
-<meta name="description" content="64-bit time of day value.,, Size, 64 bits (millisecond resolution),, Default, LTOD#00:00:00,, IEC 61131-3, Section 2.3.1 (Edition 3),, Support, Supported ( Edition 3),,,, Literals: Example: Try it ..." />
+<meta property="og:description" content="64-bit time of day value.,, Size, 64 bits (millisecond resolution),, Default, LTOD#00:00:00,, IEC 61131-3, Section 2.3.1 (Edition 3),, Support, Supported ( Edition 3),,,, An LTIME_OF_DAY is stored ..." />
+<meta name="description" content="64-bit time of day value.,, Size, 64 bits (millisecond resolution),, Default, LTOD#00:00:00,, IEC 61131-3, Section 2.3.1 (Edition 3),, Support, Supported ( Edition 3),,,, An LTIME_OF_DAY is stored ..." />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="DATE_AND_TIME" href="date-and-time.html"><link rel="prev" title="TIME_OF_DAY" href="time-of-day.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/data-types/elementary/ltime-of-day.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.247.0">
+<meta name="ironplc-version" content="0.248.0">
 </head>
   <body>
     
@@ -328,6 +328,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../object-orientation/interface.html">INTERFACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../object-orientation/member-qualifiers.html">Member Qualifiers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../object-orientation/property.html">PROPERTY</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
@@ -340,6 +342,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/while.html">WHILE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/repeat.html">REPEAT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/exit.html">EXIT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../structured-text/continue.html">CONTINUE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/return.html">RETURN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/arithmetic-operators.html">Arithmetic Operators</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/comparison-operators.html">Comparison Operators</a></li>
@@ -532,6 +535,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2039.html">P2039</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2040.html">P2040</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2041.html">P2041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4003.html">P4003</a></li>
@@ -589,6 +593,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4055.html">P4055</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4056.html">P4056</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4057.html">P4057</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4058.html">P4058</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4059.html">P4059</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4060.html">P4060</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4062.html">P4062</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4063.html">P4063</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4065.html">P4065</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4069.html">P4069</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4072.html">P4072</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6003.html">P6003</a></li>
@@ -755,6 +767,10 @@
 </tbody>
 </table>
 </div>
+<p>An <code class="docutils literal notranslate"><span class="pre">LTIME_OF_DAY</span></code> is stored as a count of milliseconds since midnight, as a
+<a class="reference internal" href="time-of-day.html"><span class="doc">TIME_OF_DAY</span></a> is, in 64 bits. The seconds of a literal may have a
+fraction: <code class="docutils literal notranslate"><span class="pre">LTOD#10:00:00.250</span></code> is 250 milliseconds past ten. A fraction finer
+than a millisecond is truncated.</p>
 <section id="literals">
 <h2>Literals<a class="headerlink" href="#literals" title="Link to this heading">¶</a></h2>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">LTOD</span><span class="c1">#14:30:00</span>

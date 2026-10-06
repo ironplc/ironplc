@@ -1,0 +1,82 @@
+=====
+P4072
+=====
+
+.. problem-summary:: P4072
+
+This error occurs when the condition of an ``IF``, ``ELSIF``, ``WHILE`` or
+``REPEAT ... UNTIL`` statement is not a ``BOOL``.
+
+IEC 61131-3 defines each of these statements over a Boolean expression. A
+condition of another type, such as an integer that counts as true when it is
+not zero, is a C idiom that IEC 61131-3 does not have. The condition is
+accepted where a ``BOOL`` value is: a ``BOOL`` variable, a comparison, a
+Boolean operator on ``BOOL`` operands, a bit access such as ``flags.3``, or a
+function result or function block output of type ``BOOL``.
+
+Example
+-------
+
+The following code will generate error P4072:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       count : DINT;
+       alarm : BOOL;
+   END_VAR
+       IF count THEN
+           alarm := TRUE;
+       END_IF;
+   END_PROGRAM
+
+The variable ``count`` is ``DINT``, but ``IF`` requires a ``BOOL`` condition.
+
+To fix this error, state the comparison the condition stands for:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       count : DINT;
+       alarm : BOOL;
+   END_VAR
+       IF count <> 0 THEN
+           alarm := TRUE;
+       END_IF;
+   END_PROGRAM
+
+Bit strings
+-----------
+
+A bit string such as ``WORD`` is also not a ``BOOL``, even when the intent is
+to test a mask. The following code will generate error P4072:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flags : WORD;
+   END_VAR
+       WHILE flags AND WORD#16#0008 DO
+           flags := WORD#0;
+       END_WHILE;
+   END_PROGRAM
+
+To fix this error, test the bit directly, or compare the masked value with zero:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flags : WORD;
+   END_VAR
+       WHILE flags.3 DO
+           flags := WORD#0;
+       END_WHILE;
+   END_PROGRAM
+
+See :doc:`/reference/language/structured-text/if`,
+:doc:`/reference/language/structured-text/while` and
+:doc:`/reference/language/structured-text/repeat` for the statements.

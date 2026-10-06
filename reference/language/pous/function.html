@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.247.0">
+<meta name="ironplc-version" content="0.248.0">
 </head>
   <body>
     
@@ -328,6 +328,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/interface.html">INTERFACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../object-orientation/member-qualifiers.html">Member Qualifiers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../object-orientation/property.html">PROPERTY</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
@@ -340,6 +342,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../structured-text/while.html">WHILE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../structured-text/repeat.html">REPEAT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../structured-text/exit.html">EXIT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../structured-text/continue.html">CONTINUE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../structured-text/return.html">RETURN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../structured-text/arithmetic-operators.html">Arithmetic Operators</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../structured-text/comparison-operators.html">Comparison Operators</a></li>
@@ -532,6 +535,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2039.html">P2039</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2040.html">P2040</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2041.html">P2041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4003.html">P4003</a></li>
@@ -589,6 +593,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4055.html">P4055</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4056.html">P4056</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4057.html">P4057</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4058.html">P4058</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4059.html">P4059</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4060.html">P4060</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4062.html">P4062</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4063.html">P4063</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4065.html">P4065</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4069.html">P4069</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4072.html">P4072</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -765,11 +777,42 @@ END_FUNCTION
 <span class="n">END_FUNCTION</span>
 </pre></div>
 </div>
-<p>Functions may have <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code> parameters and local <code class="docutils literal notranslate"><span class="pre">VAR</span></code> variables.
-Functions must not have <code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code> or <code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code> parameters
-(use function blocks for those). Because a function has no state, it
-cannot declare or invoke a function block instance; that is reported as
+<p>Functions may have <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code> and <code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code> parameters and local
+<code class="docutils literal notranslate"><span class="pre">VAR</span></code> variables. Functions must not have <code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code> parameters (use
+function blocks for those). Because a function has no state, it cannot
+declare or invoke a function block instance; that is reported as
 <a class="reference internal" href="../../compiler/problems/P4054.html"><span class="doc">P4054</span></a>.</p>
+</section>
+<section id="in-out-parameters">
+<h2>In/Out Parameters<a class="headerlink" href="#in-out-parameters" title="Link to this heading">¶</a></h2>
+<p>A <code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code> parameter is passed by reference: the function reads and
+writes the caller’s variable, so a change inside the function is visible to
+the caller after the call returns.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION</span> <span class="n">AddTo</span> <span class="p">:</span> <span class="n">DINT</span>
+    <span class="n">VAR_INPUT</span>
+        <span class="n">amount</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+    <span class="n">VAR_IN_OUT</span>
+        <span class="n">total</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+    <span class="n">total</span> <span class="o">:=</span> <span class="n">total</span> <span class="o">+</span> <span class="n">amount</span><span class="p">;</span>
+    <span class="n">AddTo</span> <span class="o">:=</span> <span class="n">total</span><span class="p">;</span>
+<span class="n">END_FUNCTION</span>
+
+<span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="nb">sum</span> <span class="p">:</span> <span class="n">DINT</span> <span class="o">:=</span> <span class="mi">100</span><span class="p">;</span>
+        <span class="n">result</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+    <span class="n">result</span> <span class="o">:=</span> <span class="n">AddTo</span><span class="p">(</span><span class="n">amount</span> <span class="o">:=</span> <span class="mi">42</span><span class="p">,</span> <span class="n">total</span> <span class="o">:=</span> <span class="nb">sum</span><span class="p">);</span>   <span class="p">(</span><span class="o">*</span> <span class="nb">sum</span> <span class="ow">is</span> <span class="n">now</span> <span class="mi">142</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>The argument for a <code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code> parameter must be a variable
+(<a class="reference internal" href="../../compiler/problems/P4058.html"><span class="doc">P4058</span></a>) of exactly the
+parameter’s type (<a class="reference internal" href="../../compiler/problems/P4059.html"><span class="doc">P4059</span></a>) that
+the compiler can prove is writable: not <code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code>, and not a <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code>
+of the calling POU (<a class="reference internal" href="../../compiler/problems/P4060.html"><span class="doc">P4060</span></a>).</p>
 </section>
 <section id="calling-a-function">
 <h2>Calling a Function<a class="headerlink" href="#calling-a-function" title="Link to this heading">¶</a></h2>
@@ -786,6 +829,9 @@ cannot declare or invoke a function block instance; that is reported as
 <h2>Related Problem Codes<a class="headerlink" href="#related-problem-codes" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p><a class="reference internal" href="../../compiler/problems/P4001.html"><span class="doc">P4001</span></a> — Mixed named and positional arguments</p></li>
+<li><p><a class="reference internal" href="../../compiler/problems/P4058.html"><span class="doc">P4058</span></a> — <code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code> argument is not a variable</p></li>
+<li><p><a class="reference internal" href="../../compiler/problems/P4059.html"><span class="doc">P4059</span></a> — <code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code> argument type is not the parameter type</p></li>
+<li><p><a class="reference internal" href="../../compiler/problems/P4060.html"><span class="doc">P4060</span></a> — <code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code> argument cannot be proved writable</p></li>
 </ul>
 </section>
 <section id="see-also">
@@ -864,6 +910,7 @@ cannot declare or invoke a function block instance; that is reported as
 <li><a class="reference internal" href="#">FUNCTION</a><ul>
 <li><a class="reference internal" href="#syntax">Syntax</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#in-out-parameters">In/Out Parameters</a></li>
 <li><a class="reference internal" href="#calling-a-function">Calling a Function</a></li>
 <li><a class="reference internal" href="#related-problem-codes">Related Problem Codes</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>

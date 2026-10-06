@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.247.0">
+<meta name="ironplc-version" content="0.248.0">
 </head>
   <body>
     
@@ -328,6 +328,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../language/object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/object-orientation/interface.html">INTERFACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../language/object-orientation/member-qualifiers.html">Member Qualifiers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../language/object-orientation/property.html">PROPERTY</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
@@ -340,6 +342,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/while.html">WHILE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/repeat.html">REPEAT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/exit.html">EXIT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../language/structured-text/continue.html">CONTINUE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/return.html">RETURN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/arithmetic-operators.html">Arithmetic Operators</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/comparison-operators.html">Comparison Operators</a></li>
@@ -532,6 +535,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P2039.html">P2039</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P2040.html">P2040</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P2041.html">P2041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4003.html">P4003</a></li>
@@ -589,6 +593,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4055.html">P4055</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4056.html">P4056</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4057.html">P4057</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4058.html">P4058</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4059.html">P4059</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4060.html">P4060</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4062.html">P4062</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4063.html">P4063</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4065.html">P4065</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4069.html">P4069</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4072.html">P4072</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6003.html">P6003</a></li>
@@ -844,7 +856,21 @@ run — for example, to decide which variables to supply as stimuli or
 which to trace.</p>
 <p><strong>Inputs:</strong> <code class="docutils literal notranslate"><span class="pre">sources</span></code>, <code class="docutils literal notranslate"><span class="pre">options</span></code>.</p>
 <p><strong>Returns:</strong> an object with <code class="docutils literal notranslate"><span class="pre">ok</span></code>, <code class="docutils literal notranslate"><span class="pre">inputs</span></code>, <code class="docutils literal notranslate"><span class="pre">outputs</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">diagnostics</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">diagnostics</span></code>. Each entry has a <code class="docutils literal notranslate"><span class="pre">name</span></code>, a <code class="docutils literal notranslate"><span class="pre">type</span></code> and an
+<code class="docutils literal notranslate"><span class="pre">address</span></code>. A program variable is named <code class="docutils literal notranslate"><span class="pre">program.variable</span></code> and a
+global variable by its bare name.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">inputs</span></code> holds the program <code class="docutils literal notranslate"><span class="pre">VAR_INPUT</span></code>, <code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code> and
+<code class="docutils literal notranslate"><span class="pre">VAR_EXTERNAL</span></code> variables, the global variables without an address,
+and the variables at an <code class="docutils literal notranslate"><span class="pre">%I</span></code> address.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">outputs</span></code> holds the program <code class="docutils literal notranslate"><span class="pre">VAR_OUTPUT</span></code> and <code class="docutils literal notranslate"><span class="pre">VAR_IN_OUT</span></code>
+variables, the global variables without an address, and the
+variables at a <code class="docutils literal notranslate"><span class="pre">%Q</span></code> address.</p></li>
+<li><p>A variable at an <code class="docutils literal notranslate"><span class="pre">%M</span></code> address is in neither list.</p></li>
+<li><p>A <code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code> variable, or a global the compiler declares such as
+<code class="docutils literal notranslate"><span class="pre">__SYSTEM_UP_TIME</span></code>, is never an input, because the caller cannot
+change it.</p></li>
+</ul>
 </section>
 </section>
 <section id="execution-tools">

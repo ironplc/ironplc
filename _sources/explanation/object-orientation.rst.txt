@@ -237,9 +237,10 @@ Beyond ``EXTENDS``, ``IMPLEMENTS``, ``ABSTRACT``, and ``INTERFACE``, Edition 3
 also defines
 :doc:`METHOD </reference/language/object-orientation/method>`,
 :doc:`THIS and SUPER </reference/language/object-orientation/this-and-super>`,
-``PROPERTY``, ``OVERRIDE``, and ``FINAL`` for writing and refining methods.
-IronPLC parses ``METHOD``, ``THIS``, and ``SUPER``; it does not parse
-``PROPERTY``, ``OVERRIDE``, or ``FINAL`` yet.
+:doc:`PROPERTY </reference/language/object-orientation/property>`,
+``OVERRIDE``, and ``FINAL`` for writing and refining methods.
+IronPLC parses ``METHOD``, ``PROPERTY``, ``THIS``, and ``SUPER``; it does not
+parse ``OVERRIDE`` or ``FINAL`` yet.
 
 See Also
 ========

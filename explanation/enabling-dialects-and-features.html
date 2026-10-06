@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.247.0">
+<meta name="ironplc-version" content="0.248.0">
 </head>
   <body>
     
@@ -328,6 +328,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/interface.html">INTERFACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/member-qualifiers.html">Member Qualifiers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/property.html">PROPERTY</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
@@ -340,6 +342,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/while.html">WHILE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/repeat.html">REPEAT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/exit.html">EXIT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/continue.html">CONTINUE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/return.html">RETURN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/arithmetic-operators.html">Arithmetic Operators</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/comparison-operators.html">Comparison Operators</a></li>
@@ -532,6 +535,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2039.html">P2039</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2040.html">P2040</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2041.html">P2041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4003.html">P4003</a></li>
@@ -589,6 +593,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4055.html">P4055</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4056.html">P4056</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4057.html">P4057</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4058.html">P4058</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4059.html">P4059</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4060.html">P4060</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4062.html">P4062</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4063.html">P4063</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4065.html">P4065</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4069.html">P4069</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4072.html">P4072</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -752,10 +764,11 @@ including <a class="reference internal" href="../reference/language/data-types/e
 <a class="reference internal" href="../reference/language/data-types/derived/reference-types.html"><span class="doc">NULL</span></a>, and the
 <a class="reference internal" href="../reference/language/object-orientation/index.html"><span class="doc">object-oriented keywords</span></a>
 (<code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code>, <code class="docutils literal notranslate"><span class="pre">IMPLEMENTS</span></code>, <code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code>, <code class="docutils literal notranslate"><span class="pre">INTERFACE</span></code>, <code class="docutils literal notranslate"><span class="pre">METHOD</span></code>,
-<code class="docutils literal notranslate"><span class="pre">THIS</span></code>, and <code class="docutils literal notranslate"><span class="pre">SUPER</span></code>). No extensions.</p>
+<code class="docutils literal notranslate"><span class="pre">PROPERTY</span></code>, <code class="docutils literal notranslate"><span class="pre">THIS</span></code>, and <code class="docutils literal notranslate"><span class="pre">SUPER</span></code>). No extensions.</p>
 <p><strong>Enables:</strong> <code class="docutils literal notranslate"><span class="pre">--allow-long-time-types</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-ref-to</span></code> (the
 Edition 3 keywords), <code class="docutils literal notranslate"><span class="pre">--allow-partial-access-syntax</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, and <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>.</p>
 <p><strong>Selects:</strong> the default of every behavior policy
 (<code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span> <span class="pre">reject</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span> <span class="pre">trap</span></code>).</p>
@@ -778,8 +791,8 @@ names like <a class="reference internal" href="../reference/language/data-types/
 <code class="docutils literal notranslate"><span class="pre">--allow-constant-initializer-expressions</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, and <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>.</p>
 <p><strong>Selects:</strong> <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span> <span class="pre">reject</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span> <span class="pre">zero</span></code> — RuSTy rejects a string with
 trailing characters and never faults.</p>
@@ -810,8 +823,8 @@ runtime convention rather than a CODESYS feature.</p>
 <code class="docutils literal notranslate"><span class="pre">--allow-constant-initializer-expressions</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, and <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>.</p>
 <p><strong>Selects:</strong> <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span> <span class="pre">ignore-trailing</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span> <span class="pre">zero</span></code> — CODESYS stops parsing at the
 first invalid character and returns 0 for a string that is not valid in
@@ -850,8 +863,8 @@ rather than a TwinCAT feature.</p>
 <code class="docutils literal notranslate"><span class="pre">--allow-constant-initializer-expressions</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-bit-string-case-labels</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-paren-string-length</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--allow-struct-initializer-expressions</span></code>,
-<code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>, <code class="docutils literal notranslate"><span class="pre">--allow-enum-explicit-values</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--allow-enum-base-type</span></code>, and <code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code>.</p>
 <p><strong>Selects:</strong> <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span> <span class="pre">ignore-trailing</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-failure</span> <span class="pre">zero</span></code>, as <code class="docutils literal notranslate"><span class="pre">codesys</span></code>.</p>
 </dd>
@@ -1115,8 +1128,9 @@ per-dialect lists above are the reference for which flags a dialect
 enables.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code></dt><dd><p>Allow the IEC 61131-3:2013 <a class="reference internal" href="../reference/language/object-orientation/index.html"><span class="doc">object-oriented syntax</span></a>:
-<code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code>/<code class="docutils literal notranslate"><span class="pre">IMPLEMENTS</span></code>/<code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code> on <code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code>
-declarations, <code class="docutils literal notranslate"><span class="pre">INTERFACE</span></code> declarations, <code class="docutils literal notranslate"><span class="pre">METHOD</span></code> declarations, and
+<code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code>/<code class="docutils literal notranslate"><span class="pre">IMPLEMENTS</span></code> and qualifiers (<code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code>, <code class="docutils literal notranslate"><span class="pre">FINAL</span></code>,
+<code class="docutils literal notranslate"><span class="pre">PUBLIC</span></code>, …) on <code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code> declarations, <code class="docutils literal notranslate"><span class="pre">INTERFACE</span></code>
+declarations, <code class="docutils literal notranslate"><span class="pre">METHOD</span></code> and <code class="docutils literal notranslate"><span class="pre">PROPERTY</span></code> declarations, and
 <code class="docutils literal notranslate"><span class="pre">THIS</span></code>/<code class="docutils literal notranslate"><span class="pre">SUPER</span></code>. Support beyond parsing varies by keyword — see
 <a class="reference internal" href="../reference/language/object-orientation/index.html"><span class="doc">Object Oriented Programming</span></a> for what each one
 analyzes and executes today; the parts that are parsed but not yet
@@ -1146,6 +1160,12 @@ the two constructs often appear together but are separate questions.
 Without this flag it produces
 <a class="reference internal" href="../reference/compiler/problems/P4056.html"><span class="doc">P4056</span></a>, and the compiler sizes
 the type from the members instead.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code></dt><dd><p>Allow the <a class="reference internal" href="../reference/language/structured-text/continue.html"><span class="doc">CONTINUE</span></a>
+statement, which goes on with the next iteration of the innermost loop.
+<code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> was added in Edition 3. Without this flag, <code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> is an
+ordinary identifier, so a <code class="docutils literal notranslate"><span class="pre">CONTINUE;</span></code> statement is a syntax error and a
+variable may be named <code class="docutils literal notranslate"><span class="pre">continue</span></code>.</p>
 </dd>
 </dl>
 <p>Pass the flag when running <strong class="program">ironplcc</strong>:</p>

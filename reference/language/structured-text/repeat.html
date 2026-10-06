@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/language/structured-text/repeat.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="The REPEAT statement executes a statement list and then evaluates a boolean condition to determine whether to repeat.,, IEC 61131-3, Section 3.3.2.4,, Support, Supported,,,, Syntax: Description: Th..." />
-<meta name="description" content="The REPEAT statement executes a statement list and then evaluates a boolean condition to determine whether to repeat.,, IEC 61131-3, Section 3.3.2.4,, Support, Supported,,,, Syntax: Description: Th..." />
+<meta property="og:description" content="The REPEAT statement executes a statement list and then evaluates a boolean condition to determine whether to repeat.,, IEC 61131-3, Section 3.3.2.4,, Support, Supported,,,, Syntax: The UNTIL expre..." />
+<meta name="description" content="The REPEAT statement executes a statement list and then evaluates a boolean condition to determine whether to repeat.,, IEC 61131-3, Section 3.3.2.4,, Support, Supported,,,, Syntax: The UNTIL expre..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="EXIT" href="exit.html"><link rel="prev" title="WHILE" href="while.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/structured-text/repeat.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.247.0">
+<meta name="ironplc-version" content="0.248.0">
 </head>
   <body>
     
@@ -328,6 +328,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/interface.html">INTERFACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../object-orientation/member-qualifiers.html">Member Qualifiers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../object-orientation/property.html">PROPERTY</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
@@ -340,6 +342,7 @@
 <li class="toctree-l4"><a class="reference internal" href="while.html">WHILE</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">REPEAT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="exit.html">EXIT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="continue.html">CONTINUE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="return.html">RETURN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="arithmetic-operators.html">Arithmetic Operators</a></li>
 <li class="toctree-l4"><a class="reference internal" href="comparison-operators.html">Comparison Operators</a></li>
@@ -532,6 +535,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2039.html">P2039</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2040.html">P2040</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2041.html">P2041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4003.html">P4003</a></li>
@@ -589,6 +593,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4055.html">P4055</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4056.html">P4056</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4057.html">P4057</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4058.html">P4058</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4059.html">P4059</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4060.html">P4060</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4062.html">P4062</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4063.html">P4063</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4065.html">P4065</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4069.html">P4069</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4072.html">P4072</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -752,6 +764,9 @@ UNTIL expression
 END_REPEAT ;
 </pre></div>
 </div>
+<p>The <code class="docutils literal notranslate"><span class="pre">UNTIL</span></code> expression must be of type <code class="docutils literal notranslate"><span class="pre">BOOL</span></code>. A condition of any other
+type, such as an integer or a <code class="docutils literal notranslate"><span class="pre">WORD</span></code>, is reported as
+<a class="reference internal" href="../../compiler/problems/P4072.html"><span class="doc">P4072</span></a>.</p>
 </section>
 <section id="description">
 <h2>Description<a class="headerlink" href="#description" title="Link to this heading">¶</a></h2>
@@ -789,6 +804,7 @@ true.</p>
 <li><p><a class="reference internal" href="while.html"><span class="doc">WHILE</span></a> — pre-tested loop</p></li>
 <li><p><a class="reference internal" href="for.html"><span class="doc">FOR</span></a> — counted loop</p></li>
 <li><p><a class="reference internal" href="exit.html"><span class="doc">EXIT</span></a> — break from innermost loop</p></li>
+<li><p><a class="reference internal" href="continue.html"><span class="doc">CONTINUE</span></a> — next iteration of innermost loop</p></li>
 </ul>
 </section>
 </section>

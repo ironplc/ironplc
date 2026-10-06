@@ -26,6 +26,10 @@ counts them in 64 bits, so it reaches far past the 2106 ceiling a 32-bit
 ``LDT#9999-12-31-23:59:59`` is reported as
 :doc:`P2038 </reference/compiler/problems/P2038>`.
 
+The seconds of a literal may have a fraction, as in
+``LDT#2024-01-15-14:30:00.5``. An ``LDT`` counts whole seconds, so the fraction
+is truncated.
+
 An ``LDT`` accepts a ``DT#`` literal, which widens, but a ``DT`` does not accept
 an ``LDT#`` one — that narrows, and is reported as
 :doc:`P4022 </reference/compiler/problems/P4022>`.
@@ -37,6 +41,7 @@ Literals
 
    LDT#2024-01-15-14:30:00
    LDATE_AND_TIME#2024-12-31-23:59:59
+   LDT#2024-01-15-14:30:00.5
 
 Example
 -------

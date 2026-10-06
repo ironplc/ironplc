@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.247.0">
+<meta name="ironplc-version" content="0.248.0">
 </head>
   <body>
     
@@ -328,6 +328,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../language/object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/object-orientation/interface.html">INTERFACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/object-orientation/member-qualifiers.html">Member Qualifiers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/object-orientation/property.html">PROPERTY</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
@@ -340,6 +342,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../language/structured-text/while.html">WHILE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/structured-text/repeat.html">REPEAT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/structured-text/exit.html">EXIT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/structured-text/continue.html">CONTINUE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/structured-text/return.html">RETURN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/structured-text/arithmetic-operators.html">Arithmetic Operators</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../language/structured-text/comparison-operators.html">Comparison Operators</a></li>
@@ -532,6 +535,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P2039.html">P2039</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2040.html">P2040</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P2041.html">P2041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4003.html">P4003</a></li>
@@ -589,6 +593,14 @@
 <li class="toctree-l4"><a class="reference internal" href="P4055.html">P4055</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4056.html">P4056</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4057.html">P4057</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4058.html">P4058</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4059.html">P4059</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4060.html">P4060</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4062.html">P4062</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4063.html">P4063</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4065.html">P4065</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4069.html">P4069</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4072.html">P4072</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -837,6 +849,25 @@ variable can never equal makes a branch that can never run:</p>
     <span class="n">IF</span> <span class="n">total</span> <span class="o">=</span> <span class="mi">200</span> <span class="n">THEN</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">a</span> <span class="n">SINT</span> <span class="ow">is</span> <span class="n">never</span> <span class="mi">200</span> <span class="o">*</span><span class="p">)</span>
         <span class="n">result</span> <span class="o">:=</span> <span class="mi">1</span><span class="p">;</span>
     <span class="n">END_IF</span><span class="p">;</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+<p>A <code class="code docutils literal notranslate"><span class="pre">CASE</span></code> label is checked by its value whatever radix it is written in,
+and so is each bound of a subrange label. <code class="docutils literal notranslate"><span class="pre">16#FFFFFFFF</span></code> is 4294967295, not
+the -1 its bits would read as in a <code class="docutils literal notranslate"><span class="pre">DINT</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">selector</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+        <span class="n">small</span> <span class="p">:</span> <span class="n">SINT</span><span class="p">;</span>
+        <span class="n">result</span> <span class="p">:</span> <span class="n">DINT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+
+    <span class="n">CASE</span> <span class="n">selector</span> <span class="n">OF</span>
+        <span class="mi">16</span><span class="c1">#FFFFFFFF: result := 1;  (* Error: a DINT is never 4294967295 *)</span>
+    <span class="n">END_CASE</span><span class="p">;</span>
+    <span class="n">CASE</span> <span class="n">small</span> <span class="n">OF</span>
+        <span class="mf">100..300</span><span class="p">:</span> <span class="n">result</span> <span class="o">:=</span> <span class="mi">2</span><span class="p">;</span>     <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">a</span> <span class="n">SINT</span> <span class="ow">is</span> <span class="n">never</span> <span class="mi">300</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">END_CASE</span><span class="p">;</span>
 <span class="n">END_PROGRAM</span>
 </pre></div>
 </div>

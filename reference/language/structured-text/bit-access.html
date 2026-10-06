@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.247.0">
+<meta name="ironplc-version" content="0.248.0">
 </head>
   <body>
     
@@ -328,6 +328,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/interface.html">INTERFACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../object-orientation/member-qualifiers.html">Member Qualifiers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../object-orientation/property.html">PROPERTY</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
@@ -340,6 +342,7 @@
 <li class="toctree-l4"><a class="reference internal" href="while.html">WHILE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="repeat.html">REPEAT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="exit.html">EXIT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="continue.html">CONTINUE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="return.html">RETURN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="arithmetic-operators.html">Arithmetic Operators</a></li>
 <li class="toctree-l4"><a class="reference internal" href="comparison-operators.html">Comparison Operators</a></li>
@@ -532,6 +535,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2039.html">P2039</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2040.html">P2040</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2041.html">P2041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4003.html">P4003</a></li>
@@ -589,6 +593,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4055.html">P4055</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4056.html">P4056</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4057.html">P4057</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4058.html">P4058</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4059.html">P4059</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4060.html">P4060</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4062.html">P4062</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4063.html">P4063</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4065.html">P4065</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4069.html">P4069</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4072.html">P4072</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -824,8 +836,15 @@ field accesses:</p>
 </tbody>
 </table>
 </div>
-<p>Accessing a bit outside the valid range raises
+<p>A subrange of an integer type has the bits of its base type. Accessing a bit
+outside the valid range raises
 <a class="reference internal" href="../../compiler/problems/P4025.html"><span class="doc">P4025</span></a>.</p>
+<p>IEC 61131-3 defines partial access on the bit-string types; IronPLC also
+accepts it on integers, in every dialect, as CODESYS and TwinCAT do. Any
+other type has no bits to select, and bit or partial access on it raises
+<a class="reference internal" href="../../compiler/problems/P4069.html"><span class="doc">P4069</span></a>: <code class="docutils literal notranslate"><span class="pre">BOOL</span></code>, <code class="docutils literal notranslate"><span class="pre">REAL</span></code>,
+<code class="docutils literal notranslate"><span class="pre">STRING</span></code>, <code class="docutils literal notranslate"><span class="pre">TIME</span></code>, an enumeration, a structure, a function block instance,
+or a whole array rather than one of its elements.</p>
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
@@ -1010,6 +1029,7 @@ behind <code class="docutils literal notranslate"><span class="pre">--allow-part
 <li><p><a class="reference internal" href="../data-types/elementary/dword.html"><span class="doc">DWORD</span></a> — 32-bit bit string</p></li>
 <li><p><a class="reference internal" href="../data-types/elementary/lword.html"><span class="doc">LWORD</span></a> — 64-bit bit string</p></li>
 <li><p><a class="reference internal" href="../../compiler/problems/P4025.html"><span class="doc">P4025</span></a> — bit index out of range</p></li>
+<li><p><a class="reference internal" href="../../compiler/problems/P4069.html"><span class="doc">P4069</span></a> — variable has no bits to select</p></li>
 <li><p><a class="reference internal" href="../../compiler/problems/P4033.html"><span class="doc">P4033</span></a> — partial-access syntax disabled</p></li>
 </ul>
 </section>

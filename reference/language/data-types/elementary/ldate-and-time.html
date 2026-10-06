@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.247.0">
+<meta name="ironplc-version" content="0.248.0">
 </head>
   <body>
     
@@ -328,6 +328,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../object-orientation/interface.html">INTERFACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../object-orientation/member-qualifiers.html">Member Qualifiers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../object-orientation/property.html">PROPERTY</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
@@ -340,6 +342,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/while.html">WHILE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/repeat.html">REPEAT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/exit.html">EXIT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../structured-text/continue.html">CONTINUE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/return.html">RETURN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/arithmetic-operators.html">Arithmetic Operators</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/comparison-operators.html">Comparison Operators</a></li>
@@ -532,6 +535,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2039.html">P2039</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2040.html">P2040</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2041.html">P2041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4003.html">P4003</a></li>
@@ -589,6 +593,14 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4055.html">P4055</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4056.html">P4056</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4057.html">P4057</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4058.html">P4058</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4059.html">P4059</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4060.html">P4060</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4062.html">P4062</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4063.html">P4063</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4065.html">P4065</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4069.html">P4069</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4072.html">P4072</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6003.html">P6003</a></li>
@@ -763,6 +775,9 @@ counts them in 64 bits, so it reaches far past the 2106 ceiling a 32-bit
 <a class="reference internal" href="date-and-time.html"><span class="doc">DATE_AND_TIME</span></a> has; a literal outside <code class="docutils literal notranslate"><span class="pre">LDT#1970-01-01-00:00:00</span></code> to
 <code class="docutils literal notranslate"><span class="pre">LDT#9999-12-31-23:59:59</span></code> is reported as
 <a class="reference internal" href="../../../compiler/problems/P2038.html"><span class="doc">P2038</span></a>.</p>
+<p>The seconds of a literal may have a fraction, as in
+<code class="docutils literal notranslate"><span class="pre">LDT#2024-01-15-14:30:00.5</span></code>. An <code class="docutils literal notranslate"><span class="pre">LDT</span></code> counts whole seconds, so the fraction
+is truncated.</p>
 <p>An <code class="docutils literal notranslate"><span class="pre">LDT</span></code> accepts a <code class="docutils literal notranslate"><span class="pre">DT#</span></code> literal, which widens, but a <code class="docutils literal notranslate"><span class="pre">DT</span></code> does not accept
 an <code class="docutils literal notranslate"><span class="pre">LDT#</span></code> one — that narrows, and is reported as
 <a class="reference internal" href="../../../compiler/problems/P4022.html"><span class="doc">P4022</span></a>.</p>
@@ -770,6 +785,7 @@ an <code class="docutils literal notranslate"><span class="pre">LDT#</span></cod
 <h2>Literals<a class="headerlink" href="#literals" title="Link to this heading">¶</a></h2>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">LDT</span><span class="c1">#2024-01-15-14:30:00</span>
 <span class="n">LDATE_AND_TIME</span><span class="c1">#2024-12-31-23:59:59</span>
+<span class="n">LDT</span><span class="c1">#2024-01-15-14:30:00.5</span>
 </pre></div>
 </div>
 </section>

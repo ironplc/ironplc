@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.247.0">
+<meta name="ironplc-version" content="0.248.0">
 </head>
   <body>
     
@@ -328,6 +328,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../language/object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/object-orientation/interface.html">INTERFACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../language/object-orientation/member-qualifiers.html">Member Qualifiers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../language/object-orientation/property.html">PROPERTY</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
@@ -340,6 +342,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/while.html">WHILE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/repeat.html">REPEAT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/exit.html">EXIT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../language/structured-text/continue.html">CONTINUE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/return.html">RETURN</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/arithmetic-operators.html">Arithmetic Operators</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/comparison-operators.html">Comparison Operators</a></li>
@@ -532,6 +535,7 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/P2039.html">P2039</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P2040.html">P2040</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P2041.html">P2041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P2043.html">P2043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4001.html">P4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4002.html">P4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4003.html">P4003</a></li>
@@ -589,6 +593,14 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/P4055.html">P4055</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4056.html">P4056</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P4057.html">P4057</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4058.html">P4058</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4059.html">P4059</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4060.html">P4060</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4062.html">P4062</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4063.html">P4063</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4065.html">P4065</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4069.html">P4069</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/P4072.html">P4072</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/P6003.html">P6003</a></li>
@@ -775,10 +787,30 @@ rather than incorrect bytecode.</p>
 </section>
 <section id="diagnostic-commands">
 <h3>Diagnostic Commands<a class="headerlink" href="#diagnostic-commands" title="Link to this heading">¶</a></h3>
-<dl class="simple">
-<dt><strong class="program">ironplcc echo</strong> [<em>FILES</em>…]</dt><dd><p>Parse source files and write the parsed representation to standard output.
+<dl>
+<dt><strong class="program">ironplcc echo</strong> [<code class="docutils literal notranslate"><span class="pre">--types</span></code>] [<em>FILES</em>…]</dt><dd><p>Parse source files and write the parsed representation to standard output.
 This is primarily useful for diagnostics and understanding the internal
 structure of the parsed files.</p>
+<p>With <code class="docutils literal notranslate"><span class="pre">--types</span></code>, the command analyzes the files and writes the analyzed
+program instead. A comment after each expression gives the type the
+compiler determined for it:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>flag := ( big (* LINT *) &gt; total (* DINT -&gt; LINT *) ) (* BOOL *) ;
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">(*</span> <span class="pre">DINT</span> <span class="pre">-&gt;</span> <span class="pre">LINT</span> <span class="pre">*)</span></code> marks an implicit conversion from the first type
+to the second.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code> marks a value the compiler knows, such as a literal:
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">(*</span> <span class="pre">CONSTANT</span> <span class="pre">INT</span> <span class="pre">*)</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">?</span></code> marks an expression whose type the compiler did not determine:
+<code class="docutils literal notranslate"><span class="pre">(*</span> <span class="pre">?</span> <span class="pre">*)</span></code>, or <code class="docutils literal notranslate"><span class="pre">(*</span> <span class="pre">?</span> <span class="pre">ANY_INT</span> <span class="pre">*)</span></code> for a literal still of a generic
+type.</p></li>
+</ul>
+<p>The output is still Structured Text, but it shows the program as the
+compiler analyzed it rather than as written. Declarations appear in
+dependency order, named arguments become positional, and the compiler
+folds constant expressions. The output contains only the declarations from
+your files, not those of an activated compatibility library.</p>
 </dd>
 <dt><strong class="program">ironplcc tokenize</strong> [<em>FILES</em>…]</dt><dd><p>Tokenize source files and verify that all content matches a token.
 This is primarily useful for diagnostics and understanding the lexer
@@ -823,7 +855,7 @@ override the dialect’s defaults. Available values: <code class="docutils liter
 <dt><code class="docutils literal notranslate"><span class="pre">--library</span></code> <em>NAME</em></dt><dd><p>Activate a <a class="reference internal" href="../compatibility-libraries/index.html"><span class="doc">compatibility library</span></a>
 by name (for example <code class="docutils literal notranslate"><span class="pre">--library</span> <span class="pre">Tc2_System</span></code>). Repeat the option to
 activate several libraries. Applies to the <code class="docutils literal notranslate"><span class="pre">check</span></code> and <code class="docutils literal notranslate"><span class="pre">compile</span></code>
-commands. Libraries referenced by a discovered project file are
+commands, and to <code class="docutils literal notranslate"><span class="pre">echo</span></code> with <code class="docutils literal notranslate"><span class="pre">--types</span></code>. Libraries referenced by a discovered project file are
 activated automatically and do not need this option.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-c-style-comments</span></code></dt><dd><p>Allow C-style comments (<code class="docutils literal notranslate"><span class="pre">//</span></code> line comments and <code class="docutils literal notranslate"><span class="pre">/*</span> <span class="pre">*/</span></code> block
@@ -966,12 +998,15 @@ flag. The <code class="docutils literal notranslate"><span class="pre">REF_TO</s
 spell the declaration <code class="docutils literal notranslate"><span class="pre">POINTER</span> <span class="pre">TO</span> <span class="pre">FB_Device</span></code> instead.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code></dt><dd><p>Allow the IEC 61131-3:2013 object-oriented syntax:
-<code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code>/<code class="docutils literal notranslate"><span class="pre">IMPLEMENTS</span></code>/<code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code> on <code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code>
-declarations, <code class="docutils literal notranslate"><span class="pre">INTERFACE</span></code> declarations, <code class="docutils literal notranslate"><span class="pre">METHOD</span></code> declarations, and
+<code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code>/<code class="docutils literal notranslate"><span class="pre">IMPLEMENTS</span></code> and qualifiers (<code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code>, <code class="docutils literal notranslate"><span class="pre">FINAL</span></code>,
+<code class="docutils literal notranslate"><span class="pre">PUBLIC</span></code>, …) on <code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code> declarations, <code class="docutils literal notranslate"><span class="pre">INTERFACE</span></code>
+declarations, <code class="docutils literal notranslate"><span class="pre">METHOD</span></code> and <code class="docutils literal notranslate"><span class="pre">PROPERTY</span></code> declarations, and
 <code class="docutils literal notranslate"><span class="pre">THIS</span></code>/<code class="docutils literal notranslate"><span class="pre">SUPER</span></code>. Support beyond parsing varies by keyword — see
 <a class="reference internal" href="../language/object-orientation/index.html"><span class="doc">Object Oriented Programming</span></a>; the parts that are
 parsed but not yet analyzed produce
-<a class="reference internal" href="problems/P9999.html"><span class="doc">P9999</span></a>. Enabled by
+<a class="reference internal" href="problems/P9999.html"><span class="doc">P9999</span></a>. A function block
+qualifier produces <a class="reference internal" href="problems/P4062.html"><span class="doc">P4062</span></a>
+when used without this flag. Enabled by
 <code class="docutils literal notranslate"><span class="pre">--dialect=iec61131-3-ed3</span></code>, <code class="docutils literal notranslate"><span class="pre">--dialect=rusty</span></code>, <code class="docutils literal notranslate"><span class="pre">--dialect=codesys</span></code>,
 and <code class="docutils literal notranslate"><span class="pre">--dialect=twincat</span></code>.</p>
 </dd>
@@ -990,6 +1025,11 @@ addition as explicit member values are. Without it the compiler picks the
 smallest type that holds every member’s value. Produces
 <a class="reference internal" href="problems/P4056.html"><span class="doc">P4056</span></a> when used without this
 flag.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-continue</span></code></dt><dd><p>Allow the <code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> statement, which goes on with the next iteration of
+the innermost <code class="docutils literal notranslate"><span class="pre">FOR</span></code>, <code class="docutils literal notranslate"><span class="pre">WHILE</span></code>, or <code class="docutils literal notranslate"><span class="pre">REPEAT</span></code> loop. <code class="docutils literal notranslate"><span class="pre">CONTINUE</span></code> was added
+in IEC 61131-3:2013 (Edition 3); without this flag it is an ordinary
+identifier.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--policy-string-to-num-non-numeric</span></code> <em>ALTERNATIVE</em></dt><dd><p>Select what <code class="docutils literal notranslate"><span class="pre">STRING_TO_&lt;numeric&gt;</span></code> treats as convertible when the string
 has non-numeric characters: <code class="docutils literal notranslate"><span class="pre">reject</span></code> (the whole string must be a
@@ -1033,6 +1073,11 @@ alternative and this flag replaces it. See
 </li>
 <li><p>Inspect the parsed representation of a file:</p>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span><span class="nb">echo</span><span class="w"> </span>main.st
+</pre></div>
+</div>
+</li>
+<li><p>Inspect the type the compiler determined for each expression:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span><span class="nb">echo</span><span class="w"> </span>--types<span class="w"> </span>main.st
 </pre></div>
 </div>
 </li>

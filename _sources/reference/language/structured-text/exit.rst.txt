@@ -55,4 +55,5 @@ See Also
 - :doc:`for` — counted loop
 - :doc:`while` — pre-tested loop
 - :doc:`repeat` — post-tested loop
+- :doc:`continue` — next iteration of the innermost loop
 - :doc:`return` — early exit from POU
