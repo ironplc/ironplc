@@ -1,0 +1,42 @@
+=====
+P4064
+=====
+
+.. problem-summary:: P4064
+
+This error occurs when a statement writes a variable declared ``CONSTANT``.
+A constant holds its initial value for the whole run, so it cannot be the
+target of an assignment, the control variable of a ``FOR`` loop, the target
+of an output binding (``=>``), or an argument bound to a ``VAR_IN_OUT``
+parameter.
+
+The same applies to a global written through a ``VAR_EXTERNAL CONSTANT``
+declaration. A write through a plain ``VAR_EXTERNAL`` is checked against that
+declaration only, so it is not affected by another program that declares the
+same global ``VAR_EXTERNAL CONSTANT``.
+
+Example
+-------
+
+The following code will generate error P4064:
+
+.. code-block::
+
+   PROGRAM main
+   VAR CONSTANT
+       Limit : INT := 10;
+   END_VAR
+       Limit := 20;  (* Error: Limit is a constant *)
+   END_PROGRAM
+
+To fix this error, remove the write, or declare the variable without
+``CONSTANT`` if the program needs to change it:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       Limit : INT := 10;
+   END_VAR
+       Limit := 20;
+   END_PROGRAM
