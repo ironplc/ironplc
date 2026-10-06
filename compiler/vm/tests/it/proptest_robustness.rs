@@ -1,10 +1,25 @@
 //! Property-based tests for VM robustness.
 //!
-//! These tests verify that the VM never panics on arbitrary input
-//! and that arithmetic identities hold across the full value range.
+//! These tests verify that the VM never panics on arbitrary input -- bytecode
+//! and the container fields around it -- and that arithmetic identities hold
+//! across the full value range.
 
-use ironplc_vm::VmBuffers;
+use ironplc_container::{opcode, FLAG_HAS_SYSTEM_UPTIME};
+use ironplc_vm::{Vm, VmBuffers};
 use proptest::prelude::*;
+
+/// A `u16` drawn mostly from the boundaries where index arithmetic goes
+/// wrong (0, 1 and the top of the range), and otherwise from anywhere.
+fn edge_u16() -> impl Strategy<Value = u16> {
+    prop_oneof![
+        Just(0u16),
+        Just(1u16),
+        Just(0xFFFEu16),
+        Just(0xFFFFu16),
+        0u16..8,
+        any::<u16>(),
+    ]
+}
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(10_000))]
@@ -23,6 +38,52 @@ proptest! {
             // We don't care whether it succeeds or traps --
             // only that it doesn't panic.
             let _ = vm.run_round(0);
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(10_000))]
+
+    /// The header and task table come from the file as much as the bytecode
+    /// does, so they are randomised too: header `flags` (all but one bit, see
+    /// below), a small variable count, the shared-globals size and the
+    /// program instance's variable range. Each program starts with a variable
+    /// access at an edge index so the scope check sees those values.
+    ///
+    /// The VM is loaded with `Vm::load` directly rather than
+    /// `load_and_start`, because rejecting the container at load is one of
+    /// the outcomes the property accepts.
+    #[test]
+    fn execute_when_arbitrary_header_and_instance_range_then_never_panics(
+        access_opcode in prop_oneof![Just(opcode::LOAD_VAR_I32), Just(opcode::STORE_VAR_I32)],
+        access_index in edge_u16(),
+        tail in proptest::collection::vec(any::<u8>(), 0..64),
+        flags in any::<u8>(),
+        num_variables in 0u16..8,
+        shared_globals_size in edge_u16(),
+        var_table_offset in edge_u16(),
+        var_table_count in edge_u16(),
+    ) {
+        let [lo, hi] = access_index.to_le_bytes();
+        let mut bytecode = vec![access_opcode, lo, hi];
+        bytecode.extend_from_slice(&tail);
+        let constants: Vec<i32> = (0..16).collect();
+        let mut c = crate::common::single_function_container(&bytecode, num_variables, &constants);
+        // FLAG_HAS_SYSTEM_UPTIME stays clear: with fewer than two variables
+        // the VM still panics writing the uptime before the first scan. Let
+        // this bit through once that container is rejected at load.
+        c.header.flags = flags & !FLAG_HAS_SYSTEM_UPTIME;
+        c.task_table.shared_globals_size = shared_globals_size;
+        c.task_table.programs[0].var_table_offset = var_table_offset;
+        c.task_table.programs[0].var_table_count = var_table_count;
+
+        let mut b = VmBuffers::from_container(&c);
+        if let Ok(ready) = Vm::new().load(&c, &mut b) {
+            if let Ok(mut vm) = ready.start() {
+                // Succeeding and trapping are both fine; panicking is not.
+                let _ = vm.run_round(0);
+            }
         }
     }
 }

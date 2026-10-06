@@ -3,10 +3,10 @@
 //! Phase 2: Multi-scan state accumulation and fault handling.
 //! Phase 3: Multi-task execution, variable scope isolation, and watchdog.
 
-use crate::common::{load_and_start, VmBuffers};
+use crate::common::{load_and_start, single_function_container, VmBuffers};
 use ironplc_container::{
-    ContainerBuilder, FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId, TaskType,
-    VarIndex,
+    opcode, ContainerBuilder, FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId,
+    TaskType, VarIndex,
 };
 use ironplc_vm::error::Trap;
 
@@ -422,5 +422,29 @@ fn scenario_when_scope_violation_then_trap() {
     assert_eq!(
         result.unwrap_err().trap,
         Trap::InvalidVariableIndex(VarIndex::new(0))
+    );
+}
+
+/// A program instance whose variable range ends at the last index (`0xFFFF`)
+/// is checked without overflowing `instance_offset + instance_count`.
+///
+/// The container is not one codegen produces: the instance's range lies far
+/// past the variable buffer, so the access passes the scope check and then
+/// traps on the buffer bound instead of panicking in the scope check.
+#[test]
+fn scenario_when_instance_range_ends_at_last_index_then_traps_without_overflow() {
+    let bytecode = [opcode::LOAD_VAR_I32, 0xFF, 0xFF, opcode::RET_VOID];
+    let mut c = single_function_container(&bytecode, 1, &[]);
+    c.task_table.programs[0].var_table_offset = 0xFFFF;
+    c.task_table.programs[0].var_table_count = 1;
+    c.task_table.shared_globals_size = 0;
+
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = load_and_start(&c, &mut b).unwrap();
+    let result = vm.run_round(0);
+
+    assert_eq!(
+        result.err().map(|ctx| ctx.trap),
+        Some(Trap::InvalidVariableIndex(VarIndex::new(0xFFFF)))
     );
 }
