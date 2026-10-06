@@ -56,7 +56,9 @@ use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    symbol_environment::{ScopeTracker, SymbolEnvironment},
+    semantic_type::SemanticType,
+    symbol_environment::ScopeTracker,
+    variable_type,
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -67,10 +69,7 @@ pub fn apply(
 ) -> SemanticResult {
     let function_blocks = FunctionBlocks::from_library(lib);
 
-    run_rule(
-        RuleMethodCallDeclared::new(&function_blocks, context.symbols()),
-        lib,
-    )
+    run_rule(RuleMethodCallDeclared::new(&function_blocks, context), lib)
 }
 
 struct RuleMethodCallDeclared<'a> {
@@ -79,7 +78,7 @@ struct RuleMethodCallDeclared<'a> {
     /// The instances declared in the unit being walked.
     instances: InstanceTypes,
 
-    symbols: &'a SymbolEnvironment,
+    context: &'a SemanticContext,
 
     /// Where the walk is, to find the function block `THIS^`/`SUPER^` name.
     scope: ScopeTracker,
@@ -92,11 +91,11 @@ struct RuleMethodCallDeclared<'a> {
 }
 
 impl<'a> RuleMethodCallDeclared<'a> {
-    fn new(function_blocks: &'a FunctionBlocks<'a>, symbols: &'a SymbolEnvironment) -> Self {
+    fn new(function_blocks: &'a FunctionBlocks<'a>, context: &'a SemanticContext) -> Self {
         Self {
             function_blocks,
             instances: InstanceTypes::default(),
-            symbols,
+            context,
             scope: ScopeTracker::default(),
             in_expression: false,
             diagnostics: Vec::new(),
@@ -210,7 +209,10 @@ impl RuleMethodCallDeclared<'_> {
             MethodReceiver::Instance(id) => id,
             MethodReceiver::SelfRef(self_ref) => {
                 let scope = self.scope.current();
-                if let Some(fb_type) = self.symbols.self_type(&scope, self_ref.kind) {
+                if let Some(fb_type) = self.context.symbols().self_type(&scope, self_ref.kind) {
+                    if self.is_member_instance(call, self_ref, &fb_type) {
+                        return;
+                    }
                     self.check_on_type(call, in_expression, &fb_type);
                 }
                 return;
@@ -231,6 +233,29 @@ impl RuleMethodCallDeclared<'_> {
         }
 
         self.check_on_type(call, in_expression, &fb_type);
+    }
+
+    /// Whether `THIS^.name(...)` invokes a function block instance the block
+    /// declares rather than a method. TwinCAT accepts it. The arguments are
+    /// not checked against the instance's inputs here.
+    fn is_member_instance(
+        &self,
+        call: &MethodCall,
+        self_ref: &SelfRefVariable,
+        fb_type: &TypeName,
+    ) -> bool {
+        if self
+            .function_blocks
+            .resolve_method(fb_type, &call.method)
+            .is_some()
+        {
+            return false;
+        }
+        let scope = self.scope.current();
+        variable_type::self_member(self_ref.kind, &call.method, self.context.symbols(), &scope)
+            .and_then(|member| member.type_id)
+            .and_then(|id| self.context.types().get_by_id(id))
+            .is_some_and(|ty| matches!(ty.representation, SemanticType::FunctionBlock { .. }))
     }
 
     /// Checks `call` against the methods of `fb_type` and its `EXTENDS`

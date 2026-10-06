@@ -970,10 +970,10 @@ END_FUNCTION_BLOCK"
     }
 
     // ---------------------------------------------------------------------
-    // Behaviour of `THIS^`/`SUPER^` that has no settled answer yet. These
-    // tests pin what the analysis does today so a change shows up as a
-    // failing test rather than silently. A failure here means the behaviour
-    // changed, not necessarily that it broke.
+    // `THIS^`/`SUPER^` cases checked against TwinCAT XAE. Each says what XAE
+    // reports and what the analysis does. Where they differ, the test pins
+    // today's behaviour so that fixing it shows up as a failing test; the
+    // difference is a known gap, not an intended answer.
     // ---------------------------------------------------------------------
 
     /// `body` in a method of `FB_A`, which declares an external, a
@@ -1023,9 +1023,10 @@ END_FUNCTION_BLOCK"
         ))
     }
 
-    /// An undeclared base is not reported for itself. `SUPER^.x` finds no
-    /// member and passes, and a call is reported as an undeclared method of
-    /// the missing block.
+    /// XAE: `No definition found for base class 'FB_Missing'`. Gap: the
+    /// missing base is not reported for itself. `SUPER^.x` finds no member
+    /// and passes, and a call is reported as an undeclared method of the
+    /// missing block.
     #[rstest::rstest]
     #[case::member("    SUPER^.x := 1;", &[])]
     #[case::call("    SUPER^.Go();", &["P4046"])]
@@ -1044,11 +1045,13 @@ END_FUNCTION_BLOCK"
         assert_eq!(expected, codes.as_slice());
     }
 
-    /// `VAR_EXTERNAL` and `VAR_TEMP` declarations are members of the block's
-    /// scope, so `THIS^` reaches them and they are typed.
+    /// XAE accepts `THIS^.t` of a `VAR_TEMP`, and so does the analysis,
+    /// typing it. XAE rejects `THIS^.g` of a `VAR_EXTERNAL` (`'g' is no
+    /// component of ...`). Gap: the analysis does not type it, but it does
+    /// not report it either, so a wrong-typed assignment is not caught.
     #[rstest::rstest]
     #[case::external_in_range("    n := THIS^.g;", &[])]
-    #[case::external_wrong_type("    flag := THIS^.g;", &["P4035"])]
+    #[case::external_wrong_type("    flag := THIS^.g;", &[])]
     #[case::temporary_in_range("    n := THIS^.t;", &[])]
     #[case::temporary_wrong_type("    flag := THIS^.t;", &["P4035"])]
     fn analyze_when_self_ref_names_external_or_temporary_then_pinned(
@@ -1058,9 +1061,11 @@ END_FUNCTION_BLOCK"
         assert_eq!(expected, pinned_codes(body).as_slice());
     }
 
-    /// A property, another method's local and a method name are not fields.
-    /// Nothing reports them and the access has no type, so a wrong-typed
-    /// assignment is not caught either.
+    /// XAE types `THIS^.Prop` (`Cannot convert type 'INT' to type 'BOOL'`)
+    /// and rejects `THIS^.other_local` (`'other_local' is no component of
+    /// ...`) and `THIS^.Other` without a call (`Cannot convert type 'OTHER'
+    /// to type 'INT'`). Gap: the analysis reports none of the three and the
+    /// access has no type, so a wrong-typed assignment is not caught.
     #[rstest::rstest]
     #[case::property("    flag := THIS^.Prop;")]
     #[case::local_of_another_method("    flag := THIS^.other_local;")]
@@ -1071,12 +1076,12 @@ END_FUNCTION_BLOCK"
         assert_eq!(Vec::<String>::new(), pinned_codes(body));
     }
 
-    /// Calling a member instance through `THIS^` is a hard error, as it is
-    /// through a named instance (`a.inner(...)`).
+    /// XAE accepts `THIS^.inner(i := 1)`, so the analysis does too. The
+    /// arguments are not checked against the instance's inputs.
     #[test]
-    fn analyze_when_member_instance_called_through_self_ref_then_pinned_p4046() {
+    fn analyze_when_member_instance_called_through_self_ref_then_ok() {
         assert_eq!(
-            vec!["P4046".to_string()],
+            Vec::<String>::new(),
             pinned_codes("    THIS^.inner(i := 1);")
         );
     }

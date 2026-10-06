@@ -167,7 +167,7 @@ impl RuleFunctionCallInOutArgument<'_> {
                     return variable_type::self_member(
                         self_ref.kind,
                         &structured.field,
-                        self.context,
+                        self.context.symbols(),
                         &self.scope.current(),
                     )
                     .is_some_and(is_declared_writable);
