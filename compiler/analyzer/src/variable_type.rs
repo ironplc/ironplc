@@ -130,11 +130,22 @@ pub(crate) fn self_member<'a>(
     scope: &ScopeKind,
 ) -> Option<&'a SymbolInfo> {
     let block = symbols.self_type(scope, kind)?;
-    let block_scope = ScopeKind::Named(ScopePath::from(block.name));
+    member_of_block(&block, field, symbols)
+}
+
+/// The symbol of the member `field` of the function block `block`, found in
+/// its own scope and then those of its `EXTENDS` chain.
+///
+/// `find` falls back to the globals, which are not members. Neither is a
+/// `VAR_EXTERNAL` declaration, which is a view of a global: TwinCAT reports
+/// `THIS^.g` as no component of the block.
+pub(crate) fn member_of_block<'a>(
+    block: &TypeName,
+    field: &Id,
+    symbols: &'a SymbolEnvironment,
+) -> Option<&'a SymbolInfo> {
+    let block_scope = ScopeKind::Named(ScopePath::from(block.name.clone()));
     let member = symbols.find(field, &block_scope)?;
-    // `find` falls back to the globals, which are not members. Neither is a
-    // `VAR_EXTERNAL` declaration, which is a view of a global: TwinCAT
-    // reports `THIS^.g` as no component of the block.
     (member.scope != ScopeKind::Global && !member.is_external).then_some(member)
 }
 
