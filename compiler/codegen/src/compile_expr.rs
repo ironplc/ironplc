@@ -6,14 +6,13 @@
 
 use ironplc_analyzer::SemanticType;
 use ironplc_container::{opcode, VarIndex};
-use ironplc_dsl::common::{Boolean, ConstantKind, SignedInteger};
+use ironplc_dsl::common::{BitStringLiteral, Boolean, ConstantKind, SignedInteger};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     CompareExpr, CompareOp, Expr, ExprKind, ExprType, Operator, SymbolicVariableKind, UnaryOp,
     Variable,
 };
-use ironplc_problems::Problem;
 use paste::paste;
 
 use super::compile::{
@@ -363,15 +362,17 @@ fn compile_time_count(
 /// Returns `count`, or an internal error when a `bits`-wide integer of
 /// `signedness` cannot hold it.
 ///
-/// `rule_temporal_literal_range` holds every temporal literal to the range its
-/// own type gives it, and a literal only reaches storage at least that wide --
-/// narrowing one into the shorter type is rejected too. So by the time a count
-/// arrives here it fits, and a count that does not is a broken invariant
-/// rather than something to report against the program: the diagnostic names
-/// the compiler, not the source.
+/// Analysis holds every literal to the range its own type gives it --
+/// `rule_temporal_literal_range` a temporal literal, `rule_constant_range` an
+/// integer or bit-string one (P2026) -- and a literal only reaches storage at
+/// least that wide: an integer literal is compiled at the type the analyzer
+/// recorded for it, and narrowing a literal into a shorter type is rejected
+/// too. So by the time a value arrives here it fits, and one that does not is
+/// a broken invariant rather than something to report against the program:
+/// the diagnostic names the compiler, not the source.
 ///
-/// The check remains because being wrong here is silent. Truncating a count
-/// emits a different value than the program wrote -- `T#30d` became a
+/// The check remains because being wrong here is silent. Truncating a value
+/// emits a different one than the program wrote -- `T#30d` became a
 /// *negative* 19.7 days -- which no test of the program's behaviour would
 /// attribute to codegen.
 fn within_storage(
@@ -394,6 +395,30 @@ fn within_storage(
     Ok(count)
 }
 
+/// The value an integer literal spells, or an internal error when it is
+/// beyond every integer type, which `rule_constant_range` reports (P2026).
+fn integer_value(literal: &SignedInteger, span: &SourceSpan) -> Result<i128, Diagnostic> {
+    i128::try_from(literal.clone()).map_err(|_| beyond_every_type("Integer literal", literal, span))
+}
+
+/// The value a bit-string literal spells, or an internal error when it is
+/// beyond every bit string, which `rule_constant_range` reports (P2026).
+fn bit_string_value(literal: &BitStringLiteral, span: &SourceSpan) -> Result<i128, Diagnostic> {
+    i128::try_from(literal.value.value)
+        .map_err(|_| beyond_every_type("Bit string literal", &literal.value.value, span))
+}
+
+fn beyond_every_type(
+    literal: &str,
+    value: &dyn std::fmt::Display,
+    span: &SourceSpan,
+) -> Diagnostic {
+    Diagnostic::internal_error_at(Label::span(
+        span.clone(),
+        format!("{literal} holds {value}, beyond the range of every type"),
+    ))
+}
+
 /// Compiles a constant literal, pushing it onto the stack.
 pub(crate) fn compile_constant(
     emitter: &mut Emitter,
@@ -405,86 +430,26 @@ pub(crate) fn compile_constant(
         ConstantKind::IntegerLiteral(lit) => {
             let span = lit.value.value.span();
             match op_type {
-                (OpWidth::W32, Signedness::Signed) => {
-                    let value = if lit.value.is_neg {
-                        let unsigned = lit.value.value.value as i128;
-                        let signed = -unsigned;
-                        i32::try_from(signed).map_err(|_| {
-                            Diagnostic::problem(
-                                Problem::ConstantOverflow,
-                                Label::span(span.clone(), "Integer literal"),
-                            )
-                            .with_context("value", &signed.to_string())
-                        })?
-                    } else {
-                        i32::try_from(lit.value.value.value).map_err(|_| {
-                            Diagnostic::problem(
-                                Problem::ConstantOverflow,
-                                Label::span(span.clone(), "Integer literal"),
-                            )
-                            .with_context("value", &lit.value.value.value.to_string())
-                        })?
-                    };
-                    let pool_index = ctx.add_i32_constant(value);
+                (OpWidth::W32, signedness) => {
+                    let value = within_storage(
+                        integer_value(&lit.value, &span)?,
+                        32,
+                        signedness,
+                        "Integer literal",
+                        &span,
+                    )?;
+                    let pool_index = ctx.add_i32_constant(value as i32);
                     emitter.emit_load_const_i32(pool_index);
                 }
-                (OpWidth::W32, Signedness::Unsigned) => {
-                    // Unsigned 32-bit: values up to u32::MAX are valid.
-                    // Store the bit-pattern as i32.
-                    let value = if lit.value.is_neg {
-                        return Err(Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(span.clone(), "Integer literal"),
-                        )
-                        .with_context("value", &format!("-{}", lit.value.value.value)));
-                    } else {
-                        u32::try_from(lit.value.value.value).map_err(|_| {
-                            Diagnostic::problem(
-                                Problem::ConstantOverflow,
-                                Label::span(span.clone(), "Integer literal"),
-                            )
-                            .with_context("value", &lit.value.value.value.to_string())
-                        })? as i32
-                    };
-                    let pool_index = ctx.add_i32_constant(value);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-                (OpWidth::W64, Signedness::Signed) => {
-                    let value = if lit.value.is_neg {
-                        let unsigned = lit.value.value.value as i128;
-                        let signed = -unsigned;
-                        i64::try_from(signed).map_err(|_| {
-                            Diagnostic::problem(
-                                Problem::ConstantOverflow,
-                                Label::span(span.clone(), "Integer literal"),
-                            )
-                            .with_context("value", &signed.to_string())
-                        })?
-                    } else {
-                        i64::try_from(lit.value.value.value).map_err(|_| {
-                            Diagnostic::problem(
-                                Problem::ConstantOverflow,
-                                Label::span(span.clone(), "Integer literal"),
-                            )
-                            .with_context("value", &lit.value.value.value.to_string())
-                        })?
-                    };
-                    let pool_index = ctx.add_i64_constant(value);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                (OpWidth::W64, Signedness::Unsigned) => {
-                    // Unsigned 64-bit: values up to u64::MAX are valid.
-                    // Store the bit-pattern as i64.
-                    let value = if lit.value.is_neg {
-                        return Err(Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(span.clone(), "Integer literal"),
-                        )
-                        .with_context("value", &format!("-{}", lit.value.value.value)));
-                    } else {
-                        lit.value.value.value as i64
-                    };
-                    let pool_index = ctx.add_i64_constant(value);
+                (OpWidth::W64, signedness) => {
+                    let value = within_storage(
+                        integer_value(&lit.value, &span)?,
+                        64,
+                        signedness,
+                        "Integer literal",
+                        &span,
+                    )?;
+                    let pool_index = ctx.add_i64_constant(value as i64);
                     emitter.emit_load_const_i64(pool_index);
                 }
                 (OpWidth::F32, _) => {
@@ -581,27 +546,29 @@ pub(crate) fn compile_constant(
         ),
         ConstantKind::BitStringLiteral(lit) => {
             let span = lit.value.span();
+            // A bit string is a pattern of its width, so it is stored unsigned
+            // whatever the operation type's signedness.
             match op_type {
                 (OpWidth::W32, _) => {
-                    let value = u32::try_from(lit.value.value).map_err(|_| {
-                        Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(span.clone(), "Bit string literal"),
-                        )
-                        .with_context("value", &lit.value.value.to_string())
-                    })? as i32;
-                    let pool_index = ctx.add_i32_constant(value);
+                    let value = within_storage(
+                        bit_string_value(lit, &span)?,
+                        32,
+                        Signedness::Unsigned,
+                        "Bit string literal",
+                        &span,
+                    )?;
+                    let pool_index = ctx.add_i32_constant(value as i32);
                     emitter.emit_load_const_i32(pool_index);
                 }
                 (OpWidth::W64, _) => {
-                    let value = u64::try_from(lit.value.value).map_err(|_| {
-                        Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(span.clone(), "Bit string literal"),
-                        )
-                        .with_context("value", &lit.value.value.to_string())
-                    })? as i64;
-                    let pool_index = ctx.add_i64_constant(value);
+                    let value = within_storage(
+                        bit_string_value(lit, &span)?,
+                        64,
+                        Signedness::Unsigned,
+                        "Bit string literal",
+                        &span,
+                    )?;
+                    let pool_index = ctx.add_i64_constant(value as i64);
                     emitter.emit_load_const_i64(pool_index);
                 }
                 (OpWidth::F32, _) => {

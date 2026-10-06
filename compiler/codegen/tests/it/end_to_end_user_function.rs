@@ -206,3 +206,22 @@ e2e_i64!(
      a := 5000000000; b := UDINT#4000000000; END_PROGRAM",
     &[("a", 5_000_000_000), ("b", 4_000_000_000)],
 );
+
+// An untyped literal argument takes its parameter's type, so the parameter
+// receives the value the program wrote: 0.1 rounded to a REAL and widened
+// would be 0.10000000149011612, and 1.0E300 would be infinite.
+e2e_f64!(
+    end_to_end_when_real_literal_argument_to_lreal_parameter_then_exact,
+    "FUNCTION widen : LREAL VAR_INPUT x : LREAL; END_VAR widen := x; END_FUNCTION
+     PROGRAM main VAR a : LREAL; b : LREAL; END_VAR
+     a := widen(0.1); b := widen(1.0E300); END_PROGRAM",
+    &[("a", 0.1), ("b", 1.0E300)],
+);
+
+e2e_i64!(
+    end_to_end_when_integer_literal_argument_beyond_dint_then_passed_whole,
+    "FUNCTION widen : LINT VAR_INPUT x : LINT; END_VAR widen := x; END_FUNCTION
+     PROGRAM main VAR a : LINT; b : LINT; END_VAR
+     a := widen(5000000000); b := widen(-5000000000); END_PROGRAM",
+    &[("a", 5_000_000_000), ("b", -5_000_000_000)],
+);
