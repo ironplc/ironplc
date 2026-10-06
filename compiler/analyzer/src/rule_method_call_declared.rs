@@ -210,7 +210,7 @@ impl RuleMethodCallDeclared<'_> {
             MethodReceiver::SelfRef(self_ref) => {
                 let scope = self.scope.current();
                 if let Some(fb_type) = self.context.symbols().self_type(&scope, self_ref.kind) {
-                    if self.is_member_instance(call, self_ref, &fb_type) {
+                    if self.is_member_instance(call, &fb_type) {
                         return;
                     }
                     self.check_on_type(call, in_expression, &fb_type);
@@ -232,18 +232,17 @@ impl RuleMethodCallDeclared<'_> {
             return;
         }
 
+        if self.is_member_instance(call, &fb_type) {
+            return;
+        }
         self.check_on_type(call, in_expression, &fb_type);
     }
 
-    /// Whether `THIS^.name(...)` invokes a function block instance the block
-    /// declares rather than a method. TwinCAT accepts it. The arguments are
-    /// not checked against the instance's inputs here.
-    fn is_member_instance(
-        &self,
-        call: &MethodCall,
-        self_ref: &SelfRefVariable,
-        fb_type: &TypeName,
-    ) -> bool {
+    /// Whether `receiver.name(...)` invokes a function block instance that
+    /// `fb_type` declares rather than a method: `THIS^.inner(i := 1)` and
+    /// `inst.inner(i := 1)`. TwinCAT accepts both. The arguments are not
+    /// checked against the instance's inputs here.
+    fn is_member_instance(&self, call: &MethodCall, fb_type: &TypeName) -> bool {
         if self
             .function_blocks
             .resolve_method(fb_type, &call.method)
@@ -251,8 +250,7 @@ impl RuleMethodCallDeclared<'_> {
         {
             return false;
         }
-        let scope = self.scope.current();
-        variable_type::self_member(self_ref.kind, &call.method, self.context.symbols(), &scope)
+        variable_type::member_of_block(fb_type, &call.method, self.context.symbols())
             .and_then(|member| member.type_id)
             .and_then(|id| self.context.types().get_by_id(id))
             .is_some_and(|ty| matches!(ty.representation, SemanticType::FunctionBlock { .. }))

@@ -796,6 +796,12 @@ END_FUNCTION_BLOCK"
 
     /// `body`, written in a method of `FB_Leaf`, which `EXTENDS` `FB_Mid`,
     /// which `EXTENDS` `FB_Root`. `FB_Mid` overrides `Describe`.
+    ///
+    /// XAE confirms the nearest override is used (`SUPER^.Describe()` is
+    /// BOOL, from `FB_Mid`). XAE also rejects `FB_Mid` itself, because its
+    /// `Describe` returns BOOL where the base returns INT (`Interface of
+    /// overridden method 'DESCRIBE' ... doesn't match declaration`). Gap: the
+    /// analysis does not compare an override's signature with its base.
     fn leaf_codes(body: &str) -> Vec<String> {
         analysis_codes(&format!(
             "
@@ -1084,6 +1090,58 @@ END_FUNCTION_BLOCK"
             Vec::<String>::new(),
             pinned_codes("    THIS^.inner(i := 1);")
         );
+    }
+
+    /// XAE accepts `inst.inner(i := 1)` where `inst` is an instance of a
+    /// block that declares the function block instance `inner`, from a
+    /// program and from another block. A name that is neither a method nor a
+    /// function block instance is still an undeclared method.
+    #[rstest::rstest]
+    #[case::from_program(
+        "PROGRAM main\nVAR o : FB_Outer; END_VAR\n    o.inner(i := 1);\nEND_PROGRAM",
+        &[]
+    )]
+    #[case::from_block(
+        "FUNCTION_BLOCK FB_User\nVAR o : FB_Outer; END_VAR\nMETHOD Run\n    o.inner(i := 1);\nEND_METHOD\nEND_FUNCTION_BLOCK",
+        &[]
+    )]
+    #[case::inherited_instance(
+        "PROGRAM main\nVAR d : FB_Derived; END_VAR\n    d.inner(i := 1);\nEND_PROGRAM",
+        &[]
+    )]
+    #[case::undeclared_name(
+        "PROGRAM main\nVAR o : FB_Outer; END_VAR\n    o.bogus(i := 1);\nEND_PROGRAM",
+        &["P4046"]
+    )]
+    #[case::member_that_is_not_an_instance(
+        "PROGRAM main\nVAR o : FB_Outer; END_VAR\n    o.count(i := 1);\nEND_PROGRAM",
+        &["P4046"]
+    )]
+    fn analyze_when_member_instance_called_through_named_instance_then_xae(
+        #[case] user: &str,
+        #[case] expected: &[&str],
+    ) {
+        let codes = analysis_codes(&format!(
+            "
+FUNCTION_BLOCK FB_Inner
+VAR_INPUT
+    i : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Outer
+VAR
+    inner : FB_Inner;
+    count : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Outer
+END_FUNCTION_BLOCK
+
+{user}"
+        ));
+        assert_eq!(expected, codes.as_slice());
     }
 
     /// A bit access through `THIS^` in a program is reported once, as P4074.
