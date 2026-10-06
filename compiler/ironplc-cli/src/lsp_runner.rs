@@ -9,6 +9,7 @@ use std::io::Cursor;
 
 use ironplc_analyzer::stages::analyze;
 use ironplc_analyzer::CleanAnalysis;
+use ironplc_cli_support::clock::InstantClock;
 use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_format::VariableRenderer;
 use ironplc_container::Container;
@@ -185,9 +186,10 @@ fn run_step_scans(
         }
     };
 
+    let mut execution_clock = InstantClock::new();
     for _ in 0..scans {
         let uptime_us = running.scan_count() * cycle_time_us;
-        if let Err(ctx) = running.run_round(uptime_us) {
+        if let Err(ctx) = running.run_round(uptime_us, &mut execution_clock) {
             let total_scans = running.scan_count();
             let faulted = running.fault(ctx);
             let renderer = VariableRenderer::new(container);

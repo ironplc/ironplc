@@ -4,6 +4,7 @@
 //! and the container fields around it -- and that arithmetic identities hold
 //! across the full value range.
 
+use crate::common::ManualClock;
 use ironplc_container::{opcode, FLAG_HAS_SYSTEM_UPTIME};
 use ironplc_vm::{Vm, VmBuffers};
 use proptest::prelude::*;
@@ -82,7 +83,7 @@ proptest! {
         if let Ok(ready) = Vm::new().load(&c, &mut b) {
             if let Ok(mut vm) = ready.start() {
                 // Succeeding and trapping are both fine; panicking is not.
-                let _ = vm.run_round(0);
+                let _ = vm.run_round(0, &mut ManualClock::default());
             }
         }
     }
