@@ -161,6 +161,17 @@ impl RuleFunctionCallInOutArgument<'_> {
                 self.is_symbolic_writable(&array.subscripted_variable)
             }
             SymbolicVariableKind::Structured(structured) => {
+                // Inside the block, every member that is not constant is
+                // writable through THIS^/SUPER^, not just the inputs.
+                if let SymbolicVariableKind::SelfRef(self_ref) = structured.record.as_ref() {
+                    return variable_type::self_member(
+                        self_ref.kind,
+                        &structured.field,
+                        self.context,
+                        &self.scope.current(),
+                    )
+                    .is_some_and(is_declared_writable);
+                }
                 if !self.is_symbolic_writable(&structured.record) {
                     return false;
                 }
@@ -588,4 +599,38 @@ END_PROGRAM",
         Problem::FunctionCallInOutArgNotVariable,
         "2"
     );
+
+    #[rstest]
+    #[case::own_field("THIS^.count")]
+    #[case::inherited_field("SUPER^.x")]
+    fn apply_when_in_out_argument_is_member_through_self_ref_then_ok(#[case] argument: &str) {
+        let program = format!(
+            "{INC}
+FUNCTION_BLOCK FB_Base
+VAR
+    x : DINT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_A EXTENDS FB_Base
+VAR
+    count : DINT;
+END_VAR
+METHOD M
+VAR
+    result : DINT;
+END_VAR
+    result := INC(1, {argument});
+END_METHOD
+END_FUNCTION_BLOCK"
+        );
+        assert_eq!(
+            Vec::<String>::new(),
+            rule_codes(
+                apply,
+                &program,
+                &crate::test_helpers::fb_inheritance_options()
+            )
+        );
+    }
 }

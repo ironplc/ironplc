@@ -280,10 +280,14 @@ mod tests {
         };
         let program = format!(
             "
+TYPE Pair : STRUCT lo : BYTE; hi : WORD; END_STRUCT; END_TYPE
+
 FUNCTION_BLOCK FB_A
 VAR
     flags : WORD;
     count : INT;
+    words : ARRAY[1..2] OF WORD;
+    pair : Pair;
 END_VAR
 METHOD M
 {body}
@@ -304,13 +308,21 @@ END_FUNCTION_BLOCK"
     }
 
     #[rstest]
-    #[case::bit_access("    THIS^.flags.0 := TRUE;")]
+    #[case::bit_access("    THIS^.flags.15 := TRUE;")]
     #[case::partial_access("    THIS^.flags.%B1 := 1;")]
-    fn apply_when_access_through_self_ref_then_not_implemented(#[case] body: &str) {
-        assert_eq!(
-            vec![crate::test_helpers::NOT_IMPLEMENTED_CODE.to_string()],
-            self_ref_codes(body)
-        );
+    #[case::array_element("    THIS^.words[1].15 := TRUE;")]
+    #[case::nested_struct("    THIS^.pair.hi.15 := TRUE;")]
+    fn apply_when_access_through_self_ref_in_range_then_ok(#[case] body: &str) {
+        assert!(self_ref_codes(body).is_empty());
+    }
+
+    #[rstest]
+    #[case::bit_access("    THIS^.flags.16 := TRUE;")]
+    #[case::partial_access("    THIS^.flags.%D0 := 1;")]
+    #[case::array_element("    THIS^.words[1].16 := TRUE;")]
+    #[case::nested_struct("    THIS^.pair.lo.8 := TRUE;")]
+    fn apply_when_access_through_self_ref_out_of_range_then_error(#[case] body: &str) {
+        assert_eq!(1, self_ref_codes(body).len());
     }
 
     // --- Bit access boundary tests across all bit-sized types ---

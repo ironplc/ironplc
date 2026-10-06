@@ -171,4 +171,35 @@ END_FUNCTION_BLOCK
             codes(&format!("{BASE}\n{source}"))
         );
     }
+
+    /// The message of the one diagnostic `source` produces.
+    fn message(source: &str) -> String {
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            &format!("{BASE}\n{source}"),
+            &options(),
+        );
+        let errors = apply(&library, &context, &options()).unwrap_err();
+        assert_eq!(1, errors.len());
+        errors[0].primary.message.clone()
+    }
+
+    #[rstest]
+    #[case::this_in_program(
+        "PROGRAM main\nVAR y : INT; END_VAR\n    THIS^.y := 1;\nEND_PROGRAM",
+        "THIS^ is only valid inside a function block"
+    )]
+    #[case::super_in_function(
+        "FUNCTION F : INT\n    F := SUPER^.x;\nEND_FUNCTION",
+        "SUPER^ is only valid inside a function block"
+    )]
+    #[case::super_without_base(
+        "FUNCTION_BLOCK FB_A\nVAR y : INT; END_VAR\nMETHOD N\n    SUPER^.y := 1;\nEND_METHOD\nEND_FUNCTION_BLOCK",
+        "SUPER^ needs a function block that EXTENDS another"
+    )]
+    fn apply_when_self_reference_has_no_target_then_message_names_the_reason(
+        #[case] source: &str,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(expected, message(source));
+    }
 }

@@ -245,11 +245,13 @@ END_VAR
 FUNCTION_BLOCK FB_Base
 VAR
   level : DINT;
+  levels : ARRAY[1..3] OF DINT;
 END_VAR
 END_FUNCTION_BLOCK
 FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
 VAR
   count : INT;
+  counts : ARRAY[1..3] OF INT;
 END_VAR
 METHOD Run
 VAR_INPUT
@@ -277,6 +279,9 @@ END_FUNCTION_BLOCK
 #[case::own_field_hidden_by_parameter("THIS^.count", "INT")]
 #[case::inherited_field("THIS^.level", "DINT")]
 #[case::inherited_field_through_super("SUPER^.level", "DINT")]
+#[case::array_element("THIS^.counts[1]", "INT")]
+#[case::inherited_array_element("THIS^.levels[1]", "DINT")]
+#[case::inherited_array_element_through_super("SUPER^.levels[1]", "DINT")]
 fn apply_when_self_ref_member_then_declared_type_of_the_field(
     #[case] member: &str,
     #[case] expected: &str,

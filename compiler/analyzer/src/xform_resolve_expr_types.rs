@@ -586,6 +586,21 @@ impl ExprTypeResolver<'_> {
         self.type_environment.name_of(id).cloned()
     }
 
+    /// The representation of the member `sv` selects: a field of a
+    /// structure or function block, or of what `THIS^`/`SUPER^` names.
+    fn member_representation<'b>(&'b self, sv: &StructuredVariable) -> Option<&'b SemanticType> {
+        if let SymbolicVariableKind::SelfRef(self_ref) = sv.record.as_ref() {
+            let id = self.self_member_type_id(self_ref.kind, &sv.field)?;
+            return Some(&self.type_environment.get_by_id(id)?.representation);
+        }
+        let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
+        parent_type
+            .member_fields()?
+            .iter()
+            .find(|f| f.name == sv.field)
+            .map(|f| &f.field_type)
+    }
+
     /// Resolves the element type of an array that lives inside a struct field.
     ///
     /// For an expression like `DATA.DIRS[i, j]`, `sv` is the `DATA.DIRS`
@@ -593,12 +608,8 @@ impl ExprTypeResolver<'_> {
     /// `SemanticType::Array`, then returns the element type's
     /// canonical `TypeName`.
     fn resolve_struct_field_array_element_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
-        let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        let field = parent_type
-            .member_fields()?
-            .iter()
-            .find(|f| f.name == sv.field)?;
-        let SemanticType::Array { element_type, .. } = &field.field_type else {
+        let field_type = self.member_representation(sv)?;
+        let SemanticType::Array { element_type, .. } = field_type else {
             return None;
         };
         semantic_type_to_elementary_type_name(self.type_environment, element_type)
@@ -644,10 +655,10 @@ impl ExprTypeResolver<'_> {
                 self.type_environment.referenced_type(reference)
             }
             SymbolicVariableKind::SelfRef(_) => {
-                // THIS^/SUPER^ has no resolvable type until function-block
-                // member resolution exists. Unreachable in practice:
-                // `fold_self_ref_variable` rejects the construct before any
-                // type resolution runs. See issue #1406.
+                // A bare THIS^/SUPER^ is a function block instance with no
+                // value type of its own, and `rule_unsupported_extension`
+                // reports it. Its members are typed through
+                // `member_representation`.
                 None
             }
         }

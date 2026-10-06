@@ -37,6 +37,7 @@ mod compile_mux;
 mod compile_not_implemented_location;
 mod compile_program_count;
 mod compile_reproducible;
+mod compile_self_reference;
 mod compile_set_reset_bind;
 mod compile_shift;
 mod compile_struct;
