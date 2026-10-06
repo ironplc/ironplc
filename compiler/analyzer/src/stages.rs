@@ -17,8 +17,9 @@ use crate::{
     result::SemanticResult,
     rule_abstract_not_instantiated, rule_array_index_range, rule_assignment_aggregate_type_compat,
     rule_bit_and_partial_access_range, rule_case_bit_string_label, rule_case_selector_type,
-    rule_condition_type, rule_constant_range, rule_decl_struct_element_unique_names,
-    rule_enum_base_type_allowed, rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
+    rule_condition_type, rule_constant_not_written, rule_constant_range,
+    rule_decl_struct_element_unique_names, rule_enum_base_type_allowed,
+    rule_enum_explicit_value_allowed, rule_enumeration_values_unique,
     rule_extends_field_duplicated, rule_function_block_call_unsupported,
     rule_function_block_invocation, rule_function_call_declared,
     rule_function_call_in_out_argument, rule_function_call_type_check,
@@ -76,8 +77,9 @@ pub fn analyze(
     // program wrote rather than their conversions. See ADR-0056.
     let library = xform_insert_implicit_conversions::apply(library, &context, options);
 
-    // A rule that runs on the library the pass returns. It reads an operand
-    // as the program wrote it through the conversion that wraps it.
+    // A rule that reads the type the pass records on each literal, so it
+    // runs on the library the pass returns. It reads an operand as the
+    // program wrote it through the conversion that wraps it.
     if let Err(diagnostics) = rule_constant_range::apply(&library, &context, options) {
         context.add_diagnostics(diagnostics);
     }
@@ -420,6 +422,7 @@ pub(crate) fn semantic(
         rule_case_bit_string_label::apply,
         rule_case_selector_type::apply,
         rule_condition_type::apply,
+        rule_constant_not_written::apply,
         rule_ref_to::apply,
     ];
 
