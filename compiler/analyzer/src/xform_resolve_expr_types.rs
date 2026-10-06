@@ -23,9 +23,10 @@ use crate::intermediates::arithmetic_overload::{
 use crate::intermediates::inherited_fields::collect_inherited_fields;
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
 use crate::semantic_type::SemanticType;
-use crate::symbol_environment::{ScopeKind, ScopePath, ScopeTracker, SymbolEnvironment};
+use crate::symbol_environment::{ScopeTracker, SymbolEnvironment};
 use crate::type_environment::TypeEnvironment;
 use crate::value_type::operand_type_name;
+use crate::variable_type;
 use ironplc_parser::options::CompilerOptions;
 
 /// Returns the library with every expression's type, and the unqualified
@@ -571,13 +572,7 @@ impl ExprTypeResolver<'_> {
     /// outside a function block, for `SUPER^` without a base, and for a
     /// field the block doesn't have.
     fn self_member_type_id(&self, kind: SelfRefKind, field: &Id) -> Option<TypeId> {
-        let block = self.symbols.self_type(&self.scope.current(), kind)?;
-        let block_scope = ScopeKind::Named(ScopePath::from(block.name));
-        // `find` falls back to the globals, which are not members.
-        let symbol = self.symbols.find(field, &block_scope)?;
-        (symbol.scope != ScopeKind::Global)
-            .then_some(symbol.type_id)
-            .flatten()
+        variable_type::self_member(kind, field, self.symbols, &self.scope.current())?.type_id
     }
 
     /// [`Self::self_member_type_id`] as a type name.

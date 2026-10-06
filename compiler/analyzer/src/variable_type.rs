@@ -20,7 +20,7 @@ use ironplc_dsl::{common::*, core::Id, textual::*};
 use crate::{
     semantic_context::SemanticContext,
     semantic_type::SemanticType,
-    symbol_environment::{ScopeKind, ScopePath, SymbolInfo},
+    symbol_environment::{ScopeKind, ScopePath, SymbolEnvironment, SymbolInfo},
     type_environment::TypeEnvironment,
 };
 
@@ -79,7 +79,8 @@ pub(crate) fn of(
         SymbolicVariableKind::Named(named) => declared(&named.name, context, scope).cloned(),
         SymbolicVariableKind::Structured(structured) => {
             if let SymbolicVariableKind::SelfRef(self_ref) = structured.record.as_ref() {
-                let member = self_member(self_ref.kind, &structured.field, context, scope)?;
+                let member =
+                    self_member(self_ref.kind, &structured.field, context.symbols(), scope)?;
                 return Some(
                     context
                         .types()
@@ -125,14 +126,16 @@ pub(crate) fn of(
 pub(crate) fn self_member<'a>(
     kind: SelfRefKind,
     field: &Id,
-    context: &'a SemanticContext,
+    symbols: &'a SymbolEnvironment,
     scope: &ScopeKind,
 ) -> Option<&'a SymbolInfo> {
-    let block = context.symbols().self_type(scope, kind)?;
+    let block = symbols.self_type(scope, kind)?;
     let block_scope = ScopeKind::Named(ScopePath::from(block.name));
-    let member = context.symbols().find(field, &block_scope)?;
-    // `find` falls back to the globals, which are not members.
-    (member.scope != ScopeKind::Global).then_some(member)
+    let member = symbols.find(field, &block_scope)?;
+    // `find` falls back to the globals, which are not members. Neither is a
+    // `VAR_EXTERNAL` declaration, which is a view of a global: TwinCAT
+    // reports `THIS^.g` as no component of the block.
+    (member.scope != ScopeKind::Global && !member.is_external).then_some(member)
 }
 
 /// The declared type of the variable `name` names from `scope`: a variable,
