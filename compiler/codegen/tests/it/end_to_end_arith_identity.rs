@@ -12,9 +12,9 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::{parse_and_run, VmBuffers};
+use crate::common::Snapshot;
 
-/// A floating-point width and how to read one of its slots as `f64`.
+/// A floating-point width.
 #[derive(Clone, Copy)]
 enum Float {
     Real,
@@ -26,13 +26,6 @@ impl Float {
         match self {
             Float::Real => "REAL",
             Float::Lreal => "LREAL",
-        }
-    }
-
-    fn read(self, bufs: &VmBuffers, idx: usize) -> f64 {
-        match self {
-            Float::Real => bufs.vars[idx].as_f32() as f64,
-            Float::Lreal => bufs.vars[idx].as_f64(),
         }
     }
 }
@@ -74,10 +67,19 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
 
-    assert_eq!(float.read(&bufs, 1).to_bits(), y.to_bits(), "y mismatch");
-    assert_eq!(float.read(&bufs, 2).to_bits(), z.to_bits(), "z mismatch");
+    // A REAL reads widened exactly, so both widths compare as f64.
+    assert_eq!(
+        snapshot.read_as::<f64>("y").to_bits(),
+        y.to_bits(),
+        "y mismatch"
+    );
+    assert_eq!(
+        snapshot.read_as::<f64>("z").to_bits(),
+        z.to_bits(),
+        "z mismatch"
+    );
 }
 
 #[rstest]
@@ -106,7 +108,7 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
 
-    assert_eq!(bufs.vars[1].as_i64(), y);
+    assert_eq!(snapshot.read_as::<i64>("y"), y);
 }

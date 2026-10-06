@@ -28,21 +28,19 @@
 //! destination rather than checked against it, which is
 //! [`compile_string_value`].
 
-use ironplc_analyzer::{IntermediateType, Intrinsic, StringFunction};
+use ironplc_analyzer::{Intrinsic, SemanticType, StringFunction};
 use ironplc_container::CharWidth;
 use ironplc_dsl::common::{ConstantKind, ElementaryTypeName};
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, Function, SymbolicVariableKind, Variable};
 
-use ironplc_problems::Problem;
-
+use super::call_args::collect_positional_args;
 use super::compile::{
     char_width_for_string_type, emit_string_literal_load, CompileContext, DEFAULT_OP_TYPE,
     DEFAULT_STRING_MAX_LENGTH, NARROW_CHAR_WIDTH,
 };
 use super::compile_expr::{compile_expr, variable_span};
-use super::compile_string::collect_positional_args;
 use crate::emit::Emitter;
 
 /// What a string-valued expression is, before any bytecode runs.
@@ -208,16 +206,16 @@ fn access_root(kind: &SymbolicVariableKind) -> &SymbolicVariableKind {
 /// not fit a `u16`, which is not a length any slot can be given: the analyzer
 /// rejects it before codegen sees the field, and answering `None` here keeps
 /// an unreachable case from silently wrapping to a small capacity.
-fn string_shape_of(field_type: &IntermediateType) -> Option<StringShape> {
+fn string_shape_of(field_type: &SemanticType) -> Option<StringShape> {
     match field_type {
-        IntermediateType::String {
+        SemanticType::String {
             char_width,
             max_len,
         } => Some(StringShape {
             char_width: *char_width,
             max_length: max_len.and_then(|len| u16::try_from(len).ok()),
         }),
-        IntermediateType::Array { element_type, .. } => string_shape_of(element_type),
+        SemanticType::Array { element_type, .. } => string_shape_of(element_type),
         _ => None,
     }
 }
@@ -368,8 +366,10 @@ pub(crate) fn string_operand_capacity(ctx: &CompileContext, expr: &Expr) -> u16 
 ///
 /// Operands that do not agree have no encoding they can share. That is a
 /// program error -- `CONCAT(s, w)` mixing a `STRING` and a `WSTRING`, or
-/// `w = 'abc'` comparing one against a `STRING` literal -- and is reported as
-/// P4034 rather than emitted for the VM to trap on one scan later.
+/// `w = 'abc'` comparing one against a `STRING` literal -- that analysis
+/// reports (`rule_string_encoding_compat`, P4034), so reaching here with one
+/// is a compiler bug. It is an internal error rather than bytecode for the VM
+/// to trap on one scan later.
 pub(crate) fn resolve_operand_char_width(
     ctx: &CompileContext,
     operands: &[&Expr],
@@ -403,16 +403,17 @@ pub(crate) fn resolve_operand_char_width(
 /// the encoding of a literal written into it, rather than being compared
 /// against it.
 ///
-/// Where the analyzer type-checks the destination -- a simple named assignment
-/// target or a function parameter -- a literal that reaches here already
-/// spells the destination's encoding, because a mismatch is P4035 or P4026
-/// first. The destination still decides for the targets the analyzer does not
-/// check, such as an array element or a structure field.
+/// Analysis rejects a literal whose delimiter spells the other encoding from
+/// its destination -- P4035 for a named variable, P4026 for a function
+/// parameter, P4034 for an array element or a structure field -- so a literal
+/// that reaches here spells the destination's encoding unless the caller
+/// compiled without analysis. The destination decides then.
 ///
 /// Any other expression carries an encoding of its own, and one that is not
 /// `char_width` has no valid bytecode for the store the caller is about to
-/// emit -- so that is P4034 too. An encoding codegen cannot work out is left
-/// to the destination, which is the one that decides the store.
+/// emit. Analysis reports that too (`rule_string_encoding_compat`), so it is
+/// an internal error here. An encoding codegen cannot work out is left to the
+/// destination, which is the one that decides the store.
 pub(crate) fn compile_string_value(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -446,17 +447,19 @@ fn operand_span(operand: &Expr, operation: &SourceSpan) -> SourceSpan {
     }
 }
 
-/// Builds the P4034 diagnostic for two string encodings that cannot be
-/// reconciled.
+/// The error for two string encodings that cannot be reconciled. Analysis
+/// rejects every STRING/WSTRING mix (P4034, or P4026 for a function
+/// argument), so reaching codegen with one is a compiler bug.
+#[track_caller]
 pub(crate) fn encoding_mismatch(
     expected: CharWidth,
     actual: CharWidth,
     span: &SourceSpan,
 ) -> Diagnostic {
-    Diagnostic::problem(
-        Problem::StringEncodingMismatch,
-        Label::span(span.clone(), "String operand"),
-    )
+    Diagnostic::internal_error_at(Label::span(
+        span.clone(),
+        "String operand of an encoding the operation does not share",
+    ))
     .with_context("expected", &type_name_for(expected).to_string())
     .with_context("found", &type_name_for(actual).to_string())
 }

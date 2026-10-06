@@ -581,6 +581,114 @@ END_PROGRAM",
     );
 }
 
+// An element of an array of references is a reference.
+#[test]
+fn assign_when_array_element_is_reference_then_ok() {
+    assert_ok(
+        "PROGRAM Main
+VAR
+    val : INT := 77;
+    refs : ARRAY[0..2] OF REF_TO INT;
+    result : INT;
+END_VAR
+    refs[0] := REF(val);
+    result := refs[0]^;
+END_PROGRAM",
+    );
+}
+
+#[test]
+fn assign_when_named_array_type_element_is_reference_then_ok() {
+    assert_ok(
+        "TYPE IntRefs : ARRAY[0..2] OF REF_TO INT; END_TYPE
+PROGRAM Main
+VAR
+    val : INT := 77;
+    refs : IntRefs;
+    result : INT;
+END_VAR
+    refs[0] := REF(val);
+    result := refs[0]^;
+END_PROGRAM",
+    );
+}
+
+#[test]
+fn assign_when_array_element_is_reference_to_then_ok() {
+    let options = CompilerOptions {
+        allow_reference_to: true,
+        ..edition3_options()
+    };
+    let codes = rule_codes(
+        super::apply,
+        "PROGRAM Main
+VAR
+    val : INT := 77;
+    refs : ARRAY[0..2] OF REFERENCE TO INT;
+    result : INT;
+END_VAR
+    refs[0] REF= val;
+    result := refs[0]^;
+END_PROGRAM",
+        &options,
+    );
+    assert!(codes.is_empty(), "{codes:?}");
+}
+
+#[test]
+fn assign_when_array_element_ref_types_incompatible_then_error() {
+    assert_problem(
+        "PROGRAM Main
+VAR
+    val : REAL;
+    refs : ARRAY[0..2] OF REF_TO INT;
+END_VAR
+    refs[0] := REF(val);
+END_PROGRAM",
+        Problem::ReferenceTypeMismatch,
+    );
+}
+
+#[test]
+fn null_when_assigned_to_array_element_reference_then_ok() {
+    assert_ok(
+        "PROGRAM Main
+VAR
+    refs : ARRAY[0..2] OF REF_TO INT;
+END_VAR
+    refs[0] := NULL;
+END_PROGRAM",
+    );
+}
+
+#[test]
+fn deref_when_array_element_is_not_reference_then_error() {
+    assert_problem(
+        "PROGRAM Main
+VAR
+    values : ARRAY[0..2] OF INT;
+    result : INT;
+END_VAR
+    result := values[0]^;
+END_PROGRAM",
+        Problem::DerefRequiresReferenceType,
+    );
+}
+
+#[test]
+fn arithmetic_when_operand_is_array_element_reference_then_error() {
+    assert_problem(
+        "PROGRAM Main
+VAR
+    refs : ARRAY[0..2] OF REF_TO INT;
+    other : REF_TO INT;
+END_VAR
+    other := refs[0] + 1;
+END_PROGRAM",
+        Problem::ArithmeticOnReference,
+    );
+}
+
 rule_err_at!(
     null_when_assigned_to_non_reference_then_error_at_null,
     "PROGRAM Main

@@ -74,8 +74,10 @@ token `rule_*.rs`, and any `rule_*/` test files) assert **exactly the
 problems the rule reports**:
 
 - **Call the rule's own `apply`**, not the `analyze` pipeline: a pipeline
-  assertion passes when another rule reports something. A test whose purpose
-  is to show the rule is wired into `analyze` is the exception.
+  assertion passes when another rule reports something. That every rule runs
+  in the pipeline is checked once, by `test_rule_conventions.rs`, which
+  requires each `rule_*` module's `apply` to be called from `stages.rs`
+  (analyzer) or `lib.rs` (parser).
 - **Assert the exact list** of problem codes, in order: an empty list for a
   program the rule accepts, `[P]` or `[P; n]` otherwise. Never `.is_err()`,
   `has_diagnostics()`, or "some diagnostic has code P", which also hold
@@ -102,7 +104,11 @@ problems the rule reports**:
   the program and run the rule against the resolved context; compare with
   `codes(&[Problem::…])`, or `diagnostic_codes(&diagnostics)` when the test
   also checks a message. `fb_inheritance_options()` and `edition3_options()`
-  build the common options. Parser token rules use `token_rule_ok!(name, tokens)` and
+  build the common options. A rule `stages::analyze` runs after
+  `xform_insert_implicit_conversions` (`rule_constant_range`) sees the
+  library the pass returns, which the macros do not build; its tests use
+  `rule_codes_after_conversions` and `rule_diagnostics_after_conversions`.
+  Parser token rules use `token_rule_ok!(name, tokens)` and
   `token_rule_err!(name, tokens, [P])` in `parser/src/test_rule_macros.rs`,
   with `token` and `result_codes` in `parser/src/test_rule_helpers.rs` for
   the tests the macros cannot express.

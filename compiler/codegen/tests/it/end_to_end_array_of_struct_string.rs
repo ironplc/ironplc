@@ -9,10 +9,6 @@
 //! them. A comparison reads the field into a plain variable first: the
 //! analyzer leaves an array-of-struct element field untyped inside an
 //! expression, which codegen rejects for any field type (#1791).
-//!
-//! Result variables are declared first: a structure holding STRING fields of
-//! array elements also gets a scratch variable, which takes the slot after the
-//! structure's own. Declaring results first keeps their slots at 0, 1, 2, ...
 
 use crate::common::{parse_and_try_run, try_parse_and_compile};
 use ironplc_parser::options::CompilerOptions;
@@ -22,8 +18,6 @@ use ironplc_vm::error::Trap;
 // the STRING are untouched (a wrong stride would overwrite a neighbour), a
 // longer value is truncated to the field's length, and the characters -- not
 // only the length -- survive a copy out.
-//
-// len1 0, len2 1, len3 2, sum_a 3, sum_b 4, same 5.
 e2e_i32!(
     end_to_end_when_element_string_fields_written_in_loop_then_elements_and_neighbours_distinct,
     "
@@ -86,8 +80,6 @@ END_PROGRAM
 
 // The array of structures sits inside a nested structure, as in the reported
 // program (`MyBay.Devices.MeterQRScanner[i].LastCode`).
-//
-// r 0, flags 1.
 e2e_i32!(
     end_to_end_when_element_string_field_in_nested_structure_written_in_loop_then_reads_back,
     "
@@ -141,8 +133,6 @@ END_PROGRAM
 // The array is a variable in its own right. The elements never written read
 // as empty: their headers are initialized, so the read does not trap on a
 // zero char_width.
-//
-// r 0, others 1.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_string_field_written_then_reads_back,
     "
@@ -170,8 +160,6 @@ END_PROGRAM
 
 // Multi-dimensional, with two STRING fields in the element: the flat element
 // index spans both dimensions, and each field has its own descriptor.
-//
-// r1 0, r2 1, r3 2.
 e2e_i32!(
     end_to_end_when_element_string_fields_of_2d_array_written_then_reads_back,
     "
@@ -211,8 +199,6 @@ END_PROGRAM
 
 // WSTRING field: wide elements, one structure apart. The store produces the
 // value at the element's wide encoding.
-//
-// r 0, same 1.
 e2e_i32!(
     end_to_end_when_element_wstring_field_written_then_reads_back,
     "

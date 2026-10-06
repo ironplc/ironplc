@@ -4,7 +4,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 #[test]
 fn end_to_end_when_fb_declares_unused_properties_then_methods_and_fields_still_work() {
@@ -42,8 +42,7 @@ END_PROGRAM
         allow_fb_inheritance: true,
         ..CompilerOptions::default()
     };
-    let (_c, bufs) = parse_and_run(source, &options);
+    let snapshot = Snapshot::run(source, &options);
 
-    // x : REAL is var[1], as in `end_to_end_methods.rs`.
-    assert_eq!(bufs.vars[1].as_f32(), 1.5);
+    assert_eq!(snapshot.read_as::<f32>("x"), 1.5);
 }

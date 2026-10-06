@@ -17,9 +17,9 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{Expr, ParamAssignmentKind};
 use ironplc_problems::Problem;
 
-use crate::intermediate_type::IntermediateFunctionParameter;
 use crate::intermediates::stdlib_function::get_all_stdlib_functions;
 use crate::intrinsic::Intrinsic;
+use crate::semantic_type::SemanticFunctionParameter;
 use crate::symbol_environment::duplicate_declaration;
 
 /// Represents a function signature in the function environment.
@@ -34,7 +34,7 @@ pub struct FunctionSignature {
     /// Return type of the function (None for procedures)
     pub return_type: Option<FunctionReturnType>,
     /// List of function parameters
-    pub parameters: Vec<IntermediateFunctionParameter>,
+    pub parameters: Vec<SemanticFunctionParameter>,
     /// Source location (builtin for stdlib functions)
     pub span: SourceSpan,
     /// Whether this function accepts additional positional arguments beyond
@@ -53,7 +53,7 @@ impl FunctionSignature {
     pub fn new(
         name: Id,
         return_type: Option<FunctionReturnType>,
-        parameters: Vec<IntermediateFunctionParameter>,
+        parameters: Vec<SemanticFunctionParameter>,
         span: SourceSpan,
     ) -> Self {
         Self {
@@ -73,7 +73,7 @@ impl FunctionSignature {
         name: &str,
         intrinsic: Intrinsic,
         return_type: TypeName,
-        parameters: Vec<IntermediateFunctionParameter>,
+        parameters: Vec<SemanticFunctionParameter>,
     ) -> Self {
         Self {
             name: Id::from(name),
@@ -97,7 +97,7 @@ impl FunctionSignature {
         name: &str,
         intrinsic: Intrinsic,
         return_type: TypeName,
-        parameters: Vec<IntermediateFunctionParameter>,
+        parameters: Vec<SemanticFunctionParameter>,
         max_inputs: Option<usize>,
     ) -> Self {
         Self {
@@ -138,7 +138,7 @@ impl FunctionSignature {
     pub fn bind_inputs<'a>(
         &'a self,
         params: &'a [ParamAssignmentKind],
-    ) -> impl Iterator<Item = (IntermediateFunctionParameter, &'a Expr)> + 'a {
+    ) -> impl Iterator<Item = (SemanticFunctionParameter, &'a Expr)> + 'a {
         let positional = params.iter().filter_map(|param| match param {
             ParamAssignmentKind::PositionalInput(input) => Some(&input.expr),
             ParamAssignmentKind::NamedInput(_) | ParamAssignmentKind::Output(_) => None,
@@ -161,7 +161,7 @@ impl FunctionSignature {
     /// has that parameter's type. The extension stops at `max_inputs`, or
     /// never when there is none, so a caller with no argument list to zip
     /// against must bound what it takes.
-    pub fn input_parameters(&self) -> impl Iterator<Item = IntermediateFunctionParameter> + '_ {
+    pub fn input_parameters(&self) -> impl Iterator<Item = SemanticFunctionParameter> + '_ {
         let declared = self.parameters.iter().filter(|p| p.is_input_compatible());
         let extension = self
             .is_extensible
@@ -177,7 +177,7 @@ impl FunctionSignature {
                 });
                 (1..)
                     .take(room)
-                    .map(move |offset| IntermediateFunctionParameter {
+                    .map(move |offset| SemanticFunctionParameter {
                         name: Id::from(&format!("{prefix}{}", number + offset)),
                         ..last.clone()
                     })
@@ -418,7 +418,7 @@ mod tests {
     #[test]
     fn function_signature_input_parameter_count_when_mixed_params_then_counts_inputs() {
         let params = vec![
-            IntermediateFunctionParameter {
+            SemanticFunctionParameter {
                 name: Id::from("IN1"),
                 param_type: TypeName::from("INT"),
                 is_input: true,
@@ -426,7 +426,7 @@ mod tests {
                 is_inout: false,
                 is_reference: false,
             },
-            IntermediateFunctionParameter {
+            SemanticFunctionParameter {
                 name: Id::from("IN2"),
                 param_type: TypeName::from("INT"),
                 is_input: true,
@@ -434,7 +434,7 @@ mod tests {
                 is_inout: false,
                 is_reference: false,
             },
-            IntermediateFunctionParameter {
+            SemanticFunctionParameter {
                 name: Id::from("OUT1"),
                 param_type: TypeName::from("INT"),
                 is_input: false,
@@ -454,8 +454,8 @@ mod tests {
         assert_eq!(sig.input_parameter_count(), 2);
     }
 
-    fn input(name: &str, type_name: &str) -> IntermediateFunctionParameter {
-        IntermediateFunctionParameter {
+    fn input(name: &str, type_name: &str) -> SemanticFunctionParameter {
+        SemanticFunctionParameter {
             name: Id::from(name),
             param_type: TypeName::from(type_name),
             is_input: true,
@@ -465,15 +465,15 @@ mod tests {
         }
     }
 
-    fn in_out(name: &str, type_name: &str) -> IntermediateFunctionParameter {
-        IntermediateFunctionParameter {
+    fn in_out(name: &str, type_name: &str) -> SemanticFunctionParameter {
+        SemanticFunctionParameter {
             is_input: false,
             is_inout: true,
             ..input(name, type_name)
         }
     }
 
-    fn user_function(params: Vec<IntermediateFunctionParameter>) -> FunctionSignature {
+    fn user_function(params: Vec<SemanticFunctionParameter>) -> FunctionSignature {
         FunctionSignature::new(
             Id::from("MY_FUNC"),
             Some(FunctionReturnType::Named(TypeName::from("BOOL"))),
@@ -494,7 +494,7 @@ mod tests {
         assert_eq!(names(sig.input_parameters()), vec!["ACC", "FACTOR"]);
     }
 
-    fn names(params: impl Iterator<Item = IntermediateFunctionParameter>) -> Vec<String> {
+    fn names(params: impl Iterator<Item = SemanticFunctionParameter>) -> Vec<String> {
         params.map(|p| p.name.original().clone()).collect()
     }
 

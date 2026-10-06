@@ -70,8 +70,8 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    true_result : DINT;
-    false_result : DINT;
+    true_result : BOOL;
+    false_result : BOOL;
   END_VAR
   true_result := GT(10, 5);
   false_result := GT(5, 10);
@@ -85,9 +85,9 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    true_result : DINT;
-    equal_result : DINT;
-    false_result : DINT;
+    true_result : BOOL;
+    equal_result : BOOL;
+    false_result : BOOL;
   END_VAR
   true_result := GE(10, 5);
   equal_result := GE(5, 5);
@@ -102,8 +102,8 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    true_result : DINT;
-    false_result : DINT;
+    true_result : BOOL;
+    false_result : BOOL;
   END_VAR
   true_result := EQ(5, 5);
   false_result := EQ(5, 10);
@@ -117,8 +117,8 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    true_result : DINT;
-    false_result : DINT;
+    true_result : BOOL;
+    false_result : BOOL;
   END_VAR
   true_result := LE(5, 10);
   false_result := LE(10, 5);
@@ -132,8 +132,8 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    true_result : DINT;
-    false_result : DINT;
+    true_result : BOOL;
+    false_result : BOOL;
   END_VAR
   true_result := LT(5, 10);
   false_result := LT(5, 5);
@@ -147,8 +147,8 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    true_result : DINT;
-    false_result : DINT;
+    true_result : BOOL;
+    false_result : BOOL;
   END_VAR
   true_result := NE(5, 10);
   false_result := NE(5, 5);
@@ -175,8 +175,8 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    true_result : DINT;
-    false_result : DINT;
+    true_result : BOOL;
+    false_result : BOOL;
   END_VAR
   true_result := AND(TRUE, TRUE);
   false_result := AND(TRUE, FALSE);
@@ -190,8 +190,8 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    true_result : DINT;
-    false_result : DINT;
+    true_result : BOOL;
+    false_result : BOOL;
   END_VAR
   true_result := OR(FALSE, TRUE);
   false_result := OR(FALSE, FALSE);
@@ -205,8 +205,8 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    true_result : DINT;
-    false_result : DINT;
+    true_result : BOOL;
+    false_result : BOOL;
   END_VAR
   true_result := XOR(TRUE, FALSE);
   false_result := XOR(TRUE, TRUE);
@@ -222,8 +222,8 @@ e2e_i32!(
     "
 PROGRAM main
   VAR
-    true_result : DINT;
-    false_result : DINT;
+    true_result : BOOL;
+    false_result : BOOL;
   END_VAR
   true_result := NOT(FALSE);
   false_result := NOT(TRUE);

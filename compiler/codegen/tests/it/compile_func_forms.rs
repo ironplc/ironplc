@@ -10,14 +10,15 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::{bc, parse_and_compile};
 
-/// Helper to build an IEC 61131-3 program that calls a two-arg function form.
-fn two_arg_program(func_name: &str, var_type: &str) -> String {
+/// Helper to build an IEC 61131-3 program that calls a two-arg function form
+/// on a `var_type` argument and stores the result in a `result_type` variable.
+fn two_arg_program(func_name: &str, var_type: &str, result_type: &str) -> String {
     format!(
         "
 PROGRAM main
   VAR
     x : {var_type};
-    y : {var_type};
+    y : {result_type};
   END_VAR
   x := 10;
   y := {func_name}(x, 5);
@@ -61,27 +62,27 @@ fn assert_two_arg_bytecode(source: &str, expected_opcode: u8) {
 
 #[test]
 fn compile_when_add_function_then_produces_add_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("ADD", "DINT"), 0x20);
+    assert_two_arg_bytecode(&two_arg_program("ADD", "DINT", "DINT"), 0x20);
 }
 
 #[test]
 fn compile_when_sub_function_then_produces_sub_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("SUB", "DINT"), 0x24);
+    assert_two_arg_bytecode(&two_arg_program("SUB", "DINT", "DINT"), 0x24);
 }
 
 #[test]
 fn compile_when_mul_function_then_produces_mul_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("MUL", "DINT"), 0x28);
+    assert_two_arg_bytecode(&two_arg_program("MUL", "DINT", "DINT"), 0x28);
 }
 
 #[test]
 fn compile_when_div_function_then_produces_div_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("DIV", "DINT"), 0x30);
+    assert_two_arg_bytecode(&two_arg_program("DIV", "DINT", "DINT"), 0x30);
 }
 
 #[test]
 fn compile_when_mod_function_then_produces_mod_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("MOD", "DINT"), 0x38);
+    assert_two_arg_bytecode(&two_arg_program("MOD", "DINT", "DINT"), 0x38);
 }
 
 // --- Boolean functions ---
@@ -162,32 +163,32 @@ END_PROGRAM
 
 #[test]
 fn compile_when_eq_function_then_produces_eq_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("EQ", "DINT"), 0x40);
+    assert_two_arg_bytecode(&two_arg_program("EQ", "DINT", "BOOL"), 0x40);
 }
 
 #[test]
 fn compile_when_ne_function_then_produces_ne_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("NE", "DINT"), 0x44);
+    assert_two_arg_bytecode(&two_arg_program("NE", "DINT", "BOOL"), 0x44);
 }
 
 #[test]
 fn compile_when_lt_function_then_produces_lt_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("LT", "DINT"), 0x48);
+    assert_two_arg_bytecode(&two_arg_program("LT", "DINT", "BOOL"), 0x48);
 }
 
 #[test]
 fn compile_when_le_function_then_produces_le_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("LE", "DINT"), 0x4C);
+    assert_two_arg_bytecode(&two_arg_program("LE", "DINT", "BOOL"), 0x4C);
 }
 
 #[test]
 fn compile_when_gt_function_then_produces_gt_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("GT", "DINT"), 0x50);
+    assert_two_arg_bytecode(&two_arg_program("GT", "DINT", "BOOL"), 0x50);
 }
 
 #[test]
 fn compile_when_ge_function_then_produces_ge_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("GE", "DINT"), 0x54);
+    assert_two_arg_bytecode(&two_arg_program("GE", "DINT", "BOOL"), 0x54);
 }
 
 // --- Assignment function ---

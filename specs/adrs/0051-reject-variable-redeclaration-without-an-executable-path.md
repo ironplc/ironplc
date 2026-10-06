@@ -120,3 +120,11 @@ the back end resolves names per scope.
 * `compiler/codegen/src/compile_setup.rs` and `compile_fn.rs` for the flat
   name table this decision works around
 * [Beckhoff: Inheritance principle](https://infosys.beckhoff.com/content/1033/tc3_plc_intro/3537661579.html)
+
+**Postscript (2026-10-04).** Codegen now reports a variable it has no
+storage for as `P9999` rather than `P4007` (#2051). Such a variable is one
+analysis accepted, since analysis reports an undeclared name itself, so the
+gap is in code generation rather than in the program. The two `P4007`
+failures in the table above read `P9999` from then on. The decision is
+unaffected: inherited fields are still not laid out, and a derived type still
+may not redeclare one.

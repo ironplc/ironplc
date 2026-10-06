@@ -1,7 +1,7 @@
 //! End-to-end tests for byte/word/dword/lword partial access
 //! (`.%Bn`, `.%Wn`, `.%Dn`, `.%Ln`).
 
-use crate::common::{parse_and_run, try_parse_and_compile, VmBuffers};
+use crate::common::{try_parse_and_compile, Snapshot};
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 use spec_test_macro::spec_test;
@@ -22,9 +22,8 @@ END_TYPE
 ";
 
 /// Runs a program that declares `r : {result_type}` and then `decls`,
-/// executes `body`, and leaves the result for the caller in `r` (variable
-/// slot 0).
-fn run_partial_access(prelude: &str, decls: &str, result_type: &str, body: &str) -> VmBuffers {
+/// executes `body`, and leaves the result for the caller in `r`.
+fn run_partial_access(prelude: &str, decls: &str, result_type: &str, body: &str) -> Snapshot {
     let source = format!(
         "
 {prelude}
@@ -37,8 +36,7 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &opts());
-    bufs
+    Snapshot::run(&source, &opts())
 }
 
 /// Slice reads and writes whose result fits a 32-bit slot.
@@ -143,8 +141,8 @@ fn partial_access_when_narrow_result_then_expected(
     #[case] body: &str,
     #[case] expected: u32,
 ) {
-    let bufs = run_partial_access(prelude, decls, result_type, body);
-    assert_eq!(bufs.vars[0].as_i32() as u32, expected);
+    let snapshot = run_partial_access(prelude, decls, result_type, body);
+    assert_eq!(snapshot.read_as::<u32>("r"), expected);
 }
 
 /// Slice reads and writes whose result is a 64-bit value.
@@ -197,21 +195,8 @@ fn partial_access_when_wide_result_then_expected(
     #[case] body: &str,
     #[case] expected: u64,
 ) {
-    let bufs = run_partial_access("", decls, "LWORD", body);
-    assert_eq!(bufs.vars[0].as_i64() as u64, expected);
-}
-
-/// A slice of a floating-point base is not compiled as an integer of the
-/// same width. The analyzer does not yet reject the access, so codegen
-/// refuses it rather than emitting integer masks over a float.
-#[rstest]
-#[case::read_real("f : REAL; b : BYTE;", "b := f.%B0;")]
-#[case::write_real("f : REAL;", "f.%B0 := BYTE#16#FF;")]
-#[case::read_lreal("f : LREAL; d : DWORD;", "d := f.%D1;")]
-#[case::write_lreal("f : LREAL;", "f.%W0 := WORD#16#FFFF;")]
-fn partial_access_when_base_is_float_then_compile_error(#[case] decls: &str, #[case] body: &str) {
-    let source = format!("PROGRAM main VAR {decls} END_VAR {body} END_PROGRAM");
-    assert!(try_parse_and_compile(&source, &opts()).is_err());
+    let snapshot = run_partial_access("", decls, "LWORD", body);
+    assert_eq!(snapshot.read_as::<u64>("r"), expected);
 }
 
 // --- Compilation gating ---

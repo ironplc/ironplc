@@ -4,7 +4,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 #[test]
 fn end_to_end_when_arithmetic_initializer_then_computes_value() {
@@ -19,9 +19,9 @@ END_PROGRAM
         allow_constant_initializer_expressions: true,
         ..CompilerOptions::default()
     };
-    let (_c, bufs) = parse_and_run(source, &options);
+    let snapshot = Snapshot::run(source, &options);
 
-    let d2r = bufs.vars[0].as_f64();
+    let d2r = snapshot.read_as::<f64>("d2r");
     assert!((d2r - (4.25 / 180.0)).abs() < 1e-12, "got {d2r}");
 }
 
@@ -42,9 +42,8 @@ END_PROGRAM
         allow_constant_initializer_expressions: true,
         ..CompilerOptions::default()
     };
-    let (_c, bufs) = parse_and_run(source, &options);
+    let snapshot = Snapshot::run(source, &options);
 
-    // var layout: SCALE=0, scaled=1
-    let scaled = bufs.vars[1].as_f64();
+    let scaled = snapshot.read_as::<f64>("scaled");
     assert!((scaled - (2.5 * 4.0)).abs() < 1e-12, "got {scaled}");
 }

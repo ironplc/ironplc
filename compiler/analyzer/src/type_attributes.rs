@@ -2,11 +2,11 @@
 //!
 //! This module provides the TypeAttributes struct that combines type representation
 //! with categorization information. Memory layout information is accessed directly
-//! through IntermediateType methods.
+//! through SemanticType methods.
 
 use ironplc_dsl::core::{Located, SourceSpan};
 
-use crate::{intermediate_type::IntermediateType, type_category::TypeCategory};
+use crate::{semantic_type::SemanticType, type_category::TypeCategory};
 
 /// Attributes associated with a type in the type environment.
 #[derive(Debug, Clone, PartialEq)]
@@ -14,15 +14,15 @@ pub struct TypeAttributes {
     /// The location in source code that defined the type.
     /// TODO this should be unnecessary since the TypeName already has a span.
     pub span: SourceSpan,
-    /// The intermediate representation of the type
-    pub representation: IntermediateType,
+    /// The semantic type that describes the type
+    pub representation: SemanticType,
     /// Category of the type (elementary, user-defined, or derived)
     pub type_category: TypeCategory,
 }
 
 impl TypeAttributes {
     /// Creates new TypeAttributes with calculated type category
-    pub fn new(span: SourceSpan, representation: IntermediateType) -> Self {
+    pub fn new(span: SourceSpan, representation: SemanticType) -> Self {
         let type_category = TypeCategory::for_type(&representation);
         Self {
             span,
@@ -32,11 +32,11 @@ impl TypeAttributes {
     }
 
     /// Creates new TypeAttributes for elementary types
-    pub fn elementary(representation: IntermediateType) -> Self {
+    pub fn elementary(representation: SemanticType) -> Self {
         Self::new(SourceSpan::default(), representation)
     }
 
-    /// Gets the size in bytes for this type (delegates to IntermediateType)
+    /// Gets the size in bytes for this type (delegates to SemanticType)
     ///
     /// Returns `None` if the size cannot be determined (e.g., dynamic arrays,
     /// variable-length strings, or types with unknown field sizes).
@@ -44,12 +44,12 @@ impl TypeAttributes {
         self.representation.size_in_bytes()
     }
 
-    /// Gets the alignment requirement in bytes for this type (delegates to IntermediateType)
+    /// Gets the alignment requirement in bytes for this type (delegates to SemanticType)
     pub fn alignment_bytes(&self) -> u32 {
         self.representation.alignment_bytes() as u32
     }
 
-    /// Returns whether this type has an explicitly specified size (delegates to IntermediateType)
+    /// Returns whether this type has an explicitly specified size (delegates to SemanticType)
     pub fn has_explicit_size(&self) -> bool {
         self.representation.has_explicit_size()
     }
@@ -64,13 +64,13 @@ impl Located for TypeAttributes {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intermediate_type::{ByteSized, IntermediateType};
+    use crate::semantic_type::{ByteSized, SemanticType};
 
     #[test]
     fn type_attributes_constructor_sets_correct_fields() {
         let attrs = TypeAttributes::new(
             SourceSpan::default(),
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B32,
             },
         );
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn type_attributes_elementary_constructor() {
-        let attrs = TypeAttributes::elementary(IntermediateType::Bool);
+        let attrs = TypeAttributes::elementary(SemanticType::Bool);
 
         assert_eq!(attrs.size_bytes(), Some(1));
         assert_eq!(attrs.alignment_bytes(), 1);
@@ -93,15 +93,15 @@ mod tests {
     }
 
     #[test]
-    fn type_attributes_convenience_methods_delegate_to_intermediate_type() {
+    fn type_attributes_convenience_methods_delegate_to_semantic_type() {
         let attrs = TypeAttributes::new(
             SourceSpan::default(),
-            IntermediateType::Real {
+            SemanticType::Real {
                 size: ByteSized::B64,
             },
         );
 
-        // Test that convenience methods return the same values as IntermediateType methods
+        // Test that convenience methods return the same values as SemanticType methods
         assert_eq!(attrs.size_bytes(), attrs.representation.size_in_bytes());
         assert_eq!(
             attrs.alignment_bytes(),

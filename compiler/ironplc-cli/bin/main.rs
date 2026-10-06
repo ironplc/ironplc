@@ -401,6 +401,18 @@ enum Action {
     Echo {
         #[command(flatten)]
         file_args: FileArgs,
+
+        /// Analyze the files and write the analyzed program, with a comment
+        /// after each expression giving the type the analyzer recorded for
+        /// it, such as `count (* INT *)` or `total (* DINT -> LINT *)` for
+        /// an implicit conversion.
+        #[arg(long)]
+        types: bool,
+
+        /// Activate a compatibility library by name (repeatable) for the
+        /// analysis `--types` runs. See `check --library`.
+        #[arg(long = "library", requires = "types")]
+        libraries: Vec<LibraryName>,
     },
     /// The tokenize action checks a file if it can be tokenized with all content
     /// matching a token.
@@ -450,7 +462,17 @@ pub fn main() -> Result<(), String> {
             &libraries,
             false,
         ),
-        Action::Echo { file_args } => {
+        Action::Echo {
+            file_args,
+            types: true,
+            libraries,
+        } => cli::echo_types(
+            &file_args.files,
+            file_args.compiler_options(),
+            &libraries,
+            false,
+        ),
+        Action::Echo { file_args, .. } => {
             cli::echo(&file_args.files, file_args.compiler_options(), false)
         }
         Action::Tokenize { file_args } => {

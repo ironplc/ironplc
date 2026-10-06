@@ -4,7 +4,7 @@
 //! file names, Program / Function / Function Block names, and user-defined
 //! types grouped by kind. Implements REQ-TOL-mcp-200 and REQ-TOL-mcp-201.
 
-use ironplc_analyzer::{IntermediateType, SemanticContext};
+use ironplc_analyzer::{SemanticContext, SemanticType};
 use ironplc_dsl::core::FileId;
 use ironplc_project::project::{MemoryBackedProject, Project};
 use serde::Serialize;
@@ -141,12 +141,12 @@ fn populate(
 
     for (name, attrs) in context.types().iter_user_defined() {
         let bucket = match &attrs.representation {
-            IntermediateType::Enumeration { .. } => &mut enumerations,
-            IntermediateType::Structure { .. } => &mut structures,
-            IntermediateType::Array { .. } => &mut arrays,
-            IntermediateType::Subrange { .. } => &mut subranges,
-            IntermediateType::String { .. } => &mut strings,
-            IntermediateType::Reference { .. } => &mut references,
+            SemanticType::Enumeration { .. } => &mut enumerations,
+            SemanticType::Structure { .. } => &mut structures,
+            SemanticType::Array { .. } => &mut arrays,
+            SemanticType::Subrange { .. } => &mut subranges,
+            SemanticType::String { .. } => &mut strings,
+            SemanticType::Reference { .. } => &mut references,
             _ => &mut aliases,
         };
         bucket.push(name.to_string());

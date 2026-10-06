@@ -3,16 +3,16 @@
 //! This module handles creating structure types from structure declarations,
 //! including field validation, offset calculation, and memory layout.
 
-use crate::intermediate_type::{IntermediateStructField, IntermediateType};
 use crate::intermediates::enumeration::try_from_values;
-use crate::intermediates::subrange::IntermediateResult;
+use crate::intermediates::subrange::TypeResolution;
+use crate::semantic_type::{SemanticStructField, SemanticType};
 use crate::type_environment::{TypeAttributes, TypeEnvironment};
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::*;
 use ironplc_problems::Problem;
 
-/// Try to create the intermediate type information from the structure specification.
+/// Try to create the semantic type information from the structure specification.
 pub fn try_from(
     node_name: &TypeName,
     spec: &StructureDeclaration,
@@ -38,7 +38,7 @@ pub fn try_from(
         let field_size = field_type.size_in_bytes().unwrap_or(0);
 
         // Create the field
-        let field = IntermediateStructField {
+        let field = SemanticStructField {
             name: element.name.clone(),
             field_type,
             offset: aligned_offset,
@@ -54,7 +54,7 @@ pub fn try_from(
 
     Ok(TypeAttributes::new(
         node_name.span(),
-        IntermediateType::Structure { fields },
+        SemanticType::Structure { fields },
     ))
 }
 
@@ -162,7 +162,7 @@ fn nested_structure_has_all_defaults(
 
     // Check if it's a structure type
     let fields = match &type_attrs.representation {
-        crate::intermediate_type::IntermediateType::Structure { fields } => fields,
+        crate::semantic_type::SemanticType::Structure { fields } => fields,
         _ => {
             // Not a structure type - conservatively say no defaults
             return false;
@@ -177,7 +177,7 @@ fn nested_structure_has_all_defaults(
 fn resolve_field_type(
     element: &StructureElementDeclaration,
     type_environment: &TypeEnvironment,
-) -> Result<IntermediateType, Diagnostic> {
+) -> Result<SemanticType, Diagnostic> {
     match &element.init {
         InitialValueAssignmentKind::Simple(simple_init) => {
             // Handle simple field types like BOOL, INT, etc.
@@ -217,8 +217,8 @@ fn resolve_field_type(
             )?;
 
             match subrange_result {
-                IntermediateResult::Type(attrs) => Ok(attrs.representation),
-                IntermediateResult::Alias(base_name) => {
+                TypeResolution::Type(attrs) => Ok(attrs.representation),
+                TypeResolution::Alias(base_name) => {
                     let base_attrs = type_environment.get(&base_name).ok_or_else(|| {
                         Diagnostic::problem(
                             Problem::StructFieldTypeNotDeclared,
@@ -231,7 +231,7 @@ fn resolve_field_type(
         }
         InitialValueAssignmentKind::EnumeratedValues(values) => {
             // Handle enumerated field types with values
-            let enum_attrs = try_from_values(values, None)?;
+            let enum_attrs = try_from_values(values, None, None)?;
             Ok(enum_attrs.representation)
         }
         InitialValueAssignmentKind::EnumeratedType(enum_assignment) => {
@@ -267,10 +267,10 @@ fn resolve_field_type(
             )?;
 
             match array_result {
-                crate::intermediates::array::IntermediateResult::Type(attrs) => {
+                crate::intermediates::array::TypeResolution::Type(attrs) => {
                     Ok(attrs.representation)
                 }
-                crate::intermediates::array::IntermediateResult::Alias(base_name) => {
+                crate::intermediates::array::TypeResolution::Alias(base_name) => {
                     let base_attrs = type_environment.get(&base_name).ok_or_else(|| {
                         Diagnostic::problem(
                             Problem::StructFieldTypeNotDeclared,
@@ -298,7 +298,7 @@ fn resolve_field_type(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intermediate_type::IntermediateType;
+    use crate::semantic_type::SemanticType;
     use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
     use crate::xform_resolve_type_decl_environment::apply;
     use ironplc_dsl::common::TypeName;
@@ -389,7 +389,7 @@ END_TYPE
 
         let fields = cast_struct!(
             &struct_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 2);
@@ -397,8 +397,8 @@ END_TYPE
         assert_eq!(fields[1].name, Id::from("y"));
 
         // Check field types
-        assert!(matches!(fields[0].field_type, IntermediateType::Int { .. }));
-        assert!(matches!(fields[1].field_type, IntermediateType::Bool));
+        assert!(matches!(fields[0].field_type, SemanticType::Int { .. }));
+        assert!(matches!(fields[1].field_type, SemanticType::Bool));
 
         // Check field offsets (INT at 0, BOOL at 2 due to alignment)
         assert_eq!(fields[0].offset, 0);
@@ -421,14 +421,14 @@ END_TYPE
 
         let fields = cast_struct!(
             &struct_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("range_field"));
         assert!(matches!(
             fields[0].field_type,
-            IntermediateType::Subrange { .. }
+            SemanticType::Subrange { .. }
         ));
     }
 
@@ -448,14 +448,14 @@ END_TYPE
 
         let fields = cast_struct!(
             &struct_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("color_field"));
         assert!(matches!(
             fields[0].field_type,
-            IntermediateType::Enumeration { .. }
+            SemanticType::Enumeration { .. }
         ));
     }
 
@@ -476,14 +476,14 @@ END_TYPE
 
         let fields = cast_struct!(
             &struct_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("color_field"));
         assert!(matches!(
             fields[0].field_type,
-            IntermediateType::Enumeration { .. }
+            SemanticType::Enumeration { .. }
         ));
     }
 
@@ -504,12 +504,12 @@ END_TYPE
 
         let fields = cast_struct!(
             &struct_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("custom_field"));
-        assert!(matches!(fields[0].field_type, IntermediateType::Int { .. }));
+        assert!(matches!(fields[0].field_type, SemanticType::Int { .. }));
     }
 
     #[test]
@@ -550,7 +550,7 @@ END_TYPE
 
         let fields = cast_struct!(
             &rect_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 2);
@@ -582,7 +582,7 @@ END_TYPE
 
         let fields = cast_struct!(
             &outer_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 1);
@@ -624,7 +624,7 @@ END_TYPE
         let line_type = env.get(&TypeName::from("Line")).unwrap();
         let fields = cast_struct!(
             &line_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         // Point is 4 bytes (2x INT with 2-byte alignment), so:
@@ -654,7 +654,7 @@ END_TYPE
         let entity_type = env.get(&TypeName::from("Entity")).unwrap();
         let fields = cast_struct!(
             &entity_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 3);
@@ -684,15 +684,12 @@ END_TYPE
 
         let fields = cast_struct!(
             &struct_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("values"));
-        assert!(matches!(
-            fields[0].field_type,
-            IntermediateType::Array { .. }
-        ));
+        assert!(matches!(fields[0].field_type, SemanticType::Array { .. }));
     }
 
     #[test]
@@ -711,14 +708,14 @@ END_TYPE
 
         let fields = cast_struct!(
             &struct_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("data"));
         let (element_type, dimensions) = cast_struct!(
             &fields[0].field_type,
-            IntermediateType::Array {
+            SemanticType::Array {
                 element_type,
                 dimensions
             }
@@ -749,14 +746,14 @@ END_TYPE
 
         let fields = cast_struct!(
             &polygon_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].name, Id::from("vertices"));
         let (element_type, dimensions) = cast_struct!(
             &fields[0].field_type,
-            IntermediateType::Array {
+            SemanticType::Array {
                 element_type,
                 dimensions
             }
@@ -782,16 +779,13 @@ END_TYPE
         let struct_type = env.get(&TypeName::from("DataRecord")).unwrap();
         let fields = cast_struct!(
             &struct_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 3);
-        assert!(matches!(fields[0].field_type, IntermediateType::Int { .. }));
-        assert!(matches!(
-            fields[1].field_type,
-            IntermediateType::Array { .. }
-        ));
-        assert!(matches!(fields[2].field_type, IntermediateType::Bool));
+        assert!(matches!(fields[0].field_type, SemanticType::Int { .. }));
+        assert!(matches!(fields[1].field_type, SemanticType::Array { .. }));
+        assert!(matches!(fields[2].field_type, SemanticType::Bool));
     }
 
     // String field tests
@@ -813,17 +807,17 @@ END_TYPE
 
         let fields = cast_struct!(
             &struct_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 2);
         assert_eq!(fields[0].name, Id::from("name"));
         assert!(matches!(
             fields[0].field_type,
-            IntermediateType::String { max_len: None, .. }
+            SemanticType::String { max_len: None, .. }
         ));
         assert_eq!(fields[1].name, Id::from("value"));
-        assert!(matches!(fields[1].field_type, IntermediateType::Int { .. }));
+        assert!(matches!(fields[1].field_type, SemanticType::Int { .. }));
     }
 
     #[test]
@@ -841,14 +835,14 @@ END_TYPE
         let struct_type = env.get(&TypeName::from("MyStruct")).unwrap();
         let fields = cast_struct!(
             &struct_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 2);
         assert_eq!(fields[0].name, Id::from("name"));
         assert!(matches!(
             fields[0].field_type,
-            IntermediateType::String {
+            SemanticType::String {
                 max_len: Some(30),
                 ..
             }
@@ -871,18 +865,18 @@ END_TYPE
         let struct_type = env.get(&TypeName::from("MyData")).unwrap();
         let fields = cast_struct!(
             &struct_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert_eq!(fields.len(), 3);
         assert!(matches!(
             fields[0].field_type,
-            IntermediateType::String { max_len: None, .. }
+            SemanticType::String { max_len: None, .. }
         ));
-        assert!(matches!(fields[1].field_type, IntermediateType::Int { .. }));
+        assert!(matches!(fields[1].field_type, SemanticType::Int { .. }));
         assert!(matches!(
             fields[2].field_type,
-            IntermediateType::String {
+            SemanticType::String {
                 max_len: Some(50),
                 ..
             }
@@ -908,7 +902,7 @@ END_TYPE
         let inner_type = env.get(&TypeName::from("Inner")).unwrap();
         let inner_fields = cast_struct!(
             &inner_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
         assert!(inner_fields[0].has_default, "Inner.a should have default");
         assert!(inner_fields[1].has_default, "Inner.b should have default");
@@ -918,7 +912,7 @@ END_TYPE
         let outer_type = env.get(&TypeName::from("Outer")).unwrap();
         let outer_fields = cast_struct!(
             &outer_type.representation,
-            IntermediateType::Structure { fields }
+            SemanticType::Structure { fields }
         );
 
         assert!(

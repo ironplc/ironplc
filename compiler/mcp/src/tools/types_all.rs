@@ -3,7 +3,7 @@
 //! Returns every user-defined type declared in the supplied sources with
 //! kind-specific detail fields. Implements REQ-TOL-mcp-240.
 
-use ironplc_analyzer::intermediate_type::{ByteSized, IntermediateType};
+use ironplc_analyzer::semantic_type::{ByteSized, SemanticType};
 use ironplc_analyzer::SemanticContext;
 use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::FileId;
@@ -124,7 +124,7 @@ fn collect_types(context: &SemanticContext) -> Vec<TypeEntry> {
 
     for (name, attrs) in context.types().iter_user_defined() {
         let entry = match &attrs.representation {
-            IntermediateType::Enumeration { .. } => {
+            SemanticType::Enumeration { .. } => {
                 let values: Vec<String> = context
                     .symbols()
                     .get_enumeration_values_for_type(name)
@@ -138,7 +138,7 @@ fn collect_types(context: &SemanticContext) -> Vec<TypeEntry> {
                     ..empty_entry(name)
                 }
             }
-            IntermediateType::Structure { fields } => {
+            SemanticType::Structure { fields } => {
                 let fs: Vec<StructFieldEntry> = fields
                     .iter()
                     .map(|f| StructFieldEntry {
@@ -153,7 +153,7 @@ fn collect_types(context: &SemanticContext) -> Vec<TypeEntry> {
                     ..empty_entry(name)
                 }
             }
-            IntermediateType::Array {
+            SemanticType::Array {
                 element_type,
                 dimensions,
             } => {
@@ -172,7 +172,7 @@ fn collect_types(context: &SemanticContext) -> Vec<TypeEntry> {
                     ..empty_entry(name)
                 }
             }
-            IntermediateType::Subrange {
+            SemanticType::Subrange {
                 base_type,
                 min_value,
                 max_value,
@@ -184,13 +184,13 @@ fn collect_types(context: &SemanticContext) -> Vec<TypeEntry> {
                 high: Some(*max_value),
                 ..empty_entry(name)
             },
-            IntermediateType::String { max_len, .. } => TypeEntry {
+            SemanticType::String { max_len, .. } => TypeEntry {
                 name: name.to_string(),
                 kind: "string".into(),
                 length: *max_len,
                 ..empty_entry(name)
             },
-            IntermediateType::Reference { target_type } => TypeEntry {
+            SemanticType::Reference { target_type } => TypeEntry {
                 name: name.to_string(),
                 kind: "reference".into(),
                 target_type: Some(render_type(target_type)),
@@ -225,64 +225,64 @@ fn empty_entry(name: &TypeName) -> TypeEntry {
     }
 }
 
-fn render_type(ty: &IntermediateType) -> String {
+fn render_type(ty: &SemanticType) -> String {
     match ty {
-        IntermediateType::Bool => "BOOL".into(),
-        IntermediateType::Int { size } => match size {
+        SemanticType::Bool => "BOOL".into(),
+        SemanticType::Int { size } => match size {
             ByteSized::B8 => "SINT".into(),
             ByteSized::B16 => "INT".into(),
             ByteSized::B32 => "DINT".into(),
             ByteSized::B64 => "LINT".into(),
         },
-        IntermediateType::UInt { size } => match size {
+        SemanticType::UInt { size } => match size {
             ByteSized::B8 => "USINT".into(),
             ByteSized::B16 => "UINT".into(),
             ByteSized::B32 => "UDINT".into(),
             ByteSized::B64 => "ULINT".into(),
         },
-        IntermediateType::Real { size } => match size {
+        SemanticType::Real { size } => match size {
             ByteSized::B32 => "REAL".into(),
             ByteSized::B64 => "LREAL".into(),
             _ => "REAL".into(),
         },
-        IntermediateType::Bytes { size } => match size {
+        SemanticType::Bytes { size } => match size {
             ByteSized::B8 => "BYTE".into(),
             ByteSized::B16 => "WORD".into(),
             ByteSized::B32 => "DWORD".into(),
             ByteSized::B64 => "LWORD".into(),
         },
-        IntermediateType::Time { size } => match size {
+        SemanticType::Time { size } => match size {
             ByteSized::B64 => "LTIME".into(),
             _ => "TIME".into(),
         },
-        IntermediateType::Date { size } => match size {
+        SemanticType::Date { size } => match size {
             ByteSized::B64 => "LDATE".into(),
             _ => "DATE".into(),
         },
-        IntermediateType::TimeOfDay { size } => match size {
+        SemanticType::TimeOfDay { size } => match size {
             ByteSized::B64 => "LTOD".into(),
             _ => "TIME_OF_DAY".into(),
         },
-        IntermediateType::DateAndTime { size } => match size {
+        SemanticType::DateAndTime { size } => match size {
             ByteSized::B64 => "LDT".into(),
             _ => "DATE_AND_TIME".into(),
         },
-        IntermediateType::String { char_width, .. } => {
+        SemanticType::String { char_width, .. } => {
             if char_width.is_wide() {
                 "WSTRING".into()
             } else {
                 "STRING".into()
             }
         }
-        IntermediateType::Enumeration { .. } => "ENUM".into(),
-        IntermediateType::Structure { .. } => "STRUCT".into(),
-        IntermediateType::Array { element_type, .. } => {
+        SemanticType::Enumeration { .. } => "ENUM".into(),
+        SemanticType::Structure { .. } => "STRUCT".into(),
+        SemanticType::Array { element_type, .. } => {
             format!("ARRAY OF {}", render_type(element_type))
         }
-        IntermediateType::Subrange { base_type, .. } => render_type(base_type),
-        IntermediateType::FunctionBlock { name, .. } => name.clone(),
-        IntermediateType::Function { .. } => "FUNCTION".into(),
-        IntermediateType::Reference { target_type } => {
+        SemanticType::Subrange { base_type, .. } => render_type(base_type),
+        SemanticType::FunctionBlock { name, .. } => name.clone(),
+        SemanticType::Function { .. } => "FUNCTION".into(),
+        SemanticType::Reference { target_type } => {
             format!("REF_TO {}", render_type(target_type))
         }
     }

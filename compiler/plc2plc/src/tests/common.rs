@@ -130,3 +130,38 @@ pub(crate) fn assert_library_renders_to_parseable_text(
 
     rendered
 }
+
+/// Analyzes `source` as one file and returns the analyzed library with the
+/// annotated rendering of it, each type named by `value_type::spelling`.
+/// Analysis must build a context; its diagnostics are not checked.
+pub(crate) fn analyze_and_render_with_types(
+    source: &str,
+    options: &CompilerOptions,
+) -> (dsl::common::Library, String) {
+    let parsed = parse_program(source, &FileId::default(), options)
+        .unwrap_or_else(|e| panic!("Source did not parse: {e:?}\n{source}"));
+    let (library, context) = ironplc_analyzer::stages::analyze(&[&parsed], options)
+        .unwrap_or_else(|e| panic!("Analysis failed: {e:?}\n{source}"));
+    let type_name =
+        |id: dsl::type_id::TypeId| ironplc_analyzer::value_type::spelling(context.types(), id);
+    let rendered = crate::write_to_string_with_types(&library, &type_name).unwrap();
+    (library, rendered)
+}
+
+/// Requires the annotated rendering of `library` to re-parse to the same
+/// library as its plain rendering: the annotation is comments only.
+pub(crate) fn assert_annotated_reparses_as_plain(
+    library: &dsl::common::Library,
+    annotated: &str,
+    options: &CompilerOptions,
+) {
+    let plain = write_to_string(library).unwrap();
+    let from_plain = parse_program(&plain, &FileId::default(), options)
+        .unwrap_or_else(|e| panic!("Plain rendering did not re-parse: {e:?}\n{plain}"));
+    let from_annotated = parse_program(annotated, &FileId::default(), options)
+        .unwrap_or_else(|e| panic!("Annotated rendering did not re-parse: {e:?}\n{annotated}"));
+    assert_eq!(
+        from_plain, from_annotated,
+        "Annotated rendering re-parses to a different library:\n{annotated}"
+    );
+}

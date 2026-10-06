@@ -19,7 +19,8 @@
 use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, ExprKind};
+use ironplc_dsl::textual::{Expr, ExprKind, ExprType};
+use ironplc_dsl::type_id::TypeId;
 
 use super::compile::{CompileContext, OpType, DEFAULT_OP_TYPE};
 use super::compile_expr::compile_expr;
@@ -90,6 +91,18 @@ pub(crate) fn compile_fb_field_store(
     Ok(true)
 }
 
+/// The declared type of `field` of the function block instance
+/// `instance_name`.
+fn fb_field_type_id(ctx: &CompileContext, instance_name: &Id, field: &Id) -> Option<TypeId> {
+    let fb_type = ctx.fb_instances.get(instance_name)?.type_id;
+    ctx.user_fb_types
+        .values()
+        .find(|user_fb| user_fb.type_id == fb_type)?
+        .field_type_ids
+        .get(&field.to_string().to_lowercase())
+        .copied()
+}
+
 /// Emits the member initializers of a function block instance declaration
 /// (`timer : TON := (PT := T#100MS);`).
 ///
@@ -104,11 +117,21 @@ pub(crate) fn emit_fb_instance_member_initializers(
 ) -> Result<(), Diagnostic> {
     for element in init {
         let value = match &element.init {
+            // The value is stored in the field: at its declared type in a
+            // user-defined block, and at the default slot type in a standard
+            // one, which records no field types.
             StructInitialValueAssignmentKind::Constant(constant) => {
-                Expr::new(ExprKind::Const(constant.clone()))
+                let mut expr = Expr::new(ExprKind::Const(constant.clone()));
+                expr.expr_type =
+                    fb_field_type_id(ctx, instance_name, &element.name).map(ExprType::Concrete);
+                expr
             }
+            // The value is a member of the field's type.
             StructInitialValueAssignmentKind::EnumeratedValue(value) => {
-                Expr::new(ExprKind::EnumeratedValue(value.clone()))
+                let mut expr = Expr::new(ExprKind::EnumeratedValue(value.clone()));
+                expr.expr_type =
+                    fb_field_type_id(ctx, instance_name, &element.name).map(ExprType::Concrete);
+                expr
             }
             StructInitialValueAssignmentKind::Expression(expr) => expr.clone(),
             // `xform_resolve_late_bound_expr_kind` replaces every one of

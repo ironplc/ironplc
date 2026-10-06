@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, read_string, string_offset};
+use crate::common::Snapshot;
 use proptest::prelude::*;
 
 /// Generates printable ASCII strings safe for IEC 61131-3 string literals.
@@ -32,10 +32,9 @@ PROGRAM main
   result := CONCAT(s1, s2);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
+    assert_eq!(snapshot.read("result"), "Hello World");
 }
 
 #[test]
@@ -48,11 +47,9 @@ PROGRAM main
   result := CONCAT('Hello', ' World');
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // result is the first (and only) declared string variable at offset 0.
-    let result_offset = string_offset(&[]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
+    assert_eq!(snapshot.read("result"), "Hello World");
 }
 
 // --- Property test: CONCAT(s1, s2) == s1 followed by s2 ---
@@ -77,8 +74,7 @@ PROGRAM main
 END_PROGRAM
 "
         );
-        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-        let result_offset = string_offset(&[254, 254]);
-        prop_assert_eq!(read_string(&bufs.data_region, result_offset), expected);
+        let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+        prop_assert_eq!(snapshot.read("result"), expected);
     }
 }

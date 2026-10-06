@@ -280,7 +280,10 @@ fn compile_method_call(
     let instance = match &call.receiver {
         MethodReceiver::Instance(id) => id,
         MethodReceiver::SelfRef(self_ref) => {
-            return Err(Diagnostic::todo_with_span(self_ref.span()))
+            return Err(Diagnostic::internal_error_at(Label::span(
+                self_ref.span(),
+                "THIS or SUPER receiver of a method call",
+            )))
         }
     };
 
@@ -375,8 +378,13 @@ pub(crate) fn compile_method_call_expression(
     call: &MethodCall,
 ) -> Result<(), Diagnostic> {
     let has_return_value = compile_method_call(emitter, ctx, call)?;
+    // `rule_method_call_declared` rejects an expression-position call to a
+    // method without a return value (P4057).
     if !has_return_value {
-        return Err(Diagnostic::todo_with_span(call.span()));
+        return Err(Diagnostic::internal_error_at(Label::span(
+            call.span(),
+            "Method without a return value used as an expression",
+        )));
     }
     emitter.emit_swap();
     emitter.emit_pop();

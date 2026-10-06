@@ -38,13 +38,13 @@ The design builds on:
 
 **REQ-SR-003** For subrange types with an unsigned base type (USINT, UINT, UDINT, ULINT), the `signedness` is `Unsigned`.
 
-**REQ-SR-004** The base type resolution follows the `IntermediateType::Subrange { base_type, .. }` chain recursively, matching the existing behavior in `compile_struct::resolve_field_op_type()`.
+**REQ-SR-004** The base type resolution follows the `SemanticType::Subrange { base_type, .. }` chain recursively, matching the existing behavior in `compile_struct::resolve_field_op_type()`.
 
 ## 2. Late-Bound Type Resolution
 
 **REQ-SR-010** When a variable is declared with a named subrange type and no initializer (`VAR x : MY_RANGE; END_VAR`), the parser produces `InitialValueAssignmentKind::LateResolvedType`. The late-bound resolver must convert this to `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(type_name))`.
 
-**REQ-SR-011** The late-bound resolver checks `IntermediateType::is_subrange()` on the type environment entry before falling through to the scoped type table.
+**REQ-SR-011** The late-bound resolver checks `SemanticType::is_subrange()` on the type environment entry before falling through to the scoped type table.
 
 **REQ-SR-012** The scoped type table match handles `TypeDefinitionKind::Subrange` by producing `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(type_name))`.
 
@@ -52,7 +52,7 @@ The design builds on:
 
 ## 3. Variable Allocation
 
-**REQ-SR-020** A variable declared with `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(type_name))` receives `VarTypeInfo` resolved from the type environment's `IntermediateType::Subrange`.
+**REQ-SR-020** A variable declared with `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(type_name))` receives `VarTypeInfo` resolved from the type environment's `SemanticType::Subrange`.
 
 **REQ-SR-021** A variable declared with `InitialValueAssignmentKind::Subrange(SpecificationKind::Inline(spec))` receives `VarTypeInfo` resolved from the inline specification's `ElementaryTypeName`.
 
@@ -74,11 +74,11 @@ The design builds on:
 
 ## 5. Type Aliases
 
-**REQ-SR-040** A type alias (`TYPE ALIAS : BASE_RANGE; END_TYPE`) is resolved by `xform_resolve_type_decl_environment` to `DataTypeDeclarationKind::Subrange(Named(BASE_RANGE))`. The type environment stores the alias with the same `IntermediateType::Subrange` as the base type.
+**REQ-SR-040** A type alias (`TYPE ALIAS : BASE_RANGE; END_TYPE`) is resolved by `xform_resolve_type_decl_environment` to `DataTypeDeclarationKind::Subrange(Named(BASE_RANGE))`. The type environment stores the alias with the same `SemanticType::Subrange` as the base type.
 
-**REQ-SR-041** A variable declared with a type alias (`VAR x : ALIAS; END_VAR`) resolves identically to a variable declared with the base subrange type. The `min_value` used for default initialization comes from the resolved `IntermediateType::Subrange`.
+**REQ-SR-041** A variable declared with a type alias (`VAR x : ALIAS; END_VAR`) resolves identically to a variable declared with the base subrange type. The `min_value` used for default initialization comes from the resolved `SemanticType::Subrange`.
 
-**REQ-SR-042** Nested type aliases (`TYPE BASE : INT (10..50); MID : BASE; TOP : MID; END_TYPE`) resolve transitively. A variable of type `TOP` has the same `IntermediateType::Subrange` (with `min_value=10`, `max_value=50`) as a variable of type `BASE`.
+**REQ-SR-042** Nested type aliases (`TYPE BASE : INT (10..50); MID : BASE; TOP : MID; END_TYPE`) resolve transitively. A variable of type `TOP` has the same `SemanticType::Subrange` (with `min_value=10`, `max_value=50`) as a variable of type `BASE`.
 
 ## 6. Expressions
 

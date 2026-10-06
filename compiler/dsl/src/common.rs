@@ -1410,6 +1410,23 @@ pub enum DataTypeDeclarationKind {
     LateBound(LateBoundDeclaration),
 }
 
+impl DataTypeDeclarationKind {
+    /// The name the declaration declares.
+    pub fn type_name(&self) -> &TypeName {
+        match self {
+            DataTypeDeclarationKind::Enumeration(decl) => &decl.type_name,
+            DataTypeDeclarationKind::Subrange(decl) => &decl.type_name,
+            DataTypeDeclarationKind::Simple(decl) => &decl.type_name,
+            DataTypeDeclarationKind::Array(decl) => &decl.type_name,
+            DataTypeDeclarationKind::Structure(decl) => &decl.type_name,
+            DataTypeDeclarationKind::StructureInitialization(decl) => &decl.type_name,
+            DataTypeDeclarationKind::String(decl) => &decl.type_name,
+            DataTypeDeclarationKind::Reference(decl) => &decl.type_name,
+            DataTypeDeclarationKind::LateBound(decl) => &decl.data_type_name,
+        }
+    }
+}
+
 /// Type declarations that are indistinguishable as parsing time.
 /// These are one of the following without an initial value:
 /// * enumeration

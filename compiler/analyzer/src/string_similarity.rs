@@ -56,6 +56,10 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
 /// for very short identifiers.
 ///
 /// Returns `None` if no candidate is close enough.
+///
+/// Candidates at the same distance are ordered by name, so the result does
+/// not depend on the order of `candidates`, which callers often take from a
+/// hash map.
 pub fn find_closest_match<'a>(
     name: &str,
     candidates: impl Iterator<Item = &'a str>,
@@ -63,23 +67,11 @@ pub fn find_closest_match<'a>(
     // Threshold: allow up to ~1/3 of the name length in edits, minimum 1, maximum 3
     let max_distance = (name.len() / 3).clamp(1, 3);
 
-    let mut best_match: Option<(String, usize)> = None;
-
-    for candidate in candidates {
-        let distance = levenshtein_distance(name, candidate);
-        if distance > 0 && distance <= max_distance {
-            match &best_match {
-                None => best_match = Some((candidate.to_string(), distance)),
-                Some((_, best_distance)) => {
-                    if distance < *best_distance {
-                        best_match = Some((candidate.to_string(), distance));
-                    }
-                }
-            }
-        }
-    }
-
-    best_match.map(|(name, _)| name)
+    candidates
+        .map(|candidate| (levenshtein_distance(name, candidate), candidate))
+        .filter(|(distance, _)| *distance > 0 && *distance <= max_distance)
+        .min()
+        .map(|(_, candidate)| candidate.to_string())
 }
 
 #[cfg(test)]
@@ -176,5 +168,16 @@ mod tests {
         let candidates = vec!["xy"];
         let result = find_closest_match("ab", candidates.into_iter());
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn find_closest_match_when_tie_then_returns_first_by_name_whatever_the_order() {
+        // Callers pass candidates from hash maps, so the order they arrive
+        // in differs between runs; a tie must not depend on it.
+        let forward = find_closest_match("cnt", vec!["cnt1", "cnt2"].into_iter());
+        let backward = find_closest_match("cnt", vec!["cnt2", "cnt1"].into_iter());
+
+        assert_eq!(forward, Some("cnt1".to_string()));
+        assert_eq!(backward, Some("cnt1".to_string()));
     }
 }

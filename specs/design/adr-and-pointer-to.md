@@ -45,8 +45,8 @@ variable's table index stored as a `u64` (`ExprKind::Ref` pushes the
 
 1. **`ADR(x)` lowers exactly like `REF(x)`** — push the argument's variable
    table index. No new opcodes, no VM changes, no wire-format changes.
-2. **`POINTER TO T` maps to the existing reference intermediate type** with
-   *explicit* dereference (`^` required) — the same intermediate type as
+2. **`POINTER TO T` maps to the existing reference semantic type** with
+   *explicit* dereference (`^` required) — the same semantic type as
    `REF_TO T`, under a third surface syntax (alongside `REF_TO` and
    `REFERENCE TO`).
 3. **`PVOID` is not introduced.** In IronPLC, `ADR(x)` has the inferred type

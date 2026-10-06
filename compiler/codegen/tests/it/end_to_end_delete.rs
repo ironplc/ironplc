@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, read_string, string_offset};
+use crate::common::Snapshot;
 use proptest::prelude::*;
 
 /// Generates printable ASCII strings safe for IEC 61131-3 string literals.
@@ -28,11 +28,10 @@ PROGRAM main
   result := DELETE(s1, 6, 1);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
     // Delete 6 chars starting at position 1: remove 'Hello ' -> 'World'
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "World");
+    assert_eq!(snapshot.read("result"), "World");
 }
 
 #[test]
@@ -46,11 +45,10 @@ PROGRAM main
   result := DELETE(s1, 100, 3);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
     // Delete 100 chars starting at position 3, but only 3 chars remain: remove 'CDE' -> 'AB'
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "AB");
+    assert_eq!(snapshot.read("result"), "AB");
 }
 
 // --- Property test: DELETE(s, n, p) == remove n chars from 1-based position p ---
@@ -82,8 +80,7 @@ PROGRAM main
 END_PROGRAM
 "
         );
-        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-        let result_offset = string_offset(&[254]);
-        prop_assert_eq!(read_string(&bufs.data_region, result_offset), expected);
+        let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+        prop_assert_eq!(snapshot.read("result"), expected);
     }
 }

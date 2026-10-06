@@ -3,7 +3,7 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 /// BOOL_TO_<T> for targets that fit in a 32-bit slot. TRUE -> 1, FALSE -> 0.
 #[rstest]
@@ -28,8 +28,8 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), expected);
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i32>("y"), expected);
 }
 
 /// BOOL_TO_<T> for 64-bit targets. TRUE -> 1, FALSE -> 0.
@@ -50,6 +50,6 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i64(), expected);
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i64>("y"), expected);
 }

@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, read_string, string_offset};
+use crate::common::Snapshot;
 use proptest::prelude::*;
 
 /// Generates printable ASCII strings safe for IEC 61131-3 string literals.
@@ -28,11 +28,10 @@ PROGRAM main
   result := RIGHT(s1, 5);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
     // RIGHT 5 chars of 'Hello World' -> 'World'
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "World");
+    assert_eq!(snapshot.read("result"), "World");
 }
 
 #[test]
@@ -46,11 +45,10 @@ PROGRAM main
   result := RIGHT(s1, 100);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
     // RIGHT 100 chars of 'Hi' -> 'Hi' (clamped to string length)
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hi");
+    assert_eq!(snapshot.read("result"), "Hi");
 }
 
 // --- Property test: RIGHT(s, n) == last min(n, len(s)) characters ---
@@ -75,8 +73,7 @@ PROGRAM main
 END_PROGRAM
 "
         );
-        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-        let result_offset = string_offset(&[254]);
-        prop_assert_eq!(read_string(&bufs.data_region, result_offset), expected);
+        let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+        prop_assert_eq!(snapshot.read("result"), expected);
     }
 }

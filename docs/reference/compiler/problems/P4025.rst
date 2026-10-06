@@ -16,6 +16,9 @@ Each integer and bit string type has a fixed number of bits:
 - ``DINT``, ``UDINT``, ``DWORD``: 32 bits (valid indices 0..31)
 - ``LINT``, ``ULINT``, ``LWORD``: 64 bits (valid indices 0..63)
 
+A variable of any other type has no bits to select at all, and raises
+:doc:`P4069 </reference/compiler/problems/P4069>` instead.
+
 Example
 -------
 

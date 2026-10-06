@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 use proptest::prelude::*;
 
 // --- Deterministic anchors: distinct variadic arities + clamp branch ---
@@ -47,12 +47,11 @@ proptest! {
     ) {
         let inputs = [a, b, c, d];
         let expected = inputs[k.clamp(0, 3) as usize];
-        // k is declared as a variable (matching the negative-selector lowering),
-        // so y is the second declared variable at slot 1.
+        // k is declared as a variable, matching the negative-selector lowering.
         let source = format!(
             "PROGRAM main VAR k : DINT; y : DINT; END_VAR k := {k}; y := MUX(k, {a}, {b}, {c}, {d}); END_PROGRAM"
         );
-        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-        prop_assert_eq!(bufs.vars[1].as_i32(), expected);
+        let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+        prop_assert_eq!(snapshot.read_as::<i32>("y"), expected);
     }
 }

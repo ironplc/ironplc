@@ -19,31 +19,55 @@
 //! `specs/design/comparison-operand-type.md`.
 //!
 //! The pass runs in `stages::analyze` after the semantic rules, so a rule
-//! checks the operands the program wrote. It reports nothing: a comparison
-//! it cannot settle is left as it is.
+//! checks the operands the program wrote. `rule_constant_range` runs after
+//! the pass and reads an operand through the conversion that wraps it. The
+//! pass reports nothing: a comparison it cannot settle is left as it is.
+
+mod argument;
+mod arithmetic;
+mod assignment;
+mod literal;
 
 use std::convert::Infallible;
 
 use ironplc_dsl::common::Library;
 use ironplc_dsl::fold::Fold;
-use ironplc_dsl::textual::{CompareExpr, Expr, ExprKind, ExprType, Function, ParamAssignmentKind};
+use ironplc_dsl::scope::ScopeNode;
+use ironplc_dsl::textual::{
+    Assignment, Case, CompareExpr, Expr, ExprKind, FbCall, For, Function, If, ParamAssignmentKind,
+    Repeat, StmtKind, While,
+};
 use ironplc_dsl::type_id::TypeId;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::intermediate_type::IntermediateType;
 use crate::intermediates::comparison_operand::comparison_operand_type;
+use crate::intermediates::conversion_target::{concrete, ConversionTarget};
 use crate::intermediates::operator_function_form::{operator_function_form, FormOf};
-use crate::type_environment::TypeEnvironment;
-use crate::value_type::operand_type_name;
+use crate::semantic_context::SemanticContext;
+use crate::symbol_environment::ScopeTracker;
 
-pub fn apply(lib: Library, types: &TypeEnvironment, options: &CompilerOptions) -> Library {
-    let mut inserter = ImplicitConversions { types, options };
+pub fn apply(lib: Library, context: &SemanticContext, options: &CompilerOptions) -> Library {
+    let methods = literal::method_parameters(&lib, context.types());
+    let mut inserter = ImplicitConversions {
+        conversions: ConversionTarget::new(context.types()),
+        methods,
+        context,
+        scope: ScopeTracker::default(),
+        options,
+    };
     let Ok(lib) = inserter.fold_library(lib);
     lib
 }
 
 struct ImplicitConversions<'a> {
-    types: &'a TypeEnvironment,
+    conversions: ConversionTarget<'a>,
+    /// The parameters of every method, to type the literals of its
+    /// arguments.
+    methods: literal::MethodParameters,
+    context: &'a SemanticContext,
+    /// Where the traversal is, to look an assignment's target up in the
+    /// symbol environment.
+    scope: ScopeTracker,
     options: &'a CompilerOptions,
 }
 
@@ -52,14 +76,14 @@ impl ImplicitConversions<'_> {
     fn convert_operands(&self, left: &mut Expr, right: &mut Expr) {
         // A string is compared through the data region, in its own encoding;
         // there is nothing to convert it to.
-        if self.is_string(left) || self.is_string(right) {
+        if self.conversions.is_string(left) || self.conversions.is_string(right) {
             return;
         }
         let Some(target) = self.operand_type(left, right) else {
             return;
         };
-        self.convert(left, target);
-        self.convert(right, target);
+        self.conversions.convert(left, target);
+        self.conversions.convert(right, target);
     }
 
     /// The type a comparison of `left` and `right` compares at: the type one
@@ -69,83 +93,13 @@ impl ImplicitConversions<'_> {
     /// (`DINT` and `UDINT`) is not checked yet (#1931).
     fn operand_type(&self, left: &Expr, right: &Expr) -> Option<TypeId> {
         comparison_operand_type(
-            self.operand_name(left).as_ref(),
-            self.operand_name(right).as_ref(),
+            self.conversions.operand_name(left).as_ref(),
+            self.conversions.operand_name(right).as_ref(),
             self.options,
         )
-        .and_then(|common| self.types.id_of(&common))
+        .and_then(|common| self.conversions.id_of(&common))
         .or_else(|| concrete(left))
         .or_else(|| concrete(right))
-    }
-
-    /// Makes `operand` a value of the type `target`: an untyped literal is
-    /// given the type, and a scalar operand of another type is wrapped
-    /// in a conversion to it.
-    fn convert(&self, operand: &mut Expr, target: TypeId) {
-        match operand.expr_type {
-            Some(ExprType::Literal(_)) => operand.expr_type = Some(ExprType::Concrete(target)),
-            Some(ExprType::Concrete(own)) if self.needs_conversion(own, target) => {
-                let placeholder = Expr::new(ExprKind::Null(operand.span.clone()));
-                let inner = std::mem::replace(operand, placeholder);
-                *operand = Expr::implicit_conversion(inner, target);
-            }
-            Some(ExprType::Concrete(_) | ExprType::Null) | None => {}
-        }
-    }
-
-    /// Returns `true` when a value of type `own` is converted to be compared
-    /// at `target`: both are scalars, and they are different types rather
-    /// than one type under two names (an alias and the type it aliases, or
-    /// an anonymous subrange and its base type).
-    ///
-    /// An enumeration or a reference is compared as the type it is.
-    fn needs_conversion(&self, own: TypeId, target: TypeId) -> bool {
-        own != target
-            && self.is_scalar(own)
-            && self.is_scalar(target)
-            && self.name_of(own) != self.name_of(target)
-    }
-
-    /// Returns `true` for an elementary type, or a subrange of one.
-    fn is_scalar(&self, id: TypeId) -> bool {
-        self.representation(id).is_some_and(|representation| {
-            representation.is_primitive() || representation.is_subrange()
-        })
-    }
-
-    fn is_string(&self, expr: &Expr) -> bool {
-        match &expr.expr_type {
-            Some(ExprType::Concrete(id)) => matches!(
-                self.representation(*id),
-                Some(IntermediateType::String { .. })
-            ),
-            Some(ExprType::Literal(generic)) => {
-                *generic == ironplc_dsl::common::GenericTypeName::AnyString
-            }
-            Some(ExprType::Null) | None => false,
-        }
-    }
-
-    fn representation(&self, id: TypeId) -> Option<&IntermediateType> {
-        self.types
-            .get_by_id(id)
-            .map(|attributes| &attributes.representation)
-    }
-
-    fn name_of(&self, id: TypeId) -> Option<ironplc_dsl::common::TypeName> {
-        operand_type_name(self.types, &ExprType::Concrete(id))
-    }
-
-    fn operand_name(&self, expr: &Expr) -> Option<ironplc_dsl::common::TypeName> {
-        operand_type_name(self.types, expr.expr_type.as_ref()?)
-    }
-}
-
-/// The type of `expr` when it is a value of one concrete type.
-fn concrete(expr: &Expr) -> Option<TypeId> {
-    match expr.expr_type {
-        Some(ExprType::Concrete(id)) => Some(id),
-        Some(ExprType::Literal(_) | ExprType::Null) | None => None,
     }
 }
 
@@ -157,6 +111,92 @@ fn is_comparison_form(function: &Function) -> bool {
 }
 
 impl Fold<Infallible> for ImplicitConversions<'_> {
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Infallible> {
+        self.scope.enter(&node);
+        Ok(())
+    }
+
+    fn exit_scope(&mut self) {
+        self.scope.exit();
+    }
+
+    fn fold_assignment(&mut self, node: Assignment) -> Result<Assignment, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.record_assignment_value(&mut node);
+        self.type_assignment_literals(&mut node.target, node.deref, &mut node.value);
+        Ok(node)
+    }
+
+    fn fold_if(&mut self, node: If) -> Result<If, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.type_if_literals(&mut node);
+        Ok(node)
+    }
+
+    fn fold_while(&mut self, node: While) -> Result<While, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.type_while_literals(&mut node);
+        Ok(node)
+    }
+
+    fn fold_repeat(&mut self, node: Repeat) -> Result<Repeat, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.type_repeat_literals(&mut node);
+        Ok(node)
+    }
+
+    fn fold_case(&mut self, node: Case) -> Result<Case, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.type_case_literals(&mut node);
+        Ok(node)
+    }
+
+    fn fold_stmt_kind(&mut self, node: StmtKind) -> Result<StmtKind, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        if let StmtKind::MethodCall(call) = &mut node {
+            self.type_method_call_statement_literals(call);
+        }
+        Ok(node)
+    }
+
+    fn fold_for(&mut self, node: For) -> Result<For, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.type_for_literals(&mut node);
+        Ok(node)
+    }
+
+    fn fold_fb_call(&mut self, node: FbCall) -> Result<FbCall, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        self.type_fb_call_literals(&mut node);
+        Ok(node)
+    }
+
+    fn fold_expr(&mut self, node: Expr) -> Result<Expr, Infallible> {
+        let mut node = node.recurse_fold(self)?;
+        match &mut node.kind {
+            ExprKind::BinaryOp(binary) => {
+                self.record_binary_operands(binary, node.expr_type.as_ref());
+            }
+            ExprKind::Function(_) => self.record_fold_operands(&mut node),
+            // A comparison's operands are recorded by `fold_compare_expr`
+            // and a call's arguments by `fold_function`; nothing else has
+            // operands an operation converts.
+            ExprKind::Compare(_)
+            | ExprKind::UnaryOp(_)
+            | ExprKind::Expression(_)
+            | ExprKind::Const(_)
+            | ExprKind::EnumeratedValue(_)
+            | ExprKind::Variable(_)
+            | ExprKind::MethodCall(_)
+            | ExprKind::LateBound(_)
+            | ExprKind::Ref(_)
+            | ExprKind::Deref(_)
+            | ExprKind::ImplicitConversion(_)
+            | ExprKind::Null(_) => {}
+        }
+        Ok(node)
+    }
+
     fn fold_compare_expr(&mut self, node: CompareExpr) -> Result<CompareExpr, Infallible> {
         let mut node = node.recurse_fold(self)?;
         if node.op.is_comparison() {
@@ -167,6 +207,7 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
 
     fn fold_function(&mut self, node: Function) -> Result<Function, Infallible> {
         let mut node = node.recurse_fold(self)?;
+        self.record_argument_conversions(&mut node);
         if is_comparison_form(&node) {
             // The comparison forms are binary, and the named-argument pass
             // made every input positional; any other shape is one a rule

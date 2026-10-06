@@ -8,6 +8,7 @@
 use std::io::Cursor;
 
 use ironplc_analyzer::stages::analyze;
+use ironplc_analyzer::CleanAnalysis;
 use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_format::VariableRenderer;
 use ironplc_container::Container;
@@ -242,35 +243,27 @@ fn compile_to_bytes(source: &str, options: &CompilerOptions) -> Result<Vec<u8>, 
         ),
     })?;
 
-    if context.has_diagnostics() {
-        return Err(RunResult {
-            ok: false,
-            variables: vec![],
-            total_scans: 0,
-            error: Some(
-                context
-                    .diagnostics()
-                    .iter()
-                    .map(|d| d.description())
-                    .collect::<Vec<_>>()
-                    .join("; "),
-            ),
-        });
-    }
-
-    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
-    let container = codegen_compile(
-        &library,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
-    .map_err(|diag| RunResult {
+    let analysis = CleanAnalysis::new(&library, &context).map_err(|diagnostics| RunResult {
         ok: false,
         variables: vec![],
         total_scans: 0,
-        error: Some(diag.description()),
+        error: Some(
+            diagnostics
+                .iter()
+                .map(|d| d.description())
+                .collect::<Vec<_>>()
+                .join("; "),
+        ),
     })?;
+
+    let codegen_options = ironplc_codegen::CodegenOptions::from(options);
+    let container = codegen_compile(analysis, &codegen_options, &ironplc_codegen::EmptyLookup)
+        .map_err(|diag| RunResult {
+            ok: false,
+            variables: vec![],
+            total_scans: 0,
+            error: Some(diag.description()),
+        })?;
 
     let mut buf = Vec::new();
     container.write_to(&mut buf).map_err(|e| RunResult {

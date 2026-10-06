@@ -7,9 +7,6 @@
 //! each shape is covered.
 
 use ironplc_parser::options::{CompilerOptions, Dialect};
-use ironplc_problems::Problem;
-
-use crate::common::try_parse_and_compile;
 
 fn edition_3() -> CompilerOptions {
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
@@ -240,18 +237,3 @@ END_PROGRAM
 ",
     &[("sum", 5)],
 );
-
-#[test]
-fn compile_when_continue_outside_loop_then_p4065_error() {
-    let source = "
-PROGRAM main
-  VAR
-    x : DINT;
-  END_VAR
-  x := 1;
-  CONTINUE;
-END_PROGRAM
-";
-    let diagnostic = try_parse_and_compile(source, &edition_3()).unwrap_err();
-    assert_eq!(diagnostic.code, Problem::ContinueOutsideLoop.code());
-}

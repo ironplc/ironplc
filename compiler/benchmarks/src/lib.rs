@@ -5,6 +5,7 @@
 
 pub mod programs;
 
+use ironplc_analyzer::CleanAnalysis;
 use ironplc_codegen::compile;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
@@ -21,21 +22,10 @@ pub fn compile_st(source: &str) -> Container {
     let options = CompilerOptions::default();
     let library = parse_program(source, &FileId::default(), &options).unwrap();
     let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
-    let codes: Vec<&str> = context
-        .diagnostics()
-        .iter()
-        .map(|d| d.code.as_str())
-        .collect();
-    assert!(
-        codes.is_empty(),
-        "Source has semantic diagnostics: {codes:?}"
-    );
+    let analysis = CleanAnalysis::new(&analyzed, &context).unwrap_or_else(|diagnostics| {
+        let codes: Vec<&str> = diagnostics.iter().map(|d| d.code.as_str()).collect();
+        panic!("Source has semantic diagnostics: {codes:?}")
+    });
     let codegen_options = ironplc_codegen::CodegenOptions::default();
-    compile(
-        &analyzed,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
-    .unwrap()
+    compile(analysis, &codegen_options, &ironplc_codegen::EmptyLookup).unwrap()
 }

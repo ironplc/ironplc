@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 use proptest::prelude::*;
 
 e2e_i32!(
@@ -298,10 +298,9 @@ END_PROGRAM
     &[("n", 4)],
 );
 
-/// Compiles and runs `source`, returning the i32 in variable slot `slot`.
-fn len_from(source: &str, slot: usize) -> i32 {
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    bufs.vars[slot].as_i32()
+/// Compiles and runs `source`, returning `n`.
+fn len_from(source: &str) -> i32 {
+    Snapshot::run(source, &CompilerOptions::default()).read_as::<i32>("n")
 }
 
 /// A 300-code-unit value -- more than the 254 a bare STRING declaration holds.
@@ -312,7 +311,6 @@ fn long_value() -> String {
     "a".repeat(300)
 }
 
-// x is at slot 0, n at slot 1.
 #[test]
 fn end_to_end_when_len_of_long_string_array_element_then_returns_untruncated_length() {
     let source = format!(
@@ -329,10 +327,9 @@ END_PROGRAM
         value = long_value(),
     );
 
-    assert_eq!(len_from(&source, 1), 300);
+    assert_eq!(len_from(&source), 300);
 }
 
-// x is at slot 0, n at slot 1.
 #[test]
 fn end_to_end_when_len_of_long_wstring_array_element_then_returns_untruncated_length() {
     let source = format!(
@@ -349,10 +346,9 @@ END_PROGRAM
         value = long_value(),
     );
 
-    assert_eq!(len_from(&source, 1), 300);
+    assert_eq!(len_from(&source), 300);
 }
 
-// r is at slot 0, n at slot 1.
 #[test]
 fn end_to_end_when_len_of_long_string_struct_field_then_returns_untruncated_length() {
     let source = format!(
@@ -375,10 +371,9 @@ END_PROGRAM
         value = long_value(),
     );
 
-    assert_eq!(len_from(&source, 1), 300);
+    assert_eq!(len_from(&source), 300);
 }
 
-// r is at slot 0, n at slot 1.
 #[test]
 fn end_to_end_when_len_of_long_wstring_struct_field_then_returns_untruncated_length() {
     let source = format!(
@@ -401,7 +396,7 @@ END_PROGRAM
         value = long_value(),
     );
 
-    assert_eq!(len_from(&source, 1), 300);
+    assert_eq!(len_from(&source), 300);
 }
 
 /// Generates printable ASCII strings safe for IEC 61131-3 string literals.
@@ -432,8 +427,8 @@ END_PROGRAM
 ",
             s
         );
-        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+        let snapshot = Snapshot::run(&source, &CompilerOptions::default());
 
-        prop_assert_eq!(bufs.vars[1].as_i32(), expected_len);
+        prop_assert_eq!(snapshot.read_as::<i32>("n"), expected_len);
     }
 }

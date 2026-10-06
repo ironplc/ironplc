@@ -12,8 +12,8 @@ use crate::common::{
     assert_run_with, datetime, time, Duration, FromValue, PrimitiveDateTime, Time,
 };
 
-/// A program assigning `expr` to `result` of `result_type`, the first
-/// variable (index 0), with operands of every long and short temporal type.
+/// A program assigning `expr` to `result` of `result_type`, with operands of
+/// every long and short temporal type.
 fn program(result_type: &str, expr: &str) -> String {
     format!(
         "

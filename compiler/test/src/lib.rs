@@ -33,7 +33,7 @@ macro_rules! cast {
 /// ```ignore
 /// let (element_type, dimensions) = cast_struct!(
 ///     attrs.representation,
-///     IntermediateType::Array { element_type, dimensions }
+///     SemanticType::Array { element_type, dimensions }
 /// );
 /// ```
 #[macro_export]

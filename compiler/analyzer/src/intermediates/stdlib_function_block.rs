@@ -12,50 +12,48 @@
 
 use ironplc_dsl::core::{Id, SourceSpan};
 
-use crate::intermediate_type::{
-    ByteSized, FunctionBlockVarType, IntermediateStructField, IntermediateType,
-};
+use crate::semantic_type::{ByteSized, FunctionBlockVarType, SemanticStructField, SemanticType};
 use crate::type_attributes::TypeAttributes;
 
 // Type constants for common types used in stdlib function blocks
-fn bool_type() -> IntermediateType {
-    IntermediateType::Bool
+fn bool_type() -> SemanticType {
+    SemanticType::Bool
 }
 
-fn time_type() -> IntermediateType {
-    IntermediateType::Time {
+fn time_type() -> SemanticType {
+    SemanticType::Time {
         size: ByteSized::B32,
     }
 }
 
 /// Integer type variants for counter function blocks.
-/// Each variant specifies the type name suffix and the IntermediateType for PV/CV fields.
+/// Each variant specifies the type name suffix and the SemanticType for PV/CV fields.
 #[allow(clippy::type_complexity)]
-const COUNTER_INT_VARIANTS: &[(&str, fn() -> IntermediateType)] = &[
-    ("", || IntermediateType::Int {
+const COUNTER_INT_VARIANTS: &[(&str, fn() -> SemanticType)] = &[
+    ("", || SemanticType::Int {
         size: ByteSized::B16,
     }), // INT (default)
-    ("_DINT", || IntermediateType::Int {
+    ("_DINT", || SemanticType::Int {
         size: ByteSized::B32,
     }), // DINT
-    ("_LINT", || IntermediateType::Int {
+    ("_LINT", || SemanticType::Int {
         size: ByteSized::B64,
     }), // LINT
-    ("_UDINT", || IntermediateType::UInt {
+    ("_UDINT", || SemanticType::UInt {
         size: ByteSized::B32,
     }), // UDINT
-    ("_ULINT", || IntermediateType::UInt {
+    ("_ULINT", || SemanticType::UInt {
         size: ByteSized::B64,
     }), // ULINT
 ];
 
-/// Builds an IntermediateStructField with proper offset calculation.
+/// Builds an SemanticStructField with proper offset calculation.
 fn build_field(
     name: &str,
-    field_type: IntermediateType,
+    field_type: SemanticType,
     var_type: FunctionBlockVarType,
     current_offset: &mut u32,
-) -> IntermediateStructField {
+) -> SemanticStructField {
     // Calculate alignment
     let alignment = field_type.alignment_bytes() as u32;
     let aligned_offset = if alignment == 0 {
@@ -67,7 +65,7 @@ fn build_field(
     // Calculate size
     let size = field_type.size_in_bytes().unwrap_or(0);
 
-    let field = IntermediateStructField {
+    let field = SemanticStructField {
         name: Id::from(name),
         field_type,
         offset: aligned_offset,
@@ -82,10 +80,10 @@ fn build_field(
 /// Builds TypeAttributes for a standard library function block.
 fn build_function_block(
     name: &str,
-    field_defs: &[(&str, IntermediateType, FunctionBlockVarType)],
+    field_defs: &[(&str, SemanticType, FunctionBlockVarType)],
 ) -> TypeAttributes {
     let mut current_offset = 0u32;
-    let fields: Vec<IntermediateStructField> = field_defs
+    let fields: Vec<SemanticStructField> = field_defs
         .iter()
         .map(|(name, field_type, var_type)| {
             build_field(name, field_type.clone(), *var_type, &mut current_offset)
@@ -94,7 +92,7 @@ fn build_function_block(
 
     TypeAttributes::new(
         SourceSpan::builtin(),
-        IntermediateType::FunctionBlock {
+        SemanticType::FunctionBlock {
             name: name.to_string(),
             fields,
         },
@@ -179,7 +177,7 @@ fn build_f_trig() -> TypeAttributes {
 ///
 /// Counts up on rising edge of CU input until CV >= PV.
 /// The `suffix` is appended to "CTU" (e.g., "_DINT" for CTU_DINT).
-fn build_ctu_variant(suffix: &str, int_type: IntermediateType) -> TypeAttributes {
+fn build_ctu_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
         &format!("CTU{}", suffix),
@@ -197,7 +195,7 @@ fn build_ctu_variant(suffix: &str, int_type: IntermediateType) -> TypeAttributes
 ///
 /// Counts down on rising edge of CD input until CV <= 0.
 /// The `suffix` is appended to "CTD" (e.g., "_DINT" for CTD_DINT).
-fn build_ctd_variant(suffix: &str, int_type: IntermediateType) -> TypeAttributes {
+fn build_ctd_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
         &format!("CTD{}", suffix),
@@ -215,7 +213,7 @@ fn build_ctd_variant(suffix: &str, int_type: IntermediateType) -> TypeAttributes
 ///
 /// Counts up on CU rising edge, down on CD rising edge.
 /// The `suffix` is appended to "CTUD" (e.g., "_DINT" for CTUD_DINT).
-fn build_ctud_variant(suffix: &str, int_type: IntermediateType) -> TypeAttributes {
+fn build_ctud_variant(suffix: &str, int_type: SemanticType) -> TypeAttributes {
     use FunctionBlockVarType::*;
     build_function_block(
         &format!("CTUD{}", suffix),
@@ -399,7 +397,7 @@ mod tests {
         let ton = build_ton();
         let (name, fields) = cast_struct!(
             &ton.representation,
-            IntermediateType::FunctionBlock { name, fields }
+            SemanticType::FunctionBlock { name, fields }
         );
         assert_eq!(name, "TON");
         assert_eq!(fields.len(), 4);
@@ -424,7 +422,7 @@ mod tests {
         let tof = build_tof();
         let (name, fields) = cast_struct!(
             &tof.representation,
-            IntermediateType::FunctionBlock { name, fields }
+            SemanticType::FunctionBlock { name, fields }
         );
         assert_eq!(name, "TOF");
         assert_eq!(fields.len(), 4);
@@ -448,13 +446,13 @@ mod tests {
     fn build_ctu_variant_when_called_then_has_correct_fields() {
         let ctu = build_ctu_variant(
             "",
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B16,
             },
         );
         let (name, fields) = cast_struct!(
             &ctu.representation,
-            IntermediateType::FunctionBlock { name, fields }
+            SemanticType::FunctionBlock { name, fields }
         );
         assert_eq!(name, "CTU");
         assert_eq!(fields.len(), 5);
@@ -473,13 +471,13 @@ mod tests {
     fn build_ctu_variant_when_dint_then_has_correct_name_and_type() {
         let ctu_dint = build_ctu_variant(
             "_DINT",
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B32,
             },
         );
         let (name, fields) = cast_struct!(
             &ctu_dint.representation,
-            IntermediateType::FunctionBlock { name, fields }
+            SemanticType::FunctionBlock { name, fields }
         );
         assert_eq!(name, "CTU_DINT");
 
@@ -487,7 +485,7 @@ mod tests {
         let pv_field = fields.iter().find(|f| f.name.original() == "PV").unwrap();
         assert_eq!(
             pv_field.field_type,
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B32
             }
         );
@@ -496,7 +494,7 @@ mod tests {
         let cv_field = fields.iter().find(|f| f.name.original() == "CV").unwrap();
         assert_eq!(
             cv_field.field_type,
-            IntermediateType::Int {
+            SemanticType::Int {
                 size: ByteSized::B32
             }
         );
@@ -507,7 +505,7 @@ mod tests {
         let r_trig = build_r_trig();
         let fields = cast_struct!(
             &r_trig.representation,
-            IntermediateType::FunctionBlock { fields }
+            SemanticType::FunctionBlock { fields }
         );
         // Check that M is internal
         let m_field = fields.iter().find(|f| f.name.original() == "M").unwrap();

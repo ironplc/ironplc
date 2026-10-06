@@ -4,7 +4,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 #[test]
 fn end_to_end_when_abs_of_udint_then_identity() {
@@ -17,8 +17,8 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as u32, 3_000_000_000);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<u32>("y"), 3_000_000_000);
 }
 
 #[test]
@@ -32,8 +32,8 @@ PROGRAM main
   y := ABS(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i64() as u64, 10_000_000_000_000_000_000);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<u64>("y"), 10_000_000_000_000_000_000);
 }
 
 // LIMIT is MIN(MAX(IN, MN), MX), so with MN above MX the result is MX.
@@ -79,8 +79,8 @@ PROGRAM main
   y := LIMIT(mn, 7, mx);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[2].as_i32() as u32, 5);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<u32>("y"), 5);
 }
 
 #[test]
@@ -95,8 +95,8 @@ PROGRAM main
   y := LIMIT(mn, 7, mx);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[2].as_i64() as u64, 5);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<u64>("y"), 5);
 }
 
 e2e_f32!(

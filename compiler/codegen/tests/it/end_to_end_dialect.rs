@@ -4,14 +4,13 @@
 //! They verify that the RuSTy dialect allows Edition 3 keywords (LDT, LTIME, etc.)
 //! as identifiers while still supporting REF_TO syntax.
 
-use crate::common::{parse, parse_and_run};
+use crate::common::{parse, Snapshot};
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_parser::parse_program;
 
 // In the RuSTy dialect, LDT is demoted to an identifier so it can be
 // used as a variable name (as OSCAT libraries do).
-// var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, LDT=2, result=3
 e2e_i32_with!(
     end_to_end_when_rusty_dialect_then_ldt_usable_as_variable_name,
     CompilerOptions::from_dialect(Dialect::Rusty),
@@ -29,7 +28,6 @@ END_PROGRAM
 
 // The RuSTy dialect enables REF_TO even though Edition 3 types
 // (LTIME, LDT, etc.) are not keywords.
-// var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, counter=2, r=3, result=4
 e2e_i32_with!(
     end_to_end_when_rusty_dialect_then_ref_to_works,
     CompilerOptions::from_dialect(Dialect::Rusty),
@@ -47,7 +45,6 @@ END_PROGRAM
 );
 
 // Core OSCAT scenario: LDT used as a variable name alongside REF_TO.
-// var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, LDT=2, r=3, result=4
 e2e_i32_with!(
     end_to_end_when_rusty_dialect_then_ldt_and_ref_to_coexist,
     CompilerOptions::from_dialect(Dialect::Rusty),
@@ -111,7 +108,6 @@ END_PROGRAM
 }
 
 // The CODESYS dialect enables REF_TO.
-// var layout: counter=0, r=1, result=2
 e2e_i32_with!(
     end_to_end_when_codesys_dialect_then_ref_to_works,
     CompilerOptions::from_dialect(Dialect::Codesys),
@@ -143,9 +139,8 @@ END_VAR
     result := SIZEOF(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Codesys));
-    // var layout: x=0, result=1
-    assert_eq!(bufs.vars[1].as_i32(), 4);
+    let snapshot = Snapshot::run(source, &CompilerOptions::from_dialect(Dialect::Codesys));
+    assert_eq!(snapshot.read_as::<i32>("result"), 4);
 }
 
 #[test]
@@ -175,7 +170,6 @@ END_PROGRAM
 // Curly-brace pragmas ({attribute '...'}) appear in virtually every
 // TwinCAT source file. The TwinCAT dialect skips them as opaque trivia so
 // the surrounding code compiles and runs unchanged.
-// var layout: x=0, result=1
 e2e_i32_with!(
     end_to_end_when_twincat_dialect_then_pragmas_are_skipped,
     CompilerOptions::from_dialect(Dialect::TwinCat),
@@ -207,9 +201,8 @@ END_VAR
     result := SIZEOF(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::TwinCat));
-    // var layout: x=0, result=1
-    assert_eq!(bufs.vars[1].as_i32(), 4);
+    let snapshot = Snapshot::run(source, &CompilerOptions::from_dialect(Dialect::TwinCat));
+    assert_eq!(snapshot.read_as::<i32>("result"), 4);
 }
 
 #[test]

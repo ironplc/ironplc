@@ -5,7 +5,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 fn opts_with_fb_inheritance() -> CompilerOptions {
     CompilerOptions {
@@ -38,11 +38,9 @@ m.SetSpeed(1.5);
 x := m.rSpeed;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &opts_with_fb_inheritance());
+    let snapshot = Snapshot::run(source, &opts_with_fb_inheritance());
 
-    // x : REAL is var[1] (m has no top-level slot of its own; x follows
-    // the program's declared VAR order).
-    assert_eq!(bufs.vars[1].as_f32(), 1.5);
+    assert_eq!(snapshot.read_as::<f32>("x"), 1.5);
 }
 
 #[test]
@@ -70,9 +68,9 @@ c.SetCount(10);
 x := c.nCount;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &opts_with_fb_inheritance());
+    let snapshot = Snapshot::run(source, &opts_with_fb_inheritance());
 
-    assert_eq!(bufs.vars[1].as_i32(), 10);
+    assert_eq!(snapshot.read_as::<i32>("x"), 10);
 }
 
 #[test]
@@ -103,9 +101,9 @@ a.Add(4);
 x := a.nTotal;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &opts_with_fb_inheritance());
+    let snapshot = Snapshot::run(source, &opts_with_fb_inheritance());
 
-    assert_eq!(bufs.vars[1].as_i32(), 7);
+    assert_eq!(snapshot.read_as::<i32>("x"), 7);
 }
 
 #[test]
@@ -137,10 +135,10 @@ outX := p.nX;
 outY := p.nY;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &opts_with_fb_inheritance());
+    let snapshot = Snapshot::run(source, &opts_with_fb_inheritance());
 
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-    assert_eq!(bufs.vars[2].as_i32(), 2);
+    assert_eq!(snapshot.read_as::<i32>("outX"), 1);
+    assert_eq!(snapshot.read_as::<i32>("outY"), 2);
 }
 
 #[test]
@@ -179,11 +177,9 @@ END_FOR;
 x := g.nCount;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &opts_with_fb_inheritance());
+    let snapshot = Snapshot::run(source, &opts_with_fb_inheritance());
 
-    // g has no top-level slot of its own (see other tests in this file);
-    // i and x follow in declared order.
-    assert_eq!(bufs.vars[2].as_i32(), 3);
+    assert_eq!(snapshot.read_as::<i32>("x"), 3);
 }
 
 /// A method produces its result by assigning its own name, the same way
@@ -217,9 +213,9 @@ d.Double(21);
 x := d.nLast;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &opts_with_fb_inheritance());
+    let snapshot = Snapshot::run(source, &opts_with_fb_inheritance());
 
-    assert_eq!(bufs.vars[1].as_i32(), 42);
+    assert_eq!(snapshot.read_as::<i32>("x"), 42);
 }
 
 /// A method's local shadows a field of the same name for that method
@@ -254,7 +250,7 @@ s.WritesField();
 x := s.v;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &opts_with_fb_inheritance());
+    let snapshot = Snapshot::run(source, &opts_with_fb_inheritance());
 
-    assert_eq!(bufs.vars[1].as_i32(), 7);
+    assert_eq!(snapshot.read_as::<i32>("x"), 7);
 }

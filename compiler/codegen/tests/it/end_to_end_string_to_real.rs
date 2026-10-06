@@ -17,7 +17,7 @@ use ironplc_vm::error::Trap;
 use ironplc_vm::StringPreview;
 use rstest::rstest;
 
-use crate::common::{parse_and_run, parse_and_try_run};
+use crate::common::{parse_and_try_run, Snapshot};
 
 /// A program converting the STRING `input` to `x : <type_name>` (variable 1)
 /// with `STRING_TO_<type_name>`.
@@ -51,10 +51,10 @@ fn convert(
     non_numeric: StringToNumNonNumeric,
     failure: StringToNumFailure,
 ) -> f64 {
-    let (_c, bufs) = parse_and_run(&program(type_name, input), &options(non_numeric, failure));
+    let snapshot = Snapshot::run(&program(type_name, input), &options(non_numeric, failure));
     match type_name {
-        "REAL" => bufs.vars[1].as_f32() as f64,
-        _ => bufs.vars[1].as_f64(),
+        "REAL" => snapshot.read_as::<f64>("x"),
+        _ => snapshot.read_as::<f64>("x"),
     }
 }
 
@@ -302,11 +302,11 @@ fn string_to_real_when_magnitude_underflows_then_zero_not_a_failure() {
 
 #[test]
 fn string_to_real_when_zero_policy_then_positive_zero() {
-    let (_c, bufs) = parse_and_run(
+    let snapshot = Snapshot::run(
         &program("LREAL", "NaN"),
         &options(StringToNumNonNumeric::Reject, StringToNumFailure::Zero),
     );
-    let value = bufs.vars[1].as_f64();
+    let value = snapshot.read_as::<f64>("x");
     assert_eq!(value, 0.0);
     assert!(value.is_sign_positive());
 }
@@ -324,21 +324,21 @@ fn string_to_real_when_default_options_then_reject_and_trap() {
 #[case::twincat(Dialect::TwinCat)]
 fn string_to_real_when_codesys_family_dialect_then_prefix_and_zero(#[case] dialect: Dialect) {
     let options = CompilerOptions::from_dialect(dialect);
-    let (_c, bufs) = parse_and_run(&program("REAL", "1.5abc"), &options);
-    assert_eq!(bufs.vars[1].as_f32(), 1.5);
-    let (_c, bufs) = parse_and_run(&program("REAL", "abc"), &options);
-    assert_eq!(bufs.vars[1].as_f32(), 0.0);
+    let snapshot = Snapshot::run(&program("REAL", "1.5abc"), &options);
+    assert_eq!(snapshot.read_as::<f32>("x"), 1.5);
+    let snapshot = Snapshot::run(&program("REAL", "abc"), &options);
+    assert_eq!(snapshot.read_as::<f32>("x"), 0.0);
 }
 
 #[test]
 fn string_to_lreal_when_rusty_dialect_then_reject_and_zero() {
     // The dialect binds the two uptime globals ahead of the program's
-    // variables, so `x` is variable 3 here.
+    // variables, which must not change what `x` reads.
     let options = CompilerOptions::from_dialect(Dialect::Rusty);
-    let (_c, bufs) = parse_and_run(&program("LREAL", "1.5abc"), &options);
-    assert_eq!(bufs.vars[3].as_f64(), 0.0);
-    let (_c, bufs) = parse_and_run(&program("LREAL", "1.5"), &options);
-    assert_eq!(bufs.vars[3].as_f64(), 1.5);
+    let snapshot = Snapshot::run(&program("LREAL", "1.5abc"), &options);
+    assert_eq!(snapshot.read_as::<f64>("x"), 0.0);
+    let snapshot = Snapshot::run(&program("LREAL", "1.5"), &options);
+    assert_eq!(snapshot.read_as::<f64>("x"), 1.5);
 }
 
 #[test]
@@ -354,6 +354,6 @@ PROGRAM main
   back := STRING_TO_REAL(s);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[2].as_f32(), 3.5);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<f32>("back"), 3.5);
 }

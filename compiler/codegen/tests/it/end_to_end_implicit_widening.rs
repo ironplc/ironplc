@@ -4,7 +4,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 e2e_f32!(
     end_to_end_when_int_assigned_to_real_then_converted,
@@ -73,8 +73,8 @@ PROGRAM main
   l := u;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i64(), 4_000_000_000);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i64>("l"), 4_000_000_000);
 }
 
 e2e_f32!(

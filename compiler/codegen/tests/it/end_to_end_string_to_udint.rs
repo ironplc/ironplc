@@ -15,7 +15,7 @@ use ironplc_vm::error::Trap;
 use ironplc_vm::StringPreview;
 use rstest::rstest;
 
-use crate::common::{parse_and_compile, parse_and_run, parse_and_try_run};
+use crate::common::{parse_and_compile, parse_and_try_run, Snapshot};
 
 /// A program converting the STRING `input` to the UDINT `x` (variable 1).
 fn program(input: &str) -> String {
@@ -42,8 +42,8 @@ fn options(non_numeric: StringToNumNonNumeric, failure: StringToNumFailure) -> C
 
 /// Runs `program(input)` under the given policies and returns `x`.
 fn convert(input: &str, non_numeric: StringToNumNonNumeric, failure: StringToNumFailure) -> u32 {
-    let (_c, bufs) = parse_and_run(&program(input), &options(non_numeric, failure));
-    bufs.vars[1].as_i32() as u32
+    let snapshot = Snapshot::run(&program(input), &options(non_numeric, failure));
+    snapshot.read_as::<u32>("x")
 }
 
 /// Runs `program(input)` under the given non-numeric policy with the `trap`
@@ -166,14 +166,14 @@ fn string_to_udint_when_codesys_family_dialect_then_prefix_and_zero(#[case] dial
     // TwinCAT (observed) stops at the first invalid character, and documents
     // 0 for a string that is not valid in the target type.
     let options = CompilerOptions::from_dialect(dialect);
-    let (_c, bufs) = parse_and_run(&program("12abc"), &options);
-    assert_eq!(bufs.vars[1].as_i32() as u32, 12);
-    let (_c, bufs) = parse_and_run(&program("abc"), &options);
-    assert_eq!(bufs.vars[1].as_i32() as u32, 0);
+    let snapshot = Snapshot::run(&program("12abc"), &options);
+    assert_eq!(snapshot.read_as::<u32>("x"), 12);
+    let snapshot = Snapshot::run(&program("abc"), &options);
+    assert_eq!(snapshot.read_as::<u32>("x"), 0);
     // Out of range is documented as processor-dependent; the preset's
     // failure policy yields zero rather than emulating something undefined.
-    let (_c, bufs) = parse_and_run(&program("4294967296"), &options);
-    assert_eq!(bufs.vars[1].as_i32() as u32, 0);
+    let snapshot = Snapshot::run(&program("4294967296"), &options);
+    assert_eq!(snapshot.read_as::<u32>("x"), 0);
 }
 
 #[test]
@@ -182,10 +182,10 @@ fn string_to_udint_when_rusty_dialect_then_reject_and_zero() {
     // the two uptime globals ahead of the program's variables, so `x` is
     // variable 3 here.
     let options = CompilerOptions::from_dialect(Dialect::Rusty);
-    let (_c, bufs) = parse_and_run(&program("12abc"), &options);
-    assert_eq!(bufs.vars[3].as_i32() as u32, 0);
-    let (_c, bufs) = parse_and_run(&program("4294967295"), &options);
-    assert_eq!(bufs.vars[3].as_i32() as u32, u32::MAX);
+    let snapshot = Snapshot::run(&program("12abc"), &options);
+    assert_eq!(snapshot.read_as::<u32>("x"), 0);
+    let snapshot = Snapshot::run(&program("4294967295"), &options);
+    assert_eq!(snapshot.read_as::<u32>("x"), u32::MAX);
 }
 
 #[test]
@@ -239,6 +239,6 @@ PROGRAM main
   back := STRING_TO_UDINT(s);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[2].as_i32() as u32, u32::MAX);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<u32>("back"), u32::MAX);
 }

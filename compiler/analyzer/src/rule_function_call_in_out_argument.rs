@@ -68,10 +68,10 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::{FunctionBlockVarType, IntermediateType},
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::{FunctionBlockVarType, SemanticType},
     symbol_environment::{ScopeTracker, SymbolInfo, SymbolKind},
     type_compat::is_checkable_type,
     variable_type,
@@ -168,7 +168,7 @@ impl RuleFunctionCallInOutArgument<'_> {
                 // outside the instance; its outputs, locals and VAR_IN_OUT
                 // are not.
                 match variable_type::of(&structured.record, self.context, &self.scope.current()) {
-                    Some(IntermediateType::FunctionBlock { fields, .. }) => fields
+                    Some(SemanticType::FunctionBlock { fields, .. }) => fields
                         .iter()
                         .find(|field| field.name == structured.field)
                         .is_some_and(|field| {
@@ -203,7 +203,7 @@ impl RuleFunctionCallInOutArgument<'_> {
         };
         let declared = name
             .and_then(|name| variable_type::declared(name, self.context, &self.scope.current()));
-        if declared.is_some_and(IntermediateType::is_reference) {
+        if declared.is_some_and(SemanticType::is_reference) {
             return Some(TypeName::from("REF_TO"));
         }
         let Some(ExprType::Concrete(id)) = &arg.expr_type else {

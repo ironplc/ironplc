@@ -3,23 +3,28 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::parse_and_run;
+use crate::common::{Duration, Snapshot, Value};
 
 /// Time/date reinterpret conversions with an exact expected result. TIME is
 /// milliseconds, TOD is milliseconds since midnight. These are reinterpret
 /// casts, so they stay a parametrized table rather than a property test.
 #[rstest]
-#[case::time_to_dword("t : TIME := T#5s", "DWORD", "TIME_TO_DWORD(t)", 5000)]
-#[case::dword_to_time("dw : DWORD := 3000", "TIME", "DWORD_TO_TIME(dw)", 3000)]
-#[case::time_to_dint("t : TIME := T#5s", "DINT", "TIME_TO_DINT(t)", 5000)]
-#[case::time_to_int("t : TIME := T#2s", "INT", "TIME_TO_INT(t)", 2000)]
+#[case::time_to_dword("t : TIME := T#5s", "DWORD", "TIME_TO_DWORD(t)", Value::Int(5000))]
+#[case::dword_to_time("dw : DWORD := 3000", "TIME", "DWORD_TO_TIME(dw)", Duration::seconds(3).into())]
+#[case::time_to_dint("t : TIME := T#5s", "DINT", "TIME_TO_DINT(t)", Value::Int(5000))]
+#[case::time_to_int("t : TIME := T#2s", "INT", "TIME_TO_INT(t)", Value::Int(2000))]
 // 12:30:00 = 12*3600*1000 + 30*60*1000 = 45_000_000 ms since midnight
-#[case::tod_to_dword("t : TOD := TOD#12:30:00", "DWORD", "TOD_TO_DWORD(t)", 45_000_000)]
+#[case::tod_to_dword(
+    "t : TOD := TOD#12:30:00",
+    "DWORD",
+    "TOD_TO_DWORD(t)",
+    Value::Int(45_000_000)
+)]
 fn time_date_exact(
     #[case] src_decl: &str,
     #[case] result_type: &str,
     #[case] call: &str,
-    #[case] expected: i32,
+    #[case] expected: Value,
 ) {
     let source = format!(
         "
@@ -32,8 +37,8 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as u32, expected as u32);
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    assert_eq!(snapshot.read("result"), expected);
 }
 
 /// Date/datetime conversions stored as seconds since 1970-01-01; only their
@@ -54,8 +59,8 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-    assert!(bufs.vars[1].as_i32() as u32 > 0);
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    assert!(snapshot.read_as::<u32>("result") > 0);
 }
 
 e2e_f32_near!(

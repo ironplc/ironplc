@@ -6,7 +6,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, read_string, run_scans};
+use crate::common::{run_scans, Snapshot};
 
 e2e_i32!(
     end_to_end_when_three_level_nested_struct_then_leaf_field_correct,
@@ -79,7 +79,6 @@ END_PROGRAM
 
 // Combines struct field reads with array store/load to verify both
 // data region types coexist without interference.
-// sensor=0, readings=1, result_id=2, result_reading=3
 e2e_i32!(
     end_to_end_when_struct_field_read_and_array_store_then_roundtrips,
     "
@@ -132,12 +131,10 @@ PROGRAM main
     result := data.y;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // label=0, data=1, result=2
-    assert_eq!(bufs.vars[2].as_i32(), 99);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i32>("result"), 99);
     // String at start of data region (declared first)
-    let s = read_string(&bufs.data_region, 0);
-    assert_eq!(s, "sensor-1");
+    assert_eq!(snapshot.read("label"), "sensor-1");
 }
 
 e2e_i32!(
@@ -183,7 +180,6 @@ END_PROGRAM
 
 // Uses struct field values to drive array computation.
 // data = [3, 6, 9, 12, 15], sum = 45
-// cfg=0, data=1, sum=2, i=3, mult=4
 e2e_i32!(
     end_to_end_when_nested_struct_field_used_in_array_loop_then_correct_sum,
     "
@@ -217,7 +213,6 @@ END_PROGRAM
 
 // Two independent struct instances alongside an array, verifying
 // no data region interference between allocations.
-// p1=0, p2=1, distances=2, r1=3, r2=4
 e2e_i32!(
     end_to_end_when_two_structs_and_array_then_no_interference,
     "
@@ -247,7 +242,6 @@ END_PROGRAM
 );
 
 // 2D array alongside a struct to verify data region coexistence.
-// cal=0, matrix=1, result_high=2, result_cell=3
 e2e_i32!(
     end_to_end_when_2d_array_and_struct_then_both_correct,
     "
@@ -300,7 +294,6 @@ PROGRAM main
 END_PROGRAM
 ";
     run_scans(source, &CompilerOptions::default(), |session| {
-        // ctr=0, history=1, scan=2, lim=3
         session.scan(0).unwrap();
         assert_eq!(session.read("scan"), 1);
 
@@ -343,18 +336,15 @@ PROGRAM main
     total := values[1] + values[2] + values[3] + values[4];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // label=0, meta=1, values=2, ver=3, ch=4, total=5
-    assert_eq!(bufs.vars[3].as_i32(), 2); // ver
-    assert_eq!(bufs.vars[4].as_i32(), 5); // ch
-    assert_eq!(bufs.vars[5].as_i32(), 24); // 2+5+7+10
-    let s = read_string(&bufs.data_region, 0);
-    assert_eq!(s, "data-log");
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i32>("ver"), 2); // ver
+    assert_eq!(snapshot.read_as::<i32>("ch"), 5); // ch
+    assert_eq!(snapshot.read_as::<i32>("total"), 24); // 2+5+7+10
+    assert_eq!(snapshot.read("label"), "data-log");
 }
 
 // Verifies nested struct initialization: inner fields receive
 // explicit values rather than being silently default-initialized.
-// line=0, r1=1, r2=2, r3=3, r4=4
 e2e_i32!(
     end_to_end_when_nested_struct_init_then_inner_fields_initialized,
     "
@@ -391,7 +381,6 @@ END_PROGRAM
 
 // Only some inner fields are explicitly initialized; the rest
 // should be default-initialized to zero.
-// o=0, ra=1, rb=2, rc=3, rtag=4
 e2e_i32!(
     end_to_end_when_nested_struct_partial_init_then_unspecified_fields_zero,
     "
@@ -428,7 +417,6 @@ END_PROGRAM
 );
 
 // Tests struct field assignment (store), which was added in PR #799.
-// c=0, result_total=1, result_count=2
 e2e_i32!(
     end_to_end_when_struct_field_store_then_value_updated,
     "
@@ -482,7 +470,6 @@ PROGRAM main
 END_PROGRAM
 ";
     run_scans(source, &CompilerOptions::default(), |session| {
-        // acc=0, history=1, scan=2
         session.scan(0).unwrap();
         assert_eq!(session.read("scan"), 1); // scan=1
 
@@ -496,7 +483,6 @@ END_PROGRAM
 
 // Combines 3-level nested struct init with array loop computation.
 // data = [3, 6, 9, 12, 15], sum of first 5 = 45
-// dev=0, data=1, sum=2, i=3, n=4, mult=5
 e2e_i32!(
     end_to_end_when_deeply_nested_init_and_array_loop_then_correct_result,
     "
@@ -539,7 +525,6 @@ END_PROGRAM
 );
 
 // 2D array alongside nested struct with explicit init values.
-// cal=0, matrix=1, result_high=2, result_cell=3
 e2e_i32!(
     end_to_end_when_2d_array_and_nested_struct_init_then_both_correct,
     "

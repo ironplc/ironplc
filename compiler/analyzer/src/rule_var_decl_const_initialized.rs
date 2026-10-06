@@ -38,10 +38,10 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::IntermediateType,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::SemanticType,
     type_environment::TypeEnvironment,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -222,7 +222,7 @@ impl<'a> RuleConstantVarsInitialized<'a> {
 
         // Extract fields from the structure type
         let fields = match &type_attrs.representation {
-            IntermediateType::Structure { fields } => fields,
+            SemanticType::Structure { fields } => fields,
             _ => {
                 // Not a structure type - another rule will catch this error
                 return;

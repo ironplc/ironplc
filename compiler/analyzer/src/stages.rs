@@ -26,7 +26,8 @@ use crate::{
     rule_method_call_declared, rule_mixed_located_var_declarations, rule_no_top_level_var_global,
     rule_operator_operand_type_check, rule_pou_hierarchy, rule_program_task_definition_exists,
     rule_program_var_hides_global, rule_range_limits, rule_real_literal_range, rule_ref_to,
-    rule_self_reference_context, rule_stdlib_type_redefinition, rule_string_encoding_compat,
+    rule_return_type_declared, rule_self_reference_context, rule_stdlib_type_redefinition,
+    rule_string_encoding_compat,
     rule_string_length_range, rule_string_literal_char_range,
     rule_struct_initializer_expression_allowed, rule_task_names_unique,
     rule_temporal_literal_range, rule_unsupported_extension, rule_use_declared_enumerated_value,
@@ -73,7 +74,13 @@ pub fn analyze(
     // Record the implicit conversions the backends compile and the language
     // server shows. After the rules, so that a rule checks the operands the
     // program wrote rather than their conversions. See ADR-0056.
-    let library = xform_insert_implicit_conversions::apply(library, context.types(), options);
+    let library = xform_insert_implicit_conversions::apply(library, &context, options);
+
+    // A rule that runs on the library the pass returns. It reads an operand
+    // as the program wrote it through the conversion that wraps it.
+    if let Err(diagnostics) = rule_constant_range::apply(&library, &context, options) {
+        context.add_diagnostics(diagnostics);
+    }
 
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
     // semantic analysis, but it should because the type table should influence rule checking.
@@ -299,8 +306,10 @@ pub fn resolve_types(
         xform_named_to_positional_args::apply(lib, &function_environment)
     });
 
-    // Resolve expression types using the function environment.
-    library = run_reverting_on_error(library, &mut diagnostics, |lib| {
+    // Resolve expression types using the function environment. Best effort:
+    // an unqualified enumerated value whose type is ambiguous is diagnosed
+    // and left without a type, and the rest of the library keeps its types.
+    library = run_best_effort(library, &mut diagnostics, |lib| {
         xform_resolve_expr_types::apply(
             lib,
             &symbol_environment,
@@ -321,7 +330,7 @@ pub fn resolve_types(
     });
 
     library = run_reverting_on_error(library, &mut diagnostics, |lib| {
-        xform_resolve_type_aliases::apply(lib, &type_environment, &mut symbol_environment)
+        xform_resolve_type_aliases::apply(lib, &mut symbol_environment)
     });
 
     // Mark every variable the program never writes as CONSTANT, so the
@@ -398,6 +407,7 @@ pub(crate) fn semantic(
         rule_struct_initializer_expression_allowed::apply,
         rule_use_declared_enumerated_value::apply,
         rule_use_declared_symbolic_var::apply,
+        rule_return_type_declared::apply,
         rule_unsupported_extension::apply,
         rule_var_decl_const_initialized::apply,
         rule_var_decl_const_not_fb::apply,
@@ -410,7 +420,6 @@ pub(crate) fn semantic(
         rule_case_bit_string_label::apply,
         rule_case_selector_type::apply,
         rule_condition_type::apply,
-        rule_constant_range::apply,
         rule_ref_to::apply,
     ];
 

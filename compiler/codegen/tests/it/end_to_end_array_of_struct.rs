@@ -5,16 +5,12 @@
 //! Field access through an array-of-struct *field* (`h.items[i].a`) is covered
 //! by `end_to_end_struct.rs`; these tests own the case where the variable
 //! itself is the array.
-//!
-//! Assertion indices are variable-table slots, assigned in declaration order
-//! starting at 0. Each test notes its mapping.
 
 use crate::common::try_parse_and_compile;
 use ironplc_parser::options::CompilerOptions;
 
 // --- Nominal read and write ---
 
-// arr 0, result 1.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_written_with_literal_index_then_reads_back,
     "
@@ -38,8 +34,6 @@ END_PROGRAM
 
 // The reported repro: a BOOL field written through a literal index. Exercises
 // the narrow-width truncation path on store.
-//
-// Arr 0, result 1.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_bool_field_written_then_reads_back,
     "
@@ -62,8 +56,6 @@ END_PROGRAM
 
 // Writing one element must not disturb its neighbours -- this is what a wrong
 // element stride would break.
-//
-// arr 0, r1 1, r2 2, r3 3.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_elements_written_then_each_element_distinct,
     "
@@ -93,8 +85,6 @@ END_PROGRAM
 
 // Distinct fields within one element must not alias -- this is what a wrong
 // leaf offset would break.
-//
-// arr 0, ra 1, rb 2.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_sibling_fields_written_then_do_not_alias,
     "
@@ -121,8 +111,6 @@ END_PROGRAM
 
 // Variable subscript exercises the runtime flat-index path rather than the
 // compile-time constant-folded one.
-//
-// arr 0, i 1, result 2.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_indexed_by_variable_then_correct_element,
     "
@@ -148,7 +136,7 @@ END_PROGRAM
 
 // A FOR loop over the array, the shape the issue's users actually write.
 //
-// arr 0, i 1, total 2. total = 1 + 2 + 3.
+// total = 1 + 2 + 3.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_written_in_for_loop_then_all_elements_set,
     "
@@ -175,7 +163,7 @@ END_PROGRAM
 
 // Several element reads combined in one expression.
 //
-// arr 0, total 1. total = 1 + 2 + 3.
+// total = 1 + 2 + 3.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_elements_summed_then_correct_total,
     "
@@ -201,8 +189,6 @@ END_PROGRAM
 
 // Unwritten elements read as zero: the data region starts zeroed and nothing
 // else is allowed to land on top of the array.
-//
-// arr 0, r1 1, r2 2.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_not_written_then_fields_read_zero,
     "
@@ -230,8 +216,6 @@ END_PROGRAM
 
 // A zero lower bound: the subtracted lower bound is 0 so the emitted index is
 // the subscript itself.
-//
-// arr 0, r1 1, r2 2.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_zero_based_then_correct_element,
     "
@@ -258,8 +242,6 @@ END_PROGRAM
 
 // A negative lower bound must be subtracted, not ignored. The constant and
 // variable subscript paths both have to do it, so this uses one of each.
-//
-// arr 0, i 1, r1 2, r2 3.
 e2e_i32!(
     end_to_end_when_top_level_array_of_struct_negative_lower_bound_then_correct_element,
     "
@@ -287,8 +269,6 @@ END_PROGRAM
 );
 
 // Two-dimensional: both strides must be scaled by the element slot count.
-//
-// arr 0, r1 1, r2 2.
 e2e_i32!(
     end_to_end_when_two_dimensional_top_level_array_of_struct_then_correct_element,
     "
@@ -347,8 +327,6 @@ END_PROGRAM
 // A structure with a nested structure: the element stride is the *total* slot
 // count (3 slots per Item), so a wrong count here shifts every element after
 // the first.
-//
-// arr 0, r1 1, r2 2.
 e2e_i32!(
     end_to_end_when_top_level_array_of_nested_struct_then_element_stride_correct,
     "
@@ -381,8 +359,6 @@ END_PROGRAM
 
 // A LINT field is a 64-bit leaf, so the load and store must be emitted at W64
 // rather than the default width. 4294967296 does not fit in 32 bits.
-//
-// arr 0, result 1.
 e2e_i64!(
     end_to_end_when_top_level_array_of_struct_lint_field_then_full_width_preserved,
     "
@@ -411,7 +387,6 @@ END_PROGRAM
 // index at stride 1. The field's offset within the element stays the
 // compile-time part.
 
-// a 0, r1 1, r2 2, r3 3.
 e2e_i32!(
     end_to_end_when_array_of_struct_element_has_array_field_then_reads_back,
     "
@@ -440,8 +415,6 @@ END_PROGRAM
 
 // Both subscripts variable, so the whole index is computed at runtime rather
 // than folded to a constant.
-//
-// a 0, i 1, j 2, r 3.
 e2e_i32!(
     end_to_end_when_array_of_struct_array_field_indexed_by_variables_then_correct_element,
     "
@@ -469,8 +442,6 @@ END_PROGRAM
 // A scalar ahead of the array field, so the field's own offset has to be added
 // on top of the element stride. A wrong offset would alias `lead` with
 // `values[1]`.
-//
-// a 0, rl 1, rv 2.
 e2e_i32!(
     end_to_end_when_array_of_struct_array_field_preceded_by_scalar_then_no_alias,
     "
@@ -497,8 +468,6 @@ END_PROGRAM
 
 // Nested FOR loops over both indices, the shape that would expose a wrong
 // stride on either axis. a[3].values[2] is 3 * 10 + 2.
-//
-// a 0, i 1, j 2, r 3.
 e2e_i32!(
     end_to_end_when_array_of_struct_array_field_written_in_nested_loops_then_all_set,
     "
@@ -527,8 +496,6 @@ END_PROGRAM
 
 // The same shape reached through a struct field rather than a top-level
 // variable: `h.items[i].values[j]`.
-//
-// h 0, r 1.
 e2e_i32!(
     end_to_end_when_struct_field_array_of_struct_has_array_field_then_reads_back,
     "
@@ -558,8 +525,6 @@ END_PROGRAM
 
 // `arr : Items` where `Items` is a named ARRAY OF <struct> type, rather than
 // an inline array specification on the declaration.
-//
-// arr 0, result 1.
 e2e_i32!(
     end_to_end_when_top_level_named_array_of_struct_type_then_reads_back,
     "
@@ -587,8 +552,6 @@ END_PROGRAM
 
 // A second array-of-struct and a plain array declared alongside must each get
 // their own data region run.
-//
-// first 0, second 1, plain 2, r1 3, r2 4, r3 5.
 e2e_i32!(
     end_to_end_when_two_top_level_arrays_of_struct_then_regions_do_not_overlap,
     "
@@ -623,7 +586,7 @@ END_PROGRAM
 // A global array-of-struct is registered before program locals and aliased
 // into the program through VAR_EXTERNAL.
 //
-// devices 0 (global), result 1. result = 100 + 200.
+// result = 100 + 200.
 e2e_i32!(
     end_to_end_when_global_array_of_struct_then_external_can_read_and_write,
     "
@@ -661,8 +624,6 @@ END_PROGRAM
 // A function block body sees the global through the re-inserted global
 // metadata; without it the array resolves as a plain scalar and the field
 // access fails. The function block reaches the global through VAR_EXTERNAL.
-//
-// devices 0 (global), reader 1, result 2.
 e2e_i32!(
     end_to_end_when_function_block_reads_global_array_of_struct_then_correct_value,
     "

@@ -36,11 +36,25 @@ Syntax
 .. code-block:: bnf
 
    INTERFACE interface_name [EXTENDS base_interface {, base_interface}]
-       method_prototypes
+       { method_prototype | property_prototype }
    END_INTERFACE
 
-An interface may :doc:`extend <extends>` one or more base interfaces,
-inheriting their method signatures.
+   method_prototype ::=
+       METHOD method_name [: return_type]
+           { VAR_INPUT ... END_VAR | VAR_OUTPUT ... END_VAR | VAR_IN_OUT ... END_VAR }
+       END_METHOD
+
+   property_prototype ::=
+       PROPERTY property_name : property_type
+           [GET END_GET]
+           [SET END_SET]
+       END_PROPERTY
+
+An interface lists the signatures of its :doc:`methods <method>` and
+:doc:`properties <property>`, in any order, but no bodies: a method prototype
+has only input, output and in-out variables, and a property prototype says
+which accessors exist. An interface may :doc:`extend <extends>` one or more
+base interfaces, inheriting their signatures.
 
 Example
 -------
@@ -48,6 +62,16 @@ Example
 .. code-block::
 
    INTERFACE I_Drivable
+       METHOD Start : BOOL
+           VAR_INPUT
+               speed : INT;
+           END_VAR
+       END_METHOD
+       METHOD Stop
+       END_METHOD
+       PROPERTY Running : BOOL
+           GET END_GET
+       END_PROPERTY
    END_INTERFACE
 
    INTERFACE I_PoweredDrivable EXTENDS I_Drivable
@@ -55,21 +79,38 @@ Example
 
    FUNCTION_BLOCK FB_Motor IMPLEMENTS I_Drivable
        VAR
-           running : BOOL;
+           _running : BOOL;
        END_VAR
+       METHOD Start : BOOL
+           VAR_INPUT
+               speed : INT;
+           END_VAR
+           _running := speed > 0;
+           Start := _running;
+       END_METHOD
+       METHOD Stop
+           _running := FALSE;
+       END_METHOD
+       PROPERTY Running : BOOL
+           GET
+               Running := _running;
+           END_GET
+       END_PROPERTY
    END_FUNCTION_BLOCK
 
 .. note::
 
-   Method declarations (``METHOD`` … ``END_METHOD``) inside an interface are
-   not yet parsed, so interface bodies are currently empty. The interface
-   name and any ``EXTENDS`` clause are recognized.
+   Interface declarations and their member prototypes are parsed, but
+   IronPLC does not yet check that a function block provides what the
+   interfaces it implements declare, and a variable cannot yet have an
+   interface type.
 
 See Also
 --------
 
 - :doc:`implements` — provide the methods declared by an interface
 - :doc:`method` — declare a method on a function block type
+- :doc:`property` — declare a property on a function block type
 - :doc:`extends` — derive an interface or function block from a base
 - :doc:`abstract` — mark a function block type as not directly instantiable
 - :doc:`/explanation/object-orientation` — inheritance, interfaces, and

@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 e2e_f32_near!(
     end_to_end_when_sqrt_real_perfect_square_then_correct,
@@ -48,9 +48,9 @@ PROGRAM main
   y := SQRT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let y = bufs.vars[1].as_f32();
+    let y = snapshot.read_as::<f32>("y");
     assert!(y.is_nan(), "expected NaN, got {y}");
 }
 
@@ -82,8 +82,8 @@ PROGRAM main
   y := SQRT(x);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let y = bufs.vars[1].as_f64();
+    let y = snapshot.read_as::<f64>("y");
     assert!(y.is_nan(), "expected NaN, got {y}");
 }

@@ -376,7 +376,7 @@ declaration order.
 codegen resolves field accesses to (`StructFieldInfo::slot_offset`) times 8,
 and its `type_ref` is derived from the field's declared type by the rule in
 REQ-VI-codegen-040. The declared type name is carried on
-`IntermediateStructField` so that enumeration and nested-structure fields
+`SemanticStructField` so that enumeration and nested-structure fields
 name their types.
 
 ### 2.3 Arrays

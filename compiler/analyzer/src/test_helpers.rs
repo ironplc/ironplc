@@ -128,6 +128,34 @@ pub fn rule_codes(
         .collect()
 }
 
+/// As [`rule_diagnostics`], for a rule that `stages::analyze` runs on the
+/// library `xform_insert_implicit_conversions` returns rather than with the
+/// other rules: the conversions are recorded before `rule` runs.
+#[cfg(test)]
+pub fn rule_diagnostics_after_conversions(
+    rule: Rule,
+    program: &str,
+    options: &ironplc_parser::options::CompilerOptions,
+) -> Vec<ironplc_dsl::diagnostic::Diagnostic> {
+    let (library, context) = parse_and_resolve_types_with_options(program, options);
+    let library = crate::xform_insert_implicit_conversions::apply(library, &context, options);
+    rule(&library, &context, options).err().unwrap_or_default()
+}
+
+/// As [`rule_diagnostics_after_conversions`], returning only the problem
+/// codes, in order.
+#[cfg(test)]
+pub fn rule_codes_after_conversions(
+    rule: Rule,
+    program: &str,
+    options: &ironplc_parser::options::CompilerOptions,
+) -> Vec<String> {
+    rule_diagnostics_after_conversions(rule, program, options)
+        .into_iter()
+        .map(|diagnostic| diagnostic.code)
+        .collect()
+}
+
 /// The codes of `diagnostics`, in order.
 #[cfg(test)]
 pub fn diagnostic_codes(diagnostics: &[ironplc_dsl::diagnostic::Diagnostic]) -> Vec<&str> {
@@ -163,7 +191,9 @@ pub fn edition3_options() -> ironplc_parser::options::CompilerOptions {
 
 #[cfg(test)]
 mod tests {
-    use super::{codes, rule_codes, rule_diagnostics, NOT_IMPLEMENTED_CODE};
+    use super::{
+        codes, rule_codes, rule_codes_after_conversions, rule_diagnostics, NOT_IMPLEMENTED_CODE,
+    };
     use crate::result::SemanticResult;
     use crate::semantic_context::SemanticContext;
     use ironplc_dsl::common::Library;
@@ -201,6 +231,66 @@ mod tests {
     }
 
     const PROGRAM: &str = "PROGRAM main END_PROGRAM";
+
+    /// A rule that reports one problem for each implicit conversion recorded
+    /// in the library it is given.
+    fn reports_conversions(
+        library: &Library,
+        _context: &SemanticContext,
+        _options: &CompilerOptions,
+    ) -> SemanticResult {
+        use ironplc_dsl::textual::{Expr, ExprKind};
+        use ironplc_dsl::visitor::Visitor;
+        use std::convert::Infallible;
+
+        struct Conversions(Vec<Diagnostic>);
+        impl Visitor<Infallible> for Conversions {
+            type Value = ();
+            fn visit_expr(&mut self, node: &Expr) -> Result<(), Infallible> {
+                if let ExprKind::ImplicitConversion(_) = &node.kind {
+                    self.0.push(Diagnostic::not_implemented(Label::span(
+                        node.span.clone(),
+                        "conversion",
+                    )));
+                }
+                node.recurse_visit(self)
+            }
+        }
+        let mut conversions = Conversions(vec![]);
+        let Ok(()) = conversions.walk(library);
+        match conversions.0.is_empty() {
+            true => Ok(()),
+            false => Err(conversions.0),
+        }
+    }
+
+    /// Converts the `DINT` operand of a comparison with an `LINT`.
+    const CONVERTING_PROGRAM: &str = "PROGRAM main
+VAR d : DINT; l : LINT; b : BOOL; END_VAR
+b := l > d;
+END_PROGRAM";
+
+    #[test]
+    fn rule_codes_after_conversions_when_program_converts_then_rule_sees_conversion() {
+        let codes = rule_codes_after_conversions(
+            reports_conversions,
+            CONVERTING_PROGRAM,
+            &CompilerOptions::default(),
+        );
+
+        assert_eq!(codes, [NOT_IMPLEMENTED_CODE]);
+    }
+
+    #[test]
+    fn rule_codes_when_program_converts_then_rule_sees_no_conversion() {
+        let codes = rule_codes(
+            reports_conversions,
+            CONVERTING_PROGRAM,
+            &CompilerOptions::default(),
+        );
+
+        assert_eq!(codes, Vec::<String>::new());
+    }
 
     #[test]
     fn rule_codes_when_rule_reports_then_its_codes() {

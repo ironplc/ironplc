@@ -476,9 +476,10 @@ Tests use inline IEC 61131-3 source, run the full pipeline (parse â†’ analyze â†
 | `e2e_i32!`, `e2e_i64!`, `e2e_f32!`, `e2e_f64!` (and `_with`, `_near` forms) | Declare a test that runs the source for one scan and compares `(name, expected)` pairs |
 | `e2e!` | The same, with the expected type taken from typed values: `Duration::seconds(5)`, `date!(2024-01-01)`, `0xFFFF_FFFF_u32` |
 | `assert_run::<T>`, `assert_run_with::<T>` | The functions behind the macros, for a test that builds its source |
-| `Snapshot::run(source, options)` | Runs one scan; `read("name")` returns the variable's `Value` |
+| `Snapshot::run(source, options)` | Runs one scan; `read("name")` returns the variable's `Value`, and `read_as::<T>("name")` converts it without loss |
+| `run_scans(source, options, \|session\| ...)` | Drives several scans; `session.write("name", value)`, `session.scan(time_us)` and `session.read("name")` |
+| `drive_fb(source, options, &[write(..), run(..), expect(..), pulse(..)])` | A table of steps for timers, counters and other function blocks |
 | `parse_and_try_run(source, options)` | Returns `Result` so you can test runtime traps |
-| `parse_and_run_rounds(source, options, closure)` | Multi-round execution for stateful tests |
 
 ### Test Pattern
 
@@ -511,7 +512,7 @@ A value is compared as the IEC value of its declared type: a `BOOL` as 1 or 0, a
 
 1. **Create or extend a test file**: Add `compiler/codegen/tests/it/end_to_end_my_feature.rs` (registered with a `mod` line in `tests/it/main.rs`) or add tests to an existing file if the feature is closely related
 2. **Write inline source**: Use valid IEC 61131-3 source that exercises the new syntax
-3. **Assert by name**: Use an `e2e_*!` macro, or `Snapshot::read("name")` for anything the macros do not cover
+3. **Assert by name**: Use an `e2e_*!` macro, or `Snapshot::read("name")` for anything the macros do not cover. To check a value inside a structure, array or function block, copy it into a program variable (`r := s.names[2];`) and assert that variable
 4. **Test both success and edge cases**: Include tests for the happy path and boundary conditions
 
 ### Testing Non-Standard Syntax Execution

@@ -1,9 +1,8 @@
 //! End-to-end integration tests for ARRAY OF STRING[N] support.
 
-use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, read_string};
+use crate::common::Snapshot;
 
 #[test]
 fn array_of_string_when_assign_then_stores_value() {
@@ -11,24 +10,23 @@ fn array_of_string_when_assign_then_stores_value() {
 PROGRAM main
   VAR
     names : ARRAY[1..3] OF STRING[10];
+    r1 : STRING[10];
+    r2 : STRING[10];
+    r3 : STRING[10];
   END_VAR
   names[1] := 'hello';
   names[2] := 'world';
+  r1 := names[1];
+  r2 := names[2];
+  r3 := names[3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // names is var 0; its slot holds the base data_offset.
-    let base_offset = bufs.vars[0].as_i32() as usize;
-    let stride = STRING_HEADER_BYTES + 10; // 4 + 10 = 14 bytes per element
-
-    assert_eq!(read_string(&bufs.data_region, base_offset), "hello");
-    assert_eq!(
-        read_string(&bufs.data_region, base_offset + stride),
-        "world"
-    );
-    // Element 3 was not assigned — should be empty (cur_len = 0).
-    assert_eq!(read_string(&bufs.data_region, base_offset + 2 * stride), "");
+    assert_eq!(snapshot.read("r1"), "hello");
+    assert_eq!(snapshot.read("r2"), "world");
+    // Element 3 was not assigned, so it is empty.
+    assert_eq!(snapshot.read("r3"), "");
 }
 
 #[test]
@@ -44,16 +42,9 @@ PROGRAM main
   result := arr[2];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // arr is var 0, result is var 1.
-    // arr occupies 3 * (4 + 10) = 42 bytes in data region.
-    // result starts at offset 42.
-    let arr_base = bufs.vars[0].as_i32() as usize;
-    let stride = STRING_HEADER_BYTES + 10;
-    let result_offset = arr_base + 3 * stride;
-
-    assert_eq!(read_string(&bufs.data_region, result_offset), "test");
+    assert_eq!(snapshot.read("result"), "test");
 }
 
 #[test]
@@ -62,20 +53,20 @@ fn array_of_string_when_initial_values_then_populated() {
 PROGRAM main
   VAR
     days : ARRAY[1..3] OF STRING[10] := ['Mon', 'Tue', 'Wed'];
+    r1 : STRING[10];
+    r2 : STRING[10];
+    r3 : STRING[10];
   END_VAR
+  r1 := days[1];
+  r2 := days[2];
+  r3 := days[3];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let base_offset = bufs.vars[0].as_i32() as usize;
-    let stride = STRING_HEADER_BYTES + 10;
-
-    assert_eq!(read_string(&bufs.data_region, base_offset), "Mon");
-    assert_eq!(read_string(&bufs.data_region, base_offset + stride), "Tue");
-    assert_eq!(
-        read_string(&bufs.data_region, base_offset + 2 * stride),
-        "Wed"
-    );
+    assert_eq!(snapshot.read("r1"), "Mon");
+    assert_eq!(snapshot.read("r2"), "Tue");
+    assert_eq!(snapshot.read("r3"), "Wed");
 }
 
 #[test]
@@ -84,63 +75,68 @@ fn array_of_string_when_multidim_then_correct_indexing() {
 PROGRAM main
   VAR
     grid : ARRAY[1..2, 1..2] OF STRING[5];
+    r11 : STRING[5];
+    r12 : STRING[5];
+    r21 : STRING[5];
+    r22 : STRING[5];
   END_VAR
   grid[1, 1] := 'a';
   grid[1, 2] := 'bb';
   grid[2, 1] := 'ccc';
   grid[2, 2] := 'dddd';
+  r11 := grid[1, 1];
+  r12 := grid[1, 2];
+  r21 := grid[2, 1];
+  r22 := grid[2, 2];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let base_offset = bufs.vars[0].as_i32() as usize;
-    let stride = STRING_HEADER_BYTES + 5; // 9 bytes per element
-
-    // Flat layout: [1,1]=0, [1,2]=1, [2,1]=2, [2,2]=3
-    assert_eq!(read_string(&bufs.data_region, base_offset), "a");
-    assert_eq!(read_string(&bufs.data_region, base_offset + stride), "bb");
-    assert_eq!(
-        read_string(&bufs.data_region, base_offset + 2 * stride),
-        "ccc"
-    );
-    assert_eq!(
-        read_string(&bufs.data_region, base_offset + 3 * stride),
-        "dddd"
-    );
+    assert_eq!(snapshot.read("r11"), "a");
+    assert_eq!(snapshot.read("r12"), "bb");
+    assert_eq!(snapshot.read("r21"), "ccc");
+    assert_eq!(snapshot.read("r22"), "dddd");
 }
 
 #[test]
 fn array_of_string_when_truncated_then_respects_max_length() {
+    // The copy target is longer than the element, so only the element's own
+    // length can cut the value.
     let source = "
 PROGRAM main
   VAR
     arr : ARRAY[1..2] OF STRING[3];
+    r : STRING[10];
   END_VAR
   arr[1] := 'abcdefgh';
+  r := arr[1];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    let base_offset = bufs.vars[0].as_i32() as usize;
-    // Max length is 3, so 'abcdefgh' should be truncated to 'abc'.
-    assert_eq!(read_string(&bufs.data_region, base_offset), "abc");
+    assert_eq!(snapshot.read("r"), "abc");
 }
 
 #[test]
 fn array_of_string_when_default_length_then_uses_254() {
-    let source = "
+    let source = format!(
+        "
 PROGRAM main
   VAR
     arr : ARRAY[1..2] OF STRING;
+    r1 : STRING[400];
+    r2 : STRING[400];
   END_VAR
-  arr[1] := 'hello';
+  arr[1] := '{long}';
+  arr[2] := 'hello';
+  r1 := arr[1];
+  r2 := arr[2];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+        long = "a".repeat(300),
+    );
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
 
-    let base_offset = bufs.vars[0].as_i32() as usize;
-    let stride = STRING_HEADER_BYTES + 254; // default max length
-
-    assert_eq!(read_string(&bufs.data_region, base_offset), "hello");
-    assert_eq!(read_string(&bufs.data_region, base_offset + stride), "");
+    assert_eq!(snapshot.read("r1"), "a".repeat(254));
+    assert_eq!(snapshot.read("r2"), "hello");
 }

@@ -41,9 +41,9 @@ fn unpatched_targeting<'a>(bytecode: &'a [u8], targets: &[usize]) -> UnpatchedCo
 /// un-patched bytes, then the emitter's own jump patching against the new
 /// positions. Returns the bytes that would be stored in the container.
 fn optimize_and_patch(emitter: &mut Emitter, constants: &mut Vec<PoolConstant>) -> Vec<u8> {
-    let (optimized, offset_map) = optimize(emitter.unpatched_code(), constants);
+    let (optimized, offset_map) = optimize(emitter.unpatched_code().unwrap(), constants);
     emitter.apply_optimized(optimized, &offset_map);
-    emitter.bytecode().to_vec()
+    emitter.bytecode().unwrap().to_vec()
 }
 
 fn line_entry(bytecode_offset: u16, source_line: u16) -> EmittedLineMapEntry {

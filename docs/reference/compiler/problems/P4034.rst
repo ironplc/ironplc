@@ -31,6 +31,10 @@ A string literal is typed by its quotes: ``'abc'`` is a ``STRING`` and
 ``"abc"`` a ``WSTRING``. So ``wide = 'abc'`` mixes the two types the same way
 ``wide = narrow`` does, and is the same error; write ``wide = "abc"``.
 
+An element of a ``STRING`` array and a ``STRING`` field of a structure hold a
+``STRING`` just as a ``STRING`` variable does. Storing a ``WSTRING`` into one,
+as in ``names[1] := wide`` or ``names[1] := "abc"``, is the same error.
+
 To fix this error, use variables of the same string type on both sides:
 
 .. code-block::

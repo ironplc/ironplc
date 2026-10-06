@@ -18,7 +18,6 @@ END_PROGRAM
     &[("x", 42)],
 );
 
-// val=0, refs=1, result=2
 e2e_i32_with!(
     end_to_end_when_array_of_ref_to_store_ref_then_roundtrips,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),

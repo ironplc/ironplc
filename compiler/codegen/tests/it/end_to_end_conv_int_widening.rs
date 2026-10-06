@@ -3,7 +3,7 @@
 use ironplc_parser::options::CompilerOptions;
 use rstest::rstest;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 /// <SRC>_TO_<TGT> widening/reinterpret conversions read from a 32-bit slot.
 #[rstest]
@@ -29,8 +29,8 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), expected);
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i32>("y"), expected);
 }
 
 /// <SRC>_TO_<TGT> widening conversions read from a 64-bit slot.
@@ -55,6 +55,6 @@ PROGRAM main
 END_PROGRAM
 "
     );
-    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i64(), expected);
+    let snapshot = Snapshot::run(&source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i64>("y"), expected);
 }

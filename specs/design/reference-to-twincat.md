@@ -21,7 +21,7 @@ The reference **backend is reused wholesale**: references are type-erased to
 `u64` variable-table indices, codegen emits `LOAD_INDIRECT`/`STORE_INDIRECT`,
 and the VM traps on null (V4004). None of that depends on the surface keyword,
 so `REFERENCE TO` maps onto the existing AST
-(`ReferenceDeclaration`, `ReferenceInitializer`, `IntermediateType::Reference`,
+(`ReferenceDeclaration`, `ReferenceInitializer`, `SemanticType::Reference`,
 `ExprKind::{Ref, Deref, Null}`) and needs **no new backend**.
 
 This document supersedes
@@ -152,7 +152,7 @@ element `Some(RefSyntax::ReferenceTo)`.
 ### Type resolution & checking (analyzer)
 
 **REQ-RTO-analyzer-300** `REFERENCE TO T` resolves to
-`IntermediateType::Reference`, reusing the `REF_TO` resolution path.
+`SemanticType::Reference`, reusing the `REF_TO` resolution path.
 
 **REQ-RTO-analyzer-301** Binding a `REFERENCE TO` variable to a mismatched
 target type is rejected (P2032), reusing the `REF_TO` type-compatibility rule.

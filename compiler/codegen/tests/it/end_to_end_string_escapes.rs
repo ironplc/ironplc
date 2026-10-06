@@ -4,7 +4,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, read_string, string_offset};
+use crate::common::Snapshot;
 
 e2e_i32!(
     end_to_end_when_len_of_escaped_literal_then_counts_decoded_characters,
@@ -60,11 +60,8 @@ PROGRAM main
   s := '$41$$';
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(read_string(&bufs.data_region, string_offset(&[])), "A$");
-    assert_eq!(
-        read_string(&bufs.data_region, string_offset(&[254])),
-        "it's $5"
-    );
+    assert_eq!(snapshot.read("s"), "A$");
+    assert_eq!(snapshot.read("t"), "it's $5");
 }

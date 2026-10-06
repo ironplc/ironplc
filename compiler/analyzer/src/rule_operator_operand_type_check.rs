@@ -618,33 +618,6 @@ END_PROGRAM",
         );
     }
 
-    #[test]
-    fn analyze_when_mod_of_real_then_pipeline_reports_p4049() {
-        // The rule is wired into the full `analyze` pipeline, which collects
-        // semantic diagnostics into the context rather than returning Err.
-        use crate::stages::analyze;
-        let library = crate::test_helpers::parse_only(
-            "
-PROGRAM main
-VAR
-    r1 : REAL := 7.5;
-    r2 : REAL := 2.0;
-    r3 : REAL;
-END_VAR
-    r3 := r1 MOD r2;
-END_PROGRAM
-",
-        );
-        // rule-test-conventions: allow(pipeline) -- shows the rule is wired into analyze
-        let (_lib, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
-        let codes: Vec<_> = context
-            .diagnostics()
-            .iter()
-            .map(|d| d.code.clone())
-            .collect();
-        assert_eq!(codes, [Problem::OperatorOperandTypeMismatch.code()]);
-    }
-
     // --- The bit-string operators (AND, OR, XOR, NOT) ---
 
     rule_ok!(

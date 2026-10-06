@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
-use ironplc_analyzer::intermediate_type::IntermediateType;
+use ironplc_analyzer::semantic_type::SemanticType;
 use ironplc_container::{SlotIndex, VarIndex};
 use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit};
 
@@ -29,10 +29,14 @@ use crate::emit::Emitter;
 fn emit_default_for_field(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    field_type: &IntermediateType,
+    field_type: &SemanticType,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
-    if let IntermediateType::Subrange { min_value, .. } = field_type {
+    if let Some(ordinal) = crate::compile_enum::field_default_ordinal(field_type) {
+        // An enumeration field starts at the enumeration's default.
+        let pool_index = ctx.add_i32_constant(ordinal);
+        emitter.emit_load_const_i32(pool_index);
+    } else if let SemanticType::Subrange { min_value, .. } = field_type {
         match op_type.0 {
             OpWidth::W32 => {
                 let pool_index = ctx.add_i32_constant(*min_value as i32);
@@ -57,16 +61,14 @@ fn emit_default_for_field(
 /// Handles constant expressions (integer/real/boolean literals) and
 /// enumerated values from `StructInitialValueAssignmentKind`.
 ///
-/// Note the `Array`/`Structure` arm returns `Ok(())` without pushing a value.
-/// For a well-typed program that arm is unreachable -- `op_type` is `None` for
-/// a struct- or array-typed field, so those go through the recursion in
-/// `initialize_struct_fields` instead. It is reached only when the initializer
-/// does not match the field's type, where pushing nothing leaves the caller's
-/// unconditional store unbalanced.
+/// An `Array` or `Structure` initializer is an internal error here: `op_type`
+/// is `None` for a struct- or array-typed field, so those go through the
+/// recursion in `initialize_struct_fields` and never reach this function.
 fn compile_struct_field_init(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     init: &StructInitialValueAssignmentKind,
+    field_type: &SemanticType,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     match init {
@@ -74,19 +76,15 @@ fn compile_struct_field_init(
             compile_constant(emitter, ctx, constant, op_type)
         }
         StructInitialValueAssignmentKind::EnumeratedValue(ev) => {
-            // REQ-EN-codegen-050: Resolve enum value to ordinal and push as i32 constant.
-            let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?;
+            // REQ-EN-codegen-050: Resolve enum value to ordinal, as a member
+            // of the field's type, and push as i32 constant.
+            let ordinal = crate::compile_enum::ordinal_in(field_type.enumeration_members(), ev)?;
             let pool_index = ctx.add_i32_constant(ordinal);
             emitter.emit_load_const_i32(pool_index);
             Ok(())
         }
         StructInitialValueAssignmentKind::Array(_)
-        | StructInitialValueAssignmentKind::Structure(_) => {
-            // Unreachable for a well-typed program: see the note on this
-            // function. Nested structures are handled by the recursion in
-            // `initialize_struct_fields`, not here.
-            Ok(())
-        }
+        | StructInitialValueAssignmentKind::Structure(_) => Err(Diagnostic::internal_error()),
         StructInitialValueAssignmentKind::Expression(expr) => {
             // A general (possibly non-constant) expression, e.g.
             // `pDevice^.Delta` -- `ironplcc check` fully supports this;
@@ -116,7 +114,7 @@ fn compile_struct_field_init(
 pub(crate) struct FieldInitInfo {
     pub name: String,
     pub slot_offset: SlotIndex,
-    pub field_type: IntermediateType,
+    pub field_type: SemanticType,
     pub op_type: Option<OpType>,
     /// For STRING fields, the maximum character length. `None` for non-STRING fields.
     pub string_max_length: Option<u16>,
@@ -245,7 +243,13 @@ pub(crate) fn initialize_struct_fields(
             // Leaf field (primitive/enum)
             if let Some(init_value) = init_map.get(&field_info.name) {
                 // Emit explicit initial value
-                compile_struct_field_init(emitter, ctx, init_value, op_type)?;
+                compile_struct_field_init(
+                    emitter,
+                    ctx,
+                    init_value,
+                    &field_info.field_type,
+                    op_type,
+                )?;
             } else {
                 // Emit type-appropriate default value
                 emit_default_for_field(emitter, ctx, &field_info.field_type, op_type)?;
@@ -258,7 +262,7 @@ pub(crate) fn initialize_struct_fields(
             let idx_const = ctx.add_i32_constant(slot_idx.raw() as i32);
             emitter.emit_load_const_i32(idx_const);
             emitter.emit_store_array(var_index, desc_index);
-        } else if let IntermediateType::Structure { fields } = &field_info.field_type {
+        } else if let SemanticType::Structure { fields } = &field_info.field_type {
             // Nested structure field — recursively initialize inner fields.
             // Extract nested initializers from the init map for this field.
             let nested_inits: Vec<StructureElementInit> =
@@ -294,18 +298,18 @@ pub(crate) fn initialize_struct_fields(
                 &nested_inits,
                 span,
             )?;
-        } else if let IntermediateType::String { char_width, .. } = &field_info.field_type {
+        } else if let SemanticType::String { char_width, .. } = &field_info.field_type {
             // STRING field — initialize the header in the data region.
             if let Some(max_length) = field_info.string_max_length {
                 let byte_offset = struct_data_offset + slot_idx.raw() * 8;
                 emitter.emit_str_init(byte_offset, max_length, *char_width);
             }
-        } else if let IntermediateType::Array {
+        } else if let SemanticType::Array {
             element_type,
             dimensions: array_dims,
         } = &field_info.field_type
         {
-            if let IntermediateType::String {
+            if let SemanticType::String {
                 max_len,
                 char_width,
             } = element_type.as_ref()

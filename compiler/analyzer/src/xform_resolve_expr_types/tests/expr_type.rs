@@ -1,8 +1,8 @@
 //! Tests for `Expr::expr_type`, the type of an expression's value by
 //! identity.
 
-use crate::intermediate_type::IntermediateType;
 use crate::semantic_context::SemanticContext;
+use crate::semantic_type::SemanticType;
 use crate::test_helpers::parse_and_resolve_types_with_options;
 use ironplc_dsl::common::{GenericTypeName, Library, TypeName};
 use ironplc_dsl::textual::{Assignment, ExprType};
@@ -89,7 +89,7 @@ fn apply_when_whole_anonymous_array_then_anonymous_array_type() {
     assert_eq!(context.types().name_of(id), None);
     assert!(matches!(
         context.types().get_by_id(id).unwrap().representation,
-        IntermediateType::Array { .. }
+        SemanticType::Array { .. }
     ));
 }
 
@@ -146,7 +146,7 @@ fn apply_when_ref_then_same_reference_type_as_declared_reference() {
     assert_eq!(types.referenced_type(id), Some(dint));
     assert!(matches!(
         types.get_by_id(id).unwrap().representation,
-        IntermediateType::Reference { .. }
+        SemanticType::Reference { .. }
     ));
 }
 

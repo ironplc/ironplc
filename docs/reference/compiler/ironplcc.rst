@@ -55,10 +55,32 @@ Build Commands
 Diagnostic Commands
 -------------------
 
-:program:`ironplcc echo` [*FILES*...]
+:program:`ironplcc echo` [``--types``] [*FILES*...]
    Parse source files and write the parsed representation to standard output.
    This is primarily useful for diagnostics and understanding the internal
    structure of the parsed files.
+
+   With ``--types``, the command analyzes the files and writes the analyzed
+   program instead. A comment after each expression gives the type the
+   compiler determined for it:
+
+   .. code-block:: text
+
+      flag := ( big (* LINT *) > total (* DINT -> LINT *) ) (* BOOL *) ;
+
+   - ``(* DINT -> LINT *)`` marks an implicit conversion from the first type
+     to the second.
+   - ``CONSTANT`` marks a value the compiler knows, such as a literal:
+     ``1 (* CONSTANT INT *)``.
+   - ``?`` marks an expression whose type the compiler did not determine:
+     ``(* ? *)``, or ``(* ? ANY_INT *)`` for a literal still of a generic
+     type.
+
+   The output is still Structured Text, but it shows the program as the
+   compiler analyzed it rather than as written. Declarations appear in
+   dependency order, named arguments become positional, and the compiler
+   folds constant expressions. The output contains only the declarations from
+   your files, not those of an activated compatibility library.
 
 :program:`ironplcc tokenize` [*FILES*...]
    Tokenize source files and verify that all content matches a token.
@@ -104,7 +126,7 @@ Options
    Activate a :doc:`compatibility library </reference/compatibility-libraries/index>`
    by name (for example ``--library Tc2_System``). Repeat the option to
    activate several libraries. Applies to the ``check`` and ``compile``
-   commands. Libraries referenced by a discovered project file are
+   commands, and to ``echo`` with ``--types``. Libraries referenced by a discovered project file are
    activated automatically and do not need this option.
 
 ``--allow-c-style-comments``
@@ -364,13 +386,19 @@ Examples
 
       ironplcc echo main.st
 
-6. Check a source file using IEC 61131-3:2013 (Edition 3) features:
+6. Inspect the type the compiler determined for each expression:
+
+   .. code-block:: shell
+
+      ironplcc echo --types main.st
+
+7. Check a source file using IEC 61131-3:2013 (Edition 3) features:
 
    .. code-block:: shell
 
       ironplcc check --dialect iec61131-3-ed3 main.st
 
-7. Show available dialects and their features:
+8. Show available dialects and their features:
 
    .. code-block:: shell
 

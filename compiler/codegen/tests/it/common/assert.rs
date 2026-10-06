@@ -27,11 +27,11 @@ fn check_each<T: FromValue>(
 /// matches the variable `name` read as `T` after one scan.
 ///
 /// This is the workhorse helper for the `end_to_end_*.rs` tests: it collapses
-/// the recurring 3-line scaffold (`let source ...; let (_c, bufs) =
-/// parse_and_run(...); assert_eq!(...)`) into a single call so that each
-/// `#[test] fn` becomes one statement. Floating-point values use exact bit
-/// equality, so tests must choose inputs that produce deterministic results;
-/// use [`assert_run_near`] otherwise.
+/// the recurring scaffold (run the source, then read and compare each
+/// variable) into a single call so that each `#[test] fn` becomes one
+/// statement. Floating-point values use exact bit equality, so tests must
+/// choose inputs that produce deterministic results; use [`assert_run_near`]
+/// otherwise.
 ///
 /// Name `T` explicitly (`assert_run_with::<f32>`): an unsuffixed float
 /// literal in `asserts` would otherwise default to `f64`.
@@ -77,6 +77,18 @@ macro_rules! e2e {
         #[test]
         fn $name() {
             $crate::common::assert_run($source, $asserts);
+        }
+    };
+}
+
+/// Like [`e2e`] but takes a [`CompilerOptions`] expression, the way
+/// [`e2e_i32_with`] does for [`e2e_i32`].
+macro_rules! e2e_with {
+    ($(#[$meta:meta])* $name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run_with($source, &$opts, $asserts);
         }
     };
 }

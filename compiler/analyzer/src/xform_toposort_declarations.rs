@@ -82,7 +82,7 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
         match element {
             LibraryElementKind::DataTypeDeclaration(decl) => {
                 types_by_name
-                    .entry(data_type_name(&decl))
+                    .entry(decl.type_name().name.clone())
                     .or_default()
                     .push(decl);
             }
@@ -143,21 +143,6 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
     );
 
     Ok((Library { elements }, reachable))
-}
-
-/// The declared name of a data type declaration.
-fn data_type_name(decl: &DataTypeDeclarationKind) -> Id {
-    match decl {
-        DataTypeDeclarationKind::Enumeration(d) => d.type_name.name.clone(),
-        DataTypeDeclarationKind::Subrange(d) => d.type_name.name.clone(),
-        DataTypeDeclarationKind::Simple(d) => d.type_name.name.clone(),
-        DataTypeDeclarationKind::Array(d) => d.type_name.name.clone(),
-        DataTypeDeclarationKind::Structure(d) => d.type_name.name.clone(),
-        DataTypeDeclarationKind::StructureInitialization(d) => d.type_name.name.clone(),
-        DataTypeDeclarationKind::String(d) => d.type_name.name.clone(),
-        DataTypeDeclarationKind::Reference(d) => d.type_name.name.clone(),
-        DataTypeDeclarationKind::LateBound(d) => d.data_type_name.name.clone(),
-    }
 }
 
 struct DeclarationsGraph {

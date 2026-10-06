@@ -6,13 +6,13 @@
 //! every program here is also run through the full analysis first: a program
 //! the checker refuses must not pass an end-to-end test.
 
-use crate::common::{parse_and_run, try_parse_and_compile, VmBuffers};
+use crate::common::{try_parse_and_compile, Snapshot};
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_parser::parse_program;
 
 /// Asserts the full semantic analysis accepts `source`, then runs one scan.
-fn check_and_run(source: &str, options: &CompilerOptions) -> VmBuffers {
+fn check_and_run(source: &str, options: &CompilerOptions) -> Snapshot {
     let library = parse_program(source, &FileId::default(), options).unwrap();
     let (_, context) = ironplc_analyzer::stages::analyze(&[&library], options).unwrap();
     assert!(
@@ -20,18 +20,21 @@ fn check_and_run(source: &str, options: &CompilerOptions) -> VmBuffers {
         "check refused the program: {:?}",
         context.diagnostics()
     );
-    let (_container, bufs) = parse_and_run(source, options);
-    bufs
+    Snapshot::run(source, options)
 }
 
-fn assert_i32(source: &str, asserts: &[(usize, i32)]) {
+fn assert_i32(source: &str, asserts: &[(&str, i32)]) {
     assert_i32_with(source, &CompilerOptions::default(), asserts);
 }
 
-fn assert_i32_with(source: &str, options: &CompilerOptions, asserts: &[(usize, i32)]) {
-    let bufs = check_and_run(source, options);
-    for (idx, expected) in asserts {
-        assert_eq!(bufs.vars[*idx].as_i32(), *expected, "vars[{idx}] mismatch");
+fn assert_i32_with(source: &str, options: &CompilerOptions, asserts: &[(&str, i32)]) {
+    let snapshot = check_and_run(source, options);
+    for (name, expected) in asserts {
+        assert_eq!(
+            snapshot.read_as::<i32>(name),
+            *expected,
+            "`{name}` mismatch"
+        );
     }
 }
 
@@ -48,7 +51,7 @@ PROGRAM main
 VAR x : DINT := 5; result : DINT; END_VAR
     result := ADD_TEN(data := x);
 END_PROGRAM",
-        &[(0, 15), (1, 15)],
+        &[("x", 15), ("result", 15)],
     );
 }
 
@@ -67,7 +70,7 @@ PROGRAM main
 VAR x : DINT := 100; result : DINT; END_VAR
     result := ADD_N(n := 42, data := x);
 END_PROGRAM",
-        &[(0, 142), (1, 142)],
+        &[("x", 142), ("result", 142)],
     );
 }
 
@@ -85,7 +88,7 @@ PROGRAM main
 VAR total : INT := 7; result : INT; END_VAR
     result := SCALE(total, 3);
 END_PROGRAM",
-        &[(0, 21), (1, 21)],
+        &[("total", 21), ("result", 21)],
     );
 }
 
@@ -102,7 +105,7 @@ PROGRAM main
 VAR x : INT := 32767; ok : BOOL; END_VAR
     ok := BUMP(x);
 END_PROGRAM",
-        &[(0, -32768), (1, 1)],
+        &[("x", -32768), ("ok", 1)],
     );
 }
 
@@ -119,13 +122,13 @@ PROGRAM main
 VAR f : BOOL := FALSE; result : BOOL; END_VAR
     result := TOGGLE(f);
 END_PROGRAM",
-        &[(0, 1), (1, 1)],
+        &[("f", 1), ("result", 1)],
     );
 }
 
 #[test]
 fn end_to_end_when_in_out_real_then_caller_variable_updated() {
-    let bufs = check_and_run(
+    let snapshot = check_and_run(
         "
 FUNCTION DOUBLE : BOOL
 VAR_IN_OUT r : REAL; END_VAR
@@ -138,7 +141,7 @@ VAR x : REAL := 1.5; ok : BOOL; END_VAR
 END_PROGRAM",
         &CompilerOptions::default(),
     );
-    assert_eq!(bufs.vars[0].as_f32(), 3.0);
+    assert_eq!(snapshot.read_as::<f32>("x"), 3.0);
 }
 
 #[test]
@@ -157,7 +160,7 @@ PROGRAM main
 VAR x : DINT := 1; y : DINT := 2; ok : BOOL; END_VAR
     ok := SWAP(x, y);
 END_PROGRAM",
-        &[(0, 2), (1, 1)],
+        &[("x", 2), ("y", 1)],
     );
 }
 
@@ -177,7 +180,7 @@ PROGRAM main
 VAR x : DINT := 0; result : DINT; END_VAR
     result := BOTH(x, x);
 END_PROGRAM",
-        &[(0, 11), (1, 11)],
+        &[("x", 11), ("result", 11)],
     );
 }
 
@@ -203,7 +206,7 @@ PROGRAM main
 VAR x : DINT := 40; result : DINT; END_VAR
     result := OUTER(x);
 END_PROGRAM",
-        &[(0, 42), (1, 42)],
+        &[("x", 42), ("result", 42)],
     );
 }
 
@@ -229,7 +232,7 @@ PROGRAM main
 VAR result : DINT; END_VAR
     result := OUTER(5);
 END_PROGRAM",
-        &[(0, 15)],
+        &[("result", 15)],
     );
 }
 
@@ -251,7 +254,7 @@ PROGRAM main
 VAR x : DINT := 21; result : DINT; END_VAR
     result := APPLY(x);
 END_PROGRAM",
-        &[(0, 42), (1, 42)],
+        &[("x", 42), ("result", 42)],
     );
 }
 
@@ -273,7 +276,7 @@ PROGRAM main
 VAR x : DINT := 10; result : DINT; END_VAR
     result := CLAMP_COUNT(x);
 END_PROGRAM",
-        &[(0, 12), (1, 12)],
+        &[("x", 12), ("result", 12)],
     );
 }
 
@@ -300,7 +303,7 @@ VAR result : DINT; c : COUNTER; END_VAR
     c();
     result := c.q;
 END_PROGRAM",
-        &[(0, 2)],
+        &[("result", 2)],
     );
 }
 
@@ -321,7 +324,7 @@ VAR x : DINT := 1; ok : BOOL; END_VAR
     ok := SET_VIA_REF(x);
 END_PROGRAM",
         &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-        &[(0, 99)],
+        &[("x", 99)],
     );
 }
 

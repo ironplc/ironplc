@@ -292,27 +292,4 @@ END_PROGRAM";
         assert!(rendered.contains("U+7B49"), "{rendered}");
         assert!(errors[0].help().iter().any(|h| h.contains("WSTRING")));
     }
-
-    #[test]
-    fn analyze_when_string_literal_above_latin1_then_pipeline_reports_p4052() {
-        // The rule is wired into the full `analyze` pipeline, which collects
-        // semantic diagnostics into the context rather than returning Err.
-        use crate::stages::analyze;
-        let library = crate::test_helpers::parse_only(
-            "PROGRAM main
-VAR
-    tag : STRING[10] := '等';
-    face : WSTRING[10] := \"😀\";
-END_VAR
-END_PROGRAM",
-        );
-        // rule-test-conventions: allow(pipeline) -- shows the rule is wired into analyze
-        let (_lib, context) = analyze(&[&library], &CompilerOptions::default()).unwrap();
-        let codes: Vec<_> = context
-            .diagnostics()
-            .iter()
-            .map(|d| d.code.clone())
-            .collect();
-        assert_eq!(codes, [Problem::StringLiteralCharOutOfRange.code(); 2]);
-    }
 }

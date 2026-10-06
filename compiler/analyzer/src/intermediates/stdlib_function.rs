@@ -16,15 +16,15 @@ use ironplc_dsl::common::TypeName;
 use ironplc_dsl::core::Id;
 
 use crate::function_environment::FunctionSignature;
-use crate::intermediate_type::IntermediateFunctionParameter;
 use crate::intermediates::operator_function_form;
 use crate::intermediates::stdlib_conversion_function;
 use crate::intermediates::stdlib_time_function;
 use crate::intrinsic::{BitShift, Intrinsic, NumericFunction, StringFunction};
+use crate::semantic_type::SemanticFunctionParameter;
 
 /// Helper to create an input parameter.
-pub(super) fn input_param(name: &str, param_type_name: &str) -> IntermediateFunctionParameter {
-    IntermediateFunctionParameter {
+pub(super) fn input_param(name: &str, param_type_name: &str) -> SemanticFunctionParameter {
+    SemanticFunctionParameter {
         name: Id::from(name),
         param_type: TypeName::from(param_type_name),
         is_input: true,

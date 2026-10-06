@@ -51,7 +51,7 @@ fn analyze_codes(program: &str, options: &CompilerOptions) -> Vec<String> {
 /// REQ-RTO-analyzer-300: `REFERENCE TO T` resolves to a reference type — a
 /// `REFERENCE TO` variable can be bound and dereferenced without any
 /// "deref requires a reference type" (P2031) diagnostic, proving it resolved to
-/// `IntermediateType::Reference` (the same path `REF_TO` uses).
+/// `SemanticType::Reference` (the same path `REF_TO` uses).
 #[spec_test(REQ_RTO_analyzer_300)]
 fn analyzer_spec_req_rto_300_reference_to_resolves_to_reference_type() {
     let source = "PROGRAM Main

@@ -59,7 +59,7 @@ pub fn elementary_debug_tag(id: TypeId) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intermediate_type::IntermediateType;
+    use crate::semantic_type::SemanticType;
     use crate::type_attributes::TypeAttributes;
     use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
     use ironplc_dsl::common::TypeName;
@@ -167,7 +167,7 @@ mod tests {
             &name,
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::Structure { fields: vec![] },
+                SemanticType::Structure { fields: vec![] },
             ),
         );
 
@@ -178,7 +178,7 @@ mod tests {
         assert_eq!(env.name_of(id), Some(&name));
         assert_eq!(
             env.get_by_id(id).unwrap().representation,
-            IntermediateType::Structure { fields: vec![] }
+            SemanticType::Structure { fields: vec![] }
         );
     }
 

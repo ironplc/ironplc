@@ -12,5 +12,8 @@ fn main() {
         "partial-access-bit-syntax.md",
         // Character string literals (`REQ-SL-plc2plc-*`): escaped rendering.
         "string-literals.md",
+        // Inspecting the expression type annotation (`REQ-ETR-plc2plc-*`):
+        // the annotated rendering.
+        "expression-type-resolution.md",
     ]);
 }

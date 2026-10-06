@@ -274,6 +274,16 @@ END_CONFIGURATION"
     verbatim,
     opts_with_fb_inheritance
 )]
+#[case::interface_method_prototype(
+    "INTERFACE I METHOD M·:·BOOL VAR_INPUT x·:·INT;·END_VAR END_METHOD END_INTERFACE",
+    verbatim,
+    opts_with_fb_inheritance
+)]
+#[case::interface_property_prototype(
+    "INTERFACE I PROPERTY P·:·INT GET END_GET SET END_SET END_PROPERTY END_INTERFACE",
+    verbatim,
+    opts_with_fb_inheritance
+)]
 // ---------------------------------------------------------------------
 // Gaps issue #1437 reported as rejected. Each row is a spelling that
 // returned P0002 before the grammar was widened.

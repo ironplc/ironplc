@@ -10,7 +10,7 @@ fn compile_when_and_expression_then_produces_bool_and_bytecode() {
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 10;
   y := x > 0 AND x < 10;
@@ -55,7 +55,7 @@ fn compile_when_or_expression_then_produces_bool_or_bytecode() {
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 10;
   y := x > 0 OR x < 10;
@@ -91,7 +91,7 @@ fn compile_when_xor_expression_then_produces_bool_xor_bytecode() {
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 10;
   y := x > 0 XOR x < 10;
@@ -165,7 +165,7 @@ fn compile_when_and_then_expression_then_branches_past_right_operand() {
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 10;
   y := x > 0 AND_THEN x < 10;
@@ -209,7 +209,7 @@ fn compile_when_or_else_expression_then_branches_past_right_operand() {
 PROGRAM main
   VAR
     x : DINT;
-    y : DINT;
+    y : BOOL;
   END_VAR
   x := 10;
   y := x > 0 OR_ELSE x < 10;
@@ -287,7 +287,7 @@ fn compile_when_true_literal_then_produces_load_true() {
     let source = "
 PROGRAM main
   VAR
-    y : DINT;
+    y : BOOL;
   END_VAR
   y := TRUE;
 END_PROGRAM
@@ -315,7 +315,7 @@ fn compile_when_false_literal_then_produces_load_false() {
     let source = "
 PROGRAM main
   VAR
-    y : DINT;
+    y : BOOL;
   END_VAR
   y := FALSE;
 END_PROGRAM

@@ -1,4 +1,4 @@
-use crate::{intermediate_type::IntermediateType, type_environment::TypeAttributes};
+use crate::{semantic_type::SemanticType, type_environment::TypeAttributes};
 
 use ironplc_container::CharWidth;
 use ironplc_dsl::common::{StringDeclaration, StringInitializer, StringType};
@@ -17,7 +17,7 @@ pub fn from(initializer: &StringInitializer) -> TypeAttributes {
     // String type with specific length: MY_STRING : STRING[10];
     TypeAttributes::new(
         initializer.span(),
-        IntermediateType::String {
+        SemanticType::String {
             max_len: initializer
                 .length
                 .as_ref()
@@ -30,7 +30,7 @@ pub fn from(initializer: &StringInitializer) -> TypeAttributes {
 pub fn from_decl(decl: &StringDeclaration) -> TypeAttributes {
     TypeAttributes::new(
         decl.type_name.span(),
-        IntermediateType::String {
+        SemanticType::String {
             max_len: decl.length.as_integer().map(|i| i.value),
             char_width: char_width_for(&decl.width),
         },
@@ -44,7 +44,7 @@ mod tests {
     use ironplc_parser::options::CompilerOptions;
 
     use crate::{
-        intermediate_type::IntermediateType, type_environment::TypeEnvironmentBuilder,
+        semantic_type::SemanticType, type_environment::TypeEnvironmentBuilder,
         xform_resolve_type_decl_environment::apply,
     };
 
@@ -67,7 +67,7 @@ END_TYPE
         let my_str_type = env.get(&TypeName::from("MY_STR")).unwrap();
         assert!(matches!(
             &my_str_type.representation,
-            IntermediateType::String {
+            SemanticType::String {
                 max_len: None,
                 char_width: CharWidth::Narrow,
             }
@@ -93,7 +93,7 @@ END_TYPE
         let my_wstr_type = env.get(&TypeName::from("MY_WSTR")).unwrap();
         assert!(matches!(
             &my_wstr_type.representation,
-            IntermediateType::String {
+            SemanticType::String {
                 max_len: Some(100),
                 char_width: CharWidth::Wide,
             }
@@ -120,7 +120,7 @@ END_TYPE
         let my_string_type = env.get(&TypeName::from("MY_STRING")).unwrap();
         assert!(matches!(
             &my_string_type.representation,
-            IntermediateType::String {
+            SemanticType::String {
                 max_len: Some(50),
                 char_width: CharWidth::Narrow,
             }

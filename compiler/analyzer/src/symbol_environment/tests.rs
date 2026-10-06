@@ -211,8 +211,7 @@ fn insert_when_global_shares_enumeration_value_name_then_both_kept() {
     let colors = TypeName::from("Colors");
     env.insert_enumeration_value(&Id::from("Red"), &colors);
     global(&mut env, "Red", SymbolKind::Variable).unwrap();
-    env.duplicate_enumeration_values_for_alias(&colors, &TypeName::from("Paint"))
-        .unwrap();
+    env.insert_enumeration_alias(&TypeName::from("Paint"), &colors);
 
     let global = env.find(&Id::from("Red"), &ScopeKind::Global).unwrap();
     assert_eq!(global.kind, SymbolKind::Variable);
@@ -230,42 +229,6 @@ fn get_enumeration_values_for_type_when_no_matching_values_then_returns_empty() 
 
     let values = env.get_enumeration_values_for_type(&TypeName::from("COLOR"));
     assert!(values.is_empty());
-}
-
-#[test]
-fn get_structure_fields_for_type_when_fields_in_global_and_scoped_then_returns_matching_only() {
-    let mut env = SymbolEnvironment::new();
-    let struct_type = TypeName::from("POINT");
-    let other_type = TypeName::from("LINE");
-
-    // Global structure field of the requested type.
-    env.insert_structure_field(&Id::from("X"), &struct_type, &ScopeKind::Global)
-        .unwrap();
-    // Scoped structure field of the requested type.
-    let scope = ScopeKind::Named(Id::from("FB").into());
-    env.insert_structure_field(&Id::from("Y"), &struct_type, &scope)
-        .unwrap();
-    // Structure field of a different type (should be excluded).
-    env.insert_structure_field(&Id::from("START"), &other_type, &ScopeKind::Global)
-        .unwrap();
-    // Non-structure symbol whose struct_type is None (should be excluded).
-    env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
-        .unwrap();
-
-    let fields = env.get_structure_fields_for_type(&struct_type);
-    assert_eq!(fields.len(), 2);
-    assert!(fields.iter().any(|id| **id == Id::from("X")));
-    assert!(fields.iter().any(|id| **id == Id::from("Y")));
-}
-
-#[test]
-fn get_structure_fields_for_type_when_no_matching_fields_then_returns_empty() {
-    let mut env = SymbolEnvironment::new();
-    env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
-        .unwrap();
-
-    let fields = env.get_structure_fields_for_type(&TypeName::from("POINT"));
-    assert!(fields.is_empty());
 }
 
 #[test]

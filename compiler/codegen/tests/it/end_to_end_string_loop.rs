@@ -13,7 +13,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, read_string, string_offset};
+use crate::common::Snapshot;
 
 // --- The reported reproducer ---
 
@@ -100,12 +100,9 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(
-        read_string(&bufs.data_region, string_offset(&[])),
-        "........"
-    );
+    assert_eq!(snapshot.read("t"), "........");
 }
 
 /// A nested loop drives the body 20 times through two loop levels, with a
@@ -124,9 +121,9 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(read_string(&bufs.data_region, string_offset(&[])), "abcdz");
+    assert_eq!(snapshot.read("t"), "abcdz");
 }
 
 // --- A string-returning function called in a loop ---
@@ -148,9 +145,9 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(read_string(&bufs.data_region, string_offset(&[])), "hi!");
+    assert_eq!(snapshot.read("t"), "hi!");
 }
 
 // --- A string array element written in a loop ---
@@ -172,13 +169,10 @@ PROGRAM main
   t := names[2];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
     // The array occupies the data region first; `t` follows its 3 elements.
-    assert_eq!(
-        read_string(&bufs.data_region, string_offset(&[16, 16, 16])),
-        "idx"
-    );
+    assert_eq!(snapshot.read("t"), "idx");
 }
 
 // --- String operations in a loop's condition ---
@@ -216,9 +210,9 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(read_string(&bufs.data_region, string_offset(&[])), "42");
+    assert_eq!(snapshot.read("t"), "42");
 }
 
 // --- The scan cycle is a loop too ---
@@ -284,11 +278,11 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
     // Each iteration replaces the first character with X, inserts Y before
     // it, then deletes that Y again, so the string settles after the first.
-    assert_eq!(read_string(&bufs.data_region, string_offset(&[])), "Ybcdef");
+    assert_eq!(snapshot.read("t"), "Ybcdef");
 }
 
 /// A nested string expression inside a loop. Nesting spills each inner
@@ -305,9 +299,9 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(read_string(&bufs.data_region, string_offset(&[32])), "qaqb");
+    assert_eq!(snapshot.read("t"), "qaqb");
 }
 
 /// Reading a string array element in a loop. The test above writes one;
@@ -323,13 +317,9 @@ PROGRAM main
   END_FOR;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    // `t` follows the array's three elements in the data region.
-    assert_eq!(
-        read_string(&bufs.data_region, string_offset(&[16, 16, 16])),
-        "aa"
-    );
+    assert_eq!(snapshot.read("t"), "aa");
 }
 
 /// A structure's STRING field assigned in a loop, which reaches the pool
@@ -340,13 +330,14 @@ fn end_to_end_when_struct_string_field_assigned_in_loop_then_runs_every_iteratio
 TYPE Rec : STRUCT name : STRING[16]; END_STRUCT; END_TYPE
 
 PROGRAM main
-  VAR r : Rec; i : INT; END_VAR
+  VAR r : Rec; i : INT; name : STRING[16]; END_VAR
   FOR i := 1 TO 50 DO
     r.name := CONCAT('id', 'x');
   END_FOR;
+  name := r.name;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
 
-    assert_eq!(read_string(&bufs.data_region, string_offset(&[])), "idx");
+    assert_eq!(snapshot.read("name"), "idx");
 }

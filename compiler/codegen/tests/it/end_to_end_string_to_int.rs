@@ -18,7 +18,7 @@ use ironplc_vm::error::Trap;
 use ironplc_vm::StringPreview;
 use rstest::rstest;
 
-use crate::common::{parse_and_run, parse_and_try_run};
+use crate::common::{parse_and_try_run, Snapshot};
 
 /// A program converting the STRING `input` to `x : <type_name>` (variable 1)
 /// with `STRING_TO_<type_name>`.
@@ -44,28 +44,14 @@ fn options(non_numeric: StringToNumNonNumeric, failure: StringToNumFailure) -> C
     }
 }
 
-/// Runs the conversion under the given policies and returns `x` as the
-/// value the declared type holds, read at `target`'s width and signedness:
-/// a signed type's slot is sign-extended, an unsigned type's slot holds the
-/// value's low bits.
+/// Runs the conversion under the given policies and returns `x`.
 fn convert(
     type_name: &str,
-    target: Target,
     input: &str,
     non_numeric: StringToNumNonNumeric,
     failure: StringToNumFailure,
 ) -> i128 {
-    let (_c, bufs) = parse_and_run(&program(type_name, input), &options(non_numeric, failure));
-    let slot = bufs.vars[1];
-    match target {
-        Target::I8 | Target::I16 | Target::I32 => slot.as_i32() as i128,
-        Target::U8 | Target::U16 | Target::U32 => slot.as_i32() as u32 as i128,
-        Target::I64 => slot.as_i64() as i128,
-        Target::U64 => slot.as_u64() as i128,
-        Target::F32 | Target::F64 => {
-            unreachable!("the real targets are covered in end_to_end_string_to_real")
-        }
-    }
+    Snapshot::run(&program(type_name, input), &options(non_numeric, failure)).read_as::<i128>("x")
 }
 
 /// Runs the conversion under the given non-numeric policy with the `trap`
@@ -92,26 +78,25 @@ fn not_convertible(target: Target, input: &str) -> Trap {
 // The eleven functions: the type, the block target it encodes, and its
 // bounds. The bit-string types share the unsigned target of their width.
 #[rstest]
-#[case::sint("SINT", Target::I8, -128, 127)]
-#[case::int("INT", Target::I16, -32_768, 32_767)]
-#[case::dint("DINT", Target::I32, -2_147_483_648, 2_147_483_647)]
-#[case::usint("USINT", Target::U8, 0, 255)]
-#[case::uint("UINT", Target::U16, 0, 65_535)]
-#[case::byte("BYTE", Target::U8, 0, 255)]
-#[case::word("WORD", Target::U16, 0, 65_535)]
-#[case::dword("DWORD", Target::U32, 0, 4_294_967_295)]
-#[case::lint("LINT", Target::I64, -9_223_372_036_854_775_808, 9_223_372_036_854_775_807)]
-#[case::ulint("ULINT", Target::U64, 0, 18_446_744_073_709_551_615)]
-#[case::lword("LWORD", Target::U64, 0, 18_446_744_073_709_551_615)]
+#[case::sint("SINT", -128, 127)]
+#[case::int("INT", -32_768, 32_767)]
+#[case::dint("DINT", -2_147_483_648, 2_147_483_647)]
+#[case::usint("USINT", 0, 255)]
+#[case::uint("UINT", 0, 65_535)]
+#[case::byte("BYTE", 0, 255)]
+#[case::word("WORD", 0, 65_535)]
+#[case::dword("DWORD", 0, 4_294_967_295)]
+#[case::lint("LINT", -9_223_372_036_854_775_808, 9_223_372_036_854_775_807)]
+#[case::ulint("ULINT", 0, 18_446_744_073_709_551_615)]
+#[case::lword("LWORD", 0, 18_446_744_073_709_551_615)]
 fn string_to_int_when_at_bounds_then_value_under_every_policy(
     #[case] type_name: &str,
-    #[case] target: Target,
     #[case] min: i128,
     #[case] max: i128,
 ) {
     for non_numeric in StringToNumNonNumeric::ALL {
         for failure in StringToNumFailure::ALL {
-            let at = |v: i128| convert(type_name, target, &v.to_string(), *non_numeric, *failure);
+            let at = |v: i128| convert(type_name, &v.to_string(), *non_numeric, *failure);
             assert_eq!(
                 at(min),
                 min,
@@ -155,13 +140,7 @@ fn string_to_int_when_one_past_each_bound_then_failure_under_every_policy(
         let input = past.to_string();
         for non_numeric in StringToNumNonNumeric::ALL {
             assert_eq!(
-                convert(
-                    type_name,
-                    target,
-                    &input,
-                    *non_numeric,
-                    StringToNumFailure::Zero
-                ),
+                convert(type_name, &input, *non_numeric, StringToNumFailure::Zero),
                 0,
                 "{type_name} {input} under {non_numeric:?}/zero"
             );
@@ -243,13 +222,7 @@ fn string_to_int_when_shared_invalid_inputs_then_per_non_numeric_policy(
     ];
     for (input, per_policy) in expectations {
         for (non_numeric, expected) in per_policy.iter() {
-            let zero = convert(
-                type_name,
-                target,
-                input,
-                *non_numeric,
-                StringToNumFailure::Zero,
-            );
+            let zero = convert(type_name, input, *non_numeric, StringToNumFailure::Zero);
             assert_eq!(
                 zero,
                 expected.unwrap_or(0),
@@ -284,7 +257,6 @@ fn string_to_sint_when_300_then_trap_names_sint_and_never_44() {
     assert_eq!(
         convert(
             "SINT",
-            Target::I8,
             "300",
             StringToNumNonNumeric::Reject,
             StringToNumFailure::Zero
@@ -320,7 +292,6 @@ fn string_to_lint_when_based_literal_then_64_bit_value() {
     assert_eq!(
         convert(
             "LINT",
-            Target::I64,
             "-16#8000_0000_0000_0000",
             StringToNumNonNumeric::Reject,
             StringToNumFailure::Trap
@@ -341,7 +312,6 @@ fn string_to_usint_when_negative_then_failure_not_wrap(#[case] input: &str) {
     assert_eq!(
         convert(
             "USINT",
-            Target::U8,
             input,
             StringToNumNonNumeric::IgnoreSurrounding,
             StringToNumFailure::Zero
@@ -355,7 +325,6 @@ fn string_to_sint_when_minus_zero_then_zero() {
     assert_eq!(
         convert(
             "SINT",
-            Target::I8,
             "-0",
             StringToNumNonNumeric::Reject,
             StringToNumFailure::Trap
@@ -369,23 +338,23 @@ fn string_to_sint_when_minus_zero_then_zero() {
 #[case::twincat(Dialect::TwinCat)]
 fn string_to_sint_when_codesys_family_dialect_then_prefix_and_zero(#[case] dialect: Dialect) {
     let options = CompilerOptions::from_dialect(dialect);
-    let (_c, bufs) = parse_and_run(&program("SINT", "12abc"), &options);
-    assert_eq!(bufs.vars[1].as_i32(), 12);
+    let snapshot = Snapshot::run(&program("SINT", "12abc"), &options);
+    assert_eq!(snapshot.read_as::<i32>("x"), 12);
     // Out of range is documented as processor-dependent by CODESYS; the
     // preset's failure policy yields zero, and never the wrapped 44.
-    let (_c, bufs) = parse_and_run(&program("SINT", "300"), &options);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
+    let snapshot = Snapshot::run(&program("SINT", "300"), &options);
+    assert_eq!(snapshot.read_as::<i32>("x"), 0);
 }
 
 #[test]
 fn string_to_int_when_rusty_dialect_then_reject_and_zero() {
     // The dialect binds the two uptime globals ahead of the program's
-    // variables, so `x` is variable 3 here.
+    // variables, which must not change what `x` reads.
     let options = CompilerOptions::from_dialect(Dialect::Rusty);
-    let (_c, bufs) = parse_and_run(&program("INT", "12abc"), &options);
-    assert_eq!(bufs.vars[3].as_i32(), 0);
-    let (_c, bufs) = parse_and_run(&program("INT", "-32768"), &options);
-    assert_eq!(bufs.vars[3].as_i32(), -32_768);
+    let snapshot = Snapshot::run(&program("INT", "12abc"), &options);
+    assert_eq!(snapshot.read_as::<i32>("x"), 0);
+    let snapshot = Snapshot::run(&program("INT", "-32768"), &options);
+    assert_eq!(snapshot.read_as::<i32>("x"), -32_768);
 }
 
 #[test]
@@ -401,6 +370,6 @@ PROGRAM main
   back := STRING_TO_INT(s);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[2].as_i32(), -32_768);
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<i32>("back"), -32_768);
 }

@@ -55,10 +55,10 @@ use ironplc_problems::Problem;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::IntermediateType,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
+    semantic_type::SemanticType,
     symbol_environment::ScopeTracker,
     variable_type,
 };
@@ -93,10 +93,10 @@ impl DiagnosticVisitor for RuleAggregateAssignment<'_> {
 }
 
 impl RuleAggregateAssignment<'_> {
-    /// Resolves a declared variable to its [`IntermediateType`]: a named
+    /// Resolves a declared variable to its [`SemanticType`]: a named
     /// type (`p : Point`) or one spelled out in place
     /// (`a : ARRAY[1..2] OF DINT`), whose representation states its shape.
-    fn declared_type(&self, id: &Id) -> Option<IntermediateType> {
+    fn declared_type(&self, id: &Id) -> Option<SemanticType> {
         variable_type::declared(id, self.context, &self.scope.current()).cloned()
     }
 
@@ -112,7 +112,7 @@ impl RuleAggregateAssignment<'_> {
         };
         if !matches!(
             target_type,
-            IntermediateType::Array { .. } | IntermediateType::Structure { .. }
+            SemanticType::Array { .. } | SemanticType::Structure { .. }
         ) {
             return;
         }

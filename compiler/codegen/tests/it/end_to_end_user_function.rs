@@ -1,7 +1,8 @@
 //! End-to-end integration tests for user-defined function calls.
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 use ironplc_parser::options::CompilerOptions;
+use spec_test_macro::spec_test;
 
 e2e_i32!(
     end_to_end_when_user_function_add_then_returns_sum,
@@ -30,7 +31,7 @@ e2e_i32!(
 // FOO assigns 8, then shifts right by 1: 8 >> 1 = 4.
 e2e_i32!(
     end_to_end_when_user_function_assigns_return_var_then_uses_in_builtin_then_correct,
-    "FUNCTION FOO : INT VAR_INPUT A : INT; END_VAR FOO := 8; FOO := SHR(FOO, 1); END_FUNCTION PROGRAM main VAR result : INT; END_VAR result := FOO(A := 5); END_PROGRAM",
+    "FUNCTION FOO : WORD VAR_INPUT A : INT; END_VAR FOO := WORD#8; FOO := SHR(FOO, 1); END_FUNCTION PROGRAM main VAR result : WORD; END_VAR result := FOO(A := 5); END_PROGRAM",
     &[("result", 4)],
 );
 
@@ -133,12 +134,12 @@ PROGRAM main
 END_PROGRAM
 ";
 
-    let (_c1, bufs1) = parse_and_run(source_without_unused, &CompilerOptions::default());
-    let (_c2, bufs2) = parse_and_run(source_with_unused, &CompilerOptions::default());
+    let snapshot1 = Snapshot::run(source_without_unused, &CompilerOptions::default());
+    let snapshot2 = Snapshot::run(source_with_unused, &CompilerOptions::default());
 
     // Both should produce 7.0
-    assert_eq!(bufs1.vars[0].as_f32(), 7.0);
-    assert_eq!(bufs2.vars[0].as_f32(), 7.0);
+    assert_eq!(snapshot1.read_as::<f32>("result"), 7.0);
+    assert_eq!(snapshot2.read_as::<f32>("result"), 7.0);
 }
 
 e2e_i32!(
@@ -171,4 +172,37 @@ e2e_i32!(
     end_to_end_when_user_function_with_real_comparison_then_correct,
     "FUNCTION SIGN_R : BOOL VAR_INPUT in : REAL; END_VAR SIGN_R := in < 0.0; END_FUNCTION PROGRAM main VAR neg : BOOL; pos : BOOL; END_VAR neg := SIGN_R(in := -2.5); pos := SIGN_R(in := 2.5); END_PROGRAM",
     &[("neg", 1), ("pos", 0)],
+);
+
+// The argument is widened to the parameter's width by its own signedness: a
+// UDINT above i32::MAX is zero-extended, and a negative DINT sign-extended.
+// The arguments are calls, which do not convert themselves to their context,
+// so only the recorded conversion widens them.
+e2e_i64!(
+    #[spec_test(REQ_IC_codegen_001)]
+    end_to_end_when_argument_narrower_than_parameter_then_widened_by_its_signedness,
+    "FUNCTION widen : LINT VAR_INPUT x : LINT; END_VAR widen := x; END_FUNCTION
+     FUNCTION big : UDINT VAR_INPUT x : UDINT; END_VAR big := x; END_FUNCTION
+     FUNCTION negative : DINT VAR_INPUT x : DINT; END_VAR negative := x; END_FUNCTION
+     PROGRAM main VAR a : LINT; b : LINT; END_VAR
+     a := widen(big(4000000000)); b := widen(negative(-5)); END_PROGRAM",
+    &[("a", 4_000_000_000), ("b", -5)],
+);
+
+e2e_f64!(
+    end_to_end_when_real_argument_to_lreal_parameter_then_widened,
+    "FUNCTION widen : LREAL VAR_INPUT x : LREAL; END_VAR widen := x; END_FUNCTION
+     PROGRAM main VAR r : REAL := 1.5; a : LREAL; END_VAR a := widen(r); END_PROGRAM",
+    &[("a", 1.5)],
+);
+
+// A literal compiles at the type the analyzer recorded for it: an untyped
+// literal at its context's, beyond the range of the default DINT, and a typed
+// one at its own, converted to its context's by its own signedness.
+e2e_i64!(
+    #[spec_test(REQ_IC_codegen_002)]
+    end_to_end_when_literal_assigned_then_compiled_at_recorded_type,
+    "PROGRAM main VAR a : LINT; b : LINT; END_VAR
+     a := 5000000000; b := UDINT#4000000000; END_PROGRAM",
+    &[("a", 5_000_000_000), ("b", 4_000_000_000)],
 );

@@ -205,6 +205,25 @@ pub fn violations(src: &Path, conventions: &[Convention]) -> Vec<Violation> {
         .collect()
 }
 
+/// The rules in `src` whose `apply` the `registry` source never calls as
+/// `rule_x::apply`: rules that exist but are not part of the pipeline. A
+/// rule's own tests call its `apply` directly, so they pass either way.
+pub fn unregistered_rules(src: &Path, registry: &Path) -> Vec<PathBuf> {
+    let registry = fs::read_to_string(registry).expect("registry source is readable");
+    read_rule_sources(src)
+        .into_iter()
+        .map(|rule| rule.file)
+        .filter(|file| !registry.contains(&format!("{}::apply", module_name(file))))
+        .collect()
+}
+
+fn module_name(file: &Path) -> String {
+    file.file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
 const EMPTY_CONTEXT: &[&str] = &["SemanticContextBuilder::new()"];
 
 const ANY_ERROR: &[&str] = &[".is_err()", "has_diagnostics()"];
@@ -434,6 +453,22 @@ mod tests {
         );
 
         assert_eq!(found(&rule), vec![]);
+    }
+
+    #[test]
+    fn unregistered_rules_when_registry_omits_rule_then_rule_listed() {
+        let dir = std::env::temp_dir().join(format!("rule_conventions_{}", std::process::id()));
+        let src = dir.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("rule_a.rs"), "pub fn apply() {}").unwrap();
+        fs::write(src.join("rule_b.rs"), "pub fn apply() {}").unwrap();
+        let registry = src.join("stages.rs");
+        fs::write(&registry, "rule_a::apply,").unwrap();
+
+        let unregistered = unregistered_rules(&src, &registry);
+
+        fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(unregistered, vec![src.join("rule_b.rs")]);
     }
 
     #[test]

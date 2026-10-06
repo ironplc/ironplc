@@ -482,9 +482,9 @@ mod tests {
         assert_eq!(sig.parameters.len(), 1);
         assert_eq!(sig.parameters[0].name.original(), "IN");
         assert!(sig.parameters[0].is_input);
-        // Parameter type is now TypeName, not IntermediateType
+        // Parameter type is now TypeName, not SemanticType
         assert_eq!(sig.parameters[0].param_type, TypeName::from("INT"));
-        // Return type is now TypeName, not IntermediateType
+        // Return type is now TypeName, not SemanticType
         assert_eq!(
             sig.return_type,
             Some(FunctionReturnType::Named(TypeName::from("REAL")))

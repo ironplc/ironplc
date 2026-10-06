@@ -6,7 +6,7 @@
 //! declaration site (program, function parameter, function local, function
 //! block) registers references through [`register_reference_variable`].
 
-use ironplc_analyzer::{IntermediateType, TypeEnvironment};
+use ironplc_analyzer::{SemanticType, TypeEnvironment};
 use ironplc_container::{CharWidth, ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{ReferenceInitializer, TypeName};
 use ironplc_dsl::core::{Id, Located};
@@ -44,7 +44,7 @@ pub(crate) fn register_reference_variable(
 
     let declaring = TypeName { name: id.clone() };
     let target = types.resolve_reference_target(&declaring, &ref_init.target)?;
-    if let IntermediateType::Array {
+    if let SemanticType::Array {
         element_type,
         dimensions,
     } = &target

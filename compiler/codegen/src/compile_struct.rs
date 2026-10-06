@@ -10,8 +10,8 @@ use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{StructuredVariable, SymbolicVariableKind};
 
-use ironplc_analyzer::intermediate_type::{
-    ByteSized, IntermediateStructField, IntermediateType, SlotCountError,
+use ironplc_analyzer::semantic_type::{
+    ByteSized, SemanticStructField, SemanticType, SlotCountError,
 };
 use ironplc_analyzer::TypeEnvironment;
 use ironplc_container::FieldType;
@@ -62,8 +62,8 @@ pub(crate) struct StructFieldInfo {
     pub name: String,
     /// Slot offset relative to the containing structure's base.
     pub slot_offset: SlotIndex,
-    /// The field's intermediate type (for nested resolution).
-    pub field_type: IntermediateType,
+    /// The field's semantic type (for nested resolution).
+    pub field_type: SemanticType,
     /// Op type for leaf (primitive/enum) fields. `None` for structure/array
     /// fields (which are accessed via further resolution).
     pub op_type: Option<OpType>,
@@ -71,55 +71,57 @@ pub(crate) struct StructFieldInfo {
     pub string_max_length: Option<u16>,
 }
 
-/// Maps an IntermediateType to its OpType for leaf fields.
+/// Maps an SemanticType to its OpType for leaf fields.
 ///
 /// Returns `Some((OpWidth, Signedness))` for primitive, enum, and subrange types.
 /// Returns `None` for structure, array, and other composite types (which are
 /// accessed via further resolution, not loaded/stored directly as single values).
-pub(crate) fn resolve_field_op_type(field_type: &IntermediateType) -> Option<OpType> {
+pub(crate) fn resolve_field_op_type(field_type: &SemanticType) -> Option<OpType> {
     match field_type {
-        IntermediateType::Bool => Some((OpWidth::W32, Signedness::Signed)),
-        IntermediateType::Int { size } | IntermediateType::Time { size } => match size {
+        SemanticType::Bool => Some((OpWidth::W32, Signedness::Signed)),
+        SemanticType::Int { size } | SemanticType::Time { size } => match size {
             ByteSized::B8 | ByteSized::B16 | ByteSized::B32 => {
                 Some((OpWidth::W32, Signedness::Signed))
             }
             ByteSized::B64 => Some((OpWidth::W64, Signedness::Signed)),
         },
-        IntermediateType::UInt { size }
-        | IntermediateType::Bytes { size }
-        | IntermediateType::Date { size }
-        | IntermediateType::TimeOfDay { size }
-        | IntermediateType::DateAndTime { size } => match size {
+        SemanticType::UInt { size }
+        | SemanticType::Bytes { size }
+        | SemanticType::Date { size }
+        | SemanticType::TimeOfDay { size }
+        | SemanticType::DateAndTime { size } => match size {
             ByteSized::B8 | ByteSized::B16 | ByteSized::B32 => {
                 Some((OpWidth::W32, Signedness::Unsigned))
             }
             ByteSized::B64 => Some((OpWidth::W64, Signedness::Unsigned)),
         },
-        IntermediateType::Real { size } => match size {
+        SemanticType::Real { size } => match size {
             ByteSized::B32 => Some((OpWidth::F32, Signedness::Signed)),
             ByteSized::B64 => Some((OpWidth::F64, Signedness::Signed)),
             _ => Some((OpWidth::F32, Signedness::Signed)),
         },
-        IntermediateType::Enumeration { underlying_type } => resolve_field_op_type(underlying_type),
-        IntermediateType::Subrange { base_type, .. } => resolve_field_op_type(base_type),
-        IntermediateType::Reference { .. } => Some((OpWidth::W64, Signedness::Unsigned)),
+        SemanticType::Enumeration {
+            underlying_type, ..
+        } => resolve_field_op_type(underlying_type),
+        SemanticType::Subrange { base_type, .. } => resolve_field_op_type(base_type),
+        SemanticType::Reference { .. } => Some((OpWidth::W64, Signedness::Unsigned)),
         // Composite types are not loaded/stored as single values
-        IntermediateType::Structure { .. }
-        | IntermediateType::Array { .. }
-        | IntermediateType::String { .. }
-        | IntermediateType::FunctionBlock { .. }
-        | IntermediateType::Function { .. } => None,
+        SemanticType::Structure { .. }
+        | SemanticType::Array { .. }
+        | SemanticType::String { .. }
+        | SemanticType::FunctionBlock { .. }
+        | SemanticType::Function { .. } => None,
     }
 }
 
 /// Builds field metadata (ordered Vec + lookup HashMap) from a structure's
-/// intermediate type.
+/// semantic type.
 ///
 /// Returns `Err` if any field has an unsupported type (STRING, WSTRING,
 /// FunctionBlock). Nested structures are NOT flattened — each level is a
 /// separate field list.
 pub(crate) fn build_struct_fields(
-    fields: &[IntermediateStructField],
+    fields: &[SemanticStructField],
     span: &SourceSpan,
 ) -> Result<(Vec<StructFieldInfo>, HashMap<String, usize>), Diagnostic> {
     let mut field_list = Vec::with_capacity(fields.len());
@@ -146,7 +148,7 @@ pub(crate) fn build_struct_fields(
         let name = field.name.to_string().to_lowercase();
         let op_type = resolve_field_op_type(&field.field_type);
         let string_max_length = match &field.field_type {
-            IntermediateType::String { max_len, .. } => {
+            SemanticType::String { max_len, .. } => {
                 Some(max_len.unwrap_or(DEFAULT_STRING_MAX_LENGTH as u128) as u16)
             }
             _ => None,
@@ -157,7 +159,7 @@ pub(crate) fn build_struct_fields(
         // overwriting the HashMap entry would make the first field inaccessible
         // by name while it still occupies slots in the layout.
         if field_index.contains_key(&name) {
-            return Err(Diagnostic::not_implemented(Label::span(
+            return Err(Diagnostic::internal_error_at(Label::span(
                 span.clone(),
                 format!(
                     "Structure has duplicate field name '{}' (case-insensitive)",
@@ -178,7 +180,7 @@ pub(crate) fn build_struct_fields(
     Ok((field_list, field_index))
 }
 
-/// Looks up a field by name within an IntermediateType::Structure's field list.
+/// Looks up a field by name within an SemanticType::Structure's field list.
 ///
 /// Delegates to `build_struct_fields` to compute slot offsets, ensuring a single
 /// source of truth for offset computation. This prevents divergence between
@@ -189,10 +191,10 @@ pub(crate) fn build_struct_fields(
 /// Returns `(slot_offset, field_type)` for the named field, or an error if the
 /// field is not found.
 pub(crate) fn find_field_in_type(
-    fields: &[IntermediateStructField],
+    fields: &[SemanticStructField],
     field_name: &Id,
     span: &SourceSpan,
-) -> Result<(SlotIndex, IntermediateType), Diagnostic> {
+) -> Result<(SlotIndex, SemanticType), Diagnostic> {
     // Reuse build_struct_fields to compute offsets — do NOT duplicate the
     // slot-offset accumulation logic. The cost of building the full field
     // list per lookup is acceptable at compile time (structures are small).
@@ -218,12 +220,12 @@ const MAX_STRUCT_CHAIN_DEPTH: u32 = 32;
 /// code emission: variable table index, array descriptor index, compile-time
 /// slot offset, op type, and field type.
 ///
-/// The returned `IntermediateType` enables callers (PR 5 store path) to
+/// The returned `SemanticType` enables callers (PR 5 store path) to
 /// derive truncation information from the field's type.
 pub(crate) fn resolve_struct_field_access(
     ctx: &CompileContext,
     structured: &StructuredVariable,
-) -> Result<(VarIndex, u16, SlotIndex, OpType, IntermediateType), Diagnostic> {
+) -> Result<(VarIndex, u16, SlotIndex, OpType, SemanticType), Diagnostic> {
     let (root_name, slot_offset, field_type) =
         walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
 
@@ -262,7 +264,7 @@ pub(crate) fn walk_struct_chain(
     record: &SymbolicVariableKind,
     field: &Id,
     depth: u32,
-) -> Result<(Id, SlotIndex, IntermediateType), Diagnostic> {
+) -> Result<(Id, SlotIndex, SemanticType), Diagnostic> {
     if depth > MAX_STRUCT_CHAIN_DEPTH {
         return Err(Diagnostic::not_implemented(Label::span(
             field.span(),
@@ -296,7 +298,7 @@ pub(crate) fn walk_struct_chain(
             let (root, parent_offset, parent_type) =
                 walk_struct_chain(ctx, &inner.record, &inner.field, depth + 1)?;
 
-            let IntermediateType::Structure { fields } = &parent_type else {
+            let SemanticType::Structure { fields } = &parent_type else {
                 return Err(Diagnostic::not_implemented(Label::span(
                     inner.field.span(),
                     format!("Field '{}' is not a structure type", inner.field),
@@ -319,29 +321,31 @@ pub(crate) fn walk_struct_chain(
     }
 }
 
-/// Derives a `VarTypeInfo` from an `IntermediateType` for use with `emit_truncation`.
+/// Derives a `VarTypeInfo` from an `SemanticType` for use with `emit_truncation`.
 ///
-/// This is needed because struct fields are identified by `IntermediateType`, not
+/// This is needed because struct fields are identified by `SemanticType`, not
 /// by variable-table entries.
-pub(crate) fn var_type_info_for_field(field_type: &IntermediateType) -> Option<VarTypeInfo> {
+pub(crate) fn var_type_info_for_field(field_type: &SemanticType) -> Option<VarTypeInfo> {
     let (op_width, signedness) = resolve_field_op_type(field_type)?;
     let storage_bits = match field_type {
-        IntermediateType::Bool => 1,
-        IntermediateType::Int { size }
-        | IntermediateType::UInt { size }
-        | IntermediateType::Real { size }
-        | IntermediateType::Bytes { size }
-        | IntermediateType::Time { size }
-        | IntermediateType::Date { size }
-        | IntermediateType::TimeOfDay { size }
-        | IntermediateType::DateAndTime { size } => size.into(),
-        IntermediateType::Enumeration { underlying_type } => {
+        SemanticType::Bool => 1,
+        SemanticType::Int { size }
+        | SemanticType::UInt { size }
+        | SemanticType::Real { size }
+        | SemanticType::Bytes { size }
+        | SemanticType::Time { size }
+        | SemanticType::Date { size }
+        | SemanticType::TimeOfDay { size }
+        | SemanticType::DateAndTime { size } => size.into(),
+        SemanticType::Enumeration {
+            underlying_type, ..
+        } => {
             return var_type_info_for_field(underlying_type);
         }
-        IntermediateType::Subrange { base_type, .. } => {
+        SemanticType::Subrange { base_type, .. } => {
             return var_type_info_for_field(base_type);
         }
-        IntermediateType::Reference { .. } => 64,
+        SemanticType::Reference { .. } => 64,
         _ => return None,
     };
     Some(VarTypeInfo {
@@ -352,7 +356,7 @@ pub(crate) fn var_type_info_for_field(field_type: &IntermediateType) -> Option<V
 }
 
 /// Emits truncation instructions for narrow types when storing to a struct field.
-pub(crate) fn emit_truncation_for_field(emitter: &mut Emitter, field_type: &IntermediateType) {
+pub(crate) fn emit_truncation_for_field(emitter: &mut Emitter, field_type: &SemanticType) {
     if let Some(vti) = var_type_info_for_field(field_type) {
         emit_truncation(emitter, vti);
     }
@@ -383,8 +387,11 @@ pub(crate) fn allocate_struct_variable(
         Diagnostic::not_implemented(Label::span(span.clone(), "Unknown structure type"))
     })?;
 
-    let IntermediateType::Structure { fields } = struct_type else {
-        unreachable!("resolve_struct_type guarantees Structure variant");
+    let SemanticType::Structure { fields } = struct_type else {
+        return Err(Diagnostic::internal_error_at(Label::span(
+            span.clone(),
+            "Structure type did not resolve to a structure",
+        )));
     };
 
     // Compute total slots.
@@ -447,12 +454,12 @@ pub(crate) fn allocate_struct_variable(
     let mut string_array_descs: HashMap<String, (u16, u32, u16)> = HashMap::new();
     let mut scratch_var_index: Option<VarIndex> = None;
     for f in &fields_vec {
-        if let IntermediateType::Array {
+        if let SemanticType::Array {
             element_type,
             dimensions: array_dims,
         } = &f.field_type
         {
-            if let IntermediateType::String {
+            if let SemanticType::String {
                 max_len,
                 char_width,
             } = element_type.as_ref()
@@ -530,12 +537,12 @@ pub(crate) fn allocate_struct_variable(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_analyzer::intermediate_type::IntermediateStructField;
+    use ironplc_analyzer::semantic_type::SemanticStructField;
     use ironplc_container::CharWidth;
     use ironplc_dsl::core::Id;
 
-    fn make_field(name: &str, field_type: IntermediateType) -> IntermediateStructField {
-        IntermediateStructField {
+    fn make_field(name: &str, field_type: SemanticType) -> SemanticStructField {
+        SemanticStructField {
             name: Id::from(name),
             field_type,
             offset: 0,
@@ -549,11 +556,11 @@ mod tests {
         let fields = vec![
             make_field(
                 "a",
-                IntermediateType::Int {
+                SemanticType::Int {
                     size: ByteSized::B32,
                 },
             ),
-            make_field("b", IntermediateType::Bool),
+            make_field("b", SemanticType::Bool),
         ];
         let (field_list, field_index) =
             build_struct_fields(&fields, &SourceSpan::default()).unwrap();
@@ -568,17 +575,17 @@ mod tests {
 
     #[test]
     fn build_struct_fields_when_nested_struct_then_inner_occupies_multiple_slots() {
-        let inner = IntermediateType::Structure {
+        let inner = SemanticType::Structure {
             fields: vec![
                 make_field(
                     "x",
-                    IntermediateType::Int {
+                    SemanticType::Int {
                         size: ByteSized::B32,
                     },
                 ),
                 make_field(
                     "y",
-                    IntermediateType::Int {
+                    SemanticType::Int {
                         size: ByteSized::B32,
                     },
                 ),
@@ -588,7 +595,7 @@ mod tests {
             make_field("inner", inner),
             make_field(
                 "z",
-                IntermediateType::Int {
+                SemanticType::Int {
                     size: ByteSized::B32,
                 },
             ),
@@ -604,7 +611,7 @@ mod tests {
         // STRING[255] needs ceil((4 + 255) / 8) = 33 slots
         let fields = vec![make_field(
             "s",
-            IntermediateType::String {
+            SemanticType::String {
                 max_len: Some(255),
                 char_width: CharWidth::Narrow,
             },
@@ -623,14 +630,14 @@ mod tests {
         let fields = vec![
             make_field(
                 "s",
-                IntermediateType::String {
+                SemanticType::String {
                     max_len: Some(30),
                     char_width: CharWidth::Narrow,
                 },
             ),
             make_field(
                 "n",
-                IntermediateType::Int {
+                SemanticType::Int {
                     size: ByteSized::B32,
                 },
             ),
@@ -644,7 +651,7 @@ mod tests {
     fn build_struct_fields_when_fb_field_then_returns_error() {
         let fields = vec![make_field(
             "fb",
-            IntermediateType::FunctionBlock {
+            SemanticType::FunctionBlock {
                 name: "MyFB".to_string(),
                 fields: vec![],
             },
@@ -656,16 +663,16 @@ mod tests {
     #[test]
     fn build_struct_fields_when_iterated_then_declaration_order_preserved() {
         let fields = vec![
-            make_field("first", IntermediateType::Bool),
+            make_field("first", SemanticType::Bool),
             make_field(
                 "second",
-                IntermediateType::Int {
+                SemanticType::Int {
                     size: ByteSized::B32,
                 },
             ),
             make_field(
                 "third",
-                IntermediateType::Real {
+                SemanticType::Real {
                     size: ByteSized::B64,
                 },
             ),
@@ -678,8 +685,8 @@ mod tests {
     #[test]
     fn build_struct_fields_when_duplicate_field_names_then_returns_error() {
         let fields = vec![
-            make_field("x", IntermediateType::Bool),
-            make_field("X", IntermediateType::Bool),
+            make_field("x", SemanticType::Bool),
+            make_field("X", SemanticType::Bool),
         ];
         let result = build_struct_fields(&fields, &SourceSpan::default());
         assert!(result.is_err());
@@ -690,14 +697,14 @@ mod tests {
         let fields = vec![
             make_field(
                 "a",
-                IntermediateType::Int {
+                SemanticType::Int {
                     size: ByteSized::B32,
                 },
             ),
-            make_field("b", IntermediateType::Bool),
+            make_field("b", SemanticType::Bool),
             make_field(
                 "c",
-                IntermediateType::Real {
+                SemanticType::Real {
                     size: ByteSized::B64,
                 },
             ),
@@ -717,5 +724,76 @@ mod tests {
         // Unknown field returns error
         let result = find_field_in_type(&fields, &Id::from("unknown"), &span);
         assert!(result.is_err());
+    }
+
+    /// A place for a field takes its operation type from
+    /// `var_type_info_for_field`, where the field's resolution takes it from
+    /// `resolve_field_op_type`. The two must agree for every field type.
+    #[test]
+    fn var_type_info_for_field_when_any_field_type_then_op_type_matches_resolve_field_op_type() {
+        use ironplc_analyzer::enumeration_members::EnumerationMembers;
+
+        let sizes = [
+            ByteSized::B8,
+            ByteSized::B16,
+            ByteSized::B32,
+            ByteSized::B64,
+        ];
+        let mut types = vec![SemanticType::Bool];
+        for size in sizes {
+            types.push(SemanticType::Int { size: size.clone() });
+            types.push(SemanticType::UInt { size: size.clone() });
+            types.push(SemanticType::Real { size: size.clone() });
+            types.push(SemanticType::Bytes { size: size.clone() });
+            types.push(SemanticType::Time { size: size.clone() });
+            types.push(SemanticType::Date { size: size.clone() });
+            types.push(SemanticType::TimeOfDay { size: size.clone() });
+            types.push(SemanticType::DateAndTime { size: size.clone() });
+        }
+        types.extend([
+            SemanticType::Enumeration {
+                underlying_type: Box::new(SemanticType::Int {
+                    size: ByteSized::B16,
+                }),
+                members: EnumerationMembers::default(),
+            },
+            SemanticType::Subrange {
+                base_type: Box::new(SemanticType::UInt {
+                    size: ByteSized::B8,
+                }),
+                min_value: 0,
+                max_value: 10,
+            },
+            SemanticType::Reference {
+                target_type: Box::new(SemanticType::Bool),
+            },
+            SemanticType::String {
+                max_len: None,
+                char_width: CharWidth::Narrow,
+            },
+            SemanticType::Structure { fields: vec![] },
+            SemanticType::Array {
+                element_type: Box::new(SemanticType::Bool),
+                dimensions: vec![],
+            },
+            SemanticType::FunctionBlock {
+                name: "FB".to_string(),
+                fields: vec![],
+            },
+            SemanticType::Function {
+                return_type: None,
+                parameters: vec![],
+            },
+        ]);
+
+        for field_type in &types {
+            let from_type_info =
+                var_type_info_for_field(field_type).map(|ti| (ti.op_width, ti.signedness));
+            assert_eq!(
+                from_type_info,
+                resolve_field_op_type(field_type),
+                "for {field_type:?}"
+            );
+        }
     }
 }

@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::Snapshot;
 
 // --- SHL ---
 
@@ -195,8 +195,8 @@ PROGRAM main
   y := SHL(x, 0);
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), bufs.vars[0].as_i32());
+    let snapshot = Snapshot::run(source, &CompilerOptions::default());
+    assert_eq!(snapshot.read_as::<u32>("y"), 0xDEAD_BEEF);
 }
 
 // --- Nested function calls ---
@@ -210,7 +210,7 @@ PROGRAM main
     result : DINT;
   END_VAR
   a := -8;
-  result := SHR(ABS(a), 1);
+  result := DWORD_TO_DINT(SHR(DINT_TO_DWORD(ABS(a)), 1));
 END_PROGRAM
 ",
     &[("a", -8), ("result", 4)],

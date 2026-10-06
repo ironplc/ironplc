@@ -43,3 +43,22 @@ To fix this error, use a value that is defined in the enumeration:
      END_VAR
    END_FUNCTION_BLOCK
 
+
+The values of an enumeration are the values its own declaration lists. An
+enumeration declared as another enumeration's name, such as
+``Severity : LogLevel;``, has the values of ``LogLevel``. Two enumerations may
+list the same value name; each of them accepts it:
+
+.. code-block::
+
+   TYPE
+       LogLevel : (CRITICAL, WARNING, INFO, DEBUG) := INFO;
+       Alarm : (CLEAR, WARNING, TRIPPED) := CLEAR;
+   END_TYPE
+
+   PROGRAM main
+     VAR
+       Level : LogLevel := WARNING;  (* Correct: WARNING is defined in LogLevel *)
+       State : Alarm := WARNING;     (* Correct: WARNING is defined in Alarm *)
+     END_VAR
+   END_PROGRAM
