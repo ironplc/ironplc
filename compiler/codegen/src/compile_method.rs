@@ -275,14 +275,13 @@ fn compile_method_call(
     ctx: &mut CompileContext,
     call: &MethodCall,
 ) -> Result<bool, Diagnostic> {
-    // `THIS^.M()` / `SUPER^.M()` receivers parse but are rejected earlier by
-    // `rule_method_call_declared`, so codegen only ever sees a named instance.
+    // `THIS^.M()` / `SUPER^.M()` pass analysis but are not compiled yet.
     let instance = match &call.receiver {
         MethodReceiver::Instance(id) => id,
         MethodReceiver::SelfRef(self_ref) => {
-            return Err(Diagnostic::internal_error_at(Label::span(
+            return Err(Diagnostic::not_implemented(Label::span(
                 self_ref.span(),
-                "THIS or SUPER receiver of a method call",
+                format!("method call through {}", self_ref.kind.spelling()),
             )))
         }
     };

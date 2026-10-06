@@ -28,8 +28,7 @@ use crate::{
     rule_operator_operand_type_check, rule_pou_hierarchy, rule_program_task_definition_exists,
     rule_program_var_hides_global, rule_range_limits, rule_real_literal_range, rule_ref_to,
     rule_return_type_declared, rule_self_reference_context, rule_stdlib_type_redefinition,
-    rule_string_encoding_compat,
-    rule_string_length_range, rule_string_literal_char_range,
+    rule_string_encoding_compat, rule_string_length_range, rule_string_literal_char_range,
     rule_struct_initializer_expression_allowed, rule_task_names_unique,
     rule_temporal_literal_range, rule_unsupported_extension, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
@@ -775,6 +774,198 @@ END_FUNCTION_BLOCK"
     #[case::super_method_call("    SUPER^.Stop();")]
     fn analyze_when_self_ref_member_then_ok(#[case] body: &str) {
         assert_eq!(Vec::<String>::new(), self_ref_codes(body));
+    }
+
+    /// Diagnostic codes of the whole analysis of `program`.
+    fn analysis_codes(program: &str) -> Vec<String> {
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let lib = parse_program(program, &FileId::default(), &options).unwrap();
+        match analyze(&[&lib], &options) {
+            Ok((_library, context)) => context
+                .diagnostics()
+                .iter()
+                .map(|d| d.code.clone())
+                .collect(),
+            Err(errors) => errors.iter().map(|d| d.code.clone()).collect(),
+        }
+    }
+
+    /// `body`, written in a method of `FB_Leaf`, which `EXTENDS` `FB_Mid`,
+    /// which `EXTENDS` `FB_Root`. `FB_Mid` overrides `Describe`.
+    fn leaf_codes(body: &str) -> Vec<String> {
+        analysis_codes(&format!(
+            "
+TYPE Pair : STRUCT f : INT; g : BOOL; END_STRUCT; END_TYPE
+
+FUNCTION_BLOCK FB_Inner
+VAR_OUTPUT
+    out : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Root
+VAR
+    x : INT;
+    words : ARRAY[1..3] OF INT;
+END_VAR
+METHOD Describe : INT
+    Describe := 1;
+END_METHOD
+METHOD Stop : BOOL
+    Stop := TRUE;
+END_METHOD
+METHOD Start
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Mid EXTENDS FB_Root
+METHOD Describe : BOOL
+    Describe := TRUE;
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Leaf EXTENDS FB_Mid
+VAR_INPUT
+    in_val : INT;
+END_VAR
+VAR_OUTPUT
+    out_val : INT;
+END_VAR
+VAR_IN_OUT
+    io_val : INT;
+END_VAR
+VAR
+    s : Pair;
+    inner : FB_Inner;
+    n : INT;
+    flag : BOOL;
+END_VAR
+METHOD Run
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        ))
+    }
+
+    #[rstest::rstest]
+    #[case::inherited_method_return_matches("    flag := THIS^.Stop();")]
+    #[case::grandparent_field("    n := SUPER^.x;")]
+    #[case::grandparent_method("    THIS^.Start();")]
+    #[case::nearest_override_through_super("    flag := SUPER^.Describe();")]
+    #[case::nested_struct_member("    n := THIS^.s.f;")]
+    #[case::nested_instance_output("    n := THIS^.inner.out;")]
+    #[case::input_output_and_in_out("    THIS^.out_val := THIS^.in_val + THIS^.io_val;")]
+    #[case::case_insensitive("    this^.N := this^.IN_VAL;")]
+    fn analyze_when_self_ref_member_of_chain_then_ok(#[case] body: &str) {
+        assert_eq!(Vec::<String>::new(), leaf_codes(body));
+    }
+
+    #[rstest::rstest]
+    #[case::inherited_method_return("    n := THIS^.Stop();", "P4035")]
+    #[case::nearest_override_through_super("    n := SUPER^.Describe();", "P4035")]
+    #[case::nested_struct_member("    flag := THIS^.s.f;", "P4035")]
+    #[case::nested_instance_output("    flag := THIS^.inner.out;", "P4035")]
+    #[case::array_element("    flag := THIS^.words[1];", "P4035")]
+    #[case::unknown_argument("    THIS^.Start(nope := 1);", "P4002")]
+    #[case::no_return_value("    n := THIS^.Start();", "P4057")]
+    fn analyze_when_self_ref_misused_then_reported(#[case] body: &str, #[case] code: &str) {
+        assert_eq!(vec![code.to_string()], leaf_codes(body));
+    }
+
+    /// Typing `THIS^` must not stop the pass: an expression elsewhere in the
+    /// same block still gets its type and its error is reported.
+    #[test]
+    fn analyze_when_self_ref_and_type_error_then_error_still_reported() {
+        let codes = leaf_codes("    THIS^.n := 1;\n    flag := n;");
+        assert_eq!(vec!["P4035".to_string()], codes);
+    }
+
+    /// A program has no `THIS^`. Only the rule reports it: the type pass
+    /// must not add a second diagnostic for the same use.
+    #[test]
+    fn analyze_when_self_ref_in_program_then_only_p4074() {
+        let codes = analysis_codes(
+            "
+PROGRAM main
+VAR
+    n : INT;
+    arr : ARRAY[1..3] OF INT;
+END_VAR
+    n := THIS^.n;
+    THIS^.arr[2] := 1;
+    THIS^.Go();
+END_PROGRAM",
+        );
+        assert_eq!(vec!["P4074".to_string(); 3], codes);
+    }
+
+    /// `body`, written in a method `Run` of `FB_Motor`, which `EXTENDS`
+    /// `FB_Base`. `FB_Base` declares the constant `base_limit` and the
+    /// variable `base_free`, `FB_Motor` the constant `limit` and the
+    /// variable `free`. `locals` is the method's own declarations.
+    fn constant_write_codes(locals: &str, body: &str) -> Vec<String> {
+        analysis_codes(&format!(
+            "
+FUNCTION_BLOCK FB_Base
+VAR CONSTANT
+    base_limit : INT := 1;
+END_VAR
+VAR
+    base_free : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Motor EXTENDS FB_Base
+VAR CONSTANT
+    limit : INT := 1;
+END_VAR
+VAR
+    free : INT;
+END_VAR
+METHOD Run
+{locals}
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        ))
+    }
+
+    #[rstest::rstest]
+    #[case::own_constant("", "    THIS^.limit := 2;")]
+    #[case::inherited_constant("", "    THIS^.base_limit := 2;")]
+    #[case::inherited_constant_through_super("", "    SUPER^.base_limit := 2;")]
+    #[case::constant_hidden_by_parameter(
+        "VAR_INPUT\n    limit : INT;\nEND_VAR",
+        "    THIS^.limit := 2;"
+    )]
+    #[case::constant_hidden_by_local("VAR\n    limit : INT;\nEND_VAR", "    THIS^.limit := 2;")]
+    fn analyze_when_constant_written_through_self_ref_then_p4064(
+        #[case] locals: &str,
+        #[case] body: &str,
+    ) {
+        assert_eq!(
+            vec!["P4064".to_string()],
+            constant_write_codes(locals, body)
+        );
+    }
+
+    #[rstest::rstest]
+    #[case::own_variable("", "    THIS^.free := 2;")]
+    #[case::inherited_variable("", "    THIS^.base_free := 2;")]
+    #[case::inherited_variable_through_super("", "    SUPER^.base_free := 2;")]
+    #[case::variable_hidden_by_constant_local(
+        "VAR CONSTANT\n    free : INT := 1;\nEND_VAR",
+        "    THIS^.free := 2;"
+    )]
+    #[case::own_field_through_super_is_not_the_constant("", "    SUPER^.base_free := THIS^.limit;")]
+    fn analyze_when_variable_written_through_self_ref_then_no_p4064(
+        #[case] locals: &str,
+        #[case] body: &str,
+    ) {
+        assert_eq!(Vec::<String>::new(), constant_write_codes(locals, body));
     }
 
     /// A bare `THIS^`, used as a value on its own, is not analyzed yet.
