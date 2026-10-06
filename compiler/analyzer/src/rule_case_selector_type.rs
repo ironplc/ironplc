@@ -128,7 +128,9 @@ impl RuleCaseSelectorType<'_> {
             return None;
         }
         match selector.expr_type.as_ref()? {
-            ExprType::Concrete(id) => Some(value_type::describe(self.type_environment, *id)),
+            ExprType::Concrete(id) | ExprType::Inferred(id) => {
+                Some(value_type::describe(self.type_environment, *id))
+            }
             ExprType::Literal(_) | ExprType::Null => None,
         }
     }

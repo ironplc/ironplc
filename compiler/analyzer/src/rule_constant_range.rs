@@ -45,8 +45,9 @@
 //! `stages::analyze` runs this rule after `xform_insert_implicit_conversions`,
 //! on the library the pass returns, rather than with the other rules. The
 //! rule checks the program as written all the same: an operand's type is read
-//! through the `ImplicitConversion` the pass wrapped it in, and an untyped
-//! literal has no type of its own, whatever type the pass gave it (ADR-0056).
+//! through the `ImplicitConversion` the pass wrapped it in, and a type the
+//! pass inferred for an untyped literal (`ExprType::Inferred`) is not one the
+//! program wrote (ADR-0056).
 //! So `DINT#300 < s` on a `SINT` is still checked against `SINT`.
 //!
 //! ## Passes
@@ -148,25 +149,13 @@ fn signed_value(is_neg: bool, magnitude: u128) -> Option<i128> {
 }
 
 /// The type of `expr` as the program wrote it: the type of the operand a
-/// conversion wraps, and none for an untyped literal (see the module doc).
+/// conversion wraps, and none for a type the pass inferred from the context,
+/// which the program did not state (see the module doc).
 fn type_as_written<'t>(types: &'t TypeEnvironment, expr: &Expr) -> Option<&'t SemanticType> {
-    match &expr.kind {
-        ExprKind::ImplicitConversion(inner) => type_as_written(types, inner),
-        _ if is_untyped_literal(expr) => None,
+    match (&expr.kind, &expr.expr_type) {
+        (ExprKind::ImplicitConversion(inner), _) => type_as_written(types, inner),
+        (_, Some(ExprType::Inferred(_))) => None,
         _ => types.representation_of_expr(expr),
-    }
-}
-
-/// Returns `true` when `expr` is an integer or real literal with no prefix,
-/// alone, in parentheses or negated: an expression the program wrote without
-/// a type, which takes one from its context (ADR-0028).
-fn is_untyped_literal(expr: &Expr) -> bool {
-    match &expr.kind {
-        ExprKind::Const(ConstantKind::IntegerLiteral(literal)) => literal.data_type.is_none(),
-        ExprKind::Const(ConstantKind::RealLiteral(literal)) => literal.data_type.is_none(),
-        ExprKind::Expression(inner) => is_untyped_literal(inner),
-        ExprKind::UnaryOp(unary) => is_untyped_literal(&unary.term),
-        _ => false,
     }
 }
 

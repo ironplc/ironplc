@@ -463,17 +463,41 @@ impl fmt::Display for LateBound {
 }
 
 /// The type of an expression's value, as the analyzer resolved it.
+///
+/// A type is either stated by the program, `Concrete`, or inferred from
+/// where the expression is used, `Inferred`; an expression with only a
+/// category, `Literal`, has none yet. The distinction is kept because a
+/// question about the program as written (can this operand ever equal that
+/// literal?) must not read a type the program did not state.
 #[derive(Debug, PartialEq, Clone)]
 pub enum ExprType {
-    /// A value of exactly this type.
+    /// A value of exactly this type, which the program states: a variable's
+    /// declared type, a prefixed literal's (`INT#5`), or the type an
+    /// operation on such values computes.
     Concrete(TypeId),
     /// An untyped literal, or a generic function applied only to untyped
     /// literals: its type is fixed by where it is used, within this
     /// category. ADR-0028 and ADR-0031 say which types it may take.
     Literal(GenericTypeName),
+    /// An expression the program wrote without a type, a `Literal`, that
+    /// analysis gave the type of where it is used: the `1` of `l := 1` on an
+    /// `LINT` is an `LINT`. A value of exactly this type, as a `Concrete`
+    /// one is.
+    Inferred(TypeId),
     /// `NULL`: a reference to no variable, of whichever reference type it
     /// is used as.
     Null,
+}
+
+impl ExprType {
+    /// The type of the value, whether the program stated it or analysis
+    /// inferred it; `None` for a category or `NULL`.
+    pub fn type_id(&self) -> Option<TypeId> {
+        match self {
+            ExprType::Concrete(id) | ExprType::Inferred(id) => Some(*id),
+            ExprType::Literal(_) | ExprType::Null => None,
+        }
+    }
 }
 
 /// Wrapper around `ExprKind` that carries what is true of an expression but
@@ -1372,5 +1396,19 @@ mod tests {
             name: Id::from("foo"),
         });
         assert_eq!(format!("{svk}"), "foo");
+    }
+
+    #[test]
+    fn type_id_when_stated_or_inferred_then_the_type() {
+        let id = TypeId::from_raw(7);
+
+        assert_eq!(ExprType::Concrete(id).type_id(), Some(id));
+        assert_eq!(ExprType::Inferred(id).type_id(), Some(id));
+    }
+
+    #[test]
+    fn type_id_when_category_or_null_then_none() {
+        assert_eq!(ExprType::Literal(GenericTypeName::AnyInt).type_id(), None);
+        assert_eq!(ExprType::Null.type_id(), None);
     }
 }

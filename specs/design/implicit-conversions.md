@@ -163,6 +163,8 @@ Every construct a literal can sit in either passes the type of its context on, c
 
 **REQ-IC-analyzer-067** An operation on one value of a numeric type passes its own type, not its context's, to its literal inputs: the count `1` of `lw := SHL(w, 1)` on an `LWORD` and a `DWORD` is a `DINT`, since the `DWORD` is shifted at 32 bits.
 
+**REQ-IC-analyzer-068** The type the pass gives an untyped literal is recorded as inferred (`ExprType::Inferred`), and a prefixed literal's stays stated (`ExprType::Concrete`), so a rule can tell a type the program wrote from one the pass chose: the `1` of `l := 1` is an inferred `LINT`, the `LINT#1` of `l := LINT#1` a stated one.
+
 **REQ-IC-analyzer-066** A typed numeric literal keeps its own type and, in a context of another numeric type, is wrapped in an `ImplicitConversion` to it: the `UDINT#4000000000` of `l := UDINT#4000000000` on an `LINT` is converted to `LINT`.
 
 **REQ-IC-codegen-002** An integer or real literal compiles at the type the analyzer recorded for it, not at a type its context passes down: `l := 5000000000` stores 5000000000, and `l := UDINT#4000000000` stores 4000000000.

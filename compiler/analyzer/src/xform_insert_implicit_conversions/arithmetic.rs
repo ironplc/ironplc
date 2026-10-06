@@ -162,7 +162,7 @@ impl ImplicitConversions<'_> {
     /// The type an operation of result type `result` computes at, and its
     /// width, when it is an elementary numeric type.
     fn step_of(&self, result: Option<&ExprType>) -> Option<Step> {
-        let ExprType::Concrete(id) = result? else {
+        let (ExprType::Concrete(id) | ExprType::Inferred(id)) = result? else {
             return None;
         };
         let name = self.conversions.name_of(*id)?;
@@ -190,7 +190,7 @@ impl ImplicitConversions<'_> {
     fn record_operand(&self, operand: &mut Expr, (target, width): Step) {
         let differs = match operand.expr_type {
             Some(ExprType::Literal(_)) => true,
-            Some(ExprType::Concrete(_)) => self
+            Some(ExprType::Concrete(_) | ExprType::Inferred(_)) => self
                 .conversions
                 .operand_name(operand)
                 .as_ref()

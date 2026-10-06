@@ -49,15 +49,18 @@ pub(crate) fn op_type_from_expr(ctx: &CompileContext, expr: &Expr) -> Option<OpT
     Some((info.op_width, info.signedness))
 }
 
-/// Returns the operation type only when the expression has a concrete type,
-/// not an untyped literal's generic category.
+/// Returns the operation type only when the expression has a type, stated
+/// or inferred, not an untyped literal's generic category.
 ///
 /// Generic types like `ANY_INT` map to a signed default (`DINT`) which is
 /// wrong when the other operand is unsigned (e.g. `DWORD`). Returning
 /// `None` for generic types lets callers prefer a concrete type from
 /// another operand.
 pub(crate) fn concrete_op_type_from_expr(ctx: &CompileContext, expr: &Expr) -> Option<OpType> {
-    if !matches!(expr.expr_type, Some(ExprType::Concrete(_))) {
+    if !matches!(
+        expr.expr_type,
+        Some(ExprType::Concrete(_) | ExprType::Inferred(_))
+    ) {
         return None;
     }
     op_type_from_expr(ctx, expr)
