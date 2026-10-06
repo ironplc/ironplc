@@ -75,6 +75,12 @@ pub fn analyze(
     // program wrote rather than their conversions. See ADR-0056.
     let library = xform_insert_implicit_conversions::apply(library, &context, options);
 
+    // A rule that runs on the library the pass returns. It reads an operand
+    // as the program wrote it through the conversion that wraps it.
+    if let Err(diagnostics) = rule_constant_range::apply(&library, &context, options) {
+        context.add_diagnostics(diagnostics);
+    }
+
     // TODO this is currently in progress. It isn't clear to me yet how this will influence
     // semantic analysis, but it should because the type table should influence rule checking.
     // For now, this is just after the rules as they were originally written.
@@ -411,7 +417,6 @@ pub(crate) fn semantic(
         rule_case_bit_string_label::apply,
         rule_case_selector_type::apply,
         rule_condition_type::apply,
-        rule_constant_range::apply,
         rule_ref_to::apply,
     ];
 

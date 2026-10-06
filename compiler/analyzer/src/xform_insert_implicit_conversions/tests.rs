@@ -815,3 +815,35 @@ fn apply_when_typed_literal_in_context_of_its_own_type_then_unchanged() {
     let source = arithmetic_program("LINT", "", "LINT#5");
     assert_eq!(assigned_values(&source), vec!["LINT"]);
 }
+
+/// How the type of each literal in `source` was recorded: `inferred` or
+/// `stated`.
+fn literal_type_origins(source: &str) -> Vec<&'static str> {
+    struct Origins(Vec<&'static str>);
+    impl Visitor<Infallible> for Origins {
+        type Value = ();
+        fn visit_expr(&mut self, node: &Expr) -> Result<(), Infallible> {
+            if let ExprKind::Const(_) = node.kind {
+                self.0.push(match node.expr_type {
+                    Some(ExprType::Inferred(_)) => "inferred",
+                    Some(ExprType::Concrete(_)) => "stated",
+                    Some(ExprType::Literal(_) | ExprType::Null) | None => "none",
+                });
+            }
+            node.recurse_visit(self)
+        }
+    }
+    let options = CompilerOptions::default();
+    let library = ironplc_parser::parse_program(source, &FileId::default(), &options).unwrap();
+    let (library, _context) = analyze(&[&library], &options).unwrap();
+    let mut origins = Origins(vec![]);
+    let Ok(()) = origins.walk(&library);
+    origins.0
+}
+
+#[spec_test(REQ_IC_analyzer_068)]
+#[test]
+fn apply_when_untyped_literal_typed_then_type_recorded_as_inferred() {
+    let source = "PROGRAM main VAR l : LINT; END_VAR l := 1; l := LINT#1; END_PROGRAM";
+    assert_eq!(literal_type_origins(source), vec!["inferred", "stated"]);
+}

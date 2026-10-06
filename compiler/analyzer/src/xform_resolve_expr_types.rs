@@ -289,7 +289,7 @@ impl ExprTypeResolver<'_> {
             }
             // Dereferencing a reference gives the type it references.
             ExprKind::Deref(inner) => match &inner.expr_type {
-                Some(ExprType::Concrete(reference)) => self
+                Some(ExprType::Concrete(reference) | ExprType::Inferred(reference)) => self
                     .type_environment
                     .referenced_type(*reference)
                     .map(ExprType::Concrete),

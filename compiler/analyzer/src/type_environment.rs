@@ -606,7 +606,9 @@ impl TypeEnvironment {
     /// no one type, so both answer `None` rather than a representation.
     pub fn representation_of_expr(&self, expr: &Expr) -> Option<&SemanticType> {
         match expr.expr_type.as_ref()? {
-            ExprType::Concrete(id) => Some(&self.get_by_id(*id)?.representation),
+            ExprType::Concrete(id) | ExprType::Inferred(id) => {
+                Some(&self.get_by_id(*id)?.representation)
+            }
             ExprType::Literal(_) | ExprType::Null => None,
         }
     }

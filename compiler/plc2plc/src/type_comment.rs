@@ -48,7 +48,7 @@ fn prefix(expr: &Expr) -> &'static str {
 /// choose.
 fn type_text(expr: &Expr, type_name: TypeNamer) -> String {
     match &expr.expr_type {
-        Some(ExprType::Concrete(id)) => type_name(*id),
+        Some(ExprType::Concrete(id) | ExprType::Inferred(id)) => type_name(*id),
         Some(ExprType::Null) => String::from("NULL"),
         Some(ExprType::Literal(category)) => format!("? {}", category.as_str()),
         None => String::from("?"),

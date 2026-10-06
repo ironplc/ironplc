@@ -31,11 +31,13 @@ impl<'a> ConversionTarget<'a> {
     /// in a conversion to it.
     pub(crate) fn convert(&self, operand: &mut Expr, target: TypeId) {
         match operand.expr_type {
-            Some(ExprType::Literal(_)) => operand.expr_type = Some(ExprType::Concrete(target)),
-            Some(ExprType::Concrete(own)) if self.needs_conversion(own, target) => {
+            Some(ExprType::Literal(_)) => operand.expr_type = Some(ExprType::Inferred(target)),
+            Some(ExprType::Concrete(own) | ExprType::Inferred(own))
+                if self.needs_conversion(own, target) =>
+            {
                 wrap(operand, target);
             }
-            Some(ExprType::Concrete(_) | ExprType::Null) | None => {}
+            Some(ExprType::Concrete(_) | ExprType::Inferred(_) | ExprType::Null) | None => {}
         }
     }
 
@@ -62,7 +64,7 @@ impl<'a> ConversionTarget<'a> {
     /// Returns `true` when `expr` is a string, or an untyped string literal.
     pub(crate) fn is_string(&self, expr: &Expr) -> bool {
         match &expr.expr_type {
-            Some(ExprType::Concrete(id)) => {
+            Some(ExprType::Concrete(id) | ExprType::Inferred(id)) => {
                 matches!(self.representation(*id), Some(SemanticType::String { .. }))
             }
             Some(ExprType::Literal(generic)) => *generic == GenericTypeName::AnyString,
@@ -100,8 +102,5 @@ pub(crate) fn wrap(operand: &mut Expr, target: TypeId) {
 
 /// The type of `expr` when it is a value of one concrete type.
 pub(crate) fn concrete(expr: &Expr) -> Option<TypeId> {
-    match expr.expr_type {
-        Some(ExprType::Concrete(id)) => Some(id),
-        Some(ExprType::Literal(_) | ExprType::Null) | None => None,
-    }
+    expr.expr_type.as_ref()?.type_id()
 }

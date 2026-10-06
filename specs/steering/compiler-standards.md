@@ -104,7 +104,11 @@ problems the rule reports**:
   the program and run the rule against the resolved context; compare with
   `codes(&[Problem::…])`, or `diagnostic_codes(&diagnostics)` when the test
   also checks a message. `fb_inheritance_options()` and `edition3_options()`
-  build the common options. Parser token rules use `token_rule_ok!(name, tokens)` and
+  build the common options. A rule `stages::analyze` runs after
+  `xform_insert_implicit_conversions` (`rule_constant_range`) sees the
+  library the pass returns, which the macros do not build; its tests use
+  `rule_codes_after_conversions` and `rule_diagnostics_after_conversions`.
+  Parser token rules use `token_rule_ok!(name, tokens)` and
   `token_rule_err!(name, tokens, [P])` in `parser/src/test_rule_macros.rs`,
   with `token` and `result_codes` in `parser/src/test_rule_helpers.rs` for
   the tests the macros cannot express.

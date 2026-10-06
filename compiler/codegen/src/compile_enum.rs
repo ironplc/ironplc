@@ -13,7 +13,7 @@ use ironplc_container::debug_section::EnumDefEntry;
 use ironplc_dsl::common::{EnumeratedValue, InitialValueAssignmentKind, VarDecl};
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{Expr, ExprType};
+use ironplc_dsl::textual::Expr;
 use ironplc_dsl::type_id::TypeId;
 
 use super::compile::{CompileContext, OpWidth, Signedness, VarTypeInfo};
@@ -50,10 +50,7 @@ pub(crate) fn members_of_expr<'a>(
     ctx: &'a CompileContext,
     expr: &Expr,
 ) -> Option<&'a EnumerationMembers> {
-    match expr.expr_type.as_ref()? {
-        ExprType::Concrete(id) => members_of(ctx, Some(*id)),
-        _ => None,
-    }
+    members_of(ctx, expr.expr_type.as_ref()?.type_id())
 }
 
 /// The ordinal a variable declared by `decl` starts at, or `None` when

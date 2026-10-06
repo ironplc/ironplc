@@ -65,7 +65,7 @@ pub fn operand_type_name(types: &TypeEnvironment, expr_type: &ExprType) -> Optio
     match expr_type {
         ExprType::Literal(generic) => Some(generic.clone().into()),
         ExprType::Null => None,
-        ExprType::Concrete(id) => operand_name_of(types, *id),
+        ExprType::Concrete(id) | ExprType::Inferred(id) => operand_name_of(types, *id),
     }
 }
 
@@ -107,7 +107,7 @@ pub(crate) fn of(types: &TypeEnvironment, expr: &Expr) -> Option<ValueType> {
     let expr_type = expr.expr_type.as_ref()?;
     let by_name = || operand_type_name(types, expr_type).map(ValueType::Scalar);
     let id = match expr_type {
-        ExprType::Concrete(id) => id,
+        ExprType::Concrete(id) | ExprType::Inferred(id) => id,
         // `NULL` is accepted for any reference, so there is nothing to
         // compare it with.
         ExprType::Null => return None,
@@ -153,8 +153,8 @@ pub(crate) fn check(
     expr: &Expr,
     options: &CompilerOptions,
 ) -> Result<(), Mismatch> {
-    if let Some(ExprType::Concrete(id)) = &expr.expr_type {
-        if types.id_of(expected) == Some(*id) {
+    if let Some(id) = expr.expr_type.as_ref().and_then(ExprType::type_id) {
+        if types.id_of(expected) == Some(id) {
             return Ok(());
         }
     }

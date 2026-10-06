@@ -46,7 +46,7 @@ pub(crate) fn operand_names(types: &TypeEnvironment) -> HashMap<TypeId, TypeName
 /// its `expr_type` (see [`operand_names`]).
 pub(crate) fn expr_operand_name(ctx: &CompileContext, expr: &Expr) -> Option<TypeName> {
     match expr.expr_type.as_ref()? {
-        ExprType::Concrete(id) => ctx.operand_names.get(id).cloned(),
+        ExprType::Concrete(id) | ExprType::Inferred(id) => ctx.operand_names.get(id).cloned(),
         ExprType::Literal(generic) => Some(generic.clone().into()),
         ExprType::Null => None,
     }
@@ -59,7 +59,7 @@ pub(crate) fn expr_operand_name(ctx: &CompileContext, expr: &Expr) -> Option<Typ
 /// composite type).
 pub(crate) fn expr_type_info(ctx: &CompileContext, expr: &Expr) -> Option<VarTypeInfo> {
     match expr.expr_type.as_ref()? {
-        ExprType::Concrete(id) => operand_type_info(ctx.types.get(id)?),
+        ExprType::Concrete(id) | ExprType::Inferred(id) => operand_type_info(ctx.types.get(id)?),
         ExprType::Literal(generic) => literal_type_info(generic),
         // NULL is compared and stored as the reference it stands in for.
         ExprType::Null => Some(reference_type_info()),
@@ -80,7 +80,7 @@ pub(crate) fn expr_representation<'a>(
     expr: &Expr,
 ) -> Option<&'a SemanticType> {
     match expr.expr_type.as_ref()? {
-        ExprType::Concrete(id) => ctx.types.get(id),
+        ExprType::Concrete(id) | ExprType::Inferred(id) => ctx.types.get(id),
         ExprType::Literal(_) | ExprType::Null => None,
     }
 }

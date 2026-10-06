@@ -29,9 +29,11 @@ the node; it is written (`Display`, plc2plc) as the expression it converts.
 ## The pass
 
 `xform_insert_implicit_conversions` runs in `stages::analyze` after the
-semantic rules, so a rule checks the operands the program wrote. A backend
-compiles the library `analyze` returns; the library `resolve_types` returns has
-no conversions yet.
+semantic rules, so a rule checks the operands the program wrote.
+`rule_constant_range` runs after the pass instead, on the library it returns,
+and reads an operand's type through the conversion that wraps it, so it checks
+the operands as written too. A backend compiles the library `analyze` returns;
+the library `resolve_types` returns has no conversions yet.
 
 The pass covers the comparisons `=`, `<>`, `<`, `<=`, `>` and `>=`, and their
 function forms `EQ` to `GE`. A comparison compares at the type one operand
@@ -61,7 +63,7 @@ widened by its own signedness rather than the wider one truncated.
 
 **REQ-IC-analyzer-008** An implicit conversion is written where its operand was written: it has the operand's span, and it renders as the operand.
 
-**REQ-IC-analyzer-009** The semantic rules check the operands as written: `DINT#300 < s` on a `SINT` reports P2026 although `s` is converted to `DINT`.
+**REQ-IC-analyzer-009** A rule checks the operands as written, reading an operand through the conversion that wraps it: `DINT#300 < s` on a `SINT` reports P2026 although `s` is converted to `DINT`.
 
 ### Arithmetic
 
@@ -160,6 +162,8 @@ Every construct a literal can sit in either passes the type of its context on, c
 **REQ-IC-analyzer-065** The literals of a `CASE` selector take the selector's type, and those of an `IF`, `WHILE` or `REPEAT` condition the type the condition is tested at.
 
 **REQ-IC-analyzer-067** An operation on one value of a numeric type passes its own type, not its context's, to its literal inputs: the count `1` of `lw := SHL(w, 1)` on an `LWORD` and a `DWORD` is a `DINT`, since the `DWORD` is shifted at 32 bits.
+
+**REQ-IC-analyzer-068** The type the pass gives an untyped literal is recorded as inferred (`ExprType::Inferred`), and a prefixed literal's stays stated (`ExprType::Concrete`), so a rule can tell a type the program wrote from one the pass chose: the `1` of `l := 1` is an inferred `LINT`, the `LINT#1` of `l := LINT#1` a stated one.
 
 **REQ-IC-analyzer-066** A typed numeric literal keeps its own type and, in a context of another numeric type, is wrapped in an `ImplicitConversion` to it: the `UDINT#4000000000` of `l := UDINT#4000000000` on an `LINT` is converted to `LINT`.
 

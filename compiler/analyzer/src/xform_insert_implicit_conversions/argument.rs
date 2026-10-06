@@ -74,13 +74,13 @@ impl ImplicitConversions<'_> {
                     return;
                 };
                 if default_width == width {
-                    arg.expr_type = Some(ExprType::Concrete(target));
+                    arg.expr_type = Some(ExprType::Inferred(target));
                 } else {
-                    arg.expr_type = Some(ExprType::Concrete(default_id));
+                    arg.expr_type = Some(ExprType::Inferred(default_id));
                     wrap(arg, target);
                 }
             }
-            Some(ExprType::Concrete(own)) => {
+            Some(ExprType::Concrete(own) | ExprType::Inferred(own)) => {
                 let own = self
                     .context
                     .types()
