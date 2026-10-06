@@ -15,6 +15,7 @@ mod enums;
 mod exit_return;
 mod expression_types;
 mod fb_inheritance;
+mod interfaces;
 mod method_call_expression;
 mod methods;
 mod mixed_vars;
