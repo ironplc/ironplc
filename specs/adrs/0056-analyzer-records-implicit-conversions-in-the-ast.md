@@ -173,3 +173,15 @@ conversion that wraps it, and gives an untyped literal no type of its own. So
 `DINT#300 < s` on a `SINT` still reports P2026, the diagnostic that was lost
 when the pass first ran before the rules. The other rules still run before the
 pass. The decision above is unchanged.
+
+### Functions of several inputs of one type (postscript)
+
+`MIN`, `MAX`, `LIMIT`, `SEL`, `MUX`, `EXPT` and `ATAN2` computed at the
+type of their context, because the analyzer typed the result by the first
+input, which need not be the widest: `i2 := MAX(i, l)` on `INT`s and an
+`LINT` passed analysis and truncated the `LINT` (#2127), and `MAX` of two
+`UDINT`s passed to a `DINT` input compared them signed. The resolver now types
+such a call by the type every input widens to (`EXPT` by its base), the pass
+converts each input to it and records the conversion of the result to its
+context, and codegen selects the builtin from the call's recorded type rather
+than from its context. The decision above is unchanged.

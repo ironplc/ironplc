@@ -26,6 +26,7 @@
 mod argument;
 mod arithmetic;
 mod assignment;
+mod inputs_of_one_type;
 mod literal;
 
 use std::convert::Infallible;
@@ -177,7 +178,10 @@ impl Fold<Infallible> for ImplicitConversions<'_> {
             ExprKind::BinaryOp(binary) => {
                 self.record_binary_operands(binary, node.expr_type.as_ref());
             }
-            ExprKind::Function(_) => self.record_fold_operands(&mut node),
+            ExprKind::Function(_) => {
+                self.record_fold_operands(&mut node);
+                self.record_one_type_inputs(&mut node);
+            }
             // A comparison's operands are recorded by `fold_compare_expr`
             // and a call's arguments by `fold_function`; nothing else has
             // operands an operation converts.

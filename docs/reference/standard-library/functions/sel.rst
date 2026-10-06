@@ -25,8 +25,9 @@ Signature
      END_VAR
    END_FUNCTION
 
-The return type matches the type of *IN0* and *IN1*, which must be the
-same. ``SEL`` is polymorphic over any data type.
+``SEL`` is polymorphic over any data type.
+
+.. include:: ../../../includes/widest-input-return-type.rst
 
 .. rubric:: Inputs
 
@@ -60,14 +61,13 @@ same. ``SEL`` is polymorphic over any data type.
      - Description
    * - Return value
      - ``ANY``
-     - IN0 if G is FALSE, IN1 if G is TRUE. Same type as IN0 and IN1.
+     - IN0 if G is FALSE, IN1 if G is TRUE.
 
 Description
 -----------
 
 ``SEL(G, IN0, IN1)`` returns *IN0* if *G* is ``FALSE``, or *IN1* if
-*G* is ``TRUE``. The types of *IN0* and *IN1* must be the same, and
-the return type matches the input type.
+*G* is ``TRUE``.
 
 This function is polymorphic: it works with any data type for the
 selected inputs.

@@ -28,8 +28,9 @@ Signature
      END_VAR
    END_FUNCTION
 
-The return type matches the input type. All ``INn`` inputs must share
-the same type. ``MUX`` is polymorphic over any data type.
+``MUX`` is polymorphic over any data type.
+
+.. include:: ../../../includes/widest-input-return-type.rst
 
 .. rubric:: Inputs
 
@@ -46,7 +47,7 @@ the same type. ``MUX`` is polymorphic over any data type.
      - Zero-based selector. Selects which input is returned.
    * - ``IN0``, ``IN1``, ..., ``INn``
      - ``ANY``
-     - The candidate values. The number of inputs matches the value range of K (2 to 16). All inputs must share the same type.
+     - The candidate values. The number of inputs matches the value range of K (2 to 16).
 
 .. rubric:: Outputs
 
@@ -60,14 +61,13 @@ the same type. ``MUX`` is polymorphic over any data type.
      - Description
    * - Return value
      - ``ANY``
-     - The input selected by K. Same type as the INn inputs.
+     - The input selected by K.
 
 Description
 -----------
 
 ``MUX(K, IN0, IN1, ...)`` returns the input selected by the zero-based
-index *K*. The number of inputs is variable, and all inputs must be
-the same type.
+index *K*. The number of inputs is variable.
 
 - If *K* = 0, returns *IN0*
 - If *K* = 1, returns *IN1*
