@@ -6,6 +6,7 @@ use ironplc_container::{
 
 use crate::buffers::VmBuffers;
 use crate::builtin;
+use crate::clock::Clock;
 use crate::debug::PauseReason;
 use crate::debug_hook::{DebugHook, HookAction, NoopDebugHook};
 use crate::error::Trap;
@@ -20,8 +21,6 @@ use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
 use core::fmt::Write as FmtWrite;
 use ironplc_container::opcode;
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
 
 /// Context for a fault that occurred during task execution.
 #[derive(Debug)]
@@ -394,13 +393,20 @@ impl<'a> VmRunning<'a> {
     /// Executes one scheduling round: collects ready tasks, executes them
     /// in priority order, and updates timing.
     ///
-    /// The caller provides `uptime_us` (microseconds since VM start).
+    /// The caller provides `uptime_us` (microseconds since VM start), the
+    /// PLC's time, which it may simulate. It also provides the `clock` that
+    /// measures how long each task actually executes, for the watchdog and
+    /// the task's execution statistics (see [`Clock`]).
     /// Sleep logic is the caller's responsibility.
     ///
     /// Returns `Ok(())` if the round completes. Returns `Err(FaultContext)` if
     /// a trap occurs during execution. The caller should transition to
     /// `VmFaulted` on trap.
-    pub fn run_round(&mut self, uptime_us: u64) -> Result<(), FaultContext> {
+    pub fn run_round<C: Clock>(
+        &mut self,
+        uptime_us: u64,
+        clock: &mut C,
+    ) -> Result<(), FaultContext> {
         // Build a scheduler temporarily borrowing task_states.
         // We need to collect ready task indices into ready_buf, then drop the scheduler
         // before iterating, so we can mutably borrow task_states during record_execution.
@@ -425,8 +431,7 @@ impl<'a> VmRunning<'a> {
             let task_idx = self.ready_buf[ri];
             let task_id = self.task_states[task_idx].task_id;
 
-            #[cfg(not(target_arch = "wasm32"))]
-            let start = Instant::now();
+            let start_us = clock.now_us();
             let mut last_instance_id = InstanceId::DEFAULT;
 
             // Iterate over program instances for this task.
@@ -452,10 +457,8 @@ impl<'a> VmRunning<'a> {
                 );
             }
 
-            #[cfg(not(target_arch = "wasm32"))]
-            let elapsed_us = start.elapsed().as_micros() as u64;
-            #[cfg(target_arch = "wasm32")]
-            let elapsed_us = 0u64;
+            // A clock that went backwards measures zero rather than wrapping.
+            let elapsed_us = clock.now_us().saturating_sub(start_us);
 
             // Watchdog check: if the task has a watchdog configured and
             // execution exceeded the timeout, trap.
@@ -3092,7 +3095,9 @@ impl core::fmt::Write for StackFmtBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{assert_trap, single_function_container, steel_thread_container};
+    use crate::test_support::{
+        assert_trap, load_and_start, single_function_container, steel_thread_container,
+    };
     use crate::VmBuffers;
     use ironplc_container::ContainerBuilder;
 
@@ -3111,7 +3116,7 @@ mod tests {
     fn vm_run_round_when_steel_thread_then_x_is_10_y_is_42() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        let mut vm = load_and_start(&c, &mut b).unwrap();
 
         vm.run_round(0).unwrap();
 
@@ -3123,7 +3128,7 @@ mod tests {
     fn vm_run_round_when_invalid_opcode_then_trap() {
         let c = single_function_container(&[0xFF], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        let mut vm = load_and_start(&c, &mut b).unwrap();
 
         assert_trap(&mut vm, Trap::InvalidInstruction(0xFF));
     }
@@ -3192,7 +3197,7 @@ mod tests {
             .build();
 
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        let mut vm = load_and_start(&c, &mut b).unwrap();
         assert_trap(&mut vm, Trap::StackOverflow);
     }
 
@@ -3201,7 +3206,7 @@ mod tests {
         // ADD_I32 tries to pop 2 values from an empty stack
         let c = single_function_container(&[0x20], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        let mut vm = load_and_start(&c, &mut b).unwrap();
 
         assert_trap(&mut vm, Trap::StackUnderflow);
     }
@@ -3215,7 +3220,7 @@ mod tests {
         ];
         let c = single_function_container(&bytecode, 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        let mut vm = load_and_start(&c, &mut b).unwrap();
 
         assert_trap(&mut vm, Trap::InvalidConstantIndex(ConstantIndex::new(0)));
     }
@@ -3230,7 +3235,7 @@ mod tests {
         ];
         let c = single_function_container(&bytecode, 1, &[42]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        let mut vm = load_and_start(&c, &mut b).unwrap();
 
         assert_trap(&mut vm, Trap::InvalidVariableIndex(VarIndex::new(5)));
     }
@@ -3244,7 +3249,7 @@ mod tests {
         ];
         let c = single_function_container(&bytecode, 1, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        let mut vm = load_and_start(&c, &mut b).unwrap();
 
         assert_trap(&mut vm, Trap::InvalidVariableIndex(VarIndex::new(5)));
     }
@@ -3288,7 +3293,7 @@ mod tests {
             .max_call_depth(2) // SCAN -> add (2 frames)
             .build();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        let mut vm = load_and_start(&c, &mut b).unwrap();
         vm.run_round(0).unwrap();
 
         // result should be 3 + 7 = 10
@@ -3299,7 +3304,7 @@ mod tests {
     fn execute_when_empty_bytecode_then_ok() {
         let c = single_function_container(&[], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        let mut vm = load_and_start(&c, &mut b).unwrap();
 
         assert!(vm.run_round(0).is_ok());
     }
@@ -3426,7 +3431,7 @@ mod tests {
             .max_call_depth(1)
             .build();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        let mut vm = load_and_start(&c, &mut b).unwrap();
 
         assert!(vm.run_round(0).is_ok());
     }
@@ -3446,7 +3451,7 @@ mod tests {
         // to the uptime globals -- the VM still knows the clock it ran with.
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        let mut vm = load_and_start(&c, &mut b).unwrap();
 
         vm.run_round(2_500_000).unwrap();
 
@@ -3457,7 +3462,7 @@ mod tests {
     fn uptime_when_round_advances_then_follows_the_clock() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        let mut vm = load_and_start(&c, &mut b).unwrap();
 
         vm.run_round(1_000).unwrap();
         assert_eq!(vm.uptime(), Duration::from_millis(1));

@@ -8,7 +8,7 @@
 use ironplc_container::opcode;
 use ironplc_vm::{NoopDebugHook, Vm};
 
-use crate::common::{single_function_container, VmBuffers};
+use crate::common::{single_function_container, ManualClock, VmBuffers};
 
 #[test]
 fn run_round_when_resumed_at_max_scan_count_then_saturates() {
@@ -16,7 +16,7 @@ fn run_round_when_resumed_at_max_scan_count_then_saturates() {
     let mut b = VmBuffers::from_container(&c);
     let mut vm = Vm::new().load(&c, &mut b).unwrap().resume(u64::MAX);
 
-    vm.run_round(0).unwrap();
+    vm.run_round(0, &mut ManualClock::default()).unwrap();
 
     assert_eq!(vm.scan_count(), u64::MAX);
 }
@@ -38,7 +38,7 @@ fn run_round_when_resumed_below_max_then_increments() {
     let mut b = VmBuffers::from_container(&c);
     let mut vm = Vm::new().load(&c, &mut b).unwrap().resume(u64::MAX - 1);
 
-    vm.run_round(0).unwrap();
+    vm.run_round(0, &mut ManualClock::default()).unwrap();
 
     assert_eq!(vm.scan_count(), u64::MAX);
 }

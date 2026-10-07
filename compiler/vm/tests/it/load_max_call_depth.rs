@@ -10,7 +10,7 @@ use ironplc_container::{opcode, ContainerBuilder, FunctionId};
 use ironplc_vm::error::Trap;
 use ironplc_vm::Vm;
 
-use crate::common::VmBuffers;
+use crate::common::{ManualClock, VmBuffers};
 
 fn empty_init_container_with_depth(max_call_depth: u16) -> ironplc_container::Container {
     let init_bytecode: Vec<u8> = vec![opcode::RET_VOID];
@@ -106,6 +106,6 @@ fn resume_when_container_declares_call_depth_within_buffer_then_continues_scan_c
     let mut b = VmBuffers::from_container(&c);
     let mut running = Vm::new().load(&c, &mut b).unwrap().resume(41);
     assert_eq!(running.scan_count(), 41);
-    running.run_round(0).unwrap();
+    running.run_round(0, &mut ManualClock::default()).unwrap();
     assert_eq!(running.scan_count(), 42);
 }

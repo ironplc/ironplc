@@ -117,12 +117,12 @@ Each `run_round()`:
    - Skip disabled tasks
 3. Sort ready by `(priority ASC, task_id ASC)`
 4. For each ready task:
-   a. `start_time = monotonic_clock_us()`
+   a. `start_time = clock.now_us()` — `clock` is the `Clock` the embedder passes to `run_round`; the VM reads no operating-system clock itself
    b. `input_freeze()` — stub no-op
    c. For each program instance belonging to this task (in declaration order):
       - `execute(instance.entry_function_id, ...)`
    d. `output_flush()` — stub no-op
-   e. `elapsed = monotonic_clock_us() - start_time`
+   e. `elapsed = clock.now_us().saturating_sub(start_time)` (a clock that goes backwards measures 0)
    f. Update task_state: `last_execute_us`, `max_execute_us`, `scan_count`
    g. Watchdog: if `watchdog_us > 0 && elapsed > watchdog_us` → Trap
 5. Update `next_due_us` for cyclic tasks that ran:

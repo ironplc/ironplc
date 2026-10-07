@@ -3,9 +3,9 @@
 //! These tests only compile when the `profiling` feature is enabled.
 #![cfg(feature = "profiling")]
 
-use crate::common::{single_function_container, VmBuffers};
+use crate::common::{load_and_start, single_function_container, VmBuffers};
 use ironplc_container::opcode;
-use ironplc_vm::{InstructionProfile, Vm};
+use ironplc_vm::InstructionProfile;
 
 #[test]
 fn profile_new_when_created_then_all_counts_zero() {
@@ -47,11 +47,7 @@ fn vm_stop_when_profiling_enabled_then_profile_has_counts() {
     ];
     let container = single_function_container(bytecode, 1, &[10, 20]);
     let mut bufs = VmBuffers::from_container(&container);
-    let mut vm = Vm::new()
-        .load(&container, &mut bufs)
-        .unwrap()
-        .start()
-        .unwrap();
+    let mut vm = load_and_start(&container, &mut bufs).unwrap();
     vm.run_round(0).unwrap();
     let stopped = vm.stop();
 

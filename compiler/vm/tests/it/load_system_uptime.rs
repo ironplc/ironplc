@@ -10,7 +10,7 @@ use ironplc_container::{opcode, VarIndex, FLAG_HAS_SYSTEM_UPTIME};
 use ironplc_vm::error::Trap;
 use ironplc_vm::Vm;
 
-use crate::common::{single_function_container, VmBuffers};
+use crate::common::{load_and_start, single_function_container, VmBuffers};
 
 fn uptime_container(num_variables: u16) -> ironplc_container::Container {
     let mut c = single_function_container(&[opcode::RET_VOID], num_variables, &[]);
@@ -73,7 +73,7 @@ fn load_when_uptime_flag_set_and_variable_buffer_too_small_then_variable_table_t
 fn load_when_uptime_flag_clear_and_no_variables_then_runs() {
     let c = single_function_container(&[opcode::RET_VOID], 0, &[]);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+    let mut vm = load_and_start(&c, &mut b).unwrap();
 
     assert!(vm.run_round(1_000).is_ok());
 }
@@ -82,7 +82,7 @@ fn load_when_uptime_flag_clear_and_no_variables_then_runs() {
 fn run_round_when_uptime_flag_set_and_two_variables_then_writes_uptime() {
     let c = uptime_container(2);
     let mut b = VmBuffers::from_container(&c);
-    let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+    let mut vm = load_and_start(&c, &mut b).unwrap();
 
     vm.run_round(2_500_000).unwrap();
 
