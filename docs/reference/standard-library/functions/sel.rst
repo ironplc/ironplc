@@ -25,7 +25,9 @@ Signature
      END_VAR
    END_FUNCTION
 
-``SEL`` is polymorphic over any data type.
+IEC 61131-3 declares *IN0* and *IN1* as any type (``ANY``). IronPLC supports
+``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``,
+``ULINT``, ``REAL``, ``LREAL``.
 
 .. include:: ../../../includes/widest-input-return-type.rst
 
@@ -68,9 +70,6 @@ Description
 
 ``SEL(G, IN0, IN1)`` returns *IN0* if *G* is ``FALSE``, or *IN1* if
 *G* is ``TRUE``.
-
-This function is polymorphic: it works with any data type for the
-selected inputs.
 
 Example
 -------

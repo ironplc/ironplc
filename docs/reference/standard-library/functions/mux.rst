@@ -28,7 +28,9 @@ Signature
      END_VAR
    END_FUNCTION
 
-``MUX`` is polymorphic over any data type.
+IEC 61131-3 declares each ``INn`` input as any type (``ANY``). IronPLC
+supports ``SINT``, ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``,
+``ULINT``, ``REAL``, ``LREAL``.
 
 .. include:: ../../../includes/widest-input-return-type.rst
 
@@ -76,9 +78,6 @@ index *K*. The number of inputs is variable.
 If *K* is out of range, the value is clamped: negative *K* selects
 *IN0*, and *K* greater than or equal to the number of inputs selects
 the last input. Supports 2 to 16 input values.
-
-This function is polymorphic: it works with any data type for the
-selected inputs.
 
 Example
 -------
