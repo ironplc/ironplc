@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 52bf45b34be533931deb0cae4ac9787360a9fef410e8ed0bdbcb45c28b3046ca # shrinks to interval_us = 1, uptimes_us = [18446744073709551615]
+cc bac0c4a2b6cf5e1b13c85c143e74f30ed7e9951f640df002f3f6b0a7b8a4f2b7 # shrinks to flags = 0, num_vars = 0, var_capacity = 0, initial_scan_count = 18446744073709551615, uptime_us = 0

@@ -22,9 +22,23 @@ use ironplc_parser::options::{CompilerOptions, Dialect, FeatureDescriptor};
 use ironplc_project::MemoryBackedProject;
 use ironplc_sources::{parse_source, FileType};
 use ironplc_vm::error::Trap;
-use ironplc_vm::{Slot, VariableView, Vm, VmBuffers};
+use ironplc_vm::{Clock, Slot, VariableView, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+
+/// The clock the playground times task execution with. It always reads 0,
+/// so every task measures as taking no time and no watchdog trips.
+///
+/// The playground has always run without a task watchdog: before the VM
+/// took its clock from the caller, its `wasm32` build measured every task
+/// as 0 µs. This keeps that behavior rather than wiring a browser clock in.
+struct ZeroClock;
+
+impl Clock for ZeroClock {
+    fn now_us(&mut self) -> u64 {
+        0
+    }
+}
 
 /// Persistent state for step-through execution.
 ///
@@ -567,7 +581,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
 
     for round in 0..scans {
         let uptime_us = (round as u64) * 1000;
-        if let Err(ctx) = running.run_round(uptime_us) {
+        if let Err(ctx) = running.run_round(uptime_us, &mut ZeroClock) {
             let faulted = running.fault(ctx);
             let variables = read_all_variables(&faulted, &renderer);
             return RunResult {
@@ -907,7 +921,7 @@ fn run_vm_scans(
 
     for _ in 0..scans {
         let uptime_us = running.scan_count() * cycle_time_us;
-        if let Err(ctx) = running.run_round(uptime_us) {
+        if let Err(ctx) = running.run_round(uptime_us, &mut ZeroClock) {
             let total_scans = running.scan_count();
             let faulted = running.fault(ctx);
             let variables = read_all_variables(&faulted, &VariableRenderer::new(container));

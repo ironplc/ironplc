@@ -1,14 +1,17 @@
 //! Scenario integration tests for the VM.
 //!
 //! Phase 2: Multi-scan state accumulation and fault handling.
-//! Phase 3: Multi-task execution, variable scope isolation, and watchdog.
+//! Phase 3: Multi-task execution, variable scope isolation, and watchdog
+//! timing against an injected clock.
 
-use crate::common::{load_and_start, VmBuffers};
+use crate::common::{load_and_start, single_function_container, ManualClock, VmBuffers};
 use ironplc_container::{
-    ContainerBuilder, FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId, TaskType,
-    VarIndex,
+    opcode, ContainerBuilder, FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId,
+    TaskType, VarIndex,
 };
 use ironplc_vm::error::Trap;
+use ironplc_vm::{Clock, Vm};
+use rstest::rstest;
 
 /// Builds a container for a program that increments var[0] by 1 each scan.
 ///
@@ -320,49 +323,82 @@ fn scenario_when_tasks_share_global_then_communication_works() {
     assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 99); // task 1 read the global
 }
 
-/// A task with a 1µs watchdog timeout trips when execution takes longer.
-///
-/// Uses a busy-loop (10 000 iterations) to guarantee measurable elapsed time.
-#[test]
-fn scenario_when_watchdog_exceeded_then_trap() {
-    // WHILE var[0] > 0 DO var[0] := var[0] - 1 END_WHILE
-    // Constants: pool[0]=0, pool[1]=1
-    #[rustfmt::skip]
-    let bytecode: Vec<u8> = vec![
-        // LOOP (offset 0):
-        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (0)
-        0x50,                   // GT_I32
-        0x80, 0x0D, 0x00,       // JMP_IF_NOT +13 -> END (offset 23)
-        // body:
-        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (1)
-        0x24,                   // SUB_I32
-        0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
-        0x7C, 0xE9, 0xFF,       // JMP -23 -> LOOP (offset 0)
-        // END (offset 23):
-        0x8C,                   // RET_VOID
-    ];
-
-    let c = ContainerBuilder::new()
+/// A one-task container whose scan function is `RET_VOID` and whose task
+/// has the given watchdog limit.
+fn watchdog_container(watchdog_us: u64) -> ironplc_container::Container {
+    ContainerBuilder::new()
         .num_variables(1)
-        .add_i32_constant(0)
-        .add_i32_constant(1)
-        .add_function(FunctionId::new(0), &[0x8C], 0, 1, 0) // init: RET_VOID
-        .add_function(FunctionId::new(1), &bytecode, 2, 1, 0) // scan: busy loop
-        .add_task(freewheeling_task(0, 0, 1)) // watchdog_us = 1 (1µs)
+        .add_function(FunctionId::new(0), &[opcode::RET_VOID], 0, 1, 0) // init
+        .add_function(FunctionId::new(1), &[opcode::RET_VOID], 0, 1, 0) // scan
+        .add_task(freewheeling_task(0, 0, watchdog_us))
         .add_program_instance(program_instance(0, 0, 1, 0, 1))
         .max_call_depth(1)
-        .build();
+        .build()
+}
 
+/// The watchdog trips when the clock measures a task as running longer than
+/// `watchdog_us`, and not when it measures exactly `watchdog_us`.
+///
+/// The clock advances by `step_us` between the readings taken before and
+/// after the task, so the measured time is exact whatever the host's speed.
+#[rstest]
+#[case(100, None)]
+#[case(101, Some(Trap::WatchdogTimeout(TaskId::new(0))))]
+fn scenario_when_clock_measures_task_against_watchdog_then_traps_only_past_limit(
+    #[case] step_us: u64,
+    #[case] expected: Option<Trap>,
+) {
+    let c = watchdog_container(100);
     let mut b = VmBuffers::from_container(&c);
-    b.vars[0] = ironplc_vm::Slot::from_i32(10_000);
     let mut vm = load_and_start(&c, &mut b).unwrap();
+    vm.clock = ManualClock::stepping(step_us);
+
     let result = vm.run_round(0);
 
-    assert!(result.is_err());
-    let ctx = result.unwrap_err();
-    assert_eq!(ctx.trap, Trap::WatchdogTimeout(TaskId::new(0)));
+    assert_eq!(result.err().map(|ctx| ctx.trap), expected);
+}
+
+/// The time the clock measures for a task is what the scheduler records.
+#[test]
+fn scenario_when_clock_measures_task_then_records_execution_time() {
+    let c = watchdog_container(0);
+    let mut b = VmBuffers::from_container(&c);
+    {
+        let mut vm = load_and_start(&c, &mut b).unwrap();
+        vm.clock = ManualClock::stepping(250);
+        vm.run_round(0).unwrap();
+    }
+
+    assert_eq!(b.tasks[0].last_execute_us, 250);
+    assert_eq!(b.tasks[0].max_execute_us, 250);
+}
+
+/// A clock whose every reading is 1 ms earlier than the one before.
+struct BackwardsClock {
+    now_us: u64,
+}
+
+impl Clock for BackwardsClock {
+    fn now_us(&mut self) -> u64 {
+        let now = self.now_us;
+        self.now_us = self.now_us.saturating_sub(1_000);
+        now
+    }
+}
+
+/// A clock that goes backwards measures the task as taking no time: it
+/// neither panics nor trips a 1 µs watchdog.
+#[test]
+fn scenario_when_clock_goes_backwards_then_measures_zero_without_watchdog_timeout() {
+    let c = watchdog_container(1);
+    let mut b = VmBuffers::from_container(&c);
+    let result = {
+        let mut vm = Vm::new().load(&c, &mut b).unwrap().start().unwrap();
+        vm.run_round(0, &mut BackwardsClock { now_us: 1_000_000 })
+    };
+
+    assert!(result.is_ok());
+    assert_eq!(b.tasks[0].last_execute_us, 0);
 }
 
 /// A task with watchdog_us = 0 (disabled) never triggers a watchdog timeout.
@@ -387,6 +423,8 @@ fn scenario_when_watchdog_disabled_then_no_trap() {
 
     let mut b = VmBuffers::from_container(&c);
     let mut vm = load_and_start(&c, &mut b).unwrap();
+    // However long the task measures, a disabled watchdog never trips.
+    vm.clock = ManualClock::stepping(1_000_000);
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 42);
@@ -470,4 +508,28 @@ fn scenario_when_cyclic_due_time_exceeds_u64_then_saturates_without_panic() {
 
     vm.run_round(u64::MAX).unwrap();
     assert_eq!(vm.scan_count(), 2);
+}
+
+/// A program instance whose variable range ends at the last index (`0xFFFF`)
+/// is checked without overflowing `instance_offset + instance_count`.
+///
+/// The container is not one codegen produces: the instance's range lies far
+/// past the variable buffer, so the access passes the scope check and then
+/// traps on the buffer bound instead of panicking in the scope check.
+#[test]
+fn scenario_when_instance_range_ends_at_last_index_then_traps_without_overflow() {
+    let bytecode = [opcode::LOAD_VAR_I32, 0xFF, 0xFF, opcode::RET_VOID];
+    let mut c = single_function_container(&bytecode, 1, &[]);
+    c.task_table.programs[0].var_table_offset = 0xFFFF;
+    c.task_table.programs[0].var_table_count = 1;
+    c.task_table.shared_globals_size = 0;
+
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = load_and_start(&c, &mut b).unwrap();
+    let result = vm.run_round(0);
+
+    assert_eq!(
+        result.err().map(|ctx| ctx.trap),
+        Some(Trap::InvalidVariableIndex(VarIndex::new(0xFFFF)))
+    );
 }

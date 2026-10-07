@@ -6,7 +6,7 @@
 //! width-specific `BUILTIN` func_id computes it. Separated from
 //! `compile_call.rs` to keep module sizes within the 1000-line guideline.
 
-use ironplc_analyzer::{BitShift, NumericFunction};
+use ironplc_analyzer::{BitShift, Intrinsic, NumericFunction};
 use ironplc_container::opcode;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
@@ -14,7 +14,7 @@ use ironplc_dsl::textual::{Expr, Function};
 
 use super::call_args::{collect_positional_args, wrong_arg_count};
 use super::compile::{CompileContext, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE};
-use super::compile_expr::{compile_expr, storage_bits};
+use super::compile_expr::{compile_expr, op_type, storage_bits};
 use crate::emit::Emitter;
 
 /// Builds the opcode for a builtin defined across all four operation widths
@@ -159,10 +159,15 @@ pub(crate) fn lookup_builtin(
     }
 }
 
-/// Compiles a call to a numeric function via [`lookup_builtin`].
+/// Compiles a call to a numeric function via [`lookup_builtin`] at
+/// `op_type`, which selects the builtin.
 ///
-/// All arguments are compiled with the same `op_type`, which also selects
-/// the builtin.
+/// A function of several inputs of one type (`MIN`, `MAX`, `LIMIT`, `SEL`,
+/// `EXPT`, `ATAN2`) computes at the type the analyzer recorded for the call,
+/// and compiles each argument at the type it recorded for that: an input of
+/// the function's type at `op_type`'s width, to which it converted one of
+/// another width, and `SEL`'s selector as the `BOOL` it is (ADR-0056). A
+/// function of one input compiles it at `op_type`.
 pub(crate) fn compile_numeric(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -181,11 +186,10 @@ pub(crate) fn compile_numeric(
         return Err(wrong_arg_count(func));
     }
 
-    for (i, arg) in args.iter().enumerate() {
-        // SEL's first argument (G) is always a BOOL/integer selector,
-        // even when the remaining arguments are float.
-        let arg_op_type = if function == NumericFunction::Sel && i == 0 {
-            DEFAULT_OP_TYPE
+    let of_one_type = Intrinsic::Numeric(function).inputs_of_one_type().is_some();
+    for arg in &args {
+        let arg_op_type = if of_one_type {
+            self::op_type(ctx, arg)?
         } else {
             op_type
         };

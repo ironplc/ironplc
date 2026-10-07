@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
+use ironplc_cli_support::clock::InstantClock;
 use ironplc_container::debug_format::VariableRenderer;
 use ironplc_container::Container;
 use ironplc_vm::{VariableView, Vm, VmBuffers};
@@ -56,6 +57,7 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
     })?;
 
     let start = Instant::now();
+    let mut execution_clock = InstantClock::new();
     let mut rounds = 0u64;
     loop {
         if stop_flag.load(Ordering::Relaxed) {
@@ -71,7 +73,7 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
         }
 
         let uptime_us = start.elapsed().as_micros() as u64;
-        if let Err(ctx) = running.run_round(uptime_us) {
+        if let Err(ctx) = running.run_round(uptime_us, &mut execution_clock) {
             let faulted = running.fault(ctx);
             let err = VmError::from_trap(faulted.trap(), faulted.task_id(), faulted.instance_id());
             if let Some(dump_path) = dump_vars {
@@ -127,11 +129,12 @@ pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), VmError> {
         .map_err(|ctx| VmError::from_trap(&ctx.trap, ctx.task_id, ctx.instance_id))?;
 
     let clock = Instant::now();
+    let mut execution_clock = InstantClock::new();
 
     // Warmup phase (unmeasured)
     for _ in 0..warmup {
         let uptime_us = clock.elapsed().as_micros() as u64;
-        if let Err(ctx) = running.run_round(uptime_us) {
+        if let Err(ctx) = running.run_round(uptime_us, &mut execution_clock) {
             let faulted = running.fault(ctx);
             return Err(VmError::from_trap(
                 faulted.trap(),
@@ -146,7 +149,7 @@ pub fn benchmark(path: &Path, cycles: u64, warmup: u64) -> Result<(), VmError> {
     for _ in 0..cycles {
         let round_start = Instant::now();
         let uptime_us = clock.elapsed().as_micros() as u64;
-        if let Err(ctx) = running.run_round(uptime_us) {
+        if let Err(ctx) = running.run_round(uptime_us, &mut execution_clock) {
             let faulted = running.fault(ctx);
             return Err(VmError::from_trap(
                 faulted.trap(),
