@@ -206,10 +206,14 @@ sequential function charts and the graphical languages can be lowered later.
   diagrams and instruction lists. They are constraints too (see
   [Sequential and Graphical Languages](#11-sequential-and-graphical-languages)).
 - Any change to the bytecode instruction set, the container format or the VM.
-  One VM change is needed to meet this design fully: addressing function
-  block fields in place
-  ([issue 2120](https://github.com/ironplc/ironplc/issues/2120); see
-  [Instance fields](#instance-fields)). It is designed separately.
+  Two such changes are needed to meet this design fully, and each is designed
+  separately:
+  - addressing function block fields in place
+    ([issue 2120](https://github.com/ironplc/ironplc/issues/2120); see
+    [Instance fields](#instance-fields));
+  - sizing each temporary string buffer from the value it holds
+    ([issue 2118](https://github.com/ironplc/ironplc/issues/2118); see
+    [String capacity](#string-capacity)).
 - Changing what an operation does. [Meaning of operations](#310-meaning-of-operations)
   records what the bytecode VM does today.
 - Removing `Expr::expr_type` or `VarDecl::type_id` from the AST. The analyzer's
@@ -245,8 +249,6 @@ sequential function charts and the graphical languages can be lowered later.
   [EN and ENO](#en-and-eno)).
 - Making the default string capacity a compiler option that a dialect sets.
   This design keeps it possible (see [String capacity](#string-capacity)).
-- Fixing how lowering chooses the capacity of an intermediate string result
-  ([issue 2118](https://github.com/ironplc/ironplc/issues/2118)).
 - How the bytecode VM dispatches a call through an interface, which
   [pull request 1870](https://github.com/ironplc/ironplc/pull/1870) designs, and
   `__QUERYINTERFACE` and `__QUERYPOINTER`.
@@ -923,20 +925,28 @@ program has no string of unknown capacity.
 A value is cut only when it goes into a place or an intermediate result whose
 capacity is smaller than the value. It keeps its first code units.
 
-How lowering chooses an intermediate result's capacity is a known defect,
-[issue 2118](https://github.com/ironplc/ironplc/issues/2118). Today codegen
-computes a bound for each string expression (`string_width.rs`): a declared
-capacity, a literal's length, `m + n` for `CONCAT` of a `STRING[m]` and a
-`STRING[n]`, and 254 code units where it knows none. It sizes the copy of an
-operand that is not a plain variable from that bound. But it makes every
-temporary buffer as large as the largest string the program declares or
-copies, so the size of a buffer is a property of the program, not of the
-expression.
+Today codegen computes a bound for each string expression
+(`string_width.rs`): a declared capacity, a literal's length, `m + n` for
+`CONCAT` of a `STRING[m]` and a `STRING[n]`, and 254 code units where it knows
+none. It sizes the copy of an operand that is not a plain variable from that
+bound. But every temporary buffer has one size, that of the largest string the
+program declares or copies, so the size of a buffer is a property of the
+program, not of the expression
+([issue 2118](https://github.com/ironplc/ironplc/issues/2118)).
 
-At first, lowering gives each intermediate result the capacity the bytecode
-backend gives it today, so the move is behaviour preserving. Fixing the defect
-then changes that one rule in lowering and no backend. REQ-LOW-codegen-055
-holds once the defect is fixed.
+At first, lowering gives each intermediate result the bound codegen computes
+for it today, so the move is behaviour preserving. A later change to how
+lowering chooses a capacity is a change to lowering and no backend.
+
+The bytecode backend cannot meet REQ-LOW-codegen-055 yet, and lowering cannot
+fix that. The VM's pool of temporary buffers is sized once, by two container
+header fields, `num_temp_bufs` and `max_temp_buf_bytes`
+([ADR-0052](../adrs/0052-temp-string-buffers-released-on-consume.md)), so
+every buffer has the same size. Sizing each buffer from the capacity of the
+value it holds is a change to the container format and the VM, which this
+design does not make (see [Scope](#scope)). It needs a design of its own,
+issue 2118. Until then the bytecode backend gives every buffer one size, as it
+does today.
 
 **REQ-LOW-analyzer-053** Every string type the analyzer records has a
 capacity: the one its declaration gives, or the default capacity.
@@ -2291,7 +2301,9 @@ that this document then cites. Eleven decisions are separable:
 11. Every string in the IR has an explicit capacity. The analyzer applies the
     default capacity, lowering decides the capacity of an intermediate result,
     and no backend sizes a string from other declarations
-    ([String capacity](#string-capacity)).
+    ([String capacity](#string-capacity)). The bytecode VM sizes its temporary
+    buffers that way only after a container change of its own
+    ([issue 2118](https://github.com/ironplc/ironplc/issues/2118)).
 
 ## Open Questions
 
