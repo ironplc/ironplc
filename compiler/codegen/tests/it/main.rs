@@ -169,6 +169,7 @@ mod end_to_end_shift;
 mod end_to_end_short_circuit;
 mod end_to_end_sizeof;
 mod end_to_end_sqrt;
+mod end_to_end_stored_conversions;
 mod end_to_end_string;
 mod end_to_end_string_compare;
 mod end_to_end_string_escapes;

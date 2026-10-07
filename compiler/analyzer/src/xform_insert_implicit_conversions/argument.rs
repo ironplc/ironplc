@@ -8,8 +8,8 @@
 //!
 //! It records what the code generator did, including a choice a later change
 //! may correct: a parameter whose type is not elementary (an alias, a
-//! subrange, an enumeration) is passed as a `DINT`, the default slot type, so
-//! an argument of another width is converted to `DINT`.
+//! subrange, an enumeration) is passed as a `DINT` (#2108), so an argument of
+//! another width is converted to `DINT`.
 //!
 //! An untyped literal takes the type of its parameter, as it takes the type
 //! of an assignment's target, so the parameter receives the value the program
@@ -21,9 +21,14 @@
 //! A standard function compiles its arguments as its operation requires and
 //! is not recorded here, and neither is a `VAR_IN_OUT` or `REF_TO`
 //! parameter, which is passed by reference, or a string, which is copied.
+//!
+//! An input of a function block call is stored in a field of the block, and
+//! an argument of a method call in a parameter of the method. Each is
+//! converted to the declared type of its field or parameter, as an assigned
+//! value is to its target's (see `assignment.rs`).
 
 use ironplc_dsl::common::{ElementaryTypeName, TypeName};
-use ironplc_dsl::textual::{Expr, ExprType, Function, ParamAssignmentKind};
+use ironplc_dsl::textual::{Expr, ExprType, FbCall, Function, MethodCall, ParamAssignmentKind};
 use ironplc_dsl::type_id::TypeId;
 
 use super::ImplicitConversions;
@@ -56,6 +61,26 @@ impl ImplicitConversions<'_> {
             });
         for (arg, param) in args.zip(&params) {
             self.record_argument(arg, param);
+        }
+    }
+
+    /// Records the conversion of each input of `node` to the type of the
+    /// field it is stored in.
+    pub(super) fn record_fb_call_inputs(&self, node: &mut FbCall) {
+        for (input, at) in self.fb_call_inputs(node) {
+            if let Some(at) = at {
+                self.record_conversion_to(input, at);
+            }
+        }
+    }
+
+    /// Records the conversion of each argument of `call` to the type its
+    /// parameter is passed as.
+    pub(super) fn record_method_arguments(&self, call: &mut MethodCall) {
+        for (arg, at) in self.method_arguments(call) {
+            if let Some(at) = at {
+                self.record_conversion_to(arg, at);
+            }
         }
     }
 
@@ -100,9 +125,9 @@ impl ImplicitConversions<'_> {
     }
 
     /// The type a parameter declared as `param_type` is passed as, and its
-    /// operation width: its own type when it is elementary, and `DINT`, the
-    /// default slot type, otherwise. `None` for a string, which is copied
-    /// rather than passed.
+    /// operation width: its own type when it is elementary, and `DINT`
+    /// otherwise (#2108). `None` for a string, which is copied rather than
+    /// passed.
     fn passed_as(&self, param_type: &TypeName) -> Option<(TypeId, OperationWidth)> {
         let is_string =
             |representation: &SemanticType| matches!(representation, SemanticType::String { .. });
