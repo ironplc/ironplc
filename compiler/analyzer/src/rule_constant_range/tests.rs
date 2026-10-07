@@ -460,6 +460,10 @@ fn apply_when_partial_access_assignment_then_checked_against_part(
 #[case::move_input("s : SINT;\n", "s := MOVE(300);\n")]
 #[case::abs_input("s : SINT;\n", "s := ABS(300);\n")]
 #[case::mux_input("s : SINT;\n", "s := MUX(0, 300, 1);\n")]
+// A literal input of MAX takes the type its inputs widen to, not its
+// context's, as a comparison operand takes the other operand's.
+#[case::max_input_with_narrower_input("s : SINT;\nx : DINT;\n", "x := MAX(s, 300);\n")]
+#[case::max_input_with_dint_input("d : DINT;\nl : LINT;\n", "l := MAX(d, 5000000000);\n")]
 #[case::comparison_of_literals("b : BOOL;\n", "b := 1 = 5000000000;\n")]
 fn apply_when_literal_outside_recorded_type_then_err(
     #[case] declarations: &str,
@@ -476,6 +480,7 @@ fn apply_when_literal_outside_recorded_type_then_err(
 #[case::for_bound_narrow("s : SINT;\nx : DINT;\n", "FOR s := 0 TO 127 DO x := 1; END_FOR;\n")]
 #[case::shift_count("w : DWORD;\n", "w := SHL(w, 31);\n")]
 #[case::wide_operation("l : LINT;\nd : DINT;\n", "l := l + 5000000000;\n")]
+#[case::max_of_literals_in_wide_context("l : LINT;\n", "l := MAX(1, 5000000000);\n")]
 fn apply_when_literal_inside_recorded_type_then_ok(#[case] declarations: &str, #[case] body: &str) {
     assert_eq!(problems_of(&program_with(declarations, body)), codes(OK));
 }
