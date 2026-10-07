@@ -7,7 +7,11 @@ P4048
 This error occurs when a ``TASK`` declares a ``PRIORITY`` or an ``INTERVAL``
 that the runtime cannot represent. Task priority is stored as a 16-bit value,
 so the largest supported priority is 65535. Task interval is stored as a count
-of microseconds in a 64-bit value.
+of microseconds in a 64-bit value. A negative interval is reported as
+:doc:`P4073` instead.
+
+Only the task the program runs under is compiled, so the error is reported
+for that task's parameters.
 
 Lower priority numbers run first: a task with ``PRIORITY := 0`` is scheduled
 ahead of a task with ``PRIORITY := 1`` when both are due in the same scan cycle.

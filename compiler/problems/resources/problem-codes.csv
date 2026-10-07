@@ -138,3 +138,7 @@ P2041,StringLengthOutOfRange,String length is more than a string can hold
 P2042,ReturnTypeNotDeclared,Return type is not declared
 P2043,EnumValueAmbiguous,Enumerated value is declared by more than one enumeration and its type cannot be told from where it is used
 P4069,BitAccessTypeInvalid,Bit or partial access requires a bit string or integer variable
+P4073,TaskIntervalNegative,Task INTERVAL is negative
+P4074,TaskSingleNotBool,Task SINGLE variable is not BOOL
+P4075,ProgramInstanceTypeNotProgram,Program instance type is not a declared PROGRAM
+P4076,ConfigurationAmbiguous,Source declares more than one CONFIGURATION to compile

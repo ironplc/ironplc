@@ -23,5 +23,8 @@ fn main() {
         // Inspecting the expression type annotation (`REQ-ETR-analyzer-*`):
         // how a type is spelled in the annotated rendering.
         "expression-type-resolution.md",
+        // The resolved execution model (`REQ-EM-analyzer-*`): configuration,
+        // program instances, tasks and globals.
+        "execution-model.md",
     ]);
 }

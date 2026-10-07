@@ -1,0 +1,44 @@
+=====
+P4074
+=====
+
+.. problem-summary:: P4074
+
+This error occurs when the ``SINGLE`` parameter of a ``TASK`` names a global
+variable that is not ``BOOL``. ``SINGLE`` makes the task event-triggered: the
+task runs once each time the variable changes from ``FALSE`` to ``TRUE``, so
+the variable must be a ``BOOL``.
+
+Example
+-------
+
+The following code will generate error P4074:
+
+.. code-block::
+
+   CONFIGURATION config
+       VAR_GLOBAL
+           Count : INT;
+       END_VAR
+       RESOURCE resource1 ON PLC
+           TASK task1(SINGLE := Count, PRIORITY := 1);
+           PROGRAM instance1 WITH task1 : main;
+       END_RESOURCE
+   END_CONFIGURATION
+
+To fix this error, trigger the task with a ``BOOL`` global:
+
+.. code-block::
+
+   CONFIGURATION config
+       VAR_GLOBAL
+           Trigger : BOOL;
+       END_VAR
+       RESOURCE resource1 ON PLC
+           TASK task1(SINGLE := Trigger, PRIORITY := 1);
+           PROGRAM instance1 WITH task1 : main;
+       END_RESOURCE
+   END_CONFIGURATION
+
+The runtime does not yet run event-triggered tasks, so compiling a program
+bound to this task reports :doc:`P4047`.

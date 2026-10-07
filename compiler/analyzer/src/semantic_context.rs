@@ -12,6 +12,7 @@
 
 use std::collections::HashSet;
 
+use crate::execution_model::ExecutionModel;
 use crate::function_environment::{FunctionEnvironment, FunctionEnvironmentBuilder};
 use crate::symbol_environment::SymbolEnvironment;
 use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
@@ -44,6 +45,10 @@ pub struct SemanticContext {
     reachable: HashSet<Id>,
     /// Compiler options that affect semantic validation (e.g., allow flags).
     compiler_options: CompilerOptions,
+    /// Which configuration is built, which program instances run under
+    /// which tasks, and which globals exist. Codegen lowers this rather than
+    /// reading the configuration from the library.
+    execution_model: ExecutionModel,
 }
 
 impl SemanticContext {
@@ -62,7 +67,14 @@ impl SemanticContext {
             diagnostics: Vec::new(),
             reachable,
             compiler_options,
+            execution_model: ExecutionModel::default(),
         }
+    }
+
+    /// Records the execution model resolved from the library.
+    pub fn with_execution_model(mut self, execution_model: ExecutionModel) -> Self {
+        self.execution_model = execution_model;
+        self
     }
 
     /// Adds diagnostics to the context.
@@ -98,6 +110,11 @@ impl SemanticContext {
     /// Returns the set of declarations reachable from PROGRAM roots.
     pub fn reachable(&self) -> &HashSet<Id> {
         &self.reachable
+    }
+
+    /// Returns the execution model resolved from the library.
+    pub fn execution_model(&self) -> &ExecutionModel {
+        &self.execution_model
     }
 
     /// Provides read-only access to the compiler options.

@@ -1,0 +1,44 @@
+=====
+P4076
+=====
+
+.. problem-summary:: P4076
+
+This error occurs when the files being compiled declare more than one
+``CONFIGURATION``. A compiled program runs one configuration, and the compiler
+does not choose one of them for you.
+
+Checking the files does not report this error: a project may keep several
+configurations, for example one for each machine it runs on.
+
+Example
+-------
+
+The following code will generate error P4076:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       x : INT;
+   END_VAR
+       x := x + 1;
+   END_PROGRAM
+
+   CONFIGURATION fast_line
+       RESOURCE resource1 ON PLC
+           TASK task1(INTERVAL := T#10ms, PRIORITY := 1);
+           PROGRAM instance1 WITH task1 : main;
+       END_RESOURCE
+   END_CONFIGURATION
+
+   CONFIGURATION slow_line
+       RESOURCE resource1 ON PLC
+           TASK task1(INTERVAL := T#500ms, PRIORITY := 1);
+           PROGRAM instance1 WITH task1 : main;
+       END_RESOURCE
+   END_CONFIGURATION
+
+To fix this error, compile the files of one configuration at a time, for
+example by keeping each configuration in a file of its own and passing only
+that file with the programs it runs.

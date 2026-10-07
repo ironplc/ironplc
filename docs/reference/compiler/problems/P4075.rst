@@ -1,0 +1,65 @@
+=====
+P4075
+=====
+
+.. problem-summary:: P4075
+
+This error occurs when compiling a ``CONFIGURATION`` with a program instance
+whose type is not a ``PROGRAM`` declaration, such as a function block or a
+name that no file declares. A program instance runs the body of the
+``PROGRAM`` it names, so there is nothing to run.
+
+Checking the configuration does not report this error, because a
+configuration is often kept in a file of its own and checked without the
+files that declare its programs. Compiling needs every program the
+configuration runs.
+
+Example
+-------
+
+The following code will generate error P4075:
+
+.. code-block::
+
+   FUNCTION_BLOCK Counter
+   VAR
+       n : INT;
+   END_VAR
+       n := n + 1;
+   END_FUNCTION_BLOCK
+
+   CONFIGURATION config
+       RESOURCE resource1 ON PLC
+           TASK task1(INTERVAL := T#10ms, PRIORITY := 1);
+           PROGRAM instance1 WITH task1 : Counter;
+       END_RESOURCE
+   END_CONFIGURATION
+
+To fix this error, instantiate a ``PROGRAM``, and call the function block from
+it:
+
+.. code-block::
+
+   FUNCTION_BLOCK Counter
+   VAR
+       n : INT;
+   END_VAR
+       n := n + 1;
+   END_FUNCTION_BLOCK
+
+   PROGRAM main
+   VAR
+       counter1 : Counter;
+   END_VAR
+       counter1();
+   END_PROGRAM
+
+   CONFIGURATION config
+       RESOURCE resource1 ON PLC
+           TASK task1(INTERVAL := T#10ms, PRIORITY := 1);
+           PROGRAM instance1 WITH task1 : main;
+       END_RESOURCE
+   END_CONFIGURATION
+
+When the program is declared in another file, compile that file together with
+the configuration.

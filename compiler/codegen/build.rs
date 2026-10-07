@@ -23,5 +23,8 @@ fn main() {
         "implicit-conversions.md",
         // The post-emission peephole optimizer (`REQ-PEEP-codegen-*`).
         "bytecode-peephole-optimizer.md",
+        // The resolved execution model (`REQ-EM-codegen-*`): the backend
+        // capability checks against it.
+        "execution-model.md",
     ]);
 }

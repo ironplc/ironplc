@@ -927,6 +927,7 @@ dependencies = [
  "phf",
  "rstest",
  "spec_test_macro",
+ "time",
 ]
 
 [[package]]

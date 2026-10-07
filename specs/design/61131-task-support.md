@@ -8,6 +8,8 @@ This document describes the changes needed to the container format, VM execution
 
 ### Building On
 
+- **[The Resolved Execution Model](execution-model.md)** — how the analyzer resolves the configuration, tasks, program instances and globals that codegen lowers
+
 - **[Bytecode Container Format](bytecode-container-format.md)** — the current single-entry-point container
 - **[Runtime Execution Model](runtime-execution-model.md)** — the current single-scan-cycle model
 - **[Bytecode Instruction Set](bytecode-instruction-set.md)** — the instruction set (unchanged by this design)
@@ -724,4 +726,4 @@ Per-task fault isolation introduces shared-state consistency risks: if task A fa
 
 1. **SINGLE data source type.** The IEC 61131-3 grammar defines `data_source` as `constant | global_var_reference`. The parser currently only supports constants for data sources. Should SINGLE accept variable references (the common use case for event tasks) in the initial implementation, or defer to a future parser extension?
 
-2. **Default task for unassociated programs.** When a PROGRAM is declared without a WITH clause, should the compiler synthesize a freewheeling task, or should this be an error? CODESYS creates an implicit freewheeling task; Siemens requires explicit OB association.
+2. **Default task for unassociated programs.** When a PROGRAM is declared without a WITH clause, should the compiler synthesize a freewheeling task, or should this be an error? CODESYS creates an implicit freewheeling task; Siemens requires explicit OB association. *Resolved:* the analyzer binds such a program to an implicit freewheeling task (see [The Resolved Execution Model](execution-model.md)).
