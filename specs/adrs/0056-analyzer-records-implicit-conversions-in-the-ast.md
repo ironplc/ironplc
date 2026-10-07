@@ -174,6 +174,14 @@ conversion that wraps it, and gives an untyped literal no type of its own. So
 when the pass first ran before the rules. The other rules still run before the
 pass. The decision above is unchanged.
 
+### Literal arguments (postscript)
+
+The second choice the Arguments postscript names is corrected: an untyped
+literal argument now takes its parameter's type rather than its default type
+converted to it (#2071). `f(0.1)` with an `LREAL` parameter passed `0.1`
+rounded to a `REAL`, and `f(1.0E300)` passed infinity; `f(5000000000)` with an
+`LINT` parameter failed. The decision above is unchanged.
+
 ### Functions of several inputs of one type (postscript)
 
 `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX`, `EXPT` and `ATAN2` computed at the

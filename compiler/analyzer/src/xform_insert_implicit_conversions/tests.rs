@@ -556,16 +556,25 @@ fn apply_when_literal_argument_of_parameter_width_then_takes_parameter_type() {
     assert_eq!(call_arguments(&source, "f"), vec!["INT"]);
 }
 
+#[spec_test(REQ_IC_analyzer_042)]
 #[test]
-fn apply_when_literal_argument_to_wider_parameter_then_default_type_converted() {
-    let source = call_program("LINT", "", "1");
-    assert_eq!(call_arguments(&source, "f"), vec!["DINT->LINT"]);
+fn apply_when_literal_argument_to_wider_parameter_then_takes_parameter_type() {
+    let source = call_program("LINT", "", "5000000000");
+    assert_eq!(call_arguments(&source, "f"), vec!["LINT"]);
 }
 
+#[spec_test(REQ_IC_analyzer_042)]
 #[test]
-fn apply_when_real_literal_argument_to_lreal_parameter_then_real_converted() {
-    let source = call_program("LREAL", "", "1.5");
-    assert_eq!(call_arguments(&source, "f"), vec!["REAL->LREAL"]);
+fn apply_when_real_literal_argument_to_lreal_parameter_then_takes_parameter_type() {
+    let source = call_program("LREAL", "", "0.1");
+    assert_eq!(call_arguments(&source, "f"), vec!["LREAL"]);
+}
+
+#[spec_test(REQ_IC_analyzer_042)]
+#[test]
+fn apply_when_integer_literal_argument_to_real_parameter_then_takes_parameter_type() {
+    let source = call_program("LREAL", "", "1");
+    assert_eq!(call_arguments(&source, "f"), vec!["LREAL"]);
 }
 
 #[spec_test(REQ_IC_analyzer_043)]
@@ -779,10 +788,12 @@ fn apply_when_case_selector_then_literals_take_its_type() {
     assert_eq!(literal_types(source), vec!["DINT", "DINT"]);
 }
 
+/// The first literal is the function's `f := 0`; the second is the
+/// argument's, which the negation passes its parameter's type to.
 #[test]
-fn apply_when_literal_argument_under_negation_then_takes_default_type_before_conversion() {
+fn apply_when_literal_argument_under_negation_then_takes_parameter_type() {
     let source = call_program("LINT", "", "-1");
-    assert_eq!(literal_types(&source), vec!["DINT", "DINT"]);
+    assert_eq!(literal_types(&source), vec!["DINT", "LINT"]);
 }
 
 #[test]

@@ -22,7 +22,7 @@ END_PROGRAM
     &[("x", 42)],
 );
 
-// 300 truncated to u8 = 300 - 256 = 44
+// 150 + 150 = 300, truncated to u8 = 300 - 256 = 44
 e2e_i32_with!(
     end_to_end_when_type_alias_byte_truncation_then_correct,
     bit_string_options(),
@@ -31,11 +31,13 @@ TYPE MyByte : BYTE := 0; END_TYPE
 PROGRAM main
   VAR
     x : MyByte;
+    a : MyByte;
   END_VAR
-  x := 300;
+  a := 150;
+  x := a + a;
 END_PROGRAM
 ",
-    &[("x", 44)],
+    &[("a", 150), ("x", 44)],
 );
 
 e2e_i32!(
