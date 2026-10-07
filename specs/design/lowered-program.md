@@ -83,7 +83,9 @@ describe:
   their signatures, not on their names.
 - `collect_positional_args` is defined once.
 - `SavedFbScope` has given way to a `Scope` value.
-- Analysis now reports most of the problems only codegen found.
+- Analysis now reports every problem only codegen found. `rule_constant_range`
+  reads each literal's recorded type rather than predicting it, so codegen
+  raises no `ConstantOverflow`.
 - Codegen takes a clean analysis, so no caller can skip the check (see
   [The Clean-Analysis Gate](#2-the-clean-analysis-gate)).
 - The analyzer records the conversions of comparison and arithmetic operands,
@@ -1485,7 +1487,7 @@ today.
 
 | Decision | Made today in | Recorded as | In the lowered program |
 |---|---|---|---|
-| Type of an untyped literal | The analyzer (ADR-0056), except a member initializer of a function block instance, which codegen builds itself; `rule_constant_range` still predicts it | The literal's `expr_type` | A `Const` of that type |
+| Type of an untyped literal | The analyzer (ADR-0056), except a member initializer of a function block instance, which codegen builds itself | The literal's `expr_type`, as `ExprType::Inferred` | A `Const` of that type |
 | Implicit conversion | The analyzer for comparison and arithmetic operands, most assigned values and the arguments of user-defined functions (ADR-0056); codegen for the arguments of function block and method calls, and for the other contexts the analyzer does not record yet | `ExprKind::ImplicitConversion` | `Convert` |
 | Arithmetic overload | Analyzer's `resolve_arithmetic_overload` | The expression's `expr_type`, and its operands' conversions | A `Binary` at the result type, or the desugared time arithmetic |
 | Operand type of a comparison | The analyzer ([Comparison Operand Type](comparison-operand-type.md)), with a codegen fallback for a pair without one | Its operands' conversions | A `Compare` at that type |
@@ -1512,9 +1514,10 @@ today.
 | String encoding and capacity of a string value | `string_width.rs` | `StringShape` |
 | Temporal literal count and unit ([ADR-0021](../adrs/0021-time-32bit-ltime-64bit.md), [ADR-0025](../adrs/0025-datetime-unsigned-representation.md)) | `compile_time_count` | `Const` |
 
-**REQ-LOW-analyzer-091** In the `Library` that analysis returns, every literal
-has a concrete `expr_type`, and every operand whose type differs from the type
-its operation computes at is wrapped in an `ImplicitConversion`.
+**REQ-LOW-analyzer-091** In the `Library` that analysis returns, every
+literal's `expr_type` names a type rather than a generic category, and every
+operand whose type differs from the type its operation computes at is wrapped
+in an `ImplicitConversion`.
 
 **REQ-LOW-lowering-094** Lowering decides no literal type and no implicit
 conversion. A `Const` has the type the analyzer recorded for its literal, a
@@ -1526,38 +1529,36 @@ operation's without one is reported as P9998.
 
 No analyzer rule restates a decision in order to predict its outcome. A check
 that depends on a decision reads what the analyzer recorded, and so runs after
-the pass that records it. That is what removes the type push-down from
-`rule_constant_range`.
+the pass that records it.
 
-ADR-0056 is implemented as it stands, including its order: the recording pass
-runs after the semantic rules, so a rule sees the program as written. ADR-0056
-tried the other order and lost a diagnostic. In `DINT#300 < s` with
-`s : SINT`, `rule_constant_range` checks `DINT#300` against the type of `s`,
-and once the pass had wrapped `s` in a conversion to `DINT` the rule saw
-`DINT` and stopped reporting P2026. So `rule_constant_range` is split by what
-each check reads:
+ADR-0056's order stands: the recording pass runs after the semantic rules, so
+a rule sees the program as written. ADR-0056 tried the other order and lost a
+diagnostic. In `DINT#300 < s` with `s : SINT`, `rule_constant_range` checks
+`DINT#300` against the type of `s`, and once the pass had wrapped `s` in a
+conversion to `DINT` the rule saw `DINT` and stopped reporting P2026.
 
-- **A check of the type a literal ends up with** reads the type the recording
-  pass recorded, and runs after that pass. `x := 300` with `x : USINT` is one.
-- **A check against the operand types as written** runs before the pass, with
-  the other semantic rules. `DINT#300 < s` is one.
+Today `rule_constant_range` is the one rule that depends on a recorded
+decision, so it runs after the pass and reads both:
+
+- **The type a literal ends up with** is the type the pass recorded.
+  `x := 300` with `x : USINT` is checked against it. `ExprType::Inferred`
+  marks a type the analyzer gave, and `ExprType::Concrete` a type the program
+  states.
+- **The operand types as written** are read through the `ImplicitConversion`
+  that wraps an operand. `DINT#300 < s` is checked against `SINT`.
 
 Neither predicts a decision.
 
 **REQ-LOW-analyzer-093** Analysis reports P2026 both for `x := 300` with
 `x : USINT` and for `DINT#300 < s` with `s : SINT`.
 
-The user-facing problems codegen raises today fall into three groups:
+The user-facing problems codegen raises today fall into two groups:
 
 - **A check analysis already makes**, kept in codegen as a fallback:
-  `ArrayIndexOutOfBounds` for a literal subscript, and `ConstantOverflow`
-  where `rule_constant_range` covers the same site. Behind the gate it is a
+  `ArrayIndexOutOfBounds` for a literal subscript. Behind the gate it is a
   P9998. Codegen already reports the other checks analysis makes, such as an
-  `EXIT` outside a loop, a recursive call or a string encoding mismatch, as
-  P9998.
-- **A check only codegen makes**: `ConstantOverflow` where
-  `rule_constant_range` does not cover the site, such as a `CASE` label under
-  a selector analysis could not type. It moves to an analyzer rule.
+  `EXIT` outside a loop, a recursive call, a string encoding mismatch or a
+  constant out of range, as P9998.
 - **A limit of what the bytecode backend builds**: `TaskSingleNotSupported`,
   `TaskParameterOutOfRange`, and `NoProgramDeclaration`, since a container
   needs a program to run. It stays in that backend (REQ-LOW-codegen-113).
@@ -1658,10 +1659,9 @@ never reports that the program is invalid.
 
 No diagnostic a user sees moves later. Every problem with the program is
 reported by analysis, beside every other problem, in `check` and in the
-language server. Two things move earlier: the `ConstantOverflow` checks only
-codegen makes today become analyzer rules, and `check` reports a construct the
+language server. One thing moves earlier: `check` reports a construct the
 compiler cannot generate yet (REQ-LOW-project-004), which today surfaces only
-from `compile`.
+from `compile`. The checks only codegen made are already analyzer rules.
 
 ## 7. Backend Contract
 
@@ -1729,7 +1729,7 @@ Nothing is deleted before its last reader has moved to the lowered program.
 | `TypeEnvironment`, `TypeId` | Keep | Lowering builds the lowered program's type table from it. |
 | `SemanticType` (formerly `IntermediateType`) | Keep | Lowering reads it and does not carry `SemanticStructField::offset`, `slot_count` or the size of a reference into the lowered program. `slot_count` moves to the bytecode backend: it sizes strings with the container's `string_region_size`, which is VM layout. |
 | `xform_insert_implicit_conversions` | Keep and extend | Records every implicit conversion and the type of every untyped literal (ADR-0056). It already records most of them; [issue 2050](https://github.com/ironplc/ironplc/issues/2050) finishes the rest. It is the recording pass (see [Names](#names)). |
-| `rule_constant_range` | Keep, split | Its checks of the type a literal ends up with read the recorded type and run after the recording pass; its checks against the operand types as written run before it, as today (see [Decisions](#4-decisions)). |
+| `rule_constant_range` | Keep | It runs after the recording pass. It checks a literal against its recorded type, and reads through a conversion to check against the operand types as written (see [Decisions](#4-decisions)). |
 | `intermediates/` | Keep | Its signatures carry the `BuiltinFunction` identity. |
 | `FunctionEnvironment` | Keep | Signatures of built-in functions name their `BuiltinFunction` (REQ-LOW-analyzer-070). |
 | `Intrinsic` (`intrinsic.rs`) | Keep, renamed | Renamed `BuiltinFunction` (see [Names](#names)), so that `Intrinsic` names only the IR's typed enum. |
@@ -2251,8 +2251,9 @@ backends that lower rather than decide. This design shares all three and builds 
 - The `ImplicitConversion` nodes and the recorded literal types stay in the
   analyzed tree, so the language server shows them from there, as ADR-0056
   intends.
-- ADR-0056's order is kept: the recording pass runs after the semantic rules,
-  and `rule_constant_range` is split around it (see [Decisions](#4-decisions)).
+- ADR-0056's order is kept: the recording pass runs after the semantic rules.
+  `rule_constant_range` alone runs after the pass, and reads the operand types
+  as written through each conversion (see [Decisions](#4-decisions)).
 - ADR-0056 calls the pass "a lowering pass"; it is renamed the recording pass
   (see [Names](#names)).
 
