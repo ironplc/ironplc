@@ -3,7 +3,8 @@
 //! These tests verify that the VM never panics on arbitrary input
 //! and that arithmetic identities hold across the full value range.
 
-use ironplc_vm::VmBuffers;
+use ironplc_container::opcode;
+use ironplc_vm::{Slot, Vm, VmBuffers};
 use proptest::prelude::*;
 
 proptest! {
@@ -23,6 +24,34 @@ proptest! {
             // We don't care whether it succeeds or traps --
             // only that it doesn't panic.
             let _ = vm.run_round(0);
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(1_000))]
+
+    // The header flags, the declared variable count and the embedder's
+    // variable buffer all come from outside the VM, and `resume` lets the
+    // embedder pick the starting scan count. Whatever their combination,
+    // loading either rejects the container or every scan runs without
+    // panicking.
+    #[test]
+    fn run_round_when_arbitrary_flags_and_variable_slots_then_never_panics(
+        flags in any::<u8>(),
+        num_vars in 0u16..4,
+        var_capacity in 0usize..4,
+        initial_scan_count in prop_oneof![Just(u64::MAX), any::<u64>()],
+        uptime_us in any::<u64>(),
+    ) {
+        let mut c = crate::common::single_function_container(&[opcode::RET_VOID], num_vars, &[]);
+        c.header.flags = flags;
+        let mut b = VmBuffers::from_container(&c);
+        b.vars.resize(var_capacity, Slot::default());
+        if let Ok(ready) = Vm::new().load(&c, &mut b) {
+            let mut vm = ready.resume(initial_scan_count);
+            let _ = vm.run_round(uptime_us);
+            let _ = vm.run_round(uptime_us);
         }
     }
 }
