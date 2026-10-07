@@ -2,8 +2,11 @@
 //!
 //! `l := d` on an `LINT` and a `DINT` stores the `DINT` widened to `LINT`.
 //! This module records that conversion on the value, as an
-//! [`ExprKind::ImplicitConversion`] to the type the target is stored as: its
-//! own elementary type, or its base type for a subrange.
+//! [`ExprKind::ImplicitConversion`] to the declared type of the target, as
+//! the elementary type it is operated as: its own, or its base type for a
+//! subrange. The target of a dereference is the variable the reference
+//! refers to. The bounds and step of a `FOR` loop are converted to the type
+//! of its control variable the same way.
 //!
 //! It records the conversions the code generator makes today, and only
 //! those. A value converts to its context when it is a variable, an
@@ -14,11 +17,11 @@
 //! ([`Intrinsic::computes_at_own_type`]). Any other value -- a literal, a call
 //! to `TRUNC` or to a user-defined function -- is compiled at the target's
 //! width rather than converted to it, so there is no conversion to record.
-//! The target of a dereference, of a function block field, or a directly
-//! represented variable is not recorded yet.
+//!
+//! A directly represented target is not recorded yet.
 
 use ironplc_dsl::textual::{
-    Assignment, Expr, ExprKind, Function, ParamAssignmentKind, PartialAccessSize,
+    Assignment, Expr, ExprKind, For, Function, ParamAssignmentKind, PartialAccessSize,
     SymbolicVariableKind, Variable,
 };
 use ironplc_dsl::type_id::TypeId;
@@ -34,19 +37,39 @@ impl ImplicitConversions<'_> {
     /// Records the conversion of the value of `node` to the type of its
     /// target.
     pub(super) fn record_assignment_value(&self, node: &mut Assignment) {
-        // A dereference stores at a width only the referenced variable
-        // knows, and the bind operators are not compiled yet.
-        if node.deref || node.ref_bind || node.set_bind || node.reset_bind {
+        // The bind operators are not compiled yet.
+        if node.ref_bind || node.set_bind || node.reset_bind {
             return;
         }
-        let Some((target, width)) = self.stored_as(&node.target) else {
+        if let Some(target) = self.assigned_at(&node.target, node.deref) {
+            self.record_conversion_to(&mut node.value, target);
+        }
+    }
+
+    /// Records the conversion of the bounds and step of `node` to the type
+    /// of its control variable.
+    pub(super) fn record_for_bounds(&self, node: &mut For) {
+        let Some(control) = self.control_at(node) else {
             return;
         };
-        if !self.converts_to_its_context(&node.value) {
-            return;
+        self.record_conversion_to(&mut node.from, control);
+        self.record_conversion_to(&mut node.to, control);
+        if let Some(step) = &mut node.step {
+            self.record_conversion_to(step, control);
         }
-        if self.width_of(&node.value).is_some_and(|own| own != width) {
-            self.conversions.convert(&mut node.value, target);
+    }
+
+    /// Records the conversion of `value` to `target`, the type its context
+    /// stores it at, where the code generator converts it: `value` converts
+    /// to its context and its operation width differs from the target's.
+    pub(super) fn record_conversion_to(&self, value: &mut Expr, target: TypeId) {
+        let Some(width) = self.width_of_type(target) else {
+            return;
+        };
+        if self.converts_to_its_context(value)
+            && self.width_of(value).is_some_and(|own| own != width)
+        {
+            self.conversions.convert(value, target);
         }
     }
 
@@ -89,13 +112,18 @@ impl ImplicitConversions<'_> {
         Some((types.id_of(&name)?, numeric_operation_width(&name)?))
     }
 
-    fn type_of(&self, kind: &SymbolicVariableKind) -> Option<SemanticType> {
+    pub(super) fn type_of(&self, kind: &SymbolicVariableKind) -> Option<SemanticType> {
         variable_type::of(kind, self.context, &self.scope.current())
     }
 
     /// The operation width of the numeric type of `expr`.
     pub(super) fn width_of(&self, expr: &Expr) -> Option<OperationWidth> {
         numeric_operation_width(&self.conversions.operand_name(expr)?)
+    }
+
+    /// The operation width of the numeric type `id`.
+    pub(super) fn width_of_type(&self, id: TypeId) -> Option<OperationWidth> {
+        numeric_operation_width(&self.conversions.name_of(id)?)
     }
 
     /// Returns `true` when `expr` is computed at its own type and converted

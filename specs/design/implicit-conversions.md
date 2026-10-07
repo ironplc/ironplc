@@ -130,11 +130,27 @@ An assignment stores its value at the type of its target. The pass records the c
 
 **REQ-IC-analyzer-036** A subrange target converts the value to the subrange's base type.
 
-The target of a dereference (`r^ := d`), a function block field (`timer.PT := t`), and a directly represented variable (`%QW0 := w`) are not recorded yet, and neither is a function block output stored by a call (`fb(OUT => x)`), which codegen stores at the field's operation type without a conversion.
+A value assigned to a function block field is converted to the field's declared type, and one assigned through a dereference to the type the reference refers to. The type of a user-defined function block lists only the fields declared with a simple type, so the pass reads a field's declared type from the block's declaration: a subrange field is operated at its base type, like a subrange variable.
+
+**REQ-IC-analyzer-038** A value assigned to a function block field is converted to the field's declared type: in `b.x := d` on an `LINT` field and a `DINT` the `DINT` is converted to `LINT`, and so is a `DINT` assigned to a field of a subrange of `LINT`.
+
+**REQ-IC-analyzer-039** A value assigned through a dereference is converted to the type the reference refers to: in `r^ := d` on a `REF_TO LINT` and a `DINT` the `DINT` is converted to `LINT`.
+
+A reference refers only to a variable of the type it names (P2032), so the conversion stores a value of that variable's own type. A value the referenced type cannot hold without narrowing is rejected, as it is when assigned to the variable itself.
+
+**REQ-IC-analyzer-080** An assignment through a dereference is checked as an assignment to the variable the reference refers to: `p^ := d` on a `REF_TO SINT` and a `DINT` reports P4035, and `p^ := f(d)` with `f` returning a `DINT` reports P4027, as `s := d` and `s := f(d)` on a `SINT` do.
+
+A directly represented variable (`%QW0 := w`) is not recorded yet, and neither is a function block output stored by a call (`fb(OUT => x)`), which codegen stores at the field's operation type without a conversion ([#2125](https://github.com/ironplc/ironplc/issues/2125)).
+
+### Loops
+
+A `FOR` loop stores its initial value in its control variable and compares and steps it at the control variable's type.
+
+**REQ-IC-analyzer-079** The initial value, final value and step of a `FOR` loop are converted to the type of its control variable as an assigned value is: in `FOR l := d TO e` on an `LINT` and two `DINT`s both bounds are converted to `LINT`.
 
 ### Arguments
 
-A call to a user-defined function passes each input by value at the operation width of its parameter. The pass records the conversion of an argument of another width to the type its parameter is passed as, and codegen compiles the argument at the parameter's width without choosing a conversion. It records what codegen did before it, including a choice a later change may correct: a parameter whose type is not elementary (an alias, a subrange, an enumeration) is passed as a `DINT`, the default slot type. An untyped literal takes its parameter's type, as it takes an assignment target's, so the parameter receives the value the program wrote. Codegen used to operate it at its default type (`DINT` or `REAL`, ADR-0028) and convert it, which rounded `f(0.1)` with an `LREAL` parameter to a `REAL` and failed on `f(5000000000)` with an `LINT` one.
+A call to a user-defined function passes each input by value at the operation width of its parameter. The pass records the conversion of an argument of another width to the type its parameter is passed as, and codegen compiles the argument at the parameter's width without choosing a conversion. A parameter is passed at its declared type, whatever kind of declaration declares it: a subrange at its base type and an alias at the type it names. An untyped literal takes its parameter's type, as it takes an assignment target's, so the parameter receives the value the program wrote. Codegen used to operate it at its default type (`DINT` or `REAL`, ADR-0028) and convert it, which rounded `f(0.1)` with an `LREAL` parameter to a `REAL` and failed on `f(5000000000)` with an `LINT` one.
 
 **REQ-IC-analyzer-040** An argument whose operation width differs from its parameter's is wrapped in an `ImplicitConversion` to the parameter's type: the `DINT` of `f(d)` with an `LINT` parameter is converted to `LINT`, whatever kind of expression the argument is.
 
@@ -142,7 +158,7 @@ A call to a user-defined function passes each input by value at the operation wi
 
 **REQ-IC-analyzer-042** An untyped literal argument takes its parameter's type: the `1` of `f(1)` with an `INT` parameter is an `INT`, the `5000000000` of `f(5000000000)` with an `LINT` one an `LINT`, and the `0.1` of `f(0.1)` with an `LREAL` one an `LREAL`.
 
-**REQ-IC-analyzer-043** A parameter whose type is not elementary is passed as a `DINT`: an argument of an alias of `LINT` to a parameter of that alias is converted to `DINT`.
+**REQ-IC-analyzer-043** A parameter of an alias or a subrange type is passed at the type it is operated as: the type the alias names, or the subrange's base type. An argument of the parameter's own type is not converted: in `f(p)` with `p` and the parameter both of an alias of `LREAL`, `p` is not wrapped.
 
 **REQ-IC-analyzer-044** A named argument is converted as a positional one is.
 
@@ -150,7 +166,15 @@ A call to a user-defined function passes each input by value at the operation wi
 
 **REQ-IC-codegen-001** An argument narrower than its parameter is widened by its own signedness: a `UDINT` above `i32::MAX` passed to an `LINT` parameter keeps its value.
 
-The arguments of a function block call and of a method call are not recorded yet: codegen compiles them at the field's or parameter's operation type, and a variable or an arithmetic result converts itself to it, as it does for any context that records nothing.
+An input of a function block call is stored in a field of the block, and an argument of a method call in a parameter of the method. Both are converted as an assigned value is, to the declared type of the field or parameter (see Assignments).
+
+**REQ-IC-analyzer-046** An input of a function block call is converted to the declared type of its field: in `b(x := d)` on an `LINT` field and a `DINT` the `DINT` is converted to `LINT`, and in `c(PV := d)` on a `CTU_LINT` it is converted to `LINT`, the declared type of the standard block's input.
+
+**REQ-IC-analyzer-048** A positional input of a function block call is stored in the input the block declares in its place, as IEC 61131-3 binds a non-formal call: in `b(d, i)` on a block whose inputs are an `LINT` and a `REAL`, the `DINT` is converted to `LINT` and the `INT` to `REAL`.
+
+**REQ-IC-analyzer-047** An argument of a method call is converted to the declared type of its parameter, whether it is positional or named, and in a call statement or a call expression: in `k.Set(u)` on an `LINT` parameter and a `UDINT` the `UDINT` is converted to `LINT`.
+
+Codegen drops a positional input of a function block call ([#1855](https://github.com/ironplc/ironplc/issues/1855)), so its recorded conversion has no effect until codegen binds it. Codegen stores the inputs of a standard function block in 32 bits whatever their declared type ([#2054](https://github.com/ironplc/ironplc/issues/2054)).
 
 ### Literals
 
@@ -162,9 +186,9 @@ An untyped literal has a generic type (`ANY_INT`) until a context gives it one (
 
 **REQ-IC-analyzer-053** The bounds and step of a `FOR` loop take the type of its control variable.
 
-**REQ-IC-analyzer-054** A literal input of a function block call takes the type of the field it is stored in for a user-defined block, and `DINT`, the default slot type, for a standard one, which is how codegen stores it.
+**REQ-IC-analyzer-054** A literal input of a function block call takes the declared type of the field it is stored in, for a user-defined block and a standard one: the `5` of `c(PV := 5)` on a `CTU` is an `INT`.
 
-**REQ-IC-analyzer-055** A literal assigned through a dereference takes `DINT`, the default slot type codegen stores it at.
+**REQ-IC-analyzer-055** A literal assigned through a dereference takes the type the reference refers to: the `5` of `r^ := 5` on a `REF_TO LINT` is an `LINT`.
 
 **REQ-IC-analyzer-056** A literal assigned to a subrange target takes the subrange's base type.
 
@@ -182,7 +206,7 @@ Every construct a literal can sit in either passes the type of its context on, c
 
 **REQ-IC-analyzer-062** A comparison of two untyped literals compares at the left one's default type: both literals of `1 < 2` are `DINT`s.
 
-**REQ-IC-analyzer-063** A literal argument of a method call takes the type of the parameter it is passed to, or `DINT` for a parameter not declared with a simple type, which is how codegen passes it.
+**REQ-IC-analyzer-063** A literal argument of a method call takes the declared type of the parameter it is passed to.
 
 **REQ-IC-analyzer-064** A literal subscript of an array access whose subscripts are not all literals takes `DINT`.
 
@@ -196,7 +220,7 @@ Every construct a literal can sit in either passes the type of its context on, c
 
 **REQ-IC-codegen-002** An integer or real literal compiles at the type the analyzer recorded for it, not at a type its context passes down: `l := 5000000000` stores 5000000000, and `l := UDINT#4000000000` stores 4000000000.
 
-A literal codegen builds itself has no recorded type: a member initializer of a function block instance takes the field's type in a user-defined block and is stored at the default slot type in a standard one. A time, date, string, boolean or bit-string literal names its own type and is compiled for the storage its context gives it.
+A literal codegen builds itself has no recorded type: a member initializer of a function block instance takes the field's type in a user-defined block and is stored as a `DINT` in a standard one. A time, date, string, boolean or bit-string literal names its own type and is compiled for the storage its context gives it.
 
 A literal a standard function does not give a type to (`TRUNC`, a typed time function such as `MUL_TIME`) takes its default type, as does a literal argument of a user-defined function whose parameter the argument pass did not give it, before the argument's conversion. The member initializers of a function block instance, which codegen compiles as expressions it builds itself, are not typed by the pass.
 
@@ -227,10 +251,24 @@ context's.
 
 **REQ-IC-codegen-004** A function of several inputs of one type selects its builtin at the type the analyzer recorded for the call, whatever the type of its context: `MAX` of the `UDINT`s 3000000000 and 1 passed to a `DINT` input of a function block selects 3000000000, and `l := MAX(i, l2)` with `l2 = 5000000000` stores 5000000000.
 
+A field of a user-defined function block and a parameter of a method are
+operated at their declared type, whatever kind of declaration declares them: a
+subrange at its base type. A value stored through a dereference is compiled at
+the type the analyzer gave it, which is the referenced type, and stored as it
+is: a result of a type narrower than 32 bits is not truncated to its width, so
+`p^ := a + a` on `SINT`s of 100 stores 200
+([#2116](https://github.com/ironplc/ironplc/issues/2116)).
+
+**REQ-IC-codegen-005** A value stored in a function block field, a method parameter or through a dereference keeps the value of its declared type: `b(x := 4000000000)` on a field of a subrange of `LINT` stores 4000000000, and `q^ := 1.5` on a `REF_TO REAL` stores 1.5.
+
+A parameter of a user-defined function is passed at its declared type the same way, whatever kind of declaration declares it.
+
+**REQ-IC-codegen-006** A function's parameter of an alias or a subrange type receives the value of the type it is operated as: `pass(p)` with `p = 2.5` and a parameter of an alias of `LREAL` passes 2.5, and `pass(b)` with `b = 5000000000` and a parameter of an alias or a subrange of `LINT` passes 5000000000.
+
 ## Out of scope
 
-- A value in a context that records nothing -- a function block or method
-  argument, a condition, a subscript -- is still converted by codegen.
+- A value in a context that records nothing -- a condition, a subscript, an
+  input of a standard function -- is still converted by codegen.
 - Codegen still converts a variable, an arithmetic result or an operation on
   one value to the type of its context where nothing recorded it, so its own
   conversion is removed only once every context records it. A literal's type

@@ -6,10 +6,10 @@
 //! module records that conversion on the argument, as an
 //! [`ExprKind::ImplicitConversion`].
 //!
-//! It records what the code generator did, including a choice a later change
-//! may correct: a parameter whose type is not elementary (an alias, a
-//! subrange, an enumeration) is passed as a `DINT`, the default slot type, so
-//! an argument of another width is converted to `DINT`.
+//! A parameter is passed at its declared type, whatever kind of declaration
+//! declares it: a subrange at its base type and an alias at the type it
+//! names, so the `DINT` of `f(d)` with a parameter of an alias of `LREAL` is
+//! converted to `LREAL`.
 //!
 //! An untyped literal takes the type of its parameter, as it takes the type
 //! of an assignment's target, so the parameter receives the value the program
@@ -21,17 +21,23 @@
 //! A standard function compiles its arguments as its operation requires and
 //! is not recorded here, and neither is a `VAR_IN_OUT` or `REF_TO`
 //! parameter, which is passed by reference, or a string, which is copied.
+//!
+//! An input of a function block call is stored in a field of the block, and
+//! an argument of a method call in a parameter of the method. Each is
+//! converted to the declared type of its field or parameter, as an assigned
+//! value is to its target's (see `assignment.rs`).
 
-use ironplc_dsl::common::{ElementaryTypeName, TypeName};
-use ironplc_dsl::textual::{Expr, ExprType, Function, ParamAssignmentKind};
+use ironplc_dsl::common::TypeName;
+use ironplc_dsl::textual::{Expr, ExprType, FbCall, Function, MethodCall, ParamAssignmentKind};
 use ironplc_dsl::type_id::TypeId;
 
+use super::declared::elementary_of;
 use super::ImplicitConversions;
 use crate::intermediates::conversion_target::wrap;
 use crate::intermediates::numeric_operation::{
     literal_default_type, operation_width_of, OperationWidth,
 };
-use crate::semantic_type::{SemanticFunctionParameter, SemanticType};
+use crate::semantic_type::SemanticFunctionParameter;
 use crate::type_environment::elementary_type;
 
 impl ImplicitConversions<'_> {
@@ -56,6 +62,26 @@ impl ImplicitConversions<'_> {
             });
         for (arg, param) in args.zip(&params) {
             self.record_argument(arg, param);
+        }
+    }
+
+    /// Records the conversion of each input of `node` to the type of the
+    /// field it is stored in.
+    pub(super) fn record_fb_call_inputs(&self, node: &mut FbCall) {
+        for (input, at) in self.fb_call_inputs(node) {
+            if let Some(at) = at {
+                self.record_conversion_to(input, at);
+            }
+        }
+    }
+
+    /// Records the conversion of each argument of `call` to the type its
+    /// parameter is passed as.
+    pub(super) fn record_method_arguments(&self, call: &mut MethodCall) {
+        for (arg, at) in self.method_arguments(call) {
+            if let Some(at) = at {
+                self.record_conversion_to(arg, at);
+            }
         }
     }
 
@@ -100,25 +126,19 @@ impl ImplicitConversions<'_> {
     }
 
     /// The type a parameter declared as `param_type` is passed as, and its
-    /// operation width: its own type when it is elementary, and `DINT`, the
-    /// default slot type, otherwise. `None` for a string, which is copied
-    /// rather than passed.
+    /// operation width: the elementary type it is operated as, its own, the
+    /// base type of a subrange, or the type an alias names. `None` for a
+    /// parameter that is not a single numeric value: a string, which is
+    /// copied rather than passed, or an enumeration.
     fn passed_as(&self, param_type: &TypeName) -> Option<(TypeId, OperationWidth)> {
-        let is_string =
-            |representation: &SemanticType| matches!(representation, SemanticType::String { .. });
-        if self
-            .context
-            .types()
-            .get(param_type)
-            .is_some_and(|attributes| is_string(&attributes.representation))
-        {
-            return None;
-        }
-        match elementary_type(param_type) {
-            Some(representation) if is_string(representation) => None,
-            Some(_) => self.elementary(param_type),
-            None => self.elementary(&ElementaryTypeName::DINT.into()),
-        }
+        let types = self.context.types();
+        let representation = match elementary_type(param_type) {
+            Some(representation) => representation,
+            None => &types.get(param_type)?.representation,
+        };
+        let id = elementary_of(types, representation)?;
+        let width = operation_width_of(&types.get_by_id(id)?.representation)?;
+        Some((id, width))
     }
 
     /// The id of the elementary type `name`, and its operation width.

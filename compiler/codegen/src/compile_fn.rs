@@ -13,7 +13,7 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
-use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
+use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
     char_width_for_string_type, finalize_function, string_region_size, CompileContext,
@@ -97,7 +97,6 @@ pub(crate) fn compile_user_function(
     function_id: FunctionId,
     var_offset: VarIndex,
     ctx: &mut CompileContext,
-    functions: &FunctionEnvironment,
     builder: &mut ContainerBuilder,
     types: &TypeEnvironment,
     num_globals: u16,
@@ -371,18 +370,14 @@ pub(crate) fn compile_user_function(
     // Record function metadata for use at call sites.
     let func_name = func_decl.name.lower_case();
 
-    // Record how a call site passes each parameter. The signature's input
-    // parameters are the input-compatible declarations in the same order.
-    let mut signature_params = functions
-        .get(&func_decl.name)
-        .into_iter()
-        .flat_map(|sig| sig.input_parameters());
+    // Record how a call site passes each parameter: by value at its declared
+    // type, whatever kind of declaration declares it, a subrange at its base
+    // type and an alias at the type it names.
     let mut params: Vec<ParamPassing> = Vec::new();
     for decl in &func_decl.variables {
         if !decl.var_type.is_input_compatible() {
             continue;
         }
-        let signature_param = signature_params.next();
         if decl.var_type == VariableType::InOut {
             params.push(ParamPassing::Reference);
             continue;
@@ -403,8 +398,7 @@ pub(crate) fn compile_user_function(
                 ParamPassing::Value((OpWidth::W64, Signedness::Unsigned))
             }
             _ => ParamPassing::Value(
-                signature_param
-                    .and_then(|param| resolve_type_name(&param.param_type.name))
+                decl_type_info(ctx, decl)
                     .map_or(DEFAULT_OP_TYPE, |info| (info.op_width, info.signedness)),
             ),
         };
