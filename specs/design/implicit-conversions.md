@@ -251,6 +251,13 @@ context's.
 
 **REQ-IC-codegen-004** A function of several inputs of one type selects its builtin at the type the analyzer recorded for the call, whatever the type of its context: `MAX` of the `UDINT`s 3000000000 and 1 passed to a `DINT` input of a function block selects 3000000000, and `l := MAX(i, l2)` with `l2 = 5000000000` stores 5000000000.
 
+A condition of an `IF`, `ELSIF`, `WHILE` or `REPEAT` compiles at its own type,
+the `BOOL` the analyzer gave it, as any other expression does. A comparison in
+it reads its operand type from its operands, so the condition passes no
+operand type down.
+
+**REQ-IC-codegen-007** A condition compiles at its `BOOL` type whatever its comparisons compare: `IF NOT (a > b)` with the `DWORD`s `a = 5` and `b = 3` skips its body, and so does the same condition on `LWORD`s.
+
 A field of a user-defined function block and a parameter of a method are
 operated at their declared type, whatever kind of declaration declares them: a
 subrange at its base type. A value stored through a dereference is compiled at
