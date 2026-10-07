@@ -1202,6 +1202,7 @@ Verification runs on the bytecode that ships, independently of the emitter's own
 | V9015 | InvalidCharWidth | A string header's `char_width` is neither 1 nor 2 |
 | V9016 | ProgramExceedsCallDepth | Declared call depth exceeds the VM's frame capacity |
 | V9017 | ZeroCallDepth | Container declares a call depth of zero |
+| V9019 | SystemUptimeVariablesMissing | Container sets `FLAG_HAS_SYSTEM_UPTIME` but has fewer than two variable slots |
 
 V4xxx codes are user errors (exit code 1); V9xxx codes are internal errors (exit code 3).
 

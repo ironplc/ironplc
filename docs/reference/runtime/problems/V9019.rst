@@ -1,0 +1,27 @@
+=====
+V9019
+=====
+
+.. problem-summary:: V9019
+
+The container's header sets the system uptime flag
+(``FileHeader.flags`` bit 0, ``FLAG_HAS_SYSTEM_UPTIME``) but has fewer than
+the two variable slots the uptime variables occupy. The VM rejects the
+container when it is loaded, before any code runs, so no PLC instructions
+execute.
+
+The flag tells the VM that ``__SYSTEM_UP_TIME`` occupies variable slot 0
+and ``__SYSTEM_UP_LTIME`` occupies slot 1, and the VM writes both at the
+start of every scan. The VM reports this problem when the container
+declares fewer than two variables (``FileHeader.num_variables``) or when
+the variable buffer the embedder provided holds fewer than two slots.
+Codegen always declares both variables when it sets the flag, so this
+means the container was built by hand or modified after it was compiled.
+
+To resolve:
+
+* Recompile the program so codegen writes a consistent header.
+* If you build containers by hand, either clear the system uptime flag or
+  declare the two uptime variables as the first two variables.
+* If you embed the VM, size the variable buffer from the container's
+  ``num_variables``.

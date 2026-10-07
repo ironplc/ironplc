@@ -58,6 +58,13 @@ pub enum Trap {
     /// computed (a hand-built or legacy container). `Vm::load` rejects it
     /// before any code runs.
     ZeroCallDepth,
+    /// The container sets `FLAG_HAS_SYSTEM_UPTIME` but has fewer than the
+    /// two variable slots the uptime variables occupy, either because it
+    /// declares too few variables or because the embedder's variable buffer
+    /// is too small. Every scan writes `__SYSTEM_UP_TIME` and
+    /// `__SYSTEM_UP_LTIME` to slots 0 and 1, so `Vm::load` rejects the
+    /// container before any code runs.
+    SystemUptimeVariablesMissing,
     /// A `COPY_REGION` named a destination and a source whose array
     /// descriptors describe spans of different byte sizes.
     ///
@@ -207,6 +214,12 @@ impl fmt::Display for Trap {
             }
             Trap::ZeroCallDepth => {
                 write!(f, "container declares a maximum call depth of zero")
+            }
+            Trap::SystemUptimeVariablesMissing => {
+                write!(
+                    f,
+                    "container declares system uptime variables but has fewer than 2 variable slots"
+                )
             }
             Trap::RegionSizeMismatch {
                 dst_bytes,
@@ -364,6 +377,10 @@ mod tests {
         "program declares call depth 64 but VM frame buffer holds at most 32"
     )]
     #[case(Trap::ZeroCallDepth, "container declares a maximum call depth of zero")]
+    #[case(
+        Trap::SystemUptimeVariablesMissing,
+        "container declares system uptime variables but has fewer than 2 variable slots"
+    )]
     fn trap_display_when_variant_then_expected(#[case] trap: Trap, #[case] expected: &str) {
         assert_eq!(format!("{trap}"), expected);
     }
@@ -405,6 +422,7 @@ mod tests {
         "V9016"
     )]
     #[case(Trap::ZeroCallDepth, "V9017")]
+    #[case(Trap::SystemUptimeVariablesMissing, "V9019")]
     fn v_code_when_variant_then_expected(#[case] trap: Trap, #[case] expected: &str) {
         assert_eq!(trap.v_code(), expected);
     }
@@ -462,5 +480,6 @@ mod tests {
             3
         );
         assert_eq!(Trap::ZeroCallDepth.exit_code(), 3);
+        assert_eq!(Trap::SystemUptimeVariablesMissing.exit_code(), 3);
     }
 }
