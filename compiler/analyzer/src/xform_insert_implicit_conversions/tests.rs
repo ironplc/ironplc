@@ -459,12 +459,6 @@ fn apply_when_operation_on_one_value_assigned_to_wider_target_then_result_conver
     assert_eq!(assigned_values(&source), vec![expected]);
 }
 
-#[test]
-fn apply_when_selection_function_assigned_to_wider_target_then_unchanged() {
-    let source = arithmetic_program("LINT", "d : DINT; e : DINT;", "MAX(d, e)");
-    assert_eq!(assigned_values(&source), vec!["DINT"]);
-}
-
 #[spec_test(REQ_IC_analyzer_034)]
 #[test]
 fn apply_when_array_element_and_structure_field_targets_then_converted_to_their_types() {
@@ -704,9 +698,10 @@ fn apply_when_subrange_target_then_literal_takes_base_type() {
 
 #[spec_test(REQ_IC_analyzer_057)]
 #[test]
-fn apply_when_literal_input_of_standard_function_then_takes_context_type() {
+fn apply_when_literal_input_of_function_of_inputs_of_one_type_then_takes_its_type() {
     let source = arithmetic_program("LINT", "d : DINT;", "MAX(d, 5)");
-    assert_eq!(literal_types(&source), vec!["LINT"]);
+    assert_eq!(literal_types(&source), vec!["DINT"]);
+    assert_eq!(assigned_values(&source), vec!["DINT->LINT"]);
 }
 
 #[spec_test(REQ_IC_analyzer_058)]
@@ -858,3 +853,5 @@ fn apply_when_untyped_literal_typed_then_type_recorded_as_inferred() {
     let source = "PROGRAM main VAR l : LINT; END_VAR l := 1; l := LINT#1; END_PROGRAM";
     assert_eq!(literal_type_origins(source), vec!["inferred", "stated"]);
 }
+
+mod inputs_of_one_type;

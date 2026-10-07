@@ -181,3 +181,15 @@ literal argument now takes its parameter's type rather than its default type
 converted to it (#2071). `f(0.1)` with an `LREAL` parameter passed `0.1`
 rounded to a `REAL`, and `f(1.0E300)` passed infinity; `f(5000000000)` with an
 `LINT` parameter failed. The decision above is unchanged.
+
+### Functions of several inputs of one type (postscript)
+
+`MIN`, `MAX`, `LIMIT`, `SEL`, `MUX`, `EXPT` and `ATAN2` computed at the
+type of their context, because the analyzer typed the result by the first
+input, which need not be the widest: `i2 := MAX(i, l)` on `INT`s and an
+`LINT` passed analysis and truncated the `LINT` (#2127), and `MAX` of two
+`UDINT`s passed to a `DINT` input compared them signed. The resolver now types
+such a call by the type every input widens to (`EXPT` by its base), the pass
+converts each input to it and records the conversion of the result to its
+context, and codegen selects the builtin from the call's recorded type rather
+than from its context. The decision above is unchanged.

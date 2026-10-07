@@ -4,9 +4,9 @@
 //! context gives it one (ADR-0028). The code generator gives it one top-down:
 //! each statement passes the type it stores or tests at into its expression,
 //! and every construct on the way to the literal either passes that type on
-//! (parentheses, `MAX`, `MUX`), computes at a type of its own (an arithmetic
-//! operation, a negation or `ABS` of a concrete type, a comparison, a call to
-//! a user-defined function), or computes at a fixed type (a subscript, a
+//! (parentheses), computes at a type of its own (an arithmetic operation, a
+//! negation, `ABS` or `MAX` of a concrete type, a comparison, a call to a
+//! user-defined function), or computes at a fixed type (a subscript, a
 //! string position, a shift count). This module records the type each
 //! literal reaches, so that a backend reads it from the literal rather than
 //! carrying it down.
@@ -37,7 +37,7 @@ use crate::intermediates::numeric_operation::{
 };
 use crate::intermediates::operator_function_form::FormOf;
 use crate::intermediates::stdlib_function_block::is_stdlib_function_block;
-use crate::intrinsic::{Intrinsic, NumericFunction};
+use crate::intrinsic::Intrinsic;
 use crate::semantic_type::SemanticType;
 use crate::type_environment::TypeEnvironment;
 use crate::variable_type;
@@ -141,7 +141,13 @@ impl ImplicitConversions<'_> {
             }
             ExprKind::Compare(compare) => self.type_compare_literals(compare, context),
             ExprKind::Function(func) => {
-                self.type_call_literals(func, numeric, context, numeric_pair)
+                // A function of several inputs of one type converts its
+                // inputs to its own type, which a context may have settled
+                // only after the call was folded: `l := MAX(1, 2)`.
+                if let Some(own) = own {
+                    self.record_one_type_call(func, own);
+                }
+                self.type_call_literals(func, own, numeric, context, numeric_pair)
             }
             ExprKind::MethodCall(call) => self.type_method_call_literals(call),
             ExprKind::Variable(variable) => self.type_variable_literals(variable),
@@ -190,15 +196,18 @@ impl ImplicitConversions<'_> {
     }
 
     /// Types the literals of the inputs of `func`, a call whose own type is
-    /// `numeric` when it is a numeric operation type, compiled at `context`.
+    /// `own`, and `numeric` when that is a numeric operation type, compiled
+    /// at `context`.
     fn type_call_literals(
         &self,
         func: &mut Function,
+        own: Option<TypeId>,
         numeric: Option<TypeId>,
         context: Option<TypeId>,
         numeric_pair: bool,
     ) {
         let intrinsic = self.intrinsic_of(func);
+        let one_type = intrinsic.as_ref().and_then(Intrinsic::inputs_of_one_type);
         let typed_pair = matches!(
             func.param_assignment.as_slice(),
             [ParamAssignmentKind::PositionalInput(left), ParamAssignmentKind::PositionalInput(right), ..]
@@ -217,7 +226,7 @@ impl ImplicitConversions<'_> {
         // other at the type of its context.
         let operated = if intrinsic
             .as_ref()
-            .is_some_and(Intrinsic::computes_at_operand_type)
+            .is_some_and(Intrinsic::computes_at_own_type)
         {
             numeric.or(context)
         } else {
@@ -257,29 +266,30 @@ impl ImplicitConversions<'_> {
                 Intrinsic::Operator(FormOf::Compare(_) | FormOf::Not) | Intrinsic::Move => inputs
                     .into_iter()
                     .for_each(|arg| self.type_literals(arg, operated)),
-                Intrinsic::Numeric(function) => {
-                    for (index, arg) in inputs.into_iter().enumerate() {
-                        // SEL's selector is a BOOL or an integer, whatever
-                        // the type of its inputs.
-                        let at = if function == NumericFunction::Sel && index == 0 {
-                            dint
-                        } else {
-                            operated
-                        };
-                        self.type_literals(arg, at);
+                Intrinsic::Numeric(_) | Intrinsic::Mux => match one_type {
+                    // A function of several inputs of one type computes at
+                    // its own type. A selector is a BOOL or an integer,
+                    // whatever the type of the inputs it selects between.
+                    Some(shape) => {
+                        for (index, arg) in inputs.into_iter().enumerate() {
+                            let at = if index < shape.first {
+                                dint
+                            } else {
+                                own.or(context)
+                            };
+                            self.type_literals(arg, at);
+                        }
                     }
-                }
+                    None => inputs
+                        .into_iter()
+                        .for_each(|arg| self.type_literals(arg, operated)),
+                },
                 Intrinsic::BitShift(_) => {
                     let wide =
                         operated.and_then(|id| self.width_of_type(id)) == Some(OperationWidth::W64);
                     let count = if wide { self.lint() } else { dint };
                     for (index, arg) in inputs.into_iter().enumerate() {
                         self.type_literals(arg, if index == 0 { operated } else { count });
-                    }
-                }
-                Intrinsic::Mux => {
-                    for (index, arg) in inputs.into_iter().enumerate() {
-                        self.type_literals(arg, if index == 0 { dint } else { context });
                     }
                 }
                 // A position or a length is an integer at the default slot

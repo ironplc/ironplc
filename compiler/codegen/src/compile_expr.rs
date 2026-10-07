@@ -207,10 +207,7 @@ pub(crate) fn compile_expr(
             emitter.emit_load_const_i32(pool_index);
             Ok(())
         }
-        ExprKind::Function(func) => {
-            let result = expr_operand_name(ctx, expr);
-            compile_function_call(emitter, ctx, func, result.as_ref(), op_type)
-        }
+        ExprKind::Function(func) => compile_function_call(emitter, ctx, expr, func, op_type),
         ExprKind::MethodCall(call) => compile_method_call_expression(emitter, ctx, call),
         ExprKind::Ref(variable) => {
             // REF(param) of a VAR_IN_OUT parameter is the reference its slot

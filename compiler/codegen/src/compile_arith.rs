@@ -244,6 +244,19 @@ pub(crate) fn compile_at_operand_type(
     compile: impl FnOnce(&mut Emitter, &mut CompileContext, OpType) -> Result<(), Diagnostic>,
 ) -> Result<(), Diagnostic> {
     let at = numeric_op_type(result).unwrap_or(op_type);
+    compile_at(emitter, ctx, at, op_type, compile)
+}
+
+/// Compiles, by `compile`, an operation at the operation type `at`, then
+/// converts the result to `op_type`, the operation type of the enclosing
+/// expression.
+pub(crate) fn compile_at(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    at: OpType,
+    op_type: OpType,
+    compile: impl FnOnce(&mut Emitter, &mut CompileContext, OpType) -> Result<(), Diagnostic>,
+) -> Result<(), Diagnostic> {
     compile(emitter, ctx, at)?;
     convert(emitter, at, op_type);
     Ok(())

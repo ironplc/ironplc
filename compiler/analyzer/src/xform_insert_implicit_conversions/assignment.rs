@@ -10,12 +10,12 @@
 //! operation that computes at its own result type, or a parenthesized one of
 //! those, and its operation width differs from the target's. An operation
 //! computes at its own type when it is arithmetic, a negation or `NOT`, or a
-//! standard function on one value ([`Intrinsic::computes_at_operand_type`]).
-//! Any other value -- a literal, a call to `MAX` or to a user-defined
-//! function -- is compiled at the target's width rather than converted to it,
-//! so there is no conversion to record. The target of a dereference, of a
-//! function block field, or a directly represented variable is not recorded
-//! yet.
+//! standard function on one value or of several inputs of one type
+//! ([`Intrinsic::computes_at_own_type`]). Any other value -- a literal, a call
+//! to `TRUNC` or to a user-defined function -- is compiled at the target's
+//! width rather than converted to it, so there is no conversion to record.
+//! The target of a dereference, of a function block field, or a directly
+//! represented variable is not recorded yet.
 
 use ironplc_dsl::textual::{
     Assignment, Expr, ExprKind, Function, ParamAssignmentKind, PartialAccessSize,
@@ -112,15 +112,16 @@ impl ImplicitConversions<'_> {
             // its context's.
             ExprKind::ImplicitConversion(_) => true,
             ExprKind::Expression(inner) => self.converts_to_its_context(inner),
-            // The function form of an arithmetic operator and an operation on
-            // one value compute at their own type. Any other standard
-            // function computes at its context's, and a user-defined
-            // function's result is not converted (#2126).
+            // The function form of an arithmetic operator, an operation on
+            // one value and a function of several inputs of one type compute
+            // at their own type. Any other standard function computes at its
+            // context's, and a user-defined function's result is not
+            // converted (#2126).
             ExprKind::Function(func) => {
                 self.is_numeric_pair(func, expr)
                     || self
                         .intrinsic_of(func)
-                        .is_some_and(|intrinsic| intrinsic.computes_at_operand_type())
+                        .is_some_and(|intrinsic| intrinsic.computes_at_own_type())
             }
             // Computed or read at its own type and not converted (#2126).
             ExprKind::Compare(_) | ExprKind::MethodCall(_) | ExprKind::Deref(_) => false,

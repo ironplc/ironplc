@@ -86,9 +86,35 @@ An arithmetic operation computes at the type of its result (ADR-0001): `INT + RE
 
 The conversion of an arithmetic result to the type of its context is recorded where the context is: see Assignments below. An argument's is not recorded yet.
 
+### Standard functions
+
+A function of several inputs of one type -- `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX`, `EXPT` and `ATAN2` -- computes at the type of its result, as an arithmetic operation does. The result is the type every input of the function's type widens to, by the relation a comparison chooses its operand type by (see [Comparison Operand Type](comparison-operand-type.md)), so it is never narrower than an input: `MAX(i, l)` on an `INT` and an `LINT` is an `LINT`, and assigning it to an `INT` is a type mismatch. `EXPT` is typed by its base: its result has the type of `IN1`, and the exponent is converted to it. `SEL`'s selector `G` is a `BOOL` and `MUX`'s `K` an integer, whatever the type of the inputs they select between.
+
+A set of inputs none of whose types every other one widens to, such as a `DINT` and a `UDINT`, has the type of its first concrete input, as a comparison of such a pair compares at its concrete left operand's. It is not reported yet ([#1931](https://github.com/ironplc/ironplc/issues/1931), [#2127](https://github.com/ironplc/ironplc/issues/2127)).
+
+The pass records, for each call, the conversion of every input of the function's type to the result type, and the conversion of the result to the type of its context where that context is recorded (Assignments and Arguments below, and a comparison or arithmetic operand above).
+
+**REQ-IC-analyzer-070** The result of `MIN`, `MAX`, `LIMIT`, `SEL`, `MUX` and `ATAN2` has the type every input of the function's type widens to, whichever input that is: `MAX(i, l)` and `MAX(l, i)` on an `INT` and an `LINT` are `LINT`s, and the `G` of `SEL` and the `K` of `MUX` do not take part.
+
+**REQ-IC-analyzer-071** A set of inputs none of whose types every other one widens to has the type of its first concrete input: `MAX(d, u)` on a `DINT` and a `UDINT` is a `DINT`, and `MAX(5, d)` on a `DINT` is a `DINT`.
+
+**REQ-IC-analyzer-072** The result of `EXPT` has the type of its first input: `EXPT(r, l)` on a `REAL` and an `LINT` is a `REAL`.
+
+**REQ-IC-analyzer-073** An input of the function's type whose operation width differs from the result's is wrapped in an `ImplicitConversion` to the result type: the `INT` of `MAX(i, l)` is converted to `LINT`, and the `LINT` exponent of `EXPT(r, l)` to `REAL`.
+
+**REQ-IC-analyzer-074** An input of the result's operation width is not converted, whatever its signedness: in `MAX(s, i)` on a `SINT` and an `INT` neither is wrapped.
+
+**REQ-IC-analyzer-075** The `K` of `MUX` is converted to `DINT` when its operation width differs: the `LINT` `K` of `MUX(k, d, e)` is converted to `DINT`. The `G` of `SEL` is left the `BOOL` it is.
+
+**REQ-IC-analyzer-076** A call whose result is an untyped literal's category takes the type of its context, as an untyped literal does (ADR-0028), and its inputs are converted to that type: `l := MAX(1, 2)` on an `LINT` is an `LINT`, and in `lr := EXPT(2, r)` on an `LREAL` and a `REAL` the `REAL` is converted to `LREAL`.
+
+**REQ-IC-analyzer-077** The result is converted to the type of a context of another operation width: in `l := MAX(d, e)` on an `LINT` and two `DINT`s the `DINT` result is converted to `LINT`.
+
+**REQ-IC-analyzer-078** A result assigned to a narrower target is a type mismatch: `i := MAX(i, l)` on an `INT` and an `LINT` reports P4027.
+
 ### Assignments
 
-An assignment stores its value at the type of its target. The pass records the conversion of the value to the type the target is stored as: its own elementary type, or its base type for a subrange. It records the conversions the code generator makes, and only those: a value converts to its context when it is a variable, an operation that computes at its own result type, or a parenthesized one of those, and its operation width differs from the target's. An operation computes at its own type when it is arithmetic (operator or function form) or an operation on one value (see Codegen). Any other value is compiled at the target's width rather than converted to it, so there is nothing to record: a literal takes the target's type (ADR-0028), and `MAX` of two `DINT`s assigned to an `LINT` selects at the target's width.
+An assignment stores its value at the type of its target. The pass records the conversion of the value to the type the target is stored as: its own elementary type, or its base type for a subrange. It records the conversions the code generator makes, and only those: a value converts to its context when it is a variable, an operation that computes at its own result type, or a parenthesized one of those, and its operation width differs from the target's. An operation computes at its own type when it is arithmetic (operator or function form), an operation on one value (see Codegen), or a function of several inputs of one type (see Standard functions). Any other value is compiled at the target's width rather than converted to it, so there is nothing to record: a literal takes the target's type (ADR-0028), and `TRUNC` of a `REAL` assigned to an `LINT` truncates to the target's width.
 
 **REQ-IC-analyzer-030** A variable assigned to a target of another operation width is wrapped in an `ImplicitConversion` to the target's type: in `l := d` on an `LINT` and a `DINT` the `DINT` is converted to `LINT`.
 
@@ -128,7 +154,7 @@ The arguments of a function block call and of a method call are not recorded yet
 
 ### Literals
 
-An untyped literal has a generic type (`ANY_INT`) until a context gives it one (ADR-0028). Codegen gives it one top-down: a statement passes the type it stores at into the expression, and that type flows through a negation, parentheses and an arithmetic operation whose own type is generic until it reaches the literal. The pass records the type each literal reaches. An arithmetic operation of literals alone is folded to one literal before the pass runs. A literal operand of an arithmetic operation of a concrete type takes that type instead (`d + -1`), and a comparison operand or a function argument is typed by those constructs above.
+An untyped literal has a generic type (`ANY_INT`) until a context gives it one (ADR-0028). Codegen gives it one top-down: a statement passes the type it stores at into the expression, and that type flows through a negation, parentheses, an arithmetic operation and a function of several inputs of one type whose own type is generic until it reaches the literal. The pass records the type each literal reaches. An arithmetic operation of literals alone is folded to one literal before the pass runs. A literal operand of an arithmetic operation of a concrete type takes that type instead (`d + -1`), and a comparison operand or a function argument is typed by those constructs above.
 
 **REQ-IC-analyzer-050** An untyped literal assigned to a target takes the type the target is stored at: the `1` of `l := 1` on an `LINT` is an `LINT`.
 
@@ -144,9 +170,9 @@ An untyped literal has a generic type (`ANY_INT`) until a context gives it one (
 
 Every construct a literal can sit in either passes the type of its context on, computes at a type of its own, or computes at a fixed type, and the literal takes the type it reaches:
 
-**REQ-IC-analyzer-057** A standard function that computes at the type of its context (`MAX`, `MIN`, `LIMIT`, the inputs of `MUX` and `SEL`) passes that type to its literal inputs: the `5` of `l := MAX(d, 5)` on an `LINT` is an `LINT`.
+**REQ-IC-analyzer-057** A function of several inputs of one type (`MIN`, `MAX`, `LIMIT`, `SEL`, `MUX`, `EXPT`, `ATAN2`) gives its literal inputs of that type its own type, not its context's: the `5` of `l := MAX(d, 5)` on an `LINT` and a `DINT` is a `DINT`, and the `DINT` result is converted to `LINT`.
 
-**REQ-IC-analyzer-058** The selector of `MUX` and of `SEL` takes `DINT`, whatever the type of the inputs it selects between.
+**REQ-IC-analyzer-058** A literal selector of `MUX` takes `DINT`, the type `MUX` reads it as, whatever the type of the inputs it selects between, and the selector of `SEL` is the `BOOL` it is.
 
 **REQ-IC-analyzer-059** The count of a shift or rotate takes `LINT` when the shifted value is operated at 64 bits and `DINT` otherwise.
 
@@ -187,13 +213,19 @@ An operation on one value -- a negation, `NOT`, a numeric function of one
 input (`ABS`, `SQRT`, ...), `MOVE`, or a shift or rotate, whose count only
 says how far -- has its operand's type, and computes at that type when it is
 numeric, as an arithmetic operation computes at its result's. Its result is
-converted to the type of its context. A function of several inputs of one type
-(`MAX`, `MIN`, `LIMIT`, `SEL`, `MUX`, `EXPT`, `ATAN2`) computes at the type of
-its context instead, because the analyzer types its result by its first input,
-which need not be the widest
-([#2127](https://github.com/ironplc/ironplc/issues/2127)).
+converted to the type of its context.
+
+A function of several inputs of one type (`MAX`, `MIN`, `LIMIT`, `SEL`, `MUX`,
+`EXPT`, `ATAN2`) computes at the type the analyzer recorded for the call, and
+selects its builtin by that type's width and signedness. Each input compiles at
+the type recorded for it, which for an input of the function's type is the
+call's width (see Standard functions), and the result is converted to the type
+of its context. A call without a recorded type is reported, not compiled at its
+context's.
 
 **REQ-IC-codegen-003** An operation on one value assigned to a wider target computes at its operand's type: `lw := SHL(dw, 1)` with `dw = 16#80000000` stores 0, `lw := NOT dw` with `dw = 0` stores `16#FFFFFFFF`, and `l := -d` with `d` the least `DINT` stores that `DINT`.
+
+**REQ-IC-codegen-004** A function of several inputs of one type selects its builtin at the type the analyzer recorded for the call, whatever the type of its context: `MAX` of the `UDINT`s 3000000000 and 1 passed to a `DINT` input of a function block selects 3000000000, and `l := MAX(i, l2)` with `l2 = 5000000000` stores 5000000000.
 
 ## Out of scope
 

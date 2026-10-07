@@ -16,9 +16,9 @@ use ironplc_dsl::textual::{Expr, ExprKind, Function, SymbolicVariableKind, Varia
 use super::call_args::{collect_positional_args, fixed_args, wrong_arg_count};
 use super::compile::{
     CompileContext, OpType, OpWidth, ParamPassing, Signedness, UserFunctionInfo, VarTypeInfo,
-    DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
+    NARROW_CHAR_WIDTH,
 };
-use super::compile_arith::{compile_arith_fold, compile_at_operand_type};
+use super::compile_arith::{compile_arith_fold, compile_at, compile_at_operand_type};
 use super::compile_builtin::{compile_numeric, compile_shift_rotate};
 use super::compile_comparison::compile_comparison;
 use super::compile_expr::{
@@ -30,7 +30,7 @@ use super::compile_string::{
     compile_mid, compile_replace, compile_right, resolve_string_arg,
 };
 use super::compile_time_arith::{compile_time_arith, time_arith_for, Operand};
-use super::type_info::elementary_type_info;
+use super::type_info::{elementary_type_info, expr_operand_name};
 use crate::emit::Emitter;
 
 /// Returns the operation each standard function in `functions` stands for,
@@ -46,19 +46,19 @@ pub(crate) fn intrinsics_by_name(functions: &FunctionEnvironment) -> HashMap<Id,
         .collect()
 }
 
-/// Compiles a function call.
+/// Compiles `call`, the call `func`.
 ///
 /// A standard function compiles as the operation its signature names; any
 /// other function is a user-defined one.
 pub(crate) fn compile_function_call(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
+    call: &Expr,
     func: &Function,
-    result: Option<&TypeName>,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
     if let Some(intrinsic) = ctx.intrinsics.get(&func.name).cloned() {
-        return compile_intrinsic(emitter, ctx, func, result, op_type, intrinsic);
+        return compile_intrinsic(emitter, ctx, call, func, op_type, intrinsic);
     }
     let Some(func_info) = ctx.user_functions.get(func.name.lower_case()).cloned() else {
         return Err(Diagnostic::todo_with_span(func.name.span()));
@@ -66,18 +66,33 @@ pub(crate) fn compile_function_call(
     compile_user_function_call(emitter, ctx, func, &func_info)
 }
 
-/// Compiles a call to a standard function as the operation `intrinsic`, at
-/// its operand's type when it is an operation on one value
-/// ([`Intrinsic::computes_at_operand_type`]) and at `op_type` otherwise.
+/// Compiles `call`, a call to a standard function, as the operation
+/// `intrinsic`: at its own type when it computes at it
+/// ([`Intrinsic::computes_at_own_type`]), converting the result to
+/// `op_type`, and at `op_type` otherwise.
+///
+/// A function of several inputs of one type (`MAX`, `MUX`, ...) computes at
+/// the type the analyzer recorded for the call, to which it converted each
+/// input (ADR-0056). An operation on one value computes at its operand's type
+/// when that is numeric, and at `op_type` otherwise, as `NOT` of a `BOOL`
+/// does.
 fn compile_intrinsic(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
+    call: &Expr,
     func: &Function,
-    result: Option<&TypeName>,
     op_type: OpType,
     intrinsic: Intrinsic,
 ) -> Result<(), Diagnostic> {
-    if intrinsic.computes_at_operand_type() {
+    let result = expr_operand_name(ctx, call);
+    let result = result.as_ref();
+    if intrinsic.inputs_of_one_type().is_some() {
+        let at = self::op_type(ctx, call)?;
+        return compile_at(emitter, ctx, at, op_type, |emitter, ctx, at| {
+            compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
+        });
+    }
+    if intrinsic.computes_at_own_type() {
         return compile_at_operand_type(emitter, ctx, result, op_type, |emitter, ctx, at| {
             compile_intrinsic_at(emitter, ctx, func, result, at, intrinsic)
         });
@@ -555,11 +570,13 @@ fn compile_int_to_bcd(
     Ok(())
 }
 
-/// Compiles a MUX (multiplexer) function call.
+/// Compiles a MUX (multiplexer) function call at `op_type`, the type the
+/// analyzer recorded for the call.
 ///
 /// MUX(K, IN0, IN1, ..., INn) selects one of the IN values based on the
-/// integer selector K. The first argument K is always compiled as I32
-/// (integer selector), while the remaining IN arguments use the caller's op_type.
+/// integer selector K. Each argument compiles at the type the analyzer
+/// recorded for it: K at a 32-bit integer type, to which it converted a
+/// wider one, and each IN at `op_type`'s width (ADR-0056).
 ///
 /// The opcode encodes the number of IN arguments: `MUX_<WIDTH>_BASE + num_inputs`.
 fn compile_mux(
@@ -589,12 +606,8 @@ fn compile_mux(
     };
     let func_id = base + num_inputs;
 
-    // Compile K (first arg) as integer
-    compile_expr(emitter, ctx, args[0], DEFAULT_OP_TYPE)?;
-
-    // Compile IN0..INn with the caller's op_type
-    for arg in &args[1..] {
-        compile_expr(emitter, ctx, arg, op_type)?;
+    for arg in &args {
+        compile_expr(emitter, ctx, arg, self::op_type(ctx, arg)?)?;
     }
 
     emitter.emit_builtin(func_id);
