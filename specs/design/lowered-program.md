@@ -2274,12 +2274,11 @@ these ADRs:
 | [ADR-0057](../adrs/0057-backends-consume-a-target-neutral-lowered-program.md) | Code generation consumes a separate, target-neutral lowered program. |
 | [ADR-0058](../adrs/0058-the-analyzer-decides-and-lowering-translates.md) | The analyzer makes and records every decision whose outcome can make a program invalid, extending ADR-0056. Lowering makes the rest, reports no problem with the program, and is part of `check`. |
 | [ADR-0059](../adrs/0059-backends-depend-only-on-the-ir-crate.md) | A backend depends only on `ironplc-ir`, and the analyzer does not depend on the IR. The analyzer's `BuiltinFunction` and the IR's `Intrinsic` are separate enums, and lowering maps one to the other ([Position in the Pipeline](#1-position-in-the-pipeline)). |
-| [ADR-0060](../adrs/0060-each-lowered-operation-has-one-total-meaning.md) | Each lowered operation has one meaning on every target, the bytecode VM's today, and that meaning is total ([Meaning of operations](#310-meaning-of-operations)). |
-| [ADR-0061](../adrs/0061-a-standard-function-blocks-expansion-is-its-meaning.md) | Each standard function block's meaning is its expansion in `ironplc-ir`, which a backend may implement natively instead. |
-| [ADR-0062](../adrs/0062-one-intrinsic-variant-per-operation-and-operand-type.md) | `Intrinsic` and `StandardBlock` have one variant per operation and operand type. |
-| [ADR-0063](../adrs/0063-a-body-works-on-its-instances-fields-in-place.md) | A body works on its instance's fields in place; the bytecode VM's copy is removed by a change of its own ([Instance fields](#instance-fields)). |
-| [ADR-0064](../adrs/0064-a-call-through-an-interface-lists-its-implementers.md) | A call through an interface lists its implementers, and each backend chooses how to dispatch ([Calls through an interface](#calls-through-an-interface)). |
-| [ADR-0065](../adrs/0065-every-string-has-an-explicit-capacity.md) | Every string in the IR has an explicit capacity ([String capacity](#string-capacity)). |
+| [ADR-0060](../adrs/0060-a-standard-function-blocks-expansion-is-its-meaning.md) | Each standard function block's meaning is its expansion in `ironplc-ir`, which a backend may implement natively instead. |
+| [ADR-0061](../adrs/0061-one-name-per-built-in-operation-and-operand-type.md) | `Intrinsic` and `StandardBlock` have one variant per operation and operand type. |
+| [ADR-0062](../adrs/0062-a-body-works-on-its-instances-fields-in-place.md) | A body works on its instance's fields in place; the bytecode VM's copy is removed by a change of its own ([Instance fields](#instance-fields)). |
+| [ADR-0063](../adrs/0063-a-call-through-an-interface-lists-its-implementers.md) | A call through an interface lists its implementers, and each backend chooses how to dispatch ([Calls through an interface](#calls-through-an-interface)). |
+| [ADR-0064](../adrs/0064-every-string-has-an-explicit-capacity.md) | Every string in the IR has an explicit capacity ([String capacity](#string-capacity)). |
 
 Two parts of this design are described but not yet decided, so neither has an
 ADR:

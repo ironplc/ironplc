@@ -187,9 +187,8 @@ rounded to a `REAL`, and `f(1.0E300)` passed infinity; `f(5000000000)` with an
 [ADR-0058](0058-the-analyzer-decides-and-lowering-translates.md) builds on
 this decision. The analyzer makes and records every decision whose outcome can
 make a program invalid, and a lowering stage between analysis and code
-generation translates what it recorded into a target-neutral program
-(`specs/design/lowered-program.md`). That ADR extends this one and does not
-supersede it.
+generation translates what it recorded into a target-neutral program. That ADR
+extends this one and does not supersede it.
 
 The pass this ADR calls "a lowering pass" records decisions rather than
 lowering anything, so it is now called the **recording pass**. "Lowering"
