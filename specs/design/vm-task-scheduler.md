@@ -128,6 +128,7 @@ Each `run_round()`:
 5. Update `next_due_us` for cyclic tasks that ran:
    - `next_due_us += interval_us`
    - If `next_due_us <= current_time`: increment `overrun_count`, realign to `current_time + interval_us`
+   - All of this arithmetic, and the `scan_count` increment, saturates at `u64::MAX` because `interval_us` comes from the container and `current_time` from the caller. A task whose next due time would pass `u64::MAX` is not due again until `current_time` reaches `u64::MAX` (over 584,000 years of uptime).
 6. If no tasks were ready: sleep until earliest `next_due_us`
 
 Traps from any program instance abort the entire round. No further tasks execute and OUTPUT_FLUSH is skipped. This matches standard PLC behavior (Siemens, CODESYS, B&R all default to stopping on fault).
