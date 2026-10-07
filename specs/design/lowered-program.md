@@ -217,7 +217,7 @@ sequential function charts and the graphical languages can be lowered later.
     ([issue 2118](https://github.com/ironplc/ironplc/issues/2118); see
     [String capacity](#string-capacity)).
 - Changing what an operation does. [Meaning of operations](#310-meaning-of-operations)
-  records what the bytecode VM does today.
+  starts from what the bytecode VM does today.
 - Removing `Expr::expr_type` or `VarDecl::type_id` from the AST. The analyzer's
   rules read them.
 - Any particular optimization pass. Where optimizations live, and what they
@@ -1336,10 +1336,13 @@ variant.
 
 A lowered operation means the same on every target. Where a target's own
 instruction does something else, the backend emits what makes up the
-difference; the lowered program does not change. The rules below are what the
-bytecode VM does today (`vm/src/vm.rs`, `vm/src/builtin.rs`), recorded so that
-every other backend does the same. Each is checked by running a program, so each
-belongs to the end-to-end suite that every backend runs.
+difference; the lowered program does not change. The rules below start from
+what the bytecode VM does today (`vm/src/vm.rs`, `vm/src/builtin.rs`), so that
+moving onto the lowered program changes no program. The rules, not the VM, are
+the reference: the VM has defects of its own, and where a rule turns out to
+record one, the rule is corrected and every backend follows. Each rule is
+checked by running a program, so each belongs to the end-to-end suite that
+every backend runs.
 
 **REQ-LOW-codegen-083** Integer `Add`, `Sub`, `Mul` and `Neg` wrap at the
 operation width, in two's complement.
@@ -2263,7 +2266,7 @@ does not supersede it.
 ## Decisions to Record
 
 The choice among the alternatives above is a decision, and belongs in ADRs
-that this document then cites. Nine decisions are separable, and each gets an
+that this document then cites. Eight decisions are separable, and each gets an
 ADR of its own:
 
 1. Code generation consumes a separate, target-neutral lowered program.
@@ -2274,14 +2277,11 @@ ADR of its own:
    the IR. The analyzer's `BuiltinFunction` and the IR's `Intrinsic` are
    separate enums, and lowering maps one to the other
    ([Position in the Pipeline](#1-position-in-the-pipeline)).
-4. Each lowered operation has one meaning on every target, which is the
-   bytecode VM's today ([Meaning of operations](#310-meaning-of-operations)).
-   That meaning is total: no operation is undefined for any operand.
-5. Each standard function block has one meaning, given by its expansion in
+4. Each standard function block has one meaning, given by its expansion in
    `ironplc-ir`, which a backend may implement natively instead.
-6. `Intrinsic` and `StandardBlock` have one variant per operation and operand
+5. `Intrinsic` and `StandardBlock` have one variant per operation and operand
    type, so a combination the language does not allow cannot be written.
-7. A body works on its instance's fields in place. Each instance has one
+6. A body works on its instance's fields in place. Each instance has one
    storage for its fields; a reference to a field stays valid for the life of
    the program; and writes made before a trap stay. Safety decides this: a
    reference must never be able to outlive what it names. The bytecode VM's
@@ -2289,11 +2289,11 @@ ADR of its own:
    ([issue 2120](https://github.com/ironplc/ironplc/issues/2120)), and until
    then the refactor keeps the copy unchanged
    ([Instance fields](#instance-fields)).
-8. A call through an interface is one call in the IR. It lists the methods of
+7. A call through an interface is one call in the IR. It lists the methods of
    every concrete type the interface value can hold, and how it dispatches is
    each backend's choice
    ([Calls through an interface](#calls-through-an-interface)).
-9. Every string in the IR has an explicit capacity. The analyzer applies the
+8. Every string in the IR has an explicit capacity. The analyzer applies the
    default capacity, lowering decides the capacity of an intermediate result,
    and no backend sizes a string from other declarations
    ([String capacity](#string-capacity)). The bytecode VM sizes its temporary
