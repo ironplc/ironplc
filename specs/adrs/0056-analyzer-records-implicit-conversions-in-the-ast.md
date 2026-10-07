@@ -181,3 +181,16 @@ literal argument now takes its parameter's type rather than its default type
 converted to it (#2071). `f(0.1)` with an `LREAL` parameter passed `0.1`
 rounded to a `REAL`, and `f(1.0E300)` passed infinity; `f(5000000000)` with an
 `LINT` parameter failed. The decision above is unchanged.
+
+### Lowering (postscript)
+
+[ADR-0058](0058-the-analyzer-decides-and-lowering-translates.md) builds on
+this decision. The analyzer makes and records every decision whose outcome can
+make a program invalid, and a lowering stage between analysis and code
+generation translates what it recorded into a target-neutral program
+(`specs/design/lowered-program.md`). That ADR extends this one and does not
+supersede it.
+
+The pass this ADR calls "a lowering pass" records decisions rather than
+lowering anything, so it is now called the **recording pass**. "Lowering"
+names only the stage after analysis. The decision above is unchanged.
