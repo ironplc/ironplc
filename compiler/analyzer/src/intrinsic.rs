@@ -63,24 +63,28 @@ pub enum Intrinsic {
 }
 
 impl Intrinsic {
-    /// Returns `true` for an operation on one value whose result has that
-    /// value's type: `NOT`, a numeric function of one input (`ABS`, `SQRT`,
-    /// ...), `MOVE`, and a shift or rotate, whose count only says how far.
-    /// Such an operation computes at its operand's type, whatever the type of
-    /// its context, and its result is converted to the context's type, as an
-    /// arithmetic operation's is: `SHL` of a `DWORD` assigned to an `LWORD`
-    /// shifts 32 bits.
+    /// Returns `true` for an operation that computes at its own type,
+    /// whatever the type of its context, and whose result is converted to the
+    /// context's type, as an arithmetic operation's is:
     ///
-    /// A function of several inputs of one type (`MIN`, `MAX`, `LIMIT`,
-    /// `SEL`, `MUX`, `EXPT`, `ATAN2`) computes at the type of its context
-    /// instead: its result is typed by its first input, which need not be
-    /// the widest.
-    pub fn computes_at_operand_type(&self) -> bool {
+    /// * an operation on one value whose result has that value's type: `NOT`,
+    ///   a numeric function of one input (`ABS`, `SQRT`, ...), `MOVE`, and a
+    ///   shift or rotate, whose count only says how far. `SHL` of a `DWORD`
+    ///   assigned to an `LWORD` shifts 32 bits;
+    /// * a function of several inputs of one type
+    ///   ([`Intrinsic::inputs_of_one_type`]), whose result the analyzer types
+    ///   by those inputs and converts them to. `MAX` of two `UDINT`s compares
+    ///   them unsigned wherever it is used.
+    pub fn computes_at_own_type(&self) -> bool {
         match self {
-            Intrinsic::Operator(FormOf::Not) | Intrinsic::Move | Intrinsic::BitShift(_) => true,
-            Intrinsic::Numeric(function) => function.has_one_input(),
+            Intrinsic::Operator(FormOf::Not)
+            | Intrinsic::Move
+            | Intrinsic::BitShift(_)
+            | Intrinsic::Mux => true,
+            Intrinsic::Numeric(function) => {
+                function.has_one_input() || function.inputs_of_one_type().is_some()
+            }
             Intrinsic::Operator(FormOf::Arithmetic(_) | FormOf::Compare(_))
-            | Intrinsic::Mux
             | Intrinsic::Trunc
             | Intrinsic::BcdToInt
             | Intrinsic::IntToBcd
@@ -92,6 +96,58 @@ impl Intrinsic {
             | Intrinsic::DtToTod => false,
         }
     }
+
+    /// For a function of several inputs of one type -- `MIN`, `MAX`,
+    /// `LIMIT`, `SEL`, `MUX`, `EXPT`, `ATAN2` -- which of its inputs have that
+    /// type and which type of theirs its result has; `None` for any other
+    /// operation.
+    pub fn inputs_of_one_type(&self) -> Option<InputsOfOneType> {
+        match self {
+            Intrinsic::Numeric(function) => function.inputs_of_one_type(),
+            // `K` selects between the others.
+            Intrinsic::Mux => Some(InputsOfOneType {
+                first: 1,
+                result: OneTypeResult::Common,
+            }),
+            Intrinsic::Operator(_)
+            | Intrinsic::BitShift(_)
+            | Intrinsic::Move
+            | Intrinsic::Trunc
+            | Intrinsic::BcdToInt
+            | Intrinsic::IntToBcd
+            | Intrinsic::Sizeof
+            | Intrinsic::String(_)
+            | Intrinsic::Conversion { .. }
+            | Intrinsic::Time { .. }
+            | Intrinsic::DtToDate
+            | Intrinsic::DtToTod => None,
+        }
+    }
+}
+
+/// Which inputs of a function of several inputs of one type have that type,
+/// and which type of theirs its result has. Each of those inputs is converted
+/// to the result type, and the function computes at it (ADR-0056).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InputsOfOneType {
+    /// The position of the first input of the function's type; every input
+    /// after it has the type too. `SEL`'s and `MUX`'s first input selects
+    /// between the others and has a type of its own.
+    pub first: usize,
+    /// Which type of those inputs the result has.
+    pub result: OneTypeResult,
+}
+
+/// Which type of its inputs a function of several inputs of one type
+/// returns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OneTypeResult {
+    /// The type every input widens to: `MAX(i, l)` on an `INT` and an `LINT`
+    /// is an `LINT`.
+    Common,
+    /// The type of the first input: `EXPT(r, i)` raises a `REAL` to an
+    /// `INT` power and is a `REAL`, the exponent converted to it.
+    First,
 }
 
 impl NumericFunction {
@@ -118,6 +174,33 @@ impl NumericFunction {
             | NumericFunction::Sel
             | NumericFunction::ModReal => false,
         }
+    }
+
+    /// See [`Intrinsic::inputs_of_one_type`].
+    fn inputs_of_one_type(self) -> Option<InputsOfOneType> {
+        let (first, result) = match self {
+            NumericFunction::Min
+            | NumericFunction::Max
+            | NumericFunction::Limit
+            | NumericFunction::Atan2 => (0, OneTypeResult::Common),
+            // `G` selects between the others.
+            NumericFunction::Sel => (1, OneTypeResult::Common),
+            NumericFunction::Expt => (0, OneTypeResult::First),
+            NumericFunction::Abs
+            | NumericFunction::Sqrt
+            | NumericFunction::Ln
+            | NumericFunction::Log
+            | NumericFunction::Exp
+            | NumericFunction::Sin
+            | NumericFunction::Cos
+            | NumericFunction::Tan
+            | NumericFunction::Asin
+            | NumericFunction::Acos
+            | NumericFunction::Atan
+            | NumericFunction::TruncReal
+            | NumericFunction::ModReal => return None,
+        };
+        Some(InputsOfOneType { first, result })
     }
 }
 
@@ -204,7 +287,7 @@ pub enum TimeFunction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_dsl::textual::Operator;
+    use ironplc_dsl::textual::{CompareOp, Operator};
     use rstest::rstest;
 
     #[rstest]
@@ -213,22 +296,52 @@ mod tests {
     #[case::sqrt(Intrinsic::Numeric(NumericFunction::Sqrt))]
     #[case::shift(Intrinsic::BitShift(BitShift::Rol))]
     #[case::move_form(Intrinsic::Move)]
-    fn computes_at_operand_type_when_operation_on_one_value_then_true(
-        #[case] intrinsic: Intrinsic,
-    ) {
-        assert!(intrinsic.computes_at_operand_type());
-    }
-
-    #[rstest]
     #[case::max(Intrinsic::Numeric(NumericFunction::Max))]
     #[case::sel(Intrinsic::Numeric(NumericFunction::Sel))]
     #[case::expt(Intrinsic::Numeric(NumericFunction::Expt))]
     #[case::mux(Intrinsic::Mux)]
-    #[case::add(Intrinsic::Operator(FormOf::Arithmetic(Operator::Add)))]
-    #[case::trunc(Intrinsic::Trunc)]
-    fn computes_at_operand_type_when_several_inputs_or_other_result_type_then_false(
+    fn computes_at_own_type_when_operation_on_one_value_or_inputs_of_one_type_then_true(
         #[case] intrinsic: Intrinsic,
     ) {
-        assert!(!intrinsic.computes_at_operand_type());
+        assert!(intrinsic.computes_at_own_type());
+    }
+
+    #[rstest]
+    #[case::add(Intrinsic::Operator(FormOf::Arithmetic(Operator::Add)))]
+    #[case::trunc(Intrinsic::Trunc)]
+    #[case::bcd_to_int(Intrinsic::BcdToInt)]
+    #[case::mod_real(Intrinsic::Numeric(NumericFunction::ModReal))]
+    fn computes_at_own_type_when_result_not_typed_by_its_inputs_then_false(
+        #[case] intrinsic: Intrinsic,
+    ) {
+        assert!(!intrinsic.computes_at_own_type());
+    }
+
+    #[rstest]
+    #[case::min(Intrinsic::Numeric(NumericFunction::Min), 0, OneTypeResult::Common)]
+    #[case::max(Intrinsic::Numeric(NumericFunction::Max), 0, OneTypeResult::Common)]
+    #[case::limit(Intrinsic::Numeric(NumericFunction::Limit), 0, OneTypeResult::Common)]
+    #[case::atan2(Intrinsic::Numeric(NumericFunction::Atan2), 0, OneTypeResult::Common)]
+    #[case::sel(Intrinsic::Numeric(NumericFunction::Sel), 1, OneTypeResult::Common)]
+    #[case::mux(Intrinsic::Mux, 1, OneTypeResult::Common)]
+    #[case::expt(Intrinsic::Numeric(NumericFunction::Expt), 0, OneTypeResult::First)]
+    fn inputs_of_one_type_when_function_of_several_inputs_of_one_type_then_its_shape(
+        #[case] intrinsic: Intrinsic,
+        #[case] first: usize,
+        #[case] result: OneTypeResult,
+    ) {
+        assert_eq!(
+            intrinsic.inputs_of_one_type(),
+            Some(InputsOfOneType { first, result })
+        );
+    }
+
+    #[rstest]
+    #[case::abs(Intrinsic::Numeric(NumericFunction::Abs))]
+    #[case::mod_real(Intrinsic::Numeric(NumericFunction::ModReal))]
+    #[case::and(Intrinsic::Operator(FormOf::Compare(CompareOp::And)))]
+    #[case::trunc(Intrinsic::Trunc)]
+    fn inputs_of_one_type_when_other_operation_then_none(#[case] intrinsic: Intrinsic) {
+        assert_eq!(intrinsic.inputs_of_one_type(), None);
     }
 }

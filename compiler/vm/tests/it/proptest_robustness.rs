@@ -5,8 +5,8 @@
 //! across the full value range.
 
 use crate::common::ManualClock;
-use ironplc_container::{opcode, FLAG_HAS_SYSTEM_UPTIME};
-use ironplc_vm::{Vm, VmBuffers};
+use ironplc_container::opcode;
+use ironplc_vm::{Slot, Vm, VmBuffers};
 use proptest::prelude::*;
 
 /// A `u16` drawn mostly from the boundaries where index arithmetic goes
@@ -47,10 +47,10 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(10_000))]
 
     /// The header and task table come from the file as much as the bytecode
-    /// does, so they are randomised too: header `flags` (all but one bit, see
-    /// below), a small variable count, the shared-globals size and the
-    /// program instance's variable range. Each program starts with a variable
-    /// access at an edge index so the scope check sees those values.
+    /// does, so they are randomised too: header `flags`, a small variable
+    /// count, the shared-globals size and the program instance's variable
+    /// range. Each program starts with a variable access at an edge index so
+    /// the scope check sees those values.
     ///
     /// The VM is loaded with `Vm::load` directly rather than
     /// `load_and_start`, because rejecting the container at load is one of
@@ -71,10 +71,7 @@ proptest! {
         bytecode.extend_from_slice(&tail);
         let constants: Vec<i32> = (0..16).collect();
         let mut c = crate::common::single_function_container(&bytecode, num_variables, &constants);
-        // FLAG_HAS_SYSTEM_UPTIME stays clear: with fewer than two variables
-        // the VM still panics writing the uptime before the first scan. Let
-        // this bit through once that container is rejected at load.
-        c.header.flags = flags & !FLAG_HAS_SYSTEM_UPTIME;
+        c.header.flags = flags;
         c.task_table.shared_globals_size = shared_globals_size;
         c.task_table.programs[0].var_table_offset = var_table_offset;
         c.task_table.programs[0].var_table_count = var_table_count;
@@ -85,6 +82,35 @@ proptest! {
                 // Succeeding and trapping are both fine; panicking is not.
                 let _ = vm.run_round(0, &mut ManualClock::default());
             }
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(1_000))]
+
+    // The header flags, the declared variable count and the embedder's
+    // variable buffer all come from outside the VM, and `resume` lets the
+    // embedder pick the starting scan count. Whatever their combination,
+    // loading either rejects the container or every scan runs without
+    // panicking.
+    #[test]
+    fn run_round_when_arbitrary_flags_and_variable_slots_then_never_panics(
+        flags in any::<u8>(),
+        num_vars in 0u16..4,
+        var_capacity in 0usize..4,
+        initial_scan_count in prop_oneof![Just(u64::MAX), any::<u64>()],
+        uptime_us in any::<u64>(),
+    ) {
+        let mut c = crate::common::single_function_container(&[opcode::RET_VOID], num_vars, &[]);
+        c.header.flags = flags;
+        let mut b = VmBuffers::from_container(&c);
+        b.vars.resize(var_capacity, Slot::default());
+        if let Ok(ready) = Vm::new().load(&c, &mut b) {
+            let mut vm = ready.resume(initial_scan_count);
+            let mut clock = ManualClock::default();
+            let _ = vm.run_round(uptime_us, &mut clock);
+            let _ = vm.run_round(uptime_us, &mut clock);
         }
     }
 }

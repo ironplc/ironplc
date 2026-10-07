@@ -48,17 +48,19 @@ impl Vm {
     /// Consumes the empty VM and returns a ready VM.
     ///
     /// Returns `Err(Trap)` if the container's declared call depth is invalid
-    /// or exceeds the frame buffer. The check runs here, before either entry
-    /// path ([`start`](VmReady::start) or [`resume`](VmReady::resume)), and
-    /// before any buffer is written. The error is a bare [`Trap`] rather than
-    /// a [`FaultContext`] because it belongs to the container, not to any
-    /// task or program instance.
+    /// or exceeds the frame buffer, or if it declares the system uptime
+    /// variables without slots to hold them. The checks run here, before
+    /// either entry path ([`start`](VmReady::start) or
+    /// [`resume`](VmReady::resume)), and before any buffer is written. The
+    /// error is a bare [`Trap`] rather than a [`FaultContext`] because it
+    /// belongs to the container, not to any task or program instance.
     pub fn load<'a>(
         self,
         container: &'a Container,
         bufs: &'a mut VmBuffers,
     ) -> Result<VmReady<'a>, Trap> {
         validate_call_depth(container, bufs.frames.len())?;
+        validate_system_uptime(container, bufs.vars.len())?;
 
         // Populate task_states from the container's task table.
         for (i, t) in container.task_table.tasks.iter().enumerate() {
@@ -130,6 +132,36 @@ fn validate_call_depth(container: &Container, capacity: usize) -> Result<(), Tra
         return Err(Trap::ProgramExceedsCallDepth {
             required: declared,
             capacity: capacity.min(u16::MAX as usize) as u16,
+        });
+    }
+    Ok(())
+}
+
+/// The number of variable slots the system uptime variables occupy:
+/// `__SYSTEM_UP_TIME` at index 0 and `__SYSTEM_UP_LTIME` at index 1.
+const SYSTEM_UPTIME_VARIABLE_COUNT: u16 = 2;
+
+/// Validates that a container declaring the system uptime variables has
+/// slots for them.
+///
+/// `FLAG_HAS_SYSTEM_UPTIME` promises that the uptime variables occupy the
+/// first two variable slots, which every scan writes before running tasks.
+/// The flag is read from the container file, so nothing else guarantees the
+/// promise holds. Both the declared variable count and the embedder's buffer
+/// backing the variables must hold the two slots; the scan writes to the
+/// buffer.
+fn validate_system_uptime(container: &Container, var_capacity: usize) -> Result<(), Trap> {
+    if container.header.flags & ironplc_container::FLAG_HAS_SYSTEM_UPTIME == 0 {
+        return Ok(());
+    }
+    let available = container
+        .header
+        .num_variables
+        .min(var_capacity.min(u16::MAX as usize) as u16);
+    if available < SYSTEM_UPTIME_VARIABLE_COUNT {
+        return Err(Trap::VariableTableTooSmall {
+            required: SYSTEM_UPTIME_VARIABLE_COUNT,
+            available,
         });
     }
     Ok(())
@@ -461,7 +493,10 @@ impl<'a> VmRunning<'a> {
         // Because nothing ever truncates this buffer, a leak in any round
         // persists, so a single check after a scenario detects a leak in
         // every round of it.
-        self.scan_count += 1;
+        //
+        // Saturates rather than overflowing: `VmReady::resume` can start the
+        // counter anywhere up to `u64::MAX`.
+        self.scan_count = self.scan_count.saturating_add(1);
         Ok(())
     }
 
@@ -539,7 +574,7 @@ impl<'a> VmRunning<'a> {
                 Ok(RoundOutcome::Paused(reason))
             }
             ExecuteOutcome::Completed => {
-                self.scan_count += 1;
+                self.scan_count = self.scan_count.saturating_add(1);
                 self.phase = Phase::CompletedScan;
                 // A scan step's landing is this boundary, which no
                 // per-instruction hook can see; ask the hook whether one is in
@@ -569,14 +604,18 @@ impl<'a> VmRunning<'a> {
             return;
         }
         let time_ms = (uptime_us / 1000) as i64;
+        // `Vm::load` rejected any container whose variable buffer cannot hold
+        // both slots (`validate_system_uptime`), so neither store can fail;
+        // the results are discarded rather than unwrapped so this path has no
+        // panic.
         // __SYSTEM_UP_TIME at VarIndex(0): i32 milliseconds (wrapping)
-        self.variables
-            .store(VarIndex::new(0), Slot::from_i32(time_ms as i32))
-            .expect("system uptime variable must exist at index 0");
+        let _ = self
+            .variables
+            .store(VarIndex::new(0), Slot::from_i32(time_ms as i32));
         // __SYSTEM_UP_LTIME at VarIndex(1): i64 milliseconds (non-wrapping)
-        self.variables
-            .store(VarIndex::new(1), Slot::from_i64(time_ms))
-            .expect("system uptime variable must exist at index 1");
+        let _ = self
+            .variables
+            .store(VarIndex::new(1), Slot::from_i64(time_ms));
     }
 
     /// Runs one program instance's entry function through the shared dispatch
