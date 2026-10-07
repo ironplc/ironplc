@@ -58,13 +58,18 @@ pub enum Trap {
     /// computed (a hand-built or legacy container). `Vm::load` rejects it
     /// before any code runs.
     ZeroCallDepth,
-    /// The container sets `FLAG_HAS_SYSTEM_UPTIME` but has fewer than the
-    /// two variable slots the uptime variables occupy, either because it
-    /// declares too few variables or because the embedder's variable buffer
-    /// is too small. Every scan writes `__SYSTEM_UP_TIME` and
-    /// `__SYSTEM_UP_LTIME` to slots 0 and 1, so `Vm::load` rejects the
-    /// container before any code runs.
-    SystemUptimeVariablesMissing,
+    /// The variable table has fewer slots than the container requires.
+    /// `Vm::load` rejects the container before any code runs.
+    ///
+    /// `required` is the number of slots the container needs; `available` is
+    /// the smaller of the variable count the container declares and the size
+    /// of the embedder's variable buffer. For example, a container that sets
+    /// `FLAG_HAS_SYSTEM_UPTIME` requires two slots, because every scan writes
+    /// `__SYSTEM_UP_TIME` and `__SYSTEM_UP_LTIME` to slots 0 and 1.
+    VariableTableTooSmall {
+        required: u16,
+        available: u16,
+    },
     /// A `COPY_REGION` named a destination and a source whose array
     /// descriptors describe spans of different byte sizes.
     ///
@@ -215,10 +220,13 @@ impl fmt::Display for Trap {
             Trap::ZeroCallDepth => {
                 write!(f, "container declares a maximum call depth of zero")
             }
-            Trap::SystemUptimeVariablesMissing => {
+            Trap::VariableTableTooSmall {
+                required,
+                available,
+            } => {
                 write!(
                     f,
-                    "container declares system uptime variables but has fewer than 2 variable slots"
+                    "variable table too small: container requires {required} slots but {available} are available"
                 )
             }
             Trap::RegionSizeMismatch {
@@ -378,8 +386,8 @@ mod tests {
     )]
     #[case(Trap::ZeroCallDepth, "container declares a maximum call depth of zero")]
     #[case(
-        Trap::SystemUptimeVariablesMissing,
-        "container declares system uptime variables but has fewer than 2 variable slots"
+        Trap::VariableTableTooSmall { required: 2, available: 1 },
+        "variable table too small: container requires 2 slots but 1 are available"
     )]
     fn trap_display_when_variant_then_expected(#[case] trap: Trap, #[case] expected: &str) {
         assert_eq!(format!("{trap}"), expected);
@@ -422,7 +430,7 @@ mod tests {
         "V9016"
     )]
     #[case(Trap::ZeroCallDepth, "V9017")]
-    #[case(Trap::SystemUptimeVariablesMissing, "V9019")]
+    #[case(Trap::VariableTableTooSmall { required: 2, available: 1 }, "V9019")]
     fn v_code_when_variant_then_expected(#[case] trap: Trap, #[case] expected: &str) {
         assert_eq!(trap.v_code(), expected);
     }
@@ -480,6 +488,13 @@ mod tests {
             3
         );
         assert_eq!(Trap::ZeroCallDepth.exit_code(), 3);
-        assert_eq!(Trap::SystemUptimeVariablesMissing.exit_code(), 3);
+        assert_eq!(
+            Trap::VariableTableTooSmall {
+                required: 2,
+                available: 1,
+            }
+            .exit_code(),
+            3
+        );
     }
 }

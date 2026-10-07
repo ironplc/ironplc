@@ -19,27 +19,39 @@ fn uptime_container(num_variables: u16) -> ironplc_container::Container {
 }
 
 #[test]
-fn load_when_uptime_flag_set_and_no_variables_then_rejected() {
+fn load_when_uptime_flag_set_and_no_variables_then_variable_table_too_small() {
     let c = uptime_container(0);
     let mut b = VmBuffers::from_container(&c);
 
     let result = Vm::new().load(&c, &mut b);
 
-    assert_eq!(result.err(), Some(Trap::SystemUptimeVariablesMissing));
+    assert_eq!(
+        result.err(),
+        Some(Trap::VariableTableTooSmall {
+            required: 2,
+            available: 0,
+        })
+    );
 }
 
 #[test]
-fn load_when_uptime_flag_set_and_one_variable_then_rejected() {
+fn load_when_uptime_flag_set_and_one_variable_then_variable_table_too_small() {
     let c = uptime_container(1);
     let mut b = VmBuffers::from_container(&c);
 
     let result = Vm::new().load(&c, &mut b);
 
-    assert_eq!(result.err(), Some(Trap::SystemUptimeVariablesMissing));
+    assert_eq!(
+        result.err(),
+        Some(Trap::VariableTableTooSmall {
+            required: 2,
+            available: 1,
+        })
+    );
 }
 
 #[test]
-fn load_when_uptime_flag_set_and_variable_buffer_too_small_then_rejected() {
+fn load_when_uptime_flag_set_and_variable_buffer_too_small_then_variable_table_too_small() {
     // The container declares enough variables, but the embedder's buffer
     // backing them is smaller -- the buffer is what the scan writes to.
     let c = uptime_container(2);
@@ -48,7 +60,13 @@ fn load_when_uptime_flag_set_and_variable_buffer_too_small_then_rejected() {
 
     let result = Vm::new().load(&c, &mut b);
 
-    assert_eq!(result.err(), Some(Trap::SystemUptimeVariablesMissing));
+    assert_eq!(
+        result.err(),
+        Some(Trap::VariableTableTooSmall {
+            required: 2,
+            available: 1,
+        })
+    );
 }
 
 #[test]

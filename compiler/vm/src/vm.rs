@@ -140,7 +140,7 @@ fn validate_call_depth(container: &Container, capacity: usize) -> Result<(), Tra
 
 /// The number of variable slots the system uptime variables occupy:
 /// `__SYSTEM_UP_TIME` at index 0 and `__SYSTEM_UP_LTIME` at index 1.
-const SYSTEM_UPTIME_VARIABLE_COUNT: usize = 2;
+const SYSTEM_UPTIME_VARIABLE_COUNT: u16 = 2;
 
 /// Validates that a container declaring the system uptime variables has
 /// slots for them.
@@ -155,9 +155,15 @@ fn validate_system_uptime(container: &Container, var_capacity: usize) -> Result<
     if container.header.flags & ironplc_container::FLAG_HAS_SYSTEM_UPTIME == 0 {
         return Ok(());
     }
-    let available = (container.header.num_variables as usize).min(var_capacity);
+    let available = container
+        .header
+        .num_variables
+        .min(var_capacity.min(u16::MAX as usize) as u16);
     if available < SYSTEM_UPTIME_VARIABLE_COUNT {
-        return Err(Trap::SystemUptimeVariablesMissing);
+        return Err(Trap::VariableTableTooSmall {
+            required: SYSTEM_UPTIME_VARIABLE_COUNT,
+            available,
+        });
     }
     Ok(())
 }
