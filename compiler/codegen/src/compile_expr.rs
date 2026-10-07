@@ -158,7 +158,7 @@ pub(crate) fn compile_expr(
             match crate::compile_arith::numeric_op_type(expr_operand_name(ctx, expr).as_ref()) {
                 Some(own) if own.0 != op_type.0 => {
                     compile_variable_read(emitter, ctx, variable, own)?;
-                    crate::compile_arith::convert(emitter, own, op_type);
+                    crate::compile_arith::convert_to_context(emitter, own, op_type);
                     Ok(())
                 }
                 _ => compile_variable_read(emitter, ctx, variable, op_type),
@@ -237,7 +237,7 @@ pub(crate) fn compile_expr(
             let to = self::op_type(ctx, expr)?;
             compile_expr(emitter, ctx, inner, from)?;
             crate::compile_arith::convert(emitter, from, to);
-            crate::compile_arith::convert(emitter, to, op_type);
+            crate::compile_arith::convert_to_context(emitter, to, op_type);
             Ok(())
         }
         ExprKind::Null(_) => {
