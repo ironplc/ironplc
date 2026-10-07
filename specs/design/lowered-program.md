@@ -217,7 +217,7 @@ sequential function charts and the graphical languages can be lowered later.
     ([issue 2118](https://github.com/ironplc/ironplc/issues/2118); see
     [String capacity](#string-capacity)).
 - Changing what an operation does. [Meaning of operations](#310-meaning-of-operations)
-  records what the bytecode VM does today.
+  starts from what the bytecode VM does today.
 - Removing `Expr::expr_type` or `VarDecl::type_id` from the AST. The analyzer's
   rules read them.
 - Any particular optimization pass. Where optimizations live, and what they
@@ -1336,10 +1336,13 @@ variant.
 
 A lowered operation means the same on every target. Where a target's own
 instruction does something else, the backend emits what makes up the
-difference; the lowered program does not change. The rules below are what the
-bytecode VM does today (`vm/src/vm.rs`, `vm/src/builtin.rs`), recorded so that
-every other backend does the same. Each is checked by running a program, so each
-belongs to the end-to-end suite that every backend runs.
+difference; the lowered program does not change. The rules below start from
+what the bytecode VM does today (`vm/src/vm.rs`, `vm/src/builtin.rs`), so that
+moving onto the lowered program changes no program. The rules, not the VM, are
+the reference: the VM has defects of its own, and where a rule turns out to
+record one, the rule is corrected and every backend follows. Each rule is
+checked by running a program, so each belongs to the end-to-end suite that
+every backend runs.
 
 **REQ-LOW-codegen-083** Integer `Add`, `Sub`, `Mul` and `Neg` wrap at the
 operation width, in two's complement.
